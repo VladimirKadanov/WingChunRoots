@@ -1,6 +1,6 @@
 // Mail (plan §6.1; milestone M01b): the Mailer interface, its transports and their settings.
 
-export { mailConfig, type MailConfig, DEFAULT_MAIL_FROM, DEFAULT_MAIL_FILE_DIR, DEFAULT_SMTP_URL } from './config';
+export { mailConfig, type MailConfig, DEFAULT_MAIL_FROM, DEFAULT_MAIL_FILE_DIR, DEFAULT_SMTP_PORT } from './config';
 export {
   checkAddress,
   checkIdempotencyKey,

@@ -8,18 +8,25 @@
 //
 // SQL compatible with PostgreSQL 16+ (plan §3.2); pg-boss supports 13+.
 
-import { createRequire } from 'node:module';
-
 import { getConstructionPlans, getMigrationPlans } from 'pg-boss';
 import type { Client } from 'pg';
 
 /** The schema pg-boss lives in. */
 export const PGBOSS_SCHEMA = 'pgboss';
 
-/** The schema version the pinned pg-boss expects (package.json `pgboss.schema`). */
-export const PGBOSS_SCHEMA_VERSION: number = (
-  createRequire(import.meta.url)('pg-boss/package.json') as { pgboss: { schema: number } }
-).pgboss.schema;
+/**
+ * The schema version a construction plan installs. Read from the plan rather than from
+ * pg-boss's package.json, so this module needs no `import.meta` and also loads where TypeScript is
+ * compiled to CommonJS (Playwright).
+ */
+export function constructionPlanVersion(plan: string): number {
+  const match = /INSERT INTO \S+\.version\(version\) VALUES \('(\d+)'\)/.exec(plan);
+  if (!match) throw new Error('the pg-boss construction plan names no schema version');
+  return Number(match[1]);
+}
+
+/** The schema version the pinned pg-boss expects (its package.json `pgboss.schema`). */
+export const PGBOSS_SCHEMA_VERSION: number = constructionPlanVersion(getConstructionPlans(PGBOSS_SCHEMA));
 
 export interface PgBossMigration {
   /** The version before this run: null when the schema did not exist. */

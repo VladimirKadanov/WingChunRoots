@@ -1,14 +1,21 @@
 // Unit tests of the pg-boss schema step's pure parts (milestone M01b, In scope 1).
 
+import { createRequire } from 'node:module';
+
 import { getConstructionPlans, getMigrationPlans } from 'pg-boss';
 import { describe, expect, it } from 'vitest';
 
-import { PGBOSS_GRANTS, PGBOSS_SCHEMA, PGBOSS_SCHEMA_VERSION, splitMigrationScript } from './schema';
+import { constructionPlanVersion, PGBOSS_GRANTS, PGBOSS_SCHEMA, PGBOSS_SCHEMA_VERSION, splitMigrationScript } from './schema';
 
 describe('the pinned pg-boss', () => {
-  it('names the schema version its construction plan installs', () => {
-    expect(PGBOSS_SCHEMA_VERSION).toBeGreaterThan(0);
+  it('names the schema version that its package.json declares and its construction plan installs', () => {
+    const declared = (createRequire(import.meta.url)('pg-boss/package.json') as { pgboss: { schema: number } }).pgboss.schema;
+    expect(PGBOSS_SCHEMA_VERSION).toBe(declared);
     expect(getConstructionPlans(PGBOSS_SCHEMA)).toContain(`INSERT INTO ${PGBOSS_SCHEMA}.version(version) VALUES ('${PGBOSS_SCHEMA_VERSION}')`);
+  });
+
+  it('constructionPlanVersion refuses a plan without a version', () => {
+    expect(() => constructionPlanVersion('CREATE SCHEMA x;')).toThrow(/no schema version/);
   });
 });
 

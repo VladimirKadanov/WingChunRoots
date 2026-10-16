@@ -78,7 +78,8 @@ from_dotenv() {
   return 0
 }
 DB_PASSWORD_VARS=(DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD)
-for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}"; do
+MAIL_VARS=(MAIL_TRANSPORT SMTP_URL MAIL_FILE_DIR MAIL_FROM MAILPIT_URL MAILPIT_SMTP_PORT MAILPIT_UI_PORT)
+for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}" "${MAIL_VARS[@]}"; do
   from_dotenv "$name"
 done
 
@@ -96,6 +97,8 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
     PW_CHROMIUM_EXECUTABLE="$(scripts/pw-chromium.sh 2>/dev/null || true)"
     [ -n "$PW_CHROMIUM_EXECUTABLE" ] && export PW_CHROMIUM_EXECUTABLE
   fi
+  # No Docker, so no Mailpit: the worker writes e-mail to files (M01b).
+  export MAIL_TRANSPORT="${MAIL_TRANSPORT:-file}"
 fi
 export TEST_DATABASE_URL="${TEST_DATABASE_URL:-}"
 
@@ -217,7 +220,12 @@ check_db() {
   return 1
 }
 
+# The web server, the worker (M01b) and the tests use the test database that the steps above
+# reset, migrated and seeded, never the development database of .env.
 run_e2e() {
+  if introduced M01; then
+    export DATABASE_URL="$TEST_DATABASE_URL"
+  fi
   pnpm e2e "$@"
 }
 

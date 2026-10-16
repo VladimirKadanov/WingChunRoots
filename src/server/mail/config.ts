@@ -2,7 +2,8 @@
 //
 //   MAIL_TRANSPORT  `smtp` (Mailpit: Docker Compose and CI) or `file` (cloud sessions). Default
 //                   `file`: without explicit settings no e-mail leaves the machine.
-//   SMTP_URL        smtp://host:port of the SMTP server (default smtp://127.0.0.1:1025, Mailpit).
+//   SMTP_URL        smtp://host:port of the SMTP server (default smtp://127.0.0.1:<MAILPIT_SMTP_PORT
+//                   or 1025>, the Mailpit of docker-compose.yml).
 //   MAIL_FILE_DIR   directory of the file transport (default .mail, from the current directory,
 //                   which is the repository root for every pnpm script). Git-ignored.
 //   MAIL_FROM       sender address (default WingChunRoots <no-reply@wingchunroots.test>; .test is
@@ -21,7 +22,7 @@ export interface MailConfig {
 
 type Env = Record<string, string | undefined>;
 
-export const DEFAULT_SMTP_URL = 'smtp://127.0.0.1:1025';
+export const DEFAULT_SMTP_PORT = '1025';
 export const DEFAULT_MAIL_FILE_DIR = '.mail';
 export const DEFAULT_MAIL_FROM = 'WingChunRoots <no-reply@wingchunroots.test>';
 
@@ -30,7 +31,7 @@ export function mailConfig(env: Env = process.env): MailConfig {
   if (transport !== 'smtp' && transport !== 'file') {
     throw new Error(`MAIL_TRANSPORT must be smtp or file, not ${JSON.stringify(transport)}`);
   }
-  const smtpUrl = env.SMTP_URL || DEFAULT_SMTP_URL;
+  const smtpUrl = env.SMTP_URL || `smtp://127.0.0.1:${env.MAILPIT_SMTP_PORT || DEFAULT_SMTP_PORT}`;
   if (transport === 'smtp' && !/^smtps?:\/\//.test(smtpUrl)) {
     throw new Error('SMTP_URL must start with smtp:// or smtps://');
   }

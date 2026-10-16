@@ -79,6 +79,8 @@ describe('mailConfig', () => {
       fileDir: '/tmp/x',
       from: 'Demo <demo@wingchunroots.test>',
     });
+    // Without SMTP_URL, the Mailpit port of docker-compose.yml.
+    expect(mailConfig({ MAIL_TRANSPORT: 'smtp', MAILPIT_SMTP_PORT: '2025' }).smtpUrl).toBe('smtp://127.0.0.1:2025');
     expect(() => mailConfig({ MAIL_TRANSPORT: 'ses' })).toThrow(/smtp or file/);
     expect(() => mailConfig({ MAIL_TRANSPORT: 'smtp', SMTP_URL: 'http://x' })).toThrow(/smtp:\/\//);
   });

@@ -2,7 +2,7 @@
 # Creates .env for local development from .env.example (plan §7.7): local-only random
 # passwords and keys, default ports, and the database URLs that match docker-compose.yml.
 # Never overwrites an existing .env unless --force is given; it only appends the role passwords
-# (M01) when an older .env lacks them.
+# (M01) and MAIL_TRANSPORT (M01b) when an older .env lacks them.
 #
 # Usage: scripts/init-env.sh [--force]
 set -euo pipefail
@@ -44,6 +44,7 @@ value_for() {
     DB_APP_PUBLIC_RO_PASSWORD) echo "$db_app_public_ro_password" ;;
     MAILPIT_SMTP_PORT) echo 1025 ;;
     MAILPIT_UI_PORT) echo 8025 ;;
+    MAIL_TRANSPORT) echo smtp ;;
     S3_PORT) echo 8333 ;;
     S3_ACCESS_KEY_ID) echo "$s3_access_key" ;;
     S3_SECRET_ACCESS_KEY) echo "$s3_secret_key" ;;
@@ -57,10 +58,11 @@ value_for() {
 umask 077
 
 # An existing .env is kept. Variables added to .env.example since it was written, and whose
-# value depends on nothing else in it (the database role passwords of M01), are appended.
+# value depends on nothing else in it (the database role passwords of M01, the mail transport of
+# M01b), are appended.
 if [ -f .env ] && [ "${1:-}" != "--force" ]; then
   added=()
-  for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD; do
+  for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD MAIL_TRANSPORT; do
     if grep -q "^${name}=$" .env.example && ! grep -q "^${name}=" .env; then
       # Keep the last existing line intact when the file does not end with a newline.
       [ -z "$(tail -c 1 .env)" ] || echo >> .env
@@ -69,7 +71,7 @@ if [ -f .env ] && [ "${1:-}" != "--force" ]; then
     fi
   done
   if [ "${#added[@]}" -gt 0 ]; then
-    echo "init-env: .env already exists; added ${added[*]}. Next: scripts/db-bootstrap.sh" >&2
+    echo "init-env: .env already exists; added ${added[*]} (a new role password needs scripts/db-bootstrap.sh)." >&2
   else
     echo "init-env: .env already exists; keeping it (use --force to regenerate)." >&2
   fi
