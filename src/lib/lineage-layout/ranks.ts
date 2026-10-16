@@ -1,4 +1,4 @@
-import { indexGraph, topologicalOrder, type GraphIndex } from './graph.ts';
+import { indexGraph, type GraphIndex } from './graph.ts';
 import type { LineageGraph, RankResult } from './types.ts';
 
 /**
@@ -35,7 +35,7 @@ export function computeRanksIndexed(index: GraphIndex): RankResult {
     }
   }
 
-  const order = topologicalOrder(index);
+  const { order } = index;
   const ranks = new Map<string, number>();
 
   // Step 1: longest path from the roots of the view, ignoring the cut-off teachers.

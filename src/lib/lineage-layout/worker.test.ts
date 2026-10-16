@@ -101,6 +101,13 @@ describe('layout worker handler', () => {
     expect(posted[2]).toEqual({ type: 'stale', requestId: 2 });
   });
 
+  it('answers a layout request without a numeric id with an error instead of silence', () => {
+    const { posted, handle } = harness();
+    handle({ type: 'layout', requestId: Number.NaN, graph: small });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatchObject({ type: 'error', error: { code: 'INVALID_INPUT' } });
+  });
+
   it('answers a cyclic input with a typed error', async () => {
     const { posted, handle, flush } = harness();
     handle({ type: 'layout', requestId: 7, graph: cyclic });

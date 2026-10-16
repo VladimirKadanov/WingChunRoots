@@ -1,5 +1,6 @@
 import type { ElkNode } from 'elkjs/lib/elk.bundled.js';
 import type { ElkGraphBuild } from './elk-graph.ts';
+import { ElkLayoutError } from './errors.ts';
 import { NODE_SIZES } from './presets.ts';
 import type {
   BezierPath,
@@ -101,7 +102,7 @@ export function buildScene(graph: LineageGraph, ranks: RankResult, build: ElkGra
 
   const nodes: SceneNode[] = build.order.map((id) => {
     const child = elkChildren.get(id);
-    if (!child) throw new Error(`ELK returned no position for node ${id}`);
+    if (!child) throw new ElkLayoutError(`no position for node ${id}`);
     const x = roundCoord(child.x ?? 0);
     const y = roundCoord(child.y ?? 0);
     const width = child.width ?? NODE_SIZES[build.nodeSize].width;
@@ -131,7 +132,7 @@ export function buildScene(graph: LineageGraph, ranks: RankResult, build: ElkGra
   for (const edge of build.elkEdges) {
     const routed = elkEdgeResults.get(edge.id);
     const sections = routed && 'sections' in routed ? (routed.sections ?? []) : [];
-    if (sections.length === 0) throw new Error(`ELK returned no route for edge ${edge.id}`);
+    if (sections.length === 0) throw new ElkLayoutError(`no route for edge ${edge.id}`);
     const points: Point[] = [];
     for (const section of sections) {
       for (const p of [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]) {

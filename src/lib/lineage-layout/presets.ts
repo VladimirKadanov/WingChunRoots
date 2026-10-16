@@ -26,6 +26,9 @@ export const SPINE_STRAIGHTNESS = 10;
  */
 export const CHOSEN_NODE_PLACEMENT: NodePlacement = 'NETWORK_SIMPLEX';
 
+/** The node placement strategies the module accepts (plan §4.5 compares exactly these two). */
+export const NODE_PLACEMENTS: readonly NodePlacement[] = ['NETWORK_SIMPLEX', 'BRANDES_KOEPF'];
+
 /**
  * Explorer settings (plan §4.5). `elk.layered.priority.direction` is deliberately absent:
  * ELK reads it only when breaking cycles and the input is acyclic.

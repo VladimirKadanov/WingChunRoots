@@ -9,6 +9,8 @@ export interface GraphIndex {
   teacherEdges: Map<string, LineageEdge[]>;
   /** Outgoing edges (to students) of every node, in input order. */
   studentEdges: Map<string, LineageEdge[]>;
+  /** Topological order of all nodes (teachers before students), over every edge. */
+  order: string[];
 }
 
 /**
@@ -57,16 +59,15 @@ export function indexGraph(graph: LineageGraph): GraphIndex {
     studentEdges.get(edge.teacherId)!.push(edge);
     teacherEdges.get(edge.studentId)!.push(edge);
   }
-  const index: GraphIndex = { graph, nodes, teacherEdges, studentEdges };
-  assertAcyclic(index);
-  return index;
+  const order = topologicalOrder({ graph, nodes, teacherEdges, studentEdges });
+  return { graph, nodes, teacherEdges, studentEdges, order };
 }
 
 /**
  * Topological order of all nodes (teachers before students), over every edge including the
  * edges to teachers from another lineage. Throws `LineageCycleError` when there is a cycle.
  */
-export function topologicalOrder(index: GraphIndex): string[] {
+export function topologicalOrder(index: Omit<GraphIndex, 'order'>): string[] {
   const indegree = new Map<string, number>();
   for (const [id, edges] of index.teacherEdges) indegree.set(id, edges.length);
   const queue: string[] = [];
@@ -90,12 +91,8 @@ export function topologicalOrder(index: GraphIndex): string[] {
   return order;
 }
 
-function assertAcyclic(index: GraphIndex): void {
-  topologicalOrder(index);
-}
-
 /** Finds one cycle among the nodes left over by Kahn's algorithm (iterative DFS). */
-function findCycle(index: GraphIndex, remaining: Set<string>): string[] {
+function findCycle(index: Omit<GraphIndex, 'order'>, remaining: Set<string>): string[] {
   const state = new Map<string, 'open' | 'done'>();
   for (const start of remaining) {
     if (state.has(start)) continue;

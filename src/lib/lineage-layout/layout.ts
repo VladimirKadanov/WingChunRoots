@@ -11,7 +11,7 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ELK as ElkEngine } from 'elkjs/lib/elk.bundled.js';
 import { buildElkGraph } from './elk-graph.ts';
-import { ElkLayoutError, LineageLayoutError } from './errors.ts';
+import { ElkLayoutError } from './errors.ts';
 import { indexGraph } from './graph.ts';
 import { computeRanksIndexed } from './ranks.ts';
 import { buildScene } from './scene.ts';
@@ -57,7 +57,6 @@ export async function layoutLineageWithStats(
   try {
     laidOut = await engine.layout(build.elkGraph);
   } catch (error) {
-    if (error instanceof LineageLayoutError) throw error;
     throw new ElkLayoutError(error instanceof Error ? error.message : String(error));
   }
   const elkMs = now() - elkStarted;

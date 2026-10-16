@@ -67,7 +67,18 @@ export function createLayoutWorkerHandler(deps: LayoutWorkerHandlerDeps): (messa
   }
 
   return (message: LayoutWorkerInbound) => {
-    if (!message || typeof message.requestId !== 'number' || Number.isNaN(message.requestId)) return;
+    if (!message) return;
+    if (typeof message.requestId !== 'number' || Number.isNaN(message.requestId)) {
+      // Still exactly one answer for a layout request, so the page never waits forever.
+      if (message.type === 'layout') {
+        deps.post({
+          type: 'error',
+          requestId: message.requestId,
+          error: { code: 'INVALID_INPUT', message: 'requestId must be a number' },
+        });
+      }
+      return;
+    }
     if (message.type === 'cancel') {
       cancelledUpTo = Math.max(cancelledUpTo, message.requestId);
       if (pending && pending.requestId <= cancelledUpTo) {

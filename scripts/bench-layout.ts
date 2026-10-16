@@ -18,6 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CHOSEN_NODE_PLACEMENT, NODE_PLACEMENTS } from '../src/lib/lineage-layout/presets.ts';
 import { computeRanks } from '../src/lib/lineage-layout/ranks.ts';
 import { rowOrderFlips, positionsOf, ranksWithSeveralY, spineBends } from '../src/lib/lineage-layout/testing/checks.ts';
 import { EGO_ANCHORS, anchorId, generateSyntheticLineage } from '../src/lib/lineage-layout/testing/synthetic.ts';
@@ -92,20 +93,23 @@ for (const view of views) {
   log(`view ${view.name}`);
   const ranks = computeRanks(view.graph);
   const cold = median(Array.from({ length: COLD_RUNS }, () => coldRun(view.name)));
-  const warmNs = await warm(view.graph, 'NETWORK_SIMPLEX');
-  const { scene, stats } = await layoutLineageWithStats(view.graph, {}, engine);
-  const bk = await layoutLineage(view.graph, { nodePlacement: 'BRANDES_KOEPF' }, engine);
+  const warmChosen = await warm(view.graph, CHOSEN_NODE_PLACEMENT);
+  const { scene, stats } = await layoutLineageWithStats(view.graph, { nodePlacement: CHOSEN_NODE_PLACEMENT }, engine);
+  const bends: string[] = [];
+  for (const placement of NODE_PLACEMENTS) {
+    bends.push(String(spineBends(await layoutLineage(view.graph, { nodePlacement: placement }, engine))));
+  }
   const rowsOk = ranksWithSeveralY(scene).length === 0 && scene.rowY.length === ranks.rankCount;
   viewRows.push(
     `| \`${view.name}\` | ${stats.nodes} | ${stats.elkEdges} / ${stats.crossLineageEdges} | ${ranks.rankCount} | ` +
-      `${ranks.cutOff.size} | ${rowsOk ? 'да' : '**НЕ**'} | ${ms(cold)} | ${ms(warmNs)} | ` +
-      `${spineBends(scene)} / ${spineBends(bk)} | ${Math.round(scene.width)} × ${Math.round(scene.height)} |`,
+      `${ranks.cutOff.size} | ${rowsOk ? 'да' : '**НЕ**'} | ${ms(cold)} | ${ms(warmChosen)} | ` +
+      `${bends.join(' / ')} | ${Math.round(scene.width)} × ${Math.round(scene.height)} |`,
   );
 }
 
 // Table 2: NETWORK_SIMPLEX against BRANDES_KOEPF on the ego view of every person.
 const comparison: string[] = [];
-for (const placement of ['NETWORK_SIMPLEX', 'BRANDES_KOEPF'] as const) {
+for (const placement of NODE_PLACEMENTS) {
   log(`all ego views, ${placement}`);
   let bentViews = 0;
   let bends = 0;
@@ -174,9 +178,9 @@ const markdown = `# Измерване на подредбата на родос
 
 **Студена** подредба: нов процес на Node за всяко пускане; времето от зареждането на модула (и на ELK) до края на първата подредба, медиана от ${COLD_RUNS}. **Топла**: след една малка подредба за загряване, медиана от ${WARM_RUNS} подредби в същия процес. Времената са от облачен процесор и са ориентировъчни; на телефон от среден клас се очакват 2–4 пъти по-бавни (план §4.13).
 
-## 1. Изгледите на етапа (избраният алгоритъм NETWORK_SIMPLEX)
+## 1. Изгледите на етапа (избраният алгоритъм ${CHOSEN_NODE_PLACEMENT})
 
-| Изглед | Души | Връзки: в ELK / от друга линия | Редове (рангове) | Отрязани учители | Редове = рангове | Студена, ms | Топла, ms | Огъвания на гръбнака: NS / BK | Размер, px |
+| Изглед | Души | Връзки: в ELK / от друга линия | Редове (рангове) | Отрязани учители | Редове = рангове | Студена, ms | Топла, ms | Огъвания на гръбнака: ${NODE_PLACEMENTS.join(' / ')} | Размер, px |
 |---|---|---|---|---|---|---|---|---|---|
 ${viewRows.join('\n')}
 

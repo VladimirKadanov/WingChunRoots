@@ -1,7 +1,9 @@
 import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk.bundled.js';
+import { LineageInputError } from './errors.ts';
 import { focusSpine, modelOrder, type GraphIndex } from './graph.ts';
 import {
   CHOSEN_NODE_PLACEMENT,
+  NODE_PLACEMENTS,
   NODE_SIZES,
   RANK_PSEUDO_Y,
   SPINE_STRAIGHTNESS,
@@ -43,17 +45,21 @@ export interface ElkGraphBuild {
 export function buildElkGraph(index: GraphIndex, ranks: RankResult, options: LayoutOptions = {}): ElkGraphBuild {
   const preset = options.preset ?? 'explorer';
   const nodeSize = options.nodeSize ?? 'full';
-  const presetOptions = layoutPresets[preset];
-  if (!presetOptions) {
-    throw new TypeError(`Unknown layout preset: ${String(preset)}`);
+  // Own keys only: `constructor` or `toString` must not pass as a preset or a size.
+  if (!Object.hasOwn(layoutPresets, preset)) {
+    throw new LineageInputError(`Unknown layout preset: ${String(preset)}`);
   }
+  if (!Object.hasOwn(NODE_SIZES, nodeSize)) {
+    throw new LineageInputError(`Unknown node size: ${String(nodeSize)}`);
+  }
+  const presetOptions = layoutPresets[preset];
   const nodePlacement =
     options.nodePlacement ??
     ((presetOptions['elk.layered.nodePlacement.strategy'] as NodePlacement | undefined) ?? CHOSEN_NODE_PLACEMENT);
-  const size = NODE_SIZES[nodeSize];
-  if (!size) {
-    throw new TypeError(`Unknown node size: ${String(nodeSize)}`);
+  if (!NODE_PLACEMENTS.includes(nodePlacement)) {
+    throw new LineageInputError(`Unknown node placement: ${String(nodePlacement)}`);
   }
+  const size = NODE_SIZES[nodeSize];
 
   const order = modelOrder(index);
   const position = new Map(order.map((id, i) => [id, i]));

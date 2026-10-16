@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { buildElkGraph } from './elk-graph.ts';
-import { LineageCycleError } from './errors.ts';
+import { LineageCycleError, LineageInputError } from './errors.ts';
 import { indexGraph } from './graph.ts';
 import { createElkEngine, layoutLineage, layoutLineageWithStats } from './layout.ts';
-import { NODE_SIZES } from './presets.ts';
+import { CHOSEN_NODE_PLACEMENT, NODE_SIZES } from './presets.ts';
 import { computeRanks, computeRanksIndexed } from './ranks.ts';
 import { demoGraph } from './testing/build.ts';
 import {
@@ -122,7 +122,7 @@ describe('layoutLineage: edges', () => {
     async (slug) => {
       const graph = egoView(dataset, anchorId(dataset, slug));
       const scene = await layoutLineage(graph);
-      expect(scene.nodePlacement).toBe('NETWORK_SIMPLEX');
+      expect(scene.nodePlacement).toBe(CHOSEN_NODE_PLACEMENT);
       const spineEdges = scene.edges.filter((e) => e.onSpine);
       expect(spineEdges.length).toBe(scene.spine.length);
       for (const edge of spineEdges) {
@@ -189,6 +189,20 @@ describe('layoutLineage: errors and stats', () => {
     );
     await expect(layoutLineage(graph)).rejects.toBeInstanceOf(LineageCycleError);
     await expect(layoutLineage(graph)).rejects.toMatchObject({ code: 'CYCLE' });
+  });
+
+  it('rejects unknown presets, node sizes and placements as invalid input', async () => {
+    const graph = demoGraph(['r', 'a'], [['r', 'a']]);
+    const bad: LayoutOptions[] = [
+      { preset: 'constructor' as PresetName },
+      { preset: 'bogus' as PresetName },
+      { nodeSize: 'toString' as LayoutOptions['nodeSize'] },
+      { nodePlacement: 'FOO' as NodePlacement },
+    ];
+    for (const options of bad) {
+      await expect(layoutLineage(graph, options)).rejects.toBeInstanceOf(LineageInputError);
+      await expect(layoutLineage(graph, options)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
   });
 
   it('lays out an empty view and a single person', async () => {
