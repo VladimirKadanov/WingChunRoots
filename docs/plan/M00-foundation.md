@@ -85,3 +85,4 @@
 - 2026-10-16 16:22 — раздел 8 на плана е разделен на `docs/plan/` (RULES.md, 17 файла на етапи, deferred-hosting.md, README.md, questions/) (eb1d807)
 - 2026-10-16 16:40 — скелет на Next.js 16.4.1, pnpm 12.14.0 с настройките от §3.2, ESLint, Vitest, Playwright с axe, Docker Compose по digest, `scripts/cloud-setup.sh`, SessionStart hook и `scripts/db-env-check.sh`; lint, typecheck, unit, build и `@smoke` (Chromium) са зелени, db-env-check минава на PostgreSQL 16.15 / PostGIS 3.4.2 (2089306)
 - 2026-10-16 16:45 — `scripts/verify.sh` и `scripts/verify.d/M00.sh`, CI (`ci`, node22, security), Renovate, `CLAUDE.md`, README на английски и ADR 0001; `scripts/verify.sh M00` и `scripts/verify.sh all` завършват с PASS в облачната сесия (c948ad3)
+- 2026-10-16 17:01 — поправки след `/code-review` (verify.sh, cloud-setup.sh, pw-chromium.sh, init-env.sh, M00.sh, ESLint, Renovate, ADR); `scripts/verify.sh M00` → PASS; отворен PR #2 към `docs-bootstrap` (95985bb)

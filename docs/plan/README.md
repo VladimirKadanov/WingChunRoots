@@ -6,7 +6,7 @@
 
 | Етап | Файл | Зависи от | Статус |
 |---|---|---|---|
-| M00 | [M00 — Основа на хранилището и проверка](M00-foundation.md) | Стъпка 0 (PR `docs-bootstrap`) | в изпълнение (клон `m00-foundation`) |
+| M00 | [M00 — Основа на хранилището и проверка](M00-foundation.md) | Стъпка 0 (PR `docs-bootstrap`) | PR отворен ([#2](https://github.com/VladimirKadanov/WingChunRoots/pull/2), клон `m00-foundation`) |
 | M00b | [M00b — Дизайн система по избраната посока](M00b-design-system.md) | M00 и изборът на посока в `docs/design/direction.md` | не е започнат |
 | M01 | [M01 — Модел на данни, роли в базата и фиктивни данни](M01-data-model.md) | M00 | не е започнат |
 | M01b | [M01b — Фонови задачи и поща](M01b-jobs-mail.md) | M01 | не е започнат |
