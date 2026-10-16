@@ -166,7 +166,7 @@ check "README.md explains pnpm worker and the mail transports" bash -c '
   grep -q "pnpm worker" README.md && grep -q "MAIL_TRANSPORT" README.md'
 
 # docs/guides/ arrives with M00b. Once the admin guide exists, it covers what M01b gives the
-# administrator (docs/plan/M01b-jobs-mail.md, "Follow-up"; docs/plan/RULES.md).
+# administrator (docs/plan/M01b-jobs-mail.md, Out of scope, "Последваща работа"; docs/plan/RULES.md).
 if [ -f docs/guides/admin-guide.bg.md ]; then
   check "docs/guides/admin-guide.bg.md covers pnpm worker, MAIL_TRANSPORT and Mailpit, mail:check and retention.purge" bash -c '
     f=docs/guides/admin-guide.bg.md

@@ -29,6 +29,15 @@ M01. Върви паралелно с M00b и M03.
 
 Имейлите за вход и регистрация (M02). Известията в таблото (M08). Доставчик на реални писма (отложен с хостинга, план §3.3).
 
+**Последваща работа: ръководството за администратора.** `docs/guides/` още не съществува: ръководствата се създават в M00b. M01b добавя поведение за администратора, което `docs/guides/admin-guide.bg.md` трябва да опише, когато и двата етапа са в `main` (етапът, който се слее втори, го дописва):
+
+- worker-ът е отделен процес: `pnpm worker` (и `pnpm worker:dev`), свързва се само като `app_rw`, спира плавно при `SIGTERM`;
+- пощата: `MAIL_TRANSPORT=smtp` към Mailpit (`docker compose up -d --wait mailpit`, http://localhost:8025) или `file` (писмата са в `.mail/`); във Фаза 1 `SMTP_URL` сочи само към местния Mailpit;
+- `pnpm mail:check <адрес>` за пробно писмо;
+- ежедневната задача `retention.purge` (03:17 UTC): адресите в `email_delivery` се изтриват след 90 дни, а в поканите 30 дни след края им.
+
+`scripts/verify.d/M01b.sh` проверява това, щом `docs/guides/admin-guide.bg.md` съществува.
+
 ## Ограничения (Constraints)
 
 `docs/plan/RULES.md`, а освен това: worker-ът се свързва само като `app_rw`.
@@ -53,17 +62,6 @@ M01. Върви паралелно с M00b и M03.
 ```text
 /goal Implement milestone M01b exactly as written in docs/plan/M01b-jobs-mail.md. Read CLAUDE.md, docs/plan/RULES.md, the milestone file and every document section listed under its Read first heading before writing code. First run `git fetch origin`. If branch m01b-jobs-mail exists on origin, check it out and continue from its Progress log and any answered question in docs/plan/questions/M01b.md; otherwise branch from origin/main. If a milestone listed under Dependencies is not merged into origin/main, print `BLOCKED M01b: dependency <milestone> not merged`. Begin every turn with the line `M01b turn <n>/30`. Success: the goal is met when this conversation shows all of: (1) the step summary printed by `scripts/verify.sh M01b`, ending with the line `VERIFY M01b: PASS`; (2) the work committed and pushed on branch m01b-jobs-mail with a PR to main whose description is in English and includes that step summary; (3) the PR's CI checks all passed (show the GitHub tool output or `gh pr checks`); (4) `git status` showing a clean tree. Respect the Out of scope, Constraints and Stop and ask sections. Email and notification text is English and lives only in src/server/templates/; there is no translation library. Commit and push after every green checkpoint and add one line per checkpoint to the Progress log. Run /code-review on the diff before the final verify and fix only correctness or requirement gaps. Never delete, skip or weaken a test or check to get a pass. If a Stop and ask condition occurs, write the question in English to docs/plan/questions/M01b.md, commit and push. The goal also ends, not as success, when you print a `BLOCKED M01b: <one-line reason>` line (after recording any question as above) or `STOPPED M01b: turn limit` followed by a progress summary after 30 turns.
 ```
-
-## Последваща работа (Follow-up)
-
-`docs/guides/` още не съществува: ръководствата се създават в M00b. M01b добавя поведение за администратора, което `docs/guides/admin-guide.bg.md` трябва да опише, когато и двата етапа са в `main` (етапът, който се слее втори, го дописва):
-
-- worker-ът е отделен процес: `pnpm worker` (и `pnpm worker:dev`), свързва се само като `app_rw`, спира плавно при `SIGTERM`;
-- пощата: `MAIL_TRANSPORT=smtp` към Mailpit (`docker compose up -d --wait mailpit`, http://localhost:8025) или `file` (писмата са в `.mail/`); във Фаза 1 `SMTP_URL` сочи само към местния Mailpit;
-- `pnpm mail:check <адрес>` за пробно писмо;
-- ежедневната задача `retention.purge` (03:17 UTC): адресите в `email_delivery` се изтриват след 90 дни, а в поканите 30 дни след края им.
-
-`scripts/verify.d/M01b.sh` проверява това, щом `docs/guides/admin-guide.bg.md` съществува.
 
 ## Дневник на напредъка (Progress log)
 
