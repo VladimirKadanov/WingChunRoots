@@ -95,3 +95,5 @@ M00. Върви паралелно с M00b и M03.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-10-16 18:10 — Drizzle 1.0.0-rc.4 схема и три миграции (разширения, таблици, изгледи/права/одитен тригер), `scripts/db-bootstrap.sql`, `pnpm db:migrate|seed|reset|check`, генератор на 600 фиктивни души и `fixtures/lineage-600.json`; lint, typecheck и unit са зелени, `db:reset && db:migrate && db:seed` и `db:check` минават на PostgreSQL 16.15 / PostGIS 3.4.2 (222dd85)
