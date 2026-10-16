@@ -98,3 +98,4 @@ M00. Върви паралелно с M00b и M03.
 
 - 2026-10-16 18:10 — Drizzle 1.0.0-rc.4 схема и три миграции (разширения, таблици, изгледи/права/одитен тригер), `scripts/db-bootstrap.sql`, `pnpm db:migrate|seed|reset|check`, генератор на 600 фиктивни души и `fixtures/lineage-600.json`; lint, typecheck и unit са зелени, `db:reset && db:migrate && db:seed` и `db:check` минават на PostgreSQL 16.15 / PostGIS 3.4.2 (222dd85)
 - 2026-10-16 18:30 — интеграционни тестове (42) на PostgreSQL 16.15, `scripts/verify.d/M01.sh`, bootstrap на ролите в `verify.sh`, `cloud-setup.sh` и CI, `docs/data-model.md` и ADR 0002; `scripts/verify.sh M01` → PASS (8d04268)
+- 2026-10-16 18:40 — преглед на кода: `relationship_event` с `ON DELETE RESTRICT` (нова миграция), тест за пълнотата на списъка с таблици в `db:seed`, поправки в `docs/data-model.md`; `scripts/verify.sh M01` → PASS (86c6baa)
