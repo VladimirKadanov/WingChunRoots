@@ -55,3 +55,5 @@ M01. Върви паралелно с M00b и M03.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-10-16 22:25 — pg-boss 12.38.0 (схема `pgboss` от миграционна стъпка като `migrator`, `migrate: false`), `Mailer` с транспорти SMTP (Mailpit) и файл, шаблон `mail-check` с React Email и `notifications.ts`, outbox (`queueEmail` в транзакцията на Drizzle), worker като `app_rw`, задача за срока на пазене на адресите, `e2e/helpers/mailbox.ts`; lint, typecheck, unit (82) и интеграционни тестове (64) са зелени на PostgreSQL 16.15, `mailbox.int.test.ts` минава и с файловия транспорт, и през SMTP към Mailpit 1.31.6; `db:check` минава (339b64c)
