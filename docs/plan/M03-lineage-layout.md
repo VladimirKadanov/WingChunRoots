@@ -72,3 +72,5 @@ React компоненти, API, изобразяване, печат. Подр�
 ## Дневник на напредъка (Progress log)
 
 - 2026-10-16 17:57 — модулът `src/lib/lineage-layout` (рангове, ELK граф, сцена, асинхронен API, worker, набори), синтетичният генератор, границата в ESLint и единичните тестове са зелени; lint, typecheck и `pnpm test` минават (bafe383)
+- 2026-10-16 18:05 — `pnpm bench:layout` и `docs/perf/layout-bench.md`, ADR 0005 (избран `NETWORK_SIMPLEX`: 0 от 598 его-изгледа с огънат гръбнак срещу 77 при `BRANDES_KOEPF`; `semiInteractive` пази реда в слоя), `licenses/addenda/elkjs.md` и `scripts/verify.d/M03.sh`; `scripts/verify.sh M03` → PASS (80f8e0a)
+- 2026-10-16 18:20 — поправки след `/code-review` (типизирани грешки за непознати настройки, отговор на всяка заявка към worker-а, измерването следва избрания алгоритъм); `scripts/verify.sh M03` и `scripts/verify.sh all` → PASS (267c44d)
