@@ -2,7 +2,7 @@
 // The options are created and kept up to date by the worker on start (createQueue/updateQueue,
 // which only write rows in pgboss.queue: no DDL, so app_rw can do it).
 
-import type { Queue } from 'pg-boss';
+import type { PgBoss, Queue } from 'pg-boss';
 
 export const QUEUE = {
   /** Deliver one e-mail (email_delivery row) through the Mailer. */
@@ -35,8 +35,10 @@ const DAY = 86_400;
 
 /**
  * Options per queue, in creation order (a dead-letter queue exists before the queue that names it).
- * email.send: 1 attempt + 5 retries with exponential backoff from 30 s, capped at 30 min between
- * attempts (about an hour in all), then the dead-letter queue. An attempt is bounded by the SMTP
+ * email.send: 1 attempt + 5 retries with exponential backoff. pg-boss waits
+ * retryDelay * 2^n * (1 + random) before retry n + 1 (n = 0..4): 1-2, 2-4, 4-8, 8-16 and 16-30 min
+ * (capped by retryDelayMax), so the last attempt comes 31-60 min after the first; then the
+ * dead-letter queue. An attempt is bounded by the SMTP
  * timeouts (src/server/mail/transports.ts), well inside expireInSeconds. Finished jobs (whose
  * payload may hold names) are deleted after 7 days.
  */
@@ -46,7 +48,7 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
     QUEUE.emailSend,
     {
       retryLimit: 5,
-      retryDelay: 30,
+      retryDelay: 60,
       retryBackoff: true,
       retryDelayMax: 30 * 60,
       expireInSeconds: 120,
@@ -62,3 +64,20 @@ export const SCHEDULES: ReadonlyArray<{ queue: QueueName; cron: string }> = [
   // Daily at 03:17 UTC, away from the top of the hour.
   { queue: QUEUE.retentionPurge, cron: '17 3 * * *' },
 ];
+
+/**
+ * Creates the queues that do not exist yet and brings the options of every queue up to date: rows
+ * in pgboss.queue only, so app_rw can do it. The worker and every producer run it on start, because
+ * pg-boss refuses to send to a queue that does not exist.
+ */
+export async function ensureQueues(
+  boss: PgBoss,
+  overrides: Partial<Record<QueueName, Partial<QueueOptions>>> = {},
+): Promise<void> {
+  for (const [name, defaults] of QUEUE_OPTIONS) {
+    const options = { ...defaults, ...overrides[name] };
+    await boss.createQueue(name, options);
+    // createQueue leaves an existing queue as it is; updateQueue brings its options up to date.
+    await boss.updateQueue(name, options);
+  }
+}

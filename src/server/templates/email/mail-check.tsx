@@ -7,8 +7,8 @@ import { EmailLayout, PersonName, textStyle } from './components';
 import { type EmailTemplate, type NameData, parseNames, parseObject } from './types';
 
 export interface MailCheckData {
-  /** The recipient's names, if known; the first is the Latin-script display name. */
-  recipientNames: NameData[];
+  /** The recipient's names, if known (1 to 4); the first is the Latin-script display name. */
+  recipientNames?: NameData[];
 }
 
 const NAME = 'mail-check';
@@ -23,13 +23,13 @@ export const mailCheck: EmailTemplate<MailCheckData> = {
   },
   subject: () => 'WingChunRoots mail check',
   preview,
-  render(data) {
+  render({ recipientNames = [] }) {
     return (
       <EmailLayout preview={preview()}>
         <Text style={textStyle}>
-          {data.recipientNames.length > 0 ? (
+          {recipientNames.length > 0 ? (
             <>
-              Hello <PersonName names={data.recipientNames} />,
+              Hello <PersonName names={recipientNames} />,
             </>
           ) : (
             'Hello,'

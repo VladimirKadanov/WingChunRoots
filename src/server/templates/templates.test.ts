@@ -85,6 +85,13 @@ describe('e-mail templates', () => {
     );
   });
 
+  it('mail-check without recipient names greets without a name (pnpm mail:check without --name)', async () => {
+    expect(EMAIL_TEMPLATES['mail-check'].parse({})).toEqual({ recipientNames: [] });
+    const { text, html } = await renderEmail('mail-check', {});
+    expect(text).toContain('Hello,');
+    expect(html).not.toContain('translate="no"');
+  });
+
   it('escapes markup in the data', async () => {
     const { html } = await renderEmail('mail-check', { recipientNames: [{ value: 'Demo <b>Student</b>', lang: 'en' }] });
     expect(html).not.toContain('<b>Student</b>');

@@ -2,13 +2,16 @@
 // on the database. The schema `pgboss` comes from the migration step as migrator (pg-boss runs with
 // migrate: false), and that step also updates an older schema (plan §6.2).
 
+import type { Client } from 'pg';
 import { getRollbackPlans } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { withClient } from '../db/admin';
 import { PG, pgError, rows, value } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
-import { createBoss } from './boss';
+import { createRoleDatabase } from '../db';
+import { rolePassword } from '../db/env';
+import { createBoss, startProducer } from './boss';
 import { QUEUE } from './queues';
 import { installedPgBossVersion, migratePgBossSchema, PGBOSS_SCHEMA, PGBOSS_SCHEMA_VERSION } from './schema';
 import { eventually, recordingTransport, startTestWorker, testAddress } from './test-support';
@@ -112,15 +115,75 @@ describe('the pg-boss schema', () => {
       const boss = createBoss({ connectionString: empty.roleUrl('app_rw'), kind: 'worker' });
       await expect(boss.start()).rejects.toThrow(/pg-boss is not installed/);
       await boss.stop({ graceful: false });
+      // startProducer stops the instance itself when the start fails.
+      await expect(startProducer(empty.roleUrl('app_rw'))).rejects.toThrow(/pg-boss is not installed/);
     } finally {
       await empty.drop();
+    }
+  });
+
+  it('a producer can queue e-mail before any worker has run: it creates the missing queues', async () => {
+    const fresh = await createTestDatabase();
+    const db = createRoleDatabase('app_rw', fresh.url, rolePassword('app_rw'));
+    try {
+      expect(await withClient(fresh.url, (c) => value(c, `SELECT count(*)::int FROM ${PGBOSS_SCHEMA}.queue`))).toBe(0);
+      const producer = await startProducer(fresh.roleUrl('app_rw'));
+      try {
+        const to = testAddress('producer');
+        await db.transaction((tx) =>
+          queueEmail(tx, { template: 'mail-check', to, data: {}, idempotencyKey: `test:producer:${to}` }, producer),
+        );
+      } finally {
+        await producer.stop({ graceful: false });
+      }
+      await withClient(fresh.url, async (c) => {
+        expect(await value(c, `SELECT count(*)::int FROM ${PGBOSS_SCHEMA}.queue`)).toBe(Object.values(QUEUE).length);
+        expect(await value(c, `SELECT count(*)::int FROM ${PGBOSS_SCHEMA}.job WHERE name = $1`, [QUEUE.emailSend])).toBe(1);
+      });
+    } finally {
+      await db.$client.end();
+      await fresh.drop();
     }
   });
 });
 
 describe('the migration step', () => {
   it('a second run changes nothing', async () => {
-    expect(await asMigrator(migratePgBossSchema)).toEqual({ from: PGBOSS_SCHEMA_VERSION, to: PGBOSS_SCHEMA_VERSION, action: 'unchanged' });
+    expect(await asMigrator(migratePgBossSchema)).toEqual({
+      from: PGBOSS_SCHEMA_VERSION,
+      to: PGBOSS_SCHEMA_VERSION,
+      action: 'unchanged',
+      repaired: [],
+    });
+  });
+
+  it('rebuilds an index build that an interrupted run left missing or invalid', async () => {
+    const validity = (c: Client) =>
+      rows(
+        c,
+        `SELECT c.relname AS name, i.indisvalid AS valid FROM pg_index i
+           JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = $1 AND c.relname IN ('job_common_i13', 'job_common_i15') ORDER BY 1`,
+        [PGBOSS_SCHEMA],
+      );
+    await withClient(testDb.url, async (c) => {
+      // The version row is committed before the CREATE INDEX CONCURRENTLY builds run: a run that
+      // stops there leaves an index missing, or INVALID (simulated here in the catalog).
+      await c.query(`DROP INDEX ${PGBOSS_SCHEMA}.job_common_i13`);
+      await c.query(`UPDATE pg_index SET indisvalid = false WHERE indexrelid = '${PGBOSS_SCHEMA}.job_common_i15'::regclass`);
+      expect(await validity(c)).toEqual([{ name: 'job_common_i15', valid: false }]);
+    });
+
+    const result = await asMigrator(migratePgBossSchema);
+    expect(result.action).toBe('unchanged');
+    expect([...result.repaired].sort()).toEqual(['job_common_i13', 'job_common_i15']);
+    await withClient(testDb.url, async (c) => {
+      expect(await validity(c)).toEqual([
+        { name: 'job_common_i13', valid: true },
+        { name: 'job_common_i15', valid: true },
+      ]);
+    });
+    expect((await asMigrator(migratePgBossSchema)).repaired).toEqual([]);
   });
 
   it('updates an older schema with the migration plans, index builds included', async () => {
@@ -129,7 +192,7 @@ describe('the migration step', () => {
       const previous = await installedPgBossVersion(c);
       expect(previous).toBeLessThan(PGBOSS_SCHEMA_VERSION);
 
-      expect(await migratePgBossSchema(c)).toEqual({ from: previous, to: PGBOSS_SCHEMA_VERSION, action: 'migrated' });
+      expect(await migratePgBossSchema(c)).toEqual({ from: previous, to: PGBOSS_SCHEMA_VERSION, action: 'migrated', repaired: [] });
       const invalid = await rows(
         c,
         `SELECT i.indexrelid::regclass::text AS name FROM pg_index i

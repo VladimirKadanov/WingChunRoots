@@ -7,12 +7,14 @@
 //
 //   worker    src/worker.ts: supervision (retention of jobs, expiry), schedules and the handlers.
 //   producer  the web process and scripts: only sends jobs, inside the caller's transaction
-//             (./outbox.ts). Started lazily, one per process.
+//             (./outbox.ts). Started lazily, one per process. It creates missing queues on start,
+//             so sending works before a worker has ever run (pg-boss refuses unknown queues).
 
 import { PgBoss } from 'pg-boss';
 
 import { rolePassword, roleUrl, targetDatabaseUrl } from '../db/env';
-import { redactAddresses } from '../mail/mailer';
+import { redactAddresses } from '../mail/redact';
+import { ensureQueues } from './queues';
 import { PGBOSS_SCHEMA } from './schema';
 
 type Env = Record<string, string | undefined>;
@@ -43,17 +45,41 @@ export function createBoss({ connectionString, kind }: BossOptions): PgBoss {
     supervise: worker,
     schedule: worker,
   });
-  // Without a listener an 'error' event would end the process. Only the kind of error is logged:
-  // pg errors can quote values from rows (plan §6.4).
+  // Without a listener an 'error' event would end the process.
   boss.on('error', (error) => logBossError(kind, error));
   return boss;
 }
 
+/**
+ * Logs an error of pg-boss without personal data (plan §6.4). A database error is logged by its
+ * SQLSTATE only, because its message can quote values from rows (names, addresses); other errors
+ * (connection failures, pg-boss's own checks) by the first line of the message, addresses removed.
+ */
 export function logBossError(kind: string, error: unknown): void {
   const e = (error ?? {}) as { code?: unknown; message?: unknown };
+  if (typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code)) {
+    console.error(`pg-boss ${kind}: database error ${e.code}`);
+    return;
+  }
   const code = typeof e.code === 'string' ? ` ${e.code}` : '';
   const message = typeof e.message === 'string' ? `: ${redactAddresses(e.message).split('\n')[0]?.slice(0, 200)}` : '';
   console.error(`pg-boss ${kind}: error${code}${message}`);
+}
+
+/**
+ * Starts a producer on `connectionString` (app_rw) and creates the queues that do not exist yet.
+ * A failed start stops the instance again, so its pool and timers do not outlive it.
+ */
+export async function startProducer(connectionString: string): Promise<PgBoss> {
+  const boss = createBoss({ connectionString, kind: 'producer' });
+  try {
+    await boss.start();
+    await ensureQueues(boss);
+    return boss;
+  } catch (error) {
+    await boss.stop({ graceful: false }).catch(() => undefined);
+    throw error;
+  }
 }
 
 // One producer per process; kept on globalThis so `next dev` reloads do not leak pools.
@@ -61,12 +87,10 @@ const globalProducer = globalThis as unknown as { __wcrProducer?: Promise<PgBoss
 
 /** The started producer of this process (created on first use, as app_rw). */
 export function getProducer(): Promise<PgBoss> {
-  globalProducer.__wcrProducer ??= createBoss({ connectionString: appRwUrl(), kind: 'producer' })
-    .start()
-    .catch((error: unknown) => {
-      globalProducer.__wcrProducer = undefined;
-      throw error;
-    });
+  globalProducer.__wcrProducer ??= startProducer(appRwUrl()).catch((error: unknown) => {
+    globalProducer.__wcrProducer = undefined;
+    throw error;
+  });
   return globalProducer.__wcrProducer;
 }
 

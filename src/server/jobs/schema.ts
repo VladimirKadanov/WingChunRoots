@@ -35,6 +35,8 @@ export interface PgBossMigration {
   to: number;
   /** What happened: `created`, `migrated` or `unchanged`. */
   action: 'created' | 'migrated' | 'unchanged';
+  /** Deferred indexes that were missing or invalid and have been rebuilt (see repairDeferredIndexes). */
+  repaired: string[];
 }
 
 /** The installed pg-boss schema version, or null when the schema is not installed. */
@@ -69,8 +71,71 @@ export function splitMigrationScript(script: string): { transaction: string; con
 }
 
 /**
+ * The index builds that pg-boss's migration plans run after their COMMIT (CREATE INDEX
+ * CONCURRENTLY IF NOT EXISTS on job_common), by index name, for the indexes that the current schema
+ * version has. Collected from the plans of every version pg-boss can still migrate from, the newest
+ * statement winning, so that a build from any earlier migration can be repeated.
+ */
+export function deferredIndexBuilds(): Map<string, string> {
+  const current = new Set(
+    [...getConstructionPlans(PGBOSS_SCHEMA).matchAll(/CREATE (?:UNIQUE )?INDEX (job_i\d+) ON /g)].map((m) =>
+      m[1]!.replace(/^job_/, 'job_common_'),
+    ),
+  );
+  const builds = new Map<string, string>();
+  for (let version = PGBOSS_SCHEMA_VERSION - 1; version > 0; version--) {
+    let script: string;
+    try {
+      script = getMigrationPlans(PGBOSS_SCHEMA, version);
+    } catch {
+      break; // older than pg-boss can migrate from
+    }
+    for (const statement of splitMigrationScript(script).concurrent) {
+      const name = /CREATE (?:UNIQUE )?INDEX CONCURRENTLY IF NOT EXISTS (\w+) ON /.exec(statement)?.[1];
+      if (name && current.has(name) && !builds.has(name)) builds.set(name, statement);
+    }
+  }
+  return builds;
+}
+
+/**
+ * Rebuilds the deferred indexes (deferredIndexBuilds) that are missing or invalid. The version
+ * row is committed before those builds run, so an interrupted or failed CREATE INDEX CONCURRENTLY
+ * would otherwise stay missing (or INVALID, which IF NOT EXISTS skips) while every later run reports
+ * the schema as current. Any other invalid index in the schema is an error.
+ */
+async function repairDeferredIndexes(client: Client): Promise<string[]> {
+  const indexes = async () =>
+    new Map(
+      (
+        await client.query<{ name: string; valid: boolean }>(
+          `SELECT c.relname AS name, i.indisvalid AS valid
+             FROM pg_index i
+             JOIN pg_class c ON c.oid = i.indexrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = $1`,
+          [PGBOSS_SCHEMA],
+        )
+      ).rows.map((row) => [row.name, row.valid]),
+    );
+  const before = await indexes();
+  const repaired: string[] = [];
+  for (const [name, statement] of deferredIndexBuilds()) {
+    const valid = before.get(name);
+    if (valid === true) continue;
+    if (valid === false) await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${PGBOSS_SCHEMA}.${name}`);
+    await client.query(statement);
+    repaired.push(name);
+  }
+  const invalid = [...(await indexes())].filter(([, valid]) => !valid).map(([name]) => name);
+  if (invalid.length > 0) throw new Error(`invalid indexes in the pg-boss schema: ${invalid.join(', ')}`);
+  return repaired;
+}
+
+/**
  * Creates or updates the pg-boss schema on `client`, which must already act as the role
- * `migrator` (SET ROLE migrator), then (re)applies the privileges of app_rw. Idempotent.
+ * `migrator` (SET ROLE migrator), rebuilds deferred indexes that an interrupted run left missing
+ * or invalid, then (re)applies the privileges of app_rw. Idempotent.
  */
 export async function migratePgBossSchema(client: Client): Promise<PgBossMigration> {
   const from = await installedPgBossVersion(client);
@@ -89,12 +154,13 @@ export async function migratePgBossSchema(client: Client): Promise<PgBossMigrati
         'run the matching release of the application, or roll back with getRollbackPlans()',
     );
   }
+  const repaired = await repairDeferredIndexes(client);
   await grantPgBossPrivileges(client);
   const to = await installedPgBossVersion(client);
   if (to !== PGBOSS_SCHEMA_VERSION) {
     throw new Error(`the pg-boss schema is at version ${to} after the migration step, expected ${PGBOSS_SCHEMA_VERSION}`);
   }
-  return { from, to, action };
+  return { from, to, action, repaired };
 }
 
 /**

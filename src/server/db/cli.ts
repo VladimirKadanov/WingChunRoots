@@ -32,10 +32,11 @@ import { seedDatabase } from './seed';
 
 const log = (message: string) => console.log(message);
 
-function describePgBoss({ action, from, to }: PgBossMigration): string {
-  if (action === 'created') return `pg-boss schema created at version ${to}`;
-  if (action === 'migrated') return `pg-boss schema migrated from version ${from} to ${to}`;
-  return `pg-boss schema already at version ${to}`;
+function describePgBoss({ action, from, to, repaired }: PgBossMigration): string {
+  const rebuilt = repaired.length > 0 ? `; rebuilt the unfinished index build(s) ${repaired.join(', ')}` : '';
+  if (action === 'created') return `pg-boss schema created at version ${to}${rebuilt}`;
+  if (action === 'migrated') return `pg-boss schema migrated from version ${from} to ${to}${rebuilt}`;
+  return `pg-boss schema already at version ${to}${rebuilt}`;
 }
 
 async function migrate(): Promise<void> {
@@ -99,12 +100,14 @@ async function check(): Promise<void> {
     if (applied.join() !== expected.join()) {
       throw new Error(`applied ${applied.length} of ${expected.length} migrations: ${applied.join(', ')}`);
     }
-    if (pgboss.action !== 'created' || pgboss.to !== PGBOSS_SCHEMA_VERSION) {
+    if (pgboss.action !== 'created' || pgboss.to !== PGBOSS_SCHEMA_VERSION || pgboss.repaired.length > 0) {
       throw new Error(`the pg-boss schema step on an empty database: ${describePgBoss(pgboss)}`);
     }
     const again = await migrateAll(url);
     if (again.drizzle.length > 0) throw new Error(`a second run applied ${again.drizzle.join(', ')}`);
-    if (again.pgboss.action !== 'unchanged') throw new Error(`a second run: ${describePgBoss(again.pgboss)}`);
+    if (again.pgboss.action !== 'unchanged' || again.pgboss.repaired.length > 0) {
+      throw new Error(`a second run: ${describePgBoss(again.pgboss)}`);
+    }
     log(`db:check: all ${expected.length} migrations apply to an empty database (${expected.join(', ')})`);
     log(`db:check: the pg-boss schema step creates version ${PGBOSS_SCHEMA_VERSION} and a second run changes nothing`);
   } finally {

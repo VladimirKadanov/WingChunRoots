@@ -19,8 +19,9 @@ async function main(): Promise<void> {
     console.error('usage: pnpm mail:check <address> [--name <Latin-script name>]');
     process.exit(2);
   }
-  assertNotProduction('mail:check');
+  // .env first, so that a NODE_ENV=production set there is seen too.
   loadDotEnv(path.resolve('.env'));
+  assertNotProduction('mail:check');
   const db = getDb();
   try {
     const { deliveryId } = await db.transaction((tx) =>
@@ -28,7 +29,7 @@ async function main(): Promise<void> {
         template: 'mail-check',
         to,
         // The language of a name typed here is unknown; und-Latn says only that it is in Latin script.
-        data: { recipientNames: name ? [{ value: name, lang: 'und-Latn' }] : [] },
+        data: name ? { recipientNames: [{ value: name, lang: 'und-Latn' }] } : {},
         idempotencyKey: `mail-check:${randomUUID()}`,
       }),
     );

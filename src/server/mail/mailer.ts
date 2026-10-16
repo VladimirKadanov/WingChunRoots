@@ -13,7 +13,10 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db';
 import { emailDelivery } from '../db/schema';
 import { isEmailTemplateName, renderEmail, TemplateDataError } from '../templates/email';
+import { redactAddresses } from './redact';
 import type { Mailer, MailTransport, SendResult } from './types';
+
+export { redactAddresses };
 
 /** The transport failed; the job queue retries the attempt. */
 export class MailDeliveryError extends Error {
@@ -68,10 +71,6 @@ export function describeError(error: unknown): string {
   if (typeof e.responseCode === 'number') parts.push(`SMTP ${e.responseCode}`);
   parts.push(typeof e.message === 'string' ? e.message : String(error));
   return redactAddresses(parts.join(': ')).replace(/\s+/g, ' ').trim().slice(0, 500);
-}
-
-export function redactAddresses(text: string): string {
-  return text.replace(/[^\s<>()"',;:@]+@[^\s<>()"',;:@]+/g, '<address>');
 }
 
 /** The domain of the sender, for Message-ID. */

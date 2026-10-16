@@ -13,7 +13,7 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import type { Mailer } from '../mail/types';
 import { purgeExpiredEmailAddresses } from '../services/retention';
 import { TemplateDataError } from '../templates/email';
-import { type EmailSendJob, QUEUE, QUEUE_OPTIONS, type QueueName, type QueueOptions, SCHEDULES } from './queues';
+import { type EmailSendJob, ensureQueues, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
 export interface WorkerOptions {
   /** A pg-boss instance from createBoss({ kind: 'worker' }), not started. */
@@ -33,16 +33,6 @@ export interface WorkerOptions {
 export interface RunningWorker {
   boss: PgBoss;
   stop(): Promise<void>;
-}
-
-/** Creates or updates the queues: rows in pgboss.queue only, so app_rw can do it. */
-export async function ensureQueues(boss: PgBoss, overrides: WorkerOptions['queueOptions'] = {}): Promise<void> {
-  for (const [name, defaults] of QUEUE_OPTIONS) {
-    const options = { ...defaults, ...overrides[name] };
-    await boss.createQueue(name, options);
-    // createQueue leaves an existing queue as it is; updateQueue brings its options up to date.
-    await boss.updateQueue(name, options);
-  }
 }
 
 /** Handles email.send jobs: one delivery each, retried by pg-boss until the queue's retryLimit. */
