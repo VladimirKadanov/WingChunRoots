@@ -125,9 +125,14 @@ check "ESLint keeps nodemailer, pg-boss and react-email inside their modules" ba
   [ "$(printf "%s" "$out" | grep -c "no-restricted-imports")" -eq 3 ] || exit 1
   printf "import nodemailer from \"nodemailer\";\nexport const x = nodemailer;\n" \
     | node_modules/.bin/eslint --stdin --stdin-filename src/server/mail/m01b-probe.ts'
+# The rule must fire: a crash or a config error of ESLint also exits non-zero, so the exit status
+# alone proves nothing.
 check "ESLint keeps routes and components away from jobs and mail" bash -c '
-  ! printf "import { queueEmail } from \"@/server/jobs/outbox\";\nexport const x = queueEmail;\n" \
-    | node_modules/.bin/eslint --stdin --stdin-filename src/app/m01b-probe.ts'
+  for target in src/app/m01b-probe.ts src/components/m01b-probe.tsx; do
+    out="$(printf "import { queueEmail } from \"@/server/jobs/outbox\";\nimport { createMailer } from \"@/server/mail/mailer\";\nexport const x = [queueEmail, createMailer];\n" \
+      | node_modules/.bin/eslint --stdin --stdin-filename "$target" 2>&1)"
+    [ "$(printf "%s" "$out" | grep -c "no-restricted-imports")" -eq 2 ] || exit 1
+  done'
 
 # 5. Test helpers, E2E, CI and settings (In scope 4) ------------------------------------------
 check "e2e/helpers/mailbox.ts reads the Mailpit API and the file transport" bash -c '
@@ -143,6 +148,13 @@ for name in MAIL_TRANSPORT SMTP_URL MAIL_FILE_DIR MAIL_FROM MAILPIT_URL; do
   check ".env.example names $name without a value" grep -qE "^$name=$" .env.example
 done
 check "the file transport's directory .mail/ is git-ignored" git check-ignore -q .mail/x.eml
+check "scripts/verify.sh checks (and locally starts) Mailpit when MAIL_TRANSPORT=smtp" bash -c '
+  grep -q "step mail check_mail" scripts/verify.sh && grep -q "docker compose up -d --wait mailpit" scripts/verify.sh &&
+  grep -q "readyz" scripts/verify.sh'
+check "SMTP_URL may only name the local Mailpit in Phase 1 (plan §3.3)" bash -c '
+  grep -q "isLocalMailpitHost(hostname)" src/server/mail/config.ts'
+check "idempotency keys refuse \"@\" (they outlive the address)" bash -c '
+  grep -qF "x21-\\x3f\\x41-" src/server/mail/mailer.ts'
 check "cloud sessions use the file transport" grep -q "MAIL_TRANSPORT=file" scripts/cloud-setup.sh
 
 # 6. Documentation (In scope 5) ---------------------------------------------------------------
@@ -152,6 +164,17 @@ check "docs/data-model.md describes the pgboss schema and the delivery attempts"
   grep -q "pgboss" docs/data-model.md && grep -q "attempts" docs/data-model.md'
 check "README.md explains pnpm worker and the mail transports" bash -c '
   grep -q "pnpm worker" README.md && grep -q "MAIL_TRANSPORT" README.md'
+
+# docs/guides/ arrives with M00b. Once the admin guide exists, it covers what M01b gives the
+# administrator (docs/plan/M01b-jobs-mail.md, "Follow-up"; docs/plan/RULES.md).
+if [ -f docs/guides/admin-guide.bg.md ]; then
+  check "docs/guides/admin-guide.bg.md covers pnpm worker, MAIL_TRANSPORT and Mailpit, mail:check and retention.purge" bash -c '
+    f=docs/guides/admin-guide.bg.md
+    grep -q "pnpm worker" "$f" && grep -q "MAIL_TRANSPORT" "$f" && grep -qi "mailpit" "$f" && grep -q "mail:check" "$f" && grep -q "retention.purge" "$f"'
+else
+  ok "docs/guides/admin-guide.bg.md does not exist yet (M00b); docs/plan/M01b-jobs-mail.md lists what it must cover"
+fi
+check "docs/plan/M01b-jobs-mail.md lists what the admin guide must cover" grep -q "Последваща работа" docs/plan/M01b-jobs-mail.md
 
 if [ "$failures" -gt 0 ]; then
   echo "M01b checks: $failures failed"

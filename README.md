@@ -62,7 +62,7 @@ If your `.env` was created before M01 or M01b, run `scripts/init-env.sh` once mo
 
 Every e-mail goes through the worker (`pnpm worker`, or `pnpm worker:dev`, which restarts on changes): the application queues it in the same database transaction as the change that causes it, and the worker sends it. Nothing leaves your machine in Phase 1:
 
-- `MAIL_TRANSPORT=smtp` (what `scripts/init-env.sh` writes): the worker sends to Mailpit from Docker Compose; read the mail at <http://localhost:8025>.
+- `MAIL_TRANSPORT=smtp` (what `scripts/init-env.sh` writes): the worker sends to Mailpit from Docker Compose; read the mail at <http://localhost:8025>. `SMTP_URL` may only name that local Mailpit (a loopback address, `localhost` or `mailpit`); any other host stops the worker at start. `scripts/verify.sh` checks that Mailpit answers and starts it when it does not (`docker compose up -d --wait mailpit`).
 - `MAIL_TRANSPORT=file` (the default when the variable is unset; cloud sessions): each message is written to `.mail/` (git-ignored) as `.eml` plus `.json`.
 
 To check the setup: `pnpm mail:check demo@wingchunroots.test`, with the worker running; the message appears in Mailpit (or in `.mail/`). The other settings, `SMTP_URL`, `MAIL_FILE_DIR`, `MAIL_FROM` and `MAILPIT_URL`, are described in `.env.example`.

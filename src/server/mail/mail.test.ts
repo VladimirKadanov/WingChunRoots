@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import { fileMailbox } from '../../../e2e/helpers/mailbox';
 import { mailConfig } from './config';
-import { checkAddress, checkIdempotencyKey, describeError, redactAddresses } from './mailer';
+import { checkAddress, checkIdempotencyKey, checkSameEmail, describeError, MailInputError, redactAddresses } from './mailer';
 import { createFileTransport, type StoredMail } from './transports';
 
 describe('checkAddress', () => {
@@ -39,10 +39,31 @@ describe('checkAddress', () => {
 describe('checkIdempotencyKey', () => {
   it('accepts printable ASCII without spaces, up to 200 characters', () => {
     expect(checkIdempotencyKey('auth.magic-link:01a1-xyz')).toBe('auth.magic-link:01a1-xyz');
+    expect(checkIdempotencyKey('k'.repeat(200))).toHaveLength(200);
     expect(() => checkIdempotencyKey('')).toThrow();
     expect(() => checkIdempotencyKey('with space')).toThrow();
     expect(() => checkIdempotencyKey('ключ')).toThrow();
     expect(() => checkIdempotencyKey('k'.repeat(201))).toThrow();
+  });
+
+  it('refuses "@": the key outlives the address, so it must never hold one', () => {
+    expect(() => checkIdempotencyKey('mail-check:demo@wingchunroots.test')).toThrow(/must not hold personal data/);
+    expect(() => checkIdempotencyKey('@')).toThrow(MailInputError);
+  });
+});
+
+describe('checkSameEmail', () => {
+  const row = { toEmail: 'demo@wingchunroots.test', template: 'mail-check' };
+  it('accepts the same recipient (any case) and template', () => {
+    expect(() => checkSameEmail(row, { to: 'Demo@WingChunRoots.test', template: 'mail-check' })).not.toThrow();
+  });
+  it('refuses another recipient or another template', () => {
+    expect(() => checkSameEmail(row, { to: 'other@wingchunroots.test', template: 'mail-check' })).toThrow(MailInputError);
+    expect(() => checkSameEmail(row, { to: 'demo@wingchunroots.test', template: 'auth.magic-link' })).toThrow(/another e-mail/);
+  });
+  it('compares only the template once retention has erased the address', () => {
+    expect(() => checkSameEmail({ toEmail: null, template: 'mail-check' }, { to: 'other@wingchunroots.test', template: 'mail-check' })).not.toThrow();
+    expect(() => checkSameEmail({ toEmail: null, template: 'mail-check' }, { to: 'other@wingchunroots.test', template: 'x' })).toThrow(MailInputError);
   });
 });
 
@@ -83,6 +104,18 @@ describe('mailConfig', () => {
     expect(mailConfig({ MAIL_TRANSPORT: 'smtp', MAILPIT_SMTP_PORT: '2025' }).smtpUrl).toBe('smtp://127.0.0.1:2025');
     expect(() => mailConfig({ MAIL_TRANSPORT: 'ses' })).toThrow(/smtp or file/);
     expect(() => mailConfig({ MAIL_TRANSPORT: 'smtp', SMTP_URL: 'http://x' })).toThrow(/smtp:\/\//);
+  });
+
+  it('accepts only the local Mailpit as the SMTP server in Phase 1 (plan §3.3)', () => {
+    for (const url of ['smtp://localhost:1025', 'smtp://127.0.0.1:1025', 'smtp://127.0.0.2:2025', 'smtp://[::1]:1025', 'smtp://mailpit:1025', 'smtp://MAILPIT:1025']) {
+      expect(mailConfig({ MAIL_TRANSPORT: 'smtp', SMTP_URL: url }).smtpUrl).toBe(url);
+    }
+    for (const url of ['smtp://smtp.example.com:587', 'smtps://demo:secret-demo@mail.example.org:465', 'smtp://127.0.0.1.example.com:25', 'smtp://10.0.0.5:1025', 'smtp://0.0.0.0:1025']) {
+      expect(() => mailConfig({ MAIL_TRANSPORT: 'smtp', SMTP_URL: url })).toThrow(/local Mailpit/);
+    }
+    expect(() => mailConfig({ MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtps://demo:secret-demo@mail.example.org:465' })).not.toThrow(/secret-demo/);
+    // The file transport never uses SMTP_URL, so it is not checked then.
+    expect(mailConfig({ MAIL_TRANSPORT: 'file', SMTP_URL: 'smtp://smtp.example.com:587' }).transport).toBe('file');
   });
 });
 

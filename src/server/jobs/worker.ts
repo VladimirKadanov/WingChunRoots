@@ -13,7 +13,7 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import type { Mailer } from '../mail/types';
 import { purgeExpiredEmailAddresses } from '../services/retention';
 import { TemplateDataError } from '../templates/email';
-import { type EmailSendJob, ensureQueues, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
+import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
 export interface WorkerOptions {
   /** A pg-boss instance from createBoss({ kind: 'worker' }), not started. */
@@ -88,6 +88,37 @@ export function emailSendFailedHandler(mailer: Mailer, log: (line: string) => vo
   };
 }
 
+/** What a log line may say about an error: its SQLSTATE, or else the error's name (plan §6.4). */
+function failureCode(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return `database error ${code}`;
+  return error instanceof Error ? error.name : 'unknown error';
+}
+
+/**
+ * Handles retention.purge. A failure is logged, because pg-boss does not log a failed handler, and
+ * rethrown as an error that carries only its code: pg-boss stores the thrown error with the job, and
+ * a database message can quote row values (addresses).
+ */
+export function retentionPurgeHandler(db: Database, log: (line: string) => void) {
+  return async (jobs: JobWithMetadata<JobData[typeof QUEUE.retentionPurge]>[]): Promise<void> => {
+    for (const job of jobs) {
+      try {
+        const result = await purgeExpiredEmailAddresses(db);
+        log(`${QUEUE.retentionPurge}: erased ${result.emailDeliveries} delivery address(es), ${result.invitations} invitation address(es)`);
+      } catch (error) {
+        const code = failureCode(error);
+        const last = job.retryCount >= job.retryLimit;
+        log(
+          `${QUEUE.retentionPurge}: job ${job.id}: attempt ${job.retryCount + 1} of ${job.retryLimit + 1} failed (${code})` +
+            (last ? '; no attempts left, the addresses stay until the next run' : '; will retry'),
+        );
+        throw new Error(`${QUEUE.retentionPurge} failed: ${code}`);
+      }
+    }
+  };
+}
+
 /** Starts pg-boss, the queues, the handlers and the schedules. */
 export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
   const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true } = options;
@@ -99,10 +130,7 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   const work: WorkOptions & { includeMetadata: true } = { includeMetadata: true, pollingIntervalSeconds };
   await boss.work(QUEUE.emailSend, { ...work, localConcurrency: 2 }, emailSendHandler(db, mailer, log));
   await boss.work(QUEUE.emailSendFailed, work, emailSendFailedHandler(mailer, log));
-  await boss.work(QUEUE.retentionPurge, work, async () => {
-    const result = await purgeExpiredEmailAddresses(db);
-    log(`${QUEUE.retentionPurge}: erased ${result.emailDeliveries} delivery address(es), ${result.invitations} invitation address(es)`);
-  });
+  await boss.work(QUEUE.retentionPurge, work, retentionPurgeHandler(db, log));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

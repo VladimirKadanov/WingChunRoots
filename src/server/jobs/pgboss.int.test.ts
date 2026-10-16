@@ -2,6 +2,8 @@
 // on the database. The schema `pgboss` comes from the migration step as migrator (pg-boss runs with
 // migrate: false), and that step also updates an older schema (plan §6.2).
 
+import { randomUUID } from 'node:crypto';
+
 import type { Client } from 'pg';
 import { getRollbackPlans } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,11 +13,13 @@ import { PG, pgError, rows, value } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { createRoleDatabase } from '../db';
 import { rolePassword } from '../db/env';
+import { createMailer } from '../mail/mailer';
 import { createBoss, startProducer } from './boss';
-import { QUEUE } from './queues';
+import { QUEUE, SCHEDULES } from './queues';
 import { installedPgBossVersion, migratePgBossSchema, PGBOSS_SCHEMA, PGBOSS_SCHEMA_VERSION } from './schema';
 import { eventually, recordingTransport, startTestWorker, testAddress } from './test-support';
 import { queueEmail } from './outbox';
+import { startWorker } from './worker';
 
 let testDb: TestDatabase;
 
@@ -93,7 +97,7 @@ describe('the pg-boss schema', () => {
       expect(sessions.map((s) => s.usename)).toEqual(['app_rw']);
 
       const to = testAddress('pgboss');
-      const key = `test:pgboss:${to}`;
+      const key = `test:pgboss:${randomUUID()}`;
       await w.db.transaction((tx) =>
         queueEmail(tx, { template: 'mail-check', to, data: { recipientNames: [{ value: 'Demo Student', lang: 'en' }] }, idempotencyKey: key }, w.boss),
       );
@@ -131,7 +135,7 @@ describe('the pg-boss schema', () => {
       try {
         const to = testAddress('producer');
         await db.transaction((tx) =>
-          queueEmail(tx, { template: 'mail-check', to, data: {}, idempotencyKey: `test:producer:${to}` }, producer),
+          queueEmail(tx, { template: 'mail-check', to, data: {}, idempotencyKey: `test:producer:${randomUUID()}` }, producer),
         );
       } finally {
         await producer.stop({ graceful: false });
@@ -143,6 +147,73 @@ describe('the pg-boss schema', () => {
     } finally {
       await db.$client.end();
       await fresh.drop();
+    }
+  });
+});
+
+describe('supervision as app_rw', () => {
+  // pg-boss supervises every 60 s, longer than any test run, so the pass is called here directly: a
+  // pg-boss update that brought DDL into supervision (or the cron pass) would fail here, not only in
+  // the log of a running worker.
+  it('a supervision pass, the schedules and the cron pass run without an error, and finished jobs are deleted', async () => {
+    const errors: string[] = [];
+    const db = createRoleDatabase('app_rw', testDb.url, rolePassword('app_rw'));
+    const transport = recordingTransport();
+    const boss = createBoss({ connectionString: testDb.roleUrl('app_rw'), kind: 'worker' });
+    boss.on('error', (error: unknown) => {
+      const e = error as { code?: unknown; message?: unknown };
+      errors.push(`${String(e.code ?? '')} ${String(e.message ?? error)}`.trim());
+    });
+    // Hand back the cron claim of earlier instances (as pg-boss does itself), so this instance's
+    // timekeeper runs its first cron pass right after the start.
+    await withClient(testDb.url, (c) => c.query(`UPDATE ${PGBOSS_SCHEMA}.version SET cron_on = NULL`));
+    const worker = await startWorker({
+      boss,
+      db,
+      mailer: createMailer({ db, transport, from: 'WingChunRoots <no-reply@wingchunroots.test>' }),
+      pollingIntervalSeconds: 0.5,
+      schedules: true,
+      log: () => undefined,
+    });
+    try {
+      const to = testAddress('supervise');
+      const { deliveryId } = await db.transaction((tx) =>
+        queueEmail(tx, { template: 'mail-check', to, data: {}, idempotencyKey: `test:supervise:${randomUUID()}` }, boss),
+      );
+      const jobState = () =>
+        withClient(testDb.url, (c) =>
+          rows<{ state: string }>(c, `SELECT state::text FROM ${PGBOSS_SCHEMA}.job WHERE name = $1 AND data->>'deliveryId' = $2`, [
+            QUEUE.emailSend,
+            deliveryId,
+          ]),
+        ).then((found) => found[0]?.state);
+      await eventually(async () => ((await jobState()) === 'completed' ? true : undefined), 20_000, 'the email.send job to complete');
+      await eventually(
+        () => withClient(testDb.url, (c) => value<boolean>(c, `SELECT cron_on IS NOT NULL FROM ${PGBOSS_SCHEMA}.version`)).then((v) => v || undefined),
+        10_000,
+        'the first cron pass',
+      );
+      // The job finished 8 days ago (deleteAfterSeconds: 7 days), and the queues' claims are handed back.
+      await withClient(testDb.url, async (c) => {
+        await c.query(`UPDATE ${PGBOSS_SCHEMA}.job SET completed_on = now() - interval '8 days' WHERE name = $1 AND data->>'deliveryId' = $2`, [
+          QUEUE.emailSend,
+          deliveryId,
+        ]);
+        await c.query(`UPDATE ${PGBOSS_SCHEMA}.queue SET maintain_on = NULL, monitor_claim_on = NULL`);
+      });
+
+      await boss.supervise();
+
+      expect(errors).toEqual([]);
+      expect(await jobState()).toBeUndefined();
+      const schedules = await boss.getSchedules();
+      expect(schedules.map((s) => ({ name: s.name, cron: s.cron, timezone: s.timezone }))).toEqual(
+        SCHEDULES.map(({ queue, cron }) => ({ name: queue, cron, timezone: 'UTC' })),
+      );
+      expect(schedules.map((s) => s.name)).toContain(QUEUE.retentionPurge);
+    } finally {
+      await worker.stop();
+      await db.$client.end();
     }
   });
 });

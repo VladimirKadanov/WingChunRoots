@@ -34,7 +34,12 @@ export interface SendInput<N extends EmailTemplateName = EmailTemplateName> {
   template: N;
   to: string;
   data: EmailTemplateData<N>;
-  /** One e-mail per key, however often send() or queueEmail() is called with it. */
+  /**
+   * One e-mail per key, however often send() or queueEmail() is called with it. Built from ids (for
+   * example `auth.magic-link:<token id>`), never from personal data: the key outlives the address
+   * in email_delivery (retention), so `@` is refused. Reusing a key for another recipient or
+   * template is a MailInputError.
+   */
   idempotencyKey: string;
   /** The account the e-mail belongs to, when there is one. */
   userId?: string | null;

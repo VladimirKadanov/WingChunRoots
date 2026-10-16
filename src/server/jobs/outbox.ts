@@ -8,7 +8,7 @@ import { fromDrizzle, type PgBoss, type SendOptions } from 'pg-boss';
 
 import type { Database } from '../db';
 import { emailDelivery } from '../db/schema';
-import { checkAddress, checkIdempotencyKey } from '../mail/mailer';
+import { checkAddress, checkIdempotencyKey, checkSameEmail } from '../mail/mailer';
 import type { SendInput } from '../mail/types';
 import { EMAIL_TEMPLATES, type EmailTemplateName, isEmailTemplateName, TemplateDataError } from '../templates/email';
 import type { EmailTemplate } from '../templates/email/types';
@@ -42,8 +42,9 @@ export interface QueuedEmail {
 /**
  * Queues an e-mail inside `tx`: the email_delivery row (status `queued`) and the email.send job,
  * both committed or rolled back with the caller's change. One delivery per idempotency key: a
- * second call with the same key queues nothing and returns the first delivery. The template data
- * is checked here, so a bad call fails in the service that made it.
+ * second call with the same key queues nothing and returns the first delivery, and a call that
+ * reuses the key for another recipient or template throws MailInputError. The template data is
+ * checked here, so a bad call fails in the service that made it.
  */
 export async function queueEmail<N extends EmailTemplateName>(
   tx: Transaction,
@@ -62,10 +63,11 @@ export async function queueEmail<N extends EmailTemplateName>(
     .returning({ id: emailDelivery.id });
   if (!created) {
     const [existing] = await tx
-      .select({ id: emailDelivery.id })
+      .select({ id: emailDelivery.id, toEmail: emailDelivery.toEmail, template: emailDelivery.template })
       .from(emailDelivery)
       .where(eq(emailDelivery.idempotencyKey, idempotencyKey));
     if (!existing) throw new Error('email_delivery: the conflicting row is not visible');
+    checkSameEmail(existing, { to, template: input.template });
     return { deliveryId: existing.id, queued: false };
   }
   await enqueue(tx, QUEUE.emailSend, { deliveryId: created.id, data }, {}, boss);

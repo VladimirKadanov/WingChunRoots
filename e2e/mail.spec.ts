@@ -30,7 +30,7 @@ test('@M01b an e-mail queued through the outbox reaches the mailbox through the 
       template: 'mail-check',
       to,
       data: { recipientNames: [{ value: 'Demo Student', lang: 'en' }, { value: '示範學生', lang: 'zh-Hant' }] },
-      idempotencyKey: `e2e:mail-check:${to}`,
+      idempotencyKey: `e2e:mail-check:${randomUUID()}`,
     }),
   );
 

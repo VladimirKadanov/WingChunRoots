@@ -55,12 +55,34 @@ export function checkAddress(to: string): string {
   return address;
 }
 
-/** Printable ASCII without spaces, 1 to 200 characters. */
+/**
+ * Printable ASCII without spaces and without `@`, 1 to 200 characters. email_delivery keeps the key
+ * after the retention job has erased the address (src/server/services/retention.ts), so a key must
+ * never hold personal data: ids (a user, an invitation, a random UUID), never an address or a name.
+ * Refusing `@` stops the most likely mistake, an address in the key.
+ */
 export function checkIdempotencyKey(key: string): string {
-  if (typeof key !== 'string' || !/^[\x21-\x7e]{1,200}$/.test(key)) {
-    throw new MailInputError('the idempotency key must be 1 to 200 printable ASCII characters without spaces');
+  if (typeof key !== 'string' || !/^[\x21-\x3f\x41-\x7e]{1,200}$/.test(key)) {
+    throw new MailInputError(
+      'the idempotency key must be 1 to 200 printable ASCII characters without spaces or "@"; it must not hold personal data',
+    );
   }
   return key;
+}
+
+/**
+ * A key names one e-mail. Reusing it for another recipient or template is a bug of the caller that
+ * would otherwise drop the new e-mail silently (or render the stored template with the wrong data).
+ * An address the retention job has erased can no longer be compared; the template still is.
+ */
+export function checkSameEmail(
+  existing: { toEmail: string | null; template: string },
+  input: { to: string; template: string },
+): void {
+  const otherAddress = existing.toEmail !== null && existing.toEmail.toLowerCase() !== input.to.toLowerCase();
+  if (otherAddress || existing.template !== input.template) {
+    throw new MailInputError('the idempotency key was used for another e-mail (another recipient or template)');
+  }
 }
 
 /** An error as text for email_delivery.error: code, SMTP status, message; addresses removed. */
@@ -108,6 +130,7 @@ export function createMailer({ db, transport, from }: { db: Database; transport:
           .where(eq(emailDelivery.idempotencyKey, idempotencyKey));
         throw new MailBusyError(held?.id ?? 'unknown');
       }
+      checkSameEmail(row, { to, template: input.template });
       if (row.status !== 'queued') return { result: { deliveryId: row.id, status: row.status, duplicate: true } };
 
       const recorded = { attempts: sql`${emailDelivery.attempts} + 1`, lastAttemptAt: sql`now()` };

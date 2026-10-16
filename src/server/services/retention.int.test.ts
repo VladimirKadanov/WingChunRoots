@@ -69,6 +69,33 @@ describe('purgeExpiredEmailAddresses', () => {
     });
   });
 
+  it('works in batches until nothing is left, and skips a row another transaction holds', async () => {
+    await withClient(testDb.url, (c) =>
+      c.query(`
+        INSERT INTO email_delivery (idempotency_key, to_email, template, status, created_at)
+        SELECT 'batch-' || n, 'batch-' || n || '@wingchunroots.test', 'mail-check', 'sent', now() - interval '100 days'
+          FROM generate_series(1, 5) AS n`),
+    );
+    // An attempt of the Mailer holds batch-5 (FOR UPDATE): the purge neither waits for it nor fails.
+    await withClient(testDb.url, async (holder) => {
+      await holder.query('BEGIN');
+      await holder.query(`SELECT 1 FROM email_delivery WHERE idempotency_key = 'batch-5' FOR UPDATE`);
+      try {
+        expect(await purgeExpiredEmailAddresses(db, { batchSize: 2 })).toEqual({ emailDeliveries: 4, invitations: 0 });
+      } finally {
+        await holder.query('COMMIT');
+      }
+    });
+    // The next run erases it.
+    expect(await purgeExpiredEmailAddresses(db, { batchSize: 2 })).toEqual({ emailDeliveries: 1, invitations: 0 });
+    await withClient(testDb.url, async (c) => {
+      expect(await rows(c, `SELECT count(*)::int AS n FROM email_delivery WHERE idempotency_key LIKE 'batch-%' AND to_email IS NOT NULL`)).toEqual([
+        { n: 0 },
+      ]);
+    });
+    await expect(purgeExpiredEmailAddresses(db, { batchSize: 0 })).rejects.toThrow(/batchSize/);
+  });
+
   it('the database refuses a queued e-mail or a pending invitation without an address', async () => {
     await withClient(testDb.roleUrl('app_rw'), async (c) => {
       const queued = await pgError(c.query(`INSERT INTO email_delivery (idempotency_key, template) VALUES ('no-address', 'mail-check')`));
