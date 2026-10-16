@@ -1,7 +1,7 @@
 // Consents, notifications, e-mail deliveries and the audit log (plan §6.2, §6.6).
 
 import { sql } from 'drizzle-orm';
-import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { CONSENT_ACTIONS, CONSENT_KINDS, EMAIL_STATUSES, idColumn, inList, timestamps } from './common';
 
@@ -38,16 +38,23 @@ export const notification = pgTable(
   (t) => [index('notification_user_id_idx').on(t.userId, t.createdAt)],
 );
 
-/** One row per e-mail; idempotent by key (plan §6.1, M01b). */
+/**
+ * One row per e-mail; idempotent by key (plan §6.1, M01b). src/server/mail writes it: `attempts`
+ * counts delivery attempts, `error` keeps the last failure (without addresses). `to_email` is
+ * erased after 90 days by the retention job (docs/data-model.md, §7), so it may be null, but
+ * never while the e-mail still waits to be sent.
+ */
 export const emailDelivery = pgTable(
   'email_delivery',
   {
     id: idColumn(),
     userId: uuid('user_id'),
-    toEmail: text('to_email').notNull(),
+    toEmail: text('to_email'),
     template: text('template').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
     status: text('status', { enum: EMAIL_STATUSES }).notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
     providerMessageId: text('provider_message_id'),
     error: text('error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
@@ -56,7 +63,10 @@ export const emailDelivery = pgTable(
   (t) => [
     uniqueIndex('email_delivery_idempotency_key_key').on(t.idempotencyKey),
     index('email_delivery_status_idx').on(t.status),
+    index('email_delivery_created_at_idx').on(t.createdAt),
     check('email_delivery_status_check', inList(t.status.name, EMAIL_STATUSES)),
+    check('email_delivery_attempts_check', sql`${t.attempts} >= 0`),
+    check('email_delivery_queued_has_address', sql`${t.status} <> 'queued' OR ${t.toEmail} IS NOT NULL`),
   ],
 );
 

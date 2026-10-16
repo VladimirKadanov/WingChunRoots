@@ -12,6 +12,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Client } from 'pg';
 
+import { migratePgBossSchema, type PgBossMigration } from '../jobs/schema';
 import { assertSafeToReset, databaseName, redactUrl, splitPassword, withDatabase } from './env';
 
 /** The repository root: the nearest directory with this project's package.json. */
@@ -141,11 +142,19 @@ export function runDrizzleKit(args: string[]): SpawnSyncReturns<string> {
   return spawnSync(process.execPath, [path.join(dir, bin), ...args], { cwd: root, encoding: 'utf8' });
 }
 
+export interface MigrationResult {
+  /** Drizzle migrations applied by this run, in order. */
+  drizzle: string[];
+  /** The pg-boss schema step (milestone M01b). */
+  pgboss: PgBossMigration;
+}
+
 /**
  * Applies every pending migration as the role `migrator` (SET ROLE), whoever connects, so every
- * application object has the same owner in every environment. Returns the newly applied names.
+ * application object has the same owner in every environment: first the Drizzle migrations, then
+ * the pg-boss schema step (src/server/jobs/schema.ts; pg-boss itself runs with `migrate: false`).
  */
-export async function migrateDatabase(url: string): Promise<string[]> {
+export async function migrateAll(url: string): Promise<MigrationResult> {
   return withClient(
     url,
     async (client) => {
@@ -160,10 +169,16 @@ export async function migrateDatabase(url: string): Promise<string[]> {
       const before = new Set(await appliedMigrations(client));
       await migrate(drizzle({ client }), { migrationsFolder: migrationsFolder() });
       const after = await appliedMigrations(client);
-      return after.filter((name) => !before.has(name));
+      const pgboss = await migratePgBossSchema(client);
+      return { drizzle: after.filter((name) => !before.has(name)), pgboss };
     },
     'wingchunroots:migrate',
   );
+}
+
+/** migrateAll, returning the newly applied Drizzle migration names. */
+export async function migrateDatabase(url: string): Promise<string[]> {
+  return (await migrateAll(url)).drizzle;
 }
 
 /** Names of the migrations recorded in drizzle.__drizzle_migrations (empty before the first run). */
@@ -177,7 +192,7 @@ export async function appliedMigrations(client: Client): Promise<string[]> {
 }
 
 /**
- * Drops every application object (schemas `public` and `drizzle`) and restores the empty state
+ * Drops every application object (schemas `public`, `drizzle` and `pgboss`) and restores the empty state
  * of a bootstrapped database: an empty `public` schema owned by pg_database_owner and PostGIS.
  * Only for a local database or TEST_DATABASE_URL, never with NODE_ENV=production, and only as a
  * superuser (PostGIS objects belong to the superuser).
@@ -191,6 +206,7 @@ export async function resetDatabase(url: string): Promise<void> {
     await client.query('BEGIN');
     try {
       await client.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
+      await client.query('DROP SCHEMA IF EXISTS pgboss CASCADE');
       await client.query('DROP SCHEMA IF EXISTS public CASCADE');
       await client.query('CREATE SCHEMA public AUTHORIZATION pg_database_owner');
       await client.query('GRANT USAGE ON SCHEMA public TO PUBLIC');

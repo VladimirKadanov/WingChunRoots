@@ -81,7 +81,7 @@ describe('generateFixtures', () => {
     expect(new Set(slugs).size).toBe(slugs.length);
     expect(f.personBios).toHaveLength(f.persons.length);
     expect(f.personBios.every((b) => b.body.includes(FICTIONAL_MARK))).toBe(true);
-    expect(f.invitations.every((i) => i.email.endsWith('@example.test'))).toBe(true);
+    expect(f.invitations.every((i) => i.email?.endsWith('@example.test') === true)).toBe(true);
   });
 
   it('gives every person exactly one primary name, in Latin script', () => {

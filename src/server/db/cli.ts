@@ -1,22 +1,25 @@
 // The db:* package scripts (milestone M01, In scope 1):
 //
 //   pnpm db:migrate   apply pending migrations (as migrator) to DATABASE_URL, or to
-//                     TEST_DATABASE_URL when DATABASE_URL is not set
+//                     TEST_DATABASE_URL when DATABASE_URL is not set, then create or update the
+//                     pg-boss schema (M01b; pg-boss itself runs with migrate: false)
 //   pnpm db:seed      replace the application data with the fictional demo data (never in production)
 //   pnpm db:reset     drop every application object; only a local database or TEST_DATABASE_URL,
 //                     never with NODE_ENV=production; run db:migrate and db:seed after it
-//   pnpm db:check     drizzle-kit check, no ungenerated schema changes, and every migration applied
-//                     to a new empty database (twice: the second run applies nothing)
+//   pnpm db:check     drizzle-kit check, no ungenerated schema changes, and every migration and the
+//                     pg-boss schema applied to a new empty database (twice: the second run
+//                     applies nothing)
 //
 // Values come from the environment, then from .env (the environment wins). Every URL is printed
 // without its password.
 
 import path from 'node:path';
 
+import { PGBOSS_SCHEMA_VERSION, type PgBossMigration } from '../jobs/schema';
 import {
   createDatabase,
   dropDatabase,
-  migrateDatabase,
+  migrateAll,
   migrationNames,
   repoRoot,
   resetDatabase,
@@ -29,10 +32,17 @@ import { seedDatabase } from './seed';
 
 const log = (message: string) => console.log(message);
 
+function describePgBoss({ action, from, to }: PgBossMigration): string {
+  if (action === 'created') return `pg-boss schema created at version ${to}`;
+  if (action === 'migrated') return `pg-boss schema migrated from version ${from} to ${to}`;
+  return `pg-boss schema already at version ${to}`;
+}
+
 async function migrate(): Promise<void> {
   const url = targetDatabaseUrl();
-  const applied = await migrateDatabase(url);
+  const { drizzle: applied, pgboss } = await migrateAll(url);
   log(applied.length > 0 ? `db:migrate: applied ${applied.join(', ')}` : 'db:migrate: nothing to apply');
+  log(`db:migrate: ${describePgBoss(pgboss)}`);
   log(`db:migrate: ${redactUrl(url)} is at ${migrationNames().at(-1) ?? '(no migrations)'}`);
 }
 
@@ -84,14 +94,19 @@ async function check(): Promise<void> {
   const url = await createDatabase(server, name);
   try {
     await runBootstrap(url);
-    const applied = await migrateDatabase(url);
+    const { drizzle: applied, pgboss } = await migrateAll(url);
     const expected = migrationNames();
     if (applied.join() !== expected.join()) {
       throw new Error(`applied ${applied.length} of ${expected.length} migrations: ${applied.join(', ')}`);
     }
-    const again = await migrateDatabase(url);
-    if (again.length > 0) throw new Error(`a second run applied ${again.join(', ')}`);
+    if (pgboss.action !== 'created' || pgboss.to !== PGBOSS_SCHEMA_VERSION) {
+      throw new Error(`the pg-boss schema step on an empty database: ${describePgBoss(pgboss)}`);
+    }
+    const again = await migrateAll(url);
+    if (again.drizzle.length > 0) throw new Error(`a second run applied ${again.drizzle.join(', ')}`);
+    if (again.pgboss.action !== 'unchanged') throw new Error(`a second run: ${describePgBoss(again.pgboss)}`);
     log(`db:check: all ${expected.length} migrations apply to an empty database (${expected.join(', ')})`);
+    log(`db:check: the pg-boss schema step creates version ${PGBOSS_SCHEMA_VERSION} and a second run changes nothing`);
   } finally {
     await dropDatabase(server, name);
   }
