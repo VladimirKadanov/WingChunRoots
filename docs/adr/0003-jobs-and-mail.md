@@ -1,0 +1,73 @@
+# ADR 0003: Фонови задачи (pg-boss) и поща
+
+| | |
+|---|---|
+| Статус | Прието (M01b, 16.10.2026) |
+| Контекст | План §3.1 (редове „Фонови задачи“, „Имейл“ и „Текст на интерфейса“), §3.3 (хостингът и доставчикът на писма са отложени), §6.1 (модули), §6.2 (роли и pg-boss), §7.5 (`scripts/verify.sh`) |
+| Етап | [`docs/plan/M01b-jobs-mail.md`](../plan/M01b-jobs-mail.md) |
+| Модел на данните | [`docs/data-model.md`](../data-model.md) (`email_delivery`, схемата `pgboss`, срокове на пазене) |
+
+## Контекст
+
+От M02 нататък приложението изпраща писма (вход, покани, известия) и пуска работа, която не бива да бави заявката (ключове за търсене, броячи, `lineage_membership`, почистване). Задачата трябва да се създава в същата транзакция като промяната, която я поражда: ако транзакцията се върне назад, задачата не съществува; ако е потвърдена, задачата не се губи. Приложението се свързва с базата само като `app_rw` и `app_public_ro`, които нямат право да създават обекти (план §6.2). Във Фаза 1 няма доставчик на реални писма: локално и в CI пощата отива в Mailpit, а в облачната сесия, където няма Docker, във файлове.
+
+## Решение
+
+1. **pg-boss 12.38.0 като опашка и outbox в същата база.** Инстанциите вървят с `migrate: false`, `createSchema: false` и `reindex: false` (`src/server/jobs/boss.ts`). Схемата `pgboss` се създава и обновява от стъпка в `pnpm db:migrate` след миграциите на Drizzle, с `SET ROLE migrator` (`src/server/jobs/schema.ts`):
+   - празна база: `getConstructionPlans('pgboss')`;
+   - по-стара версия: `getMigrationPlans('pgboss', <инсталираната>)`. Командите `CREATE INDEX CONCURRENTLY`, които pg-boss добавя след `COMMIT`, вървят една по една извън транзакцията;
+   - по-нова версия в базата от тази на закачения pg-boss: грешка, нищо не се променя;
+   - права: `REVOKE ALL ON SCHEMA pgboss FROM PUBLIC`; за `app_rw` `USAGE` върху схемата, `SELECT, INSERT, UPDATE, DELETE` върху таблиците и `USAGE, SELECT, UPDATE` върху поредиците, плюс `ALTER DEFAULT PRIVILEGES FOR ROLE migrator` за таблиците от бъдещи версии. `CREATE` няма нито върху базата, нито върху схемата; `app_public_ro` няма достъп до `pgboss`.
+
+   `pnpm db:check` проверява, че стъпката създава версия 46 в празна база и че второ пускане не променя нищо; `pnpm db:reset` трие и схемата `pgboss`. `pgboss.int.test.ts` доказва, че worker-ът и производителят стартират като `app_rw` без `CREATE`, и упражнява пътя за обновяване (връщане към версия 45 с `getRollbackPlans` и миграция обратно).
+2. **Worker-ът е отделен процес** (`src/worker.ts`; `pnpm worker`, `pnpm worker:dev`). Свързва се само като `app_rw`: pg-boss с `appRwUrl()`, Drizzle с `getDb()`. При старт създава и обновява опашките (`createQueue`, `updateQueue`: само редове в `pgboss.queue`, без DDL) и плановете по cron. Поддръжката на pg-boss (`supervise`, `schedule`) върви само в worker-а; уеб процесът е само производител. При `SIGTERM` и `SIGINT` спира плавно. В лога пише само идентификатори (задача, доставка), никога адреси или имена.
+3. **Outbox.** `queueEmail(tx, …)` (`src/server/jobs/outbox.ts`) се вика в транзакцията на промяната: проверява адреса, ключа и данните на шаблона, записва ред в `email_delivery` (`queued`, уникален ключ за идемпотентност) и създава задача `email.send` чрез адаптера `fromDrizzle(tx, sql)` на pg-boss, тоест в същата транзакция. Върната назад транзакция не оставя нито ред, нито задача. Повторен ключ връща съществуващия ред, без нова задача. Задачата носи само `deliveryId` и данните на шаблона; адресът остава в `email_delivery`.
+4. **`Mailer`** (`src/server/mail`): `send({ template, to, data, idempotencyKey })`.
+   - Редът се вмъква с `ON CONFLICT DO NOTHING` и се заключва с `FOR UPDATE SKIP LOCKED` за времето на опита, така че два процеса не изпращат едно и също писмо едновременно. Ред, който вече не е `queued`, не се изпраща втори път.
+   - Писмото има детерминиран `Message-ID` `<deliveryId@домейна на изпращача>` и заглавки `Auto-Submitted: auto-generated`, `X-WingChunRoots-Delivery` и `X-WingChunRoots-Template`.
+   - Успех: `sent`, `sent_at`, `provider_message_id`. Неуспех: `attempts + 1`, `last_attempt_at` и текст на грешката без адреси (до 500 знака); задачата се опитва отново. Невалидни данни на шаблона: `failed` веднага.
+   - Транспорти: `smtp` (nodemailer към Mailpit) и `file` (`.eml` и `.json` в `MAIL_FILE_DIR`, права 0600, запис чрез временен файл и преименуване). Изборът е от `MAIL_TRANSPORT`; по подразбиране `file`, така че без настройки нито едно писмо не напуска машината.
+5. **Повторни опити с таван.** `email.send`: един опит и още 5, експоненциално от 30 s, най-много 30 min между два опита (около час общо). След последния неуспешен опит worker-ът маркира доставката `failed`; ако задачата изтече или процесът падне, опашката за мъртви писма `email.send.failed` прави същото. Доставката е „поне веднъж“: ако SMTP сървърът приеме писмото, а записът на `sent` не успее, писмото може да тръгне втори път със същия `Message-ID`.
+6. **Шаблони** (`src/server/templates`), само на английски и единственото място с текст на писма и известия.
+   - Писма: React Email (`react-email` 6.11.2, `@react-email/render` 2.1.0) в `src/server/templates/email/`. Всеки шаблон е обект с `name`, `parse` (проверка на данните), `subject`, `preview`, `render` и `sample`; `renderEmail` дава HTML и текстова версия. Имената минават през `PersonName`: `<span lang="…" translate="no">`, като първото име трябва да съдържа латиница (основното име за показване).
+   - Известия: `src/server/templates/notifications.ts` дава заглавие и сегменти (текст или име с `lang`), без HTML; таблото от M08 ги показва.
+   - `templates.test.ts` рендерира всеки шаблон с примерните му данни и проверява темата, текстовата версия, атрибута `lang`, екранирането и липсата на незаместени променливи.
+7. **Срокове на пазене** (`docs/data-model.md` §7). Задачата `retention.purge` (всеки ден в 03:17 UTC, като `app_rw`, `src/server/services/retention.ts`) изтрива `email_delivery.to_email` след 90 дни (ред, който още е `queued`, става `failed`) и `invitation.email` 30 дни след края на поканата (`pending` с изтекъл срок става `expired`). Затова двете колони вече допускат `NULL`, а `CHECK` пази адреса на всяко писмо в `queued` и на всяка покана в `pending`.
+8. **Тестове и инструменти.**
+   - `e2e/helpers/mailbox.ts` чете Mailpit API (`/api/v1/search`, `/api/v1/message/{ID}`, `/api/v1/message/{ID}/headers`) или файловете на транспорта `file`, според `MAIL_TRANSPORT`.
+   - `playwright.config.ts` пуска два `webServer`: `pnpm start` (изходът в `test-results/server.log`) и `pnpm worker` (готов при реда `worker: ready`; изходът му е в изхода на Playwright с префикс `[worker]`). `scripts/verify.sh` пуска E2E срещу тестовата база, която току-що е нулирана, мигрирана и заредена.
+   - CI има service контейнер Mailpit със същия digest като `docker-compose.yml` и `MAIL_TRANSPORT=smtp`; облачната сесия ползва `file`.
+   - `pnpm mail:check <адрес>` изпраща пробно писмо през outbox-а (само за разработка, никога при `NODE_ENV=production`).
+   - ESLint пази границите: `nodemailer` само в `src/server/mail`, `react-email` и `@react-email/*` само в `src/server/templates`, `pg-boss` само в `src/server/jobs`; маршрутите и компонентите не внасят `src/server/jobs` и `src/server/mail`.
+
+## Решения по подразбиране (без номер D)
+
+Записани и в PR-а на M01b за преглед от собственика:
+
+- **Версии:** `nodemailer` 10.1.1, `react-email` 6.11.2 и `@react-email/render` 2.1.0, защото по-новите издания са по-млади от `minimumReleaseAge` ([ADR 0001](0001-stack.md)).
+- **Транспорт по подразбиране `file`**, изпращач `WingChunRoots <no-reply@wingchunroots.test>` (`.test` е запазен домейн и не се маршрутизира).
+- **Политика на повторните опити** (точка 5) и опашка за мъртви писма `email.send.failed`.
+- **„Поне веднъж“ с детерминиран `Message-ID`** вместо опит за „точно веднъж“, което SMTP не позволява.
+- **`reindex: false`:** REINDEX иска собственост върху индексите; при нужда операторът пуска `boss.getReindexCommands()` като `migrator`.
+- **Опашките се създават от worker-а при старт** (само DML), не от миграцията.
+- **Първоначално съдържание:** шаблон `mail-check` и известие `mail-check.sent`, за проверка на пощата. Писмата за вход и регистрация са в M02, известията в таблото в M08.
+- **Срокове и график:** 90 дни за `email_delivery.to_email` и 30 дни за `invitation.email` (от `docs/data-model.md` §7, чакат правния преглед, план §10.2 ред 11); почистване всеки ден в 03:17 UTC.
+- **Изпълнените задачи се трият след 7 дни** (данните им може да съдържат имена), а тези на `retention.purge` след 30.
+- **`lang` на име от командния ред** (`pnpm mail:check --name`) е `und-Latn`: латиница на неизвестен език.
+
+## Разгледани алтернативи
+
+- **pg-boss с `migrate: true`** — изисква `CREATE` за ролята на приложението (план §6.2).
+- **graphile-worker 0.18** — добра алтернатива, но още 0.x (план §3.1).
+- **Отделна таблица outbox с препращач** — pg-boss в същата транзакция върши същото с една таблица по-малко.
+- **Изпращане направо от заявката** — бави заявката и няма повторни опити.
+- **Отделните пакети `@react-email/components` и `@react-email/*`** — в React Email 6 са отбелязани като остарели; компонентите са в `react-email`.
+- **Mailpit и в облачната сесия** — няма Docker, а самостоятелният двоичен файл не е част от средата; файловият транспорт дава същата проверка без мрежа.
+
+## Последствия
+
+- Нова задача: име и опции в `src/server/jobs/queues.ts`, обработчик в `src/server/jobs/worker.ts`, създаване през outbox в транзакцията на промяната.
+- Ново писмо: шаблон в `src/server/templates/email/` и ред в `EMAIL_TEMPLATES`; `templates.test.ts` го покрива без промяна.
+- Обновяване на pg-boss е отделен PR: `pnpm db:migrate` пуска плановете за миграция, `pgboss.int.test.ts` проверява пътя от предишната версия, а `db:check` новата версия.
+- Доставчикът на реални писма (Amazon SES в eu-central-1 или Scaleway TEM, план §3.3) е нов транспорт в `src/server/mail/transports.ts`, когато собственикът реши за хостинга.
+- Не е упражнено в облачната сесия: Mailpit от Docker Compose (проверката през SMTP е с отделно пуснат Mailpit 1.31.6), PostgreSQL 18 с PostGIS 3.6 и `mobile-webkit` (в CI), локалният поток на Windows с WSL2.

@@ -28,6 +28,9 @@
 | База данни (M01) | `pg`, `@types/pg` | 8.23.1, 8.23.1 | Драйверът node-postgres за Drizzle (`drizzle-orm/node-postgres`): пул за всяка роля с `statement_timeout` 2 s |
 | Скриптове (M01) | `tsx` | 4.23.15 | Пуска TypeScript скриптовете `pnpm db:*` и `pnpm fixtures:generate` без отделна компилация |
 | Тестове (M01) | `@testcontainers/postgresql` | 12.2.1 | Testcontainers 12.2 по план §3.1: интеграционните тестове без `TEST_DATABASE_URL` пускат `postgis/postgis:18-3.6` по същия digest. Зарежда се само при нужда (в облачната сесия няма Docker и се ползва `TEST_DATABASE_URL`) |
+| Задачи (M01b) | `pg-boss` | 12.38.0 | Опашка и outbox в същата база (план §3.1); версия на схемата 46. Само ESM, изисква Node ≥ 22.12. Върви с `migrate: false`: схемата `pgboss` се създава от `pnpm db:migrate` като `migrator` ([ADR 0003](0003-jobs-and-mail.md)) |
+| Поща (M01b) | `nodemailer` | 10.1.1 | SMTP към Mailpit и файловият транспорт (`streamTransport`) в `src/server/mail`; типовете са в пакета. 10.1.2 е публикувана на 16.10.2026 и е по-млада от `minimumReleaseAge`, затова е взета предишната |
+| Шаблони (M01b) | `react-email`, `@react-email/render` | 6.11.2, 2.1.0 | React Email 6 (план §3.1): компонентите са в пакета `react-email` (отделните `@react-email/*` компоненти са отбелязани в npm като остарели); `render` дава HTML и текст. По-новите 6.11.3 и 2.1.1 са от 16.10.2026, по-млади от `minimumReleaseAge`. Внасят се само в `src/server/templates` (ESLint) |
 
 ### Docker образи (по `@sha256` digest)
 

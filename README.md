@@ -51,11 +51,21 @@ Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~
    pnpm db:migrate && pnpm db:seed   # schema and fictional demo data
    pnpm exec playwright install --with-deps chromium   # browsers for E2E tests on your machine
    pnpm dev                      # http://localhost:3000
+   pnpm worker:dev               # in a second terminal: background jobs and e-mail
    ```
 
-4. Check everything: `scripts/verify.sh M01` (the last line must be `VERIFY M01: PASS`).
+4. Check everything: `scripts/verify.sh M01b` (the last line must be `VERIFY M01b: PASS`).
 
-If your `.env` was created before M01, run `scripts/init-env.sh` once more: it keeps the file and only adds the three database role passwords (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`). Then run `scripts/db-bootstrap.sh`.
+If your `.env` was created before M01 or M01b, run `scripts/init-env.sh` once more: it keeps the file and only adds what is missing, the three database role passwords (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`) and `MAIL_TRANSPORT=smtp`. After new role passwords, run `scripts/db-bootstrap.sh`.
+
+#### E-mail
+
+Every e-mail goes through the worker (`pnpm worker`, or `pnpm worker:dev`, which restarts on changes): the application queues it in the same database transaction as the change that causes it, and the worker sends it. Nothing leaves your machine in Phase 1:
+
+- `MAIL_TRANSPORT=smtp` (what `scripts/init-env.sh` writes): the worker sends to Mailpit from Docker Compose; read the mail at <http://localhost:8025>.
+- `MAIL_TRANSPORT=file` (the default when the variable is unset; cloud sessions): each message is written to `.mail/` (git-ignored) as `.eml` plus `.json`.
+
+To check the setup: `pnpm mail:check demo@wingchunroots.test`, with the worker running; the message appears in Mailpit (or in `.mail/`). The other settings, `SMTP_URL`, `MAIL_FILE_DIR`, `MAIL_FROM` and `MAILPIT_URL`, are described in `.env.example`.
 
 Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 terminal). Line endings are always LF (`.gitattributes`), so Windows Git settings cannot introduce CRLF changes. The services listen only on `127.0.0.1`: Mailpit is at <http://localhost:8025>, the S3 endpoint at <http://localhost:8333>.
 
@@ -69,12 +79,12 @@ Install Docker Desktop, Node 24 (nvm or Homebrew), `npm install --global pnpm@12
 
 ### Claude Code cloud session
 
-Nothing to do: the SessionStart hook in `.claude/settings.json` runs `scripts/cloud-setup.sh`, which installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (cloud sessions have no Docker daemon and cannot reach apt.postgresql.org), creates the UTF-8 test database, bootstraps the database roles with throwaway passwords, installs the pinned pnpm and the dependencies, and exports `TEST_DATABASE_URL`, the role passwords (and `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects a different Chromium build than the preinstalled one). To run it by hand:
+Nothing to do: the SessionStart hook in `.claude/settings.json` runs `scripts/cloud-setup.sh`, which installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (cloud sessions have no Docker daemon and cannot reach apt.postgresql.org), creates the UTF-8 test database, bootstraps the database roles with throwaway passwords, installs the pinned pnpm and the dependencies, and exports `TEST_DATABASE_URL`, the role passwords, `MAIL_TRANSPORT=file` (no Mailpit without Docker) (and `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects a different Chromium build than the preinstalled one). To run it by hand:
 
 ```bash
 scripts/cloud-setup.sh
 eval "$(scripts/cloud-setup.sh --print-env)"
-scripts/verify.sh M01
+scripts/verify.sh M01b
 ```
 
 The script is for cloud sessions only (`CLAUDE_CODE_REMOTE=true`). On your own machine it stops with exit code 2, because it would install a native PostgreSQL on port 5432 next to Docker Compose; use `scripts/init-env.sh` and `docker compose up -d --wait` there.
@@ -86,18 +96,20 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Development server on <http://localhost:3000> |
+| `pnpm worker` / `pnpm worker:dev` | The job worker (pg-boss, as `app_rw`): sends e-mail and runs scheduled jobs; `worker:dev` restarts on changes |
+| `pnpm mail:check <address> [--name <Latin name>]` | Queues a test e-mail; the running worker delivers it to Mailpit or `.mail/` |
 | `pnpm lint` | ESLint, including module boundaries and forbidden packages |
 | `pnpm typecheck` | Route types (`next typegen`) and `tsc --noEmit` |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:int` | Integration tests against PostGIS: `TEST_DATABASE_URL`, or Testcontainers when it is not set (needs Docker) |
 | `scripts/db-bootstrap.sh` | Roles `migrator`, `app_rw`, `app_public_ro` with the passwords from `.env`, database owner and PostGIS; once per database (idempotent) |
-| `pnpm db:migrate` / `pnpm db:seed` | Apply the migrations / load the fictional demo data (`DATABASE_URL`, or `TEST_DATABASE_URL` when it is not set) |
+| `pnpm db:migrate` / `pnpm db:seed` | Apply the migrations and the pg-boss schema step / load the fictional demo data (`DATABASE_URL`, or `TEST_DATABASE_URL` when it is not set) |
 | `pnpm db:reset` | Drop every application object; only a local database or `TEST_DATABASE_URL`, never with `NODE_ENV=production` |
 | `pnpm db:check` | `drizzle-kit check`, no schema change without a migration, and all migrations applied to a new empty database |
 | `pnpm db:generate` | A new migration from a change in `src/server/db/schema/` |
 | `pnpm fixtures:generate` | Rewrite `fixtures/lineage-600.json` from the fixture generator |
 | `pnpm build` / `pnpm start` | Production build and server |
-| `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 (run `pnpm build` first) |
+| `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 and `pnpm worker` (run `pnpm build` first; server log in `test-results/server.log`) |
 | `scripts/db-env-check.sh` | Checks the test database: PostgreSQL ≥ 16, PostGIS ≥ 3.4, UTF-8 locale |
 | `scripts/verify.sh <Mxx\|all>` | The milestone check: one line per step, full log in `.verify/<Mxx>.log` |
 | `docker compose up -d --wait` / `docker compose down` | Start / stop the local services (data stays in named volumes) |
@@ -108,9 +120,12 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 |---|---|
 | `src/app` | Next.js App Router routes |
 | `src/server/db` | Drizzle schema, role connections, db scripts and integration tests (`*.int.test.ts`) |
+| `src/worker.ts`, `src/server/jobs` | The worker process, queues, the outbox helper and the pg-boss schema step |
+| `src/server/mail`, `src/server/templates` | The `Mailer` with its SMTP and file transports; e-mail templates (React Email) and notification texts, English only |
+| `src/server/services` | Business logic (from M01b: the retention job) |
 | `src/fixtures`, `fixtures/` | Deterministic fictional demo data and its export `lineage-600.json` |
 | `drizzle/` | Migrations (drizzle-kit 1.0 format) |
-| `e2e/` | Playwright tests (`@smoke`, `@M00` … tags) and the project matrix |
+| `e2e/` | Playwright tests (`@smoke`, `@M00` … tags), the project matrix and helpers (`e2e/helpers/mailbox.ts` reads Mailpit or `.mail/`) |
 | `scripts/` | `verify.sh` and `verify.d/`, `cloud-setup.sh`, `db-env-check.sh`, `db-bootstrap.sh`/`.sql`, `init-env.sh` |
 | `docker-compose.yml`, `docker/` | Local services, pinned by image digest |
 | `.github/workflows/ci.yml` | CI; the required check is `ci` |
@@ -125,6 +140,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | [`docs/plan/`](docs/plan/README.md) | One file per milestone (M00–M13), the shared rules (`RULES.md`) and questions to the owner |
 | [`docs/adr/0001-stack.md`](docs/adr/0001-stack.md) | Stack decisions, pnpm settings and the build-script allow list |
 | [`docs/adr/0002-data-model.md`](docs/adr/0002-data-model.md) | Data model decisions: Drizzle 1.0 RC, database roles, privacy in the database, fixtures |
+| [`docs/adr/0003-jobs-and-mail.md`](docs/adr/0003-jobs-and-mail.md) | Background jobs (pg-boss without DDL rights) and e-mail: outbox, Mailer, retries, templates |
 | [`docs/data-model.md`](docs/data-model.md) | The data model: tables, public views, roles and grants, personal data and retention |
 | [`docs/WingChunRoots_Project_Specification.bg.md`](docs/WingChunRoots_Project_Specification.bg.md) | Project specification (Bulgarian translation) |
 | [`docs/WingChunRoots_Project_Specification.en.md`](docs/WingChunRoots_Project_Specification.en.md) | Project specification (English original) |
