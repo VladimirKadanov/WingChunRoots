@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { getConstructionPlans, getMigrationPlans } from 'pg-boss';
 import { describe, expect, it } from 'vitest';
 
-import { constructionPlanVersion, PGBOSS_GRANTS, PGBOSS_SCHEMA, PGBOSS_SCHEMA_VERSION, splitMigrationScript } from './schema';
+import { constructionPlanVersion, deferredIndexBuilds, PGBOSS_GRANTS, PGBOSS_SCHEMA, PGBOSS_SCHEMA_VERSION, splitMigrationScript } from './schema';
 
 describe('the pinned pg-boss', () => {
   it('names the schema version that its package.json declares and its construction plan installs', () => {
@@ -39,6 +39,19 @@ describe('splitMigrationScript', () => {
   it('drops chunks that hold only comments', () => {
     const script = 'BEGIN;\nSELECT 1;\nCOMMIT;\n-- inlined\nCREATE INDEX CONCURRENTLY a ON t (x);\n-- trailing comment\n';
     expect(splitMigrationScript(script).concurrent).toEqual(['-- inlined\nCREATE INDEX CONCURRENTLY a ON t (x)']);
+  });
+});
+
+describe('deferredIndexBuilds', () => {
+  it('knows how to rebuild every index that the migration plans build after their COMMIT', () => {
+    const builds = deferredIndexBuilds();
+    for (const name of ['job_common_i13', 'job_common_i14', 'job_common_i15', 'job_common_i16', 'job_common_i17']) {
+      expect(builds.get(name), name).toMatch(new RegExp(`^(--.*\\n)*CREATE (UNIQUE )?INDEX CONCURRENTLY IF NOT EXISTS ${name} ON ${PGBOSS_SCHEMA}\\.job_common `));
+    }
+    // Only indexes of the current schema: job_i5 was dropped by an earlier pg-boss version.
+    expect(builds.has('job_common_i5')).toBe(false);
+    const current = getConstructionPlans(PGBOSS_SCHEMA);
+    for (const name of builds.keys()) expect(current).toContain(name.replace(/^job_common_/, 'job_'));
   });
 });
 
