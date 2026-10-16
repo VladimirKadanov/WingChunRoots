@@ -1,0 +1,19 @@
+# pnpm settings (plan §3.2). Every package with an install script must be listed
+# in allowBuilds with an explicit true/false; the reasons are in docs/adr/0001-stack.md.
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeExcludePrune: true
+strictDepBuilds: true
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+# package.json scripts use POSIX syntax (`NAME=value cmd`); the built-in shell emulator runs
+# them the same way on Linux, macOS, WSL2 and, if someone runs pnpm there, PowerShell or cmd.
+shellEmulator: true
+# Exact versions that trustPolicy flags as a "downgrade" although they are legitimate
+# maintenance releases published after a newer major gained provenance. Each entry is
+# reviewed and justified in docs/adr/0001-stack.md; no ranges or name patterns.
+trustPolicyExclude:
+  - semver@6.3.1
+# Derived from the first `pnpm install` in M00 (see docs/adr/0001-stack.md).
+allowBuilds:
+  unrs-resolver: false

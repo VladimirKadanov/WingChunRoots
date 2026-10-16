@@ -1,0 +1,39 @@
+{
+  "name": "wingchunroots",
+  "version": "0.0.0",
+  "private": true,
+  "description": "WingChunRoots: verified Wing Chun teaching lineages, school finder and training passport.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build",
+    "start": "NEXT_TELEMETRY_DISABLED=1 next start",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "NEXT_TELEMETRY_DISABLED=1 next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "next": "16.4.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.5"
+  }
+}
