@@ -10,8 +10,11 @@
 #      never Corepack) and runs `pnpm install --frozen-lockfile`;
 #   4. never installs browsers: if the pinned Playwright expects a different
 #      Chromium build than the preinstalled one, it sets PW_CHROMIUM_EXECUTABLE;
-#   5. exports TEST_DATABASE_URL, NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE
-#      to $CLAUDE_ENV_FILE (SessionStart hook) and prints them as `export` lines.
+#   5. exports TEST_DATABASE_URL, the role passwords DB_MIGRATOR_PASSWORD, DB_APP_RW_PASSWORD
+#      and DB_APP_PUBLIC_RO_PASSWORD, NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE to
+#      $CLAUDE_ENV_FILE (SessionStart hook) and prints them as `export` lines;
+#   6. bootstraps the roles migrator, app_rw and app_public_ro and the test database with
+#      scripts/db-bootstrap.sh (from M01; plan §6.2).
 #
 # Idempotent and non-interactive. Only for Claude Code cloud sessions (CLAUDE_CODE_REMOTE=true):
 # on a developer machine it would install a native PostgreSQL on port 5432 next to Docker
@@ -38,6 +41,11 @@ DB_USER=postgres
 # Local, throwaway credentials for a database that only listens on 127.0.0.1 inside the sandbox.
 DB_PASSWORD="${WCR_TEST_DB_PASSWORD:-postgres}"
 TEST_DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}"
+# Throwaway role passwords for the same sandbox-only database (scripts/db-bootstrap.sql).
+DB_MIGRATOR_PASSWORD="${DB_MIGRATOR_PASSWORD:-migrator-local}"
+DB_APP_RW_PASSWORD="${DB_APP_RW_PASSWORD:-app-rw-local}"
+DB_APP_PUBLIC_RO_PASSWORD="${DB_APP_PUBLIC_RO_PASSWORD:-app-public-ro-local}"
+export DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD
 
 log() { printf '[cloud-setup] %s\n' "$*" >&2; }
 
@@ -55,6 +63,9 @@ chromium_executable() {
 
 print_base_env() {
   echo "export TEST_DATABASE_URL='${TEST_DATABASE_URL}'"
+  echo "export DB_MIGRATOR_PASSWORD='${DB_MIGRATOR_PASSWORD}'"
+  echo "export DB_APP_RW_PASSWORD='${DB_APP_RW_PASSWORD}'"
+  echo "export DB_APP_PUBLIC_RO_PASSWORD='${DB_APP_PUBLIC_RO_PASSWORD}'"
   echo "export NEXT_TELEMETRY_DISABLED=1"
 }
 
@@ -110,6 +121,11 @@ if [ "$(as_postgres psql -At -p "$DB_PORT" -d postgres -c "SELECT 1 FROM pg_data
   log "creating database ${DB_NAME} (UTF8, C.UTF-8)"
   as_postgres createdb -p "$DB_PORT" -T template0 -E UTF8 --locale=C.UTF-8 "$DB_NAME"
 fi
+# Roles, database owner and PostGIS (idempotent; the passwords reach psql through the environment).
+if [ -x "$ROOT/scripts/db-bootstrap.sh" ]; then
+  log "bootstrapping roles and ${DB_NAME} (scripts/db-bootstrap.sh)"
+  "$ROOT/scripts/db-bootstrap.sh" "$TEST_DATABASE_URL" >/dev/null
+fi
 
 # 3. The exact pnpm from package.json, then the dependencies.
 pnpm_version="$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '').split('+')[0]")"
@@ -134,5 +150,5 @@ fi
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   print_browser_env >> "$CLAUDE_ENV_FILE"
 fi
-log "ready: PostgreSQL $(as_postgres psql -At -p "$DB_PORT" -d postgres -c 'SHOW server_version'), pnpm $(pnpm --version), TEST_DATABASE_URL set"
+log "ready: PostgreSQL $(as_postgres psql -At -p "$DB_PORT" -d postgres -c 'SHOW server_version'), pnpm $(pnpm --version), TEST_DATABASE_URL and role passwords set"
 print_env

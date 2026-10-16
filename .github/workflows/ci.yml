@@ -48,6 +48,11 @@ jobs:
     env:
       # Throwaway credentials of the service container above; not a secret.
       TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/wingchunroots_test
+      # Throwaway passwords of the database roles (from M01); scripts/verify.sh bootstraps the
+      # roles with scripts/db-bootstrap.sh before the database steps.
+      DB_MIGRATOR_PASSWORD: migrator-ci
+      DB_APP_RW_PASSWORD: app-rw-ci
+      DB_APP_PUBLIC_RO_PASSWORD: app-public-ro-ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
