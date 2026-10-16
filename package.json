@@ -22,14 +22,21 @@
     "db:seed": "tsx src/server/db/cli.ts seed",
     "db:reset": "tsx src/server/db/cli.ts reset",
     "db:check": "tsx src/server/db/cli.ts check",
-    "fixtures:generate": "tsx src/fixtures/cli.ts"
+    "fixtures:generate": "tsx src/fixtures/cli.ts",
+    "worker": "tsx src/worker.ts",
+    "worker:dev": "tsx watch src/worker.ts",
+    "mail:check": "tsx src/server/jobs/cli.ts mail-check"
   },
   "dependencies": {
+    "@react-email/render": "2.1.0",
     "drizzle-orm": "1.0.0-rc.4",
     "next": "16.4.1",
+    "nodemailer": "10.1.1",
     "pg": "8.23.1",
+    "pg-boss": "12.38.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "react-email": "6.11.2"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
