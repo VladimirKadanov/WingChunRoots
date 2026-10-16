@@ -24,6 +24,10 @@
 | Тестове | `@playwright/test`, `@axe-core/playwright` | 1.64.1, 4.14.0 | Проекти `desktop-chromium`, `mobile-chromium` и `mobile-webkit` (само при `CI=true`) |
 | Типове | `@types/node`, `@types/react`, `@types/react-dom` | 24.19.2, 19.3.0, 19.3.0 | `@types/node` следва Node 24 LTS |
 | Сайт | Tailwind, shadcn/ui, шрифтове | — | Извън обхвата на M00; идват в M00b |
+| База данни (M01) | `drizzle-orm`, `drizzle-kit` | 1.0.0-rc.4 | Drizzle 1.0 RC по план §3.1 с точна версия: последната RC, по-стара от един ден при M01. Миграциите са в новия формат на 1.0 (`drizzle/<време>_<име>/migration.sql` + `snapshot.json`); `drizzle-kit check` проверява миграции от паралелни клонове. Резерва при блокираща грешка: 0.45.4 (план §3.1) |
+| База данни (M01) | `pg`, `@types/pg` | 8.23.1, 8.23.1 | Драйверът node-postgres за Drizzle (`drizzle-orm/node-postgres`): пул за всяка роля с `statement_timeout` 2 s |
+| Скриптове (M01) | `tsx` | 4.23.15 | Пуска TypeScript скриптовете `pnpm db:*` и `pnpm fixtures:generate` без отделна компилация |
+| Тестове (M01) | `@testcontainers/postgresql` | 12.2.1 | Testcontainers 12.2 по план §3.1: интеграционните тестове без `TEST_DATABASE_URL` пускат `postgis/postgis:18-3.6` по същия digest. Зарежда се само при нужда (в облачната сесия няма Docker и се ползва `TEST_DATABASE_URL`) |
 
 ### Docker образи (по `@sha256` digest)
 
@@ -56,7 +60,7 @@ pnpm 12 отказва настройка, която не разпознава,
 | `trustPolicy` | `no-downgrade` | Отказва версия с по-слабо доказателство за доверие от по-рано публикувана |
 | `shellEmulator` | `true` | Скриптовете в `package.json` ползват POSIX синтаксис (`NEXT_TELEMETRY_DISABLED=1 next dev`). С вградения емулатор на обвивка pnpm ги пуска еднакво на Linux, macOS и WSL2, а и от PowerShell или cmd, ако някой ги пусне оттам. Емулаторът на pnpm 12.14.0 не поддържа няколко пренасочвания в една команда (`> файл 2>&1`), затова такива команди не се пишат в `package.json`. Командата на `webServer` в `playwright.config.ts` се пуска от Playwright, а не от pnpm, и ползва само пренасочване, което разбират и `sh`, и `cmd.exe`; папката `test-results/` се създава в самия конфиг. Поддържаният път остава WSL2 (README) |
 | `trustPolicyExclude` | `semver@6.3.1` | Виж следващия раздел |
-| `allowBuilds` | `unrs-resolver: false` | Виж раздела за install скриптовете |
+| `allowBuilds` | `unrs-resolver`, `esbuild`, `ssh2`, `cpu-features`, `protobufjs`: всички `false` | Виж раздела за install скриптовете |
 
 ### Изключение от `trustPolicy`: `semver@6.3.1` (решение по подразбиране)
 
@@ -75,6 +79,15 @@ pnpm 12 отказва настройка, която не разпознава,
 | `unrs-resolver` | `false` | Идва чрез `eslint-config-next` → `eslint-import-resolver-typescript`. Скриптът (`napi-postinstall`) само проверява и при нужда тегли native бинарния файл, ако pnpm не е инсталирал подходящия `@unrs/resolver-binding-*` от `optionalDependencies`. pnpm го инсталира (в облачната сесия `@unrs/resolver-binding-linux-x64-gnu`), затова скриптът не е нужен; `create-next-app` 16.4 също го забранява |
 
 Други пакети с install скрипт в M00 няма: `sharp` 0.35.5 вече няма install скрипт (идва с готови `@img/sharp-*` пакети), а `@next/swc-*` са готови бинарни пакети в `optionalDependencies`. Всеки следващ етап, който добави пакет с install скрипт, го добавя тук с причина; `scripts/verify.d/M00.sh` проверява, че всеки запис в `allowBuilds` е `true` или `false` и е описан в този файл.
+
+Добавени в M01 (`pnpm add` с `strictDepBuilds: true` ги изброи):
+
+| Пакет | Стойност | Причина |
+|---|---|---|
+| `esbuild` | `false` | Идва чрез `drizzle-kit` (0.25.12) и чрез `tsx` и `vite` (0.28.2). Скриптът `node install.js` само проверява и подменя JavaScript обвивката с бинарния файл за по-бърз старт. pnpm инсталира готовия бинарен пакет от `optionalDependencies` (в облачната сесия `@esbuild/linux-x64`), а обвивката го намира и без скрипта: `tsx`, `drizzle-kit` и Vitest работят |
+| `ssh2` | `false` | Идва чрез `@testcontainers/postgresql` → `testcontainers` → `dockerode` → `docker-modem` (SSH връзка към отдалечен Docker). Скриптът се опитва да компилира незадължително native разширение за криптография с `node-gyp`; без него `ssh2` ползва вградения `crypto` на Node. Тестовете се свързват с локалния Docker, не по SSH |
+| `cpu-features` | `false` | Незадължителна зависимост на `ssh2`: native модул (`node-gyp rebuild`), с който `ssh2` избира шифри според процесора. Без него `ssh2` работи с подразбиращия се ред на шифрите; няма нужда от компилатор при инсталация |
+| `protobufjs` | `false` | Идва чрез `dockerode` → `@grpc/grpc-js` / `@grpc/proto-loader` (BuildKit сесии, които не ползваме). `postinstall` само проверява версиите на зависимостите на CLI-я `pbjs`; библиотеката работи и без него |
 
 ## Телеметрия и „agent feedback“ на Next.js (решение по подразбиране, план §10.2 ред 10)
 
