@@ -6,6 +6,9 @@ minimumReleaseAgeExcludePrune: true
 strictDepBuilds: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
+# package.json scripts use POSIX syntax (`NAME=value cmd`); the built-in shell emulator runs
+# them the same way on Linux, macOS, WSL2 and, if someone runs pnpm there, PowerShell or cmd.
+shellEmulator: true
 # Exact versions that trustPolicy flags as a "downgrade" although they are legitimate
 # maintenance releases published after a newer major gained provenance. Each entry is
 # reviewed and justified in docs/adr/0001-stack.md; no ranges or name patterns.

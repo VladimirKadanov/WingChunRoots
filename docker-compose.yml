@@ -21,7 +21,11 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set; run scripts/init-env.sh to create .env}
-      POSTGRES_DB: ${POSTGRES_DB:-wingchunroots}
+      # The image loads PostGIS and its companion extensions (postgis_topology among them)
+      # into POSTGRES_DB, so it stays the maintenance database `postgres`. The application
+      # databases are created empty from template0 by docker/postgres/*.sql, like the test
+      # database in CI and in the cloud session: migrations create the extensions they need.
+      POSTGRES_DB: postgres
       # UTF-8 everywhere: pg_trgm needs a UTF-8 LC_CTYPE for Cyrillic and Chinese names.
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
     ports:
@@ -31,11 +35,13 @@ services:
       # PostgreSQL 18 images keep PGDATA in /var/lib/postgresql/18/docker, so the volume
       # is mounted on the parent directory (mounting .../data would fail on 18+).
       - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/20-create-dev-database.sql:/docker-entrypoint-initdb.d/20-create-dev-database.sql:ro
       - ./docker/postgres/20-create-test-database.sql:/docker-entrypoint-initdb.d/20-create-test-database.sql:ro
     shm_size: 256mb
     healthcheck:
-      # TCP, not the Unix socket: the temporary server used during initdb only listens on the socket.
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      # TCP, not the Unix socket: the temporary server used during initdb only listens on the
+      # socket, so TCP answers only after every docker-entrypoint-initdb.d script has run.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 30

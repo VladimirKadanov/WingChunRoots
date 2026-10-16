@@ -35,7 +35,6 @@ value_for() {
     NEXT_TELEMETRY_DISABLED) echo 1 ;;
     POSTGRES_USER) echo "$pg_user" ;;
     POSTGRES_PASSWORD) echo "$pg_password" ;;
-    POSTGRES_DB) echo wingchunroots ;;
     POSTGRES_PORT) echo "$pg_port" ;;
     DATABASE_URL) echo "postgres://${pg_user}:${pg_password}@127.0.0.1:${pg_port}/wingchunroots" ;;
     TEST_DATABASE_URL) echo "postgres://${pg_user}:${pg_password}@127.0.0.1:${pg_port}/wingchunroots_test" ;;

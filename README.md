@@ -25,7 +25,7 @@ Phase 1 is in progress and runs **locally only**: Docker Compose on a developer 
 
 ### Windows (Docker Desktop with WSL2) — the owner's setup
 
-Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~/src/wingchunroots`), not under `C:\` or `/mnt/c`: the Linux filesystem is many times faster for `pnpm install` and `next build`, and file permissions behave correctly.
+Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~/src/wingchunroots`), not under `C:\` or `/mnt/c`: the Linux filesystem is many times faster for `pnpm install` and `next build`, and file permissions behave correctly. Run every `pnpm`, `docker compose` and `scripts/` command from the WSL2 shell, never from PowerShell or cmd: the scripts are bash, and Node, pnpm and the repository live inside WSL2.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) with the WSL2 backend. In *Settings → Resources → WSL integration*, enable your Ubuntu distribution. Give Docker about 8 GB of memory.
 2. Open the Ubuntu (WSL2) terminal and install the tools:
@@ -72,6 +72,8 @@ scripts/cloud-setup.sh
 eval "$(scripts/cloud-setup.sh --print-env)"
 scripts/verify.sh M00
 ```
+
+The script is for cloud sessions only (`CLAUDE_CODE_REMOTE=true`). On your own machine it stops with exit code 2, because it would install a native PostgreSQL on port 5432 next to Docker Compose; use `scripts/init-env.sh` and `docker compose up -d --wait` there.
 
 Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 

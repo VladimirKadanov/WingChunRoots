@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+
 import { defineConfig } from '@playwright/test';
 
 import { buildProjects } from './e2e/projects';
@@ -6,6 +8,8 @@ const ci = process.env.CI === 'true';
 // A dedicated port, so E2E always runs against a fresh `next start` and never reuses `pnpm dev`.
 const port = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://127.0.0.1:${port}`;
+// Created here rather than with `mkdir -p` in webServer.command, which must also run in cmd.exe.
+mkdirSync('test-results', { recursive: true });
 
 export default defineConfig({
   testDir: './e2e',
@@ -26,7 +30,8 @@ export default defineConfig({
   projects: buildProjects({ ci, chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE }),
   webServer: {
     // `pnpm build` runs first (scripts/verify.sh, CI). From M01b the worker (`pnpm worker`) joins here.
-    command: `mkdir -p test-results && pnpm start --hostname 127.0.0.1 --port ${port} > test-results/server.log 2>&1`,
+    // Redirection that both sh and cmd.exe understand.
+    command: `pnpm start --hostname 127.0.0.1 --port ${port} > test-results/server.log 2>&1`,
     url: `${baseURL}/`,
     reuseExistingServer: false,
     timeout: 120_000,

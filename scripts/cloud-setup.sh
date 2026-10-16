@@ -13,13 +13,22 @@
 #   5. exports TEST_DATABASE_URL, NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE
 #      to $CLAUDE_ENV_FILE (SessionStart hook) and prints them as `export` lines.
 #
-# Idempotent and non-interactive. Usage:
+# Idempotent and non-interactive. Only for Claude Code cloud sessions (CLAUDE_CODE_REMOTE=true):
+# on a developer machine it would install a native PostgreSQL on port 5432 next to Docker
+# Compose and reset the local postgres password, so it refuses to run there. Usage:
 #   scripts/cloud-setup.sh            # set everything up, print the exports
 #   eval "$(scripts/cloud-setup.sh --print-env)"   # only print the exports
+#   scripts/cloud-setup.sh --force    # set up outside a cloud session anyway
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ] && [ "${1:-}" != "--print-env" ] && [ "${1:-}" != "--force" ]; then
+  echo "cloud-setup: only for Claude Code cloud sessions; locally use scripts/init-env.sh and" >&2
+  echo "  docker compose up -d --wait (pass --force to override)" >&2
+  exit 2
+fi
 
 PG_MAJOR=16
 PG_CLUSTER=main

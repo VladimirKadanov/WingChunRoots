@@ -17,7 +17,10 @@
     "enabled": true,
     "schedule": ["at any time"],
     "minimumReleaseAge": null,
-    "labels": ["security"]
+    "labels": ["security"],
+    "prBodyNotes": [
+      "If this release is younger than 1 day, pnpm's strict minimumReleaseAge rejects it and `pnpm install --frozen-lockfile` fails: add the exact fixed versions to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` in this PR (docs/adr/0001-stack.md, Renovate; plan §3.2). Never weaken the setting itself."
+    ]
   },
   "osvVulnerabilityAlerts": true,
   "packageRules": [

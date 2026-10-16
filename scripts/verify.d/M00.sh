@@ -100,6 +100,8 @@ for setting in "minimumReleaseAge: 1440" "minimumReleaseAgeStrict: true" \
     bad "pnpm-workspace.yaml: $setting (or, if unsupported, the line 'ОТПАДА: \`$key\` — <reason>' in $ADR)"
   fi
 done
+check "pnpm-workspace.yaml: shellEmulator: true (POSIX scripts outside WSL2 too)" \
+  grep -Eq '^shellEmulator: true$' pnpm-workspace.yaml
 check "pnpm-workspace.yaml: allowBuilds map present" grep -q '^allowBuilds:' pnpm-workspace.yaml
 # Every allowBuilds entry is an explicit true/false and is explained in the ADR.
 allow_ok=1
@@ -137,6 +139,18 @@ fi
 for img in "postgis/postgis:18-3.6@" "axllent/mailpit:" "chrislusf/seaweedfs:"; do
   check "docker-compose.yml uses $img" grep -q "$img" docker-compose.yml
 done
+# The postgis image preloads extensions into POSTGRES_DB, so it stays `postgres` and the
+# application databases are created empty from template0, the same in Compose, CI and the
+# cloud session (scripts/cloud-setup.sh).
+check "docker-compose.yml: POSTGRES_DB is postgres and both create-database scripts are mounted" \
+  bash -c "grep -Eq '^      POSTGRES_DB: postgres\$' docker-compose.yml \
+    && grep -Eq '^      - \./docker/postgres/20-create-dev-database\.sql:/docker-entrypoint-initdb\.d/' docker-compose.yml \
+    && grep -Eq '^      - \./docker/postgres/20-create-test-database\.sql:/docker-entrypoint-initdb\.d/' docker-compose.yml"
+for db in wingchunroots wingchunroots_test; do
+  f="docker/postgres/20-create-$([ "$db" = wingchunroots ] && echo dev || echo test)-database.sql"
+  check "$f creates $db from template0 with UTF8 and C.UTF-8" \
+    grep -Eq "^CREATE DATABASE $db TEMPLATE template0 ENCODING 'UTF8' LOCALE 'C.UTF-8';\$" "$f"
+done
 # Any other image reference in a workflow (for example `docker run <image>`), wherever it appears.
 refs="$(grep -hv '^[[:space:]]*#' .github/workflows/*.yml \
   | grep -Eo '[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*(@sha256:[0-9a-f]{64})?' || true)"
@@ -159,6 +173,10 @@ check "ci.yml has a job named 'ci'" grep -Eq '^  ci:$' "$ci"
 check "ci.yml installs with --frozen-lockfile" grep -q 'pnpm install --frozen-lockfile' "$ci"
 check "ci.yml runs scripts/verify.sh all" grep -q 'scripts/verify.sh all' "$ci"
 check "ci.yml runs PostGIS 18 as a service container" grep -q 'postgis/postgis:18-3.6@sha256:' "$ci"
+check "ci.yml: POSTGRES_DB is postgres; the test database comes from docker/postgres/20-create-test-database.sql" \
+  bash -c "grep -Eq '^          POSTGRES_DB: postgres\$' '$ci' \
+    && ! grep -Eq 'POSTGRES_DB:[[:space:]]*[\"'\'']?wingchunroots' '$ci' \
+    && grep -Eq '^[^#]*psql .*-f docker/postgres/20-create-test-database.sql' '$ci'"
 check "ci.yml installs Chromium and WebKit for Playwright" grep -Eq 'playwright install --with-deps chromium webkit' "$ci"
 check "ci.yml runs gitleaks" grep -q 'gitleaks' "$ci"
 check "ci.yml runs pnpm audit --prod --audit-level=high" grep -q 'pnpm audit --prod --audit-level=high' "$ci"
@@ -168,6 +186,9 @@ check "renovate.json is valid JSON with minimumReleaseAge and digest pinning" no
   const r = require('./renovate.json');
   const s = JSON.stringify(r);
   if (!/minimumReleaseAge/.test(s) || !/pinDigests|docker:pinDigests/.test(s) || !r.vulnerabilityAlerts) process.exit(1);"
+check "renovate.json: security PRs carry the minimumReleaseAgeExclude note" node -e "
+  const notes = require('./renovate.json').vulnerabilityAlerts.prBodyNotes ?? [];
+  process.exit(notes.some((n) => n.includes('minimumReleaseAgeExclude')) ? 0 : 1);"
 
 # 8. Cloud session: SessionStart hook and setup script (In scope, item 5) ----------------
 check ".claude/settings.json registers the SessionStart hook" node -e "
@@ -185,12 +206,16 @@ check "cloud-setup installs pnpm from packageManager with npm (no Corepack)" \
 check "no script runs 'playwright install' outside CI" \
   bash -c "! grep -hE '^[^#]*playwright install' scripts/*.sh .claude/hooks/*.sh"
 check "cloud-setup exports TEST_DATABASE_URL" grep -q 'TEST_DATABASE_URL' scripts/cloud-setup.sh
+check "cloud-setup refuses to run outside a cloud session (CLAUDE_CODE_REMOTE)" \
+  grep -q 'if \[ "\${CLAUDE_CODE_REMOTE:-}" != "true" \]' scripts/cloud-setup.sh
 
 # 9. Playwright, tests and telemetry -------------------------------------------------------
 check "e2e/smoke.spec.ts has the @smoke home page test" \
   grep -q "'@smoke home page responds with 200 and has no axe violations'" e2e/smoke.spec.ts
 check "mobile-webkit runs only in CI; Chromium can come from PW_CHROMIUM_EXECUTABLE" \
   bash -c "grep -q 'mobile-webkit' e2e/projects.ts && grep -q 'PW_CHROMIUM_EXECUTABLE' playwright.config.ts && grep -q \"process.env.CI === 'true'\" playwright.config.ts"
+check "playwright.config.ts: webServer.command also runs in cmd.exe (no mkdir -p, no &&)" \
+  bash -c "grep -q 'command: \`pnpm start ' playwright.config.ts && ! grep -Eq 'command: .*(mkdir -p|&&)' playwright.config.ts"
 check "next.config.ts enables cacheComponents, partialPrefetching and reactCompiler" \
   bash -c "grep -q 'cacheComponents: true' next.config.ts && grep -q 'partialPrefetching: true' next.config.ts && grep -q 'reactCompiler: true' next.config.ts"
 check "Next.js agent feedback is off" grep -q 'agentFeedback: false' next.config.ts

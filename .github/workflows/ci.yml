@@ -33,12 +33,15 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: wingchunroots_test
+          # Not wingchunroots_test: the image loads postgis and postgis_topology into
+          # POSTGRES_DB. The test database is created empty from template0 by the step
+          # below, with the same SQL as Docker Compose, exactly as in the cloud session.
+          POSTGRES_DB: postgres
           POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d wingchunroots_test"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 30
@@ -60,6 +63,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: Install the PostgreSQL client
         run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - name: Create the test database (same SQL as Docker Compose)
+        run: psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -f docker/postgres/20-create-test-database.sql
       - name: scripts/verify.sh all
         run: scripts/verify.sh all
       - name: Upload the verify log and Playwright results
