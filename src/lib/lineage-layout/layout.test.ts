@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { buildElkGraph } from './elk-graph.ts';
 import { LineageCycleError } from './errors.ts';
+import { indexGraph } from './graph.ts';
 import { createElkEngine, layoutLineage, layoutLineageWithStats } from './layout.ts';
 import { NODE_SIZES } from './presets.ts';
-import { computeRanks } from './ranks.ts';
+import { computeRanks, computeRanksIndexed } from './ranks.ts';
 import { demoGraph } from './testing/build.ts';
 import {
   positionsOf,
@@ -35,6 +37,25 @@ describe('layoutLineage: rows follow the ranks', () => {
     // y follows the rank for every edge, including edges to a teacher from another lineage.
     expect(yOrderViolations(scene)).toEqual([]);
     expect(scene.edges.length).toBe(graph.edges.length);
+  });
+});
+
+describe('why the ranks are handed to ELK (plan §4.4)', () => {
+  it('ELK LONGEST_PATH_SOURCE would not put demo-two-lineages below its teacher from another lineage', async () => {
+    const graph = sharedAncestorView(dataset);
+    const two = anchorId(dataset, 'demo-two-lineages');
+    const cross = graph.edges.find((e) => e.studentId === two && e.kind === 'crossLineage')!;
+    const index = indexGraph(graph);
+    const { elkGraph } = buildElkGraph(index, computeRanksIndexed(index));
+    elkGraph.layoutOptions = { ...elkGraph.layoutOptions, 'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE' };
+    const laidOut = await createElkEngine().layout(elkGraph);
+    const y = new Map((laidOut.children ?? []).map((c) => [c.id, c.y!]));
+    // Without our ranks the student is not below its teacher from lineage B …
+    expect(y.get(two)!).toBeLessThanOrEqual(y.get(cross.teacherId)!);
+    // … with them (INTERACTIVE, y = rank × 200) it is.
+    const scene = await layoutLineage(graph);
+    const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+    expect(byId.get(two)!.y).toBeGreaterThan(byId.get(cross.teacherId)!.y);
   });
 });
 
