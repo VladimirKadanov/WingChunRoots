@@ -13,7 +13,15 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 
-import { createDatabase, dropDatabase, migrateDatabase, repoRoot, runBootstrap, throwawayDatabaseName } from './admin';
+import {
+  createDatabase,
+  dropDatabase,
+  migrateDatabase,
+  repoRoot,
+  retryOnConcurrentRoleUpdate,
+  runBootstrap,
+  throwawayDatabaseName,
+} from './admin';
 import { type DbRole, loadDotEnv, ROLE_PASSWORD_ENV, rolePassword, roleUrl, withDatabase } from './env';
 import { seedDatabase, type SeedResult } from './seed';
 
@@ -40,7 +48,7 @@ async function startTestServer(): Promise<TestServer> {
   if (url) {
     // Fail early with a clear message when a password is missing.
     for (const role of Object.keys(ROLE_PASSWORD_ENV) as DbRole[]) rolePassword(role);
-    return { kind: 'TEST_DATABASE_URL', superuserUrl: url, bootstrap: async (databaseUrl) => runBootstrap(databaseUrl) };
+    return { kind: 'TEST_DATABASE_URL', superuserUrl: url, bootstrap: (databaseUrl) => runBootstrap(databaseUrl) };
   }
   return startContainer();
 }
@@ -61,11 +69,13 @@ async function startContainer(): Promise<TestServer> {
     superuserUrl: withDatabase(container.getConnectionUri(), 'postgres'),
     // psql inside the container, so the host needs no PostgreSQL client.
     async bootstrap(_databaseUrl, databaseName) {
-      const result = await container.exec(
-        ['psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', container.getUsername(), '-d', databaseName, '-f', '/tmp/db-bootstrap.sql'],
-        { env },
-      );
-      if (result.exitCode !== 0) throw new Error(`scripts/db-bootstrap.sql failed in the container: ${result.stderr || result.output}`);
+      await retryOnConcurrentRoleUpdate(async () => {
+        const result = await container.exec(
+          ['psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', container.getUsername(), '-d', databaseName, '-f', '/tmp/db-bootstrap.sql'],
+          { env },
+        );
+        return { ok: result.exitCode === 0, stderr: result.stderr || result.output };
+      }, `the container database ${databaseName}`);
     },
   };
 }

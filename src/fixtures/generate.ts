@@ -1,4 +1,6 @@
-// Deterministic generator of the fictional demo data (milestone M01, In scope 10; D20).
+// Deterministic generator of the fictional demo data (milestone M01, In scope 10).
+// DEFAULT D20: only clearly fictional people with `demo-` slugs and "Fictional demo record" in
+// every biography; real people, lineages, dates and ranks are never generated.
 //
 // generateFixtures(seed) returns every row `pnpm db:seed` inserts: about 600 people in three
 // lineages with two hubs, parallel teachers in one lineage, teachers from another lineage,

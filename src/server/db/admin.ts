@@ -51,19 +51,36 @@ export async function isSuperuser(client: Client): Promise<boolean> {
 }
 
 /**
+ * Runs `attempt` again while it fails with "tuple concurrently updated": test files bootstrap
+ * their own databases in parallel, and the cluster-wide ALTER ROLE statements of
+ * scripts/db-bootstrap.sql then race. The script is idempotent, so running it again is safe.
+ */
+export async function retryOnConcurrentRoleUpdate(attempt: () => Promise<{ ok: boolean; stderr: string }>, describe: string): Promise<void> {
+  for (let n = 1; ; n++) {
+    const { ok, stderr } = await attempt();
+    if (ok) return;
+    if (n < 8 && stderr.includes('tuple concurrently updated')) {
+      await new Promise((resolve) => setTimeout(resolve, 50 * n + randomBytes(1)[0]!));
+      continue;
+    }
+    throw new Error(`scripts/db-bootstrap.sql failed on ${describe}:\n${stderr.trim()}`);
+  }
+}
+
+/**
  * Runs scripts/db-bootstrap.sql against `superuserUrl` with psql (the script uses psql meta
  * commands). Role passwords come from the environment through \getenv; unset ones stay as they are.
  */
-export function runBootstrap(superuserUrl: string): void {
-  const result = spawnSync(
-    'psql',
-    [superuserUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(repoRoot(), 'scripts', 'db-bootstrap.sql')],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  if (result.error) throw new Error(`psql could not run (install the PostgreSQL client): ${result.error.message}`);
-  if (result.status !== 0) {
-    throw new Error(`scripts/db-bootstrap.sql failed on ${redactUrl(superuserUrl)}:\n${result.stderr.trim()}`);
-  }
+export async function runBootstrap(superuserUrl: string): Promise<void> {
+  await retryOnConcurrentRoleUpdate(async () => {
+    const result = spawnSync(
+      'psql',
+      [superuserUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(repoRoot(), 'scripts', 'db-bootstrap.sql')],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    if (result.error) throw new Error(`psql could not run (install the PostgreSQL client): ${result.error.message}`);
+    return { ok: result.status === 0, stderr: result.stderr };
+  }, redactUrl(superuserUrl));
 }
 
 /**

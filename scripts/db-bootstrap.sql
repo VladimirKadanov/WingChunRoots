@@ -26,6 +26,10 @@
 
 \set ON_ERROR_STOP on
 SET client_min_messages = warning;
+-- Keep the ALTER ROLE ... PASSWORD statements below out of the server log, whatever
+-- log_statement and log_min_duration_statement say (superuser-only settings, this session only).
+SET log_statement = 'none';
+SET log_min_duration_statement = -1;
 
 -- 1. Roles (cluster-wide). Login roles without any special attribute.
 SELECT format('CREATE ROLE %I LOGIN', r)

@@ -87,7 +87,7 @@ async function check(): Promise<void> {
   const name = throwawayDatabaseName('wcr_check');
   const url = await createDatabase(server, name);
   try {
-    runBootstrap(url);
+    await runBootstrap(url);
     const applied = await migrateDatabase(url);
     const expected = migrationNames();
     if (applied.join() !== expected.join()) {

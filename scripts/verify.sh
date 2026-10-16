@@ -15,7 +15,9 @@
 # Database: TEST_DATABASE_URL from the environment (cloud session: scripts/cloud-setup.sh;
 # CI: the PostGIS service container) or, failing that, from .env (scripts/init-env.sh).
 # Locally, when that database does not answer and Docker is available, the Compose
-# `postgres` service is started.
+# `postgres` service is started. From M01 the role passwords DB_MIGRATOR_PASSWORD,
+# DB_APP_RW_PASSWORD and DB_APP_PUBLIC_RO_PASSWORD come from the same places, and every run
+# bootstraps the test database (scripts/db-bootstrap.sh, idempotent) before the database steps.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -73,7 +75,8 @@ from_dotenv() {
   [ -n "$value" ] && export "$name=$value"
   return 0
 }
-for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE; do
+DB_PASSWORD_VARS=(DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD)
+for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}"; do
   from_dotenv "$name"
 done
 
@@ -82,6 +85,11 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
   if [ -z "${TEST_DATABASE_URL:-}" ]; then
     eval "$(scripts/cloud-setup.sh --print-env 2>/dev/null | grep '^export TEST_DATABASE_URL=')"
   fi
+  for name in "${DB_PASSWORD_VARS[@]}"; do
+    if [ -z "${!name:-}" ]; then
+      eval "$(scripts/cloud-setup.sh --print-env 2>/dev/null | grep "^export ${name}=")"
+    fi
+  done
   if [ -z "${PW_CHROMIUM_EXECUTABLE:-}" ]; then
     PW_CHROMIUM_EXECUTABLE="$(scripts/pw-chromium.sh 2>/dev/null || true)"
     [ -n "$PW_CHROMIUM_EXECUTABLE" ] && export PW_CHROMIUM_EXECUTABLE
@@ -210,7 +218,10 @@ run_checks() {
   bash "scripts/verify.d/$m.sh"
 }
 
+# Always the test database: DATABASE_URL from the environment wins over .env in the db:*
+# scripts, so the development database is never reset here.
 reset_migrate_seed() {
+  export DATABASE_URL="$TEST_DATABASE_URL"
   pnpm db:reset && pnpm db:migrate && pnpm db:seed
 }
 
@@ -219,6 +230,9 @@ step env check_env
 step install pnpm install --frozen-lockfile
 step db check_db
 step db-env-check scripts/db-env-check.sh
+if introduced M01; then
+  step db-bootstrap scripts/db-bootstrap.sh "$TEST_DATABASE_URL"
+fi
 step lint pnpm lint
 step typecheck pnpm typecheck
 step test pnpm test
