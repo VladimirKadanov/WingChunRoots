@@ -1,0 +1,109 @@
+import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk.bundled.js';
+import { focusSpine, modelOrder, type GraphIndex } from './graph.ts';
+import {
+  CHOSEN_NODE_PLACEMENT,
+  NODE_SIZES,
+  RANK_PSEUDO_Y,
+  SPINE_STRAIGHTNESS,
+  layoutPresets,
+} from './presets.ts';
+import type { DetailLevel, LayoutOptions, LineageEdge, NodePlacement, PresetName, RankResult } from './types.ts';
+
+/** Id of the ELK root node. Node ids of the view never collide with it: they are children. */
+export const ELK_ROOT_ID = '__lineage_root__';
+
+export interface ElkGraphBuild {
+  elkGraph: ElkNode;
+  /** Node ids in model order (the order of `elkGraph.children`). */
+  order: string[];
+  /** Edges handed to ELK, in the order of `elkGraph.edges`. */
+  elkEdges: LineageEdge[];
+  /** Edges to a teacher from another lineage: ranked, but not routed by ELK (plan §4.6). */
+  crossLineageEdges: LineageEdge[];
+  /** Focus spine edges, from the focus upwards. */
+  spine: LineageEdge[];
+  /** The focused person used for the spine (option or `graph.focusId`). */
+  focusId: string | null;
+  preset: PresetName;
+  nodePlacement: NodePlacement;
+  nodeSize: DetailLevel;
+}
+
+/**
+ * Turns ranks into an ELK graph with the settings of plan §4.5.
+ *
+ * - Layering is always INTERACTIVE with the pseudo y-coordinate `rank × 200`, also with a
+ *   single root, so ELK's layers are exactly our ranks (plan §4.4).
+ * - Edges to a teacher from another lineage are not given to ELK; they took part in the
+ *   ranks and the scene draws them as Bézier curves (plan §4.6).
+ * - Focus spine edges get a higher `elk.layered.priority.straightness`;
+ *   `elk.layered.priority.direction` is not used (plan §4.5).
+ * - Children and edges follow the model order, which `considerModelOrder` keeps stable.
+ */
+export function buildElkGraph(index: GraphIndex, ranks: RankResult, options: LayoutOptions = {}): ElkGraphBuild {
+  const preset = options.preset ?? 'explorer';
+  const nodeSize = options.nodeSize ?? 'full';
+  const presetOptions = layoutPresets[preset];
+  if (!presetOptions) {
+    throw new TypeError(`Unknown layout preset: ${String(preset)}`);
+  }
+  const nodePlacement =
+    options.nodePlacement ??
+    ((presetOptions['elk.layered.nodePlacement.strategy'] as NodePlacement | undefined) ?? CHOSEN_NODE_PLACEMENT);
+  const size = NODE_SIZES[nodeSize];
+  if (!size) {
+    throw new TypeError(`Unknown node size: ${String(nodeSize)}`);
+  }
+
+  const order = modelOrder(index);
+  const position = new Map(order.map((id, i) => [id, i]));
+  const focusId = (options.focusId === undefined ? index.graph.focusId : options.focusId) ?? null;
+  const spine = focusSpine(index, focusId);
+  const spineIds = new Set(spine.map((e) => e.id));
+  const previous = preset === 'expand' ? options.previousPositions : undefined;
+
+  const children: ElkNode[] = order.map((id) => {
+    const rank = ranks.ranks.get(id)!;
+    const node: ElkNode = {
+      id,
+      width: size.width,
+      height: size.height,
+      x: previous?.[id]?.x ?? 0,
+      y: rank * RANK_PSEUDO_Y,
+    };
+    const prev = previous?.[id];
+    if (prev) {
+      // Semi-interactive crossing minimization reads the desired order from elk.position.
+      node.layoutOptions = { 'elk.position': `(${prev.x}, ${rank * RANK_PSEUDO_Y})` };
+    }
+    return node;
+  });
+
+  const sortedEdges = [...index.graph.edges].sort(
+    (a, b) =>
+      position.get(a.teacherId)! - position.get(b.teacherId)! ||
+      position.get(a.studentId)! - position.get(b.studentId)! ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  const elkEdges: LineageEdge[] = [];
+  const crossLineageEdges: LineageEdge[] = [];
+  for (const edge of sortedEdges) {
+    (edge.kind === 'crossLineage' ? crossLineageEdges : elkEdges).push(edge);
+  }
+
+  const edges: ElkExtendedEdge[] = elkEdges.map((edge) => {
+    const elkEdge: ElkExtendedEdge = { id: edge.id, sources: [edge.teacherId], targets: [edge.studentId] };
+    if (spineIds.has(edge.id)) {
+      elkEdge.layoutOptions = { 'elk.layered.priority.straightness': String(SPINE_STRAIGHTNESS) };
+    }
+    return elkEdge;
+  });
+
+  const elkGraph: ElkNode = {
+    id: ELK_ROOT_ID,
+    layoutOptions: { ...presetOptions, 'elk.layered.nodePlacement.strategy': nodePlacement },
+    children,
+    edges,
+  };
+  return { elkGraph, order, elkEdges, crossLineageEdges, spine, focusId, preset, nodePlacement, nodeSize };
+}
