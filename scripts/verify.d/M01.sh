@@ -91,9 +91,14 @@ if [ "${#migrations[@]}" -gt 0 ]; then
   check "audit_log: REVOKE UPDATE, DELETE from app_rw and a trigger that refuses changes" bash -c '
     grep -qE "REVOKE UPDATE, DELETE.*\"audit_log\".* FROM app_rw" drizzle/*/migration.sql &&
     grep -qE "CREATE TRIGGER .* ON \"audit_log\"" drizzle/*/migration.sql'
+  # Every statement that grants to app_public_ro is one of these two exact lines, so a later
+  # GRANT cannot slip a private table in next to the views (privacy.int.test.ts checks the
+  # resulting privileges in the database as well).
   check "app_public_ro gets only the three public views" bash -c '
-    test "$(grep -hE "TO [^;]*app_public_ro" drizzle/*/migration.sql | grep -vE "^GRANT USAGE ON SCHEMA public" |
-      grep -vcE "v_public_person\", \"v_public_edge\", \"v_public_school\"")" -eq 0'
+    test "$(grep -hE "TO [^;]*app_public_ro" drizzle/*/migration.sql |
+      grep -vxF -e "GRANT USAGE ON SCHEMA public TO app_rw, app_public_ro;" \
+        -e "GRANT SELECT ON TABLE \"v_public_person\", \"v_public_edge\", \"v_public_school\" TO app_rw, app_public_ro;" |
+      wc -l)" -eq 0'
 fi
 refute "src/server/db never calls the uuidv7() SQL function" grep -rnE "sql\`[^\`]*uuidv7\(" src/server/db
 

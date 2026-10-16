@@ -39,7 +39,8 @@ export const vPublicPerson = pgView('v_public_person', {
 
 /**
  * Relationships with status verified or in_arbitration and visibility = 'public', between two
- * public people (DEFAULT D03). Counters and lineage_membership read only this view (plan §6.2).
+ * people that v_public_person shows (public, not deleted, a primary name; DEFAULT D03), so every
+ * edge points at a node. Counters and lineage_membership read only this view (plan §6.2).
  */
 export const vPublicEdge = pgView('v_public_edge', {
   id: uuid('id').notNull(),
@@ -57,8 +58,9 @@ export const vPublicEdge = pgView('v_public_edge', {
 }).existing();
 
 /**
- * Published schools. public_point is already the city centroid for city_only schools; the exact
- * point is never part of this view (plan §6.4). precision is 'exact' or 'city'.
+ * Published schools. public_point is the city centroid for city_only schools (a trigger keeps
+ * school.public_point so, and the view substitutes the centroid once more); the exact point is
+ * never part of this view (plan §6.4). precision is 'exact' or 'city'.
  */
 export const vPublicSchool = pgView('v_public_school', {
   id: uuid('id').notNull(),
