@@ -29,7 +29,19 @@ export function poolConfig(connectionString: string, applicationName: string): P
 /** A Drizzle database on its own pool for `role`, on the server and database of `baseUrl`. */
 export function createRoleDatabase(role: Exclude<DbRole, 'migrator'>, baseUrl: string, password: string): Database {
   const pool = new Pool(poolConfig(roleUrl(baseUrl, role, password), `wingchunroots:${role}`));
+  // An idle pooled client can die (PostgreSQL restart, pg_terminate_backend, a laptop waking
+  // from sleep). node-postgres then emits 'error' on the pool; without a listener Node treats it
+  // as an unhandled 'error' event and the whole process (next start, the worker) exits. The pool
+  // drops the dead client and opens a new one on the next query. Only the role and the SQLSTATE
+  // are logged: never the URL, a query or its parameters (plan §6.4).
+  pool.on('error', (error) => logIdleClientError(role, error));
   return drizzle({ client: pool });
+}
+
+/** The log line for a pooled client that failed while idle. */
+export function logIdleClientError(role: string, error: unknown): void {
+  const code = (error as { code?: unknown } | null)?.code;
+  console.error(`db pool ${role}: idle client error${typeof code === 'string' ? ` ${code}` : ''}`);
 }
 
 // One pool per role per process; kept on globalThis so `next dev` reloads do not leak pools.
