@@ -22,6 +22,8 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 2
+# shellcheck source=scripts/lib/psql.sh
+. scripts/lib/psql.sh
 
 MILESTONES=(M00 M00b M01 M01b M02 M03 M04 M05 M06 M07 M08 M09 M10a M10b M11 M12 M13)
 MIN_NODE="22.12.0"
@@ -71,7 +73,7 @@ from_dotenv() {
   local name="$1"
   [ -n "${!name:-}" ] || [ ! -f .env ] && return 0
   local value
-  value="$(sed -n "s/^${name}=//p" .env | tail -n 1 | sed -e "s/^['\"]//" -e "s/['\"]$//")"
+  value="$(dotenv_value "$name")"
   [ -n "$value" ] && export "$name=$value"
   return 0
 }
@@ -106,11 +108,17 @@ STEP_OUT="$LOG_DIR/.$target.step"
   echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)$(git diff --quiet HEAD 2>/dev/null || echo ' (with uncommitted changes)')"
 } > "$LOG"
 
+# A command line as the log shows it: any password in a URL becomes ***. No step passes a
+# database URL as an argument (the log is a CI artifact); this is the second line of defence.
+redact_urls() {
+  printf '%s' "$*" | sed -E 's#(://[^:/@[:space:]]+:)[^@[:space:]]*@#\1***@#g'
+}
+
 step() {
   local name="$1"
   shift
   local started=$SECONDS
-  printf '\n===== STEP %s: %s\n' "$name" "$*" >> "$LOG"
+  printf '\n===== STEP %s: %s\n' "$name" "$(redact_urls "$*")" >> "$LOG"
   # stdin is /dev/null: a step that would prompt fails fast instead of hanging.
   ("$@") < /dev/null > "$STEP_OUT" 2>&1
   local rc=$?
@@ -149,10 +157,14 @@ check_env() {
   fi
 
   if ! command -v psql >/dev/null 2>&1; then
-    echo "psql not found: install the PostgreSQL client (Ubuntu/WSL2: sudo apt-get install -y postgresql-client)"
+    echo "psql not found: install the PostgreSQL client (Ubuntu 24.04/WSL2: sudo apt-get install -y postgresql-client)"
     return 1
   fi
   psql --version
+  if introduced M01; then
+    # scripts/db-bootstrap.sql and the integration tests need \getenv (psql 15+).
+    psql_check_version 2>&1 || return 1
+  fi
 
   if [ -z "$TEST_DATABASE_URL" ]; then
     echo "TEST_DATABASE_URL is not set."
@@ -171,12 +183,12 @@ db_name() {
 }
 
 db_answers() {
-  psql "$TEST_DATABASE_URL" -X -q -At -c 'SELECT 1' >/dev/null 2>&1
+  psql_url "$TEST_DATABASE_URL" -X -q -At -c 'SELECT 1' >/dev/null 2>&1
 }
 
 check_db() {
   if db_answers; then
-    psql "$TEST_DATABASE_URL" -X -q -At -c 'SELECT version()'
+    psql_url "$TEST_DATABASE_URL" -X -q -At -c 'SELECT version()'
     return 0
   fi
   if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
@@ -193,7 +205,7 @@ check_db() {
     done
   fi
   if db_answers; then
-    psql "$TEST_DATABASE_URL" -X -q -At -c 'SELECT version()'
+    psql_url "$TEST_DATABASE_URL" -X -q -At -c 'SELECT version()'
     return 0
   fi
   echo "Cannot connect to TEST_DATABASE_URL (database '$(db_name)')."
@@ -218,6 +230,12 @@ run_checks() {
   bash "scripts/verify.d/$m.sh"
 }
 
+# No URL as an argument: step() logs its arguments (the log is a CI artifact), and the process
+# list shows them to every local user.
+bootstrap_test_db() {
+  scripts/db-bootstrap.sh --test-database
+}
+
 # Always the test database: DATABASE_URL from the environment wins over .env in the db:*
 # scripts, so the development database is never reset here.
 reset_migrate_seed() {
@@ -231,7 +249,7 @@ step install pnpm install --frozen-lockfile
 step db check_db
 step db-env-check scripts/db-env-check.sh
 if introduced M01; then
-  step db-bootstrap scripts/db-bootstrap.sh "$TEST_DATABASE_URL"
+  step db-bootstrap bootstrap_test_db
 fi
 step lint pnpm lint
 step typecheck pnpm typecheck

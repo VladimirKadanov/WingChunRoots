@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertSafeToReset, databaseName, isLocalHost, redactUrl, rolePassword, roleUrl, targetDatabaseUrl, withDatabase } from './env';
+import { assertSafeToReset, databaseName, isLocalHost, redactUrl, rolePassword, roleUrl, splitPassword, targetDatabaseUrl, withDatabase } from './env';
 
 const LOCAL = 'postgres://postgres:secret@127.0.0.1:5432/wingchunroots';
 const TEST = 'postgres://postgres:secret@db.internal:5432/wingchunroots_test';
@@ -32,6 +32,17 @@ describe('database URLs', () => {
     expect(targetDatabaseUrl({ DATABASE_URL: LOCAL, TEST_DATABASE_URL: TEST })).toBe(LOCAL);
     expect(targetDatabaseUrl({ TEST_DATABASE_URL: TEST })).toBe(TEST);
     expect(() => targetDatabaseUrl({})).toThrow(/neither DATABASE_URL nor TEST_DATABASE_URL/);
+  });
+
+  it('splits the password off a URL for PGPASSWORD (never on a command line)', () => {
+    expect(splitPassword('postgres://postgres:p%40ss%2Fword@127.0.0.1:5432/wingchunroots?sslmode=disable')).toEqual({
+      url: 'postgres://postgres@127.0.0.1:5432/wingchunroots?sslmode=disable',
+      password: 'p@ss/word',
+    });
+    expect(splitPassword('postgres://postgres@127.0.0.1/wingchunroots')).toEqual({
+      url: 'postgres://postgres@127.0.0.1/wingchunroots',
+      password: '',
+    });
   });
 
   it('asks for a missing role password by its variable name', () => {

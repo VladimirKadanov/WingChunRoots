@@ -124,7 +124,7 @@ fi
 # Roles, database owner and PostGIS (idempotent; the passwords reach psql through the environment).
 if [ -x "$ROOT/scripts/db-bootstrap.sh" ]; then
   log "bootstrapping roles and ${DB_NAME} (scripts/db-bootstrap.sh)"
-  "$ROOT/scripts/db-bootstrap.sh" "$TEST_DATABASE_URL" >/dev/null
+  TEST_DATABASE_URL="$TEST_DATABASE_URL" "$ROOT/scripts/db-bootstrap.sh" --test-database >/dev/null
 fi
 
 # 3. The exact pnpm from package.json, then the dependencies.

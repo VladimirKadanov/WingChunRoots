@@ -1,12 +1,9 @@
 // Migrations and database structure (milestone M01, Done when 2), on PostgreSQL 16 (cloud
 // session) and 18 (CI).
 
-import { spawnSync } from 'node:child_process';
-import path from 'node:path';
-
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { appliedMigrations, migrateDatabase, migrationNames, repoRoot, withClient } from './admin';
+import { appliedMigrations, migrateDatabase, migrationNames, runDrizzleKit, withClient } from './admin';
 import { rows, value } from './test-support';
 import { createTestDatabase, type TestDatabase } from './testing';
 
@@ -37,11 +34,7 @@ describe('migrations', () => {
   });
 
   it('have no conflicts according to drizzle-kit check', () => {
-    const root = repoRoot();
-    const result = spawnSync(path.join(root, 'node_modules', '.bin', 'drizzle-kit'), ['check', '--output', 'json'], {
-      cwd: root,
-      encoding: 'utf8',
-    });
+    const result = runDrizzleKit(['check', '--output', 'json']);
     expect(result.status).toBe(0);
     const json = result.stdout.split('\n').find((l) => l.trim().startsWith('{'));
     expect(JSON.parse(json ?? '{}')).toMatchObject({ status: 'ok' });

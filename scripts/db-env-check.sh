@@ -9,6 +9,8 @@
 # (superuser in the cloud session, in CI and in Docker Compose). The extensions are
 # created inside a transaction that is rolled back, so the check leaves no trace.
 set -euo pipefail
+# shellcheck source=scripts/lib/psql.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/psql.sh"
 
 url="${1:-${TEST_DATABASE_URL:-}}"
 if [ -z "$url" ]; then
@@ -23,7 +25,8 @@ fi
 MIN_PG_NUM=160000
 MIN_POSTGIS="3.4"
 
-out="$(psql "$url" -X -q -At -v ON_ERROR_STOP=1 <<'SQL'
+# psql_url passes the password through PGPASSWORD, never on the command line.
+out="$(psql_url "$url" -X -q -At -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
