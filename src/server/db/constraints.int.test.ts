@@ -77,13 +77,39 @@ describe('teaching_relationship constraints', () => {
     expect((await pgError(relationship({ visibility: 'public' }))).code).toBe(PG.checkViolation);
   });
 
-  it('allows only one display-primary active relationship per student (DEFAULT D05)', async () => {
-    const [other] = await orm.insert(person).values({ slug: 'demo-it-second-teacher', kind: 'living' }).returning({ id: person.id });
+  it('allows one display-primary teacher per student, only on established relationships (DEFAULT D05)', async () => {
+    const [other, third] = await orm
+      .insert(person)
+      .values([
+        { slug: 'demo-it-second-teacher', kind: 'living' },
+        { slug: 'demo-it-third-teacher', kind: 'living' },
+      ])
+      .returning({ id: person.id });
     const [primary] = await relationship({ status: 'verified', visibility: 'public', isDisplayPrimary: true });
     const error = await pgError(relationship({ teacherPersonId: other!.id, status: 'verified', visibility: 'public', isDisplayPrimary: true }));
     expect(error.code).toBe(PG.uniqueViolation);
-    await relationship({ teacherPersonId: other!.id, status: 'verified', visibility: 'public', isDisplayPrimary: false });
+    expect(error.constraint).toBe('teaching_relationship_one_display_primary_key');
+    const [second] = await relationship({ teacherPersonId: other!.id, status: 'verified', visibility: 'public', isDisplayPrimary: false });
     expect(primary!.isDisplayPrimary).toBe(true);
+
+    // A request never carries the flag (the verify transition sets it, M09), so a private request
+    // cannot take a public student's slot and hint at itself (plan §4.14, D03).
+    for (const status of ['pending_teacher', 'awaiting_claim', 'under_review'] as const) {
+      const request = await pgError(relationship({ teacherPersonId: third!.id, status, isDisplayPrimary: true }));
+      expect(request.code, status).toBe(PG.checkViolation);
+      expect(request.constraint, status).toBe('teaching_relationship_display_primary_after_verification');
+    }
+    const [pending] = await relationship({ teacherPersonId: third!.id, status: 'pending_teacher' });
+    expect(pending!.isDisplayPrimary).toBe(false);
+
+    // A revoked relationship keeps its flag as history and frees the slot for another teacher.
+    await orm.update(teachingRelationship).set({ status: 'revoked' }).where(eq(teachingRelationship.id, primary!.id));
+    await orm.update(teachingRelationship).set({ isDisplayPrimary: true }).where(eq(teachingRelationship.id, second!.id));
+    const flagged = await orm
+      .select({ id: teachingRelationship.id, status: teachingRelationship.status })
+      .from(teachingRelationship)
+      .where(eq(teachingRelationship.isDisplayPrimary, true));
+    expect(flagged.map((r) => r.status).sort()).toEqual(['revoked', 'verified']);
   });
 });
 
