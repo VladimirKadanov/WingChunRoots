@@ -81,5 +81,6 @@
 ```
 
 ## Дневник на напредъка (Progress log)
+
 - 2026-10-16 16:22 — раздел 8 на плана е разделен на `docs/plan/` (RULES.md, 17 файла на етапи, deferred-hosting.md, README.md, questions/) (eb1d807)
 - 2026-10-16 16:40 — скелет на Next.js 16.4.1, pnpm 12.14.0 с настройките от §3.2, ESLint, Vitest, Playwright с axe, Docker Compose по digest, `scripts/cloud-setup.sh`, SessionStart hook и `scripts/db-env-check.sh`; lint, typecheck, unit, build и `@smoke` (Chromium) са зелени, db-env-check минава на PostgreSQL 16.15 / PostGIS 3.4.2 (2089306)

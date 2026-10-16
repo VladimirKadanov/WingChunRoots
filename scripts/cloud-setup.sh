@@ -41,16 +41,7 @@ as_postgres() {
 }
 
 chromium_executable() {
-  # Prints the Chromium Playwright should use, or nothing when the pinned build is present.
-  local expected candidate
-  expected="$(node -e "process.stdout.write(require('@playwright/test').chromium.executablePath())" 2>/dev/null || true)"
-  if [ -n "$expected" ] && [ -x "$expected" ]; then
-    return 0
-  fi
-  candidate="$(ls -d "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"/chromium-*/chrome-linux*/chrome 2>/dev/null | sort -V | tail -n 1 || true)"
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    printf '%s' "$candidate"
-  fi
+  "$ROOT/scripts/pw-chromium.sh"
 }
 
 print_env() {

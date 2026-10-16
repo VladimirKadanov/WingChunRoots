@@ -1,0 +1,62 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency updates for WingChunRoots (plan §3.2): exact versions, a waiting period for new releases, digest-pinned images and actions, and security fixes at any time.",
+  "extends": ["config:recommended", "docker:pinDigests", "helpers:pinGitHubActionDigests"],
+  "timezone": "Europe/Sofia",
+  "rangeStrategy": "pin",
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null,
+    "labels": ["security"]
+  },
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "description": "Docker images and GitHub Actions stay pinned by digest; digest refreshes follow the weekly schedule.",
+      "matchDatasources": ["docker", "github-tags", "github-releases"],
+      "pinDigests": true
+    },
+    {
+      "description": "PostgreSQL/PostGIS major and minor upgrades are separate goals (plan §9); only digest refreshes here.",
+      "matchDepNames": ["postgis/postgis"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "enabled": false
+    },
+    {
+      "description": "Next.js and React move together; the weekly security window groups their patch releases (plan §3.2).",
+      "matchPackageNames": ["next", "eslint-config-next", "@next/*", "react", "react-dom", "@types/react", "@types/react-dom"],
+      "groupName": "next and react"
+    },
+    {
+      "description": "typescript-eslint 8.71 supports TypeScript < 6.1 (plan §3.1).",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<6.1"
+    },
+    {
+      "description": "eslint-plugin-react (via eslint-config-next) supports ESLint 9 only.",
+      "matchPackageNames": ["eslint"],
+      "allowedVersions": "<10"
+    },
+    {
+      "description": "Types follow the Node 24 LTS baseline (.nvmrc); Node 26 is a separate goal (plan §9).",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25"
+    },
+    {
+      "description": "The Node.js runtime itself is upgraded as a separate goal (plan §9).",
+      "matchDepNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}
