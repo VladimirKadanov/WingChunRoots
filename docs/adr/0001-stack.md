@@ -92,8 +92,10 @@ pnpm 12 отказва настройка, която не разпознава,
 
 `renovate.json`: точни версии (`rangeStrategy: pin`), `minimumReleaseAge: 3 days` за обикновените обновявания (повече от строгия ден на pnpm), седмичен график (понеделник преди 6:00, Europe/Sofia) за обновяванията и за digest-ите на образите и действията, а поправките по сигурността (`vulnerabilityAlerts`, OSV) — по всяко време и без изчакване. Next.js и React са в една група. Ограничения: `typescript <6.1`, `eslint <10`, `@types/node <25`; мажорните и минорните версии на `postgis/postgis` и на Node се обновяват като отделни цели (план §9), а Renovate обновява само digest-ите им.
 
+Поправка по сигурността, по-млада от един ден, се спира от строгия `minimumReleaseAge` на pnpm и `pnpm install --frozen-lockfile` в CI пада. Тогава PR-ът добавя точната версия в `minimumReleaseAgeExclude` в `pnpm-workspace.yaml` с причина в описанието; записът се маха, след като версията навърши един ден (`minimumReleaseAgeExcludePrune` го маха и сам, щом lockfile-ът вече не го ползва). Настройката не се отслабва глобално.
+
 ## Последствия
 
-- Всяко обновяване на версия е отделен PR. Поправка по сигурността, по-млада от един ден, се добавя в `minimumReleaseAgeExclude` в същия PR (`pnpm audit --fix` го прави сам), а `minimumReleaseAgeExcludePrune` маха записа после.
+- Всяко обновяване на версия е отделен PR. Поправка по сигурността, по-млада от един ден, се добавя в `minimumReleaseAgeExclude` в същия PR (виж „Renovate“; според плана `pnpm audit --fix` го прави сам, но при pnpm 12.14.0 това не е проверено), а `minimumReleaseAgeExcludePrune` маха записа после.
 - SQL-ът се изпитва на PostgreSQL 16 (облачна сесия) и на 18 (CI), затова не ползва функции само от 17 или 18.
 - Не са упражнени в облачната сесия при M00 (нямат Docker или WebKit): Docker Compose (`docker compose config` е валиден), проектът `mobile-webkit`, PostgreSQL 18 и gitleaks. Те се проверяват в CI и на машината на собственика.

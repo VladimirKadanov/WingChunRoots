@@ -7,7 +7,7 @@
 #   2. starts the cluster and creates a UTF-8 test database (C.UTF-8 locale:
 #      with LC_CTYPE=C pg_trgm extracts no trigrams from Cyrillic or Chinese);
 #   3. installs the exact pnpm pinned in package.json "packageManager" (npm i -g,
-#      never Corepack) and runs `pnpm install`;
+#      never Corepack) and runs `pnpm install --frozen-lockfile`;
 #   4. never installs browsers: if the pinned Playwright expects a different
 #      Chromium build than the preinstalled one, it sets PW_CHROMIUM_EXECUTABLE;
 #   5. exports TEST_DATABASE_URL, NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE
@@ -44,14 +44,23 @@ chromium_executable() {
   "$ROOT/scripts/pw-chromium.sh"
 }
 
-print_env() {
+print_base_env() {
   echo "export TEST_DATABASE_URL='${TEST_DATABASE_URL}'"
   echo "export NEXT_TELEMETRY_DISABLED=1"
+}
+
+# Needs node_modules (it asks the pinned Playwright which Chromium build it expects).
+print_browser_env() {
   local chromium
   chromium="$(chromium_executable)"
   if [ -n "$chromium" ]; then
     echo "export PW_CHROMIUM_EXECUTABLE='${chromium}'"
   fi
+}
+
+print_env() {
+  print_base_env
+  print_browser_env
 }
 
 if [ "${1:-}" = "--print-env" ]; then
@@ -100,12 +109,21 @@ if [ "$(pnpm --version 2>/dev/null || true)" != "$pnpm_version" ]; then
   npm install --global --silent "pnpm@${pnpm_version}" >/dev/null
   hash -r
 fi
-log "pnpm install"
-pnpm install --reporter=silent >/dev/null
-
-# 4 + 5. Environment for the session.
+# The database variables reach the session even when the install below fails.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-  print_env >> "$CLAUDE_ENV_FILE"
+  print_base_env >> "$CLAUDE_ENV_FILE"
+fi
+log "pnpm install --frozen-lockfile"
+if ! pnpm install --frozen-lockfile --reporter=silent >/dev/null; then
+  log "pnpm install --frozen-lockfile failed: pnpm-lock.yaml does not match package.json,"
+  log "or a package is blocked by pnpm-workspace.yaml (minimumReleaseAge, trustPolicy, allowBuilds)."
+  log "Run 'pnpm install --frozen-lockfile' to see the error; never weaken those settings to pass."
+  exit 1
+fi
+
+# 4 + 5. Browser environment for the session.
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  print_browser_env >> "$CLAUDE_ENV_FILE"
 fi
 log "ready: PostgreSQL $(as_postgres psql -At -p "$DB_PORT" -d postgres -c 'SHOW server_version'), pnpm $(pnpm --version), TEST_DATABASE_URL set"
 print_env

@@ -13,6 +13,12 @@ if [ -f .env ] && [ "${1:-}" != "--force" ]; then
   echo "init-env: .env already exists; keeping it (use --force to regenerate)." >&2
   exit 0
 fi
+if [ -f .env ]; then
+  echo "init-env: --force: regenerating .env with NEW passwords and keys." >&2
+  echo "  An existing Compose volume keeps the passwords of its first start, so the new .env" >&2
+  echo "  will not match it. Recreate the volumes (deletes local data):" >&2
+  echo "    docker compose down -v && docker compose up -d --wait" >&2
+fi
 
 random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
 

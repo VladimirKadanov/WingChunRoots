@@ -53,6 +53,11 @@
       "allowedVersions": "<25"
     },
     {
+      "description": "engines.node stays a range (>=22.12) so cloud sessions on Node 22 keep working; never pin it.",
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
       "description": "The Node.js runtime itself is upgraded as a separate goal (plan §9).",
       "matchDepNames": ["node"],
       "matchUpdateTypes": ["major"],

@@ -52,8 +52,8 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/lib/lineage-layout/**/*.ts'],
-    ignores: ['src/lib/lineage-layout/layout.worker.ts'],
+    // layout.worker.ts may use worker globals (plan §4.1), but the import bans apply to it too.
+    files: ['src/lib/lineage-layout/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': restrictImports([
         {

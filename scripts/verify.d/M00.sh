@@ -92,20 +92,23 @@ for setting in "minimumReleaseAge: 1440" "minimumReleaseAgeStrict: true" \
   key="${setting%%:*}"
   if grep -Eq "^${setting}\$" pnpm-workspace.yaml; then
     ok "pnpm-workspace.yaml: $setting"
-  elif grep -q "$key" "$ADR"; then
-    ok "pnpm-workspace.yaml: $key missing, reason recorded in $ADR"
+  elif ! grep -Eq "^${key}:" pnpm-workspace.yaml && grep -q "^ОТПАДА: \`${key}\`" "$ADR"; then
+    # A setting the pinned pnpm does not support is dropped and recorded in the ADR with a
+    # line that starts with "ОТПАДА: `<setting>`" followed by the reason (plan §3.2).
+    ok "pnpm-workspace.yaml: $key dropped, reason recorded in $ADR"
   else
-    bad "pnpm-workspace.yaml: $setting (or a recorded reason in $ADR)"
+    bad "pnpm-workspace.yaml: $setting (or, if unsupported, the line 'ОТПАДА: \`$key\` — <reason>' in $ADR)"
   fi
 done
 check "pnpm-workspace.yaml: allowBuilds map present" grep -q '^allowBuilds:' pnpm-workspace.yaml
 # Every allowBuilds entry is an explicit true/false and is explained in the ADR.
 allow_ok=1
 while IFS= read -r entry; do
-  pkg="${entry%%:*}"
-  grep -q "\`$pkg\`" "$ADR" || allow_ok=0
-done < <(awk '/^allowBuilds:/{on=1; next} /^[^ ]/{on=0} on && NF' pnpm-workspace.yaml | sed 's/^ *//')
-if [ "$allow_ok" -eq 1 ] && ! awk '/^allowBuilds:/{on=1; next} /^[^ ]/{on=0} on && NF' pnpm-workspace.yaml | grep -Evq ':[[:space:]]*(true|false)[[:space:]]*$'; then
+  # Scoped package names are quoted YAML keys ('@scope/name'): strip the quotes.
+  pkg="$(printf '%s' "${entry%%:*}" | tr -d "\"'")"
+  grep -qF "\`$pkg\`" "$ADR" || allow_ok=0
+done < <(awk '/^allowBuilds:/{on=1; next} /^[^ ]/{on=0} on && NF && $1 !~ /^#/' pnpm-workspace.yaml | sed 's/^ *//')
+if [ "$allow_ok" -eq 1 ] && ! awk '/^allowBuilds:/{on=1; next} /^[^ ]/{on=0} on && NF && $1 !~ /^#/' pnpm-workspace.yaml | grep -Evq ':[[:space:]]*(true|false)[[:space:]]*$'; then
   ok "allowBuilds: explicit true/false for every package, each explained in $ADR"
 else
   bad "allowBuilds: explicit true/false for every package, each explained in $ADR"
@@ -124,14 +127,14 @@ check "package.json engines.node is >=22.12" \
   node -e "process.exit(require('./package.json').engines.node === '>=22.12' ? 0 : 1)"
 
 # 6. Images pinned by digest, actions pinned by commit SHA -------------------------------
-images="$(grep -Eh '^[[:space:]]*image:' docker-compose.yml .github/workflows/*.yml | sed 's/^[[:space:]]*image:[[:space:]]*//')"
+images="$(grep -Eh '^[[:space:]]*(image|container):[[:space:]]*[^[:space:]]' docker-compose.yml .github/workflows/*.yml | sed -E 's/^[[:space:]]*(image|container):[[:space:]]*//')"
 if [ -n "$images" ] && ! printf '%s\n' "$images" | grep -Evq '@sha256:[0-9a-f]{64}[[:space:]]*$'; then
   ok "every image in docker-compose.yml and the workflows is pinned by @sha256 digest"
 else
   bad "every image in docker-compose.yml and the workflows is pinned by @sha256 digest"
   printf '%s\n' "$images" | grep -Ev '@sha256:[0-9a-f]{64}[[:space:]]*$'
 fi
-for img in "postgis/postgis:18-3.6@" "axllent/mailpit:v1.31" "chrislusf/seaweedfs:"; do
+for img in "postgis/postgis:18-3.6@" "axllent/mailpit:" "chrislusf/seaweedfs:"; do
   check "docker-compose.yml uses $img" grep -q "$img" docker-compose.yml
 done
 # Any other image reference in a workflow (for example `docker run <image>`), wherever it appears.

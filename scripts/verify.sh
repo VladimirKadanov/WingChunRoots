@@ -51,7 +51,8 @@ if [ "$target" = "all" ]; then
   e2e_args=()
 else
   checks=("$target")
-  e2e_args=(--grep "@smoke|@$target")
+  # \b keeps @M00 from also selecting @M00b (and @M01 from @M01b).
+  e2e_args=(--grep "@smoke\\b|@$target\\b")
 fi
 
 # A step introduced by milestone X runs once X has landed (scripts/verify.d/X.sh exists)
@@ -62,14 +63,31 @@ introduced() {
 
 # --- environment shared by all steps ------------------------------------------------
 export NEXT_TELEMETRY_DISABLED=1
-if [ -z "${TEST_DATABASE_URL:-}" ] && [ -f .env ]; then
-  TEST_DATABASE_URL="$(sed -n 's/^TEST_DATABASE_URL=//p' .env | tail -n 1 | sed -e "s/^['\"]//" -e "s/['\"]$//")"
+
+# Variables the environment does not set are taken from .env (scripts/init-env.sh), if any.
+from_dotenv() {
+  local name="$1"
+  [ -n "${!name:-}" ] || [ ! -f .env ] && return 0
+  local value
+  value="$(sed -n "s/^${name}=//p" .env | tail -n 1 | sed -e "s/^['\"]//" -e "s/['\"]$//")"
+  [ -n "$value" ] && export "$name=$value"
+  return 0
+}
+for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE; do
+  from_dotenv "$name"
+done
+
+# Cloud session: the SessionStart hook normally exports these; recover when it did not.
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+  if [ -z "${TEST_DATABASE_URL:-}" ]; then
+    eval "$(scripts/cloud-setup.sh --print-env 2>/dev/null | grep '^export TEST_DATABASE_URL=')"
+  fi
+  if [ -z "${PW_CHROMIUM_EXECUTABLE:-}" ]; then
+    PW_CHROMIUM_EXECUTABLE="$(scripts/pw-chromium.sh 2>/dev/null || true)"
+    [ -n "$PW_CHROMIUM_EXECUTABLE" ] && export PW_CHROMIUM_EXECUTABLE
+  fi
 fi
 export TEST_DATABASE_URL="${TEST_DATABASE_URL:-}"
-if [ -z "${PW_CHROMIUM_EXECUTABLE:-}" ] && [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
-  PW_CHROMIUM_EXECUTABLE="$(scripts/pw-chromium.sh 2>/dev/null || true)"
-  [ -n "$PW_CHROMIUM_EXECUTABLE" ] && export PW_CHROMIUM_EXECUTABLE
-fi
 
 LOG_DIR=".verify"
 mkdir -p "$LOG_DIR"
@@ -85,7 +103,8 @@ step() {
   shift
   local started=$SECONDS
   printf '\n===== STEP %s: %s\n' "$name" "$*" >> "$LOG"
-  ("$@") > "$STEP_OUT" 2>&1
+  # stdin is /dev/null: a step that would prompt fails fast instead of hanging.
+  ("$@") < /dev/null > "$STEP_OUT" 2>&1
   local rc=$?
   cat "$STEP_OUT" >> "$LOG"
   local took=$((SECONDS - started))
@@ -152,7 +171,10 @@ check_db() {
     psql "$TEST_DATABASE_URL" -X -q -At -c 'SELECT version()'
     return 0
   fi
-  if [ -z "${CI:-}" ] && [ -f docker-compose.yml ] && command -v docker >/dev/null 2>&1 \
+  if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+    echo "The test database does not answer; running scripts/cloud-setup.sh (idempotent)."
+    scripts/cloud-setup.sh >/dev/null || return 1
+  elif [ -z "${CI:-}" ] && [ -f docker-compose.yml ] && command -v docker >/dev/null 2>&1 \
     && docker info >/dev/null 2>&1; then
     echo "The test database does not answer; starting the Docker Compose postgres service."
     docker compose up -d --wait postgres || return 1
@@ -169,6 +191,9 @@ check_db() {
   echo "Cannot connect to TEST_DATABASE_URL (database '$(db_name)')."
   echo "  cloud session: scripts/cloud-setup.sh"
   echo "  local:         docker compose up -d --wait (and scripts/init-env.sh once)"
+  echo "If the server answers but rejects the password: the Compose volume keeps the password of"
+  echo "its first start. Use the old .env, or recreate the volume (deletes local data):"
+  echo "  docker compose down -v && docker compose up -d --wait"
   return 1
 }
 
