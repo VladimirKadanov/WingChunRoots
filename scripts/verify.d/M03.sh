@@ -78,7 +78,8 @@ check "edges to a teacher from another lineage are kept out of ELK" \
 # 4. The tests of "Done when" item 2 and 3 are present (they run in the test step) ----------
 declare -A tests=(
   ["rank(student) > rank(teacher) for every edge"]="keeps rank(student) > rank(teacher) for every edge"
-  ["same rank, same y; y follows the rank"]="ranksWithSeveralY(scene)).toEqual([])"
+  ["same rank, same y"]="expect(ranksWithSeveralY(scene), name).toEqual([])"
+  ["y follows the rank for every edge"]="expect(yOrderViolations(scene), name).toEqual([])"
   ["every person is exactly one node"]="Every person is exactly one node"
   ["byte-for-byte determinism for each preset and placement"]="gives byte-for-byte identical output for the same input"
   ["deterministic synthetic generator"]="is deterministic: the same seed gives the same graph, byte for byte"
