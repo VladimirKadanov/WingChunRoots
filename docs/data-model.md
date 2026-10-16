@@ -55,7 +55,7 @@
 | Таблица | Предназначение и важни колони |
 |---|---|
 | `place` | Справочник на градовете от GeoNames (лиценз CC BY 4.0): `geonames_id` (уникален), `name`, `ascii_name`, `country_code`, `admin1_code`, `feature_code`, `population`, `timezone`, **`centroid`** |
-| `school` | Школа: `slug`, `name`, `place_id`, `location_privacy` (`exact`, `city_only`; по подразбиране `city_only`), **`public_point`** (точната точка при `exact`, центроидът на града при `city_only`), `status` (`draft`, `published`, `hidden`, `archived`), `description`, `website_url`, `last_activity_at` (DEFAULT D17), `created_by_user_id`, `deleted_at` |
+| `school` | Школа: `slug`, `name`, `place_id`, `location_privacy` (`exact`, `city_only`; по подразбиране `city_only`), **`public_point`** (точната точка при `exact`, центроидът на града при `city_only`; при `city_only` тригер записва центроида, който и да пише, вж. §5), `status` (`draft`, `published`, `hidden`, `archived`), `description`, `website_url`, `last_activity_at` (DEFAULT D17), `created_by_user_id`, `deleted_at` |
 | `school_private_location` | Точното място и адресът на школата (`school_id`, **`exact_point`**, `address_line`). Отделна таблица, до която `app_public_ro` няма никакъв достъп |
 | `school_instructor` | Инструкторите на школата: `school_id`, `person_id`, `role` (`head_instructor`, `instructor`, `assistant`) |
 
@@ -97,28 +97,30 @@
 | Изглед | Съдържа | Колони |
 |---|---|---|
 | `v_public_person` | Само `visibility = 'public'` и без изтритите | `id`, `slug`, `kind`, `life_status`, `stewardship`, `country_code`, `display_name` (основното име), `alt_names` (JSON масив с останалите имена: `value`, `script`, `lang`, `kind`, `romanization`), `bio` (на английски, иначе първата по език), `created_at`, `updated_at`. Без `birth_date`, без потребителски идентификатори |
-| `v_public_edge` | Само `status` `verified` или `in_arbitration` с `visibility = 'public'`, между двама публични и неизтрити души, в неизтрита линия | `id`, `teacher_person_id`, `student_person_id`, `lineage_id`, `status`, `verification_path`, `is_display_primary`, `visibility`, `confirmed_at`, `periods` (JSON: `startsOn`, `endsOn`, `precision`, `ongoing`), `created_at`, `updated_at` |
-| `v_public_school` | Само `status = 'published'` и без изтритите | `id`, `slug`, `name`, `location_privacy`, `precision` (`exact` или `city`), `public_point` (при `city_only` винаги центроидът на града от `place`, независимо какво пише в `school.public_point`), `place_id`, `city_name`, `country_code`, `description`, `website_url`, `last_activity_at`, `instructor_person_ids` (само публичните инструктори), `created_at`, `updated_at` |
+| `v_public_edge` | Само `status` `verified` или `in_arbitration` с `visibility = 'public'`, между двама публични и неизтрити души с основно име (същото условие като във `v_public_person`, така че всяко ребро сочи към възел, който публичният граф има), в неизтрита линия | `id`, `teacher_person_id`, `student_person_id`, `lineage_id`, `status`, `verification_path`, `is_display_primary`, `visibility`, `confirmed_at`, `periods` (JSON: `startsOn`, `endsOn`, `precision`, `ongoing`), `created_at`, `updated_at` |
+| `v_public_school` | Само `status = 'published'` и без изтритите | `id`, `slug`, `name`, `location_privacy`, `precision` (`exact` или `city`), `public_point` (при `city_only` винаги центроидът на града от `place`, независимо какво пише в `school.public_point`: втора защита след тригера от §5), `place_id`, `city_name`, `country_code`, `description`, `website_url`, `last_activity_at`, `instructor_person_ids` (само публичните инструктори), `created_at`, `updated_at` |
 
 Чакащите заявки, отказаните, оттеглените и отменените връзки, хората без публична връзка (например `demo-claim-only-teacher`), точните координати, адресите, доказателствата и одитът не са достъпни за публичната роля по никакъв път.
 
 ## 4. Роли и права
 
-Ролите не се създават в миграциите: това изисква `CREATEROLE` и би сложило пароли в хранилището. Създава ги `scripts/db-bootstrap.sql` (обвивка `scripts/db-bootstrap.sh`), пуснат от суперпотребител веднъж за всяка среда и за всяка база, с пароли от средата (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`). Паролите стигат до psql чрез `\getenv`, никога през командния ред, а записът в лога на сървъра е изключен за тази сесия. Скриптът още прави `migrator` собственик на базата и създава PostGIS (то не е „trusted“ разширение и иска суперпотребител). Миграциите съдържат само `GRANT` и `REVOKE`.
+Ролите не се създават в миграциите: това изисква `CREATEROLE` и би сложило пароли в хранилището. Създава ги `scripts/db-bootstrap.sql` (обвивка `scripts/db-bootstrap.sh`), пуснат от суперпотребител веднъж за всяка среда и за всяка база, с пароли от средата (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`). Паролите стигат до psql чрез `\getenv`, никога през командния ред, а записът в лога на сървъра е изключен за тази сесия. Паролата на суперпотребителя също не минава през командния ред (там всеки локален потребител я вижда с `ps`): `scripts/lib/psql.sh` и `spawnPsql` в `src/server/db/admin.ts` я подават чрез `PGPASSWORD`, а `scripts/verify.sh` и `scripts/cloud-setup.sh` пускат `scripts/db-bootstrap.sh --test-database` вместо да подават адреса. Нужен е psql 15 или по-нов (`\getenv`); `scripts/db-bootstrap.sh`, `scripts/verify.sh` и `pnpm test:int` спират с ясна грешка при по-стар клиент (Ubuntu 22.04 има psql 14, Ubuntu 24.04 — psql 16). Скриптът още прави `migrator` собственик на базата и създава PostGIS (то не е „trusted“ разширение и иска суперпотребител). Миграциите съдържат само `GRANT` и `REVOKE`.
 
 | Роля | Права |
 |---|---|
 | `migrator` | Собственик на базата и на всеки обект на приложението. `pnpm db:migrate` и `pnpm db:seed` работят като `migrator` (`SET ROLE migrator`), независимо кой се свързва, затова собственикът е един и същ навсякъде. Създава разширенията `pg_trgm`, `unaccent` и `fuzzystrmatch` (trusted) |
 | `app_rw` | Услугите и worker-ът. `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците на приложението; върху `audit_log` и `relationship_event` само `SELECT` и `INSERT`; `SELECT` върху трите изгледа. Няма `CREATE` в схемата и в базата |
-| `app_public_ro` | Анонимното четене: само `SELECT` върху `v_public_person`, `v_public_edge` и `v_public_school`. Всяка таблица, включително `school_private_location`, `evidence_file` и `evidence_link`, дава `permission denied` |
+| `app_public_ro` | Анонимното четене: само `SELECT` върху `v_public_person`, `v_public_edge` и `v_public_school`. Всяка таблица, включително `school_private_location`, `evidence_file` и `evidence_link`, дава `permission denied`. Към базата има само `CONNECT`: без `TEMPORARY`, така че не може да създава временни таблици (`PUBLIC` също губи подразбиращото се `TEMPORARY`; има го само `app_rw`). Интеграционен тест сверява пълния списък с релации, които ролята може да чете, и че не може да пише в нито една |
 
-Приложението се свързва като `app_rw` (`getDb()`) и като `app_public_ro` (`getPublicDb()`) от `src/server/db/index.ts`, с отделен пул за всяка роля и `statement_timeout` 2 s, към хоста и базата от `DATABASE_URL` (в облачната сесия и в CI: `TEST_DATABASE_URL`).
+Приложението се свързва като `app_rw` (`getDb()`) и като `app_public_ro` (`getPublicDb()`) от `src/server/db/index.ts`, с отделен пул за всяка роля и `statement_timeout` 2 s, към хоста и базата от `DATABASE_URL` (в облачната сесия и в CI: `TEST_DATABASE_URL`). Всеки пул има слушател за събитието `error`: когато сървърът прекъсне неактивна връзка (рестарт на PostgreSQL или Docker Desktop, заспал компютър, `pg_terminate_backend`), процесът (`next start`, worker-ът) не пада, а пулът отваря нова връзка при следващата заявка. В лога отиват само ролята и SQLSTATE, никога адрес, заявка или параметри.
 
 ## 5. Ограничения и индекси
 
 - `CHECK (teacher_person_id <> student_person_id)` (`teaching_relationship_not_self`).
 - Частичен уникален индекс `teaching_relationship_active_key` върху `(teacher_person_id, student_person_id, lineage_id)` за активните статуси (`pending_teacher`, `awaiting_claim`, `under_review`, `verified`, `in_arbitration`): дублирана активна връзка се отказва, а нова заявка след отказ, оттегляне или отмяна е позволена.
-- `teaching_relationship_one_display_primary_key`: най-много една активна връзка с `is_display_primary` на ученик (DEFAULT D05).
+- `teaching_relationship_one_display_primary_key`: най-много една установена връзка (`verified` или `in_arbitration`) с `is_display_primary` на ученик (DEFAULT D05). Заявките не участват, така че скрита заявка не може да заеме мястото и да издаде съществуването си чрез флаговете на публичните ребра на ученика (план §4.14).
+- `teaching_relationship_display_primary_after_verification`: `is_display_primary` е позволен само при `verified`, `in_arbitration` или `revoked` (отменената връзка го пази като история). Слага го преходът към `verified` (M09), никога заявката.
+- Тригерът `school_city_only_point` (`BEFORE INSERT OR UPDATE OF location_privacy, place_id, public_point` върху `school`) записва центроида на града в `school.public_point` за всяка школа с `city_only`, който и да пише, а `place_centroid_to_city_only_schools` (`AFTER UPDATE OF centroid` върху `place`) мести тези школи с поправения центроид. Така заявката по радиус от план §6.3, която M11 пуска като `app_rw` директно върху `school.public_point` (с GiST индекса), не може да измери разстояние до точната точка (план §6.4). През `v_public_school` индексът не се ползва: `ST_DWithin` не е `LEAKPROOF`, затова планерът го държи над филтрите на изгледа със `security_barrier`.
 - `teaching_relationship_public_only_after_verification`: `visibility = 'public'` само при `verified`, `in_arbitration` или `revoked` (DEFAULT D03).
 - Покриващи индекси `(student_person_id) INCLUDE (teacher_person_id, status, lineage_id)` и `(teacher_person_id) INCLUDE (student_person_id, status, lineage_id)` за рекурсивните заявки от план §6.3 (в отделна миграция, защото Drizzle не поддържа `INCLUDE`).
 - `person_name_key.key`: GIN `gin_trgm_ops` (триграмна прилика) и B-tree `text_pattern_ops` (префикс).
@@ -177,6 +179,10 @@
 2. `*_schema`: таблиците, ограниченията и индексите, генерирани от схемата.
 3. `*_roles_views_audit`: покриващите индекси, трите изгледа, тригерите на `audit_log` и правата (само `GRANT` и `REVOKE`).
 4. `*_relationship_event_keep_history`: `ON DELETE RESTRICT` вместо `CASCADE` за `relationship_event` → `teaching_relationship`.
+5. `*_display_primary_after_verification` (след прегледа на M01): индексът за `is_display_primary` брои само `verified` и `in_arbitration`, а `CHECK` не позволява флага на заявка.
+6. `*_school_public_point_and_views` (след прегледа на M01): тригерите за `school.public_point` при `city_only`; `v_public_edge` иска основно име и за двата края, както `v_public_person`.
+
+Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 
 Базата трябва да е с UTF-8 и локал `C.UTF-8`: при `LC_CTYPE=C` `pg_trgm` не извлича триграми от кирилица и китайски (`scripts/db-env-check.sh` и интеграционните тестове го проверяват с `show_trgm('Тестов')`).
 
@@ -205,7 +211,7 @@
 | Решение | Как е приложено |
 |---|---|
 | DEFAULT D03 | Чакащите заявки и личностите, създадени чрез заявка или покана, са `involved_only`; връзка става `public` само след `verified` (`CHECK` в базата); изгледите показват само публичното |
-| DEFAULT D05 | Всички активни връзки се пазят; `is_display_primary` е само визуално предпочитание, най-много една на ученик |
+| DEFAULT D05 | Всички активни връзки се пазят; `is_display_primary` е само визуално предпочитание, най-много една на ученик сред `verified` и `in_arbitration`; заявка не носи флага, слага го потвърждаването (M09) |
 | DEFAULT D12 | `organization` и `organization_membership` са само скелет; членството не променя историята на обучение |
 | DEFAULT D13 | Доказателствата са в отделна таблица и частен бъкет; публичната роля няма достъп до `evidence_file` и `evidence_link` |
 | DEFAULT D17 | `school.last_activity_at` се обновява само при редакция или потвърждение на школата, никога при вход |
