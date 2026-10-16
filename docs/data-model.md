@@ -37,7 +37,7 @@
 | `person_name` | Всички изписвания на името (план §5.3). `kind` (`name`, `alias`, `romanization`), `value`, `script`, `lang`, `romanization` (`jyutping`, `pinyin`, `yale`, `hk_gov`, `bg_streamlined`), `is_primary`, `sort_order`. Всяка личност има точно едно основно име (`is_primary`), и то е на латиница (`script = 'Latn'`, `kind = 'name'`); останалите са по желание: оригиналната писменост, Jyutping, пинин, псевдоними |
 | `person_name_key` | Нормализирани ключове за търсене (M07): `key`, `key_kind` (`latin`, `jyutping`, `pinyin`, `han`, `cyrillic`), `is_primary`. В M01 остава празна; GIN `gin_trgm_ops` и B-tree `text_pattern_ops` върху `key` |
 | `person_bio` | Биография на даден език: една на личност и език (`person_id`, `lang`) |
-| `person_claim` | Заявка „това съм аз“: `user_id`, `status` (`pending`, `approved`, `rejected`, `withdrawn`), `review_case_id`, кой и кога е решил. Най-много една чакаща заявка на личност |
+| `person_claim` | Заявка „това съм аз“: `user_id`, `status` (`pending`, `approved`, `rejected`, `withdrawn`), `message`, `review_case_id`, кой и кога е решил (`decided_by_user_id`, `decided_at`). Най-много една чакаща заявка от един потребител за една личност; няколко души могат да заявят една и съща личност и прегледът решава |
 | `invitation` | Покана към жив учител без акаунт (статус `awaiting_claim`, план §6.7): `email`, `token_hash` (SHA-256 на токена в hex; самият токен не се пази), `status` (`pending`, `accepted`, `expired`, `revoked`), `expires_at`, `relationship_id` |
 
 ### Линии и връзки
@@ -47,7 +47,7 @@
 | `lineage` | Линия (стил, клон): `slug`, `name`, `description`, `root_person_id` — може да е празен (DEFAULT D22) |
 | `teaching_relationship` | Ребро учител → ученик в една линия: `teacher_person_id`, `student_person_id`, `lineage_id` (задължителен), `status` (8-те статуса от план §6.7: `pending_teacher`, `awaiting_claim`, `under_review`, `verified`, `rejected`, `withdrawn`, `in_arbitration`, `revoked`), `verification_path` (`teacher_approval`, `committee_review`), `is_display_primary`, `visibility`, `requested_by_user_id`, `confirmed_by_user_id`, `confirmed_at`, `status_reason`. Ребрата не се трият физически: приключилото обучение става историческо чрез `training_period` |
 | `training_period` | Периоди на обучение по връзка (прекъсване = два периода): `starts_on`, `ends_on`, `precision` (`year`, `month`, `day`, `unknown`), `ongoing`, `sort_order`. Текущ период няма крайна дата; краят не е преди началото |
-| `relationship_event` | Пълната история на статусите на всяка връзка: `from_status`, `to_status`, `actor_user_id`, `actor_role`, `reason`. Само за добавяне за `app_rw` |
+| `relationship_event` | Пълната история на статусите на всяка връзка: `from_status`, `to_status`, `actor_user_id`, `actor_role`, `reason`. Само за добавяне за `app_rw`; външният ключ към връзката е `ON DELETE RESTRICT`, така че историята не може да изчезне чрез каскада |
 | `lineage_membership` | Кой към коя линия принадлежи и на каква дълбочина (`lineage_id`, `person_id`, `depth`, `computed_at`). Попълва се от фонова задача (M11), която чете само `v_public_edge`; в M01 е празна |
 
 ### Школи и география
@@ -123,9 +123,9 @@
 - Покриващи индекси `(student_person_id) INCLUDE (teacher_person_id, status, lineage_id)` и `(teacher_person_id) INCLUDE (student_person_id, status, lineage_id)` за рекурсивните заявки от план §6.3 (в отделна миграция, защото Drizzle не поддържа `INCLUDE`).
 - `person_name_key.key`: GIN `gin_trgm_ops` (триграмна прилика) и B-tree `text_pattern_ops` (префикс).
 - GiST върху трите `geography` колони.
-- Уникални: `slug` в четирите таблици със slug; `place.geonames_id`; `invitation.token_hash`; `evidence_file.storage_key`; `email_delivery.idempotency_key`; една основна `person_name` на личност; една `person_bio` на личност и език; една чакаща `person_claim` на личност; една личност на потребител (`person.claimed_by_user_id`).
+- Уникални: `slug` в четирите таблици със slug; `place.geonames_id`; `invitation.token_hash`; `evidence_file.storage_key`; `email_delivery.idempotency_key`; една основна `person_name` на личност; една `person_bio` на личност и език; една чакаща `person_claim` от потребител за личност; една личност на потребител (`person.claimed_by_user_id`).
 - Формати: `slug`, двубуквени държави, ISO 15924 писмености, BCP 47 езици, SHA-256 в hex (`evidence_file`, `invitation`), `ip_hmac` (64 hex знака), действията в одита (`обект.действие`, например `relationship.verify`).
-- Външните ключове към личности и линии са `ON DELETE RESTRICT`: личности и връзки не се трият физически, а се скриват (`deleted_at`) или сменят статуса си.
+- Личности, линии и връзки по правило не се трият физически: скриват се (`deleted_at`) или връзката сменя статуса си и приключва. Базата го подкрепя: `teaching_relationship` държи личностите и линията с `ON DELETE RESTRICT`, а `relationship_event` държи връзката с `ON DELETE RESTRICT` (каскадните действия вървят с правата на собственика на таблицата и биха заобиколили правилото „само добавяне“). Имената, биографиите, заявките, поканите, периодите и членствата се трият заедно със своята личност или връзка (`CASCADE`), а препратките от случаите за преглед стават `NULL`.
 - Циклите в графа не се проверяват от база данни: проверката е в услугата при преход към `verified`, под глобален advisory lock (план §6.3, M04).
 
 ## 6. Одитен журнал
@@ -136,7 +136,7 @@
 - тригерите `audit_log_no_update_delete` (`BEFORE UPDATE OR DELETE`, за всеки ред) и `audit_log_no_truncate` (`BEFORE TRUNCATE`) отказват промяна за всяка роля, включително собственика, с грешка `audit_log is append-only: <операция> is not allowed`;
 - колони: `occurred_at`, `actor_user_id`, `actor_role`, `action`, `subject_type`, `subject_id`, `request_id`, **`ip_hmac`**, `before`, `after`, `reason`, `evidence_ids`, по желание `prev_hash` и `hash` (верига от хешове против подправяне).
 
-`relationship_event` също е само за добавяне за `app_rw` (без тригер: собственикът може да поправя миграции на данни).
+`relationship_event` също е само за добавяне за `app_rw`: няма `UPDATE` и `DELETE`, а външният ключ `ON DELETE RESTRICT` не позволява изтриване на връзка с история. Тригер няма: собственикът (`migrator`) може да поправя данни с миграция.
 
 ### `ip_hmac`
 
@@ -176,6 +176,7 @@
 1. `*_extensions`: `postgis`, `pg_trgm`, `unaccent`, `fuzzystrmatch` (`CREATE EXTENSION IF NOT EXISTS`).
 2. `*_schema`: таблиците, ограниченията и индексите, генерирани от схемата.
 3. `*_roles_views_audit`: покриващите индекси, трите изгледа, тригерите на `audit_log` и правата (само `GRANT` и `REVOKE`).
+4. `*_relationship_event_keep_history`: `ON DELETE RESTRICT` вместо `CASCADE` за `relationship_event` → `teaching_relationship`.
 
 Базата трябва да е с UTF-8 и локал `C.UTF-8`: при `LC_CTYPE=C` `pg_trgm` не извлича триграми от кирилица и китайски (`scripts/db-env-check.sh` и интеграционните тестове го проверяват с `show_trgm('Тестов')`).
 

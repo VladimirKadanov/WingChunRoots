@@ -129,14 +129,19 @@ export const trainingPeriod = pgTable(
   ],
 );
 
-/** The full status history of every relationship. Append-only: app_rw has SELECT and INSERT. */
+/**
+ * The full status history of every relationship. Append-only: app_rw has SELECT and INSERT, and
+ * the foreign key is RESTRICT, so deleting a relationship cannot remove its history through a
+ * cascade (referential actions run with the table owner's rights). Relationships are never
+ * deleted; they end (plan §6.7).
+ */
 export const relationshipEvent = pgTable(
   'relationship_event',
   {
     id: idColumn(),
     relationshipId: uuid('relationship_id')
       .notNull()
-      .references(() => teachingRelationship.id, { onDelete: 'cascade' }),
+      .references(() => teachingRelationship.id, { onDelete: 'restrict' }),
     fromStatus: text('from_status', { enum: RELATIONSHIP_STATUSES }),
     toStatus: text('to_status', { enum: RELATIONSHIP_STATUSES }).notNull(),
     actorUserId: uuid('actor_user_id'),

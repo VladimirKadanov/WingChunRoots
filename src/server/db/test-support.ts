@@ -28,6 +28,7 @@ export const PG = {
   insufficientPrivilege: '42501',
   checkViolation: '23514',
   uniqueViolation: '23505',
+  foreignKeyViolation: '23503',
 } as const;
 
 /** Rows of one query as plain objects. */

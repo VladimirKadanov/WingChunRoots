@@ -103,10 +103,13 @@ describe('audit_log', () => {
     });
   });
 
-  it('keeps relationship_event append-only for app_rw', async () => {
+  it('keeps relationship_event append-only for app_rw, also through a deleted relationship', async () => {
     await asRole('app_rw', async (c) => {
       expect((await pgError(c.query("UPDATE relationship_event SET reason = 'x'"))).code).toBe(PG.insufficientPrivilege);
       expect((await pgError(c.query('DELETE FROM relationship_event'))).code).toBe(PG.insufficientPrivilege);
+      // No cascade: a relationship with history cannot be deleted at all (it ends instead).
+      const error = await pgError(c.query('DELETE FROM teaching_relationship WHERE id = $1', [fixtures.relationships[0]!.id]));
+      expect(error.code).toBe(PG.foreignKeyViolation);
     });
   });
 });
