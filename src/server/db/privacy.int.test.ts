@@ -109,7 +109,9 @@ describe('audit_log', () => {
       expect((await pgError(c.query('DELETE FROM relationship_event'))).code).toBe(PG.insufficientPrivilege);
       // No cascade: a relationship with history cannot be deleted at all (it ends instead).
       const error = await pgError(c.query('DELETE FROM teaching_relationship WHERE id = $1', [fixtures.relationships[0]!.id]));
-      expect(error.code).toBe(PG.foreignKeyViolation);
+      // PostgreSQL 18 reports ON DELETE RESTRICT as restrict_violation, 16 as foreign_key_violation.
+      expect([PG.restrictViolation, PG.foreignKeyViolation]).toContain(error.code);
+      expect(error.message).toContain('on table "relationship_event"');
     });
   });
 });
