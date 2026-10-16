@@ -14,29 +14,65 @@ import {
   spineBends,
   yOrderViolations,
 } from './testing/checks.ts';
-import { EGO_ANCHORS, anchorId, generateSyntheticLineage } from './testing/synthetic.ts';
+import { LINEAGE_FIXTURE_PATH, loadLineageFixture } from './testing/fixture.ts';
+import { EGO_ANCHORS, anchorId, generateSyntheticLineage, type LineageDataset } from './testing/synthetic.ts';
 import { egoView, expandStudents, sharedAncestorView, standardViews } from './testing/views.ts';
-import type { LayoutOptions, LineageGraph, NodePlacement, PresetName } from './types.ts';
+import type { LayoutOptions, LineageGraph, NodePlacement, PresetName, Scene } from './types.ts';
 
 const dataset = generateSyntheticLineage();
 const views = standardViews(dataset);
+/** fixtures/lineage-600.json from M01 (milestone item 1). */
+const fixture = loadLineageFixture();
+
+/** Every person is one node, every rank one row, and y follows the rank for every edge. */
+function expectRowsFollowRanks(graph: LineageGraph, scene: Scene, name: string) {
+  const ranks = computeRanks(graph);
+  // Every person is exactly one node.
+  expect(scene.nodes.length, name).toBe(graph.nodes.length);
+  expect(new Set(scene.nodes.map((n) => n.id)), name).toEqual(new Set(graph.nodes.map((n) => n.id)));
+  // ELK's layers are exactly our ranks: one row per rank, same rank → same y.
+  for (const node of scene.nodes) expect(node.rank, name).toBe(ranks.ranks.get(node.id));
+  expect(ranksWithSeveralY(scene), name).toEqual([]);
+  expect(scene.rowY.length, name).toBe(ranks.rankCount);
+  expect(rowsIncrease(scene), name).toBe(true);
+  for (const node of scene.nodes) expect(node.y, name).toBe(scene.rowY[node.rank]);
+  // y follows the rank for every edge, including edges to a teacher from another lineage.
+  expect(yOrderViolations(scene), name).toEqual([]);
+  expect(scene.edges.length, name).toBe(graph.edges.length);
+}
+
+/** The focus spine of the ego view of an anchor record is straight (chosen algorithm). */
+async function expectStraightSpine(data: LineageDataset, slug: (typeof EGO_ANCHORS)[number]) {
+  const graph = egoView(data, anchorId(data, slug));
+  const scene = await layoutLineage(graph);
+  expect(scene.nodePlacement).toBe(CHOSEN_NODE_PLACEMENT);
+  const spineEdges = scene.edges.filter((e) => e.onSpine);
+  expect(spineEdges.length, slug).toBe(scene.spine.length);
+  for (const edge of spineEdges) {
+    expect(edge.bends, `${slug} ${edge.id}`).toBe(0);
+    // Straight down: one vertical segment from the teacher to the student.
+    if (edge.path.type !== 'orthogonal') throw new Error('spine edges are routed by ELK');
+    expect(edge.path.points.length, `${slug} ${edge.id}`).toBe(2);
+    expect(edge.path.points[0]!.x, `${slug} ${edge.id}`).toBe(edge.path.points[1]!.x);
+  }
+  expect(spineBends(scene), slug).toBe(0);
+}
 
 describe('layoutLineage: rows follow the ranks', () => {
-  it.each(views.map((v) => [v.name, v.graph] as const))('%s', async (_name, graph) => {
-    const scene = await layoutLineage(graph);
-    const ranks = computeRanks(graph);
-    // Every person is exactly one node.
-    expect(scene.nodes.length).toBe(graph.nodes.length);
-    expect(new Set(scene.nodes.map((n) => n.id))).toEqual(new Set(graph.nodes.map((n) => n.id)));
-    // ELK's layers are exactly our ranks: one row per rank, same rank → same y.
-    for (const node of scene.nodes) expect(node.rank).toBe(ranks.ranks.get(node.id));
-    expect(ranksWithSeveralY(scene)).toEqual([]);
-    expect(scene.rowY.length).toBe(ranks.rankCount);
-    expect(rowsIncrease(scene)).toBe(true);
-    for (const node of scene.nodes) expect(node.y).toBe(scene.rowY[node.rank]);
-    // y follows the rank for every edge, including edges to a teacher from another lineage.
-    expect(yOrderViolations(scene)).toEqual([]);
-    expect(scene.edges.length).toBe(graph.edges.length);
+  it.each(views.map((v) => [v.name, v.graph] as const))('%s', async (name, graph) => {
+    expectRowsFollowRanks(graph, await layoutLineage(graph), name);
+  });
+});
+
+describe(`layoutLineage on ${LINEAGE_FIXTURE_PATH} from M01`, () => {
+  it('keeps rows = ranks and y following the rank in every standard view of the fixture', async () => {
+    const fixtureViews = standardViews(fixture);
+    expect(fixtureViews.length).toBe(views.length);
+    for (const view of fixtureViews) expectRowsFollowRanks(view.graph, await layoutLineage(view.graph), view.name);
+  });
+
+  it('keeps the focus spine free of bend points in the ego views of the fixture anchors (chosen algorithm)', async () => {
+    for (const slug of EGO_ANCHORS) await expectStraightSpine(fixture, slug);
   });
 });
 
@@ -120,19 +156,7 @@ describe('layoutLineage: edges', () => {
   it.each(EGO_ANCHORS)(
     'keeps the focus spine free of bend points in the ego view of %s (chosen algorithm)',
     async (slug) => {
-      const graph = egoView(dataset, anchorId(dataset, slug));
-      const scene = await layoutLineage(graph);
-      expect(scene.nodePlacement).toBe(CHOSEN_NODE_PLACEMENT);
-      const spineEdges = scene.edges.filter((e) => e.onSpine);
-      expect(spineEdges.length).toBe(scene.spine.length);
-      for (const edge of spineEdges) {
-        expect(edge.bends, edge.id).toBe(0);
-        // Straight down: one vertical segment from the teacher to the student.
-        if (edge.path.type !== 'orthogonal') throw new Error('spine edges are routed by ELK');
-        expect(edge.path.points.length).toBe(2);
-        expect(edge.path.points[0]!.x).toBe(edge.path.points[1]!.x);
-      }
-      expect(spineBends(scene)).toBe(0);
+      await expectStraightSpine(dataset, slug);
     },
   );
 
@@ -203,6 +227,40 @@ describe('layoutLineage: errors and stats', () => {
       await expect(layoutLineage(graph, options)).rejects.toBeInstanceOf(LineageInputError);
       await expect(layoutLineage(graph, options)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     }
+  });
+
+  it('rejects malformed graphs, options and previous positions as invalid input, not as an ELK failure', async () => {
+    const graph = demoGraph(['r', 'a'], [['r', 'a']]);
+    const badGraphs = [
+      { ...graph, nodes: [null] },
+      { ...graph, edges: [null] },
+      { ...graph, nodes: [...graph.nodes, 'demo-x'] },
+      { ...graph, hiddenCounts: 'demo' },
+    ] as unknown as LineageGraph[];
+    const badOptions = [
+      null,
+      'expand',
+      { preset: 'expand', previousPositions: 'demo' },
+      { preset: 'expand', previousPositions: { r: null } },
+      { preset: 'expand', previousPositions: { r: { x: Number.NaN, y: 0 } } },
+      { preset: 'expand', previousPositions: { r: { x: '10', y: 0 } } },
+    ] as unknown as LayoutOptions[];
+    for (const bad of badGraphs) {
+      await expect(layoutLineage(bad)).rejects.toMatchObject({ name: 'LineageInputError', code: 'INVALID_INPUT' });
+    }
+    for (const options of badOptions) {
+      await expect(layoutLineage(graph, options)).rejects.toMatchObject({ name: 'LineageInputError', code: 'INVALID_INPUT' });
+    }
+  });
+
+  it('reads hidden counts and previous positions by own key only', async () => {
+    const graph = demoGraph(['constructor', 'toString'], [['constructor', 'toString']]);
+    const ranks = computeRanks(graph);
+    // Object.prototype.constructor is not a hidden teacher count: `constructor` is a root.
+    expect(ranks.cutOff.size).toBe(0);
+    expect(ranks.ranks.get('constructor')).toBe(0);
+    const scene = await layoutLineage(graph, { preset: 'expand', previousPositions: {} });
+    expect(scene.nodes.map((n) => n.id).sort()).toEqual(['constructor', 'toString']);
   });
 
   it('lays out an empty view and a single person', async () => {

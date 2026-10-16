@@ -16,17 +16,25 @@ export interface GraphIndex {
 /**
  * Validates the input and builds the adjacency index.
  *
- * Throws `LineageInputError` for duplicate node or edge ids and for edges whose endpoints
- * are not nodes of the view, and `LineageCycleError` for a cycle (a self-loop included).
+ * Throws `LineageInputError` for a node or an edge that is not an object, for duplicate node
+ * or edge ids and for edges whose endpoints are not nodes of the view, and
+ * `LineageCycleError` for a cycle (a self-loop included). Malformed input therefore reaches
+ * the page as `INVALID_INPUT`, never as a plain TypeError that would pass for `ELK_FAILED`.
  */
 export function indexGraph(graph: LineageGraph): GraphIndex {
-  if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+  if (!isObject(graph) || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
     throw new LineageInputError('The graph must have the arrays `nodes` and `edges` (plan §6.3).');
+  }
+  if (graph.hiddenCounts != null && !isObject(graph.hiddenCounts)) {
+    throw new LineageInputError('`hiddenCounts` must be an object keyed by node id (plan §6.3).');
   }
   const nodes = new Map<string, LineageNode>();
   const teacherEdges = new Map<string, LineageEdge[]>();
   const studentEdges = new Map<string, LineageEdge[]>();
   for (const node of graph.nodes) {
+    if (!isObject(node)) {
+      throw new LineageInputError('Every node must be an object (plan §6.3).');
+    }
     if (typeof node.id !== 'string' || node.id === '') {
       throw new LineageInputError('Every node needs a non-empty string id.');
     }
@@ -40,6 +48,9 @@ export function indexGraph(graph: LineageGraph): GraphIndex {
   }
   const edgeIds = new Set<string>();
   for (const edge of graph.edges) {
+    if (!isObject(edge)) {
+      throw new LineageInputError('Every edge must be an object (plan §6.3).');
+    }
     if (typeof edge.id !== 'string' || edge.id === '') {
       throw new LineageInputError('Every edge needs a non-empty string id.');
     }
@@ -199,4 +210,9 @@ export function focusSpine(index: GraphIndex, focusId: string | null | undefined
     current = edge.teacherId;
   }
   return spine;
+}
+
+/** A non-null object that is not an array. */
+export function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

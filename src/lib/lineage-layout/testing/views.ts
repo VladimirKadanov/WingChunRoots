@@ -1,10 +1,16 @@
 /**
  * Subgraph extraction for the layout tests and the benchmark: mimics what the explorer API
- * of M04 returns (plan §4.3, §6.3) from the synthetic dataset, without a database.
+ * of M04 returns to an anonymous viewer (plan §4.3, §6.3) from a whole dataset (the
+ * synthetic graph or `fixtures/lineage-600.json`), without a database.
+ *
+ * Every view is a public view: it follows and contains only the relationships of
+ * `v_public_edge` (`isPublicEdge`), and `hiddenCounts` and `hasMoreChildren` count only those
+ * (plan §6.2, §6.4). Pending, awaiting-claim and under-review relationships never appear in
+ * it, not even as a number.
  */
 import { compareStrings } from '../graph.ts';
 import type { HiddenCount, LineageEdge, LineageGraph, LineageNode } from '../types.ts';
-import { EGO_ANCHORS, anchorId, type AnchorSlug, type SyntheticDataset } from './synthetic.ts';
+import { EGO_ANCHORS, anchorId, isPublicEdge, type AnchorSlug, type LineageDataset } from './synthetic.ts';
 
 export interface ViewSpec {
   /** Focused person (node id). */
@@ -28,8 +34,13 @@ export interface ViewSpec {
   pin?: readonly string[];
 }
 
-/** Extracts a view in the shape of plan §6.3, with `hiddenCounts` for what was left out. */
-export function extractView(dataset: SyntheticDataset, spec: ViewSpec): LineageGraph {
+/** The relationships of the dataset that an anonymous viewer sees (`v_public_edge`). */
+function publicEdges(dataset: LineageDataset): LineageEdge[] {
+  return dataset.graph.edges.filter(isPublicEdge);
+}
+
+/** Extracts a public view in the shape of plan §6.3, with `hiddenCounts` for what was left out. */
+export function extractView(dataset: LineageDataset, spec: ViewSpec): LineageGraph {
   const { graph } = dataset;
   const teachersOf = new Map<string, LineageEdge[]>();
   const studentsOf = new Map<string, LineageEdge[]>();
@@ -37,7 +48,7 @@ export function extractView(dataset: SyntheticDataset, spec: ViewSpec): LineageG
     teachersOf.set(node.id, []);
     studentsOf.set(node.id, []);
   }
-  for (const edge of graph.edges) {
+  for (const edge of publicEdges(dataset)) {
     teachersOf.get(edge.studentId)!.push(edge);
     studentsOf.get(edge.teacherId)!.push(edge);
   }
@@ -118,14 +129,15 @@ export function extractView(dataset: SyntheticDataset, spec: ViewSpec): LineageG
 }
 
 /**
- * The view that contains exactly `included`: every edge between them, and `hiddenCounts`
- * for their teachers and students outside it.
+ * The public view that contains exactly `included`: every public edge between them, and
+ * `hiddenCounts` for their public teachers and students outside it.
  */
-export function subgraphOf(dataset: SyntheticDataset, included: ReadonlySet<string>, focus: string | null): LineageGraph {
+export function subgraphOf(dataset: LineageDataset, included: ReadonlySet<string>, focus: string | null): LineageGraph {
   const { graph } = dataset;
+  const edgesOfView = publicEdges(dataset);
   const hiddenTeachers = new Map<string, number>();
   const hiddenStudents = new Map<string, number>();
-  for (const e of graph.edges) {
+  for (const e of edgesOfView) {
     const t = included.has(e.teacherId);
     const s = included.has(e.studentId);
     if (s && !t) hiddenTeachers.set(e.studentId, (hiddenTeachers.get(e.studentId) ?? 0) + 1);
@@ -140,27 +152,34 @@ export function subgraphOf(dataset: SyntheticDataset, included: ReadonlySet<stri
     nodes.push({ ...node, hasMoreChildren: students > 0 });
     if (teachers > 0 || students > 0) hiddenCounts[node.id] = { teachers, students };
   }
-  const edges = graph.edges.filter((e) => included.has(e.teacherId) && included.has(e.studentId));
+  const edges = edgesOfView.filter((e) => included.has(e.teacherId) && included.has(e.studentId));
   return { focusId: focus, dataVersion: graph.dataVersion, nodes, edges, hiddenCounts };
 }
 
-/** Expanding a node ("+N students", plan §4.8): the view plus all students of `nodeId`. */
-export function expandStudents(dataset: SyntheticDataset, view: LineageGraph, nodeId: string): LineageGraph {
+/** Expanding a node ("+N students", plan §4.8): the view plus all public students of `nodeId`. */
+export function expandStudents(dataset: LineageDataset, view: LineageGraph, nodeId: string): LineageGraph {
   const included = new Set(view.nodes.map((n) => n.id));
-  for (const e of dataset.graph.edges) {
+  for (const e of publicEdges(dataset)) {
     if (e.teacherId === nodeId) included.add(e.studentId);
   }
   return subgraphOf(dataset, included, view.focusId);
 }
 
 /** Ego view: all teachers and two rows of students (plan §4.3). */
-export function egoView(dataset: SyntheticDataset, focus: string, maxStudentsPerTeacher?: number): LineageGraph {
+export function egoView(dataset: LineageDataset, focus: string, maxStudentsPerTeacher?: number): LineageGraph {
   return extractView(dataset, { focus, up: 'all', down: 2, maxStudentsPerTeacher });
 }
 
 /** Ancestors of a person, the person included. */
-export function ancestorsOf(dataset: SyntheticDataset, id: string): string[] {
+export function ancestorsOf(dataset: LineageDataset, id: string): string[] {
   return extractView(dataset, { focus: id, up: 'all', down: 0 }).nodes.map((n) => n.id);
+}
+
+/** The lineage id behind a lineage slug (throws for an unknown slug). */
+export function lineageIdOf(dataset: LineageDataset, slug: string): string {
+  const id = Object.hasOwn(dataset.lineageIdBySlug, slug) ? dataset.lineageIdBySlug[slug] : undefined;
+  if (!id) throw new Error(`Unknown lineage slug in ${dataset.source}: ${slug}`);
+  return id;
 }
 
 export interface NamedView {
@@ -176,7 +195,7 @@ export interface NamedView {
  *   their branches and the edge from the other lineage between them;
  * - a view of about 500 people.
  */
-export function standardViews(dataset: SyntheticDataset): NamedView[] {
+export function standardViews(dataset: LineageDataset): NamedView[] {
   const id = (slug: AnchorSlug) => anchorId(dataset, slug);
   const twoLineages = id('demo-two-lineages');
   const views: NamedView[] = EGO_ANCHORS.map((slug) => ({ name: `ego:${slug}`, graph: egoView(dataset, id(slug)) }));
@@ -186,7 +205,7 @@ export function standardViews(dataset: SyntheticDataset): NamedView[] {
       focus: id('demo-root-a'),
       up: 0,
       down: 3,
-      lineageId: 'demo-lineage-a',
+      lineageId: lineageIdOf(dataset, 'demo-lineage-a'),
       includeForeignTeachers: true,
     }),
   });
@@ -210,7 +229,7 @@ export function standardViews(dataset: SyntheticDataset): NamedView[] {
  * with the branches of `demo-two-lineages` always included, so that both lineage roots,
  * their common teacher and the edge from the other lineage between the branches are in it.
  */
-export function sharedAncestorView(dataset: SyntheticDataset): LineageGraph {
+export function sharedAncestorView(dataset: LineageDataset): LineageGraph {
   const twoLineages = anchorId(dataset, 'demo-two-lineages');
   return extractView(dataset, {
     focus: anchorId(dataset, 'demo-shared-ancestor'),

@@ -67,6 +67,27 @@ const domGlobals = [
   message: `src/lib/lineage-layout is pure TypeScript without DOM globals (plan §6.1); only *.worker.ts may use worker globals.`,
 }));
 
+// What no-restricted-imports and no-restricted-globals cannot see in src/lib/lineage-layout:
+// dynamic imports, and DOM globals read through globalThis (`globalThis.document`).
+const layoutDynamicImportBans = [
+  {
+    selector: String.raw`ImportExpression[source.value=/^(react|react-dom|next|@xyflow)(\/|$)/]`,
+    message: 'src/lib/lineage-layout is pure TypeScript: no React, DOM or Next.js, not even through import() (plan §6.1).',
+  },
+  {
+    selector: String.raw`ImportExpression[source.value=/^(@\/server|.*\/server)(\/|$)/]`,
+    message: 'src/lib/lineage-layout must not depend on src/server, not even through import() (plan §6.1).',
+  },
+  {
+    selector: String.raw`ImportExpression[source.value=/^elkjs(\/lib\/(elk-worker|elk-api|main)|$)/]`,
+    message: 'Import elkjs/lib/elk.bundled.js only (plan §4.1).',
+  },
+];
+const layoutGlobalThisDomBan = {
+  selector: `MemberExpression[object.name='globalThis'][property.name=/^(${domGlobals.map((g) => g.name).join('|')})$/]`,
+  message: 'src/lib/lineage-layout is pure TypeScript without DOM globals, also through globalThis (plan §6.1); only *.worker.ts may use worker globals.',
+};
+
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -116,6 +137,7 @@ export default defineConfig([
         },
       ]),
       'no-restricted-globals': ['error', ...domGlobals],
+      'no-restricted-syntax': ['error', ...layoutDynamicImportBans, layoutGlobalThisDomBan],
       // The module also runs under Node's type stripping (pnpm bench:layout), which keeps
       // every import that is not marked `type`.
       '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
@@ -125,6 +147,16 @@ export default defineConfig([
     files: ['src/lib/lineage-layout/**/*.worker.ts'],
     rules: {
       'no-restricted-globals': 'off',
+      'no-restricted-syntax': ['error', ...layoutDynamicImportBans],
+    },
+  },
+  {
+    // The rest of src/lib is shared with pages and the request path: no ELK and no layout
+    // there either, so a re-export cannot carry them into a page bundle (plan §4.1).
+    files: ['src/lib/**/*.{ts,tsx}'],
+    ignores: ['src/lib/lineage-layout/**'],
+    rules: {
+      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath]),
     },
   },
   globalIgnores([

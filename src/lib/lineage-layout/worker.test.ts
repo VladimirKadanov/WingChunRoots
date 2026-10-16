@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+/**
+ * The message protocol of the layout worker (worker-handler.ts), tested in Node with a
+ * hand-driven scheduler. The entry point layout.worker.ts itself is tested in its own file,
+ * layout.worker.test.ts, because ELK caches its mode per process (see there).
+ */
+import { describe, expect, it, vi } from 'vitest';
 import { createElkEngine } from './layout.ts';
 import { demoGraph } from './testing/build.ts';
-import type { LayoutWorkerInbound, LayoutWorkerOutbound } from './types.ts';
+import type { LayoutWorkerOutbound } from './types.ts';
 import { createLayoutWorkerHandler } from './worker-handler.ts';
 
 const small = demoGraph(['r', 'a', 'b'], [['r', 'a'], ['a', 'b']], { focusId: 'b' });
@@ -116,35 +121,5 @@ describe('layout worker handler', () => {
     expect(posted[0]).toMatchObject({ type: 'error', requestId: 7, error: { code: 'CYCLE' } });
     const answer = posted[0]!;
     if (answer.type === 'error') expect(new Set(answer.error.cycle)).toEqual(new Set(['a', 'b']));
-  });
-});
-
-describe('layout.worker.ts in a simulated dedicated worker scope', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.resetModules();
-  });
-
-  it('wires messages to the handler and posts the answers', async () => {
-    const listeners: ((event: { data: LayoutWorkerInbound }) => void)[] = [];
-    const posted: LayoutWorkerOutbound[] = [];
-    vi.stubGlobal('self', {
-      addEventListener: (type: string, listener: (event: { data: LayoutWorkerInbound }) => void) => {
-        if (type === 'message') listeners.push(listener);
-      },
-      postMessage: (message: LayoutWorkerOutbound) => posted.push(message),
-    });
-    await import('./layout.worker.ts');
-    expect(listeners).toHaveLength(1);
-    listeners[0]!({ data: { type: 'layout', requestId: 1, graph: small } });
-    listeners[0]!({ data: { type: 'layout', requestId: 2, graph: small } });
-    await settle(posted, 2);
-    expect(posted.map((m) => [m.type, m.requestId])).toEqual([
-      ['stale', 1],
-      ['result', 2],
-    ]);
-    // The scene survives structured cloning, as postMessage requires.
-    const answer = posted[1]!;
-    expect(structuredClone(answer)).toEqual(answer);
   });
 });

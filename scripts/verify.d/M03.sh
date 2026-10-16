@@ -12,6 +12,7 @@ MOD="src/lib/lineage-layout"
 ADR="docs/adr/0005-graph-layout.md"
 BENCH="docs/perf/layout-bench.md"
 ADDENDUM="licenses/addenda/elkjs.md"
+FIXTURE="fixtures/lineage-600.json"
 failures=0
 
 ok() { echo "ok   $1"; }
@@ -31,7 +32,8 @@ required=(
   "$MOD/layout.worker.ts" "$MOD/presets.ts" "$MOD/testing/synthetic.ts"
   "$MOD/layout.perf.test.ts" "$MOD/boundary.test.ts" "$MOD/ranks.test.ts" "$MOD/layout.test.ts"
   "$MOD/elk-graph.test.ts" "$MOD/synthetic.test.ts" "$MOD/worker.test.ts"
-  scripts/bench-layout.ts "$ADDENDUM" "$BENCH" "$ADR"
+  "$MOD/layout.worker.test.ts" "$MOD/testing/fixture.ts" e2e/lineage-layout-worker.spec.ts
+  scripts/bench-layout.ts "$ADDENDUM" "$BENCH" "$ADR" "$FIXTURE"
 )
 for f in "${required[@]}"; do
   check "file exists: $f" test -s "$f"
@@ -47,6 +49,10 @@ check "layout.worker.ts imports elkjs/lib/elk.bundled.js" \
   grep -q "^import ELK from 'elkjs/lib/elk.bundled.js';" "$MOD/layout.worker.ts"
 check "layout.ts imports elkjs/lib/elk.bundled.js" \
   grep -q "^import ELK from 'elkjs/lib/elk.bundled.js';" "$MOD/layout.ts"
+# In a dedicated worker elk.bundled.js takes over self.onmessage and has no in-thread engine
+# unless its first `new ELK()` sees a document (ADR 0005, plan §4.14).
+check "layout.worker.ts creates its ELK engine in its own thread (createInThreadElk)" \
+  bash -c "grep -q '^function createInThreadElk()' '$MOD/layout.worker.ts' && grep -q 'engine: createInThreadElk(),' '$MOD/layout.worker.ts'"
 check "no module file loads elk-worker.min.js, elk-api.js or lib/main.js" \
   bash -c "! grep -rEn --exclude='*.test.ts' \"(from|import\\(|require\\()[[:space:]]*'elkjs(/lib/(elk-worker|elk-api|main)[^']*)?'\" '$MOD' scripts/bench-layout.ts"
 check "only *.worker.ts in the module references worker globals (self, postMessage)" \
@@ -83,15 +89,35 @@ declare -A tests=(
   ["cycle gives a typed error"]="rejects a cyclic input with LineageCycleError"
   ["lint boundary: react fails, layout.worker.ts passes"]="fails lint for a temporary file in the folder that imports react"
   ["semiInteractive keeps the order in the row"]="keeps the order of the existing people in each row"
+  ["malformed input is INVALID_INPUT, not ELK_FAILED"]="rejects malformed graphs, options and previous positions as invalid input"
+  ["lint boundary: dynamic imports and DOM globals through globalThis"]="fails lint for dynamic imports of react, next, src/server and elkjs entry points"
+  ["lint boundary: no layout or ELK in the rest of src/lib"]="fails lint for elkjs and the layout in the rest of src/lib"
+  ["test views are public views (v_public_edge), counters included"]="builds public views only: no pending, awaiting-claim or under-review relationship"
 )
 for name in "${!tests[@]}"; do
   check "test present: $name" grep -rqF -- "${tests[$name]}" "$MOD" --include='*.test.ts'
 done
 check "boundary test also lints layout.worker.ts" grep -q "passes lint for layout.worker.ts" "$MOD/boundary.test.ts"
+check "boundary test probes are git-ignored (a killed run leaves git status clean)" \
+  git check-ignore -q "$MOD/__boundary-probe-check.ts"
+# layout.worker.ts runs in a file of its own: ELK caches its mode per process, so a test that
+# shares a file with createElkEngine() would pass even when the worker breaks (review of M03).
+check "layout.worker.ts is tested in its own file, without an ELK engine created before it" \
+  bash -c "grep -q \"await import('./layout.worker.ts')\" '$MOD/layout.worker.test.ts' && ! grep -Eq 'createElkEngine|layout\\.ts' <(grep -E '^import ' '$MOD/layout.worker.test.ts') && ! grep -q \"import('./layout.worker.ts')\" '$MOD/worker.test.ts'"
+check "test present: layout.worker.ts keeps self.onmessage and answers through postMessage" \
+  grep -qF "runs ELK in its own thread without taking over self.onmessage" "$MOD/layout.worker.test.ts"
+check "E2E @M03: layout.worker.ts in a real module Web Worker" \
+  grep -qF "test('@M03 layout.worker.ts lays out a view in a real module Web Worker'" e2e/lineage-layout-worker.spec.ts
+# fixtures/lineage-600.json from M01 (milestone In scope 1 and 6).
+for f in layout.test.ts ranks.test.ts layout.perf.test.ts; do
+  check "$f also runs on $FIXTURE" grep -q '^const fixture = loadLineageFixture();$' "$MOD/$f"
+done
+check "the views of the tests and the benchmark are public views (v_public_edge only)" \
+  bash -c "grep -q 'export function isPublicEdge' '$MOD/testing/synthetic.ts' && grep -q 'dataset.graph.edges.filter(isPublicEdge)' '$MOD/testing/views.ts'"
 check "layout.perf.test.ts: ego view ≤ 1000 ms" grep -q '^const EGO_VIEW_BUDGET_MS = 1000;$' "$MOD/layout.perf.test.ts"
 check "layout.perf.test.ts: 500-person view ≤ 2500 ms" grep -q '^const VIEW_500_BUDGET_MS = 2500;$' "$MOD/layout.perf.test.ts"
-check "layout.perf.test.ts covers the ego view of every person" \
-  grep -q 'for (const node of dataset.graph.nodes)' "$MOD/layout.perf.test.ts"
+check "layout.perf.test.ts covers the ego view of every person, synthetic and $FIXTURE" \
+  bash -c "grep -q 'for (const node of data.graph.nodes)' '$MOD/layout.perf.test.ts' && grep -q 'slowEgoViews(dataset)' '$MOD/layout.perf.test.ts' && grep -q 'slowEgoViews(fixture)' '$MOD/layout.perf.test.ts'"
 
 # 5. Default decisions are marked (docs/plan/RULES.md) ----------------------------------------
 check "DEFAULT D22 marked in ranks.ts" grep -q 'DEFAULT D22' "$MOD/ranks.ts"
@@ -111,24 +137,40 @@ else
   bad "pnpm bench:layout runs"
   tail -n 30 .verify/layout-bench.err
 fi
-bench_has_rows() { # bench_has_rows <file>
-  local file="$1" view
+view_rows_ok() { # view_rows_ok <markdown>: every standard view has a row with rows = ranks
+  local text="$1" view
   for view in ego:demo-root-a ego:demo-root-b ego:demo-shared-ancestor ego:demo-two-lineages \
     ego:demo-converging ego:demo-hub-a lineage:demo-root-a around:demo-shared-ancestor view-500; do
     # | `view` | people | edges | rows | cut-off | rows = ranks | cold | warm | bends | size |
-    grep -Eq "^\| \`$view\` \| [0-9]+ \| [0-9]+ / [0-9]+ \| [0-9]+ \| [0-9]+ \| да \| [0-9]+ \| [0-9]+ \| [0-9]+ / [0-9]+ \| [0-9]+ × [0-9]+ \|$" "$file" || return 1
+    grep -Eq "^\| \`$view\` \| [0-9]+ \| [0-9]+ / [0-9]+ \| [0-9]+ \| [0-9]+ \| да \| [0-9]+ \| [0-9]+ \| [0-9]+ / [0-9]+ \| [0-9]+ × [0-9]+ \|$" <<<"$text" || return 1
   done
-  grep -q "^## 1\. .*(избраният алгоритъм $chosen)" "$file" || return 1
-  # The chosen placement keeps the spine straight in every ego view; the other one is measured too.
-  grep -Eq "^\| $chosen \| 0 от 6 \| 0 от [0-9]+ \| 0 \|" "$file" || return 1
-  grep -Eq '^\| NETWORK_SIMPLEX \| [0-9]+ от 6 \| [0-9]+ от [0-9]+ \| [0-9]+ \|' "$file" || return 1
-  grep -Eq '^\| BRANDES_KOEPF \| [0-9]+ от 6 \| [0-9]+ от [0-9]+ \| [0-9]+ \|' "$file" || return 1
-  grep -Eq '^\| `expand` \(`semiInteractive`\) \| [0-9]+ \| [0-9]+ \| [0-9]+ \| [0-9]+ \|$' "$file" || return 1
+}
+comparison_ok() { # comparison_ok <markdown>: the chosen placement keeps every spine straight; both are measured
+  local text="$1"
+  grep -Eq "^\| $chosen \| 0 от 6 \| 0 от [0-9]+ \| 0 \|" <<<"$text" || return 1
+  grep -Eq '^\| NETWORK_SIMPLEX \| [0-9]+ от 6 \| [0-9]+ от [0-9]+ \| [0-9]+ \|' <<<"$text" || return 1
+  grep -Eq '^\| BRANDES_KOEPF \| [0-9]+ от 6 \| [0-9]+ от [0-9]+ \| [0-9]+ \|' <<<"$text" || return 1
+}
+bench_has_rows() { # bench_has_rows <file>
+  local file="$1" synthetic fixture
+  # Tables 1-4: the synthetic graph; section 5: fixtures/lineage-600.json from M01.
+  synthetic="$(sed '/^## 5\. /,$d' "$file")"
+  fixture="$(sed -n '/^## 5\. /,$p' "$file")"
+  grep -q "^## 1\. .*(избраният алгоритъм $chosen)" <<<"$synthetic" || return 1
+  view_rows_ok "$synthetic" || return 1
+  comparison_ok "$synthetic" || return 1
+  grep -Eq '^\| `expand` \(`semiInteractive`\) \| [0-9]+ \| [0-9]+ \| [0-9]+ \| [0-9]+ \|$' <<<"$synthetic" || return 1
+  grep -q "^## 5\. \`$FIXTURE\` от M01 (избраният алгоритъм $chosen)" <<<"$fixture" || return 1
+  view_rows_ok "$fixture" || return 1
+  comparison_ok "$fixture" || return 1
+  # Cold ego views over the budget are reported (not gated, DEFAULT D24) for both datasets.
+  [ "$(grep -c '^Студени его-изгледи над 1000 ms' "$file")" -eq 2 ] || return 1
+  grep -q 'Изгледите са \*\*публични\*\*' "$file" || return 1
   grep -q '<!-- generated by scripts/bench-layout.ts' "$file" || return 1
   grep -q 'elkjs 0.12.0' "$file" || return 1
 }
-check "fresh benchmark: every view, rows = ranks, a straight spine with the chosen algorithm" bench_has_rows "$BENCH_OUT"
-check "$BENCH (committed) holds real measurements for every view and both algorithms" bench_has_rows "$BENCH"
+check "fresh benchmark: every view of both datasets, rows = ranks, a straight spine with the chosen algorithm" bench_has_rows "$BENCH_OUT"
+check "$BENCH (committed) holds real measurements for every view, both datasets and both algorithms" bench_has_rows "$BENCH"
 
 # 7. ADR 0005 in Bulgarian (In scope 5, 7) ----------------------------------------------------
 check "$ADR is in Bulgarian" grep -q 'Решение' "$ADR"

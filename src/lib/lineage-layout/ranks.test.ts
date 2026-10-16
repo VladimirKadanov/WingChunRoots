@@ -3,11 +3,26 @@ import { LineageCycleError, LineageInputError } from './errors.ts';
 import { computeRanks } from './ranks.ts';
 import { demoGraph } from './testing/build.ts';
 import { rankRuleViolations } from './testing/checks.ts';
+import { LINEAGE_FIXTURE_PATH, loadLineageFixture } from './testing/fixture.ts';
 import { anchorId, generateSyntheticLineage } from './testing/synthetic.ts';
-import { sharedAncestorView, standardViews } from './testing/views.ts';
+import { egoView, sharedAncestorView, standardViews } from './testing/views.ts';
+import type { LineageGraph } from './types.ts';
 
 const dataset = generateSyntheticLineage();
 const views = standardViews(dataset);
+/** fixtures/lineage-600.json from M01 (milestone item 1). */
+const fixture = loadLineageFixture();
+
+/** rank(student) > rank(teacher) for every edge, and every cut-off teacher one row above its highest student. */
+function expectRankRule(graph: LineageGraph, name: string) {
+  const result = computeRanks(graph);
+  expect(result.ranks.size, name).toBe(graph.nodes.length);
+  expect(rankRuleViolations(graph, result), name).toEqual([]);
+  for (const id of result.cutOff) {
+    const students = graph.edges.filter((e) => e.teacherId === id).map((e) => result.ranks.get(e.studentId)!);
+    expect(result.ranks.get(id), `${name}: cut-off ${id}`).toBe(Math.min(...students) - 1);
+  }
+}
 
 describe('computeRanks (plan §4.4)', () => {
   it('gives roots rank 0 and every student max(rank of its teachers) + 1', () => {
@@ -150,14 +165,8 @@ describe('computeRanks (plan §4.4)', () => {
 
   it.each(views.map((v) => [v.name, v.graph] as const))(
     'keeps rank(student) > rank(teacher) for every edge in %s',
-    (_name, graph) => {
-      const result = computeRanks(graph);
-      expect(result.ranks.size).toBe(graph.nodes.length);
-      expect(rankRuleViolations(graph, result)).toEqual([]);
-      for (const id of result.cutOff) {
-        const students = graph.edges.filter((e) => e.teacherId === id).map((e) => result.ranks.get(e.studentId)!);
-        expect(result.ranks.get(id)).toBe(Math.min(...students) - 1);
-      }
+    (name, graph) => {
+      expectRankRule(graph, name);
     },
   );
 
@@ -192,5 +201,15 @@ describe('computeRanks (plan §4.4)', () => {
     expect(ranks.get(cross.teacherId)!).toBeGreaterThan(ranks.get(primary.teacherId)!);
     expect(ranks.get(id('demo-two-lineages'))).toBe(ranks.get(cross.teacherId)! + 1);
     expect(rankRuleViolations(graph, result)).toEqual([]);
+  });
+});
+
+describe(`computeRanks on ${LINEAGE_FIXTURE_PATH} from M01`, () => {
+  it('keeps rank(student) > rank(teacher) for every edge in every standard view of the fixture', () => {
+    for (const view of standardViews(fixture)) expectRankRule(view.graph, view.name);
+  });
+
+  it('keeps the rank rule in the ego view of every person in the fixture', () => {
+    for (const node of fixture.graph.nodes) expectRankRule(egoView(fixture, node.id), `ego:${node.id}`);
   });
 });

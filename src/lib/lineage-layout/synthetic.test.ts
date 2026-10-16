@@ -6,7 +6,9 @@ import {
   LINEAGES,
   anchorId,
   generateSyntheticLineage,
+  isPublicEdge,
 } from './testing/synthetic.ts';
+import { expandStudents, standardViews } from './testing/views.ts';
 
 describe('synthetic lineage generator', () => {
   const dataset = generateSyntheticLineage();
@@ -117,6 +119,25 @@ describe('synthetic lineage generator', () => {
     for (const status of ['verified', 'pending_teacher', 'awaiting_claim', 'under_review', 'in_arbitration']) {
       expect(statuses).toContain(status);
     }
+  });
+
+  it('builds public views only: no pending, awaiting-claim or under-review relationship, not even as a count', () => {
+    // Plan §6.2, §6.4, §4.14: an anonymous view reads v_public_edge only, and so do its counters.
+    const hidden = graph.edges.filter((e) => !isPublicEdge(e));
+    expect(hidden.length).toBeGreaterThan(0);
+    const publicStudents = new Map<string, number>();
+    for (const e of graph.edges.filter(isPublicEdge)) publicStudents.set(e.teacherId, (publicStudents.get(e.teacherId) ?? 0) + 1);
+    for (const node of graph.nodes) expect(node.childCount, node.id).toBe(publicStudents.get(node.id) ?? 0);
+    const hiddenIds = new Set(hidden.map((e) => e.id));
+    for (const view of standardViews(dataset)) {
+      expect(view.graph.edges.filter((e) => hiddenIds.has(e.id)), view.name).toEqual([]);
+      for (const e of view.graph.edges) expect(isPublicEdge(e), `${view.name} ${e.id}`).toBe(true);
+    }
+    // Expanding a teacher of a pending student does not reveal that student.
+    const pending = hidden[0]!;
+    const base = standardViews(dataset).find((v) => v.graph.nodes.some((n) => n.id === pending.teacherId))!;
+    const expanded = expandStudents(dataset, base.graph, pending.teacherId);
+    expect(expanded.edges.some((e) => e.id === pending.id)).toBe(false);
   });
 
   it('is acyclic, so every person gets a rank', () => {

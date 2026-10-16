@@ -29,7 +29,9 @@ export function computeRanksIndexed(index: GraphIndex): RankResult {
   const { graph, teacherEdges, studentEdges } = index;
   const cutOff = new Set<string>();
   for (const node of graph.nodes) {
-    const hiddenTeachers = graph.hiddenCounts?.[node.id]?.teachers ?? 0;
+    // Own keys only: a node id such as `constructor` must not read Object.prototype.
+    const hidden = graph.hiddenCounts && Object.hasOwn(graph.hiddenCounts, node.id) ? graph.hiddenCounts[node.id] : undefined;
+    const hiddenTeachers = hidden?.teachers ?? 0;
     if (teacherEdges.get(node.id)!.length === 0 && hiddenTeachers > 0 && studentEdges.get(node.id)!.length > 0) {
       cutOff.add(node.id);
     }

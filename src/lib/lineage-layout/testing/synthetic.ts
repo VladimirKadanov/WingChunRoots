@@ -52,13 +52,37 @@ export const LINEAGES = {
   c: 'demo-lineage-c',
 } as const;
 
-export interface SyntheticDataset {
-  seed: number;
-  /** The whole graph, nothing hidden. */
+/**
+ * A whole lineage dataset for the view helpers of testing/views.ts: the synthetic graph of
+ * this file or `fixtures/lineage-600.json` from M01 (testing/fixture.ts).
+ */
+export interface LineageDataset {
+  /** Where the data comes from, for reports. */
+  source: string;
+  /**
+   * The whole graph, nothing hidden: every relationship in every state, like the tables
+   * behind `v_public_edge`. The views of testing/views.ts read only its public edges.
+   */
   graph: LineageGraph;
-  /** Node id → slug, and slug → node id. */
+  /** Node id → slug and slug → node id (every person here, only the anchors in the fixture). */
   slugById: Record<string, string>;
   idBySlug: Record<string, string>;
+  /** Lineage slug (`demo-lineage-a`) → the lineage id the edges carry. */
+  lineageIdBySlug: Record<string, string>;
+}
+
+export interface SyntheticDataset extends LineageDataset {
+  seed: number;
+}
+
+/**
+ * The relationships an anonymous viewer sees (plan §6.2, §6.4: `v_public_edge`): only
+ * `verified` and `in_arbitration` with `visibility = 'public'`. Counters (`childCount`,
+ * `hiddenCounts`, descendants, lineage membership) read only these, so that a pending
+ * request never shows up as a number (plan §4.14).
+ */
+export function isPublicEdge(edge: LineageEdge): boolean {
+  return (edge.status === 'verified' || edge.status === 'in_arbitration') && edge.visibility === 'public';
 }
 
 export interface SyntheticOptions {
@@ -322,10 +346,11 @@ export function generateSyntheticLineage(options: SyntheticOptions = {}): Synthe
   }
 
   // --- Assemble the §6.3 shape -----------------------------------------------------------
+  // Lineage membership and childCount count public relationships only (plan §6.2, §6.4).
   const lineageIdsOf = (person: Person) => {
     const ids = new Set<string>([person.lineage]);
-    for (const e of teachersOf.get(person.id)!) ids.add(e.lineageId);
-    for (const e of studentsOf.get(person.id)!) ids.add(e.lineageId);
+    for (const e of teachersOf.get(person.id)!) if (isPublicEdge(e)) ids.add(e.lineageId);
+    for (const e of studentsOf.get(person.id)!) if (isPublicEdge(e)) ids.add(e.lineageId);
     return [...ids].sort();
   };
   const nodes: LineageNode[] = people.map((p) => ({
@@ -335,7 +360,7 @@ export function generateSyntheticLineage(options: SyntheticOptions = {}): Synthe
     lifeStatus: p.depth <= 1 || p.slug === 'demo-root-c' ? 'deceased' : 'living',
     claimState: p.depth <= 1 ? 'unclaimed' : 'claimed',
     lineageIds: lineageIdsOf(p),
-    childCount: studentsOf.get(p.id)!.length,
+    childCount: studentsOf.get(p.id)!.filter(isPublicEdge).length,
     hasMoreChildren: false,
   }));
   const graph: LineageGraph = {
@@ -351,12 +376,14 @@ export function generateSyntheticLineage(options: SyntheticOptions = {}): Synthe
     slugById[p.id] = p.slug;
     idBySlug[p.slug] = p.id;
   }
-  return { seed, graph, slugById, idBySlug };
+  // The synthetic lineage ids are their slugs.
+  const lineageIdBySlug: Record<string, string> = Object.fromEntries(Object.values(LINEAGES).map((id) => [id, id]));
+  return { source: `synthetic (seed ${seed})`, seed, graph, slugById, idBySlug, lineageIdBySlug };
 }
 
 /** The id of an anchor record (throws for an unknown slug). */
-export function anchorId(dataset: SyntheticDataset, slug: AnchorSlug): string {
-  const id = dataset.idBySlug[slug];
+export function anchorId(dataset: LineageDataset, slug: AnchorSlug): string {
+  const id = Object.hasOwn(dataset.idBySlug, slug) ? dataset.idBySlug[slug] : undefined;
   if (!id) throw new Error(`Unknown anchor slug: ${slug}`);
   return id;
 }
