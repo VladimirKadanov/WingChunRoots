@@ -150,7 +150,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | [`docs/adr/0002-data-model.md`](docs/adr/0002-data-model.md) | Data model decisions: Drizzle 1.0 RC, database roles, privacy in the database, fixtures |
 | [`docs/adr/0003-jobs-and-mail.md`](docs/adr/0003-jobs-and-mail.md) | Background jobs (pg-boss without DDL rights) and e-mail: outbox, Mailer, retries, templates |
 | [`docs/adr/0006-design-system.md`](docs/adr/0006-design-system.md) | The design system: tokens, contrast, fonts, themes, components, budgets, visual regression, and every deviation from the plan and the prototype |
-| [`docs/design/direction.md`](docs/design/direction.md) | The design direction (Ink Register, pending the owner's choice) and the four prototypes in `docs/design/prototypes/` |
+| [`docs/design/direction.md`](docs/design/direction.md) | The design direction (Ink Register, chosen by the owner) and the four prototypes in `docs/design/prototypes/` |
 | [`docs/data-model.md`](docs/data-model.md) | The data model: tables, public views, roles and grants, personal data and retention |
 | [`docs/guides/user-guide.bg.md`](docs/guides/user-guide.bg.md) | User guide (Bulgarian): the site, navigation, themes and the home page |
 | [`docs/guides/admin-guide.bg.md`](docs/guides/admin-guide.bg.md) | Administrator guide (Bulgarian): running locally on Windows with Docker Desktop and WSL2, stopping, updating, the worker and e-mail, visual baselines |

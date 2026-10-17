@@ -2,8 +2,8 @@
 // @theme) and for the future mobile app (JSON). Plan §5.2, §5.3, §5.8, §6.8.
 //
 // Direction: "Ink Register" (docs/design/direction.md): the ink, paper and seal language of
-// the Ink Lineage prototype on top of the Living Archive explorer model. Status: recommended
-// default, pending the owner's choice.
+// the Ink Lineage prototype on top of the Living Archive explorer model. Chosen by the owner
+// on 2026-10-17.
 //
 // `pnpm tokens:build` writes src/design/generated/tokens.css and tokens.json from this file;
 // src/design/tokens.build.test.ts fails when they are out of date and
