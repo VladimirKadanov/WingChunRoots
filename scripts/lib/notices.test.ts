@@ -123,8 +123,9 @@ describe('splitCopyright and copyright holders', () => {
 });
 
 describe('pickLicenseFiles', () => {
-  it('takes the plain licence file, or else every suffixed one', () => {
-    expect(pickLicenseFiles(['index.js', 'LICENSE', 'LICENSE-MIT.txt', 'package.json'])).toEqual({ files: ['LICENSE'], unrecognised: [] });
+  it('takes the plain licence file and every suffixed one, so no licence text is dropped', () => {
+    expect(pickLicenseFiles(['index.js', 'LICENSE', 'LICENSE-MIT.txt', 'package.json'])).toEqual({ files: ['LICENSE', 'LICENSE-MIT.txt'], unrecognised: [] });
+    expect(pickLicenseFiles(['LICENSE-3RD-PARTY.txt', 'LICENSE', 'LICENSE.md'])).toEqual({ files: ['LICENSE', 'LICENSE-3RD-PARTY.txt'], unrecognised: [] });
     expect(pickLicenseFiles(['LICENSE-MIT.txt', 'README.md'])).toEqual({ files: ['LICENSE-MIT.txt'], unrecognised: [] });
     expect(pickLicenseFiles(['license-mit', 'index.d.ts', 'license-cc0'])).toEqual({ files: ['license-cc0', 'license-mit'], unrecognised: [] });
     for (const name of ['LICENCE.md', 'license.txt', 'COPYING', 'OFL.txt', 'LICENSE.markdown'])

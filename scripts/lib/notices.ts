@@ -126,16 +126,19 @@ const PLAIN_LICENSE_FILE = /^(?:licen[cs]e|copying|ofl)(?:\.(?:md|txt|markdown))
 const LICENSE_LIKE = /^(?:licen[cs]e|copying|ofl)/i;
 
 /**
- * The licence files of a package directory, by name: the plain one (LICENSE) when there is one,
- * otherwise every suffixed one, sorted (type-fest ships license-mit and license-cc0 for its dual
- * licence, jsesc LICENSE-MIT.txt). `unrecognised` lists licence-like names that no rule takes,
- * so `pnpm notices` stops instead of listing a package with a licence file as shipping none.
+ * The licence files of a package directory, by name: the plain one (LICENSE; the first by name
+ * when there are several spellings), then every suffixed one, sorted (type-fest ships license-mit
+ * and license-cc0 for its dual licence, jsesc LICENSE-MIT.txt, others LICENSE plus a
+ * LICENSE-3RD-PARTY.txt for code they bundle). `unrecognised` lists licence-like names that no
+ * rule takes, so `pnpm notices` stops instead of listing a package with a licence file as
+ * shipping none.
  */
 export function pickLicenseFiles(names: readonly string[]): { files: string[]; unrecognised: string[] } {
   const sorted = [...names].sort();
   const plain = sorted.find((name) => PLAIN_LICENSE_FILE.test(name));
+  const suffixed = sorted.filter((name) => LICENSE_FILE.test(name) && !PLAIN_LICENSE_FILE.test(name));
   return {
-    files: plain ? [plain] : sorted.filter((name) => LICENSE_FILE.test(name)),
+    files: plain ? [plain, ...suffixed] : suffixed,
     unrecognised: sorted.filter((name) => LICENSE_LIKE.test(name) && !LICENSE_FILE.test(name)),
   };
 }
