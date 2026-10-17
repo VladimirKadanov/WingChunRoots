@@ -159,7 +159,7 @@ export function HallTree({ className }: { className?: string }) {
         ) : n.living ? (
           <circle key={n.id} cx={n.x} cy={y(n.g)} r={6} fill="var(--fg)" />
         ) : (
-          <circle key={n.id} cx={n.x} cy={y(n.g)} r={5.6} fill="var(--bg)" stroke="var(--fg)" strokeWidth={2} />
+          <circle key={n.id} cx={n.x} cy={y(n.g)} r={5.6} fill="var(--seal-ground, var(--bg))" stroke="var(--fg)" strokeWidth={2} />
         ),
       )}
 

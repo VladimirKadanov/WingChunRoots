@@ -36,7 +36,7 @@ export function Dialog({ trigger, title, description, children, footer, classNam
             className={cn(
               // mt-auto: at the bottom on phones; my-auto from 640 px: centred. Either way it
               // overflows downwards, where the viewport scrolls.
-              'relative mt-auto w-full max-w-[30rem] shrink-0 rounded-lg border border-border-subtle bg-surface-2 p-6 text-fg shadow-pop outline-none sm:mb-auto',
+              'relative mt-auto w-full max-w-[30rem] shrink-0 rounded-lg border border-border-subtle bg-surface-2 p-6 text-fg shadow-pop outline-none [--seal-ground:var(--surface-2)] sm:mb-auto',
               'transition-[opacity,transform] duration-(--duration-base) ease-out',
               'data-ending-style:translate-y-2 data-ending-style:opacity-0 data-starting-style:translate-y-2 data-starting-style:opacity-0',
               className,

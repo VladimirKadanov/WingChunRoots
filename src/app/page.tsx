@@ -206,7 +206,7 @@ export default function HomePage() {
             Trace this hall’s line
           </TraceLineButton>
         </div>
-        <figure className="w-full max-w-[26rem] rounded-md border border-border-subtle bg-surface-1 p-2 sm:p-3 md:p-4">
+        <figure className="w-full max-w-[26rem] rounded-md border border-border-subtle bg-surface-1 p-2 [--seal-ground:var(--surface-1)] sm:p-3 md:p-4">
           <HallTree className="block h-auto w-full" />
           <figcaption className="mt-3 grid gap-3 border-t border-border-subtle pt-3">
             <Legend kinds={HALL_TREE_KINDS} />

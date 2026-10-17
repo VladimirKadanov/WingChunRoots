@@ -41,7 +41,7 @@ export function MenuContent({
       <BaseMenu.Positioner className="z-50 outline-none" align={align} side={side} sideOffset={sideOffset} collisionPadding={12}>
         <BaseMenu.Popup
           className={cn(
-            'min-w-48 origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-2 p-1 text-fg shadow-pop outline-none',
+            'min-w-48 origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-2 p-1 text-fg shadow-pop outline-none [--seal-ground:var(--surface-2)]',
             'transition-[opacity,scale] duration-(--duration-fast) ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0',
             className,
           )}

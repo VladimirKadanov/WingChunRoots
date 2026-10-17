@@ -127,7 +127,7 @@
      (plan §4.7, solid tones only). */
   .seal-dim {
     --verified: var(--dim-stroke);
-    --on-verified: var(--bg);
+    --on-verified: var(--seal-ground, var(--bg));
     --review: var(--dim-stroke);
     --unconfirmed: var(--dim-stroke);
     --arbitration: var(--dim-stroke);
