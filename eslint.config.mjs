@@ -24,6 +24,10 @@ const forbiddenPackages = [
     ],
     message: 'The UI is English only, permanently: no translation libraries (plan §5).',
   },
+  {
+    group: ['next/font/google', 'next/font/google/*', '@next/font/google', '@next/font/google/*'],
+    message: 'Fonts are self-hosted with next/font/local from @fontsource (plan §5.3): never a request to Google.',
+  },
 ];
 
 // Packages that only one module may import (plan §6.1; milestone M01b).
@@ -60,6 +64,25 @@ const elkOnlyInLayoutModule = {
   group: ['elkjs', 'elkjs/*'],
   message: 'ELK is used only through src/lib/lineage-layout (Web Worker or background job), never in the request path (plan §4.1).',
 };
+// UI primitives (M00b): Base UI is wrapped once, in src/components/ui (the shadcn/ui pattern),
+// so styling, focus rings and the history layer stay in one place.
+const baseUiOnlyInUi = {
+  group: ['@base-ui/react', '@base-ui/react/*'],
+  message: 'Use the wrappers in src/components/ui; only they import Base UI (ADR 0006).',
+};
+// The shell, the home page and the ink drawings run on every page or in client islands: they
+// use the small `cx` helper, not tailwind-merge and the token tables behind @/lib/utils (JS budget).
+const noTailwindMerge = {
+  group: ['@/lib/utils', '**/lib/utils', 'tailwind-merge', 'tailwind-merge/*'],
+  message: 'Use cx from @/lib/cx here: cn pulls tailwind-merge and the design tokens into every page (ADR 0006).',
+};
+// src/design is data and pure functions (tokens, colour maths, the ink geometry), read by the
+// token generator, tests and scripts; only fonts.ts and theme.ts touch Next.js or the browser.
+const designPurity = {
+  group: ['react', 'react/*', 'react-dom', 'react-dom/*', 'next', 'next/*', '@/components/*', '@/app/*', '@/server/*', '@/lib/*'],
+  message: 'src/design is pure TypeScript (tokens, colour and ink geometry); only fonts.ts and theme.ts may use Next.js or the browser (ADR 0006).',
+};
+
 const noLayoutInRequestPath = {
   group: [
     '**/lineage-layout/layout',
@@ -119,6 +142,25 @@ export default defineConfig([
       'no-restricted-imports': restrictImports([elkOnlyInLayoutModule]),
     },
   },
+  {
+    // React Compiler memoizes (reactCompiler in next.config.ts): no hand-written useMemo or
+    // useCallback (plan §3.1). src/lib/lineage-layout sets its own no-restricted-syntax below
+    // and imports no React at all.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: String.raw`ImportSpecifier[imported.name=/^(useMemo|useCallback)$/]`,
+          message: 'React Compiler memoizes: no hand-written useMemo or useCallback (plan §3.1).',
+        },
+        {
+          selector: String.raw`MemberExpression[object.name='React'][property.name=/^(useMemo|useCallback)$/]`,
+          message: 'React Compiler memoizes: no hand-written useMemo or useCallback (plan §3.1).',
+        },
+      ],
+    },
+  },
   // Module boundaries (plan §6.1).
   {
     files: ['src/app/**/*.{ts,tsx}', 'src/components/**/*.{ts,tsx}'],
@@ -134,7 +176,27 @@ export default defineConfig([
         },
         elkOnlyInLayoutModule,
         noLayoutInRequestPath,
+        baseUiOnlyInUi,
       ]),
+    },
+  },
+  {
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath]),
+    },
+  },
+  {
+    files: ['src/components/shell/**/*.{ts,tsx}', 'src/components/home/**/*.{ts,tsx}', 'src/components/ink/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath, baseUiOnlyInUi, noTailwindMerge]),
+    },
+  },
+  {
+    files: ['src/design/**/*.ts'],
+    ignores: ['src/design/fonts.ts', 'src/design/theme.ts', 'src/design/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, designPurity]),
     },
   },
   {

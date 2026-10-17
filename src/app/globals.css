@@ -1,0 +1,245 @@
+/*
+ * Global styles of WingChunRoots: Tailwind CSS 4, the generated design tokens and the base
+ * layer of the "Ink Register" direction (docs/design/direction.md). Colours, type, radii,
+ * shadows and motion come only from src/design/tokens.ts (`pnpm tokens:build`).
+ */
+/* Tailwind scans src/ only (not docs/, the prototypes or the licence texts), so no utility
+   that the app does not use reaches the CSS. The `dark:` variant and print are in tokens.css. */
+@import 'tailwindcss' source('../');
+@import '../design/generated/tokens.css';
+@source not './legal/licenses/notices.json';
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    background: var(--bg);
+    /* The room the phone tab bar takes at the bottom of the window: its measured height
+       (--tab-bar, published by TabBarRoom: the bar grows with the text) or the --tab-h token
+       until then, plus the home indicator's inset. From 768 px the rail is on the side: none. */
+    --tab-clear: calc(var(--tab-bar, var(--tab-h)) + env(safe-area-inset-bottom, 0px));
+    /* What the page keeps clear at the bottom: the tab bar, or an open non-modal bottom sheet
+       (--sheet-page-clear, published by Drawer, with a little air for the focus ring). Focus and
+       anchors scroll above it (WCAG 2.4.11) and <main> is padded by it (AppShell), so the last
+       control of a page can still be scrolled above a peeking sheet. */
+    --page-clear-bottom: max(var(--tab-clear), var(--sheet-page-clear, 0px));
+    scroll-padding-bottom: var(--page-clear-bottom);
+    /* The sticky phone top bar covers the top (WCAG 2.4.11); the desktop rail covers nothing. */
+    scroll-padding-top: calc(var(--top-h) + env(safe-area-inset-top, 0px));
+    @media (width >= 48rem) {
+      --tab-clear: 0px;
+      --page-clear-bottom: var(--sheet-page-clear, 0px);
+      scroll-padding-top: 0px;
+    }
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Display type: Gloock exists only at 400, so nothing synthesises a bold or an italic. */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-synthesis: none;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /* <search> is an unknown inline element before Chrome 118 and Safari 17 (plan §5.4: Chrome
+     111+, Safari 16.4+). */
+  search {
+    display: block;
+  }
+
+  /* Names (plan §5.3): long names wrap instead of being cut. */
+  [translate='no'] {
+    overflow-wrap: anywhere;
+  }
+
+  /* Focus: a 2 px gold ring with a 2 px offset (plan §5.2); never red, never green. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--fg);
+    color: var(--fg-inverse);
+  }
+
+  button,
+  [role='button'],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+
+  :disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  /* Instant motion for people who ask for it (plan §5.8 (e)). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Eyebrow: the small uppercase label above a heading. */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: var(--text-caption);
+    line-height: var(--text-caption--line-height);
+    letter-spacing: var(--text-caption--letter-spacing);
+    font-weight: var(--text-caption--font-weight);
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+
+  /* Chinese names: system CJK fonts, a little tracking (plan §5.3). */
+  .cjk {
+    letter-spacing: 0.06em;
+  }
+  /* An inherited font-family was resolved with the Traditional fonts of :root, so a
+     Simplified original sets it again where :lang(zh-Hans) switches --font-cjk-*. */
+  .cjk:where(:lang(zh-Hans)) {
+    font-family: var(--font-cjk-sans), sans-serif;
+  }
+  .cjk:where(.font-display *, .font-display) {
+    font-family: var(--font-cjk-serif), serif;
+  }
+
+  /* Seals (src/components/ink/seal.tsx): the dimmed tone keeps the shape and drops the colour
+     (plan §4.7, solid tones only). */
+  .seal-dim {
+    --verified: var(--dim-stroke);
+    --on-verified: var(--seal-ground, var(--bg));
+    --review: var(--dim-stroke);
+    --unconfirmed: var(--dim-stroke);
+    --arbitration: var(--dim-stroke);
+    --cross-lineage: var(--dim-stroke);
+    --fg-muted: var(--dim-stroke);
+  }
+
+  /* Text links: underlined, never colour alone. The element sets its own 44 px touch area. */
+  .link {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 0.3em;
+    transition: text-decoration-color var(--duration-fast) var(--ease-out);
+  }
+  .link:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+/* Page gutters: 16 px on phones and 40 px from 768 px, never less than the safe-area inset of
+   that side (a landscape phone's notch is on one side only). */
+@utility px-page {
+  padding-left: max(var(--gutter-phone), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gutter-phone), env(safe-area-inset-right, 0px));
+  @media (width >= 48rem) {
+    padding-left: max(var(--gutter-desktop), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--gutter-desktop), env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Toasts (src/components/ui/toast.tsx): above the phone tab bar and the home indicator (0.75rem
+   on phones, 2rem from 768 px), or 0.75rem above the top edge of an open bottom sheet
+   (--sheet-clear, published by Drawer). Over a sheet at full height Drawer sets data-sheet-full
+   on <html> and the toast moves under the sheet's header instead (toast.tsx). */
+@utility bottom-toast {
+  --toast-gap: 0.75rem;
+  bottom: max(
+    calc(max(var(--tab-clear), env(safe-area-inset-bottom, 0px)) + var(--toast-gap)),
+    calc(var(--sheet-clear, 0px) + 0.75rem)
+  );
+  @media (width >= 48rem) {
+    --toast-gap: 2rem;
+  }
+}
+
+/* The verification marks of the home page (src/app/page.tsx), by the width of their section
+   (container "how"): one column with each drawing beside its text from 18rem, three columns
+   with the drawing on top from 52rem. In rem, so larger text keeps the roomier layout longer;
+   narrower than 18rem (a 320 px phone at 150 % text) the drawing sits on top. */
+@custom-variant marks-row {
+  @container how (width >= 18rem) and (width < 52rem) {
+    @slot;
+  }
+}
+@custom-variant marks-cols {
+  @container how (width >= 52rem) {
+    @slot;
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Tabular numerals for years and generation counts (Arabic numerals, plan §5.3). */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The ink trace (tap only, never on its own): a stroke inks in from the teacher's end and its
+   seal is pressed after it. Instant under prefers-reduced-motion (rule above). */
+@keyframes ink-draw {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes seal-press {
+  0% {
+    opacity: 0;
+    transform: scale(2.1) rotate(-16deg);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility animate-ink-draw {
+  animation: ink-draw var(--duration-ink-draw) var(--ease-in-out) both;
+}
+@utility animate-seal-press {
+  animation: seal-press var(--duration-slow) var(--ease-out) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}

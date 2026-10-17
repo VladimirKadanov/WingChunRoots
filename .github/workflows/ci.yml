@@ -22,8 +22,9 @@ env:
 jobs:
   verify:
     # Everything `scripts/verify.sh all` runs: lint, typecheck, unit, build, the whole E2E
-    # suite in desktop-chromium, mobile-chromium and mobile-webkit, and every
-    # scripts/verify.d/*.sh, against PostgreSQL 18 + PostGIS 3.6 and Mailpit.
+    # suite in desktop-chromium, mobile-chromium and mobile-webkit, the visual regression (from
+    # M00b), and every scripts/verify.d/*.sh (from M00b with the JavaScript budget and Lighthouse
+    # CI), against PostgreSQL 18 + PostGIS 3.6 and Mailpit.
     name: verify (Node 24, PostgreSQL 18, Playwright)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -91,6 +92,19 @@ jobs:
         run: psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -f docker/postgres/20-create-test-database.sql
       - name: scripts/verify.sh all
         run: scripts/verify.sh all
+      # verify.sh shows only the last 80 lines of a failed step; Playwright's numbered failure
+      # reports come earlier. The artifact has the whole log, but the reports also belong here.
+      - name: Print the end-to-end failure reports
+        if: failure()
+        run: |
+          [ -f .verify/all.log ] || exit 0
+          awk '/^  1\) \[/ { p = 1 } p && /^  [0-9]+ (failed|flaky)$/ { exit } p' .verify/all.log | grep -v -e '^ *attachment #' -e 'show-trace' -e '^ *Usage:$' | head -n 1500
+      - name: Print the visual regression screenshots that match no baseline
+        # The visual project (e2e/visual.spec.ts, M00b) runs only here. When a screenshot has no
+        # baseline or differs from it, this prints it as base64 so it can be reviewed and accepted
+        # from the job log too (scripts/visual-baselines.sh accept; docs/guides/admin-guide.bg.md).
+        if: failure()
+        run: scripts/visual-baselines.sh print
       - name: Upload the verify log and Playwright results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

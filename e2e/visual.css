@@ -1,0 +1,9 @@
+/* Applied only while e2e/visual.spec.ts takes its screenshots (Playwright stylePath). Text set
+   in the system CJK fonts is made transparent: a runner image can change those fonts without any
+   change in the app (plan §5.3). The text still takes its space, so the layout is compared;
+   nothing is painted over the page, unlike a mask, so the fixed tab bar stays visible. */
+[lang^='zh'],
+[lang^='zh'] *,
+input::placeholder {
+  color: transparent !important;
+}

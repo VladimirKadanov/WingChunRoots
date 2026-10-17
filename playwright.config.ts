@@ -27,7 +27,20 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: buildProjects({ ci, chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE }),
+  // Visual regression (M00b, e2e/visual.spec.ts): a missing baseline fails the test (Playwright's
+  // 'default' mode), which still saves the screenshot as …-actual.png so that
+  // scripts/visual-baselines.sh can print it from CI. Baselines change only through a commit
+  // (docs/guides/admin-guide.bg.md).
+  updateSnapshots: 'default',
+  expect: {
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', scale: 'css' },
+  },
+  projects: buildProjects({
+    ci,
+    chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE,
+    visual: ci || process.env.PW_VISUAL === '1',
+    screenshots: process.env.PW_SCREENSHOTS === '1',
+  }),
   webServer: [
     {
       name: 'web',

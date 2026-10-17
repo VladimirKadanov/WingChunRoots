@@ -23,7 +23,7 @@
 | Тестове | `vitest` | 5.0.5 | Конфигурацията е `vitest.config.mts` (ESM за родния зареждач на Vite) |
 | Тестове | `@playwright/test`, `@axe-core/playwright` | 1.64.1, 4.14.0 | Проекти `desktop-chromium`, `mobile-chromium` и `mobile-webkit` (само при `CI=true`) |
 | Типове | `@types/node`, `@types/react`, `@types/react-dom` | 24.19.2, 19.3.0, 19.3.0 | `@types/node` следва Node 24 LTS |
-| Сайт | Tailwind, shadcn/ui, шрифтове | — | Извън обхвата на M00; идват в M00b |
+| Сайт (M00b) | `tailwindcss`, `@tailwindcss/postcss`; `@base-ui/react`; `class-variance-authority`, `clsx`, `tailwind-merge`; `@fontsource/gloock`, `@fontsource-variable/schibsted-grotesk`, `@fontsource/noto-serif-display`; `lighthouse`, `chrome-launcher` (за разработка) | 4.3.3; 1.9.0; 0.7.1, 2.1.1, 3.7.0; 5.3.0; 13.4.1, 1.2.1 | Дизайн системата, шрифтовете (OFL, през `next/font/local`) и Lighthouse за `/` (`scripts/lighthouse.mjs`). Причините и отклоненията са в [ADR 0006](0006-design-system.md). Нито един от пакетите няма install скрипт |
 | База данни (M01) | `drizzle-orm`, `drizzle-kit` | 1.0.0-rc.4 | Drizzle 1.0 RC по план §3.1 с точна версия: последната RC, по-стара от един ден при M01. Миграциите са в новия формат на 1.0 (`drizzle/<време>_<име>/migration.sql` + `snapshot.json`); `drizzle-kit check` проверява миграции от паралелни клонове. Резерва при блокираща грешка: 0.45.4 (план §3.1) |
 | База данни (M01) | `pg`, `@types/pg` | 8.23.1, 8.23.1 | Драйверът node-postgres за Drizzle (`drizzle-orm/node-postgres`): пул за всяка роля с `statement_timeout` 2 s |
 | Скриптове (M01) | `tsx` | 4.23.15 | Пуска TypeScript скриптовете `pnpm db:*` и `pnpm fixtures:generate` без отделна компилация |

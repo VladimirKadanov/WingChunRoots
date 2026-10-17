@@ -21,3 +21,8 @@ allowBuilds:
   protobufjs: false
   ssh2: false
   unrs-resolver: false
+# lighthouse 13.4.1 accepts puppeteer-core ^25.3.0; 25.13 and later pin chromium-bidi
+# 157.0.8090-0, which trustPolicy rejects (published without the provenance of earlier
+# releases). 25.12.0 is the newest release before that (docs/adr/0006-design-system.md).
+overrides:
+  lighthouse>puppeteer-core: 25.12.0
