@@ -5,12 +5,14 @@
 -- wrapper, which reads the passwords from the environment or .env:
 --
 --   scripts/db-bootstrap.sh                 # every database in DATABASE_URL / TEST_DATABASE_URL
+--   scripts/db-bootstrap.sh --test-database # only TEST_DATABASE_URL
 --   scripts/db-bootstrap.sh <superuser-url> # one database
 --
--- or psql (15 or newer, for \getenv) directly, with the passwords in the environment:
+-- or psql (15 or newer, for \getenv) directly, with the passwords in the environment and the
+-- superuser URL without its password (PGPASSWORD keeps it out of the process list):
 --
---   DB_MIGRATOR_PASSWORD=... DB_APP_RW_PASSWORD=... DB_APP_PUBLIC_RO_PASSWORD=... \
---     psql "<superuser-url>" -X -v ON_ERROR_STOP=1 -f scripts/db-bootstrap.sql
+--   PGPASSWORD=... DB_MIGRATOR_PASSWORD=... DB_APP_RW_PASSWORD=... DB_APP_PUBLIC_RO_PASSWORD=... \
+--     psql "<superuser-url-without-password>" -X -v ON_ERROR_STOP=1 -f scripts/db-bootstrap.sql
 --
 -- Idempotent. The roles are created here, never in a migration: that needs CREATEROLE and would
 -- put passwords in the repository. Migrations contain only GRANT and REVOKE. The passwords come
@@ -61,7 +63,14 @@ SELECT format('ALTER ROLE app_public_ro PASSWORD %L', :'app_public_ro_password')
 --    pg_database_owner and may create objects and trusted extensions there.
 SELECT format('ALTER DATABASE %I OWNER TO migrator', current_database())
 \gexec
-SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO app_rw, app_public_ro', current_database())
+-- Temporary tables only for app_rw: the anonymous read-only role has no use for them, and they
+-- would give whoever reaches that role a place to stage work. PUBLIC loses its default TEMP, and
+-- app_public_ro loses the TEMPORARY that earlier versions of this script granted.
+SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO app_rw', current_database())
+\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO app_public_ro', current_database())
+\gexec
+SELECT format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC, app_public_ro', current_database())
 \gexec
 
 -- 4. PostGIS is not a trusted extension, so the superuser creates it here; the first migration's

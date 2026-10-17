@@ -19,7 +19,7 @@ Phase 1 is in progress and runs **locally only**: Docker Compose on a developer 
 | Node.js | 24 LTS (`.nvmrc`); 22.12 or newer works | `nvm install` reads `.nvmrc` |
 | pnpm | 12.14.0 (exact, from `packageManager`) | `npm install --global pnpm@12.14.0` (no Corepack) |
 | Docker | Docker Desktop (Windows, macOS) or Docker Engine with the Compose plugin (Linux) | about 8 GB of memory for Docker |
-| PostgreSQL client | `psql` 16 or newer | used by `scripts/db-env-check.sh` and `scripts/verify.sh` |
+| PostgreSQL client | `psql` 16 or newer (at least 15) | used by `scripts/db-env-check.sh`, `scripts/db-bootstrap.sh`, `scripts/verify.sh` and `pnpm test:int`; `scripts/db-bootstrap.sql` needs `\getenv` (psql 15+). Ubuntu 24.04 ships psql 16; Ubuntu 22.04 ships psql 14, which is too old |
 
 ## Getting started
 
@@ -28,7 +28,7 @@ Phase 1 is in progress and runs **locally only**: Docker Compose on a developer 
 Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~/src/wingchunroots`), not under `C:\` or `/mnt/c`: the Linux filesystem is many times faster for `pnpm install` and `next build`, and file permissions behave correctly. Run every `pnpm`, `docker compose` and `scripts/` command from the WSL2 shell, never from PowerShell or cmd: the scripts are bash, and Node, pnpm and the repository live inside WSL2.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) with the WSL2 backend. In *Settings → Resources → WSL integration*, enable your Ubuntu distribution. Give Docker about 8 GB of memory.
-2. Open the Ubuntu (WSL2) terminal and install the tools:
+2. Open the Ubuntu (WSL2) terminal and install the tools. Use **Ubuntu 24.04** (`lsb_release -rs`): its `postgresql-client` is psql 16. Ubuntu 22.04 installs psql 14, and the scripts stop with `psql 14 is too old`; install `postgresql-client-16` from the [PostgreSQL apt repository](https://www.postgresql.org/download/linux/ubuntu/) there, or add an Ubuntu 24.04 distribution (`wsl --install -d Ubuntu-24.04`).
 
    ```bash
    sudo apt-get update && sudo apt-get install -y git postgresql-client
@@ -61,7 +61,7 @@ Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 te
 
 ### Linux
 
-Install Docker Engine with the Compose plugin, Node 24 (for example with nvm), `npm install --global pnpm@12.14.0` and the PostgreSQL client (`sudo apt-get install -y postgresql-client`). Then follow step 3 above.
+Install Docker Engine with the Compose plugin, Node 24 (for example with nvm), `npm install --global pnpm@12.14.0` and the PostgreSQL client, psql 15 or newer (`sudo apt-get install -y postgresql-client` on Ubuntu 24.04 or Debian 12; older releases need `postgresql-client-16` from the PostgreSQL apt repository). Then follow step 3 above.
 
 ### macOS
 

@@ -23,6 +23,7 @@ import {
   deletedAt,
   idColumn,
   inList,
+  PUBLIC_RELATIONSHIP_STATUSES,
   PUBLISHABLE_RELATIONSHIP_STATUSES,
   RELATIONSHIP_STATUSES,
   timestamps,
@@ -89,10 +90,18 @@ export const teachingRelationship = pgTable(
     uniqueIndex('teaching_relationship_active_key')
       .on(t.teacherPersonId, t.studentPersonId, t.lineageId)
       .where(inList(t.status.name, ACTIVE_RELATIONSHIP_STATUSES)),
-    // At most one display-primary teacher per student among the active relationships.
+    // DEFAULT D05: at most one display-primary teacher per student among the established
+    // (verified or disputed) relationships. A private request never takes that slot, so the
+    // flags of a student's public edges cannot hint at a hidden request (plan §4.14, D03).
     uniqueIndex('teaching_relationship_one_display_primary_key')
       .on(t.studentPersonId)
-      .where(sql`${t.isDisplayPrimary} AND ${inList(t.status.name, ACTIVE_RELATIONSHIP_STATUSES)}`),
+      .where(sql`${t.isDisplayPrimary} AND ${inList(t.status.name, PUBLIC_RELATIONSHIP_STATUSES)}`),
+    // Only a relationship that was verified carries the display preference; the verify
+    // transition (M09) sets it. revoked keeps the flag it had, as history.
+    check(
+      'teaching_relationship_display_primary_after_verification',
+      sql`NOT ${t.isDisplayPrimary} OR ${inList(t.status.name, PUBLISHABLE_RELATIONSHIP_STATUSES)}`,
+    ),
     index('teaching_relationship_lineage_id_idx').on(t.lineageId),
     // The covering indexes (student|teacher) INCLUDE (...) are created in the custom migration
     // drizzle/*_roles_views_audit: Drizzle's index builder has no INCLUDE clause.

@@ -313,6 +313,10 @@ class Builder {
     const created = this.tick(7);
     const committee = teacher.row.kind === 'historical' || opts.status === 'under_review';
     const wasVerified = (PUBLISHABLE_RELATIONSHIP_STATUSES as readonly string[]).includes(opts.status);
+    if (opts.primary && !wasVerified) {
+      // DEFAULT D05: a request never carries the display preference; verification sets it (M09).
+      throw new Error(`fixture edge ${teacher.row.slug} -> ${student.row.slug}: a ${opts.status} relationship cannot be display-primary`);
+    }
     const row: RelationshipRow = {
       id: this.id(),
       teacherPersonId: teacher.row.id,
@@ -540,12 +544,12 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
 
   // DEFAULT D03: a pending request is private; demo-pending stays involved_only.
   const pending = b.person({ slug: 'demo-pending', gen: 3, lineage: 'a', role: 'student waiting for approval' });
-  b.rel({ teacher: hubA, student: pending, lineage: 'a', status: 'pending_teacher', primary: true, period: 'ongoing' });
+  b.rel({ teacher: hubA, student: pending, lineage: 'a', status: 'pending_teacher', primary: false, period: 'ongoing' });
 
   // A historical teacher recorded only through a student's request under review (D03).
   const claimOnly = b.person({ slug: 'demo-claim-only-teacher', gen: 2, lineage: 'c', historical: true, role: 'teacher known only from a request under review' });
   const underReview = b.person({ slug: 'demo-under-review', gen: 3, lineage: 'c', role: 'student whose evidence is under review' });
-  const underReviewRel = b.rel({ teacher: claimOnly, student: underReview, lineage: 'c', status: 'under_review', primary: true, period: 'ended' });
+  const underReviewRel = b.rel({ teacher: claimOnly, student: underReview, lineage: 'c', status: 'under_review', primary: false, period: 'ended' });
 
   const arbitration = b.person({ slug: 'demo-arbitration', gen: 3, lineage: 'b', role: 'student in a disputed relationship' });
   const arbitrationRel = b.rel({
@@ -576,7 +580,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   const freeStudents: P[] = [];
   addStudents(freeSifu, 'c', 5, 4, freeStudents);
   const applicant = b.person({ gen: 4, lineage: 'c', role: 'student waiting for approval' });
-  b.rel({ teacher: freeSifu, student: applicant, lineage: 'c', status: 'pending_teacher', primary: true, period: 'ongoing' });
+  b.rel({ teacher: freeSifu, student: applicant, lineage: 'c', status: 'pending_teacher', primary: false, period: 'ongoing' });
 
   const proSifu = b.person({ slug: 'demo-pro-sifu-8', gen: 3, lineage: 'b', role: 'instructor on the Pro plan' });
   b.rel({ teacher: cjkName, student: proSifu, lineage: 'b', status: 'verified', primary: true, period: 'ongoing' });

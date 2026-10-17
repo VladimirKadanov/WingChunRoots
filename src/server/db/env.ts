@@ -71,6 +71,17 @@ export function isLocalHost(url: string): boolean {
   return host === 'localhost' || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host);
 }
 
+/**
+ * The URL without its password, and the password (decoded) apart, for a child process that takes
+ * the password from PGPASSWORD instead of its command line (visible to every local user).
+ */
+export function splitPassword(url: string): { url: string; password: string } {
+  const u = parse(url);
+  const password = decodeURIComponent(u.password);
+  u.password = '';
+  return { url: u.toString(), password };
+}
+
 /** URL without its password, for messages. Never log a full URL. */
 export function redactUrl(url: string): string {
   const u = parse(url);

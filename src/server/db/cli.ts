@@ -11,7 +11,6 @@
 // Values come from the environment, then from .env (the environment wins). Every URL is printed
 // without its password.
 
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 import {
@@ -22,6 +21,7 @@ import {
   repoRoot,
   resetDatabase,
   runBootstrap,
+  runDrizzleKit,
   throwawayDatabaseName,
 } from './admin';
 import { loadDotEnv, redactUrl, targetDatabaseUrl } from './env';
@@ -54,11 +54,7 @@ async function reset(): Promise<void> {
 
 /** Runs the pinned drizzle-kit and returns its JSON result. */
 function drizzleKit(args: string[]): { status: string; [key: string]: unknown } {
-  const root = repoRoot();
-  const result = spawnSync(path.join(root, 'node_modules', '.bin', 'drizzle-kit'), [...args, '--output', 'json'], {
-    cwd: root,
-    encoding: 'utf8',
-  });
+  const result = runDrizzleKit([...args, '--output', 'json']);
   if (result.error) throw result.error;
   const line = result.stdout
     .split('\n')
