@@ -109,7 +109,12 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm db:generate` | A new migration from a change in `src/server/db/schema/` |
 | `pnpm fixtures:generate` | Rewrite `fixtures/lineage-600.json` from the fixture generator |
 | `pnpm build` / `pnpm start` | Production build and server |
-| `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 and `pnpm worker` (run `pnpm build` first; server log in `test-results/server.log`) |
+| `node scripts/check-bundle-budget.mjs` | After `pnpm build`: initial JavaScript per route, gzip, against its budget (170 kB; `/styleguide` 250 kB) |
+| `pnpm tokens:build` | Regenerate `src/design/generated/tokens.css` and `tokens.json` from `src/design/tokens.ts` |
+| `pnpm notices` | Regenerate `THIRD_PARTY_NOTICES.md` and the `/legal/licenses` data from `pnpm licenses list --prod` and `licenses/addenda/` |
+| `pnpm screenshots` | Full-page screenshots of the key screens into `docs/screenshots/<milestone>/` (run `pnpm build` first) |
+| `scripts/visual-baselines.sh accept <artifact-dir\|job-log>` | Take the visual regression baselines from a CI run (see the admin guide) |
+| `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 and `pnpm worker` (run `pnpm build` first; server log in `test-results/server.log`). The visual regression (`@visual`) runs only in CI; Lighthouse CI for `/` runs in `scripts/verify.sh M00b` |
 | `scripts/db-env-check.sh` | Checks the test database: PostgreSQL ≥ 16, PostGIS ≥ 3.4, UTF-8 locale |
 | `scripts/verify.sh <Mxx\|all>` | The milestone check: one line per step, full log in `.verify/<Mxx>.log` |
 | `docker compose up -d --wait` / `docker compose down` | Start / stop the local services (data stays in named volumes) |
@@ -118,7 +123,9 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 
 | Path | Contents |
 |---|---|
-| `src/app` | Next.js App Router routes |
+| `src/app` | Next.js App Router routes: the home page, `/styleguide`, `/legal/licenses` |
+| `src/design` | Design tokens (`tokens.ts`), the generator and its output in `generated/`, fonts, the theme script |
+| `src/components` | `ui/` (shadcn/ui on Base UI), `ink/` (link strokes, seals, legend), `shell/` (app shell), `home/` |
 | `src/server/db` | Drizzle schema, role connections, db scripts and integration tests (`*.int.test.ts`) |
 | `src/worker.ts`, `src/server/jobs` | The worker process, queues, the outbox helper and the pg-boss schema step |
 | `src/server/mail`, `src/server/templates` | The `Mailer` with its SMTP and file transports; e-mail templates (React Email) and notification texts, English only |
@@ -141,11 +148,15 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | [`docs/adr/0001-stack.md`](docs/adr/0001-stack.md) | Stack decisions, pnpm settings and the build-script allow list |
 | [`docs/adr/0002-data-model.md`](docs/adr/0002-data-model.md) | Data model decisions: Drizzle 1.0 RC, database roles, privacy in the database, fixtures |
 | [`docs/adr/0003-jobs-and-mail.md`](docs/adr/0003-jobs-and-mail.md) | Background jobs (pg-boss without DDL rights) and e-mail: outbox, Mailer, retries, templates |
+| [`docs/adr/0006-design-system.md`](docs/adr/0006-design-system.md) | The design system: tokens, contrast, fonts, themes, components, budgets, visual regression, and every deviation from the plan and the prototype |
+| [`docs/design/direction.md`](docs/design/direction.md) | The design direction (Ink Register, pending the owner's choice) and the four prototypes in `docs/design/prototypes/` |
 | [`docs/data-model.md`](docs/data-model.md) | The data model: tables, public views, roles and grants, personal data and retention |
+| [`docs/guides/user-guide.bg.md`](docs/guides/user-guide.bg.md) | User guide (Bulgarian): the site, navigation, themes and the home page |
+| [`docs/guides/admin-guide.bg.md`](docs/guides/admin-guide.bg.md) | Administrator guide (Bulgarian): running locally on Windows with Docker Desktop and WSL2, stopping, updating, the worker and e-mail, visual baselines |
 | [`docs/WingChunRoots_Project_Specification.bg.md`](docs/WingChunRoots_Project_Specification.bg.md) | Project specification (Bulgarian translation) |
 | [`docs/WingChunRoots_Project_Specification.en.md`](docs/WingChunRoots_Project_Specification.en.md) | Project specification (English original) |
 | [`docs/WingChunRoots_Execution_Plan.bg.md`](docs/WingChunRoots_Execution_Plan.bg.md) | Execution plan (Bulgarian translation) |
 | [`docs/WingChunRoots_Execution_Plan.en.md`](docs/WingChunRoots_Execution_Plan.en.md) | Execution plan (English original) |
 | [`docs/source/WingChunRoots_Documentation.md`](docs/source/WingChunRoots_Documentation.md) | The original short summary in Bulgarian, kept for reference |
 
-The specification and the execution plan predate the owner's corrections of 16 October 2026, so the technical plan wins where they differ (for example, the UI is English only and hosting is deferred). Guides for the Bulgarian user and administrator (`docs/guides/*.bg.md`) arrive with the first screens in M00b.
+The specification and the execution plan predate the owner's corrections of 16 October 2026, so the technical plan wins where they differ (for example, the UI is English only and hosting is deferred).

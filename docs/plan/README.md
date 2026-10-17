@@ -7,7 +7,7 @@
 | Етап | Файл | Зависи от | Статус |
 |---|---|---|---|
 | M00 | [M00 — Основа на хранилището и проверка](M00-foundation.md) | Стъпка 0 (PR `docs-bootstrap`) | PR отворен ([#2](https://github.com/VladimirKadanov/WingChunRoots/pull/2), клон `m00-foundation`; към `main` след сливането на PR #1) |
-| M00b | [M00b — Дизайн система по избраната посока](M00b-design-system.md) | M00 и изборът на посока в `docs/design/direction.md` | не е започнат |
+| M00b | [M00b — Дизайн система по избраната посока](M00b-design-system.md) | M00 и изборът на посока в `docs/design/direction.md` | PR отворен ([#8](https://github.com/VladimirKadanov/WingChunRoots/pull/8), клон `m00b-design-system`; чака потвърждение на посоката от собственика, [въпроси](questions/M00b.md)) |
 | M01 | [M01 — Модел на данни, роли в базата и фиктивни данни](M01-data-model.md) | M00 | слят в `m00-foundation` ([#3](https://github.com/VladimirKadanov/WingChunRoots/pull/3)); към `main` с [#5](https://github.com/VladimirKadanov/WingChunRoots/pull/5); поправки от прегледа: PR отворен ([#6](https://github.com/VladimirKadanov/WingChunRoots/pull/6), клон `m01-review-fixes`, след #5) |
 | M01b | [M01b — Фонови задачи и поща](M01b-jobs-mail.md) | M01 | PR отворен ([#7](https://github.com/VladimirKadanov/WingChunRoots/pull/7), клон `m01b-jobs-mail`, след #5 и #6) |
 | M02 | [M02 — Акаунти, роли и съгласия](M02-accounts.md) | M00b, M01b | не е започнат |
