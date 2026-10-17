@@ -7,8 +7,6 @@
 //                      by scripts/db-bootstrap.sh. The application connects as app_rw and
 //                      app_public_ro to the host and database of DATABASE_URL.
 
-import { existsSync } from 'node:fs';
-
 export type DbRole = 'migrator' | 'app_rw' | 'app_public_ro';
 
 export const ROLE_PASSWORD_ENV: Record<DbRole, string> = {
@@ -18,11 +16,6 @@ export const ROLE_PASSWORD_ENV: Record<DbRole, string> = {
 };
 
 type Env = Record<string, string | undefined>;
-
-/** Loads .env from the current directory for the CLI scripts; the environment always wins. */
-export function loadDotEnv(path = '.env'): void {
-  if (existsSync(path)) process.loadEnvFile(path);
-}
 
 function parse(url: string): URL {
   try {

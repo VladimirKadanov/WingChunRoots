@@ -18,6 +18,7 @@ import { admin } from 'better-auth/plugins/admin';
 import { bearer } from 'better-auth/plugins/bearer';
 import { twoFactor } from 'better-auth/plugins/two-factor';
 
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/account-limits';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { AUTH_TABLES } from '../db/schema';
@@ -28,8 +29,6 @@ import { logAuth } from './logger';
 
 export const AUTH_BASE_PATH = '/api/auth';
 export const COOKIE_PREFIX = 'wcr';
-export const MIN_PASSWORD_LENGTH = 12;
-export const MAX_PASSWORD_LENGTH = 128;
 export const TOTP_ISSUER = 'WingChunRoots';
 
 /** Endpoints that are not served over HTTP in M02 (404). */

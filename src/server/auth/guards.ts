@@ -57,6 +57,7 @@ export type RoutePolicy = { kind: 'user' } | { kind: 'staff2fa' };
 /** What each protected page needs. Every other page is public. */
 export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/onboarding': { kind: 'user' },
+  '/account': { kind: 'user' },
   '/account/security': { kind: 'user' },
   '/admin': { kind: 'staff2fa' },
 };

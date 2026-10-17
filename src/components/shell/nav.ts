@@ -1,6 +1,6 @@
-// The four destinations of the app shell (Ink Lineage prototype): Explore is the home page;
-// the others open in later milestones (M05 /explore, M11 /schools, M08 /dashboard) and show
-// the "not drawn yet" page until then.
+// The four destinations of the app shell (Ink Lineage prototype): Explore is the home page; Me
+// is the account (M02: /account, which sends a visitor without a session to /sign-in); the others
+// open in later milestones (M05 /explore, M11 /schools) and show the "not drawn yet" page until then.
 
 export interface NavItem {
   href: string;
@@ -12,9 +12,18 @@ export interface NavItem {
   built: boolean;
 }
 
+/** The pages of the Me tab: the account, signing in and out, onboarding and the staff page. */
+const ME_PATHS = ['/account', '/dashboard', '/sign-in', '/sign-up', '/verify-email', '/reset-password', '/onboarding', '/admin'];
+
 export const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Explore', icon: 'search', match: (p) => p === '/', built: true },
   { href: '/explore', label: 'Lineage', icon: 'lineage', match: (p) => p.startsWith('/explore') || p.startsWith('/people'), built: false },
   { href: '/schools', label: 'Schools', icon: 'schools', match: (p) => p.startsWith('/schools'), built: false },
-  { href: '/dashboard', label: 'Me', icon: 'me', match: (p) => p.startsWith('/dashboard') || p.startsWith('/account'), built: false },
+  {
+    href: '/account',
+    label: 'Me',
+    icon: 'me',
+    match: (p) => ME_PATHS.some((prefix) => p === prefix || p.startsWith(`${prefix}/`)),
+    built: true,
+  },
 ];

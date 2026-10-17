@@ -27,7 +27,8 @@ import {
   runDrizzleKit,
   throwawayDatabaseName,
 } from './admin';
-import { loadDotEnv, redactUrl, targetDatabaseUrl } from './env';
+import { loadDotEnv } from './dotenv';
+import { redactUrl, targetDatabaseUrl } from './env';
 import { seedDatabase } from './seed';
 
 const log = (message: string) => console.log(message);

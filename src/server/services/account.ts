@@ -9,10 +9,10 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
-import { requireUser } from '../auth/guards';
+import { requireUser, safeNextPath } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { person, personName, place } from '../db/schema';
+import { authTwoFactor, person, personName, place } from '../db/schema';
 import { grantConsents, missingRequiredConsents } from './consent';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
@@ -75,7 +75,8 @@ export const onboardInput = z
     pinyin: optionalText,
     countryCode: z.string().max(2).optional().transform((s) => (s ? s.toUpperCase() : undefined)),
     placeId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
-    trainingStartYear: z.coerce.number().int().optional().or(z.literal('').transform(() => undefined)),
+    // '' first: z.coerce.number() would read an empty field as 0.
+    trainingStartYear: z.literal('').transform(() => undefined).or(z.coerce.number().int()).optional(),
     showPublicly: z.boolean().default(false),
   })
   .superRefine((input, ctx) => {
@@ -83,7 +84,7 @@ export const onboardInput = z
     if (!input.primaryName) issue('primaryName', 'Enter your name in Latin letters.');
     else if (input.primaryName.length > NAME_MAX_LENGTH) issue('primaryName', `Use at most ${NAME_MAX_LENGTH} characters.`);
     else if (!isLatinName(input.primaryName)) {
-      issue('primaryName', 'Use Latin letters here (for example "Chan Wai Man"). Add the name in its own script below.');
+      issue('primaryName', 'Use Latin letters here (for example "So Chuk-ching"). Add the name in its own script below.');
     }
     if (input.originalName) {
       const script = input.originalLang ? originalScript(input.originalLang) : undefined;
@@ -94,10 +95,10 @@ export const onboardInput = z
       issue('originalLang', 'Choose one of the listed scripts.');
     }
     if (input.jyutping && (input.jyutping.length > NAME_MAX_LENGTH || !isJyutping(input.jyutping))) {
-      issue('jyutping', 'Write Jyutping in Latin letters with tone numbers, for example "can4 wai4 man4".');
+      issue('jyutping', 'Write Jyutping in Latin letters with tone numbers, for example "sou1 zuk1 cing4".');
     }
     if (input.pinyin && (input.pinyin.length > NAME_MAX_LENGTH || !isPinyin(input.pinyin))) {
-      issue('pinyin', 'Write pinyin in Latin letters, for example "Chén Wěimǐn".');
+      issue('pinyin', 'Write pinyin in Latin letters, for example "Sū Zhúqíng".');
     }
     if (input.countryCode && !isCountryCode(input.countryCode)) issue('countryCode', 'Choose a country from the list.');
     const thisYear = new Date().getUTCFullYear();
@@ -152,6 +153,8 @@ export async function ownPerson(userId: string): Promise<OwnPerson | null> {
 export interface AccountOverview {
   user: { id: string; email: string; role: Principal['user']['role']; twoFactorEnabled: boolean };
   session: { twoFactorVerified: boolean; via: Principal['via'] };
+  /** A TOTP setup was started (`/two-factor/enable`) and waits for its first code. */
+  twoFactorSetupPending: boolean;
   person: OwnPerson | null;
   /** Required consents not given for the current document versions (onboarding asks again). */
   missingConsents: string[];
@@ -159,9 +162,16 @@ export interface AccountOverview {
 
 export async function accountOverview(principal: Principal | null): Promise<AccountOverview> {
   const p = requireUser(principal);
+  const [setup] = p.user.twoFactorEnabled
+    ? []
+    : await getDb()
+        .select({ verified: authTwoFactor.verified })
+        .from(authTwoFactor)
+        .where(eq(authTwoFactor.userId, p.user.id));
   return {
     user: { id: p.user.id, email: p.user.email, role: p.user.role, twoFactorEnabled: p.user.twoFactorEnabled },
     session: { twoFactorVerified: p.session.twoFactorVerifiedAt !== null, via: p.via },
+    twoFactorSetupPending: setup !== undefined && setup.verified === false,
     person: await ownPerson(p.user.id),
     missingConsents: await missingRequiredConsents(getDb(), p.user.id),
   };
@@ -179,6 +189,37 @@ export async function placeOptions(): Promise<PlaceOption[]> {
     .select({ id: place.id, name: place.name, countryCode: place.countryCode })
     .from(place)
     .orderBy(asc(place.countryCode), asc(place.name));
+}
+
+export interface OnboardingOptions {
+  countries: readonly Country[];
+  places: PlaceOption[];
+  scripts: { lang: string; label: string }[];
+  /** The newest training start year the form accepts (this year). */
+  latestStartYear: number;
+}
+
+/** What the onboarding form offers: countries, cities and the scripts of an original name. */
+export async function onboardingOptions(principal: Principal | null): Promise<OnboardingOptions> {
+  requireUser(principal);
+  return {
+    countries: COUNTRIES,
+    places: await placeOptions(),
+    scripts: ORIGINAL_SCRIPTS.map(({ lang, label }) => ({ lang, label })),
+    latestStartYear: new Date().getUTCFullYear(),
+  };
+}
+
+/**
+ * Where a signed-in account goes next: onboarding until it has its own person, then the page it
+ * asked for (`next`, a local path) or its account page.
+ */
+export async function landingPath(userId: string, next: unknown): Promise<string> {
+  const target = safeNextPath(next, '/account');
+  if (await ownPerson(userId)) return target === '/onboarding' ? '/account' : target;
+  return target.startsWith('/account/security') || target.startsWith('/admin')
+    ? target
+    : `/onboarding${target === '/account' ? '' : `?next=${encodeURIComponent(target)}`}`;
 }
 
 // --- Onboarding ----------------------------------------------------------------------------------

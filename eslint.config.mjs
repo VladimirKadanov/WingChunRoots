@@ -197,7 +197,13 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/components/shell/**/*.{ts,tsx}', 'src/components/home/**/*.{ts,tsx}', 'src/components/ink/**/*.{ts,tsx}'],
+    // The account forms (M02) are client islands too: they use button-variants.ts, not the Button.
+    files: [
+      'src/components/shell/**/*.{ts,tsx}',
+      'src/components/home/**/*.{ts,tsx}',
+      'src/components/ink/**/*.{ts,tsx}',
+      'src/components/account/**/*.{ts,tsx}',
+    ],
     rules: {
       'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath, baseUiOnlyInUi, noTailwindMerge]),
     },

@@ -8,7 +8,7 @@
 import path from 'node:path';
 
 import { closeDb, getDb } from './server/db';
-import { loadDotEnv } from './server/db/env';
+import { loadDotEnv } from './server/db/dotenv';
 import { appRwUrl, createBoss } from './server/jobs/boss';
 import { startWorker } from './server/jobs/worker';
 import { createMailer, createTransportFromConfig, mailConfig } from './server/mail';
