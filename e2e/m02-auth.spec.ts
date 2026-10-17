@@ -24,10 +24,9 @@ import {
   loadTestEnv,
   NEW_ACCOUNT_PASSWORD,
   signInAs,
-  signInWithPassword,
   staffTotpCode,
   uniqueEmail,
-  useOwnAddress,
+  giveOwnAddress,
   userIdOf,
 } from './helpers/auth';
 import { openMailbox } from './helpers/mailbox';
@@ -38,7 +37,7 @@ test.afterAll(closeHelpers);
 
 test.beforeEach(async ({ context }) => {
   // Rate limits are per client address: each test is its own client.
-  await useOwnAddress(context);
+  await giveOwnAddress(context);
 });
 
 /**
@@ -283,7 +282,7 @@ test('@M02 a seeded staff account signs in with the test TOTP and opens /admin',
   const archivist = await page.context().browser()!.newContext({ baseURL: BASE_URL });
   try {
     const other = await archivist.newPage();
-    await useOwnAddress(archivist);
+    await giveOwnAddress(archivist);
     await signInAs(other, 'archivist');
     await other.goto('/admin');
     await expect(other.getByRole('heading', { level: 1, name: 'Administration' })).toBeVisible();
@@ -293,7 +292,7 @@ test('@M02 a seeded staff account signs in with the test TOTP and opens /admin',
   const member = await page.context().browser()!.newContext({ baseURL: BASE_URL });
   try {
     const other = await member.newPage();
-    await useOwnAddress(member);
+    await giveOwnAddress(member);
     await signInAs(other, 'user');
     await other.goto('/admin');
     await expect(other.getByRole('heading', { level: 1, name: 'Not available' })).toBeVisible();

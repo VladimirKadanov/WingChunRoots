@@ -62,7 +62,7 @@ export function clientAddress(): string {
 const addresses = new WeakMap<BrowserContext, string>();
 
 /** Gives the context its own client address, for its pages and its API requests. */
-export async function useOwnAddress(context: BrowserContext): Promise<string> {
+export async function giveOwnAddress(context: BrowserContext): Promise<string> {
   const existing = addresses.get(context);
   if (existing) return existing;
   const address = clientAddress();
@@ -76,7 +76,7 @@ export async function useOwnAddress(context: BrowserContext): Promise<string> {
  * context's address, or from `address` (sign-up and sign-in allow 3 requests in 10 s per address).
  */
 export async function authPost(page: Page, endpoint: string, data: Record<string, unknown>, address?: string) {
-  const from = address ?? (await useOwnAddress(page.context()));
+  const from = address ?? (await giveOwnAddress(page.context()));
   return page.request.post(`/api/auth${endpoint}`, { data, headers: { origin: BASE_URL, 'x-forwarded-for': from } });
 }
 
