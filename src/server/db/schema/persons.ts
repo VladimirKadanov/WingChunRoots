@@ -183,7 +183,9 @@ export const invitation = pgTable(
       .references(() => person.id, { onDelete: 'cascade' }),
     relationshipId: uuid('relationship_id').references(() => teachingRelationship.id, { onDelete: 'set null' }),
     invitedByUserId: uuid('invited_by_user_id'),
-    email: text('email').notNull(),
+    // Erased 30 days after the invitation ends (retention job, docs/data-model.md §7); a pending
+    // invitation always has one.
+    email: text('email'),
     tokenHash: text('token_hash').notNull(),
     status: text('status', { enum: INVITATION_STATUSES }).notNull().default('pending'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -196,5 +198,6 @@ export const invitation = pgTable(
     index('invitation_relationship_id_idx').on(t.relationshipId),
     check('invitation_status_check', inList(t.status.name, INVITATION_STATUSES)),
     check('invitation_token_hash_format', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check('invitation_pending_has_email', sql`${t.status} <> 'pending' OR ${t.email} IS NOT NULL`),
   ],
 );

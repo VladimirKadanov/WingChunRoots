@@ -28,12 +28,26 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: buildProjects({ ci, chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE }),
-  webServer: {
-    // `pnpm build` runs first (scripts/verify.sh, CI). From M01b the worker (`pnpm worker`) joins here.
-    // Redirection that both sh and cmd.exe understand.
-    command: `pnpm start --hostname 127.0.0.1 --port ${port} > test-results/server.log 2>&1`,
-    url: `${baseURL}/`,
-    reuseExistingServer: false,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      name: 'web',
+      // `pnpm build` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
+      command: `pnpm start --hostname 127.0.0.1 --port ${port} > test-results/server.log 2>&1`,
+      url: `${baseURL}/`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // The job worker (milestone M01b): delivers the e-mail that tests read with
+      // e2e/helpers/mailbox.ts. Same database and mail settings as the web server. Ready once it
+      // prints its ready line; its output appears in the test output with the prefix [worker].
+      name: 'worker',
+      command: 'pnpm worker',
+      wait: { stdout: /worker: ready/ },
+      stdout: 'pipe',
+      reuseExistingServer: false,
+      timeout: 60_000,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
+    },
+  ],
 });

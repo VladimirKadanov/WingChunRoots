@@ -26,9 +26,32 @@ const forbiddenPackages = [
   },
 ];
 
-/** no-restricted-imports with the forbidden packages plus extra module-boundary patterns. */
-function restrictImports(extra = []) {
-  return ['error', { patterns: [...forbiddenPackages, ...extra] }];
+// Packages that only one module may import (plan §6.1; milestone M01b).
+const modulePackages = [
+  {
+    module: 'src/server/jobs',
+    group: ['pg-boss', 'pg-boss/*'],
+    message: 'Only src/server/jobs uses pg-boss: queue work with its outbox helpers (src/server/jobs/outbox.ts).',
+  },
+  {
+    module: 'src/server/mail',
+    group: ['nodemailer', 'nodemailer/*'],
+    message: 'Only src/server/mail sends e-mail: queue it with queueEmail (src/server/jobs/outbox.ts).',
+  },
+  {
+    module: 'src/server/templates',
+    group: ['react-email', 'react-email/*', '@react-email/*'],
+    message: 'E-mail templates live only in src/server/templates/email (CLAUDE.md §2).',
+  },
+];
+
+/**
+ * no-restricted-imports with the forbidden packages, the packages other modules own, and extra
+ * module-boundary patterns. `module` names the module being configured: its own packages are allowed.
+ */
+function restrictImports(extra = [], { module } = {}) {
+  const owned = modulePackages.filter((p) => p.module !== module).map(({ group, message }) => ({ group, message }));
+  return ['error', { patterns: [...forbiddenPackages, ...owned, ...extra] }];
 }
 
 // ELK is loaded only by src/lib/lineage-layout, which runs in the explorer's Web Worker or in
@@ -105,6 +128,10 @@ export default defineConfig([
           group: ['@/server/db', '@/server/db/*', '**/server/db', '**/server/db/*'],
           message: 'Routes and components never touch the database: go through src/server/services (plan §6.1).',
         },
+        {
+          group: ['@/server/jobs', '@/server/jobs/*', '**/server/jobs', '**/server/jobs/*', '@/server/mail', '@/server/mail/*', '**/server/mail', '**/server/mail/*'],
+          message: 'Routes and components never queue jobs or send e-mail: go through src/server/services (plan §6.1).',
+        },
         elkOnlyInLayoutModule,
         noLayoutInRequestPath,
       ]),
@@ -118,6 +145,18 @@ export default defineConfig([
       'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath]),
     },
   },
+  // Each module that owns a package may import it (see modulePackages). These blocks come after
+  // the request-path block so they replace it for their own files; they keep its ELK and layout
+  // bans, except that the background jobs may run layouts (plan §4.1).
+  ...modulePackages.map(({ module }) => ({
+    files: [`${module}/**/*.{ts,tsx}`],
+    rules: {
+      'no-restricted-imports': restrictImports(
+        module === 'src/server/jobs' ? [elkOnlyInLayoutModule] : [elkOnlyInLayoutModule, noLayoutInRequestPath],
+        { module },
+      ),
+    },
+  })),
   {
     // layout.worker.ts may use worker globals (plan §4.1), but the import bans apply to it too.
     files: ['src/lib/lineage-layout/**/*.{ts,tsx}'],

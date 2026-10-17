@@ -17,6 +17,9 @@
 # verify logs (scripts/verify.sh)
 /.verify/
 
+# e-mail of the file transport (MAIL_TRANSPORT=file; holds addresses, never committed)
+/.mail/
+
 # next.js
 /.next/
 /out/
