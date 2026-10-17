@@ -336,7 +336,7 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "password",
+      "name": "password_hash",
       "entityType": "columns",
       "schema": "public",
       "table": "auth_account"

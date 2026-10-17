@@ -90,8 +90,8 @@ export const authAccount = pgTable(
     accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
     refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
     scope: text('scope'),
-    // scrypt hash with a random salt (Better Auth); never the password.
-    password: text('password'),
+    // scrypt hash with a random salt (Better Auth's `password` field); never the password itself.
+    password: text('password_hash'),
     ...timestamps(),
   },
   (t) => [

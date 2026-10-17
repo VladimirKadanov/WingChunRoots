@@ -14,7 +14,7 @@ CREATE TABLE "auth_account" (
 	"access_token_expires_at" timestamp with time zone,
 	"refresh_token_expires_at" timestamp with time zone,
 	"scope" text,
-	"password" text,
+	"password_hash" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );

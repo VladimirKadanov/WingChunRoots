@@ -98,7 +98,7 @@ export const ALL_TABLE_NAMES: readonly string[] = [...RESETTABLE_TABLES, auditLo
  * a random nonce differ on every load, although they hold the same secret.
  */
 export const HASH_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  auth_account: ['password'],
+  auth_account: ['password_hash'],
   auth_two_factor: ['secret', 'backup_codes'],
 };
 
