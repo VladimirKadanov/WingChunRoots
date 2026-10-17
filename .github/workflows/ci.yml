@@ -92,6 +92,13 @@ jobs:
         run: psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -f docker/postgres/20-create-test-database.sql
       - name: scripts/verify.sh all
         run: scripts/verify.sh all
+      # verify.sh shows only the last 80 lines of a failed step; Playwright's numbered failure
+      # reports come earlier. The artifact has the whole log, but the reports also belong here.
+      - name: Print the end-to-end failure reports
+        if: failure()
+        run: |
+          [ -f .verify/all.log ] || exit 0
+          awk '/^  1\) \[/ { p = 1 } p && /^  [0-9]+ (failed|flaky)$/ { exit } p' .verify/all.log | grep -v -e '^ *attachment #' -e 'show-trace' -e '^ *Usage:$' | head -n 1500
       - name: Print the visual regression screenshots that match no baseline
         # The visual project (e2e/visual.spec.ts, M00b) runs only here. When a screenshot has no
         # baseline or differs from it, this prints it as base64 so it can be reviewed and accepted

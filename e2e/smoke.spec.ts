@@ -194,8 +194,11 @@ test.describe('@M00b phone layout', () => {
     await page.getByRole('button', { name: 'Actions' }).click();
     const menu = page.getByRole('menu');
     await expect(menu.getByRole('menuitem').first()).toBeVisible();
-    // Measured after the opening transition, at full scale.
-    await menu.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)).then(() => undefined));
+    // Measured after the opening transition, at full scale and opacity. Polled, because the
+    // transition may not have started yet when the items become visible (WebKit).
+    await expect
+      .poll(() => menu.evaluate((el) => `${getComputedStyle(el).scale} ${getComputedStyle(el).opacity}`))
+      .toMatch(/^(none|1) 1$/);
     await tooSmall('/styleguide with a menu open');
   });
 });
