@@ -73,6 +73,9 @@ async function coveredFocusStops(page: Page) {
   let done = false;
   for (let i = 0; i < 200; i++) {
     await page.keyboard.press('Tab');
+    // WebKit scrolls to a focused control after the key event, and FocusInView (the app shell)
+    // finishes the job a frame later: look once both have run.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
       if (!el || el === document.body || !document.querySelector('main')?.contains(el)) return 'past';
@@ -241,6 +244,33 @@ test.describe('@M00b phone', () => {
     await settledTop(sheet);
     await expect(sheet.getByRole('button', { name: 'Collapse' })).toBeVisible();
     await expect.poll(() => seenAtCentre(action), 'the focused action is on screen and not covered').toBe(true);
+  });
+
+  test('@M00b a page control focused where the browser does not scroll to it is brought clear of the bars and the peek', async ({ page }) => {
+    // WebKit can leave a focused control under the tab bar or below the window; FocusInView (the
+    // app shell) scrolls it into the clear band. Focus without the browser's own scroll stands in
+    // for that, in every engine. The sheet opens from the keyboard: FocusInView acts while the
+    // keyboard is in use.
+    await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Show a peek sheet' }).focus();
+    await page.keyboard.press('Enter');
+    const sheet = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+    await expect(sheet).toBeVisible();
+    await settledTop(sheet);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const result = await page.evaluate(async () => {
+      const clearBottom = () => window.innerHeight - Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom);
+      const control = [...document.querySelectorAll<HTMLElement>('main button, main input, main a[href]')].find(
+        (el) => el.getBoundingClientRect().height > 0 && el.getBoundingClientRect().top > clearBottom(),
+      );
+      if (!control) return 'no control below the clear band';
+      control.focus({ preventScroll: true });
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const box = control.getBoundingClientRect();
+      const seen = control.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+      return seen && box.bottom <= clearBottom() + 1 ? 'clear' : `${control.textContent || control.tagName} at ${Math.round(box.top)}-${Math.round(box.bottom)}`;
+    });
+    expect(result).toBe('clear');
   });
 
   test('@M00b a focus below a non-modal sheet at half height expands it; the clipped viewport never scrolls', async ({ page, browserName }) => {
