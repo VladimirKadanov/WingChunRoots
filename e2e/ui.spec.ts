@@ -149,11 +149,19 @@ test.describe('@M00b phone', () => {
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
       const widths = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
       expect(widths[0], `${path}: no horizontal scroll`).toBeLessThanOrEqual(widths[1]!);
-      // Tab labels wrap inside their tab instead of being cut.
-      for (const tab of await tabBar(page).getByRole('link').filter({ visible: true }).all()) {
-        const clipped = await tab.evaluate((el) => [...el.querySelectorAll('span')].some((s) => s.scrollWidth > s.clientWidth + 1));
-        expect(clipped, `${path}: ${await tab.textContent()}`).toBe(false);
-      }
+      // Tab labels wrap inside their tab instead of being cut. Checked in one step: React replaces
+      // the tab list's Suspense fallback with the streamed list after load (see smoke.spec.ts).
+      await expect(tabBar(page).getByRole('link').filter({ visible: true })).toHaveCount(4);
+      const tabs = await tabBar(page).evaluate((nav) =>
+        [...nav.querySelectorAll('a')]
+          .filter((a) => a.getBoundingClientRect().width > 0 && a.getBoundingClientRect().height > 0)
+          .map((a) => ({
+            label: a.textContent ?? '',
+            clipped: [...a.querySelectorAll('span')].some((s) => s.scrollWidth > s.clientWidth + 1),
+          })),
+      );
+      expect(tabs, `${path}: four visible tabs`).toHaveLength(4);
+      for (const tab of tabs) expect(tab.clipped, `${path}: ${tab.label}`).toBe(false);
     }
 
     // The living line: rows do not overlap, and each node sits level with its name.

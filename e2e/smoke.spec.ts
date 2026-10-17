@@ -123,14 +123,22 @@ test.describe('@M00b phone layout', () => {
       const brand = page.getByRole('banner').getByRole('link', { name: 'WingChunRoots, home' });
       expect((await brand.boundingBox())?.y ?? -1, `${route.path}: brand below the top inset`).toBeGreaterThanOrEqual(top);
 
-      // The bottom tabs sit above the home indicator and inside the screen.
-      const tabs = page.getByRole('navigation', { name: 'Main' }).getByRole('link').filter({ visible: true });
-      await expect(tabs).toHaveCount(4);
-      for (const tab of await tabs.all()) {
-        const box = await tab.boundingBox();
-        expect(box, route.path).not.toBeNull();
-        expect(box!.y + box!.height, `${route.path}: tab above the bottom inset`).toBeLessThanOrEqual(bottom + 0.5);
-        expect(box!.y, `${route.path}: tab on screen`).toBeGreaterThan(PHONE.height / 2);
+      // The bottom tabs sit above the home indicator and inside the screen. They are measured in
+      // one step: a prerendered page streams the tab list after its Suspense fallback, and React
+      // replaces the fallback (same layout) a frame or more after load, so a tab found by one
+      // call can be gone by the next.
+      const nav = page.getByRole('navigation', { name: 'Main' });
+      await expect(nav.getByRole('link').filter({ visible: true })).toHaveCount(4);
+      const tabs = await nav.evaluate((el) =>
+        [...el.querySelectorAll('a')]
+          .map((a) => a.getBoundingClientRect())
+          .filter((box) => box.width > 0 && box.height > 0)
+          .map((box) => ({ y: box.y, height: box.height })),
+      );
+      expect(tabs, `${route.path}: four visible tabs`).toHaveLength(4);
+      for (const box of tabs) {
+        expect(box.y + box.height, `${route.path}: tab above the bottom inset`).toBeLessThanOrEqual(bottom + 0.5);
+        expect(box.y, `${route.path}: tab on screen`).toBeGreaterThan(PHONE.height / 2);
       }
 
       // The end of the page scrolls clear of the tab bar.
