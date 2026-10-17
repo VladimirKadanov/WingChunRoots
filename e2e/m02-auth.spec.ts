@@ -374,6 +374,10 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await expect(terms).not.toBeChecked();
   for (const theme of ['dark', 'light'] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    // A fresh load in each theme, as in the axe test below: colours that are still changing
+    // after a theme switch would be measured mid-transition.
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Confirm the updated documents');
     await expectNoAxeViolations(page, `/onboarding, documents only (${theme})`);
   }
   await page.getByRole('button', { name: 'Confirm and continue' }).click();
