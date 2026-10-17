@@ -58,6 +58,42 @@ function seenAtCentre(locator: Locator) {
   });
 }
 
+/**
+ * Tabs through the page from its top until focus leaves <main>'s controls for the sheet, and
+ * lists every page control that took focus while something else covered its centre (WCAG
+ * 2.4.11: an open non-modal sheet must never hide the focused control). Also returns how many
+ * page controls took focus.
+ */
+async function coveredFocusStops(page: Page) {
+  // Start at <main> itself (it takes focus from the skip link), so the next Tab is its first control.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.locator('main').focus();
+  const covered: string[] = [];
+  let stops = 0;
+  for (let i = 0; i < 120; i++) {
+    await page.keyboard.press('Tab');
+    const stop = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body || !document.querySelector('main')?.contains(el)) return 'past';
+      const box = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      if (el.contains(hit)) return 'seen';
+      const label = (el.getAttribute('aria-label') ?? el.textContent ?? el.tagName).trim().slice(0, 30);
+      return `${label} at y ${Math.round(box.y)}, under ${hit?.closest('[role="dialog"]') ? 'the sheet' : hit?.tagName}`;
+    });
+    // Past <main>'s last control (into the sheet, which comes after it).
+    if (stop === 'past') break;
+    stops++;
+    if (stop !== 'seen') covered.push(stop);
+  }
+  return { stops, covered };
+}
+
+/** True when two boxes do not overlap. */
+function clear(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
+  return a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+}
+
 const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Main' });
 /** The living line's row of one person (by the exact Latin name). */
 const row = (page: Page, name: string) =>
@@ -153,6 +189,32 @@ test.describe('@M00b phone', () => {
     await expect(page).toHaveURL(/\/explore$/);
   });
 
+  test('@M00b while a non-modal sheet peeks, no page control takes focus under it, at 100 % and 150 % text', async ({ page, browserName }) => {
+    await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
+    await page.goto('/styleguide');
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const sheet = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+    for (const [viewport, text] of [
+      [PHONE, '100%'],
+      [{ width: 360, height: 640 }, '150%'],
+    ] as const) {
+      await page.setViewportSize(viewport);
+      await page.evaluate((size) => document.documentElement.style.setProperty('font-size', size), text);
+      await page.getByRole('button', { name: 'Show a peek sheet' }).click();
+      await expect(sheet).toBeVisible();
+      const top = await settledTop(sheet);
+      // The page keeps the peek's room clear (Chromium centres a control it scrolls to on focus;
+      // WebKit scrolls it only as far as the scroll padding, so the padding itself must hold).
+      const padding = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom));
+      expect(padding, `${viewport.width} px, ${text}: focus scrolls above the peek`).toBeGreaterThanOrEqual(viewport.height - top);
+      const { stops, covered } = await coveredFocusStops(page);
+      expect(stops, `${viewport.width} px, ${text}: page controls took focus`).toBeGreaterThan(0);
+      expect(covered, `${viewport.width} px, ${text}: focused under the sheet or the tab bar`).toEqual([]);
+      await sheet.getByRole('button', { name: 'Close' }).click();
+      await expect(sheet).toBeHidden();
+    }
+  });
+
   test('@M00b a focus below a half-height sheet expands it, so the focused control is seen', async ({ page, browserName }) => {
     await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
     await page.goto('/styleguide');
@@ -176,6 +238,48 @@ test.describe('@M00b phone', () => {
     await expect.poll(() => seenAtCentre(action), 'the focused action is on screen and not covered').toBe(true);
   });
 
+  test('@M00b a focus below a non-modal sheet at half height expands it; the clipped viewport never scrolls', async ({ page, browserName }) => {
+    await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
+    await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Show a peek sheet' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+    await expect(sheet).toBeVisible();
+    const barTop = (await tabBar(page).boundingBox())!.y;
+    const peekTop = await settledTop(sheet);
+
+    // Drag the sheet by its header from the peek to half height (half of the room above the tabs).
+    const half = barTop / 2;
+    const x = PHONE.width / 2;
+    // Slowly, and still for a moment before letting go: a flick would carry it on to full height.
+    await page.mouse.move(x, peekTop + 20);
+    await page.mouse.down();
+    for (let step = 1; step <= 20; step++) {
+      await page.mouse.move(x, peekTop + 20 - ((peekTop - half) * step) / 20);
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+    const top = await settledTop(sheet);
+    expect(top, 'at half height').toBeGreaterThan(half - 24);
+    expect(top, 'at half height').toBeLessThan(half + 24);
+    await expect(sheet.getByRole('button', { name: 'Expand' })).toBeVisible();
+
+    const action = sheet.getByRole('button', { name: 'Copy the hall’s link' });
+    expect((await action.boundingBox())!.y, 'at half height the action is below the edge').toBeGreaterThan(barTop);
+    const focused = () => action.evaluate((el) => el === document.activeElement);
+    await sheet.getByRole('button', { name: 'Close' }).focus();
+    for (let i = 0; i < 12 && !(await focused()); i++) await page.keyboard.press('Tab');
+    if (!(await focused())) await action.focus();
+    expect(await focused()).toBe(true);
+
+    // The sheet expanded (its state, not only its look), and the viewport that clips it at the
+    // tab bar did not scroll to show the focus instead.
+    await settledTop(sheet);
+    await expect(sheet.getByRole('button', { name: 'Collapse' })).toBeVisible();
+    expect(await sheet.evaluate((el) => el.parentElement!.scrollTop)).toBe(0);
+    await expect.poll(() => seenAtCentre(action), 'the focused action is on screen and not covered').toBe(true);
+  });
+
   test('@M00b a toast lands above an open peek sheet and leaves its header usable', async ({ page, browserName }) => {
     await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
     await page.goto('/styleguide');
@@ -193,29 +297,67 @@ test.describe('@M00b phone', () => {
     for (const name of ['Expand', 'Close']) expect(await seenAtCentre(sheet.getByRole('button', { name })), name).toBe(true);
   });
 
-  test('@M00b a toast never covers the title and buttons of a sheet at full height, and rises above it at half height', async ({ page }) => {
-    await page.goto('/styleguide');
-    await page.getByRole('button', { name: 'Open a sheet' }).click();
-    const sheet = page.getByRole('dialog', { name: 'Mira Probnova' });
-    await expect(sheet).toBeVisible();
-    await sheet.getByRole('button', { name: 'Expand' }).click();
-    await settledTop(sheet);
-    await sheet.getByRole('button', { name: 'Copy the link' }).click();
-    const toast = page.getByRole('dialog', { name: 'Link copied' });
-    await expect(toast).toBeVisible();
+  for (const text of ['100%', '150%']) {
+    test(`@M00b at ${text} text a toast over a full-height sheet sits under its header and covers none of its controls`, async ({ page, browserName }) => {
+      const insets = await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
+      await page.addInitScript((size) => {
+        document.addEventListener('DOMContentLoaded', () => document.documentElement.style.setProperty('font-size', size));
+      }, text);
+      await page.goto('/styleguide');
+      await page.getByRole('button', { name: 'Open a sheet' }).click();
+      const sheet = page.getByRole('dialog', { name: 'Mira Probnova' });
+      await expect(sheet).toBeVisible();
+      await sheet.getByRole('button', { name: 'Expand' }).click();
+      await settledTop(sheet);
+      await sheet.getByRole('button', { name: 'Copy the link' }).click();
+      const toast = page.getByRole('dialog', { name: 'Link copied' });
+      await expect(toast).toBeVisible();
 
-    // No room above a full-height sheet: the toast stays low, over the sheet's body.
-    for (const name of ['Collapse', 'Close']) await expect.poll(() => seenAtCentre(sheet.getByRole('button', { name })), name).toBe(true);
-    await expect(sheet.getByRole('heading', { name: 'Mira Probnova' })).toBeInViewport();
-    expect(await seenAtCentre(sheet.getByRole('heading', { name: 'Mira Probnova' }))).toBe(true);
-
-    // At half height the toast moves above the sheet's top edge.
-    await sheet.getByRole('button', { name: 'Collapse' }).click();
-    const top = await settledTop(sheet);
-    await expect.poll(async () => {
+      // No room above a full-height sheet: the toast hangs under its header, on screen (below the
+      // status bar), clear of the title and of every button of the sheet, the one that raised it too.
+      const heading = sheet.getByRole('heading', { name: 'Mira Probnova' });
+      const headerBottom = await sheet.evaluate((el) => el.firstElementChild!.getBoundingClientRect().bottom);
+      await expect.poll(async () => (await toast.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom);
       const box = (await toast.boundingBox())!;
-      return box.y + box.height;
-    }).toBeLessThanOrEqual(top);
+      expect(box.y, 'below the status bar').toBeGreaterThanOrEqual(insets.top);
+      expect(box.y + box.height, 'on screen').toBeLessThanOrEqual(PHONE.height);
+      expect(clear(box, (await heading.boundingBox())!), 'clear of the title').toBe(true);
+      const buttons = sheet.getByRole('button');
+      for (let i = 0; i < (await buttons.count()); i++) {
+        const button = buttons.nth(i);
+        const bounds = await button.boundingBox();
+        if (bounds) expect(clear(box, bounds), `clear of "${await button.textContent()}${await button.getAttribute('aria-label') ?? ''}"`).toBe(true);
+      }
+      // Over the sheet the toast is the page's paper, not the sheet's surface (it is not a card of the sheet).
+      const ground = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(await ground(toast)).not.toBe(await ground(sheet));
+
+      // At half height the toast moves above the sheet's top edge.
+      await sheet.getByRole('button', { name: 'Collapse' }).click();
+      const top = await settledTop(sheet);
+      await expect.poll(async () => {
+        const at = (await toast.boundingBox())!;
+        return at.y + at.height;
+      }).toBeLessThanOrEqual(top);
+    });
+  }
+
+  test('@M00b the tab bar keeps as much room under the current tab’s chop as above its icon, with no bottom inset', async ({ page }) => {
+    await page.goto('/');
+    const explore = tabBar(page).getByRole('link', { name: 'Explore' }).filter({ visible: true });
+    await expect(explore).toHaveAttribute('aria-current', 'page');
+    // The chop is stamped in (a scale transition): wait until it rests.
+    const room = () =>
+      explore.evaluate((tab) => {
+        const box = tab.getBoundingClientRect();
+        const icon = tab.querySelector('svg')!.getBoundingClientRect();
+        const chop = tab.lastElementChild!.getBoundingClientRect();
+        return { above: icon.top - box.top, below: box.bottom - chop.bottom, chop: chop.height };
+      });
+    await expect.poll(async () => (await room()).chop).toBeGreaterThan(4);
+    const { above, below } = await room();
+    expect(below, 'the chop never sits on the screen edge').toBeGreaterThanOrEqual(4);
+    expect(Math.abs(above - below), `above the icon ${above.toFixed(1)} px, under the chop ${below.toFixed(1)} px`).toBeLessThanOrEqual(1.5);
   });
 
   test('@M00b on a 320 px phone at 150 % text every tab label still reads as one word', async ({ page }) => {
@@ -324,12 +466,54 @@ test.describe('@M00b phone', () => {
       )
       .toEqual([]);
 
-    // The sheet title wraps instead of being cut.
+    // The tab bar grows with the text, and a peeking sheet rests on it, wherever its top is now:
+    // nothing of the sheet covers the tabs, and the top of every icon still hits its tab.
     await page.goto('/styleguide');
-    await page.getByRole('button', { name: 'Open a sheet' }).click();
-    const title = page.getByRole('dialog', { name: 'Mira Probnova' }).getByRole('heading');
-    await expect(title).toBeVisible();
-    expect(await title.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.getByRole('button', { name: 'Show a peek sheet' }).click();
+    const peek = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+    await expect(peek).toBeVisible();
+    await settledTop(peek);
+    const barTop = (await tabBar(page).boundingBox())!.y;
+    expect(barTop, 'the tab bar is taller than its 64 px token').toBeLessThan(PHONE.height - 64);
+    const sheetBottom = await peek.evaluate((el) => el.parentElement!.getBoundingClientRect().bottom);
+    expect(sheetBottom, 'the peek ends at the top of the tab bar').toBeLessThanOrEqual(barTop + 0.5);
+    const icons = await tabBar(page).evaluate((nav) =>
+      [...nav.querySelectorAll('a')]
+        .filter((a) => a.getBoundingClientRect().width > 0)
+        .map((a) => {
+          const icon = a.querySelector('svg')!.getBoundingClientRect();
+          return `${a.textContent}: ${a.contains(document.elementFromPoint(icon.x + icon.width / 2, icon.top + 1))}`;
+        }),
+    );
+    expect(icons).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Me: true']);
+    await peek.getByRole('button', { name: 'Close' }).click();
+    await expect(peek).toBeHidden();
+
+    // The sheet titles wrap instead of being cut, on narrow phones too, and a peek shows its whole title.
+    for (const viewport of [PHONE, { width: 360, height: 640 }, { width: 320, height: 640 }]) {
+      await page.setViewportSize(viewport);
+      for (const [opener, name] of [
+        ['Open a sheet', 'Mira Probnova'],
+        ['Show a peek sheet', 'Jade Lantern Hall'],
+      ] as const) {
+        await page.getByRole('button', { name: opener }).click();
+        const sheet = page.getByRole('dialog', { name });
+        const title = sheet.getByRole('heading', { name });
+        await expect(title).toBeVisible();
+        await settledTop(sheet);
+        const where = `${name} at ${viewport.width} px`;
+        expect(await title.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1), `${where}: not cut`).toBe(true);
+        const bottom = await title.evaluate((el) => el.getBoundingClientRect().bottom);
+        // By its element: a modal sheet hides the rest of the page from the accessibility tree.
+        expect(bottom, `${where}: above the tab bar`).toBeLessThanOrEqual((await page.locator('[data-tab-bar]').boundingBox())!.y);
+        for (const button of ['Close', 'Expand']) {
+          const size = (await sheet.getByRole('button', { name: button }).boundingBox())!;
+          expect(Math.round(size.width), `${where}: ${button} keeps a 44 px target`).toBe(44);
+        }
+        await sheet.getByRole('button', { name: 'Close' }).click();
+        await expect(sheet).toBeHidden();
+      }
+    }
   });
 });
 
@@ -369,8 +553,21 @@ test('@M00b Back closes the dialog and the sheet; closing them otherwise leaves 
 test.describe('@M00b desktop', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('@M00b from 768 px a sheet is a side panel on the right', async ({ page }) => {
+  test('@M00b from 1024 px a sheet is a side panel on the right; from 768 px a bottom sheet right of the rail', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Open a sheet' }).click();
+    const tablet = page.getByRole('dialog', { name: 'Mira Probnova' });
+    await expect(tablet).toBeVisible();
+    const railRight = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-w')));
+    const half = (await tablet.boundingBox())!;
+    expect(half.x, 'never over the rail').toBeGreaterThanOrEqual(railRight);
+    expect(await settledTop(tablet)).toBeGreaterThan(1024 * 0.5 - 24);
+    await expect(tablet.getByRole('button', { name: 'Expand' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(tablet).toBeHidden();
+
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('button', { name: 'Open a sheet' }).click();
     const sheet = page.getByRole('dialog', { name: 'Mira Probnova' });
     await expect(sheet).toBeVisible();
@@ -381,6 +578,47 @@ test.describe('@M00b desktop', () => {
     expect(box.height).toBeCloseTo(900, 0);
     await expect(sheet.getByRole('button', { name: 'Expand' })).toHaveCount(0);
   });
+
+  for (const viewport of [
+    { width: 768, height: 1024 },
+    { width: 1024, height: 768 },
+  ]) {
+    test(`@M00b at ${viewport.width} px no page control takes focus under an open non-modal sheet, and a toast clears the sheet and the rail`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.goto('/styleguide');
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      await page.getByRole('button', { name: 'Show a peek sheet' }).click();
+      const sheet = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+      await expect(sheet).toBeVisible();
+      const top = await settledTop(sheet);
+      // The page keeps the sheet's room clear: below 1024 px focus scrolls above the bottom sheet
+      // (scroll padding); from 1024 px the panel docks and the page narrows beside it.
+      const room = await page.evaluate(() => ({
+        padding: Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom),
+        mainRight: document.querySelector('main')!.getBoundingClientRect().right,
+      }));
+      if (viewport.width < 1024) expect(room.padding, 'focus scrolls above the sheet').toBeGreaterThanOrEqual(viewport.height - top);
+      else expect(room.mainRight, 'the page ends where the panel begins').toBeLessThanOrEqual((await sheet.boundingBox())!.x + 0.5);
+      const { stops, covered } = await coveredFocusStops(page);
+      expect(stops).toBeGreaterThan(0);
+      expect(covered).toEqual([]);
+
+      // The page's own toast button is not under the sheet, so a click reaches it.
+      const show = page.getByRole('button', { name: 'Show a toast' });
+      await show.scrollIntoViewIfNeeded();
+      expect(await seenAtCentre(show)).toBe(true);
+      await show.click();
+      const toast = page.getByRole('dialog', { name: 'Link verified' });
+      await expect(toast).toBeVisible();
+      await expect.poll(async () => clear((await toast.boundingBox())!, (await sheet.boundingBox())!), 'clear of the sheet').toBe(true);
+      // The rail's controls stay seen: the toast keeps right of the rail.
+      const railRight = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-w')));
+      expect((await toast.boundingBox())!.x).toBeGreaterThanOrEqual(railRight);
+      const theme = tabBar(page).getByRole('combobox', { name: 'Theme' });
+      expect(await seenAtCentre(theme), 'the Theme control is not covered').toBe(true);
+      expect(await seenAtCentre(sheet.getByRole('button', { name: 'Close' })), 'Close').toBe(true);
+    });
+  }
 });
 
 // One test per theme: ten axe scans of /styleguide in one test came close to the 30 s test
