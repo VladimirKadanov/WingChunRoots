@@ -45,13 +45,24 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                 // An inset focus ring: the tab bar ends at the screen edge and would clip an outer one.
                 'focus-visible:-outline-offset-2',
                 variant === 'tabs'
-                  ? 'min-h-11 flex-1 flex-col justify-center gap-[5px] pt-1.5 text-caption uppercase'
+                  ? '@container/tab min-h-11 flex-1 flex-col justify-center gap-[5px] pt-1.5 text-caption uppercase'
                   : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold',
               )}
             >
               <Icon size={variant === 'tabs' ? 23 : 21} />
-              {/* Large text (Android font scale): a long label breaks instead of running into the next. */}
-              <span className={cx(variant === 'tabs' && 'max-w-full text-center [overflow-wrap:anywhere]')}>{item.label}</span>
+              {/* Large text (Android font scale) or a narrow phone: the queries are in em of the
+                  label's own size, so they follow the text size. When the widest label ("SCHOOLS",
+                  5.7 em with the caption tracking) no longer fits, the tracking tightens (5 em);
+                  below that the label drops the capitals (3.8 em). Only still larger text breaks a
+                  word, and then inside its own tab instead of running into the next. */}
+              <span
+                className={cx(
+                  variant === 'tabs' &&
+                    'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case',
+                )}
+              >
+                {item.label}
+              </span>
               <span
                 aria-hidden="true"
                 className={cx(
