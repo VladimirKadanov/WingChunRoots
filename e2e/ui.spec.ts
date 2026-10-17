@@ -302,6 +302,11 @@ test.describe('@M00b phone', () => {
             const node = document.querySelector(`[data-node="${i}"]`)!.getBoundingClientRect();
             const y = node.top + node.height / 2;
             if (y < name.top - 1 || y > name.bottom + 1) problems.push(`node ${i} at ${y.toFixed(0)}, name ${name.top.toFixed(0)}-${name.bottom.toFixed(0)}`);
+            // The spine keeps to its column, between the year and the name, as the text grows.
+            const year = document.createRange();
+            year.selectNodeContents(row.querySelector('button > span')!);
+            if (node.right > name.left - 1) problems.push(`node ${i} (to x ${node.right.toFixed(0)}) runs into the name at x ${name.left.toFixed(0)}`);
+            if (year.getBoundingClientRect().right > node.left + 1) problems.push(`year ${i} runs into node ${i}`);
           });
           return problems;
         }),
@@ -475,11 +480,63 @@ test('@M00b from tablets to desktop no name in the line breaks inside a word', a
   }
 });
 
+test('@M00b every row of the line has the same height and its year on the name\'s baseline, from 320 px to desktop', async ({ page }) => {
+  for (const width of [320, 360, 375, 390, 400, 640, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('[data-row]')].map((row) => {
+        // The first baseline of an element: where a zero-size inline-block at its start sits.
+        const baseline = (el: Element) => {
+          const mark = document.createElement('span');
+          mark.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+          el.prepend(mark);
+          const y = mark.getBoundingClientRect().top;
+          mark.remove();
+          return y;
+        };
+        return {
+          name: row.querySelector('[data-name]')!.textContent,
+          height: row.getBoundingClientRect().height,
+          shift: baseline(row.querySelector('button > span')!) - baseline(row.querySelector('[data-name]')!),
+        };
+      }),
+    );
+    const heights = new Set(rows.map((r) => Math.round(r.height)));
+    expect([...heights], `${width} px: one row height (the server draws the spine for it)`).toEqual([64]);
+    for (const r of rows) expect(Math.abs(r.shift), `${width} px: ${r.name}: year on the name's baseline`).toBeLessThanOrEqual(1);
+  }
+});
+
+test('@M00b the headline never puts a word on a line of its own, from 320 to 1920 px', async ({ page }) => {
+  for (const width of [320, 360, 390, 600, 768, 1024, 1144, 1280, 1310, 1440, 1536, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const lines = await page.locator('main h1').evaluate((h1) => {
+      const byTop = new Map<number, string[]>();
+      const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (const match of node.textContent!.matchAll(/\S+/g)) {
+          const range = document.createRange();
+          range.setStart(node, match.index);
+          range.setEnd(node, match.index + match[0].length);
+          const top = Math.round(range.getClientRects()[0]!.top);
+          byTop.set(top, [...(byTop.get(top) ?? []), match[0]]);
+        }
+      }
+      return [...byTop.values()];
+    });
+    for (const words of lines) expect(words.length, `${width} px: "${words.join(' ')}" in ${JSON.stringify(lines)}`).toBeGreaterThan(1);
+  }
+});
+
 test.describe('@M00b without JavaScript', () => {
   test.use({ javaScriptEnabled: false });
 
-  test('@M00b the server-drawn spine sits level with every name, from phones to desktop', async ({ page }) => {
-    for (const viewport of [{ width: 390, height: 844 }, ...TABLET_TO_DESKTOP]) {
+  test('@M00b the server-drawn spine sits level with every name, from 320 px phones to desktop', async ({ page }) => {
+    for (const viewport of [{ width: 320, height: 640 }, { width: 360, height: 800 }, { width: 390, height: 844 }, ...TABLET_TO_DESKTOP]) {
       await page.setViewportSize(viewport);
       await page.goto('/');
       await page.evaluate(() => document.fonts.ready.then(() => undefined));

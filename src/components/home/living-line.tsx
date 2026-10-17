@@ -26,7 +26,8 @@ import { DEMO_LINE, DEMO_LINE_LINKS, searchDemoLine } from './demo-lineage';
 import { Name, PersonName } from './names';
 import { ROW_TONES, TRACE_LINE_EVENT, type TraceLineDetail } from './trace-line';
 
-const ROW = 56;
+/** Row height at every width (min-h-16), so the spine drawn on the server matches the rows. */
+const ROW = 64;
 const NODE_OFFSET = 12;
 const STATES = DEMO_LINE_LINKS.map((link) => link.state);
 const EVEN = evenRows(DEMO_LINE.length, ROW, NODE_OFFSET);
@@ -121,7 +122,8 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-y-7 pb-9 [grid-template-areas:'head'_'line'_'search'] md:gap-y-9 md:pb-14 xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[auto_1fr] xl:gap-x-12 xl:gap-y-0 2xl:grid-cols-[minmax(0,1fr)_30rem] 2xl:gap-x-16 xl:[grid-template-areas:'head_line'_'search_line']">
-      <div className="[grid-area:head]">{heading}</div>
+      {/* A size container: the headline (text-hero) never outgrows this column (tokens.ts). */}
+      <div className="@container [grid-area:head]">{heading}</div>
 
       <div className="max-w-[40rem] border-t border-border-subtle pt-6 [grid-area:search] xl:max-w-none xl:border-t-0 xl:pt-5">
         {lede}
@@ -242,6 +244,8 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
         </figcaption>
 
         <div className="relative">
+          {/* In the rows' second column (left-16 = 4rem, after the year), which grows with the
+              text like the columns do, so the spine never runs into the names at 150 % text. */}
           <svg
             className="pointer-events-none absolute top-0 left-16 z-10 overflow-visible text-fg"
             width={44}
@@ -333,19 +337,23 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
                     aria-current={current ? 'true' : undefined}
                     onClick={() => trace(i)}
                     className={cx(
-                      'relative grid min-h-14 w-full grid-cols-[64px_44px_minmax(0,1fr)] content-start rounded-sm pb-2 text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
+                      // items-baseline: the year sits on the baseline of the name at every text size.
+                      'relative grid min-h-16 w-full grid-cols-[4rem_2.75rem_minmax(0,1fr)] content-start items-baseline rounded-sm pb-2 text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
                       // The traced person: an ink bar on the row's edge, a tint and a ring on the node.
                       current && 'bg-surface-1 before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-fg',
                     )}
                   >
-                    <span className={cx('pt-0.5 pl-3 font-display text-base tabular', tone.year)}>{person.startYear}</span>
+                    <span className={cx('pl-3 font-display text-base tabular', tone.year)}>{person.startYear}</span>
                     <span className="col-start-3 flex min-w-0 flex-col pl-1">
                       <PersonName
                         name={person.name}
                         original={person.original}
                         data-name
-                        // Phones: a size at which a Latin name and its original fit one line.
+                        // Phones: the original always on its own line under the name (no Cyrillic
+                        // original fits beside its name at 320-399 px), so every row has the same
+                        // height. From 640 px the original follows the name on its line.
                         className={cx('font-display text-md leading-[1.22] sm:text-lg sm:leading-[1.22]', tone.name)}
+                        originalClassName="max-sm:basis-full"
                       />
                       <span className="mt-1 text-caption text-fg-subtle uppercase">
                         {person.city} · {person.role}

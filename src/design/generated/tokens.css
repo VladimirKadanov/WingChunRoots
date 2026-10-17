@@ -412,7 +412,7 @@
   --text-feature: clamp(2rem, 8vw, 3.25rem);
   --text-feature--line-height: 1;
   --text-feature--letter-spacing: -0.015em;
-  --text-hero: clamp(2.125rem, 9vw, 4.875rem);
+  --text-hero: clamp(2.125rem, min(9vw, 14cqi), 4.875rem);
   --text-hero--line-height: 0.98;
   --text-hero--letter-spacing: -0.022em;
 

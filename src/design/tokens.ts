@@ -247,7 +247,13 @@ export const typeScale: Record<string, TypeStep> = {
   '3xl': { size: '32px', lineHeight: '1.05', letterSpacing: '-0.01em' },
   section: { size: 'clamp(29px, 7vw, 44px)', lineHeight: '1.04', letterSpacing: '-0.015em' },
   feature: { size: 'clamp(32px, 8vw, 52px)', lineHeight: '1', letterSpacing: '-0.015em' },
-  hero: { size: 'clamp(34px, 9vw, 78px)', lineHeight: '0.98', letterSpacing: '-0.022em' },
+  /**
+   * The thesis of the home page. It follows the viewport (9vw) but never outgrows its column:
+   * 14cqi of the nearest inline-size container keeps the longest of three lines inside it (the
+   * home page's head area from 1280 px, beside the line). Without a container cqi falls back to
+   * the small viewport width, so elsewhere the size is 9vw.
+   */
+  hero: { size: 'clamp(34px, min(9vw, 14cqi), 78px)', lineHeight: '0.98', letterSpacing: '-0.022em' },
 };
 
 /** Smallest font size any visible label may use (px). */
