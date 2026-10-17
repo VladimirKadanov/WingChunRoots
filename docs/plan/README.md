@@ -10,7 +10,7 @@
 | M00b | [M00b — Дизайн система по избраната посока](M00b-design-system.md) | M00 и изборът на посока в `docs/design/direction.md` | слят ([#8](https://github.com/VladimirKadanov/WingChunRoots/pull/8)) |
 | M01 | [M01 — Модел на данни, роли в базата и фиктивни данни](M01-data-model.md) | M00 | слят ([#3](https://github.com/VladimirKadanov/WingChunRoots/pull/3) в `m00-foundation`; към `main` с [#5](https://github.com/VladimirKadanov/WingChunRoots/pull/5); поправки от прегледа: [#6](https://github.com/VladimirKadanov/WingChunRoots/pull/6)) |
 | M01b | [M01b — Фонови задачи и поща](M01b-jobs-mail.md) | M01 | слят ([#7](https://github.com/VladimirKadanov/WingChunRoots/pull/7)) |
-| M02 | [M02 — Акаунти, роли и съгласия](M02-accounts.md) | M00b, M01b | PR отворен (клон `m02-accounts`) |
+| M02 | [M02 — Акаунти, роли и съгласия](M02-accounts.md) | M00b, M01b | PR отворен ([#9](https://github.com/VladimirKadanov/WingChunRoots/pull/9), чернова, клон `m02-accounts`) |
 | M03 | [M03 — Модул за подредба на родословието](M03-lineage-layout.md) | M00 | слят ([#4](https://github.com/VladimirKadanov/WingChunRoots/pull/4)) |
 | M04 | [M04 — API за родословието, публичен профил и списъчен изглед](M04-lineage-api.md) | M02 | не е започнат |
 | M05 | [M05 — Интерактивен изследовател: изгледи и връзки](M05-explorer-views.md) | M03, M04 | не е започнат |
