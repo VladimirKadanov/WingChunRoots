@@ -257,7 +257,11 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                       <PersonName
                         name={person.name}
                         original={person.original}
-                        className={cx('font-display text-[1.1875rem] leading-[1.22]', dimmed ? 'text-fg-muted' : 'text-fg')}
+                        // Phones: a size at which a Latin name and its original fit one line.
+                        className={cx(
+                          'font-display text-[1.0625rem] leading-[1.22] sm:text-[1.1875rem]',
+                          dimmed ? 'text-fg-muted' : 'text-fg',
+                        )}
                       />
                       <span className="mt-px text-[0.6875rem] leading-tight font-semibold tracking-[0.14em] text-fg-subtle uppercase">
                         {person.city} · {person.role}
