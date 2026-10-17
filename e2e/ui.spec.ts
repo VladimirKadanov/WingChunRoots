@@ -62,7 +62,7 @@ function seenAtCentre(locator: Locator) {
  * Tabs through the page from its top until focus leaves <main>'s controls for the sheet, and
  * lists every page control that took focus while something else covered its centre (WCAG
  * 2.4.11: an open non-modal sheet must never hide the focused control). Also returns how many
- * page controls took focus.
+ * page controls took focus and whether the walk got past the last one.
  */
 async function coveredFocusStops(page: Page) {
   // Start at <main> itself (it takes focus from the skip link), so the next Tab is its first control.
@@ -70,7 +70,8 @@ async function coveredFocusStops(page: Page) {
   await page.locator('main').focus();
   const covered: string[] = [];
   let stops = 0;
-  for (let i = 0; i < 120; i++) {
+  let done = false;
+  for (let i = 0; i < 200; i++) {
     await page.keyboard.press('Tab');
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
@@ -82,11 +83,14 @@ async function coveredFocusStops(page: Page) {
       return `${label} at y ${Math.round(box.y)}, under ${hit?.closest('[role="dialog"]') ? 'the sheet' : hit?.tagName}`;
     });
     // Past <main>'s last control (into the sheet, which comes after it).
-    if (stop === 'past') break;
+    if (stop === 'past') {
+      done = true;
+      break;
+    }
     stops++;
     if (stop !== 'seen') covered.push(stop);
   }
-  return { stops, covered };
+  return { stops, covered, done };
 }
 
 /** True when two boxes do not overlap. */
@@ -207,7 +211,8 @@ test.describe('@M00b phone', () => {
       // WebKit scrolls it only as far as the scroll padding, so the padding itself must hold).
       const padding = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom));
       expect(padding, `${viewport.width} px, ${text}: focus scrolls above the peek`).toBeGreaterThanOrEqual(viewport.height - top);
-      const { stops, covered } = await coveredFocusStops(page);
+      const { stops, covered, done } = await coveredFocusStops(page);
+      expect(done, `${viewport.width} px, ${text}: Tab got past the page's last control`).toBe(true);
       expect(stops, `${viewport.width} px, ${text}: page controls took focus`).toBeGreaterThan(0);
       expect(covered, `${viewport.width} px, ${text}: focused under the sheet or the tab bar`).toEqual([]);
       await sheet.getByRole('button', { name: 'Close' }).click();
@@ -277,6 +282,9 @@ test.describe('@M00b phone', () => {
     await settledTop(sheet);
     await expect(sheet.getByRole('button', { name: 'Collapse' })).toBeVisible();
     expect(await sheet.evaluate((el) => el.parentElement!.scrollTop)).toBe(0);
+    // At full height the page is behind the sheet whatever its padding: it keeps no screen of it.
+    const padding = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom));
+    expect(padding, 'no screen-tall scroll padding behind a full sheet').toBeLessThan(PHONE.height / 2);
     await expect.poll(() => seenAtCentre(action), 'the focused action is on screen and not covered').toBe(true);
   });
 
@@ -295,6 +303,27 @@ test.describe('@M00b phone', () => {
       return box.y + box.height;
     }).toBeLessThanOrEqual(top);
     for (const name of ['Expand', 'Close']) expect(await seenAtCentre(sheet.getByRole('button', { name })), name).toBe(true);
+  });
+
+  test('@M00b in a short landscape window at 150 % text a toast stays on screen above a peeking sheet', async ({ page }) => {
+    await page.setViewportSize({ width: 740, height: 360 });
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => document.documentElement.style.setProperty('font-size', '150%'));
+    });
+    await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Show a peek sheet' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+    await expect(sheet).toBeVisible();
+    const top = await settledTop(sheet);
+    // Clicked by script: in a 360 px window the button may be scrolled out of view.
+    await page.getByRole('button', { name: 'Show a toast' }).evaluate((button: HTMLElement) => button.click());
+    const toast = page.getByRole('dialog', { name: 'Link verified' });
+    await expect(toast).toBeVisible();
+    await expect.poll(async () => {
+      const box = (await toast.boundingBox())!;
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(top);
+    expect((await toast.boundingBox())!.y, 'on screen').toBeGreaterThanOrEqual(0);
   });
 
   for (const text of ['100%', '150%']) {
@@ -599,9 +628,22 @@ test.describe('@M00b desktop', () => {
       }));
       if (viewport.width < 1024) expect(room.padding, 'focus scrolls above the sheet').toBeGreaterThanOrEqual(viewport.height - top);
       else expect(room.mainRight, 'the page ends where the panel begins').toBeLessThanOrEqual((await sheet.boundingBox())!.x + 0.5);
-      const { stops, covered } = await coveredFocusStops(page);
+      const { stops, covered, done } = await coveredFocusStops(page);
+      expect(done, 'Tab got past the page’s last control').toBe(true);
       expect(stops).toBeGreaterThan(0);
       expect(covered).toEqual([]);
+      // The page lays out by its own width, which the docked panel narrows: nothing overflows.
+      const overflowing = await page.evaluate(() => {
+        const out: string[] = [];
+        for (const el of document.querySelectorAll<HTMLElement>('main *')) {
+          if (el instanceof SVGElement) continue;
+          const style = getComputedStyle(el);
+          if (style.overflowX !== 'visible' || style.display === 'inline' || style.display === 'contents' || el.clientWidth === 0) continue;
+          if (el.scrollWidth > el.clientWidth + 1) out.push(`${el.tagName.toLowerCase()} "${(el.textContent ?? '').trim().slice(0, 40)}": ${el.scrollWidth} px in ${el.clientWidth}`);
+        }
+        return out;
+      });
+      expect(overflowing).toEqual([]);
 
       // The page's own toast button is not under the sheet, so a click reaches it.
       const show = page.getByRole('button', { name: 'Show a toast' });
