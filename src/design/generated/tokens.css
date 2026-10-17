@@ -225,18 +225,24 @@
   --dim-stroke: var(--unconfirmed);
   --dim-frame: var(--border-strong);
   --dim-text: var(--fg-muted);
-  /* Link colours by verification state (plan §4.6): stroke and seal, then the text label. */
+  /* Link colours by verification state (plan §4.6): seal, stroke and text label. */
   --link-unconfirmed-color: var(--unconfirmed);
+  --link-unconfirmed-stroke: var(--unconfirmed);
   --link-unconfirmed-label: var(--fg-muted);
   --link-under-review-color: var(--review);
+  --link-under-review-stroke: var(--review);
   --link-under-review-label: var(--review);
   --link-verified-color: var(--verified);
+  --link-verified-stroke: var(--fg);
   --link-verified-label: var(--verified);
   --link-arbitration-color: var(--arbitration);
+  --link-arbitration-stroke: var(--arbitration);
   --link-arbitration-label: var(--arbitration);
   --link-cross-lineage-color: var(--cross-lineage);
+  --link-cross-lineage-stroke: var(--cross-lineage);
   --link-cross-lineage-label: var(--cross-lineage);
   --link-historical-color: var(--fg-muted);
+  --link-historical-stroke: var(--fg-muted);
   --link-historical-label: var(--fg-muted);
 }
 :lang(zh-Hans) {

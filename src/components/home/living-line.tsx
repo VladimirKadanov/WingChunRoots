@@ -263,7 +263,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                           dimmed ? 'text-fg-muted' : 'text-fg',
                         )}
                       />
-                      <span className="mt-px text-[0.6875rem] leading-tight font-semibold tracking-[0.14em] text-fg-subtle uppercase">
+                      <span className="mt-1 text-[0.6875rem] leading-tight font-semibold tracking-[0.14em] text-fg-subtle uppercase">
                         {person.city} · {person.role}
                       </span>
                       <span className="sr-only">

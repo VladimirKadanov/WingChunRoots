@@ -141,10 +141,11 @@ export function buildCss(): string {
   out.push(`:root, ${THEMES.map((theme) => `.theme-${theme}`).join(', ')} {`);
   out.push('  /* Solid dimming tones (plan §4.7): never opacity. */');
   for (const [name, role] of Object.entries(DIM_TONES)) out.push(`  --dim-${name}: var(--${role});`);
-  out.push('  /* Link colours by verification state (plan §4.6): stroke and seal, then the text label. */');
+  out.push('  /* Link colours by verification state (plan §4.6): seal, stroke and text label. */');
   for (const [state, style] of Object.entries(linkStyles)) {
     const key = state.replace(/_/g, '-');
     out.push(`  --link-${key}-color: var(--${style.color});`);
+    out.push(`  --link-${key}-stroke: var(--${style.strokeColor});`);
     out.push(`  --link-${key}-label: var(--${style.labelColor});`);
   }
   out.push('}');

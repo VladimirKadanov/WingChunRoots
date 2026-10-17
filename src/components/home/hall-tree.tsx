@@ -85,7 +85,7 @@ export function HallTree({ className }: { className?: string }) {
           n: 26,
           crossLineage: link.cross,
         });
-        const color = link.cross ? 'var(--cross-lineage)' : link.state === 'verified' ? 'var(--fg)' : `var(--${linkStyles[link.state].color})`;
+        const color = `var(--${linkStyles[link.cross ? 'cross_lineage' : link.state].strokeColor})`;
         return (
           <g key={i} style={{ color }}>
             <InkShapeSvg shape={shape} />

@@ -62,7 +62,7 @@ export function LinkStroke({ kind, className, width = 62 }: { kind: LinkKind; cl
       aria-hidden="true"
       focusable="false"
       className={cx('inline-block shrink-0 overflow-visible', className)}
-      style={{ color: `var(--${linkStyles[kind].color})` }}
+      style={{ color: `var(--${linkStyles[kind].strokeColor})` }}
       data-stroke={linkStyles[kind].stroke}
     >
       <InkShapeSvg shape={shapeFor(kind)} />

@@ -348,8 +348,13 @@ export type VerificationState = (typeof VERIFICATION_STATES)[number];
 
 export interface LinkStyle {
   label: string;
-  /** Colour role of the stroke and the seal. */
+  /** Colour role of the seal (the state's colour). */
   color: ColorRole;
+  /**
+   * Colour role of the stroke. A verified link is drawn in solid ink and the jade seal carries
+   * the colour (Ink Lineage); every other state draws its stroke in its own colour.
+   */
+  strokeColor: ColorRole;
   /**
    * Colour role of the text label (status badges): text-grade (4.5:1). Unconfirmed grey is a
    * stroke colour at 3:1 only, so its label is set in the secondary text colour.
@@ -371,6 +376,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   unconfirmed: {
     label: 'Unconfirmed',
     color: 'unconfirmed',
+    strokeColor: 'unconfirmed',
     labelColor: 'fg-muted',
     stroke: 'dotted',
     dash: '0.1 4',
@@ -381,6 +387,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   under_review: {
     label: 'Under review',
     color: 'review',
+    strokeColor: 'review',
     labelColor: 'review',
     stroke: 'broken',
     dash: '7 4',
@@ -391,6 +398,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   verified: {
     label: 'Verified',
     color: 'verified',
+    strokeColor: 'fg',
     labelColor: 'verified',
     stroke: 'solid',
     dash: null,
@@ -401,6 +409,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   arbitration: {
     label: 'In arbitration',
     color: 'arbitration',
+    strokeColor: 'arbitration',
     labelColor: 'arbitration',
     stroke: 'double',
     dash: null,
@@ -411,6 +420,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   cross_lineage: {
     label: 'Cross-lineage',
     color: 'cross-lineage',
+    strokeColor: 'cross-lineage',
     labelColor: 'cross-lineage',
     stroke: 'hollow-curve',
     dash: '9 3 2 3',
@@ -421,6 +431,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   historical: {
     label: 'Historical',
     color: 'fg-muted',
+    strokeColor: 'fg-muted',
     labelColor: 'fg-muted',
     stroke: 'thin',
     dash: null,

@@ -85,9 +85,22 @@ describe('status is never colour alone (plan §4.6)', () => {
       }
     }
   });
+  it('every stroke colour is graphic-grade (3:1) on the ground in both themes', () => {
+    for (const theme of THEMES) {
+      for (const style of Object.values(linkStyles)) {
+        for (const bg of ['bg', 'surface-1', 'surface-2'] as const) {
+          expect(
+            contrastRatio(colors[theme][style.strokeColor], colors[theme][bg]),
+            `${theme}: ${style.label} stroke (${style.strokeColor}) on ${bg}`,
+          ).toBeGreaterThanOrEqual(MIN_GRAPHIC);
+        }
+      }
+    }
+  });
   it('red is reserved for the brand: no verification state uses a brand role', () => {
     for (const style of Object.values(linkStyles)) {
       expect(style.color.startsWith('brand')).toBe(false);
+      expect(style.strokeColor.startsWith('brand')).toBe(false);
       expect(style.labelColor.startsWith('brand')).toBe(false);
     }
   });
