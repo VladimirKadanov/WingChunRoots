@@ -69,3 +69,44 @@ export async function setUserRole(principal: Principal | null, raw: unknown, met
       throw error;
     });
 }
+
+/** What `pnpm admin:create` did (src/server/auth/cli.ts). */
+export type FirstAdminOutcome = 'granted' | 'already-admin';
+
+/**
+ * `pnpm admin:create --email <address>` (milestone M02, In scope 10): makes an existing account an
+ * admin from the command line of a local environment, where no admin exists yet to do it through
+ * setUserRole(). The caller (the CLI) has already refused production and a non-local database.
+ * The same rules as setUserRole(): only an account with a confirmed address and 2FA on gets a
+ * staff role (plan §3.2); the change ends every session of the account (trigger) and is audited
+ * as role.change with no actor (the person at the terminal of the local machine).
+ */
+export async function grantAdminFromCommandLine(email: string): Promise<FirstAdminOutcome> {
+  const address = z.email().safeParse(email.trim().toLowerCase());
+  if (!address.success) throw new ServiceError('BAD_REQUEST', 'That is not an e-mail address.');
+  return getDb().transaction(async (tx) => {
+    const [target] = await tx
+      .select({ id: authUser.id, role: authUser.role, emailVerified: authUser.emailVerified, twoFactorEnabled: authUser.twoFactorEnabled })
+      .from(authUser)
+      .where(eq(authUser.email, address.data))
+      .for('update');
+    if (!target) throw new ServiceError('NOT_FOUND', 'No account has this e-mail address.');
+    if (target.role === 'admin') return 'already-admin';
+    if (!target.emailVerified) throw new ServiceError('CONFLICT', 'The account has not confirmed its e-mail address yet.');
+    if (!target.twoFactorEnabled) {
+      throw new ServiceError('TWO_FACTOR_REQUIRED', 'The account must turn on two-factor authentication before it gets a staff role.');
+    }
+    await tx.update(authUser).set({ role: 'admin', updatedAt: new Date() }).where(eq(authUser.id, target.id));
+    await writeAudit(tx, {
+      action: 'role.change',
+      actorUserId: null,
+      actorRole: null,
+      subjectType: 'user',
+      subjectId: target.id,
+      before: { role: target.role },
+      after: { role: 'admin' },
+      reason: 'pnpm admin:create (local environment)',
+    });
+    return 'granted';
+  });
+}
