@@ -38,6 +38,26 @@ function hitsPage(page: Page, x: number, y: number) {
   }, [x, y]);
 }
 
+/** For each visible tab of the phone tab bar: does a tap at its centre reach that tab? */
+function tabsHit(page: Page) {
+  return tabBar(page).evaluate((nav) =>
+    [...nav.querySelectorAll('a')]
+      .filter((a) => a.getBoundingClientRect().width > 0 && a.getBoundingClientRect().height > 0)
+      .map((a) => {
+        const box = a.getBoundingClientRect();
+        return `${a.textContent}: ${a.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))}`;
+      }),
+  );
+}
+
+/** True when the centre of the element is not covered by anything else. */
+function seenAtCentre(locator: Locator) {
+  return locator.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+  });
+}
+
 const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Main' });
 /** The living line's row of one person (by the exact Latin name). */
 const row = (page: Page, name: string) =>
@@ -109,7 +129,9 @@ test.describe('@M00b phone', () => {
     expect(visible, 'the peek shows the whole header').toBeGreaterThanOrEqual(header - 1);
     expect(visible, 'the peek is no taller than its header').toBeLessThanOrEqual(Math.max(96, header) + 2);
     await expect(sheet.getByRole('button', { name: 'Expand' })).toBeInViewport();
-    await expect(tabBar(page).getByRole('link', { name: 'Explore' }).filter({ visible: true })).toBeInViewport();
+    // The tab bar is drawn and tappable, not only in the viewport: nothing of the sheet is
+    // painted over it (toBeInViewport checks geometry, not what is on top).
+    expect(await tabsHit(page)).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Me: true']);
 
     // At the peek the body is off screen and inert; the page behind takes taps.
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -121,9 +143,99 @@ test.describe('@M00b phone', () => {
     expect(barTop - top).toBeGreaterThan(Math.max(96, header) + 40);
     expect(top + (await sheet.boundingBox())!.height).toBeCloseTo(barTop, 0);
     await expect(sheet.locator('[inert]')).toHaveCount(0);
+    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Me: true']);
     await sheet.getByRole('button', { name: 'Collapse' }).click();
     expect(barTop - (await settledTop(sheet))).toBeLessThanOrEqual(Math.max(96, header) + 2);
     await expect(sheet.locator('[inert]')).toHaveCount(1);
+
+    // A tap on a tab under the open peek navigates.
+    await tabBar(page).getByRole('link', { name: 'Lineage' }).filter({ visible: true }).tap();
+    await expect(page).toHaveURL(/\/explore$/);
+  });
+
+  test('@M00b a focus below a half-height sheet expands it, so the focused control is seen', async ({ page, browserName }) => {
+    await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
+    await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Open a sheet' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Mira Probnova' });
+    await expect(sheet).toBeVisible();
+    await settledTop(sheet);
+    const action = sheet.getByRole('button', { name: 'Copy the link' });
+    expect((await action.boundingBox())!.y, 'at half height the action is below the screen').toBeGreaterThan(PHONE.height);
+
+    // Tab on from Close to the action at the end of the sheet.
+    const focused = () => action.evaluate((el) => el === document.activeElement);
+    await sheet.getByRole('button', { name: 'Close' }).focus();
+    for (let i = 0; i < 8 && !(await focused()); i++) await page.keyboard.press('Tab');
+    // WebKit can be set to Tab through fields only (macOS "Tab to links"): then focus it directly.
+    if (!(await focused())) await action.focus();
+    expect(await focused()).toBe(true);
+
+    await settledTop(sheet);
+    await expect(sheet.getByRole('button', { name: 'Collapse' })).toBeVisible();
+    await expect.poll(() => seenAtCentre(action), 'the focused action is on screen and not covered').toBe(true);
+  });
+
+  test('@M00b a toast lands above an open peek sheet and leaves its header usable', async ({ page, browserName }) => {
+    await emulateInsets(page, browserName, { top: 47, right: 0, bottom: 34, left: 0 });
+    await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Show a peek sheet' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Jade Lantern Hall' });
+    await expect(sheet).toBeVisible();
+    const top = await settledTop(sheet);
+    await page.getByRole('button', { name: 'Show a toast' }).click();
+    const toast = page.getByRole('dialog', { name: 'Link verified' });
+    await expect(toast).toBeVisible();
+    await expect.poll(async () => {
+      const box = (await toast.boundingBox())!;
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(top);
+    for (const name of ['Expand', 'Close']) expect(await seenAtCentre(sheet.getByRole('button', { name })), name).toBe(true);
+  });
+
+  test('@M00b a toast never covers the title and buttons of a sheet at full height, and rises above it at half height', async ({ page }) => {
+    await page.goto('/styleguide');
+    await page.getByRole('button', { name: 'Open a sheet' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Mira Probnova' });
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('button', { name: 'Expand' }).click();
+    await settledTop(sheet);
+    await sheet.getByRole('button', { name: 'Copy the link' }).click();
+    const toast = page.getByRole('dialog', { name: 'Link copied' });
+    await expect(toast).toBeVisible();
+
+    // No room above a full-height sheet: the toast stays low, over the sheet's body.
+    for (const name of ['Collapse', 'Close']) await expect.poll(() => seenAtCentre(sheet.getByRole('button', { name })), name).toBe(true);
+    await expect(sheet.getByRole('heading', { name: 'Mira Probnova' })).toBeInViewport();
+    expect(await seenAtCentre(sheet.getByRole('heading', { name: 'Mira Probnova' }))).toBe(true);
+
+    // At half height the toast moves above the sheet's top edge.
+    await sheet.getByRole('button', { name: 'Collapse' }).click();
+    const top = await settledTop(sheet);
+    await expect.poll(async () => {
+      const box = (await toast.boundingBox())!;
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(top);
+  });
+
+  test('@M00b on a 320 px phone at 150 % text every tab label still reads as one word', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => document.documentElement.style.setProperty('font-size', '150%'));
+    });
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await expect(tabBar(page).getByRole('link').filter({ visible: true })).toHaveCount(4);
+    const lines = await tabBar(page).evaluate((nav) =>
+      [...nav.querySelectorAll('a')]
+        .filter((a) => a.getBoundingClientRect().width > 0)
+        .map((a) => {
+          const range = document.createRange();
+          range.selectNodeContents(a.querySelector('span')!);
+          return `${a.textContent}: ${new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size}`;
+        }),
+    );
+    expect(lines).toEqual(['Explore: 1', 'Lineage: 1', 'Schools: 1', 'Me: 1']);
   });
 
   test('@M00b form controls use at least 16 px text, so iOS does not zoom into them', async ({ page }) => {
@@ -155,13 +267,23 @@ test.describe('@M00b phone', () => {
       const tabs = await tabBar(page).evaluate((nav) =>
         [...nav.querySelectorAll('a')]
           .filter((a) => a.getBoundingClientRect().width > 0 && a.getBoundingClientRect().height > 0)
-          .map((a) => ({
-            label: a.textContent ?? '',
-            clipped: [...a.querySelectorAll('span')].some((s) => s.scrollWidth > s.clientWidth + 1),
-          })),
+          .map((a) => {
+            // Line boxes of the label (a word broken across two lines adds one).
+            const range = document.createRange();
+            range.selectNodeContents(a.querySelector('span')!);
+            return {
+              label: a.textContent ?? '',
+              clipped: [...a.querySelectorAll('span')].some((s) => s.scrollWidth > s.clientWidth + 1),
+              lines: new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size,
+            };
+          }),
       );
       expect(tabs, `${path}: four visible tabs`).toHaveLength(4);
-      for (const tab of tabs) expect(tab.clipped, `${path}: ${tab.label}`).toBe(false);
+      for (const tab of tabs) {
+        expect(tab.clipped, `${path}: ${tab.label}`).toBe(false);
+        // One word, one line: a label never breaks inside the word at 150 %.
+        expect(tab.lines, `${path}: ${tab.label} on one line`).toBe(1);
+      }
     }
 
     // The living line: rows do not overlap, and each node sits level with its name.
@@ -312,6 +434,56 @@ test('@M00b no text on the home page renders under 11 px, the hall tree included
     });
     expect(small, `${viewport.width}x${viewport.height}`).toEqual([]);
   }
+});
+
+/** Names broken inside a word, and nodes that do not sit level with their name. */
+function lineProblems(page: Page) {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    document.querySelectorAll('[data-row]').forEach((row, i) => {
+      const name = row.querySelector('[data-name]')!;
+      const range = document.createRange();
+      range.selectNodeContents(name);
+      const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
+      const words = (name.textContent ?? '').trim().split(/\s+/).length;
+      if (lines > words) out.push(`${name.textContent}: ${lines} lines for ${words} words`);
+      const box = name.getBoundingClientRect();
+      const node = document.querySelector(`[data-node="${i}"]`)!.getBoundingClientRect();
+      const y = node.top + node.height / 2;
+      if (y < box.top - 1 || y > box.bottom + 1) out.push(`node ${i} at ${Math.round(y)}, name at ${Math.round(box.top)}-${Math.round(box.bottom)}`);
+    });
+    return out;
+  });
+}
+
+const TABLET_TO_DESKTOP = [
+  { width: 768, height: 1024 },
+  { width: 820, height: 1180 },
+  { width: 1024, height: 768 },
+  { width: 1280, height: 800 },
+  { width: 1440, height: 900 },
+];
+
+test('@M00b from tablets to desktop no name in the line breaks inside a word', async ({ page }) => {
+  for (const viewport of TABLET_TO_DESKTOP) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    expect(await lineProblems(page), `${viewport.width}x${viewport.height}`).toEqual([]);
+  }
+});
+
+test.describe('@M00b without JavaScript', () => {
+  test.use({ javaScriptEnabled: false });
+
+  test('@M00b the server-drawn spine sits level with every name, from phones to desktop', async ({ page }) => {
+    for (const viewport of [{ width: 390, height: 844 }, ...TABLET_TO_DESKTOP]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      expect(await lineProblems(page), `${viewport.width}x${viewport.height}`).toEqual([]);
+    }
+  });
 });
 
 test('@M00b the Lineage tab is current on its placeholder page once the page has hydrated', async ({ page }) => {
