@@ -4,13 +4,12 @@
 // `pnpm tokens:build` (scripts/build-tokens.ts) writes them.
 
 import { contrastRatio, formatOklch, hexToOklch, roundOklch } from './color';
+import { CONTRAST_PAIRS, PRINT_PAIRS } from './contrast-pairs';
 import {
   COLOR_ROLES,
-  CONTRAST_PAIRS,
   DEFAULT_THEME,
   DIM_TONES,
   MIN_LABEL_PX,
-  PRINT_PAIRS,
   THEMES,
   THEME_COOKIE,
   colors,
@@ -22,6 +21,7 @@ import {
   motion,
   print,
   radius,
+  space,
   typeScale,
   type ThemeName,
 } from './tokens';
@@ -38,6 +38,7 @@ const HEADER = [
   ' * theme applies when the system prefers it and no manual choice says "dark", or when the',
   ` * manual choice (cookie \`${THEME_COOKIE}\`, set as data-theme on <html>) says "light".`,
   ' * `.theme-dark` and `.theme-light` scope one theme to an element (the style guide).',
+  ' * Print is ink on paper in every theme.',
   ' */',
 ].join('\n');
 
@@ -47,6 +48,18 @@ function family(name: string): string {
   if (generic.includes(name) || name.startsWith('var(') || name.startsWith('-')) return name;
   return `'${name}'`;
 }
+
+/** Print: the roles that become paper, ink and the print seal (plan §5.2). */
+export const PRINT_OVERRIDES = {
+  bg: 'paper',
+  'surface-1': 'paper',
+  'surface-2': 'paper',
+  fg: 'ink',
+  'fg-muted': 'ink',
+  'fg-subtle': 'ink',
+  brand: 'seal',
+  verified: 'verified',
+} as const;
 
 export function fontStack(names: readonly string[]): string {
   return names.map(family).join(', ');
@@ -112,6 +125,41 @@ export function buildCss(): string {
   out.push(...themeBlock(other, `:root[data-theme='${other}']`));
   out.push('/* Scoped themes: a panel that shows one theme inside the other (the style guide). */');
   for (const theme of THEMES) out.push(...themeBlock(theme, `.theme-${theme}`));
+  out.push(
+    '/*',
+    ' * Print (plan §5.2): the light theme with paper, ink and the print seal, whatever the screen',
+    ' * theme. Its selectors are as specific as the theme selectors above and come after them, so',
+    ' * every colour of the screen theme is replaced.',
+    ' */',
+    '@media print {',
+    `  :root, :root[data-theme], :root:not([data-theme]), ${THEMES.map((theme) => `.theme-${theme}`).join(', ')} {`,
+    '    color-scheme: light;',
+    ...colorLines('light', '    '),
+    ...Object.entries(PRINT_OVERRIDES).map(([role, token]) => `    --${role}: var(--print-${token});`),
+    '  }',
+    '}',
+  );
+  out.push('');
+  out.push(`/* \`dark:\` follows the resolved theme: ${DEFAULT_THEME} by default, also as a manual choice. */`);
+  out.push('@custom-variant dark {');
+  if (DEFAULT_THEME === 'dark') {
+    out.push(
+      '  @media not (prefers-color-scheme: light) {',
+      "    &:where(:root:not([data-theme='light']) *) {",
+      '      @slot;',
+      '    }',
+      '  }',
+    );
+  } else {
+    out.push(
+      '  @media (prefers-color-scheme: dark) {',
+      "    &:where(:root:not([data-theme='light']) *) {",
+      '      @slot;',
+      '    }',
+      '  }',
+    );
+  }
+  out.push("  &:where(:root[data-theme='dark'] *) {", '    @slot;', '  }', '}');
   out.push('');
 
   out.push('/* Theme-independent tokens. */');
@@ -123,8 +171,9 @@ export function buildCss(): string {
   out.push('  /* Chinese names use system CJK fonts (plan §5.3); Traditional unless lang="zh-Hans". */');
   out.push(`  --font-cjk-serif: ${fontStack(fontFamilies['cjk-serif-hant'])};`);
   out.push(`  --font-cjk-sans: ${fontStack(fontFamilies['cjk-sans-hant'])};`);
-  out.push('  /* Layout of the app shell (plan §5.8 (b)). */');
+  out.push('  /* Layout of the app shell (plan §5.8 (b)) and the page gutters. */');
   for (const [name, value] of Object.entries(layout)) out.push(`  --${name}: ${value};`);
+  for (const [name, value] of Object.entries(space)) if (name !== 'unit') out.push(`  --${name}: ${value};`);
   out.push('  /* Motion (plan §5.8 (e)). */');
   for (const [name, value] of Object.entries(motion.duration)) out.push(`  --duration-${name}: ${value};`);
   out.push('  /* Link styles by verification state (plan §4.6): dash and width. */');
@@ -175,7 +224,7 @@ export function buildCss(): string {
   out.push('  --font-*: initial;');
   out.push(`  --font-display: ${fontStack(fontFamilies.display)};`);
   out.push(`  --font-sans: ${fontStack(fontFamilies.text)};`);
-  out.push(`  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Liberation Mono', monospace;`);
+  out.push(`  --font-mono: ${fontStack(fontFamilies.mono)};`);
   out.push('');
   out.push('  --text-*: initial;');
   for (const [name, step] of Object.entries(typeScale)) {
@@ -195,10 +244,14 @@ export function buildCss(): string {
   out.push('');
   for (const [name, value] of Object.entries(motion.easing)) out.push(`  --ease-${name}: ${value};`);
   out.push('');
+  out.push(`  --spacing: ${pxToRem(space.unit)};`);
+  out.push('  --spacing-section: var(--section);');
+  out.push('  --spacing-section-desktop: var(--section-desktop);');
   out.push('  --spacing-touch: var(--touch);');
   out.push('  --spacing-tab: var(--tab-h);');
   out.push('  --spacing-top: var(--top-h);');
   out.push('  --spacing-rail: var(--rail-w);');
+  out.push('  --spacing-sheet: var(--sheet-w);');
   out.push('  --container-content: var(--content-max);');
   out.push('}');
   out.push('');
@@ -249,6 +302,7 @@ export function buildJson(): string {
     typeScale,
     minLabelPx: MIN_LABEL_PX,
     radius,
+    space,
     layout,
     motion,
     linkStyles,

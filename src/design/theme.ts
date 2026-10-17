@@ -8,7 +8,7 @@
 // flash before hydration"). The static shell stays prerendered and this script, which runs
 // while the browser parses <head>, sets data-theme before the first paint (ADR 0006).
 
-import { THEME_COOKIE, colors, type ThemeName } from './tokens';
+import { GROUND, THEME_COOKIE, type ThemeName } from './theme-constants';
 
 export type ThemeChoice = ThemeName | 'system';
 
@@ -16,10 +16,7 @@ export type ThemeChoice = ThemeName | 'system';
 export const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 /** Browser UI colour (theme-color) of each theme: the page ground. */
-export const THEME_COLOR: Record<ThemeName, string> = {
-  dark: colors.dark.bg,
-  light: colors.light.bg,
-};
+export const THEME_COLOR: Record<ThemeName, string> = GROUND;
 
 /** Reads the manual choice from a `document.cookie` string. */
 export function parseThemeCookie(cookie: string): ThemeName | null {

@@ -2,14 +2,19 @@
 
 // Menu (shadcn/ui on Base UI): a raised paper card. Items are 44 px tall; the highlighted item
 // gets the hover surface and keeps its text colour. Single-letter typeahead works only while
-// focus is inside the menu (WCAG 2.1.4).
+// focus is inside the menu (WCAG 2.1.4). The open menu is rendered into <main>, so its items
+// stay inside a landmark (a menu is not a dialog; WCAG 1.3.1, axe "region").
 
 import { Menu as BaseMenu } from '@base-ui/react/menu';
-import type { ComponentProps, ReactElement, ReactNode } from 'react';
+import { useSyncExternalStore, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import { CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 type WithStringClass<T> = Omit<T, 'className'> & { className?: string };
+
+const subscribeNever = () => () => {};
+const mainElement = () => document.getElementById('main');
+const noElement = () => null;
 
 export const MenuRoot = BaseMenu.Root;
 
@@ -30,8 +35,9 @@ export function MenuContent({
   side?: 'top' | 'bottom' | 'left' | 'right';
   sideOffset?: number;
 }) {
+  const main = useSyncExternalStore(subscribeNever, mainElement, noElement);
   return (
-    <BaseMenu.Portal>
+    <BaseMenu.Portal container={main}>
       <BaseMenu.Positioner className="z-50 outline-none" align={align} side={side} sideOffset={sideOffset} collisionPadding={12}>
         <BaseMenu.Popup
           className={cn(

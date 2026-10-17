@@ -10,7 +10,7 @@ export function TrailChip({ name, className, ...props }: { name: string } & Omit
     <button
       type="button"
       className={cx(
-        'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border-strong bg-surface-1 px-3.5 text-[0.8125rem] font-semibold text-fg hover:bg-surface-3',
+        'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border-strong bg-surface-1 px-3.5 text-sm font-semibold text-fg hover:bg-surface-3',
         className,
       )}
       {...props}

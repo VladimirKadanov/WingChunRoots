@@ -9,7 +9,10 @@ const SWAY = [22, 26, 17, 24, 19, 27, 18, 23];
 
 export interface SpineSegment {
   index: number;
+  /** The link inked at full weight (a traced path). */
   shape: InkShape;
+  /** The same link as a pencil draft: thin, keeping its pattern (dots, breaks, double line). */
+  draft: InkShape;
   /** Where the link's seal sits (top-left corner of a 13 px seal). */
   seal: { x: number; y: number };
   state: VerificationState;
@@ -21,12 +24,16 @@ export interface SpineNode {
   y: number;
 }
 
-export function spineGeometry(states: VerificationState[], rowHeight: number, offsetY: number) {
-  const count = states.length + 1;
-  const nodes: SpineNode[] = Array.from({ length: count }, (_, i) => ({
+/**
+ * The spine through nodes at the given vertical positions (one per person, top to bottom), so
+ * rows that grow with the reader's text size, or wrap on a narrow phone, keep their strokes and
+ * seals beside the names. `height` is the height of the drawing.
+ */
+export function spineGeometry(states: VerificationState[], ys: readonly number[], height: number) {
+  const nodes: SpineNode[] = Array.from({ length: states.length + 1 }, (_, i) => ({
     index: i,
     x: SWAY[i % SWAY.length]!,
-    y: i * rowHeight + offsetY,
+    y: ys[i]!,
   }));
   const segments: SpineSegment[] = states.map((state, i) => {
     const a = nodes[i]!;
@@ -41,14 +48,21 @@ export function spineGeometry(states: VerificationState[], rowHeight: number, of
       [b.x, y1],
     ];
     const mid = bezierPoint(curve, 0.52);
+    const n = Math.max(16, Math.round((y1 - y0) / 1.8));
     return {
       index: i,
       state,
-      shape: inkShapes(curve, state, { w0: 6.4, w1: 1.6, n: 24 }),
+      shape: inkShapes(curve, state, { w0: 6.4, w1: 1.6, n }),
+      draft: inkShapes(curve, state, { w0: 2.2, w1: 1.1, n }),
       seal: { x: Math.round((mid[0] - 6.5) * 10) / 10, y: Math.round((mid[1] - 6.5) * 10) / 10 },
     };
   });
-  return { nodes, segments, height: count * rowHeight };
+  return { nodes, segments, height };
+}
+
+/** Node positions for rows of equal height (the server render, before any row is measured). */
+export function evenRows(count: number, rowHeight: number, offsetY: number): { ys: number[]; height: number } {
+  return { ys: Array.from({ length: count }, (_, i) => i * rowHeight + offsetY), height: count * rowHeight };
 }
 
 /**

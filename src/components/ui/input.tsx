@@ -6,7 +6,7 @@ import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 export const inputClassName = cn(
-  'block min-h-12 w-full min-w-0 rounded-sm border border-border-strong bg-surface-1 px-4 text-[1rem] text-fg',
+  'block min-h-12 w-full min-w-0 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg',
   'placeholder:text-fg-subtle transition-[border-color,background-color] duration-(--duration-fast) ease-out',
   'hover:border-fg-muted focus-visible:border-fg data-disabled:opacity-60',
   'aria-invalid:border-danger',

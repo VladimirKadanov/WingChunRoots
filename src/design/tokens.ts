@@ -13,14 +13,12 @@
 // the hex value in a comment. Every deliberate deviation from the prototype or from plan §5.2
 // is recorded in docs/adr/0006-design-system.md.
 
-export const THEMES = ['dark', 'light'] as const;
-export type ThemeName = (typeof THEMES)[number];
+import { GROUND, THEMES, THEME_COOKIE, type ThemeName } from './theme-constants';
+
+export { THEMES, THEME_COOKIE, type ThemeName };
 
 /** The default theme when the browser states no preference ("black lacquer", night paper). */
 export const DEFAULT_THEME: ThemeName = 'dark';
-
-/** Cookie that keeps a manual theme choice ("dark" or "light"); absent means "follow the system". */
-export const THEME_COOKIE = 'wcr-theme';
 
 /**
  * Semantic colour roles (plan §5.2 roles, plus the roles the direction adds).
@@ -31,18 +29,21 @@ export const COLOR_ROLES = [
   'bg', // page ground: lacquer (dark) or rice paper (light)
   'surface-1', // cards, panels, the side rail
   'surface-2', // raised: sheets, dialogs, menus, toasts
-  'surface-3', // hover and pressed states only; never text in brand-fg on it
+  'surface-3', // hover states only; never text in brand-fg on it
+  'surface-pressed', // pressed state of secondary and ghost controls (one step beyond hover)
   // Ink (text)
   'fg', // primary text and ink strokes
   'fg-muted', // secondary text; also the solid tone for dimmed text (plan §4.7)
   'fg-subtle', // captions, eyebrows, meta lines (still >= 4.5:1 on bg, surface-1, surface-2)
-  'fg-inverse', // text on an fg-filled chip (pressed segmented control, toast)
+  'fg-inverse', // text on an fg-filled chip or button (pressed segmented control, ink button)
+  'ink-hover', // fill of an ink (fg-filled) button when hovered: a small step, never a disabled grey
   // Lines
   'border-subtle', // decorative hairlines only (never the only boundary of a control)
   'border-strong', // field and control frames (>= 3:1); also the dimmed frame tone (plan §4.7)
   // Seal (brand): red is reserved for the brand mark and the primary action
   'brand', // fill of the primary button and the brand seal, always with on-brand text
-  'brand-hover', // primary button when hovered or pressed
+  'brand-hover', // primary button when hovered
+  'brand-pressed', // primary button while pressed
   'brand-fg', // red text on the ground (brand wordmark accents only, never links or selection)
   'on-brand', // text and glyphs on brand fills: pure white (plan §5.2)
   // Verification states (plan §4.6): never colour alone, always stroke + seal + text
@@ -54,25 +55,28 @@ export const COLOR_ROLES = [
   'cross-lineage', // cyan: hollow curve with its own dash, "Cross-lineage" label
   // Interaction
   'focus', // focus ring, 2 px with a 2 px offset; gold, never red or green
-  'danger', // form errors (rouge, distinct from the brand seal)
+  'danger', // form errors and destructive actions: a rouge at least 25° of hue away from the brand red
 ] as const;
 export type ColorRole = (typeof COLOR_ROLES)[number];
 
 export const colors: Record<ThemeName, Record<ColorRole, string>> = {
   // Night paper: black lacquer with warm grey ink.
   dark: {
-    bg: '#121214',
+    bg: GROUND.dark,
     'surface-1': '#19191C',
     'surface-2': '#222226',
     'surface-3': '#2C2C31',
+    'surface-pressed': '#36363C',
     fg: '#EAEAEA',
     'fg-muted': '#ABA8A3',
-    'fg-subtle': '#94918B',
+    'fg-subtle': '#9C9993',
     'fg-inverse': '#121214',
+    'ink-hover': '#D4D4D2',
     'border-subtle': '#2E2E33',
     'border-strong': '#78756F',
     brand: '#D32F2F',
     'brand-hover': '#B71C1C',
+    'brand-pressed': '#9A1616',
     'brand-fg': '#F2665F',
     'on-brand': '#FFFFFF',
     verified: '#45D98F',
@@ -82,22 +86,25 @@ export const colors: Record<ThemeName, Record<ColorRole, string>> = {
     arbitration: '#EAEAEA',
     'cross-lineage': '#4DD0E1',
     focus: '#F2C14E',
-    danger: '#FF8A9E',
+    danger: '#FF8AB8',
   },
   // Paper: warm rice paper with lamp-black ink.
   light: {
-    bg: '#EDEBE5',
+    bg: GROUND.light,
     'surface-1': '#F7F5F0',
     'surface-2': '#FFFDF9',
     'surface-3': '#E2E0D9',
+    'surface-pressed': '#D8D6CE',
     fg: '#161618',
     'fg-muted': '#4E4C48',
     'fg-subtle': '#64615C',
     'fg-inverse': '#F7F5F0',
+    'ink-hover': '#2E2E31',
     'border-subtle': '#D6D4CC',
-    'border-strong': '#85827A',
+    'border-strong': '#7D7A72',
     brand: '#C62828',
     'brand-hover': '#A51D1D',
+    'brand-pressed': '#8C1717',
     'brand-fg': '#B3261E',
     'on-brand': '#FFFFFF',
     verified: '#0A6E43',
@@ -107,7 +114,7 @@ export const colors: Record<ThemeName, Record<ColorRole, string>> = {
     arbitration: '#161618',
     'cross-lineage': '#0B6874',
     focus: '#9A6400',
-    danger: '#A3123F',
+    danger: '#9B1B5A',
   },
 };
 
@@ -144,56 +151,6 @@ export const effects: Record<ThemeName, { scrim: string; 'shadow-pop': string; '
   },
 };
 
-/** Minimum contrast for text (WCAG 1.4.3) and for borders and graphics (WCAG 1.4.11). */
-export const MIN_TEXT = 4.5;
-export const MIN_GRAPHIC = 3;
-
-export interface ContrastPair {
-  /** Foreground role, or a literal hex for fixed colours. */
-  fg: ColorRole;
-  /** Background role. */
-  bg: ColorRole;
-  min: number;
-  why: string;
-}
-
-const GROUNDS: ColorRole[] = ['bg', 'surface-1', 'surface-2'];
-const on = (fg: ColorRole, min: number, why: string, grounds: ColorRole[] = GROUNDS): ContrastPair[] =>
-  grounds.map((bg) => ({ fg, bg, min, why }));
-
-/**
- * Every pair that must hold in both themes (plan §5.2 table, §4.7 dimmed tones, and the roles
- * this direction adds). src/design/contrast.test.ts checks them all.
- */
-export const CONTRAST_PAIRS: ContrastPair[] = [
-  ...on('fg', MIN_TEXT, 'primary text'),
-  ...on('fg', MIN_TEXT, 'primary text on hover and pressed states', ['surface-3']),
-  ...on('fg-muted', MIN_TEXT, 'secondary text; dimmed text tone (plan §4.7)'),
-  ...on('fg-muted', MIN_TEXT, 'secondary text on hover and pressed states', ['surface-3']),
-  ...on('fg-subtle', MIN_TEXT, 'captions and eyebrows'),
-  ...on('border-strong', MIN_GRAPHIC, 'field and control frames; dimmed frame tone (plan §4.7)'),
-  ...on('brand-fg', MIN_TEXT, 'red text on the ground'),
-  { fg: 'on-brand', bg: 'brand', min: MIN_TEXT, why: 'label on the primary button' },
-  { fg: 'on-brand', bg: 'brand-hover', min: MIN_TEXT, why: 'label on the hovered primary button' },
-  { fg: 'brand', bg: 'bg', min: MIN_GRAPHIC, why: 'brand seal and primary button edge against the page' },
-  ...on('verified', MIN_TEXT, '"Verified" text, strokes and seals'),
-  { fg: 'on-verified', bg: 'verified', min: MIN_TEXT, why: 'check glyph on the verified seal' },
-  ...on('review', MIN_TEXT, '"Under review" text, strokes and seals'),
-  ...on('unconfirmed', MIN_GRAPHIC, 'dotted unconfirmed stroke; dimmed stroke tone (plan §4.7)'),
-  ...on('arbitration', MIN_TEXT, '"In arbitration" text, double stroke and seal'),
-  ...on('cross-lineage', MIN_TEXT, 'cross-lineage curve and its label'),
-  ...on('focus', MIN_GRAPHIC, 'focus ring (drawn with a 2 px offset, so it sits on the ground)'),
-  ...on('danger', MIN_TEXT, 'form error text and icon'),
-  { fg: 'fg-inverse', bg: 'fg', min: MIN_TEXT, why: 'text on an ink-filled chip or toast' },
-];
-
-/** Print pairs on paper (plan §5.2). */
-export const PRINT_PAIRS = [
-  { fg: 'ink', bg: 'paper', min: MIN_TEXT },
-  { fg: 'seal', bg: 'paper', min: MIN_TEXT },
-  { fg: 'print-verified', bg: 'paper', min: MIN_TEXT },
-] as const;
-
 // ---------------------------------------------------------------------------------------
 // Type (plan §5.3). Gloock for display (names, headings, numerals), Schibsted Grotesk for UI
 // and text, Noto Serif Display for Cyrillic display text (neither main face has basic
@@ -213,6 +170,8 @@ export const fontFamilies = {
     'Arial',
     'sans-serif',
   ],
+  /** Code in the style guide and technical notes: the platform's monospace. */
+  mono: ['ui-monospace', 'SFMono-Regular', 'Cascadia Mono', 'Liberation Mono', 'monospace'],
   /** Chinese names in serif (display) contexts; Traditional by default (plan §5.3). */
   'cjk-serif-hant': ['Songti TC', 'PMingLiU', 'Noto Serif CJK TC', 'Noto Serif TC', 'serif'],
   'cjk-serif-hans': ['Songti SC', 'SimSun', 'Noto Serif CJK SC', 'Noto Serif SC', 'serif'],
@@ -259,21 +218,36 @@ export interface TypeStep {
 }
 
 /**
- * Type scale. Minimum label size is 11 px (from the comparison: every label shown, at every
- * level of detail). Fluid steps use clamp() so phones and desktops share one scale.
+ * Type scale: the only font sizes the UI uses (verify.d/M00b.sh rejects arbitrary `text-[…]`
+ * sizes in src/app and src/components). Minimum label size is 11 px (from the comparison: every
+ * label shown, at every level of detail). Fluid steps use clamp() so phones and desktops share
+ * one scale; px values are written as rem, so they follow the reader's text size.
  */
 export const typeScale: Record<string, TypeStep> = {
-  caption: { size: '11px', lineHeight: '1.3', letterSpacing: '0.16em', weight: 600 },
+  /** Uppercase eyebrows, meta lines, tab labels and table heads (with `uppercase`). */
+  caption: { size: '11px', lineHeight: '1.3', letterSpacing: '0.14em', weight: 600 },
+  /** Compact semibold labels: small status badges. */
   label: { size: '12px', lineHeight: '1.35', letterSpacing: '0.02em', weight: 600 },
-  sm: { size: '13.5px', lineHeight: '1.45' },
+  /** Fine print: notes in the rail, code and licence texts. */
+  xs: { size: '12px', lineHeight: '1.45' },
+  /** Secondary UI text: hints, legends, captions, small buttons. */
+  sm: { size: '13px', lineHeight: '1.45' },
+  /** Buttons, navigation and short explanations. */
+  ui: { size: '14px', lineHeight: '1.4' },
+  /** Running text. */
   base: { size: '15px', lineHeight: '1.55' },
-  md: { size: '16.5px', lineHeight: '1.55' },
+  /** Form fields: 16 px, so iOS does not zoom the page when a field gets focus. */
+  field: { size: '16px', lineHeight: '1.4' },
+  /** Lead paragraphs and names in lists. */
+  md: { size: '17px', lineHeight: '1.5' },
   lg: { size: '19px', lineHeight: '1.25' },
   xl: { size: '23px', lineHeight: '1.15' },
   '2xl': { size: '28px', lineHeight: '1.08', letterSpacing: '-0.01em' },
+  /** Figures: counts and step numerals in the display face. */
+  '3xl': { size: '32px', lineHeight: '1.05', letterSpacing: '-0.01em' },
   section: { size: 'clamp(29px, 7vw, 44px)', lineHeight: '1.04', letterSpacing: '-0.015em' },
   feature: { size: 'clamp(32px, 8vw, 52px)', lineHeight: '1', letterSpacing: '-0.015em' },
-  hero: { size: 'clamp(40px, 10.8vw, 78px)', lineHeight: '0.98', letterSpacing: '-0.022em' },
+  hero: { size: 'clamp(34px, 9vw, 78px)', lineHeight: '0.98', letterSpacing: '-0.022em' },
 };
 
 /** Smallest font size any visible label may use (px). */
@@ -295,6 +269,22 @@ export const radius = {
   full: '9999px',
 } as const;
 
+/**
+ * Space. Every Tailwind spacing step (p-*, m-*, gap-*) is a multiple of `unit`; the named
+ * steps are the gutters and section rhythm that pages share (the `px-page` utility and
+ * `py-section`).
+ */
+export const space = {
+  /** The spacing unit (Tailwind's --spacing): p-1 is 4 px, p-4 is 16 px. */
+  unit: '4px',
+  /** Page gutters on phones and from 768 px (never less than the safe-area inset). */
+  'gutter-phone': '16px',
+  'gutter-desktop': '40px',
+  /** Vertical padding of a page section on phones and from 768 px. */
+  section: '40px',
+  'section-desktop': '56px',
+} as const;
+
 /** Layout measures of the app shell (plan §5.8 (b)). */
 export const layout = {
   /** Minimum touch target on phones (plan §5.8 (b); WCAG 2.5.8 asks only 24 px). */
@@ -305,13 +295,12 @@ export const layout = {
   'top-h': '56px',
   /** Width of the desktop side rail. */
   'rail-w': '232px',
-  /** Page gutters (phone, desktop). */
-  'gutter-phone': '16px',
-  'gutter-desktop': '40px',
   /** Maximum content width. */
   'content-max': '1180px',
   /** Comfortable reading measure. */
   measure: '62ch',
+  /** Width of a side sheet from 768 px (the sheet becomes a right-hand panel there). */
+  'sheet-w': '420px',
 } as const;
 
 /**

@@ -19,19 +19,22 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         /** The one primary action of a view: red seal fill, white label. */
-        primary: 'border-brand bg-brand text-on-brand hover:not-data-disabled:border-brand-hover hover:not-data-disabled:bg-brand-hover',
+        primary:
+          'border-brand bg-brand text-on-brand hover:not-data-disabled:border-brand-hover hover:not-data-disabled:bg-brand-hover active:not-data-disabled:border-brand-pressed active:not-data-disabled:bg-brand-pressed',
         /** Default: an ink outline. */
-        secondary: 'border-border-strong bg-transparent text-fg hover:not-data-disabled:bg-surface-3',
+        secondary: 'border-border-strong bg-transparent text-fg hover:not-data-disabled:bg-surface-3 active:not-data-disabled:bg-surface-pressed',
         /** Quiet: no frame until hovered or pressed. */
-        ghost: 'border-transparent bg-transparent text-fg hover:not-data-disabled:bg-surface-3',
+        ghost: 'border-transparent bg-transparent text-fg hover:not-data-disabled:bg-surface-3 active:not-data-disabled:bg-surface-pressed',
         /** Ink fill, for a strong secondary action on a busy surface. */
-        ink: 'border-fg bg-fg text-fg-inverse hover:not-data-disabled:bg-fg-muted hover:not-data-disabled:border-fg-muted',
+        ink: 'border-fg bg-fg text-fg-inverse hover:not-data-disabled:border-ink-hover hover:not-data-disabled:bg-ink-hover',
+        /** A destructive action (withdraw, delete): rouge outline and label, never the brand red. */
+        danger: 'border-danger bg-transparent text-danger hover:not-data-disabled:bg-surface-3 active:not-data-disabled:bg-surface-pressed',
       },
       size: {
-        md: 'min-h-11 px-[18px] text-[0.875rem] leading-tight tracking-[0.01em] [&_svg]:size-[18px]',
+        md: 'min-h-11 px-4.5 text-ui leading-tight tracking-[0.01em] [&_svg]:size-4.5',
         /** Compact on desktop; still 44 px on phones. */
-        sm: 'min-h-11 px-3 text-[0.8125rem] leading-tight md:min-h-9 [&_svg]:size-4',
-        lg: 'min-h-12 px-6 text-[0.9375rem] leading-tight [&_svg]:size-5',
+        sm: 'min-h-11 px-3 text-sm leading-tight md:min-h-9 [&_svg]:size-4',
+        lg: 'min-h-12 px-6 text-base leading-tight [&_svg]:size-5',
         icon: 'size-11 p-0 [&_svg]:size-[22px]',
       },
     },

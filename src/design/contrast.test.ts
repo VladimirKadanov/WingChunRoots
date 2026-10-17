@@ -3,8 +3,17 @@
 // changes and the deviation is recorded in docs/adr/0006-design-system.md.
 
 import { describe, expect, it } from 'vitest';
-import { contrastRatio } from './color';
-import { CONTRAST_PAIRS, DIM_TONES, MIN_GRAPHIC, MIN_TEXT, PRINT_PAIRS, THEMES, colors, linkStyles, print } from './tokens';
+import { buildCss, PRINT_OVERRIDES } from './build';
+import { contrastRatio, hexToOklch } from './color';
+import {
+  CONTRAST_PAIRS,
+  MIN_DANGER_HUE_DISTANCE,
+  MIN_GRAPHIC,
+  MIN_TEXT,
+  PRINT_PAIRS,
+  PRINT_STATE_ROLES,
+} from './contrast-pairs';
+import { COLOR_ROLES, DIM_TONES, THEMES, colors, linkStyles, print } from './tokens';
 
 describe('contrast of the theme tokens', () => {
   for (const theme of THEMES) {
@@ -117,5 +126,28 @@ describe('status is never colour alone (plan §4.6)', () => {
 describe('print tokens (plan §5.2)', () => {
   it.each(PRINT_PAIRS.map((pair) => [`${pair.fg} on ${pair.bg}`, pair] as const))('%s', (_, pair) => {
     expect(contrastRatio(print[pair.fg], print[pair.bg])).toBeGreaterThanOrEqual(pair.min);
+  });
+  it('the print block of tokens.css declares every colour role, so no screen-theme colour reaches paper', () => {
+    const block = /@media print \{\n([\s\S]*?)\n\}/.exec(buildCss());
+    expect(block).not.toBeNull();
+    for (const role of COLOR_ROLES) expect(block![1], role).toContain(`--${role}:`);
+  });
+  it('state labels and secondary text stay text-grade (4.5:1) on print paper', () => {
+    for (const role of PRINT_STATE_ROLES) {
+      const override = PRINT_OVERRIDES[role as keyof typeof PRINT_OVERRIDES];
+      const hex = override ? print[override === 'verified' ? 'print-verified' : override] : colors.light[role];
+      expect(contrastRatio(hex, print.paper), role).toBeGreaterThanOrEqual(MIN_TEXT);
+    }
+  });
+});
+
+describe('red stays the brand', () => {
+  it(`the danger rouge is at least ${MIN_DANGER_HUE_DISTANCE}° of OKLCH hue away from the brand red in both themes`, () => {
+    for (const theme of THEMES) {
+      const brand = hexToOklch(colors[theme].brand).h;
+      const danger = hexToOklch(colors[theme].danger).h;
+      const distance = Math.min(Math.abs(brand - danger), 360 - Math.abs(brand - danger));
+      expect(distance, `${theme}: brand ${colors[theme].brand}, danger ${colors[theme].danger}`).toBeGreaterThanOrEqual(MIN_DANGER_HUE_DISTANCE);
+    }
   });
 });

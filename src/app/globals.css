@@ -3,20 +3,11 @@
  * layer of the "Ink Register" direction (docs/design/direction.md). Colours, type, radii,
  * shadows and motion come only from src/design/tokens.ts (`pnpm tokens:build`).
  */
-@import 'tailwindcss';
+/* Tailwind scans src/ only (not docs/, the prototypes or the licence texts), so no utility
+   that the app does not use reaches the CSS. The `dark:` variant and print are in tokens.css. */
+@import 'tailwindcss' source('../');
 @import '../design/generated/tokens.css';
-
-/* Dark is the default; `dark:` follows the resolved theme, including a manual choice. */
-@custom-variant dark {
-  @media not (prefers-color-scheme: light) {
-    &:where(:root:not([data-theme='light']) *) {
-      @slot;
-    }
-  }
-  &:where(:root[data-theme='dark'] *) {
-    @slot;
-  }
-}
+@source not './legal/licenses/notices.json';
 
 @layer base {
   html {
@@ -56,6 +47,12 @@
   h2,
   h3 {
     text-wrap: balance;
+  }
+
+  /* <search> is an unknown inline element before Chrome 118 and Safari 17 (plan §5.4: Chrome
+     111+, Safari 16.4+). */
+  search {
+    display: block;
   }
 
   /* Names (plan §5.3): long names wrap instead of being cut. */
@@ -101,28 +98,6 @@
   }
 }
 
-/*
- * Print (plan §5.2): ink on paper in every theme. Outside any layer, after the token import and
- * with selectors as specific as the theme selectors of tokens.css, so it wins over all of them
- * (a layered rule never beats the unlayered theme tokens).
- */
-@media print {
-  :root,
-  :root[data-theme],
-  .theme-dark,
-  .theme-light {
-    color-scheme: light;
-    --bg: var(--print-paper);
-    --surface-1: var(--print-paper);
-    --surface-2: var(--print-paper);
-    --fg: var(--print-ink);
-    --fg-muted: var(--print-ink);
-    --fg-subtle: var(--print-ink);
-    --brand: var(--print-seal);
-    --verified: var(--print-verified);
-  }
-}
-
 @layer components {
   /* Eyebrow: the small uppercase label above a heading. */
   .eyebrow {
@@ -148,6 +123,21 @@
     font-family: var(--font-cjk-serif), serif;
   }
 
+  /* Seals (src/components/ink/seal.tsx): the dimmed tone keeps the shape and drops the colour
+     (plan §4.7, solid tones only), and small seals leave out the chop's carved detail. */
+  .seal-dim {
+    --verified: var(--dim-stroke);
+    --on-verified: var(--bg);
+    --review: var(--dim-stroke);
+    --unconfirmed: var(--dim-stroke);
+    --arbitration: var(--dim-stroke);
+    --cross-lineage: var(--dim-stroke);
+    --fg-muted: var(--dim-stroke);
+  }
+  .seal-small .seal-detail {
+    display: none;
+  }
+
   /* Text links: underlined, never colour alone. The element sets its own 44 px touch area. */
   .link {
     text-decoration-line: underline;
@@ -158,6 +148,17 @@
   }
   .link:hover {
     text-decoration-color: currentColor;
+  }
+}
+
+/* Page gutters: 16 px on phones and 40 px from 768 px, never less than the safe-area inset of
+   that side (a landscape phone's notch is on one side only). */
+@utility px-page {
+  padding-left: max(var(--gutter-phone), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gutter-phone), env(safe-area-inset-right, 0px));
+  @media (width >= 48rem) {
+    padding-left: max(var(--gutter-desktop), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--gutter-desktop), env(safe-area-inset-right, 0px));
   }
 }
 

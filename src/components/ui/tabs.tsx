@@ -32,7 +32,9 @@ export function Tab({ className, ...props }: WithStringClass<ComponentProps<type
     <BaseTabs.Tab
       data-slot="tab"
       className={cn(
-        'inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-sm font-medium whitespace-nowrap text-fg-muted select-none',
+        'inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-ui font-medium whitespace-nowrap text-fg-muted select-none',
+        // Inset, so the scrolling tab list does not clip the focus ring.
+        'focus-visible:-outline-offset-2 hover:bg-surface-3 active:bg-surface-pressed',
         'hover:text-fg data-active:font-semibold data-active:text-fg data-disabled:opacity-60',
         className,
       )}
@@ -42,5 +44,5 @@ export function Tab({ className, ...props }: WithStringClass<ComponentProps<type
 }
 
 export function TabsPanel({ className, ...props }: WithStringClass<ComponentProps<typeof BaseTabs.Panel>>) {
-  return <BaseTabs.Panel data-slot="tabs-panel" className={cn('pt-5 outline-none', className)} {...props} />;
+  return <BaseTabs.Panel data-slot="tabs-panel" className={cn('pt-5', className)} {...props} />;
 }

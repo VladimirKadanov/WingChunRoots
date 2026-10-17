@@ -47,7 +47,7 @@ export function ThemeMenu({ variant }: { variant: 'icon' | 'row' }) {
       className={cx(
         'relative inline-flex min-h-11 items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg',
         'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus',
-        variant === 'icon' ? 'size-11 justify-center' : '-ml-2.5 gap-2.5 px-2.5 text-[0.8125rem]',
+        variant === 'icon' ? 'size-11 justify-center' : '-ml-2.5 gap-2.5 px-2.5 text-sm',
       )}
     >
       <Icon size={variant === 'icon' ? 22 : 18} />
@@ -59,7 +59,8 @@ export function ThemeMenu({ variant }: { variant: 'icon' | 'row' }) {
           applyThemeChoice(event.target.value as ThemeChoice);
           window.dispatchEvent(new Event(EVENT));
         }}
-        className="absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
+        // 16 px: iOS zooms the page into a focused control with smaller text.
+        className="absolute inset-0 size-full cursor-pointer appearance-none text-field opacity-0"
       >
         {(['system', 'light', 'dark'] as const).map((value) => (
           <option key={value} value={value}>

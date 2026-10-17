@@ -15,7 +15,7 @@ const twMerge = extendTailwindMerge({
       radius: Object.keys(radius),
       shadow: ['pop', 'sheet', 'raise'],
       ease: ['out', 'in-out', 'stamp'],
-      spacing: ['touch', 'tab', 'top', 'rail'],
+      spacing: ['touch', 'tab', 'top', 'rail', 'sheet', 'section', 'section-desktop'],
     },
   },
 });
