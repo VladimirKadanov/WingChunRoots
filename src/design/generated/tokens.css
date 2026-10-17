@@ -5,6 +5,7 @@
  * Imported by src/app/globals.css after Tailwind. The dark theme is the default; the light
  * theme applies when the system prefers it and no manual choice says "dark", or when the
  * manual choice (cookie `wcr-theme`, set as data-theme on <html>) says "light".
+ * `.theme-dark` and `.theme-light` scope one theme to an element (the style guide).
  */
 
 /* Size-matched fallback faces (plan §5.3): no layout shift while the web fonts load. */
@@ -87,6 +88,65 @@
   }
 }
 :root[data-theme='light'] {
+  color-scheme: light;
+  --bg: oklch(94.00% 0.0083 91.49); /* #EDEBE5 */
+  --surface-1: oklch(97.03% 0.0070 88.64); /* #F7F5F0 */
+  --surface-2: oklch(99.45% 0.0057 84.57); /* #FFFDF9 */
+  --surface-3: oklch(90.63% 0.0097 93.58); /* #E2E0D9 */
+  --fg: oklch(20.11% 0.0039 286.04); /* #161618 */
+  --fg-muted: oklch(41.71% 0.0070 84.59); /* #4E4C48 */
+  --fg-subtle: oklch(49.38% 0.0087 80.70); /* #64615C */
+  --fg-inverse: oklch(97.03% 0.0070 88.64); /* #F7F5F0 */
+  --border-subtle: oklch(86.93% 0.0111 95.18); /* #D6D4CC */
+  --border-strong: oklch(60.68% 0.0124 89.78); /* #85827A */
+  --brand: oklch(53.86% 0.1937 26.72); /* #C62828 */
+  --brand-hover: oklch(46.82% 0.1713 27.00); /* #A51D1D */
+  --brand-fg: oklch(50.13% 0.1783 28.70); /* #B3261E */
+  --on-brand: oklch(100.00% 0.0000 0.00); /* #FFFFFF */
+  --verified: oklch(47.52% 0.1090 157.38); /* #0A6E43 */
+  --on-verified: oklch(100.00% 0.0000 0.00); /* #FFFFFF */
+  --review: oklch(47.54% 0.0999 75.92); /* #7C5300 */
+  --unconfirmed: oklch(56.58% 0.0079 304.14); /* #77757A */
+  --arbitration: oklch(20.11% 0.0039 286.04); /* #161618 */
+  --cross-lineage: oklch(47.47% 0.0791 209.08); /* #0B6874 */
+  --focus: oklch(54.83% 0.1171 72.51); /* #9A6400 */
+  --danger: oklch(46.36% 0.1752 11.57); /* #A3123F */
+  --scrim: rgb(24 22 20 / 0.36);
+  --elevation-pop: 0 28px 70px -20px rgb(40 32 24 / 0.32);
+  --elevation-sheet: 0 -10px 34px -16px rgb(40 32 24 / 0.24);
+  --elevation-raise: 0 10px 24px -14px rgb(40 32 24 / 0.3);
+}
+/* Scoped themes: a panel that shows one theme inside the other (the style guide). */
+.theme-dark {
+  color-scheme: dark;
+  --bg: oklch(18.31% 0.0040 285.99); /* #121214 */
+  --surface-1: oklch(21.47% 0.0058 285.90); /* #19191C */
+  --surface-2: oklch(25.36% 0.0075 285.86); /* #222226 */
+  --surface-3: oklch(29.51% 0.0090 285.84); /* #2C2C31 */
+  --fg: oklch(93.70% 0.0000 0.00); /* #EAEAEA */
+  --fg-muted: oklch(73.26% 0.0079 80.72); /* #ABA8A3 */
+  --fg-subtle: oklch(65.74% 0.0094 84.58); /* #94918B */
+  --fg-inverse: oklch(18.31% 0.0040 285.99); /* #121214 */
+  --border-subtle: oklch(30.32% 0.0089 285.86); /* #2E2E33 */
+  --border-strong: oklch(56.32% 0.0098 84.59); /* #78756F */
+  --brand: oklch(56.80% 0.2002 26.41); /* #D32F2F */
+  --brand-hover: oklch(50.16% 0.1887 27.48); /* #B71C1C */
+  --brand-fg: oklch(68.40% 0.1741 25.59); /* #F2665F */
+  --on-brand: oklch(100.00% 0.0000 0.00); /* #FFFFFF */
+  --verified: oklch(78.94% 0.1639 157.04); /* #45D98F */
+  --on-verified: oklch(18.31% 0.0040 285.99); /* #121214 */
+  --review: oklch(76.29% 0.1275 76.12); /* #E0A64A */
+  --unconfirmed: oklch(63.63% 0.0133 286.02); /* #8A8A93 */
+  --arbitration: oklch(93.70% 0.0000 0.00); /* #EAEAEA */
+  --cross-lineage: oklch(79.31% 0.1145 207.31); /* #4DD0E1 */
+  --focus: oklch(83.41% 0.1410 85.43); /* #F2C14E */
+  --danger: oklch(76.63% 0.1425 10.14); /* #FF8A9E */
+  --scrim: rgb(4 4 6 / 0.64);
+  --elevation-pop: 0 28px 70px -18px rgb(0 0 0 / 0.72);
+  --elevation-sheet: 0 -20px 50px -12px rgb(0 0 0 / 0.5);
+  --elevation-raise: 0 10px 24px -12px rgb(0 0 0 / 0.55);
+}
+.theme-light {
   color-scheme: light;
   --bg: oklch(94.00% 0.0083 91.49); /* #EDEBE5 */
   --surface-1: oklch(97.03% 0.0070 88.64); /* #F7F5F0 */

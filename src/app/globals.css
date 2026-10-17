@@ -153,3 +153,36 @@
 @utility tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* The ink trace (tap only, never on its own): a stroke inks in from the teacher's end and its
+   seal is pressed after it. Instant under prefers-reduced-motion (rule above). */
+@keyframes ink-draw {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes seal-press {
+  0% {
+    opacity: 0;
+    transform: scale(2.1) rotate(-16deg);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility animate-ink-draw {
+  animation: ink-draw var(--duration-ink-draw) var(--ease-in-out) both;
+}
+@utility animate-seal-press {
+  animation: seal-press var(--duration-slow) var(--ease-out) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}

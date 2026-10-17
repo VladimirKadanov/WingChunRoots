@@ -37,6 +37,7 @@ const HEADER = [
   ' * Imported by src/app/globals.css after Tailwind. The dark theme is the default; the light',
   ' * theme applies when the system prefers it and no manual choice says "dark", or when the',
   ` * manual choice (cookie \`${THEME_COOKIE}\`, set as data-theme on <html>) says "light".`,
+  ' * `.theme-dark` and `.theme-light` scope one theme to an element (the style guide).',
   ' */',
 ].join('\n');
 
@@ -109,6 +110,8 @@ export function buildCss(): string {
   out.push(...themeBlock(other, `:root:not([data-theme='${DEFAULT_THEME}'])`, '  '));
   out.push('}');
   out.push(...themeBlock(other, `:root[data-theme='${other}']`));
+  out.push('/* Scoped themes: a panel that shows one theme inside the other (the style guide). */');
+  for (const theme of THEMES) out.push(...themeBlock(theme, `.theme-${theme}`));
   out.push('');
 
   out.push('/* Theme-independent tokens. */');

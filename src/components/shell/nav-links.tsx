@@ -22,6 +22,7 @@ export function NavLinks({ variant }: { variant: 'tabs' | 'rail' }) {
           <li key={item.href} className={cn(variant === 'tabs' && 'flex flex-1')}>
             <Link
               href={item.href}
+              prefetch={item.built ? null : false}
               aria-current={current ? 'page' : undefined}
               className={cn(
                 'group relative flex items-center text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg aria-[current=page]:text-fg',
