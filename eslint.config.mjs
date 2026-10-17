@@ -142,6 +142,25 @@ export default defineConfig([
       'no-restricted-imports': restrictImports([elkOnlyInLayoutModule]),
     },
   },
+  {
+    // React Compiler memoizes (reactCompiler in next.config.ts): no hand-written useMemo or
+    // useCallback (plan §3.1). src/lib/lineage-layout sets its own no-restricted-syntax below
+    // and imports no React at all.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: String.raw`ImportSpecifier[imported.name=/^(useMemo|useCallback)$/]`,
+          message: 'React Compiler memoizes: no hand-written useMemo or useCallback (plan §3.1).',
+        },
+        {
+          selector: String.raw`MemberExpression[object.name='React'][property.name=/^(useMemo|useCallback)$/]`,
+          message: 'React Compiler memoizes: no hand-written useMemo or useCallback (plan §3.1).',
+        },
+      ],
+    },
+  },
   // Module boundaries (plan §6.1).
   {
     files: ['src/app/**/*.{ts,tsx}', 'src/components/**/*.{ts,tsx}'],
