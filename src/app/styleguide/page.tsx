@@ -109,9 +109,9 @@ function Specimens() {
       </div>
       <div className="flex flex-col gap-2" role="status">
         <span className="sr-only">Loading a profile</span>
-        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-7 w-48 max-w-full" />
         <Skeleton className="h-4 w-64 max-w-full" />
-        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-4 w-40 max-w-full" />
       </div>
       <p className="text-sm">
         Ground text, <span className="text-fg-muted">muted text</span>, <span className="text-fg-subtle">subtle text</span>,{' '}
@@ -132,7 +132,7 @@ export default function StyleguidePage() {
           is never colour alone: every state is a stroke, a seal and a word. Red belongs to the brand mark and the primary action.
         </p>
         <div className="mt-5">
-          <BrandMark size="lg" />
+          <BrandMark size="lg" className="max-w-full" />
         </div>
       </header>
 
@@ -155,21 +155,24 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-links" eyebrow="Verification" title="Link states">
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <Legend layout="list" descriptions />
-          <div className="grid content-start gap-3">
-            {KINDS.map((kind) => (
-              <div key={kind} className="flex items-center gap-3 border-b border-border-subtle pb-3">
-                <LinkStroke kind={kind} width={96} />
-                <Seal kind={linkStyles[kind].seal} size={24} />
-                <span className="text-sm">
-                  <b className="font-semibold">{linkStyles[kind].label}</b>
-                  <span className="block text-fg-subtle">
-                    {linkStyles[kind].stroke} stroke, {linkStyles[kind].width} px
+        {/* Two columns only where both fit (a size container: the rail takes 232 px from 768 px). */}
+        <div className="@container">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Legend layout="list" descriptions />
+            <div className="grid content-start gap-3">
+              {KINDS.map((kind) => (
+                <div key={kind} className="flex items-center gap-3 border-b border-border-subtle pb-3">
+                  <LinkStroke kind={kind} width={96} />
+                  <Seal kind={linkStyles[kind].seal} size={24} />
+                  <span className="text-sm">
+                    <b className="font-semibold">{linkStyles[kind].label}</b>
+                    <span className="block text-fg-subtle">
+                      {linkStyles[kind].stroke} stroke, {linkStyles[kind].width} px
+                    </span>
                   </span>
-                </span>
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </Section>

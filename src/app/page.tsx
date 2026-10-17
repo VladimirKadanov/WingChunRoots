@@ -50,14 +50,19 @@ const OTHER_MARKS: { kind: LinkKind | 'private'; title: string; text: string }[]
   },
 ];
 
-/** One mark of the verification section: its drawing on the left (phones) or on top. */
+/**
+ * One mark of the verification section. Its drawing is beside the text in one column
+ * (marks-row) and on top in three columns (marks-cols) or a section narrower than 18rem
+ * (globals.css): the title then has the whole width. The title wraps between the step number
+ * and the word, and inside a word only when a single word is wider than the column.
+ */
 function Mark({ art, title, children }: { art: ReactNode; title: ReactNode; children: ReactNode }) {
   return (
-    <li className="grid grid-cols-[78px_minmax(0,1fr)] gap-x-4 gap-y-1 border-t border-border-subtle py-4.5 md:grid-cols-1 md:content-start md:gap-y-2">
-      <div className="row-span-2 flex flex-col items-start gap-2.5 pt-1 md:row-span-1 md:min-h-8 md:flex-row md:items-center md:gap-3.5">
+    <li className="grid grid-cols-[minmax(0,1fr)] content-start gap-y-2 border-t border-border-subtle py-4.5 marks-row:grid-cols-[78px_minmax(0,1fr)] marks-row:gap-x-4 marks-row:gap-y-1">
+      <div className="flex min-h-8 flex-row items-center gap-3.5 pt-1 marks-row:row-span-2 marks-row:min-h-0 marks-row:flex-col marks-row:items-start marks-row:gap-2.5">
         {art}
       </div>
-      <h3 className="flex items-baseline gap-2.5 font-display text-xl">{title}</h3>
+      <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 font-display text-xl [overflow-wrap:anywhere]">{title}</h3>
       <p className="max-w-[42ch] text-sm text-fg-muted">{children}</p>
     </li>
   );
@@ -90,7 +95,9 @@ export default function HomePage() {
         }
       />
 
-      <section aria-labelledby="how-heading" className="border-t border-border-subtle py-section md:py-section-desktop">
+      {/* A size container: the marks lay out by the section's width, not the window's (the rail
+          takes 232 px from 768 px), see Mark. */}
+      <section aria-labelledby="how-heading" className="@container/how border-t border-border-subtle py-section md:py-section-desktop">
         <div className="mb-6 grid max-w-[62ch] gap-2.5">
           <p className="eyebrow">Verification</p>
           <h2 id="how-heading" className="font-display text-section">
@@ -105,7 +112,7 @@ export default function HomePage() {
         <p id="how-path" className="eyebrow mb-2">
           The path to a seal
         </p>
-        <ol aria-labelledby="how-path" className="grid md:grid-cols-3 md:gap-x-8">
+        <ol aria-labelledby="how-path" className="grid grid-cols-[minmax(0,1fr)] marks-cols:grid-cols-3 marks-cols:gap-x-8">
           {STEPS.map((step, i) => {
             const style = linkStyles[step.state];
             return (
@@ -133,7 +140,7 @@ export default function HomePage() {
         <p id="how-other" className="eyebrow mt-8 mb-2">
           Other marks on the line
         </p>
-        <ul aria-labelledby="how-other" className="grid md:grid-cols-3 md:gap-x-8">
+        <ul aria-labelledby="how-other" className="grid grid-cols-[minmax(0,1fr)] marks-cols:grid-cols-3 marks-cols:gap-x-8">
           {OTHER_MARKS.map((mark) => (
             <Mark
               key={mark.kind}
@@ -158,7 +165,7 @@ export default function HomePage() {
       {/* Side by side only from 1280 px: narrower, the drawing would shrink its labels below 11 px. */}
       <section
         aria-labelledby="hall-heading"
-        className="grid items-start gap-7 border-t border-border-subtle py-section md:py-section-desktop xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] xl:gap-16"
+        className="grid grid-cols-[minmax(0,1fr)] items-start gap-7 border-t border-border-subtle py-section md:py-section-desktop xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] xl:gap-16"
       >
         <div className="xl:sticky xl:top-11">
           <p className="eyebrow">Featured lineage · demo</p>

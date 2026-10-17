@@ -256,6 +256,17 @@ test.describe('@M00b phone', () => {
     await page.addInitScript(() => {
       document.addEventListener('DOMContentLoaded', () => document.documentElement.style.setProperty('font-size', '150%'));
     });
+    // No horizontal scroll on narrow phones either (320 px is the smallest supported width).
+    for (const width of [320, 340]) {
+      await page.setViewportSize({ width, height: 640 });
+      for (const path of ['/', '/styleguide']) {
+        await page.goto(path);
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
+        const widths = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+        expect(widths[0], `${path} at ${width} px: no horizontal scroll`).toBeLessThanOrEqual(widths[1]!);
+      }
+    }
+    await page.setViewportSize(PHONE);
     for (const path of ['/', '/styleguide']) {
       await page.goto(path);
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -529,6 +540,29 @@ test('@M00b the headline never puts a word on a line of its own, from 320 to 192
       return [...byTop.values()];
     });
     for (const words of lines) expect(words.length, `${width} px: "${words.join(' ')}" in ${JSON.stringify(lines)}`).toBeGreaterThan(1);
+  }
+});
+
+test('@M00b nothing in <main> overflows its box on / and /styleguide, from 320 to 1440 px', async ({ page }) => {
+  for (const width of [320, 360, 390, 768, 800, 852, 1024, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ['/', '/styleguide']) {
+      await page.goto(path);
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      const problems = await page.evaluate(() => {
+        const out: string[] = [];
+        if (document.documentElement.scrollWidth > window.innerWidth) out.push(`page ${document.documentElement.scrollWidth} px wide`);
+        for (const el of document.querySelectorAll<HTMLElement>('main *')) {
+          if (el instanceof SVGElement) continue;
+          const style = getComputedStyle(el);
+          // Scroll containers (the tab list) and inline boxes have no overflow of their own to check.
+          if (style.overflowX !== 'visible' || style.display === 'inline' || style.display === 'contents' || el.clientWidth === 0) continue;
+          if (el.scrollWidth > el.clientWidth + 1) out.push(`${el.tagName.toLowerCase()} "${(el.textContent ?? '').trim().slice(0, 40)}": ${el.scrollWidth} px in ${el.clientWidth}`);
+        }
+        return out;
+      });
+      expect(problems, `${path} at ${width} px`).toEqual([]);
+    }
   }
 });
 

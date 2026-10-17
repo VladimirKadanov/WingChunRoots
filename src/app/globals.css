@@ -176,6 +176,21 @@
   );
 }
 
+/* The verification marks of the home page (src/app/page.tsx), by the width of their section
+   (container "how"): one column with each drawing beside its text from 18rem, three columns
+   with the drawing on top from 52rem. In rem, so larger text keeps the roomier layout longer;
+   narrower than 18rem (a 320 px phone at 150 % text) the drawing sits on top. */
+@custom-variant marks-row {
+  @container how (width >= 18rem) and (width < 52rem) {
+    @slot;
+  }
+}
+@custom-variant marks-cols {
+  @container how (width >= 52rem) {
+    @slot;
+  }
+}
+
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {

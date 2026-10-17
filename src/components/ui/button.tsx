@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 export const buttonVariants = cva(
   [
-    'inline-flex min-w-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm border font-sans font-semibold',
+    'inline-flex min-w-11 items-center justify-center gap-2 rounded-sm border text-center font-sans font-semibold',
     'select-none transition-[background-color,border-color,color,transform] duration-(--duration-fast) ease-out',
     'active:not-data-disabled:translate-y-px data-disabled:opacity-60 disabled:opacity-60',
     '[&_svg]:shrink-0',
