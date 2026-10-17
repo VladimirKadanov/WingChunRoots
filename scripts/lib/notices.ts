@@ -72,12 +72,25 @@ const COPYRIGHT_LINE = /^\s*(?:copyright\s*(?:\(c\)|©|\d{4})|\(c\)\s*\d{4}|©\s
 /** A one-line title such as "MIT License" or "The ISC License". */
 const TITLE_LINE = /licen[cs]e/i;
 
+/** "All rights reserved." after a statement. */
+const RESERVED_LINE = /^\s*all rights reserved\.?\s*$/i;
+
+/**
+ * A line that continues the statement above it: indented, or starting in lower case or with
+ * "<", "(", "&" or a digit ("  and other contributors.", "<mail@example.org>"). A line of licence
+ * prose ("Permission is hereby granted, ...") is none of these, so it ends the statements.
+ */
+const CONTINUATION_LINE = /^(?:\s+\S|[a-z<(&\d])/;
+
 /**
  * Splits a licence text into the copyright statements it opens with and the rest (the body),
  * so packages that use the same licence share one body. Only the leading paragraphs are taken,
- * whole (a statement wrapped over two lines, or followed by "All rights reserved.", stays in one
- * piece), after an optional title line: a file that bundles several licences keeps the statements
- * of its later sections inside them. Nothing is dropped: every line is in one of the two parts.
+ * after an optional title line: a file that bundles several licences keeps the statements of
+ * its later sections inside them. In a paragraph that opens with a statement, lines are taken
+ * while they are statements, "All rights reserved." or continuations of the statement above
+ * (a statement wrapped over two lines stays in one piece); the first other line and everything
+ * after it go back to the body (a licence whose grant follows its statement with no blank line
+ * in between, as htmlparser2's does). Nothing is dropped: every line is in one of the two parts.
  */
 export function splitCopyright(text: string): { copyright: string[]; body: string } {
   const copyright: string[] = [];
@@ -88,13 +101,43 @@ export function splitCopyright(text: string): { copyright: string[]; body: strin
     if (!lines.length) continue;
     const first = lines[0]!.trim();
     if (leading && COPYRIGHT_LINE.test(first)) {
-      for (const line of lines) if (!copyright.includes(line.trim())) copyright.push(line.trim());
+      let taken = 0;
+      for (const line of lines) {
+        if (!(COPYRIGHT_LINE.test(line) || RESERVED_LINE.test(line) || (taken > 0 && CONTINUATION_LINE.test(line)))) break;
+        if (!copyright.includes(line.trim())) copyright.push(line.trim());
+        taken += 1;
+      }
+      if (taken === lines.length) continue;
+      leading = false;
+      body.push(lines.slice(taken).join('\n').replace(/\s+$/, ''));
       continue;
     }
     if (!(leading && !copyright.length && lines.length === 1 && TITLE_LINE.test(first) && first.length < 80)) leading = false;
     body.push(paragraph.replace(/^\n+|\s+$/g, ''));
   }
   return { copyright, body: body.join('\n\n').trim() };
+}
+
+/** Licence files at the root of a package: LICENSE, LICENCE.md, COPYING, OFL.txt, LICENSE-MIT.txt, license-cc0, … */
+const LICENSE_FILE = /^(?:licen[cs]e|copying|ofl)(?:[-_][a-z0-9][\w-]*)?(?:\.(?:md|txt|markdown))?$/i;
+/** The plain names, without a suffix such as "-MIT". */
+const PLAIN_LICENSE_FILE = /^(?:licen[cs]e|copying|ofl)(?:\.(?:md|txt|markdown))?$/i;
+/** Anything that looks like a licence file, recognised or not. */
+const LICENSE_LIKE = /^(?:licen[cs]e|copying|ofl)/i;
+
+/**
+ * The licence files of a package directory, by name: the plain one (LICENSE) when there is one,
+ * otherwise every suffixed one, sorted (type-fest ships license-mit and license-cc0 for its dual
+ * licence, jsesc LICENSE-MIT.txt). `unrecognised` lists licence-like names that no rule takes,
+ * so `pnpm notices` stops instead of listing a package with a licence file as shipping none.
+ */
+export function pickLicenseFiles(names: readonly string[]): { files: string[]; unrecognised: string[] } {
+  const sorted = [...names].sort();
+  const plain = sorted.find((name) => PLAIN_LICENSE_FILE.test(name));
+  return {
+    files: plain ? [plain] : sorted.filter((name) => LICENSE_FILE.test(name)),
+    unrecognised: sorted.filter((name) => LICENSE_LIKE.test(name) && !LICENSE_FILE.test(name)),
+  };
 }
 
 /** Flattens pnpm's licence list (one entry per version), keeping only `include` when given. */

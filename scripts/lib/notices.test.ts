@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupe, flatten, lockedVersions, safeHomepage, splitCopyright } from './notices';
+import { dedupe, flatten, lockedVersions, pickLicenseFiles, safeHomepage, splitCopyright } from './notices';
 
 describe('safeHomepage', () => {
   it('keeps http and https', () => {
@@ -80,6 +80,24 @@ describe('splitCopyright and copyright holders', () => {
     expect(body).toBe('Permission is hereby granted.\n\n## Bundled demo-lib\n\nCopyright (c) 2015 Demo Bundle\n\nRedistribution is permitted.');
   });
 
+  it('takes only the statement when the grant follows it with no blank line (htmlparser2 8.0.2)', () => {
+    const text = [
+      'Copyright 2010, 2011, Demo Person <demo@example.org>. All rights reserved.',
+      'Permission is hereby granted, free of charge, to any person obtaining a copy',
+      'of this software and associated documentation files (the "Software"), to',
+      'deal in the Software without restriction.',
+      '',
+      'The above copyright notice and this permission notice shall be included in',
+      'all copies or substantial portions of the Software.',
+    ].join('\n');
+    const { copyright, body } = splitCopyright(text);
+    expect(copyright).toEqual(['Copyright 2010, 2011, Demo Person <demo@example.org>. All rights reserved.']);
+    expect(body.split('\n')[0]).toBe('Permission is hereby granted, free of charge, to any person obtaining a copy');
+    expect(body).toBe(text.split('\n').slice(1).join('\n'));
+    // The same text with the usual blank line shares that body.
+    expect(splitCopyright(text.replace('reserved.\n', 'reserved.\n\n')).body).toBe(body);
+  });
+
   it('stores one body for texts that differ only in their copyright lines, and keeps each holder once', () => {
     const raw = flatten(
       {
@@ -101,6 +119,22 @@ describe('splitCopyright and copyright holders', () => {
         { line: 'Copyright (c) 2024 Demo Q', packages: ['q 1'] },
       ],
     ]);
+  });
+});
+
+describe('pickLicenseFiles', () => {
+  it('takes the plain licence file, or else every suffixed one', () => {
+    expect(pickLicenseFiles(['index.js', 'LICENSE', 'LICENSE-MIT.txt', 'package.json'])).toEqual({ files: ['LICENSE'], unrecognised: [] });
+    expect(pickLicenseFiles(['LICENSE-MIT.txt', 'README.md'])).toEqual({ files: ['LICENSE-MIT.txt'], unrecognised: [] });
+    expect(pickLicenseFiles(['license-mit', 'index.d.ts', 'license-cc0'])).toEqual({ files: ['license-cc0', 'license-mit'], unrecognised: [] });
+    for (const name of ['LICENCE.md', 'license.txt', 'COPYING', 'OFL.txt', 'LICENSE.markdown'])
+      expect(pickLicenseFiles([name]).files, name).toEqual([name]);
+    expect(pickLicenseFiles(['index.js', 'README.md']).files).toEqual([]);
+  });
+
+  it('reports licence-like names that no rule takes, so a package is never listed without its text', () => {
+    expect(pickLicenseFiles(['LICENSE.APACHE2', 'license.js']).unrecognised).toEqual(['LICENSE.APACHE2', 'license.js']);
+    expect(pickLicenseFiles(['LICENSE', 'licenses']).unrecognised).toEqual(['licenses']);
   });
 });
 

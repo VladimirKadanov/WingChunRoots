@@ -17,6 +17,7 @@ import {
   dedupe,
   flatten,
   lockedVersions,
+  pickLicenseFiles,
   type Addendum,
   type NoticesData,
   type PnpmPackage,
@@ -25,13 +26,16 @@ import {
 const root = resolve(import.meta.dirname, '..');
 const NOTICES_MD = 'THIRD_PARTY_NOTICES.md';
 const NOTICES_JSON = 'src/app/legal/licenses/notices.json';
-const LICENSE_FILES = /^(licen[cs]e|copying|ofl)(\.(md|txt|markdown))?$/i;
+/** Licence-like files that no rule of pickLicenseFiles takes (pnpm notices stops on them). */
+const unrecognisedLicenseFiles: string[] = [];
 
+/** The package's licence file, or its licence files joined in name order when it ships several. */
 function licenseText(dir: string): string | null {
   if (!existsSync(dir)) return null;
-  const file = readdirSync(dir).sort().find((name) => LICENSE_FILES.test(name));
-  if (!file) return null;
-  return readFileSync(join(dir, file), 'utf8').replace(/\r\n?/g, '\n').trim();
+  const { files, unrecognised } = pickLicenseFiles(readdirSync(dir));
+  for (const name of unrecognised) unrecognisedLicenseFiles.push(join(dir, name));
+  if (!files.length) return null;
+  return files.map((file) => readFileSync(join(dir, file), 'utf8').replace(/\r\n?/g, '\n').trim()).join('\n\n');
 }
 
 function licenseList(scope: '--prod' | '--dev'): Record<string, PnpmPackage[]> {
@@ -121,7 +125,10 @@ function main() {
   const check = process.argv.includes('--check');
   const data = collect();
   const { notices, addenda } = data;
-  const errors = checkSharpAddendum(addenda);
+  const errors = [
+    ...checkSharpAddendum(addenda),
+    ...unrecognisedLicenseFiles.map((file) => `${file}: a licence file that pnpm notices does not recognise; extend pickLicenseFiles`),
+  ];
   for (const error of errors) console.error(error);
   if (errors.length) process.exit(1);
   const outputs: [string, string][] = [

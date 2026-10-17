@@ -85,55 +85,55 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [is-unicode-supported](https://github.com/sindresorhus/is-unicode-supported#readme) | 2.1.0 | MIT | [text 20](#licence-text-20) |
 | [jiti](https://github.com/unjs/jiti#readme) | 2.6.1 | MIT | [text 3](#licence-text-3) |
 | [js-tokens](https://github.com/lydell/js-tokens#readme) | 4.0.0 | MIT | [text 23](#licence-text-23) |
-| [jsesc](https://mths.be/jsesc) | 3.1.0 | MIT | none shipped |
+| [jsesc](https://mths.be/jsesc) | 3.1.0 | MIT | [text 32](#licence-text-32) |
 | [json-schema-traverse](https://github.com/epoberezkin/json-schema-traverse#readme) | 1.0.0 | MIT | [text 3](#licence-text-3) |
-| [json-schema-typed](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) | 8.0.2 | BSD-2-Clause | [text 32](#licence-text-32) |
-| [json5](http://json5.org/) | 2.2.3 | MIT | [text 33](#licence-text-33) |
+| [json-schema-typed](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) | 8.0.2 | BSD-2-Clause | [text 33](#licence-text-33) |
+| [json5](http://json5.org/) | 2.2.3 | MIT | [text 34](#licence-text-34) |
 | [kleur](https://github.com/lukeed/kleur#readme) | 3.0.3 | MIT | [text 23](#licence-text-23) |
 | [leac](https://github.com/mxxii/leac) | 0.6.0 | MIT | [text 3](#licence-text-3) |
 | [log-symbols](https://github.com/sindresorhus/log-symbols#readme) | 7.0.1 | MIT | [text 20](#licence-text-20) |
-| [lru-cache](https://github.com/isaacs/node-lru-cache#readme) | 11.5.3 | BlueOak-1.0.0 | [text 34](#licence-text-34) |
+| [lru-cache](https://github.com/isaacs/node-lru-cache#readme) | 11.5.3 | BlueOak-1.0.0 | [text 35](#licence-text-35) |
 | [luxon](https://github.com/moment/luxon#readme) | 3.7.2 | MIT | [text 8](#licence-text-8) |
-| [marked](https://marked.js.org/) | 15.0.12 | MIT | [text 35](#licence-text-35) |
-| [mdn-data](https://developer.mozilla.org/) | 2.27.1 | CC0-1.0 | [text 36](#licence-text-36) |
+| [marked](https://marked.js.org/) | 15.0.12 | MIT | [text 36](#licence-text-36) |
+| [mdn-data](https://developer.mozilla.org/) | 2.27.1 | CC0-1.0 | [text 37](#licence-text-37) |
 | [mime-db](https://github.com/jshttp/mime-db#readme) | 1.52.0 | MIT | [text 12](#licence-text-12) |
 | [mime-db](https://github.com/jshttp/mime-db#readme) | 1.54.0 | MIT | [text 12](#licence-text-12) |
 | [mime-types](https://github.com/jshttp/mime-types#readme) | 2.1.35 | MIT | [text 12](#licence-text-12) |
 | [mime-types](https://github.com/jshttp/mime-types#readme) | 3.0.2 | MIT | [text 12](#licence-text-12) |
 | [mimic-function](https://github.com/sindresorhus/mimic-function#readme) | 5.0.1 | MIT | [text 20](#licence-text-20) |
-| [minimatch](https://github.com/isaacs/minimatch#readme) | 10.2.6 | BlueOak-1.0.0 | [text 37](#licence-text-37) |
-| [minimist](https://github.com/minimistjs/minimist) | 1.2.8 | MIT | [text 38](#licence-text-38) |
-| [minipass](https://github.com/isaacs/minipass#readme) | 7.1.3 | BlueOak-1.0.0 | [text 34](#licence-text-34) |
+| [minimatch](https://github.com/isaacs/minimatch#readme) | 10.2.6 | BlueOak-1.0.0 | [text 38](#licence-text-38) |
+| [minimist](https://github.com/minimistjs/minimist) | 1.2.8 | MIT | [text 39](#licence-text-39) |
+| [minipass](https://github.com/isaacs/minipass#readme) | 7.1.3 | BlueOak-1.0.0 | [text 35](#licence-text-35) |
 | [ms](https://github.com/vercel/ms#readme) | 2.1.3 | MIT | [text 13](#licence-text-13) |
-| [nanoid](https://github.com/ai/nanoid#readme) | 3.3.20 | MIT | [text 39](#licence-text-39) |
+| [nanoid](https://github.com/ai/nanoid#readme) | 3.3.20 | MIT | [text 40](#licence-text-40) |
 | [negotiator](https://github.com/jshttp/negotiator#readme) | 0.6.3 | MIT | [text 12](#licence-text-12) |
 | [next](https://nextjs.org/) | 16.4.1 | MIT | [text 13](#licence-text-13) |
-| [nodemailer](https://nodemailer.com/) | 10.1.1 | MIT-0 | [text 40](#licence-text-40) |
+| [nodemailer](https://nodemailer.com/) | 10.1.1 | MIT-0 | [text 41](#licence-text-41) |
 | [non-error](https://github.com/sindresorhus/non-error#readme) | 0.1.0 | MIT | [text 20](#licence-text-20) |
 | [normalize-path](https://github.com/jonschlinkert/normalize-path) | 3.0.0 | MIT | [text 23](#licence-text-23) |
 | [nypm](https://github.com/unjs/nypm#readme) | 0.6.6 | MIT | [text 3](#licence-text-3) |
 | [object-assign](https://github.com/sindresorhus/object-assign#readme) | 4.1.1 | MIT | [text 23](#licence-text-23) |
 | [parseley](https://github.com/mxxii/parseley) | 0.12.1 | MIT | [text 3](#licence-text-3) |
-| [path-scurry](https://github.com/isaacs/path-scurry#readme) | 2.0.2 | BlueOak-1.0.0 | [text 34](#licence-text-34) |
-| [pathe](https://github.com/unjs/pathe#readme) | 2.0.3 | MIT | [text 41](#licence-text-41) |
+| [path-scurry](https://github.com/isaacs/path-scurry#readme) | 2.0.2 | BlueOak-1.0.0 | [text 35](#licence-text-35) |
+| [pathe](https://github.com/unjs/pathe#readme) | 2.0.3 | MIT | [text 42](#licence-text-42) |
 | [peberminta](https://github.com/mxxii/peberminta) | 0.9.0 | MIT | [text 3](#licence-text-3) |
 | [pg](https://github.com/brianc/node-postgres) | 8.23.1 | MIT | [text 3](#licence-text-3) |
 | [pg-boss](https://pgboss.io/) | 12.38.0 | MIT | [text 13](#licence-text-13) |
 | [pg-connection-string](https://github.com/brianc/node-postgres/tree/master/packages/pg-connection-string) | 2.14.1 | MIT | [text 13](#licence-text-13) |
-| [pg-int8](https://github.com/charmander/pg-int8#readme) | 1.0.1 | ISC | [text 42](#licence-text-42) |
+| [pg-int8](https://github.com/charmander/pg-int8#readme) | 1.0.1 | ISC | [text 43](#licence-text-43) |
 | [pg-pool](https://github.com/brianc/node-postgres/tree/master/packages/pg-pool#readme) | 3.14.0 | MIT | [text 3](#licence-text-3) |
 | [pg-protocol](https://github.com/brianc/node-postgres#readme) | 1.16.1 | MIT | [text 3](#licence-text-3) |
 | [pg-types](https://github.com/brianc/node-pg-types) | 2.2.0 | MIT | none shipped |
 | [pgpass](https://github.com/hoegaarden/pgpass#readme) | 1.0.5 | MIT | none shipped |
-| [picocolors](https://github.com/alexeyraspopov/picocolors#readme) | 1.1.1 | ISC | [text 43](#licence-text-43) |
-| [picospinner](https://github.com/tinylibs/picospinner#readme) | 3.1.2 | MIT | [text 44](#licence-text-44) |
-| [postcss](https://postcss.org/) | 8.5.23 | MIT | [text 39](#licence-text-39) |
+| [picocolors](https://github.com/alexeyraspopov/picocolors#readme) | 1.1.1 | ISC | [text 44](#licence-text-44) |
+| [picospinner](https://github.com/tinylibs/picospinner#readme) | 3.1.2 | MIT | [text 45](#licence-text-45) |
+| [postcss](https://postcss.org/) | 8.5.23 | MIT | [text 40](#licence-text-40) |
 | [postgres-array](https://github.com/bendrucker/postgres-array#readme) | 2.0.0 | MIT | [text 23](#licence-text-23) |
 | [postgres-bytea](https://github.com/bendrucker/postgres-bytea#readme) | 1.0.1 | MIT | [text 23](#licence-text-23) |
 | [postgres-date](https://github.com/bendrucker/postgres-date#readme) | 1.0.7 | MIT | [text 23](#licence-text-23) |
 | [postgres-interval](https://github.com/bendrucker/postgres-interval#readme) | 1.2.0 | MIT | [text 23](#licence-text-23) |
 | [prettier](https://prettier.io/) | 3.9.10 | MIT | [text 8](#licence-text-8) |
-| [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | MIT | [text 45](#licence-text-45) |
+| [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | MIT | [text 46](#licence-text-46) |
 | [prompts](https://github.com/terkelg/prompts#readme) | 2.4.2 | MIT | [text 3](#licence-text-3) |
 | [react](https://react.dev/) | 19.3.1 | MIT | [text 3](#licence-text-3) |
 | [react-dom](https://react.dev/) | 19.3.1 | MIT | [text 3](#licence-text-3) |
@@ -144,14 +144,14 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [rrule-temporal](https://ggaabe.github.io/rrule-temporal/) | 2.2.8 | MIT | [text 3](#licence-text-3) |
 | [scheduler](https://react.dev/) | 0.28.0 | MIT | [text 3](#licence-text-3) |
 | [selderee](https://github.com/mxxii/selderee) | 0.11.0 | MIT | [text 3](#licence-text-3) |
-| [semver](https://github.com/npm/node-semver#readme) | 7.8.5 | ISC | [text 46](#licence-text-46) |
+| [semver](https://github.com/npm/node-semver#readme) | 7.8.5 | ISC | [text 47](#licence-text-47) |
 | [serialize-error](https://github.com/sindresorhus/serialize-error#readme) | 13.0.2 | MIT | [text 20](#licence-text-20) |
 | [sisteransi](https://github.com/terkelg/sisteransi#readme) | 1.0.5 | MIT | [text 3](#licence-text-3) |
 | [socket.io](https://github.com/socketio/socket.io/tree/main/packages/socket.io#readme) | 4.8.4 | MIT | [text 12](#licence-text-12) |
-| [socket.io-adapter](https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme) | 2.5.8 | MIT | [text 47](#licence-text-47) |
-| [socket.io-parser](https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme) | 4.2.7 | MIT | [text 47](#licence-text-47) |
-| [source-map-js](https://github.com/7rulnik/source-map-js) | 1.2.2 | BSD-3-Clause | [text 48](#licence-text-48) |
-| [split2](https://github.com/mcollina/split2#readme) | 4.2.0 | ISC | [text 49](#licence-text-49) |
+| [socket.io-adapter](https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme) | 2.5.8 | MIT | [text 48](#licence-text-48) |
+| [socket.io-parser](https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme) | 4.2.7 | MIT | [text 48](#licence-text-48) |
+| [source-map-js](https://github.com/7rulnik/source-map-js) | 1.2.2 | BSD-3-Clause | [text 49](#licence-text-49) |
+| [split2](https://github.com/mcollina/split2#readme) | 4.2.0 | ISC | [text 50](#licence-text-50) |
 | [strip-bom](https://github.com/sindresorhus/strip-bom#readme) | 3.0.0 | MIT | [text 23](#licence-text-23) |
 | [stubborn-fs](https://github.com/fabiospampinato/stubborn-fs#readme) | 2.0.0 | MIT | [text 14](#licence-text-14) |
 | [stubborn-utils](https://github.com/fabiospampinato/stubborn-utils#readme) | 1.0.2 | MIT | [text 14](#licence-text-14) |
@@ -159,18 +159,18 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [tagged-tag](https://github.com/sindresorhus/tagged-tag#readme) | 1.0.0 | MIT | [text 20](#licence-text-20) |
 | [tailwind-merge](https://github.com/dcastil/tailwind-merge) | 3.7.0 | MIT | [text 3](#licence-text-3) |
 | [tailwindcss](https://tailwindcss.com/) | 4.3.3 | MIT | [text 3](#licence-text-3) |
-| [temporal-spec](https://github.com/fullcalendar/temporal-polyfill#readme) | 1.0.1 | Apache-2.0 | [text 50](#licence-text-50) |
+| [temporal-spec](https://github.com/fullcalendar/temporal-polyfill#readme) | 1.0.1 | Apache-2.0 | [text 51](#licence-text-51) |
 | [tinyexec](https://github.com/tinylibs/tinyexec#readme) | 1.3.1 | MIT | [text 3](#licence-text-3) |
 | [tsconfig-paths](https://github.com/dividab/tsconfig-paths#readme) | 4.2.0 | MIT | [text 13](#licence-text-13) |
-| [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 51](#licence-text-51) |
-| [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | none shipped |
+| [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 52](#licence-text-52) |
+| [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | [text 53](#licence-text-53) |
 | [uint8array-extras](https://github.com/sindresorhus/uint8array-extras#readme) | 1.6.0 | MIT | [text 20](#licence-text-20) |
 | [undici-types](https://undici.nodejs.org/) | 7.24.6 | MIT | [text 3](#licence-text-3) |
 | [use-sync-external-store](https://github.com/react/react#readme) | 1.7.0 | MIT | [text 3](#licence-text-3) |
 | [vary](https://github.com/jshttp/vary#readme) | 1.1.2 | MIT | [text 12](#licence-text-12) |
 | [when-exit](https://github.com/fabiospampinato/when-exit#readme) | 2.1.5 | MIT | [text 14](#licence-text-14) |
-| [ws](https://github.com/websockets/ws) | 8.21.3 | MIT | [text 52](#licence-text-52) |
-| [xtend](https://github.com/Raynos/xtend) | 4.0.2 | MIT | [text 53](#licence-text-53) |
+| [ws](https://github.com/websockets/ws) | 8.21.3 | MIT | [text 54](#licence-text-54) |
+| [xtend](https://github.com/Raynos/xtend) | 4.0.2 | MIT | [text 55](#licence-text-55) |
 | [yoctocolors](https://github.com/sindresorhus/yoctocolors#readme) | 2.2.0 | MIT | [text 20](#licence-text-20) |
 
 ## Additional notices
@@ -2658,15 +2658,16 @@ Used by: htmlparser2 8.0.2
 
 ```text
 Copyright 2010, 2011, Chris Winberry <chris@winberry.net>. All rights reserved.    (htmlparser2 8.0.2)
-Permission is hereby granted, free of charge, to any person obtaining a copy    (htmlparser2 8.0.2)
-of this software and associated documentation files (the "Software"), to    (htmlparser2 8.0.2)
-deal in the Software without restriction, including without limitation the    (htmlparser2 8.0.2)
-rights to use, copy, modify, merge, publish, distribute, sublicense, and/or    (htmlparser2 8.0.2)
-sell copies of the Software, and to permit persons to whom the Software is    (htmlparser2 8.0.2)
-furnished to do so, subject to the following conditions:    (htmlparser2 8.0.2)
 ```
 
 ```text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
 
@@ -2680,6 +2681,33 @@ IN THE SOFTWARE.
 ```
 
 ### Licence text 32
+
+Used by: jsesc 3.1.0
+
+```text
+Copyright Mathias Bynens <https://mathiasbynens.be/>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 33
 
 Used by: json-schema-typed 8.0.2
 
@@ -2743,7 +2771,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 33
+### Licence text 34
 
 Used by: json5 2.2.3
 
@@ -2775,7 +2803,7 @@ SOFTWARE.
 [others]: https://github.com/json5/json5/contributors
 ```
 
-### Licence text 34
+### Licence text 35
 
 Used by: lru-cache 11.5.3, minipass 7.1.3, path-scurry 2.0.2
 
@@ -2837,7 +2865,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### Licence text 35
+### Licence text 36
 
 Used by: marked 15.0.12
 
@@ -2888,7 +2916,7 @@ Redistribution and use in source and binary forms, with or without modification,
 This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 ```
 
-### Licence text 36
+### Licence text 37
 
 Used by: mdn-data 2.27.1
 
@@ -3011,7 +3039,7 @@ For more information, please see
 <http://creativecommons.org/publicdomain/zero/1.0/>
 ```
 
-### Licence text 37
+### Licence text 38
 
 Used by: minimatch 10.2.6
 
@@ -3073,7 +3101,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 ```
 
-### Licence text 38
+### Licence text 39
 
 Used by: minimist 1.2.8
 
@@ -3098,7 +3126,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 39
+### Licence text 40
 
 Used by: nanoid 3.3.20, postcss 8.5.23
 
@@ -3128,7 +3156,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 40
+### Licence text 41
 
 Used by: nodemailer 10.1.1
 
@@ -3153,7 +3181,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 41
+### Licence text 42
 
 Used by: pathe 2.0.3
 
@@ -3232,7 +3260,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 42
+### Licence text 43
 
 Used by: pg-int8 1.0.1
 
@@ -3254,7 +3282,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 43
+### Licence text 44
 
 Used by: picocolors 1.1.1
 
@@ -3278,7 +3306,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 44
+### Licence text 45
 
 Used by: picospinner 3.1.2
 
@@ -3307,7 +3335,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ```
 
-### Licence text 45
+### Licence text 46
 
 Used by: prismjs 1.30.0
 
@@ -3337,7 +3365,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Licence text 46
+### Licence text 47
 
 Used by: semver 7.8.5
 
@@ -3361,7 +3389,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 47
+### Licence text 48
 
 Used by: socket.io-adapter 2.5.8, socket.io-parser 4.2.7
 
@@ -3390,7 +3418,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 48
+### Licence text 49
 
 Used by: source-map-js 1.2.2
 
@@ -3426,7 +3454,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 49
+### Licence text 50
 
 Used by: split2 4.2.0
 
@@ -3448,7 +3476,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 50
+### Licence text 51
 
 Used by: temporal-spec 1.0.1
 
@@ -3476,7 +3504,7 @@ Portions of this software are derived from the TypeScript project
 licensed under the Apache License, Version 2.0.
 ```
 
-### Licence text 51
+### Licence text 52
 
 Used by: tslib 2.8.1
 
@@ -3497,7 +3525,145 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 52
+### Licence text 53
+
+Used by: type-fest 5.10.0
+
+```text
+Creative Commons Legal Code
+
+CC0 1.0 Universal
+
+    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
+    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
+    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
+    HEREUNDER.
+
+Statement of Purpose
+
+The laws of most jurisdictions throughout the world automatically confer
+exclusive Copyright and Related Rights (defined below) upon the creator
+and subsequent owner(s) (each and all, an "owner") of an original work of
+authorship and/or a database (each, a "Work").
+
+Certain owners wish to permanently relinquish those rights to a Work for
+the purpose of contributing to a commons of creative, cultural and
+scientific works ("Commons") that the public can reliably and without fear
+of later claims of infringement build upon, modify, incorporate in other
+works, reuse and redistribute as freely as possible in any form whatsoever
+and for any purposes, including without limitation commercial purposes.
+These owners may contribute to the Commons to promote the ideal of a free
+culture and the further production of creative, cultural and scientific
+works, or to gain reputation or greater distribution for their Work in
+part through the use and efforts of others.
+
+For these and/or other purposes and motivations, and without any
+expectation of additional consideration or compensation, the person
+associating CC0 with a Work (the "Affirmer"), to the extent that he or she
+is an owner of Copyright and Related Rights in the Work, voluntarily
+elects to apply CC0 to the Work and publicly distribute the Work under its
+terms, with knowledge of his or her Copyright and Related Rights in the
+Work and the meaning and intended legal effect of CC0 on those rights.
+
+1. Copyright and Related Rights. A Work made available under CC0 may be
+protected by copyright and related or neighboring rights ("Copyright and
+Related Rights"). Copyright and Related Rights include, but are not
+limited to, the following:
+
+  i. the right to reproduce, adapt, distribute, perform, display,
+     communicate, and translate a Work;
+ ii. moral rights retained by the original author(s) and/or performer(s);
+iii. publicity and privacy rights pertaining to a person's image or
+     likeness depicted in a Work;
+ iv. rights protecting against unfair competition in regards to a Work,
+     subject to the limitations in paragraph 4(a), below;
+  v. rights protecting the extraction, dissemination, use and reuse of data
+     in a Work;
+ vi. database rights (such as those arising under Directive 96/9/EC of the
+     European Parliament and of the Council of 11 March 1996 on the legal
+     protection of databases, and under any national implementation
+     thereof, including any amended or successor version of such
+     directive); and
+vii. other similar, equivalent or corresponding rights throughout the
+     world based on applicable law or treaty, and any national
+     implementations thereof.
+
+2. Waiver. To the greatest extent permitted by, but not in contravention
+of, applicable law, Affirmer hereby overtly, fully, permanently,
+irrevocably and unconditionally waives, abandons, and surrenders all of
+Affirmer's Copyright and Related Rights and associated claims and causes
+of action, whether now known or unknown (including existing as well as
+future claims and causes of action), in the Work (i) in all territories
+worldwide, (ii) for the maximum duration provided by applicable law or
+treaty (including future time extensions), (iii) in any current or future
+medium and for any number of copies, and (iv) for any purpose whatsoever,
+including without limitation commercial, advertising or promotional
+purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
+member of the public at large and to the detriment of Affirmer's heirs and
+successors, fully intending that such Waiver shall not be subject to
+revocation, rescission, cancellation, termination, or any other legal or
+equitable action to disrupt the quiet enjoyment of the Work by the public
+as contemplated by Affirmer's express Statement of Purpose.
+
+3. Public License Fallback. Should any part of the Waiver for any reason
+be judged legally invalid or ineffective under applicable law, then the
+Waiver shall be preserved to the maximum extent permitted taking into
+account Affirmer's express Statement of Purpose. In addition, to the
+extent the Waiver is so judged Affirmer hereby grants to each affected
+person a royalty-free, non transferable, non sublicensable, non exclusive,
+irrevocable and unconditional license to exercise Affirmer's Copyright and
+Related Rights in the Work (i) in all territories worldwide, (ii) for the
+maximum duration provided by applicable law or treaty (including future
+time extensions), (iii) in any current or future medium and for any number
+of copies, and (iv) for any purpose whatsoever, including without
+limitation commercial, advertising or promotional purposes (the
+"License"). The License shall be deemed effective as of the date CC0 was
+applied by Affirmer to the Work. Should any part of the License for any
+reason be judged legally invalid or ineffective under applicable law, such
+partial invalidity or ineffectiveness shall not invalidate the remainder
+of the License, and in such case Affirmer hereby affirms that he or she
+will not (i) exercise any of his or her remaining Copyright and Related
+Rights in the Work or (ii) assert any associated claims and causes of
+action with respect to the Work, in either case contrary to Affirmer's
+express Statement of Purpose.
+
+4. Limitations and Disclaimers.
+
+ a. No trademark or patent rights held by Affirmer are waived, abandoned,
+    surrendered, licensed or otherwise affected by this document.
+ b. Affirmer offers the Work as-is and makes no representations or
+    warranties of any kind concerning the Work, express, implied,
+    statutory or otherwise, including without limitation warranties of
+    title, merchantability, fitness for a particular purpose, non
+    infringement, or the absence of latent or other defects, accuracy, or
+    the present or absence of errors, whether or not discoverable, all to
+    the greatest extent permissible under applicable law.
+ c. Affirmer disclaims responsibility for clearing rights of other persons
+    that may apply to the Work or any use thereof, including without
+    limitation any person's Copyright and Related Rights in the Work.
+    Further, Affirmer disclaims responsibility for obtaining any necessary
+    consents, permissions or other rights required for any use of the
+    Work.
+ d. Affirmer understands and acknowledges that Creative Commons is not a
+    party to this document and has no duty or obligation with respect to
+    this CC0 or use of the Work.
+
+MIT License
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 54
 
 Used by: ws 8.21.3
 
@@ -3526,7 +3692,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 53
+### Licence text 55
 
 Used by: xtend 4.0.2
 
