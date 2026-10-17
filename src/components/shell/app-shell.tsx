@@ -8,6 +8,7 @@ import { Suspense, type ReactNode } from 'react';
 import { BrandMark } from '@/components/brand/brand-mark';
 import { DEMO_NOTICE } from './demo-notice';
 import { NavLinks, NavList } from './nav-links';
+import { TabBarRoom } from './tab-bar-room';
 import { ThemeMenu } from './theme-menu';
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -33,12 +34,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* Phone: bottom tabs, var(--tab-h) tall with their 1 px top border, above the home
-          indicator, on a solid ground (no backdrop blur: it costs a compositing pass on every
-          scroll frame in Android WebView). Desktop: the side rail (its border runs the full
-          page height; it scrolls on its own when a landscape phone is too short for it). */}
+      {/* Phone: bottom tabs, at least var(--tab-h) tall with their 1 px top border and taller
+          with larger text (TabBarRoom publishes the real height), above the home indicator, on a
+          solid ground (no backdrop blur: it costs a compositing pass on every scroll frame in
+          Android WebView). Desktop: the side rail (its border runs the full page height; it
+          scrolls on its own when a landscape phone is too short for it). */}
       <nav
         aria-label="Main"
+        data-tab-bar=""
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle bg-bg md:static md:border-t-0 md:border-r"
       >
         <div className="flex min-h-[calc(var(--tab-h)-1px+env(safe-area-inset-bottom,0px))] pr-[max(0.25rem,env(safe-area-inset-right,0px))] pb-[env(safe-area-inset-bottom,0px)] pl-[max(0.25rem,env(safe-area-inset-left,0px))] md:sticky md:top-0 md:h-dvh md:min-h-0 md:flex-col md:overflow-y-auto md:overscroll-contain md:px-3.5 md:pt-[max(1.5rem,env(safe-area-inset-top,0px))] md:pb-[max(1.125rem,env(safe-area-inset-bottom,0px))] md:pl-[max(0.875rem,env(safe-area-inset-left,0px))]">
@@ -60,9 +63,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="text-xs text-fg-subtle">{DEMO_NOTICE}</p>
           </div>
         </div>
+        <TabBarRoom />
       </nav>
 
-      <div className="min-w-0 pb-[calc(var(--tab-h)+env(safe-area-inset-bottom,0px))] md:pb-0">
+      {/* Clear of the tab bar or of an open non-modal sheet: below it (--page-clear-bottom,
+          globals.css) or, from 1024 px, beside it (--sheet-page-inline: the side panel docks and
+          the page narrows), so no page control is ever under a sheet (WCAG 2.4.11). */}
+      <div className="min-w-0 pr-[var(--sheet-page-inline,0px)] pb-(--page-clear-bottom)">
         <main id="main" tabIndex={-1} className="outline-none">
           {children}
         </main>

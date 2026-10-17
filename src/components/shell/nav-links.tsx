@@ -45,7 +45,9 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                 // An inset focus ring: the tab bar ends at the screen edge and would clip an outer one.
                 'focus-visible:-outline-offset-2',
                 variant === 'tabs'
-                  ? '@container/tab min-h-11 flex-1 flex-col justify-center gap-[5px] pt-1.5 text-caption uppercase'
+                  ? // Centred with the same room above the icon as below the chop, so the chop never
+                    // sits on the screen's bottom edge where there is no home-indicator inset.
+                    '@container/tab min-h-11 flex-1 flex-col justify-center gap-1 text-caption uppercase'
                   : 'min-h-[46px] gap-3.5 rounded-sm px-3 text-ui font-medium hover:bg-surface-3 aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold',
               )}
             >

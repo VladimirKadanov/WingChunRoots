@@ -13,7 +13,8 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Tab, Tabs, TabsList, TabsPanel } from '@/components/ui/tabs';
 import { ToastProvider, useToast } from '@/components/ui/toast';
 import { TrailChip } from '@/components/ui/trail-chip';
-import { Name } from '@/components/home/names';
+import { DEMO_LINE } from '@/components/home/demo-lineage';
+import { Name, PersonName } from '@/components/home/names';
 
 /** The toast provider lives with the components that toast (not in the root layout: JS budget). */
 export function OverlayDemos() {
@@ -86,10 +87,31 @@ function OverlayDemoList() {
         title="Jade Lantern Hall"
         description="Foshan · 17 people · 15 of 18 links verified"
       >
-        <p className="pt-1 text-fg-muted">
-          A peek of at least {PEEK} that leaves the page usable behind it, as over a map or a graph. Expand it for the
-          details; from 768 px it is a side panel.
-        </p>
+        <div className="grid gap-4 pt-1">
+          <p className="text-fg-muted">
+            A peek of at least {PEEK} that leaves the page usable behind it, as over a map or a graph. Expand it for the
+            details; from 1024 px it is a side panel.
+          </p>
+          <div className="grid gap-1">
+            <p className="eyebrow">On the line</p>
+            <ul className="divide-y divide-border-subtle">
+              {DEMO_LINE.map((person) => (
+                <li key={person.slug} className="flex flex-wrap items-baseline justify-between gap-x-3 py-2">
+                  <PersonName name={person.name} original={person.original} className="font-display text-lg" />
+                  <span className="text-sm text-fg-subtle">
+                    {person.city} · {person.startYear}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* An action at the end, below the edge at half height: Tab to it expands the sheet. */}
+          <div className="flex flex-wrap gap-3 border-t border-border-subtle pt-4">
+            <Button onClick={() => toast.add({ title: 'Link copied', description: 'The address of this hall is on the clipboard.' })}>
+              Copy the hall’s link
+            </Button>
+          </div>
+        </div>
       </Drawer>
 
       <MenuRoot>

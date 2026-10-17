@@ -14,11 +14,21 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     background: var(--bg);
-    /* The phone tab bar overlays the bottom: anchors and focus scroll clear of it. */
-    scroll-padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));
+    /* The room the phone tab bar takes at the bottom of the window: its measured height
+       (--tab-bar, published by TabBarRoom: the bar grows with the text) or the --tab-h token
+       until then, plus the home indicator's inset. From 768 px the rail is on the side: none. */
+    --tab-clear: calc(var(--tab-bar, var(--tab-h)) + env(safe-area-inset-bottom, 0px));
+    /* What the page keeps clear at the bottom: the tab bar, or an open non-modal bottom sheet
+       (--sheet-page-clear, published by Drawer, with a little air for the focus ring). Focus and
+       anchors scroll above it (WCAG 2.4.11) and <main> is padded by it (AppShell), so the last
+       control of a page can still be scrolled above a peeking sheet. */
+    --page-clear-bottom: max(var(--tab-clear), var(--sheet-page-clear, 0px));
+    scroll-padding-bottom: var(--page-clear-bottom);
     /* The sticky phone top bar covers the top (WCAG 2.4.11); the desktop rail covers nothing. */
     scroll-padding-top: calc(var(--top-h) + env(safe-area-inset-top, 0px));
     @media (width >= 48rem) {
+      --tab-clear: 0px;
+      --page-clear-bottom: var(--sheet-page-clear, 0px);
       scroll-padding-top: 0px;
     }
   }

@@ -1,25 +1,33 @@
 'use client';
 
-// Drawer (shadcn/ui pattern on the Base UI Drawer; vaul is forbidden). On phones it is a bottom
-// sheet that snaps between heights and drags by its whole body; from 768 px it is a side panel,
-// var(--sheet-w) wide, on the right. Every drag has a button alternative (plan §5.6): "Expand" /
-// "Collapse" and "Close". Back closes it (history layer); Esc closes it too. Content scrolls
-// with momentum and contains overscroll (plan §5.8 (b)).
+// Drawer (shadcn/ui pattern on the Base UI Drawer; vaul is forbidden). Below 1024 px it is a
+// bottom sheet that snaps between heights and drags by its whole body (from 768 px over the page,
+// right of the rail); from 1024 px it is a side panel, var(--sheet-w) wide, on the right. Every
+// drag has a button alternative (plan §5.6): "Expand" / "Collapse" and "Close". Back closes it
+// (history layer); Esc closes it too. Content scrolls with momentum and contains overscroll
+// (plan §5.8 (b)). A long title wraps; it is never cut (plan §5.3).
 //
 // A modal sheet opens at half height, so the scrim above it shows that the page waits. A
 // non-modal one (over a map or a graph) opens at the peek from the Transit Map prototype: at
 // least PEEK tall and never shorter than its own header, so a title that wraps at 150 % text
 // still shows whole. It rests on the phone tab bar, which keeps the home indicator's inset, and
-// is clipped there, so the tabs stay visible and tappable. Its body is inert while it peeks, so
-// the keyboard never reaches content that is off screen. Below full height, a keyboard focus
-// that lands under the bottom edge expands the sheet first (WCAG 2.4.11).
+// is clipped there (overflow: clip, which never scrolls), so the tabs stay visible and tappable.
+// Its body is inert while it peeks, so the keyboard never reaches content that is off screen.
+// Below full height, a keyboard focus that lands under the bottom edge expands the sheet first
+// (WCAG 2.4.11).
 //
-// While a sheet is open it publishes how much room it takes on <html>: --sheet-clear (phone:
-// px from the bottom of the window to the sheet's top edge at its snap point) and --sheet-inline
-// (from 768 px: the side panel's width), so toasts land beside the sheet instead of on it. With
-// two sheets open, the newer one's room is published, and the older one's again when it closes.
-// The room follows the snap point, not a drag in progress (that would restyle the page on every
-// frame); it catches up when the drag settles.
+// While a sheet is open it publishes how much room it takes on <html> (globals.css reads it):
+// - --sheet-clear: px from the bottom of the window to the top edge of a bottom sheet at its snap
+//   point, and --sheet-inline: the side panel's width. Toasts land above or beside the sheet.
+// - --sheet-head and data-sheet-full: a bottom sheet that leaves less than 9rem above it is
+//   "full"; toasts then sit under its header, clear of its title and its buttons.
+// - --sheet-page-clear and --sheet-page-inline, for a non-modal sheet only (the page behind it is
+//   live): the page keeps that room clear, so focus never lands on a control under the sheet
+//   (WCAG 2.4.11). From 1024 px the page narrows beside the side panel.
+// - data-sheet-open while any sheet is open.
+// With two sheets open, the newer one's room is published (for the page: the newer non-modal
+// one's), and the older one's again when it closes. The room follows the snap point, not a drag
+// in progress (that would restyle the page on every frame); it catches up when the drag settles.
 
 import { Drawer as BaseDrawer } from '@base-ui/react/drawer';
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactElement, type ReactNode } from 'react';
@@ -37,8 +45,8 @@ const PEEK_PX = 96;
 export const MODAL_SNAP_POINTS: SnapPoint[] = [0.5, 1];
 /** Where a non-modal sheet can rest: the peek, half height and full height. */
 export const PEEK_SNAP_POINTS: SnapPoint[] = [PEEK, 0.5, 1];
-/** From this width the sheet is a side panel (the md breakpoint). */
-const SIDE_PANEL = '(min-width: 48rem)';
+/** From this width the sheet is a side panel (the lg breakpoint). */
+const SIDE_PANEL = '(min-width: 64rem)';
 
 export interface DrawerProps {
   /** The element that opens the sheet. */
@@ -59,8 +67,9 @@ export interface DrawerProps {
   className?: string;
 }
 
+// 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
 const iconButton =
-  'inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg active:bg-surface-pressed';
+  'inline-grid size-[44px] shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg active:bg-surface-pressed';
 
 export function Drawer({
   trigger,
@@ -115,7 +124,7 @@ export function Drawer({
 
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
-  useSheetRoom(open, side, viewport, popup);
+  useSheetRoom(open, side, modal, viewport, popup, header);
 
   // Below full height the lower part of the sheet is off screen. A focus that lands there (Tab,
   // or a script restoring focus) expands the sheet first, so the focused control is never hidden
@@ -123,8 +132,11 @@ export function Drawer({
   // fit above the bottom edge, so a tall focusable region whose top shows does not expand it.
   // A focus that comes with a press of a finger or a mouse is left alone: moving the sheet in
   // the middle of a tap on a control that peeks over the edge would lose the tap.
+  // Events from an overlay portalled out of this content (a nested sheet or menu) bubble here
+  // through the React tree; they are not this sheet's, so they are ignored.
   const pressedAt = useRef(Number.NEGATIVE_INFINITY);
   const onContentFocus = (event: FocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.target as Node)) return;
     if (side || expanded || !viewport || event.timeStamp - pressedAt.current < 1000) return;
     const box = event.target.getBoundingClientRect();
     if (Math.min(box.bottom, box.top + 48) > viewport.getBoundingClientRect().bottom - 1) setSnapIndex(lastIndex);
@@ -157,42 +169,52 @@ export function Drawer({
         <BaseDrawer.Viewport
           ref={setViewport}
           className={cn(
-            'fixed inset-0 z-50 flex items-end justify-center md:items-stretch md:justify-end',
+            // From 768 px a bottom sheet is centred over the page, right of the rail.
+            'fixed inset-0 z-50 flex items-end justify-center md:left-(--rail-w) lg:left-0 lg:items-stretch lg:justify-end',
             // A non-modal sheet lets taps through to the page around it. On phones it rests on the
-            // tab bar, which keeps the bottom safe-area inset, and the viewport clips the part of
-            // the popup that its snap point moves below that edge: the tabs stay seen and tappable.
-            !modal && 'pointer-events-none bottom-[calc(var(--tab-h)+env(safe-area-inset-bottom,0px))] max-md:overflow-hidden md:bottom-0',
+            // tab bar (--tab-clear: the bar's real height and the bottom safe-area inset), and the
+            // viewport clips the part of the popup that its snap point moves below that edge: the
+            // tabs stay seen and tappable. Clip, not hidden: a hidden overflow is a scroll
+            // container, which the browser scrolls to show a focused control instead of letting
+            // onContentFocus expand the sheet.
+            !modal && 'pointer-events-none bottom-(--tab-clear) max-lg:overflow-clip',
           )}
         >
           <BaseDrawer.Popup
             ref={setPopup}
             className={cn(
               'pointer-events-auto relative flex min-h-0 w-full flex-col border-border-subtle bg-surface-2 text-fg shadow-sheet outline-none',
-              // Phone: a bottom sheet, never taller than its viewport (above the tab bar when non-modal).
+              // Below 1024 px: a bottom sheet, never taller than its viewport (above the tab bar when non-modal).
               'max-h-[calc(100%-env(safe-area-inset-top,0px)-0.75rem)] max-w-[40rem] touch-none rounded-t-sheet border border-b-0',
               '[transform:translateY(calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y,0px)))]',
               'data-starting-style:[transform:translateY(100%)] data-ending-style:[transform:translateY(100%)]',
-              // From 768 px: a side panel on the right, the full height of the window.
-              'md:h-full md:max-h-none md:w-sheet md:max-w-[calc(100vw-4rem)] md:rounded-none md:border-0 md:border-l',
-              'md:[transform:translateX(var(--drawer-swipe-movement-x,0px))]',
-              'md:data-starting-style:[transform:translateX(100%)] md:data-ending-style:[transform:translateX(100%)]',
+              // Outline seals inside fill with the sheet's ground (seal.tsx).
+              '[--seal-ground:var(--surface-2)]',
+              // From 1024 px: a side panel on the right, the full height of the window.
+              'lg:h-full lg:max-h-none lg:w-sheet lg:max-w-[calc(100vw-4rem)] lg:rounded-none lg:border-0 lg:border-l',
+              'lg:[transform:translateX(var(--drawer-swipe-movement-x,0px))]',
+              'lg:data-starting-style:[transform:translateX(100%)] lg:data-ending-style:[transform:translateX(100%)]',
               'transition-transform duration-(--duration-slow) ease-out data-swiping:duration-0 data-swiping:select-none',
               className,
             )}
           >
             <div
               ref={setHeader}
-              className="shrink-0 px-4 pt-2 pb-3 select-none sm:px-6 md:pt-[max(1rem,env(safe-area-inset-top,0px))] md:pr-[max(1rem,env(safe-area-inset-right,0px))]"
+              className="shrink-0 px-4 pt-2 pb-3 select-none sm:px-6 lg:pt-[max(1rem,env(safe-area-inset-top,0px))] lg:pr-[max(1rem,env(safe-area-inset-right,0px))]"
             >
-              <div aria-hidden="true" className="mx-auto mb-2 h-1 w-10 rounded-full bg-border-strong md:hidden" />
+              <div aria-hidden="true" className="mx-auto mb-2 h-1 w-10 rounded-full bg-border-strong lg:hidden" />
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 pt-1">
-                  {/* line-clamp clips to the line boxes: leading-tight (1.25) holds Gloock's 1.2 em
-                      ascent and descent, so no descender is cut (WebKit counts it as overflow). */}
-                  <BaseDrawer.Title className="line-clamp-2 font-display text-xl leading-tight text-fg [overflow-wrap:anywhere]">
+                  {/* The title (usually a name) wraps as far as it needs and is never cut; the peek
+                      grows with the header. Only the description is clamped, at two lines (its
+                      full text stays the dialog's accessible description). leading-tight (1.25)
+                      holds Gloock's 1.2 em ascent and descent. */}
+                  <BaseDrawer.Title className="font-display text-xl leading-tight text-fg [overflow-wrap:anywhere]">
                     {title}
                   </BaseDrawer.Title>
-                  {description ? <BaseDrawer.Description className="mt-0.5 text-sm text-fg-muted">{description}</BaseDrawer.Description> : null}
+                  {description ? (
+                    <BaseDrawer.Description className="mt-0.5 line-clamp-2 text-sm text-fg-muted">{description}</BaseDrawer.Description>
+                  ) : null}
                 </div>
                 {snapPoints && snapPoints.length > 1 ? (
                   <button
@@ -212,10 +234,10 @@ export function Drawer({
             <BaseDrawer.Content
               inert={peeking}
               onPointerDown={(event) => {
-                pressedAt.current = event.timeStamp;
+                if (event.currentTarget.contains(event.target as Node)) pressedAt.current = event.timeStamp;
               }}
               onFocus={onContentFocus}
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:px-6 md:pr-[max(1.5rem,env(safe-area-inset-right,0px))]"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:pr-[max(1.5rem,env(safe-area-inset-right,0px))]"
             >
               {children}
             </BaseDrawer.Content>
@@ -227,38 +249,74 @@ export function Drawer({
 }
 
 interface Room {
-  clear: string | null;
-  inline: string | null;
+  /** A non-modal sheet leaves the page live behind it, so the page keeps its room clear. */
+  modal: boolean;
+  /** Bottom sheet: px from the bottom of the window to its top edge. */
+  clear: number | null;
+  /** Side panel: its width. */
+  inline: number | null;
+  /** Bottom sheet: px from the top of the window to the bottom of its header. */
+  head: number | null;
+  /** A bottom sheet with less than 9rem of the window above it. */
+  full: boolean;
 }
 
 /** The room of every open sheet, in the order they opened (see the top of this file). */
 const rooms = new Map<symbol, Room>();
 
+/** Air between a focused page control and a non-modal sheet, for the 2 px focus ring and its offset. */
+const FOCUS_AIR = 8;
+
 /** Writes the newest open sheet's room on <html>, or removes it when no sheet is open. */
 function publishRooms() {
-  const root = document.documentElement.style;
-  const newest = [...rooms.values()].at(-1);
+  const root = document.documentElement;
+  const all = [...rooms.values()];
+  const newest = all.at(-1);
+  const page = all.filter((room) => !room.modal).at(-1);
+  const px = (value: number | null | undefined) => (value === null || value === undefined ? null : `${Math.round(value)}px`);
   for (const [name, value] of [
-    ['--sheet-clear', newest?.clear],
-    ['--sheet-inline', newest?.inline],
+    ['--sheet-clear', px(newest?.clear)],
+    ['--sheet-inline', px(newest?.inline)],
+    ['--sheet-head', newest?.full ? px(newest.head) : null],
+    ['--sheet-page-clear', page?.clear == null ? null : px(page.clear + FOCUS_AIR)],
+    ['--sheet-page-inline', px(page?.inline)],
   ] as const) {
-    if (value) root.setProperty(name, value);
-    else root.removeProperty(name);
+    if (value) root.style.setProperty(name, value);
+    else root.style.removeProperty(name);
   }
+  root.toggleAttribute('data-sheet-open', !!newest);
+  root.toggleAttribute('data-sheet-full', !!newest?.full);
+}
+
+/** The top safe-area inset in px (env() is readable only through a box that uses it). */
+function topInset(): number {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;visibility:hidden;height:env(safe-area-inset-top,0px)';
+  document.body.append(probe);
+  const inset = probe.getBoundingClientRect().height;
+  probe.remove();
+  return inset;
 }
 
 /**
  * Publishes the room an open sheet takes. The snap offset comes from the popup's inline style
  * (Base UI), so the page is restyled only when the snap point or a size changes.
  */
-function useSheetRoom(open: boolean, side: boolean, viewport: HTMLElement | null, popup: HTMLElement | null) {
+function useSheetRoom(
+  open: boolean,
+  side: boolean,
+  modal: boolean,
+  viewport: HTMLElement | null,
+  popup: HTMLElement | null,
+  header: HTMLElement | null,
+) {
   useEffect(() => {
     if (!open || !viewport || !popup) return;
     const key = Symbol('sheet');
     let offset: string | null = null;
     const measure = (force: boolean) => {
       if (side) {
-        rooms.set(key, { clear: null, inline: `${popup.offsetWidth}px` });
+        rooms.set(key, { modal, clear: null, inline: popup.offsetWidth, head: null, full: false });
         publishRooms();
         return;
       }
@@ -266,8 +324,17 @@ function useSheetRoom(open: boolean, side: boolean, viewport: HTMLElement | null
       if (!force && next === offset) return;
       offset = next;
       const visible = Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
-      const clear = window.innerHeight - viewport.getBoundingClientRect().bottom + visible;
-      rooms.set(key, { clear: `${Math.round(clear)}px`, inline: null });
+      const bottom = viewport.getBoundingClientRect().bottom;
+      const top = bottom - visible;
+      const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      rooms.set(key, {
+        modal,
+        clear: window.innerHeight - top,
+        inline: null,
+        // The popup's 1 px top border, then the header.
+        head: top + 1 + (header?.offsetHeight ?? 0),
+        full: top < topInset() + 9 * rem,
+      });
       publishRooms();
     };
     measure(true);
@@ -282,5 +349,5 @@ function useSheetRoom(open: boolean, side: boolean, viewport: HTMLElement | null
       rooms.delete(key);
       publishRooms();
     };
-  }, [open, side, viewport, popup]);
+  }, [open, side, modal, viewport, popup, header]);
 }
