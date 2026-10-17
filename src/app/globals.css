@@ -169,21 +169,19 @@
   }
 }
 
-/* Phone toasts (src/components/ui/toast.tsx): above the tab bar, or above the top edge of an open
-   sheet (--sheet-clear, published by Drawer) while at least 9rem of the screen remain above it.
-   With less room (a sheet at full height) the toast stays in its usual place over the sheet's
-   lower part, never over the sheet's title and buttons. The clamp is a step: below 9rem of room
-   the middle term is 0 or less, and just above it far larger than the lift it is clamped to. */
+/* Toasts (src/components/ui/toast.tsx): above the phone tab bar and the home indicator (0.75rem
+   on phones, 2rem from 768 px), or 0.75rem above the top edge of an open bottom sheet
+   (--sheet-clear, published by Drawer). Over a sheet at full height Drawer sets data-sheet-full
+   on <html> and the toast moves under the sheet's header instead (toast.tsx). */
 @utility bottom-toast {
-  --toast-base: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));
-  bottom: calc(
-    var(--toast-base) + 0.75rem +
-      clamp(
-        0px,
-        (100dvh - env(safe-area-inset-top, 0px) - var(--sheet-clear, 0px) - 9rem) * 1000,
-        var(--sheet-clear, 0px) - var(--toast-base)
-      )
+  --toast-gap: 0.75rem;
+  bottom: max(
+    calc(max(var(--tab-clear), env(safe-area-inset-bottom, 0px)) + var(--toast-gap)),
+    calc(var(--sheet-clear, 0px) + 0.75rem)
   );
+  @media (width >= 48rem) {
+    --toast-gap: 2rem;
+  }
 }
 
 /* The verification marks of the home page (src/app/page.tsx), by the width of their section
