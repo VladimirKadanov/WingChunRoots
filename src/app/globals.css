@@ -1,0 +1,155 @@
+/*
+ * Global styles of WingChunRoots: Tailwind CSS 4, the generated design tokens and the base
+ * layer of the "Ink Register" direction (docs/design/direction.md). Colours, type, radii,
+ * shadows and motion come only from src/design/tokens.ts (`pnpm tokens:build`).
+ */
+@import 'tailwindcss';
+@import '../design/generated/tokens.css';
+
+/* Dark is the default; `dark:` follows the resolved theme, including a manual choice. */
+@custom-variant dark {
+  @media not (prefers-color-scheme: light) {
+    &:where(:root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+  &:where(:root[data-theme='dark'] *) {
+    @slot;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    background: var(--bg);
+    /* The phone tab bar overlays the bottom: anchors scroll clear of it. */
+    scroll-padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Display type: Gloock exists only at 400, so nothing synthesises a bold or an italic. */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-synthesis: none;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /* Names (plan §5.3): long names wrap instead of being cut. */
+  [translate='no'] {
+    overflow-wrap: anywhere;
+  }
+
+  /* Focus: a 2 px gold ring with a 2 px offset (plan §5.2); never red, never green. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--fg);
+    color: var(--fg-inverse);
+  }
+
+  button,
+  [role='button'],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+
+  :disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  /* Instant motion for people who ask for it (plan §5.8 (e)). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @media print {
+    :root {
+      --bg: var(--print-paper);
+      --surface-1: var(--print-paper);
+      --surface-2: var(--print-paper);
+      --fg: var(--print-ink);
+      --fg-muted: var(--print-ink);
+      --fg-subtle: var(--print-ink);
+      --brand: var(--print-seal);
+      --verified: var(--print-verified);
+    }
+  }
+}
+
+@layer components {
+  /* Eyebrow: the small uppercase label above a heading. */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: var(--text-caption);
+    line-height: var(--text-caption--line-height);
+    letter-spacing: var(--text-caption--letter-spacing);
+    font-weight: var(--text-caption--font-weight);
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+
+  /* Chinese names: system CJK fonts, a little tracking (plan §5.3). */
+  .cjk {
+    letter-spacing: 0.06em;
+  }
+  .cjk:where(.font-display *, .font-display) {
+    font-family: var(--font-cjk-serif), serif;
+  }
+
+  /* Inline text links: underlined, never colour alone; 44 px tall touch area on phones. */
+  .link {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 0.3em;
+    transition: text-decoration-color var(--duration-fast) var(--ease-out);
+  }
+  .link:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Tabular numerals for years and generation counts (Arabic numerals, plan §5.3). */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}

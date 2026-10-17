@@ -23,19 +23,29 @@
     "db:seed": "tsx src/server/db/cli.ts seed",
     "db:reset": "tsx src/server/db/cli.ts reset",
     "db:check": "tsx src/server/db/cli.ts check",
-    "fixtures:generate": "tsx src/fixtures/cli.ts"
+    "fixtures:generate": "tsx src/fixtures/cli.ts",
+    "tokens:build": "tsx scripts/build-tokens.ts"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@fontsource-variable/schibsted-grotesk": "5.3.0",
+    "@fontsource/gloock": "5.3.0",
+    "@fontsource/noto-serif-display": "5.3.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
     "drizzle-orm": "1.0.0-rc.4",
     "elkjs": "0.12.0",
     "next": "16.4.1",
     "pg": "8.23.1",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
+    "@lhci/cli": "0.15.1",
     "@playwright/test": "1.64.1",
+    "@tailwindcss/postcss": "4.3.3",
     "@testcontainers/postgresql": "12.2.1",
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
@@ -46,6 +56,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.1",
     "eslint-plugin-react-hooks": "7.1.1",
+    "tailwindcss": "4.3.3",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.2",
