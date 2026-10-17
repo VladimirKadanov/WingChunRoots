@@ -1,4 +1,5 @@
-// Retention of e-mail addresses (docs/data-model.md §7; milestone M01b). Run daily by the worker's
+// Retention of e-mail addresses and of expired sign-in data (docs/data-model.md §7; milestones
+// M01b and M02). Run daily by the worker's
 // `retention.purge` job; a system task with no user, so there is no permission to check beyond
 // being called by the worker, which connects as app_rw (plan §6.2).
 //
@@ -8,6 +9,12 @@
 //                            expired (expires_at, or the time it was marked expired), revoked
 //                            (the last change of the row). A pending invitation past its expiry
 //                            becomes `expired` at the same time.
+//
+//   auth_session             deleted once expired (M02): the privacy notice keeps a session, with
+//                            its ip_hmac and user agent, until it expires or the person signs out.
+//                            Better Auth deletes an expired session only when its token comes back.
+//   auth_verification        deleted once expired (M02): confirmation and reset tokens, pending
+//                            second factors.
 //
 // The periods wait for the legal review (plan §10.2, row 11), like the rest of docs/data-model.md §7.
 //
@@ -86,4 +93,34 @@ export async function purgeExpiredEmailAddresses(
                   FOR UPDATE SKIP LOCKED)`,
   );
   return { emailDeliveries, invitations };
+}
+
+export interface SessionRetentionResult {
+  /** Expired auth_session rows deleted. */
+  sessions: number;
+  /** Expired auth_verification rows deleted. */
+  verifications: number;
+}
+
+/** Deletes expired sessions and verification values. Idempotent; returns how many rows went. */
+export async function purgeExpiredSessions(
+  db: Database,
+  { batchSize = RETENTION_BATCH_SIZE }: { batchSize?: number } = {},
+): Promise<SessionRetentionResult> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('batchSize must be a positive integer');
+  const sessions = await inBatches(
+    db,
+    batchSize,
+    (limit) => sql`
+      DELETE FROM auth_session
+       WHERE id IN (SELECT id FROM auth_session WHERE expires_at < now() LIMIT ${limit} FOR UPDATE SKIP LOCKED)`,
+  );
+  const verifications = await inBatches(
+    db,
+    batchSize,
+    (limit) => sql`
+      DELETE FROM auth_verification
+       WHERE id IN (SELECT id FROM auth_verification WHERE expires_at < now() LIMIT ${limit} FOR UPDATE SKIP LOCKED)`,
+  );
+  return { sessions, verifications };
 }

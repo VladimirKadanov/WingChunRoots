@@ -2,6 +2,9 @@
 // factor changes a role; a staff role (admin, moderator, archivist) only for an account that has
 // two-factor authentication on. The change ends every session of that account (database trigger
 // auth_user_end_sessions, for cookie and bearer sessions alike) and is audited as role.change.
+//
+// DEFAULT D04: administrative roles are separate from plans and from verification: no plan or
+// entitlement grants a role, and a role verifies no relationship by itself.
 
 import { eq } from 'drizzle-orm';
 import * as z from 'zod';

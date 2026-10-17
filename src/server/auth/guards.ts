@@ -8,7 +8,7 @@
 //
 // They take the principal of the request (src/server/auth/session.ts) and return it narrowed, or
 // throw AuthError. The same functions serve pages (through guardRoute in
-// src/server/auth/request.ts), the oRPC middleware and the services, for cookie and bearer
+// src/server/auth/web.ts), the oRPC middleware and the services, for cookie and bearer
 // sessions alike. ROUTE_POLICIES lists what each protected page needs; checkRoute is the pure
 // decision that pages and guards.int.test.ts's role × route matrix share.
 

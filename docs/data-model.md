@@ -1,6 +1,6 @@
 # Модел на данните (Фаза 1)
 
-Етапи M01 и M01b · план §6.2–§6.7 · решения: [ADR 0002](adr/0002-data-model.md), [ADR 0003](adr/0003-jobs-and-mail.md) (задачи и поща)
+Етапи M01, M01b и M02 · план §6.2–§6.7 · решения: [ADR 0002](adr/0002-data-model.md), [ADR 0003](adr/0003-jobs-and-mail.md) (задачи и поща), [ADR 0004](adr/0004-auth.md) (акаунти)
 
 Този документ описва базата данни на WingChunRoots такава, каквато я създават миграциите в `drizzle/`: таблиците, изгледите, ролите и правата, ограниченията, личните данни и сроковете им на пазене, и фиктивните данни за разработка. Източникът на истината е кодът: схемата на Drizzle в `src/server/db/schema/` и SQL-ът на миграциите. При разминаване важи кодът, а документът се поправя.
 
@@ -23,7 +23,7 @@
 - **Идентификатори.** Всички първични ключове са `uuid`. Приложението ги генерира като UUIDv7 (`src/server/db/ids.ts`, Drizzle `$defaultFn`): нарастващи във времето, затова индексите остават компактни. Колоните имат резервно `DEFAULT gen_random_uuid()` (UUIDv4) за ръчни вмъквания в SQL.
 - **Време.** Всяка таблица има `created_at` и `updated_at` (`timestamptz`, по подразбиране `now()`; Drizzle обновява `updated_at` при всяка промяна). Таблиците с меко изтриване имат `deleted_at`: `person`, `lineage`, `school`, `organization`, `evidence_file`.
 - **Изброявания.** Статусите и видовете са `text` с `CHECK (... IN (...))`, а не типове `enum` на PostgreSQL: нова стойност е една миграция без `ALTER TYPE` извън транзакция. Списъците са в `src/server/db/schema/common.ts`, и същите стойности ползва TypeScript.
-- **Потребители.** Колоните `*_user_id` са `uuid` без външен ключ. Таблицата на потребителите идва с Better Auth в M02, който добавя и външните ключове.
+- **Потребители.** Акаунтите са в `auth_user` (Better Auth, M02). Всяка колона `*_user_id` е `uuid` с външен ключ към `auth_user.id`, освен `audit_log.actor_user_id`: журналът е само за добавяне и надживява акаунта. Акаунтът е отделен от личността (DEFAULT D04): личност може да няма акаунт, а акаунтът получава своя личност при първоначалния профил (`person.claimed_by_user_id`).
 - **Slug.** `person`, `lineage`, `school` и `organization` имат уникален `slug` във формат `^[a-z0-9]+(-[a-z0-9]+)*$`. Фиктивните записи започват с `demo-` (D20).
 - **Държави** са двубуквени кодове по ISO 3166-1 (`^[A-Z]{2}$`), **писмености** са кодове по ISO 15924 (`Latn`, `Hant`, `Hans`, `Cyrl`, …), а **езиците** са BCP 47 тагове (`en`, `bg-Latn`, `yue-Latn`, `zh-Hant`).
 
@@ -33,7 +33,7 @@
 
 | Таблица | Предназначение и важни колони |
 |---|---|
-| `person` | Една личност е един възел в графа. `kind` (`living`, `historical`), `life_status` (`living`, `deceased`, `unknown`), `stewardship` (`self` — профилът е поет от самия човек; `platform` — исторически запис, поддържан от архивистите; `unclaimed` — жив човек без акаунт), **`visibility`** (`involved_only` по подразбиране, `public`), `claimed_by_user_id` (уникален), `created_by_user_id`, `country_code`, `birth_date`, `deleted_at`. `stewardship = 'self'` изисква `claimed_by_user_id` |
+| `person` | Една личност е един възел в графа. `kind` (`living`, `historical`), `life_status` (`living`, `deceased`, `unknown`), `stewardship` (`self` — профилът е поет от самия човек; `platform` — исторически запис, поддържан от архивистите; `unclaimed` — жив човек без акаунт), **`visibility`** (`involved_only` по подразбиране, `public`), `claimed_by_user_id` (уникален), `created_by_user_id`, `country_code`, `place_id` (град от `place`, M02), `training_start_year` (1900–2100, M02), `birth_date` (не се събира във Фаза 1, DEFAULT D16), `deleted_at`. `stewardship = 'self'` изисква `claimed_by_user_id` |
 | `person_name` | Всички изписвания на името (план §5.3). `kind` (`name`, `alias`, `romanization`), `value`, `script`, `lang`, `romanization` (`jyutping`, `pinyin`, `yale`, `hk_gov`, `bg_streamlined`), `is_primary`, `sort_order`. Всяка личност има точно едно основно име (`is_primary`), и то е на латиница (`script = 'Latn'`, `kind = 'name'`); останалите са по желание: оригиналната писменост, Jyutping, пинин, псевдоними |
 | `person_name_key` | Нормализирани ключове за търсене (M07): `key`, `key_kind` (`latin`, `jyutping`, `pinyin`, `han`, `cyrillic`), `is_primary`. В M01 остава празна; GIN `gin_trgm_ops` и B-tree `text_pattern_ops` върху `key` |
 | `person_bio` | Биография на даден език: една на личност и език (`person_id`, `lang`) |
@@ -83,12 +83,26 @@
 
 | Таблица | Предназначение и важни колони |
 |---|---|
-| `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy`, `age_18_plus`, `publication`), `document_version`, `action` (`granted`, `withdrawn`), `occurred_at` |
+| `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy_ack`, `authenticity_declaration`, `age_18_plus`, `publication`; M02), `document_version` (версията на документа от `content/legal/`, например `2026-10-17-draft`), `action` (`granted`, `withdrawn`), `occurred_at`. Редовете не се променят: нова версия или оттегляне е нов ред |
 | `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at` |
 | `email_delivery` | Един ред на имейл (M01b: `Mailer` и outbox-ът): `to_email` (`NULL`, след като срокът на пазене изтече; задължителен при `queued`), `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `attempts` (брой опити, ≥ 0), `last_attempt_at`, `provider_message_id`, `error` (без адреси, до 500 знака), `sent_at` |
 | `audit_log` | Одитен журнал само за добавяне (раздел 6) |
 
-Таблиците на Better Auth (M02) и `media_asset` (Фаза 2) не са част от M01.
+`media_asset` (Фаза 2) още не съществува.
+
+### Акаунти (M02)
+
+Таблиците на Better Auth 1.7 с префикс `auth_` ([ADR 0004](adr/0004-auth.md)). Имената на свойствата в Drizzle са имената на полетата на Better Auth, а колоните са в `snake_case` като навсякъде.
+
+| Таблица | Предназначение и важни колони |
+|---|---|
+| `auth_user` | Акаунт за вход: `email` (уникален, винаги с малки букви), `email_verified`, `name` (празно: имената на човека са в `person_name`), **`role`** (`user`, `moderator`, `archivist`, `admin`; не се подава при регистрация), `two_factor_enabled`, `banned`, `ban_reason`, `ban_expires`, `timezone`. Роля на персонала само при `two_factor_enabled` (`CHECK auth_user_staff_needs_2fa`) |
+| `auth_session` | Сесия: `token` (уникален; в бисквитката и като `Authorization: Bearer` е подписан), `expires_at`, `user_agent`, **`ip_address`** (никога IP адресът, а `ip_hmac`: 64 hex знака, `CHECK auth_session_ip_hmac_format`), **`two_factor_verified_at`** (кога тази сесия е минала втория фактор; `requireStaff2FA()` проверява него), `impersonated_by` |
+| `auth_account` | Начин за вход на акаунта: `provider_id` (`credential` за имейл и парола), `account_id`, **`password`** (хеш scrypt със сол, никога паролата); колоните за OAuth токени остават празни във Фаза 1. Уникален `(provider_id, account_id)` |
+| `auth_verification` | Краткотрайни стойности: токени за потвърждаване (24 часа) и възстановяване (1 час), чакащ втори фактор, доверено устройство. `identifier` се пази хеширан; `value`, `expires_at` |
+| `auth_two_factor` | TOTP на акаунта (един ред на акаунт): `secret` и `backup_codes`, шифрирани с `BETTER_AUTH_SECRET`; `verified`, `failed_verification_count`, `locked_until` (временно заключване след грешни кодове) |
+
+`auth_account`, `auth_session` и `auth_two_factor` се трият с акаунта (`CASCADE`).
 
 ### Схемата `pgboss` (M01b)
 
@@ -113,8 +127,8 @@
 | Роля | Права |
 |---|---|
 | `migrator` | Собственик на базата и на всеки обект на приложението. `pnpm db:migrate` и `pnpm db:seed` работят като `migrator` (`SET ROLE migrator`), независимо кой се свързва, затова собственикът е един и същ навсякъде. Създава разширенията `pg_trgm`, `unaccent` и `fuzzystrmatch` (trusted) |
-| `app_rw` | Услугите и worker-ът. `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците на приложението; върху `audit_log` и `relationship_event` само `SELECT` и `INSERT`; `SELECT` върху трите изгледа. В схемата `pgboss` (M01b): `USAGE`, `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците и `USAGE`, `SELECT`, `UPDATE` върху поредиците (и за таблиците от бъдещи версии чрез `ALTER DEFAULT PRIVILEGES`). Няма `CREATE` в нито една схема и в базата |
-| `app_public_ro` | Анонимното четене: само `SELECT` върху `v_public_person`, `v_public_edge` и `v_public_school`; няма достъп до схемата `pgboss`. Всяка таблица, включително `school_private_location`, `evidence_file` и `evidence_link`, дава `permission denied`. Към базата има само `CONNECT`: без `TEMPORARY`, така че не може да създава временни таблици (`PUBLIC` също губи подразбиращото се `TEMPORARY`; има го само `app_rw`). Интеграционен тест сверява пълния списък с релации, които ролята може да чете, и че не може да пише в нито една |
+| `app_rw` | Услугите, Better Auth и worker-ът. `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците на приложението, включително `auth_*` (M02); върху `audit_log` и `relationship_event` само `SELECT` и `INSERT`; `SELECT` върху трите изгледа. В схемата `pgboss` (M01b): `USAGE`, `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците и `USAGE`, `SELECT`, `UPDATE` върху поредиците (и за таблиците от бъдещи версии чрез `ALTER DEFAULT PRIVILEGES`). Няма `CREATE` в нито една схема и в базата |
+| `app_public_ro` | Анонимното четене: само `SELECT` върху `v_public_person`, `v_public_edge` и `v_public_school`; няма достъп до схемата `pgboss`. Всяка таблица, включително `school_private_location`, `evidence_file`, `evidence_link` и таблиците `auth_*`, дава `permission denied`. Към базата има само `CONNECT`: без `TEMPORARY`, така че не може да създава временни таблици (`PUBLIC` също губи подразбиращото се `TEMPORARY`; има го само `app_rw`). Интеграционен тест сверява пълния списък с релации, които ролята може да чете, и че не може да пише в нито една |
 
 Приложението се свързва като `app_rw` (`getDb()`) и като `app_public_ro` (`getPublicDb()`) от `src/server/db/index.ts`, с отделен пул за всяка роля и `statement_timeout` 2 s, към хоста и базата от `DATABASE_URL` (в облачната сесия и в CI: `TEST_DATABASE_URL`). Всеки пул има слушател за събитието `error`: когато сървърът прекъсне неактивна връзка (рестарт на PostgreSQL или Docker Desktop, заспал компютър, `pg_terminate_backend`), процесът (`next start`, worker-ът) не пада, а пулът отваря нова връзка при следващата заявка. В лога отиват само ролята и SQLSTATE, никога адрес, заявка или параметри.
 
@@ -133,6 +147,9 @@
 - Уникални: `slug` в четирите таблици със slug; `place.geonames_id`; `invitation.token_hash`; `evidence_file.storage_key`; `email_delivery.idempotency_key`; една основна `person_name` на личност; една `person_bio` на личност и език; една чакаща `person_claim` от потребител за личност; една личност на потребител (`person.claimed_by_user_id`).
 - Формати: `slug`, двубуквени държави, ISO 15924 писмености, BCP 47 езици, SHA-256 в hex (`evidence_file`, `invitation`), `ip_hmac` (64 hex знака), действията в одита (`обект.действие`, например `relationship.verify`).
 - Личности, линии и връзки по правило не се трият физически: скриват се (`deleted_at`) или връзката сменя статуса си и приключва. Базата го подкрепя: `teaching_relationship` държи личностите и линията с `ON DELETE RESTRICT`, а `relationship_event` държи връзката с `ON DELETE RESTRICT` (каскадните действия вървят с правата на собственика на таблицата и биха заобиколили правилото „само добавяне“). Имената, биографиите, заявките, поканите, периодите и членствата се трият заедно със своята личност или връзка (`CASCADE`), а препратките от случаите за преглед стават `NULL`.
+- Акаунти (M02): `auth_user_role_check` (четирите роли), `auth_user_staff_needs_2fa` (роля на персонала само с включен 2FA), `auth_user_email_lowercase`, `auth_session_ip_hmac_format`, `auth_two_factor_failed_count_check` (≥ 0), `person_training_start_year_range` (1900–2100). Уникални: `auth_user.email`, `auth_session.token`, `auth_two_factor.user_id`, `auth_account (provider_id, account_id)`.
+- Тригерът `auth_user_end_sessions` (`AFTER UPDATE OF role, two_factor_enabled` върху `auth_user`): при смяна на ролята и при включване на 2FA трие всички сесии на акаунта и краткотрайните му стойности в `auth_verification` (план §3.2). Важи за всеки път, за бисквитки и за токени.
+- Външни ключове към `auth_user` (M02): `CASCADE` само за редовете, които принадлежат изцяло на акаунта (`auth_*`, `notification`, `person_claim.user_id`, `entitlement_grant.subject_user_id`); `SET NULL` за `content_report.reporter_user_id`, `review_case.assigned_to_user_id` и `email_delivery.user_id`; `RESTRICT` за всички останали, включително `consent_record.user_id` (доказателство за съгласието) и авторите на записи, решения и доказателства. `person.place_id` → `place` е `SET NULL`.
 - Циклите в графа не се проверяват от база данни: проверката е в услугата при преход към `verified`, под глобален advisory lock (план §6.3, M04).
 
 ## 6. Одитен журнал
@@ -147,7 +164,7 @@
 
 ### `ip_hmac`
 
-`ip_hmac = HMAC-SHA-256(таен ключ, IP адрес)` в hex. Ключът е в средата на сървъра (от M02), не е в базата и се сменя веднъж годишно. Обикновен SHA-256 на IPv4 адрес се обръща с изброяване на 2^32 стойности, затова се ползва ключ. **`ip_hmac` са лични данни** (псевдонимизиран IP адрес): с ключа всеки известен IP адрес може да се сравни с журнала.
+`ip_hmac = HMAC-SHA-256(таен ключ, IP адрес)` в hex. Пази се в `audit_log.ip_hmac` и в `auth_session.ip_address` (M02). Ключът е `IP_HMAC_KEY` в средата на сървъра (от M02), не е в базата и се сменя веднъж годишно. Обикновен SHA-256 на IPv4 адрес се обръща с изброяване на 2^32 стойности, затова се ползва ключ. **`ip_hmac` са лични данни** (псевдонимизиран IP адрес): с ключа всеки известен IP адрес може да се сравни с журнала.
 
 ## 7. Лични данни и срокове на пазене
 
@@ -155,16 +172,20 @@
 
 | Данни | Къде | Срок на пазене |
 |---|---|---|
-| `ip_hmac` | `audit_log` | **Свързваемостта се пази до 13 месеца.** Ключът се сменя на всеки 12 месеца, а старият се унищожава до един месец след смяната. След това старите стойности не могат да се свържат с IP адрес и престават да са лични данни. Редовете не се трият (журналът е само за добавяне), затова срокът се постига чрез унищожаване на ключа. Новата стойност на ключа не се извежда от старата |
+| `ip_hmac` | `audit_log`, `auth_session` | **Свързваемостта се пази до 13 месеца.** Ключът се сменя на всеки 12 месеца, а старият се унищожава до един месец след смяната. След това старите стойности не могат да се свържат с IP адрес и престават да са лични данни. Редовете не се трият (журналът е само за добавяне), затова срокът се постига чрез унищожаване на ключа. Новата стойност на ключа не се извежда от старата |
 | Имена, биография, държава, дата на раждане | `person`, `person_name`, `person_bio` | Докато профилът съществува. При заявка за изтриване (`review_case.kind = 'deletion_request'`) личните полета се премахват или профилът се скрива (`deleted_at`), а връзките остават в графа като анонимни, ако други потребители зависят от тях (M10b) |
 | Имейл в поканата | `invitation.email` | До приемане, изтичане или отмяна на поканата плюс 30 дни; после се заличава (`NULL`), а покана, която още е `pending`, става `expired`. Изпълнява го задачата `retention.purge` (M01b) |
 | Имейл на получателя | `email_delivery.to_email` | 90 дни от създаването на реда (отстраняване на проблеми с доставката); после се заличава (`NULL`), а неизпратено писмо става `failed`. Изпълнява го задачата `retention.purge` (M01b) |
 | Имена и адрес в писмото | Задачите в `pgboss`, файловете на транспорта `file` (`.mail/`), Mailpit | Задачите се трият 7 дни след изпълнението си. `.mail/` и Mailpit са само за разработка с фиктивни данни; Mailpit пази до 5000 писма |
+| Акаунт: имейл, хеш на паролата, TOTP | `auth_user`, `auth_account`, `auth_two_factor` | Докато акаунтът съществува |
+| Сесия: токен, `user_agent`, `ip_hmac` | `auth_session` | До изтичане (7 дни, подновява се при ползване) или до изход. Изтеклите редове трие задачата `retention.purge` (M02) |
+| Токени за потвърждаване и възстановяване, чакащ втори фактор | `auth_verification` | До изтичане (24 часа, 1 час, минути); изтеклите редове трие `retention.purge` |
+| Съгласия | `consent_record` | Докато акаунтът съществува, като доказателство кога и за коя версия е дадено съгласието (`RESTRICT` към `auth_user`). Срокът след закриване на акаунта се решава при правния преглед |
 | Точна точка и адрес на школа | `school_private_location` | Докато школата съществува; никога в публичен отговор, лог, sitemap, Open Graph или JSON-LD |
 | Доказателства | `evidence_file` и частният бъкет | До `retention_until`, определен при решаването на случая (M10a) |
 | Одитни записи (без `ip_hmac`) | `audit_log` | Без срок: доказателство за всяко одобрение и архивна промяна (план §6.6) |
 
-Задачата `retention.purge` (`src/server/services/retention.ts`) върви всеки ден в 03:17 UTC в worker-а, като `app_rw`, и е идемпотентна. Променя редовете на партиди по 1000 (всяка в своя транзакция, далеч от `statement_timeout`) и прескача ред, заключен от писмо, което се изпраща в момента; следващото пускане го изтрива. Неуспех се записва в лога само със SQLSTATE. Ключът за идемпотентност в `email_delivery` остава и след изтриването на адреса, затова никога не съдържа лични данни (`@` се отказва, ADR 0003).
+Задачата `retention.purge` (`src/server/services/retention.ts`) върви всеки ден в 03:17 UTC в worker-а, като `app_rw`, и е идемпотентна. От M02 трие и изтеклите редове на `auth_session` и `auth_verification`: Better Auth трие изтекла сесия само когато токенът ѝ дойде отново. Променя редовете на партиди по 1000 (всяка в своя транзакция, далеч от `statement_timeout`) и прескача ред, заключен от писмо, което се изпраща в момента; следващото пускане го изтрива. Неуспех се записва в лога само със SQLSTATE. Ключът за идемпотентност в `email_delivery` остава и след изтриването на адреса, затова никога не съдържа лични данни (`@` се отказва, ADR 0003).
 
 Логовете на приложението не съдържат имена, имейли, IP адреси и координати (план §6.4, M12). Worker-ът пише само идентификатори на задачи и доставки, а грешките на SMTP се записват в `email_delivery.error` с адресите заменени с `<address>`.
 
@@ -194,6 +215,11 @@
 
 7. `*_mail_delivery_attempts_and_retention`: `email_delivery.attempts` и `last_attempt_at`, индекс по `created_at` за почистването; `email_delivery.to_email` и `invitation.email` допускат `NULL` (сроковете на пазене от §7) с `CHECK`, че писмо в `queued` и покана в `pending` имат адрес.
 
+Миграциите в M02:
+
+8. `*_auth_accounts`: таблиците `auth_*`, външните ключове от всяка колона `*_user_id` към `auth_user` (без `audit_log.actor_user_id`), `person.place_id` и `person.training_start_year`, новите видове съгласия.
+9. `*_auth_roles_sessions`: правата на `app_rw` върху `auth_*` (и изричен `REVOKE` за `app_public_ro`) и тригерът `auth_user_end_sessions`.
+
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 
 Базата трябва да е с UTF-8 и локал `C.UTF-8`: при `LC_CTYPE=C` `pg_trgm` не извлича триграми от кирилица и китайски (`scripts/db-env-check.sh` и интеграционните тестове го проверяват с `show_trgm('Тестов')`).
@@ -216,19 +242,29 @@
 
 `fixtures/lineage-600.json` е публичната част на данните във формата на план §6.3 (`focusId` е `demo-two-lineages`, `nodes`, `edges` с `kind` `primary`, `converging` или `crossLineage`, `hiddenCounts`), с два допълнителни ключа за тестовете: `anchors` (slug → id на публичните опорни записи) и `lineages`. Файлът се генерира с `pnpm fixtures:generate`; unit тестът и `scripts/verify.d/M01.sh` проверяват, че е актуален.
 
-`pnpm db:seed` не създава потребители, права, съгласия и доказателства: в M01 няма акаунти (те идват с M02).
+`pnpm db:seed` създава и входни акаунти за тестовете (M02), никога при `NODE_ENV=production`:
+
+- `<slug>@example.test`, свързани с опорните личности `demo-pending`, `demo-root-a`, `demo-hub-a`, `demo-free-sifu-5`, `demo-pro-sifu-8` и `demo-two-lineages` (`person.claimed_by_user_id`, `stewardship = 'self'`);
+- `demo-admin@example.test`, `demo-archivist@example.test` и `demo-moderator@example.test` с ролите си и включен TOTP;
+- съгласията от регистрацията за всеки акаунт, с текущите версии (DEFAULT D10).
+
+Паролата на всички е `E2E_PASSWORD`, а TOTP тайната на персонала е `E2E_TOTP_SECRET`, шифрирана с `BETTER_AUTH_SECRET`. Тези стойности са само за локалната среда и CI, генерират се случайно и не са в хранилището; без тях seed-ът пропуска паролите и тайните. Права по план и доказателства seed-ът не създава.
 
 ## 10. Решения по подразбиране
 
 | Решение | Как е приложено |
 |---|---|
 | DEFAULT D03 | Чакащите заявки и личностите, създадени чрез заявка или покана, са `involved_only`; връзка става `public` само след `verified` (`CHECK` в базата); изгледите показват само публичното |
+| DEFAULT D04 | Акаунтът (`auth_user`) е отделен от личността (`person`); ролите на персонала са отделни от плановете (`entitlement_grant`) и от проверката на връзките |
 | DEFAULT D05 | Всички активни връзки се пазят; `is_display_primary` е само визуално предпочитание, най-много една на ученик сред `verified` и `in_arbitration`; заявка не носи флага, слага го потвърждаването (M09) |
+| DEFAULT D10 | Пилотът е само за пълнолетни: съгласие `age_18_plus` при регистрация, без рождена дата |
 | DEFAULT D12 | `organization` и `organization_membership` са само скелет; членството не променя историята на обучение |
 | DEFAULT D13 | Доказателствата са в отделна таблица и частен бъкет; публичната роля няма достъп до `evidence_file` и `evidence_link` |
+| DEFAULT D16 | `person.birth_date` не се попълва във Фаза 1 |
 | DEFAULT D17 | `school.last_activity_at` се обновява само при редакция или потвърждение на школата, никога при вход |
 | DEFAULT D20 | Само явно измислени данни със slug `demo-…` |
 | DEFAULT D22 | `lineage.root_person_id` може да е празен; коренът може да е исторически (`demo-root-c`) |
+| DEFAULT D23 | `consent_record.document_version` сочи чернова (`2026-10-17-draft`) с надпис „Draft — pending legal review“ |
 | DEFAULT D25 | `evidence_file.size_bytes` е до 20 MB |
 
-Решенията без номер D (например текст с `CHECK` вместо `enum` и сроковете на пазене от раздел 7) са в [ADR 0002](adr/0002-data-model.md).
+Решенията без номер D (например текст с `CHECK` вместо `enum` и сроковете на пазене от раздел 7) са в [ADR 0002](adr/0002-data-model.md), а тези за акаунтите — в [ADR 0004](adr/0004-auth.md).

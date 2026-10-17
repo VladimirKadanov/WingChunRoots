@@ -52,6 +52,7 @@ Rules:
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:int` | Integration tests against PostGIS via `TEST_DATABASE_URL` (from M01) |
 | `pnpm db:migrate`, `pnpm db:seed`, `pnpm db:reset`, `pnpm db:check` | Migrations, demo data, reset (local or `TEST_DATABASE_URL` only), migration check (from M01) |
+| `pnpm admin:create --email <address>` | Local only: makes an existing account with a confirmed address and TOTP on an admin; prints no secrets (from M02) |
 | `pnpm build` | `next build` (bundle budget from M00b) |
 | `pnpm e2e` / `pnpm e2e --grep @M05` | Playwright against `next start` on port 3100 (server log: `test-results/server.log`) |
 | `scripts/db-env-check.sh` | PostgreSQL >= 16, PostGIS >= 3.4, `postgis_full_version()`, UTF-8 locale, pg_trgm on Cyrillic and Chinese |

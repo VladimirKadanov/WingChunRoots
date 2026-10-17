@@ -54,9 +54,9 @@ Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~
    pnpm worker:dev               # in a second terminal: background jobs and e-mail
    ```
 
-4. Check everything: `scripts/verify.sh M01b` (the last line must be `VERIFY M01b: PASS`).
+4. Check everything: `scripts/verify.sh M02` (the last line must be `VERIFY M02: PASS`).
 
-If your `.env` was created before M01 or M01b, run `scripts/init-env.sh` once more: it keeps the file and only adds what is missing, the three database role passwords (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`) and `MAIL_TRANSPORT=smtp`. After new role passwords, run `scripts/db-bootstrap.sh`.
+If your `.env` was created before M01, M01b or M02, run `scripts/init-env.sh` once more: it keeps the file and only adds what is missing, the three database role passwords (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`), `MAIL_TRANSPORT=smtp` and, from M02, the account settings (`APP_URL`, `BETTER_AUTH_SECRET`, `IP_HMAC_KEY`, `E2E_PASSWORD`, `E2E_TOTP_SECRET`). After new role passwords, run `scripts/db-bootstrap.sh`.
 
 #### E-mail
 
@@ -66,6 +66,14 @@ Every e-mail goes through the worker (`pnpm worker`, or `pnpm worker:dev`, which
 - `MAIL_TRANSPORT=file` (the default when the variable is unset; cloud sessions): each message is written to `.mail/` (git-ignored) as `.eml` plus `.json`.
 
 To check the setup: `pnpm mail:check demo@wingchunroots.test`, with the worker running; the message appears in Mailpit (or in `.mail/`). The other settings, `SMTP_URL`, `MAIL_FILE_DIR`, `MAIL_FROM` and `MAILPIT_URL`, are described in `.env.example`.
+
+#### Accounts (M02)
+
+Sign-up, e-mail confirmation, sign-in, password reset and TOTP two-factor authentication run on Better Auth with the session in a cookie or in `Authorization: Bearer` ([ADR 0004](docs/adr/0004-auth.md)). The confirmation and reset e-mails arrive in Mailpit (or `.mail/`) while the worker runs.
+
+- **First administrator** of a local environment: sign up at `/sign-up`, confirm the address, turn on two-factor authentication at `/account/security`, then run `pnpm admin:create --email <address>` and sign in again with the authenticator code. The command refuses `NODE_ENV=production` and a database that is not on this machine, and prints no secrets.
+- **Demo accounts** (`pnpm db:seed`, never with `NODE_ENV=production`): `<slug>@example.test` for `demo-pending`, `demo-root-a`, `demo-hub-a`, `demo-free-sifu-5`, `demo-pro-sifu-8` and `demo-two-lineages`, and `demo-admin`, `demo-archivist` and `demo-moderator` with TOTP. The password is `E2E_PASSWORD` and the staff TOTP secret `E2E_TOTP_SECRET` from `.env`: throwaway values that `scripts/init-env.sh` generates for this machine only. E2E tests sign in with `signInAs(page, slugOrRole)` from `e2e/helpers/auth.ts`.
+- **Staff** (`admin`, `moderator`, `archivist`) must have TOTP on, and a staff page opens only in a session that passed the second factor.
 
 Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 terminal). Line endings are always LF (`.gitattributes`), so Windows Git settings cannot introduce CRLF changes. The services listen only on `127.0.0.1`: Mailpit is at <http://localhost:8025>, the S3 endpoint at <http://localhost:8333>.
 
@@ -79,12 +87,12 @@ Install Docker Desktop, Node 24 (nvm or Homebrew), `npm install --global pnpm@12
 
 ### Claude Code cloud session
 
-Nothing to do: the SessionStart hook in `.claude/settings.json` runs `scripts/cloud-setup.sh`, which installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (cloud sessions have no Docker daemon and cannot reach apt.postgresql.org), creates the UTF-8 test database, bootstraps the database roles with throwaway passwords, installs the pinned pnpm and the dependencies, and exports `TEST_DATABASE_URL`, the role passwords, `MAIL_TRANSPORT=file` (no Mailpit without Docker) (and `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects a different Chromium build than the preinstalled one). To run it by hand:
+Nothing to do: the SessionStart hook in `.claude/settings.json` runs `scripts/cloud-setup.sh`, which installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (cloud sessions have no Docker daemon and cannot reach apt.postgresql.org), creates the UTF-8 test database, bootstraps the database roles with throwaway passwords, installs the pinned pnpm and the dependencies, and exports `TEST_DATABASE_URL`, the role passwords, `MAIL_TRANSPORT=file` (no Mailpit without Docker), the account settings of M02 (`BETTER_AUTH_SECRET`, `IP_HMAC_KEY`, `E2E_PASSWORD`, `E2E_TOTP_SECRET`: random throwaway values kept in `~/.local/state/wingchunroots/cloud-secrets.env`, outside the repository) (and `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects a different Chromium build than the preinstalled one). To run it by hand:
 
 ```bash
 scripts/cloud-setup.sh
 eval "$(scripts/cloud-setup.sh --print-env)"
-scripts/verify.sh M01b
+scripts/verify.sh M02
 ```
 
 The script is for cloud sessions only (`CLAUDE_CODE_REMOTE=true`). On your own machine it stops with exit code 2, because it would install a native PostgreSQL on port 5432 next to Docker Compose; use `scripts/init-env.sh` and `docker compose up -d --wait` there.
@@ -103,9 +111,10 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:int` | Integration tests against PostGIS: `TEST_DATABASE_URL`, or Testcontainers when it is not set (needs Docker) |
 | `scripts/db-bootstrap.sh` | Roles `migrator`, `app_rw`, `app_public_ro` with the passwords from `.env`, database owner and PostGIS; once per database (idempotent) |
-| `pnpm db:migrate` / `pnpm db:seed` | Apply the migrations and the pg-boss schema step / load the fictional demo data (`DATABASE_URL`, or `TEST_DATABASE_URL` when it is not set) |
+| `pnpm db:migrate` / `pnpm db:seed` | Apply the migrations and the pg-boss schema step / load the fictional demo data and, from M02, the demo accounts (`DATABASE_URL`, or `TEST_DATABASE_URL` when it is not set; never with `NODE_ENV=production`) |
 | `pnpm db:reset` | Drop every application object; only a local database or `TEST_DATABASE_URL`, never with `NODE_ENV=production` |
 | `pnpm db:check` | `drizzle-kit check`, no schema change without a migration, and all migrations applied to a new empty database |
+| `pnpm admin:create --email <address>` | Local only: makes an existing account with a confirmed address and TOTP on an admin, ends its sessions and writes `role.change` to the audit log; prints no secrets |
 | `pnpm db:generate` | A new migration from a change in `src/server/db/schema/` |
 | `pnpm fixtures:generate` | Rewrite `fixtures/lineage-600.json` from the fixture generator |
 | `pnpm build` / `pnpm start` | Production build and server |

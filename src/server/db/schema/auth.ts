@@ -1,7 +1,7 @@
 // Login accounts (Better Auth 1.7, milestone M02; plan §3.2, §6.2). The tables carry the prefix
 // auth_ (Better Auth `modelName`); the property names are Better Auth's field names, so the
 // Drizzle adapter maps them without a `fields` table. An account is separate from the archival
-// record `person` (D04): a person may have no account, and an account gets a person only at
+// record `person` (DEFAULT D04): a person may have no account, and an account gets a person only at
 // onboarding (person.claimed_by_user_id).
 //
 // Ids are UUIDv7 from the application (Better Auth `advanced.database.generateId` calls

@@ -11,7 +11,7 @@ import type { Database } from '../db';
 import { emailDelivery } from '../db/schema';
 import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import type { Mailer } from '../mail/types';
-import { purgeExpiredEmailAddresses } from '../services/retention';
+import { purgeExpiredEmailAddresses, purgeExpiredSessions } from '../services/retention';
 import { TemplateDataError } from '../templates/email';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
@@ -106,6 +106,8 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
       try {
         const result = await purgeExpiredEmailAddresses(db);
         log(`${QUEUE.retentionPurge}: erased ${result.emailDeliveries} delivery address(es), ${result.invitations} invitation address(es)`);
+        const signIn = await purgeExpiredSessions(db);
+        log(`${QUEUE.retentionPurge}: deleted ${signIn.sessions} expired session(s), ${signIn.verifications} expired verification value(s)`);
       } catch (error) {
         const code = failureCode(error);
         const last = job.retryCount >= job.retryLimit;

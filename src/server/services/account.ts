@@ -1,5 +1,5 @@
 // The account and its own person (milestone M02, In scope 5; plan §3.2 "Better Auth and a separate
-// person", §6.2). An account is not a person (D04): onboarding creates the account's own archival
+// person", §6.2). An account is not a person (DEFAULT D04): onboarding creates the account's own archival
 // record, stewardship = self and claimed_by_user_id, private to the people involved until the
 // owner chooses to show it (the tick starts unticked).
 

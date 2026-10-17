@@ -1,5 +1,6 @@
-// The retention job of M01b (docs/data-model.md §7): e-mail addresses are erased when their period
-// is over, and only then. Runs as app_rw, like the worker.
+// The retention job of M01b and M02 (docs/data-model.md §7): e-mail addresses are erased when their
+// period is over, and expired sessions and verification values are deleted, and only then. Runs as
+// app_rw, like the worker.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -8,7 +9,7 @@ import { withClient } from '../db/admin';
 import { rolePassword } from '../db/env';
 import { PG, pgError, rows } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
-import { purgeExpiredEmailAddresses } from './retention';
+import { purgeExpiredEmailAddresses, purgeExpiredSessions } from './retention';
 
 let testDb: TestDatabase;
 let db: Database;
@@ -105,5 +106,34 @@ describe('purgeExpiredEmailAddresses', () => {
       expect(pending.code).toBe(PG.checkViolation);
       expect(pending.constraint).toBe('invitation_pending_has_email');
     });
+  });
+});
+
+describe('purgeExpiredSessions', () => {
+  it('deletes expired sessions and verification values and keeps the current ones', async () => {
+    await withClient(testDb.url, async (c) => {
+      const [{ id: userId }] = (
+        await c.query<{ id: string }>(`INSERT INTO auth_user (email, email_verified) VALUES ('demo-retention@example.test', true) RETURNING id`)
+      ).rows as [{ id: string }];
+      await c.query(
+        `INSERT INTO auth_session (token, user_id, expires_at, ip_address) VALUES
+           ('expired-1', $1, now() - interval '1 minute', $2),
+           ('expired-2', $1, now() - interval '30 days', NULL),
+           ('current',   $1, now() + interval '7 days', $2)`,
+        [userId, hash(7)],
+      );
+      await c.query(`
+        INSERT INTO auth_verification (identifier, value, expires_at) VALUES
+          ('expired-token', 'demo', now() - interval '1 hour'),
+          ('current-token', 'demo', now() + interval '1 hour')`);
+    });
+
+    expect(await purgeExpiredSessions(db, { batchSize: 1 })).toEqual({ sessions: 2, verifications: 1 });
+    expect(await purgeExpiredSessions(db)).toEqual({ sessions: 0, verifications: 0 });
+    await withClient(testDb.url, async (c) => {
+      expect(await rows(c, `SELECT token FROM auth_session ORDER BY token`)).toEqual([{ token: 'current' }]);
+      expect(await rows(c, `SELECT identifier FROM auth_verification ORDER BY identifier`)).toEqual([{ identifier: 'current-token' }]);
+    });
+    await expect(purgeExpiredSessions(db, { batchSize: 0 })).rejects.toThrow(/batchSize/);
   });
 });
