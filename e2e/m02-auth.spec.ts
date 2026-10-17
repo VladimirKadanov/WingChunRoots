@@ -143,6 +143,17 @@ test('@M02 password reset through the emailed link', async ({ page }) => {
   await expect(page).toHaveURL(/\/onboarding$/);
 });
 
+test('@M02 a signed-in visitor asking for a new confirmation link gets the same neutral answer', async ({ page }) => {
+  // The form acts for any address, not for the signed-in account (no EMAIL_MISMATCH, no
+  // EMAIL_ALREADY_VERIFIED, no generic error).
+  await signInAs(page, 'user');
+  await page.goto('/verify-email');
+  await field(page, 'E-mail address').fill(uniqueEmail('resend'));
+  await page.getByRole('button', { name: 'Send a new link' }).click();
+  await expect(page.getByRole('heading', { name: 'Check your inbox' })).toBeVisible();
+  await expect(formError(page)).toHaveCount(0);
+});
+
 test('@M02 consent and adult checkboxes start unticked and are stored with the document version', async ({ page }) => {
   await page.goto('/sign-up');
   for (const label of Object.values(CONSENT_LABELS)) {
@@ -336,6 +347,48 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
     headers: { origin: BASE_URL },
   });
   expect(again.status()).toBe(409);
+});
+
+test('@M02 an account with a profile is asked again for a new version of the documents', async ({ page, context }) => {
+  const account = await signInAs(page, 'new');
+  await page.goto('/onboarding');
+  await field(page, 'Name in Latin letters').fill('Demo Returning');
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  const notice = page.getByRole('link', { name: 'Confirm the updated documents' });
+  await expect(notice).toHaveCount(0);
+
+  // The terms get a new version: the account's grant is for the old one now.
+  await getDb().execute(sql`
+    UPDATE consent_record SET document_version = '2000-01-01-demo-old'
+     WHERE kind = 'terms' AND user_id = (SELECT id FROM auth_user WHERE email = ${account.email})`);
+  await page.goto('/account');
+  await expect(notice).toBeVisible();
+
+  // Signing in again lands on the confirmations.
+  await context.clearCookies();
+  await signInThroughForm(page, account.email, account.password);
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Confirm the updated documents');
+  const terms = field(page, CONSENT_LABELS.terms);
+  await expect(terms).not.toBeChecked();
+  for (const theme of ['dark', 'light'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expectNoAxeViolations(page, `/onboarding, documents only (${theme})`);
+  }
+  await page.getByRole('button', { name: 'Confirm and continue' }).click();
+  await expect(formError(page)).toBeVisible();
+  await expect(terms).toBeFocused();
+  await expectNoAxeViolations(page, '/onboarding, documents only, with errors');
+  await terms.check();
+  await page.getByRole('button', { name: 'Confirm and continue' }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(notice).toHaveCount(0);
+
+  const versions = (await consentsOf(account.email)).filter((row) => row.kind === 'terms').map((row) => row.document_version);
+  expect(versions).toContain(LEGAL_DOCUMENTS.terms.version);
+  // The profile is unchanged: still one person.
+  expect(await personOf(account.email)).toHaveLength(1);
 });
 
 test('@M02 onboarding requires a Latin-script primary name and stores an optional Chinese name with its lang', async ({ page }) => {

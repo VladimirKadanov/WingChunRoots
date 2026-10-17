@@ -31,8 +31,17 @@ import {
 // --- Countries -----------------------------------------------------------------------------------
 
 const regionNames = new Intl.DisplayNames('en', { type: 'region', fallback: 'none' });
-// Codes Intl names that are not countries or territories.
-const NOT_A_COUNTRY = new Set(['EU', 'EZ', 'UN', 'QO', 'XA', 'XB', 'ZZ']);
+// Codes Intl names that are not ISO 3166-1 alpha-2 countries or territories: groupings and
+// pseudo-regions; exceptionally reserved codes (UK for GB, the Canary Islands, Ceuta and Melilla,
+// Ascension, Tristan da Cunha, Clipperton, Diego Garcia); and the codes of countries that no longer
+// exist (the Soviet Union, East Germany, Yugoslavia, Zaire, Burma's old code, …), which would show
+// as a second "United Kingdom", "Germany" or "Russia". XK (Kosovo) is user-assigned but in common
+// use, so it stays.
+const NOT_A_COUNTRY = new Set([
+  'EU', 'EZ', 'UN', 'QO', 'XA', 'XB', 'ZZ',
+  'UK', 'IC', 'EA', 'AC', 'TA', 'CP', 'DG',
+  'SU', 'DD', 'FX', 'YU', 'CS', 'ZR', 'BU', 'TP', 'AN', 'HV', 'DY', 'RH', 'VD', 'YD', 'NH', 'NT', 'CQ',
+]);
 
 export interface Country {
   code: string;
@@ -211,15 +220,17 @@ export async function onboardingOptions(principal: Principal | null): Promise<On
 }
 
 /**
- * Where a signed-in account goes next: onboarding until it has its own person, then the page it
- * asked for (`next`, a local path) or its account page.
+ * Where a signed-in account goes next: onboarding until it has its own person and has confirmed
+ * the current versions of the required documents, then the page it asked for (`next`, a local
+ * path) or its account page. Two-factor setup and the admin area are never held back, so staff
+ * can finish signing in.
  */
 export async function landingPath(userId: string, next: unknown): Promise<string> {
-  const target = safeNextPath(next, '/account');
-  if (await ownPerson(userId)) return target === '/onboarding' ? '/account' : target;
-  return target.startsWith('/account/security') || target.startsWith('/admin')
-    ? target
-    : `/onboarding${target === '/account' ? '' : `?next=${encodeURIComponent(target)}`}`;
+  const requested = safeNextPath(next, '/account');
+  const target = requested === '/onboarding' ? '/account' : requested;
+  const settled = Boolean(await ownPerson(userId)) && (await missingRequiredConsents(getDb(), userId)).length === 0;
+  if (settled || target.startsWith('/account/security') || target.startsWith('/admin')) return target;
+  return `/onboarding${target === '/account' ? '' : `?next=${encodeURIComponent(target)}`}`;
 }
 
 // --- Onboarding ----------------------------------------------------------------------------------

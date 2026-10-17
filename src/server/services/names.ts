@@ -39,7 +39,9 @@ export function cleanName(value: string): string {
 
 // Separators that names use in any script: spaces, apostrophes, hyphens, dots, middle dots.
 const SEPARATORS = String.raw`\s'’.\-·・`;
-const LATIN_NAME = new RegExp(String.raw`^[\p{Script=Latin}\p{M}${SEPARATORS}]+$`, 'u');
+// Combining marks only from Script=Inherited (the accents of Latin letters): a mark of another
+// script (a Devanagari nukta) is not Latin, and the e-mail templates refuse it in the display name.
+const LATIN_NAME = new RegExp(String.raw`^[\p{Script=Latin}\p{Script=Inherited}${SEPARATORS}]+$`, 'u');
 const LATIN_LETTER = /\p{Script=Latin}/u;
 
 /** A name in Latin script: Latin letters with their accents and the usual separators only. */

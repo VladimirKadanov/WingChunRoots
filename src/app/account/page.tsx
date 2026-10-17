@@ -54,6 +54,15 @@ export default async function AccountPage() {
           <Section id="profile-heading" title="Profile">
             {me.person ? (
               <div className="grid gap-5">
+                {me.missingConsents.length > 0 ? (
+                  <p className="border-l-2 border-border-strong pl-3 text-ui">
+                    <strong className="font-semibold">The documents changed.</strong> The terms of use or the privacy notice have a new
+                    version.{' '}
+                    <Link href="/onboarding" className="link">
+                      Confirm the updated documents
+                    </Link>
+                  </p>
+                ) : null}
                 <NameList names={me.person.names} />
                 <p className="flex items-start gap-2 text-ui">
                   {me.person.visibility === 'public' ? (

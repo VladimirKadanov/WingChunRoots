@@ -18,6 +18,7 @@ import { auditLog, consentRecord, person, personName } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { LEGAL_DOCUMENTS } from '../legal/documents';
 import { handleApiRequest } from '../rpc/handler';
+import { landingPath } from './account';
 
 let testDb: TestDatabase | undefined;
 let hongKong: string;
@@ -220,5 +221,35 @@ describe('account.onboard', () => {
     });
     expect(unknown.status).toBe(400);
     expect(fieldsOf(unknown.data).placeId).toEqual(expect.any(String));
+  });
+});
+
+describe('landingPath', () => {
+  it('holds an account on /onboarding until it has a profile and the current documents are confirmed', async () => {
+    const { account, token } = await readyAccount('landing');
+    expect(await landingPath(account.id, undefined)).toBe('/onboarding');
+    expect(await landingPath(account.id, '/schools')).toBe('/onboarding?next=%2Fschools');
+    expect(await landingPath(account.id, '/account/security')).toBe('/account/security');
+
+    expect((await call(token, 'POST', '/account/onboard', { primaryName: 'Demo Lander' })).status).toBe(200);
+    expect(await landingPath(account.id, undefined)).toBe('/account');
+    expect(await landingPath(account.id, '/onboarding')).toBe('/account');
+    expect(await landingPath(account.id, '/schools')).toBe('/schools');
+
+    // The terms get a new version: the grant the account gave is for the old one, so it is asked
+    // again, even though it already has a profile.
+    await getDb()
+      .update(consentRecord)
+      .set({ documentVersion: '2000-01-01-demo-old' })
+      .where(and(eq(consentRecord.userId, account.id), eq(consentRecord.kind, 'terms')));
+    expect((await call(token, 'GET', '/account/me')).data!.missingConsents).toEqual(['terms']);
+    expect(await landingPath(account.id, undefined)).toBe('/onboarding');
+    expect(await landingPath(account.id, '/schools')).toBe('/onboarding?next=%2Fschools');
+    expect(await landingPath(account.id, '/account/security')).toBe('/account/security');
+    // The exemption is decided on the normalised path, so dot segments do not get around it.
+    expect(await landingPath(account.id, '/account/security/../../schools')).toBe('/onboarding?next=%2Fschools');
+
+    expect((await call(token, 'POST', '/consent/record', { kinds: ['terms'] })).data!.recorded).toEqual(['terms']);
+    expect(await landingPath(account.id, '/schools')).toBe('/schools');
   });
 });

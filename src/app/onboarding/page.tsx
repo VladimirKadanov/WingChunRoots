@@ -2,7 +2,8 @@
 // required; the name in its original script (with its language), Jyutping, pinyin, country, city
 // and the year training started are optional. The profile starts private; "Show my profile
 // publicly" is never ticked in advance (plan §6.2). Data from the account.me and
-// account.onboardingOptions procedures.
+// account.onboardingOptions procedures. An account that already has its profile but has not
+// confirmed a new version of the documents gets only the confirmations here (In scope 4).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -12,6 +13,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { safeNextPath } from '@/server/auth/guards';
 import { guardRoute } from '@/server/auth/web';
 import { serverClient } from '@/server/rpc/server';
+import { ConfirmConsentsForm } from './confirm-consents-form';
 import { OnboardingForm } from './onboarding-form';
 
 export const instant = false;
@@ -46,7 +48,19 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const next = safeNextPath(query.next, '/account');
   const client = serverClient(await headers());
   const me = await client.account.me();
-  if (me.person) return <PageRedirect to={next === '/onboarding' ? '/account' : next} title="Your profile is already set up" />;
+  if (me.person) {
+    const after = next === '/onboarding' ? '/account' : next;
+    if (me.missingConsents.length === 0) return <PageRedirect to={after} title="Your profile is already set up" />;
+    return (
+      <AuthFrame
+        eyebrow="Your account · documents"
+        title="Confirm the updated documents"
+        lede="Your profile is set up. Before you continue, confirm the documents that changed since you last agreed to them."
+      >
+        <ConfirmConsentsForm missingConsents={me.missingConsents} next={after} />
+      </AuthFrame>
+    );
+  }
   const options = await client.account.onboardingOptions();
   return (
     <AuthFrame

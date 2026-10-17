@@ -31,7 +31,9 @@ export async function resendConfirmationAction(_previous: FormState, form: FormD
       values,
     };
   }
-  const result = await authAction('/send-verification-email', { body: { email } });
+  // Without the session: a signed-in visitor asking for any address gets the same neutral answer
+  // (with a session, Better Auth answers EMAIL_MISMATCH or EMAIL_ALREADY_VERIFIED instead).
+  const result = await authAction('/send-verification-email', { body: { email }, anonymous: true });
   if (!result.ok) return { status: 'error', message: authMessage(result.code), values };
   // The same answer for every address (no account enumeration).
   return { status: 'done', values: { email } };

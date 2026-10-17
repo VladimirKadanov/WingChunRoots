@@ -16,6 +16,8 @@ describe('names (plan §5.3)', () => {
     ['蘇竹晴', false],
     ['Мира Пробнова', false],
     ['Mira 蘇', false],
+    ['Anna\u093C', false], // a Devanagari nukta: a combining mark, but not of the Latin script
+    ['Z\u0332oe', true], // a combining low line (Script=Inherited) stays allowed
     ['---', false],
     ['', false],
   ])('isLatinName(%j) is %s', (value, expected) => {

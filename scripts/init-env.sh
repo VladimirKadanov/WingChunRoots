@@ -36,7 +36,8 @@ s3_access_key="wcr$(random_hex 8)"
 s3_secret_key="$(random_hex 20)"
 
 # Accounts (M02): the Better Auth secret, the ip_hmac key and the test-only credentials of the
-# seeded demo accounts. The TOTP secret is base32 (32 characters = 160 bits, RFC 4226).
+# seeded demo accounts. The TOTP secret is 32 random characters (160 bits, RFC 4226), stored as
+# Better Auth stores its own; an authenticator app takes its base32 encoding (admin guide).
 better_auth_secret="$(random_hex 32)"
 ip_hmac_key="$(random_hex 32)"
 e2e_password="wcr-$(random_hex 12)"

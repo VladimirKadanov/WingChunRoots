@@ -81,10 +81,20 @@ export function parseSetCookie(raw: string): ParsedCookie | null {
 
 /**
  * Calls a Better Auth endpoint from a Server Action with the browser's cookies, and passes the
- * cookies it sets (session, two-factor challenge, sign-out) back to the browser.
+ * cookies it sets (session, two-factor challenge, sign-out) back to the browser. `anonymous`
+ * leaves the session out, for a form that acts for any address rather than for the signed-in
+ * account (asking for a new confirmation link).
  */
-export async function authAction<T = unknown>(path: string, init: Omit<AuthCallInit, 'headers'> = {}): Promise<AuthCallResult<T>> {
-  const result = await callAuthEndpoint<T>(path, { ...init, headers: await headers() });
+export async function authAction<T = unknown>(
+  path: string,
+  { anonymous = false, ...init }: Omit<AuthCallInit, 'headers'> & { anonymous?: boolean } = {},
+): Promise<AuthCallResult<T>> {
+  const forwarded = new Headers(await headers());
+  if (anonymous) {
+    forwarded.delete('cookie');
+    forwarded.delete('authorization');
+  }
+  const result = await callAuthEndpoint<T>(path, { ...init, headers: forwarded });
   const jar = await cookies();
   for (const raw of result.setCookies) {
     const cookie = parseSetCookie(raw);

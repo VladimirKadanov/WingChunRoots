@@ -9,6 +9,7 @@
 
 import { ORPCError, os, ValidationError } from '@orpc/server';
 
+import { requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { accountOverview, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
@@ -46,6 +47,18 @@ const base = os.$context<RpcContext>().use(async ({ next }) => {
   }
 });
 
+// The session is checked before the input (middlewares before .input() run before validation), so
+// a request without the right session gets 401 or 403, never the field errors of its body. The
+// services check the principal again themselves (CLAUDE.md §5).
+const signedIn = base.use(({ context, next }) => {
+  requireUser(context.principal);
+  return next();
+});
+const adminWithSecondFactor = base.use(({ context, next }) => {
+  requireStaff2FA(context.principal, ['admin']);
+  return next();
+});
+
 export const router = {
   account: {
     me: base
@@ -54,13 +67,13 @@ export const router = {
     onboardingOptions: base
       .route({ method: 'GET', path: '/account/onboarding-options', summary: 'Countries, cities and scripts for onboarding' })
       .handler(({ context }) => onboardingOptions(context.principal)),
-    onboard: base
+    onboard: signedIn
       .route({ method: 'POST', path: '/account/onboard', summary: "Create the account's own person (onboarding)" })
       .input(onboardInput)
       .handler(({ context, input }) => onboard(context.principal, input, context.meta)),
   },
   consent: {
-    record: base
+    record: signedIn
       .route({ method: 'POST', path: '/consent/record', summary: 'Record consents for the current document versions' })
       .input(recordConsentsInput)
       .handler(({ context, input }) => recordConsents(context.principal, input, context.meta)),
@@ -69,7 +82,7 @@ export const router = {
     overview: base
       .route({ method: 'GET', path: '/admin/overview', summary: 'Counts for the admin page (staff with a verified second factor)' })
       .handler(({ context }) => adminOverview(context.principal)),
-    setRole: base
+    setRole: adminWithSecondFactor
       .route({ method: 'POST', path: '/admin/set-role', summary: "Change an account's role (admin with a verified second factor)" })
       .input(setRoleInput)
       .handler(({ context, input }) => setUserRole(context.principal, input, context.meta)),

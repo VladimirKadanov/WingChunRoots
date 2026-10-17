@@ -21,4 +21,5 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/account/security/actions.ts#confirmTwoFactorAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
   'src/app/account/security/actions.ts#verifySessionAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
   'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard'] },
+  'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
 };

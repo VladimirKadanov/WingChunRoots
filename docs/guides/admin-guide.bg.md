@@ -187,7 +187,14 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 | `demo-moderator@example.test` | `moderator` | — |
 
 - **Паролата** на всички е стойността на `E2E_PASSWORD` от `.env`.
-- **TOTP тайната** на трите акаунта на персонала е `E2E_TOTP_SECRET` (base32). За да влезете като персонал, добавете я ръчно в приложението за удостоверяване: „въведи ключ“, време, 6 цифри.
+- **TOTP тайната** на трите акаунта на персонала е `E2E_TOTP_SECRET`, във вида, в който Better Auth пази своите тайни. Приложението за удостоверяване иска нейното base32 кодиране. Тази команда го отпечатва от `.env`:
+
+  ```bash
+  E2E_TOTP_SECRET="$(grep '^E2E_TOTP_SECRET=' .env | cut -d= -f2-)" node --input-type=module \
+    -e "import { base32 } from '@better-auth/utils/base32'; console.log(base32.encode(process.env.E2E_TOTP_SECRET, { padding: false }))"
+  ```
+
+  Добавете отпечатания ключ в приложението ръчно („въведи ключ“, по време, 6 цифри). Не въвеждайте самата стойност от `.env`: с нея кодовете няма да съвпадат.
 
 Без тези две настройки seed-ът създава акаунтите без парола и без TOTP.
 

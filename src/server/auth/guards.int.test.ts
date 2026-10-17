@@ -298,6 +298,15 @@ describe('oRPC', () => {
     expect((await v1('/account/me', { headers: new Headers({ cookie: browser.cookieHeader() }) })).status).toBe(200);
     expect((await v1('/account/me')).status).toBe(401);
     expect((await v1('/account/me', { headers: bearerHeaders(`${token.slice(0, -4)}AAA=`) })).status).toBe(401);
+
+    // The session is checked before the input: no field errors for a request without the right session.
+    const malformed = { primaryName: 42, trainingStartYear: 'soon' };
+    const anonymousChange = await v1('/account/onboard', { method: 'POST', body: malformed });
+    expect(anonymousChange.status).toBe(401);
+    expect(JSON.stringify(await anonymousChange.json())).not.toContain('fields');
+    const memberSetRole = await v1('/admin/set-role', { method: 'POST', headers: bearerHeaders(token), body: { userId: 'x', role: 'god' } });
+    expect(memberSetRole.status).toBe(403);
+    expect(JSON.stringify(await memberSetRole.json())).not.toContain('fields');
   });
 
   it('refuses a cookie-authenticated change from another site (CSRF), and allows bearer requests', async () => {

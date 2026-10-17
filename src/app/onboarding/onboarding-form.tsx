@@ -1,12 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useActionState, useState } from 'react';
 
-import { CONSENT_LABELS, CONSENT_ORDER, type ConsentName } from '@/components/account/consents';
+import { CONSENT_ORDER } from '@/components/account/consents';
 import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, firstInvalid, useFocusOnError, useFormId } from '@/components/account/fields';
 import { IDLE } from '@/lib/form-state';
 import { onboardAction } from './actions';
+import { MissingConsents } from './missing-consents';
 
 const FORM_NAME = 'onboarding';
 
@@ -47,44 +47,13 @@ export function OnboardingForm({
   const countryName = new Map(options.countries.map((c) => [c.code, c.name]));
   const placesByCountry = new Map<string, OnboardingFormOptions['places'][number][]>();
   for (const place of options.places) placesByCountry.set(place.countryCode, [...(placesByCountry.get(place.countryCode) ?? []), place]);
-  const askConsents = CONSENT_ORDER.filter((name) => missingConsents.includes(name) || (missingConsents.length > 0 && name === 'privacy_ack'));
 
   return (
     <form id={FORM} action={action} noValidate className="grid gap-10">
       <input type="hidden" name="next" value={next} />
       <FormMessage form={FORM} state={state} />
 
-      {askConsents.length > 0 ? (
-        <fieldset className="grid gap-1">
-          <legend className="mb-1 font-display text-2xl">First, confirm</legend>
-          <p className="mb-2 text-sm text-fg-muted">
-            The <Link href="/legal/terms" className="link">terms of use</Link> or the{' '}
-            <Link href="/legal/privacy" className="link">privacy notice</Link> changed since you joined, or your account was created
-            without them.
-          </p>
-          {askConsents.map((name) => {
-            const required = missingConsents.includes(name);
-            return (
-              <div key={name}>
-                {required ? <input type="hidden" name="requiredConsent" value={name} /> : null}
-                <CheckboxField
-                  form={FORM}
-                  name={name}
-                  label={
-                    <>
-                      {CONSENT_LABELS[name as ConsentName]}
-                      {required ? null : <span className="text-fg-muted"> (optional)</span>}
-                    </>
-                  }
-                  required={required}
-                  state={state}
-                  autoFocus={first === name}
-                />
-              </div>
-            );
-          })}
-        </fieldset>
-      ) : null}
+      <MissingConsents form={FORM} state={state} missingConsents={missingConsents} first={first} legend="First, confirm" />
 
       <fieldset className="grid gap-6">
         <legend className="mb-4 font-display text-2xl">Your name</legend>

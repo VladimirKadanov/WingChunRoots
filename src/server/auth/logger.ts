@@ -8,7 +8,9 @@ import { redactAddresses } from '../mail/redact';
 type Level = 'debug' | 'info' | 'warn' | 'error';
 
 const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-const IPV6 = /\b(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{0,4}\b/gi;
+// A whole token of hex digits, colons and dots with at least two colons: every IPv6 form, also
+// compressed (2001:db8::1, fe80::1, ::1). It may also catch a clock time; over-redaction is safe.
+const IPV6 = /(?<![\w:.])[0-9a-f.]*:[0-9a-f.]*:[0-9a-f:.]*(?![\w:.])/gi;
 
 /** A log message without e-mail or IP addresses. */
 export function redactLogText(text: string): string {

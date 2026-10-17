@@ -8,6 +8,7 @@ import { getDb } from '../db';
 import { auditLog, authSession, authUser, consentRecord, emailDelivery } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { LEGAL_DOCUMENTS } from '../legal/documents';
+import { ipHmac } from './ip';
 import {
   authFetch,
   sessionCount,
@@ -135,6 +136,8 @@ describe('sign-up', () => {
     // ip_hmac, never the address (plan §6.4).
     expect(session!.ipAddress).toMatch(/^[0-9a-f]{64}$/);
     expect(session!.ipAddress).not.toContain(browser.ip);
+    // The same ip_hmac as the audit log gives this client (requestMeta: clientIp, then ipHmac).
+    expect(session!.ipAddress).toBe(ipHmac(browser.ip));
     expect(session!.twoFactorVerifiedAt).toBeNull();
   });
 

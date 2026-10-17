@@ -30,7 +30,7 @@ import { getDb } from '../db';
 import { authSession, authUser } from '../db/schema';
 import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../services/consent';
 import { requestMeta } from '../services/context';
-import { ipHmac } from './ip';
+import { clientIp, ipHmac } from './ip';
 import { isStaffRole } from './principal';
 
 export const VERIFY_TOTP_PATH = '/two-factor/verify-totp';
@@ -166,9 +166,17 @@ export async function afterUserUpdate(
   });
 }
 
-/** The session row stores the ip_hmac and a bounded user agent (plan §6.4). */
-export async function beforeSessionCreate(session: { ipAddress?: string | null; userAgent?: string | null } & Record<string, unknown>) {
-  const ip = session.ipAddress ?? null;
+/**
+ * The session row stores the ip_hmac and a bounded user agent (plan §6.4). The address comes from
+ * the request through clientIp(), like the audit log (requestMeta), so one client has one ip_hmac
+ * in both; Better Auth's own address (normalised, IPv6 cut to /64) is used only without a request.
+ */
+export async function beforeSessionCreate(
+  session: { ipAddress?: string | null; userAgent?: string | null } & Record<string, unknown>,
+  ctx?: DbHookContext,
+) {
+  const headers = ctx?.headers ?? ctx?.request?.headers;
+  const ip = headers ? clientIp(new Headers(headers)) : (session.ipAddress ?? null);
   return {
     data: {
       ...session,
