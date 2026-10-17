@@ -70,3 +70,10 @@ React компоненти, API, изобразяване, печат. Подр�
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-10-16 17:57 — модулът `src/lib/lineage-layout` (рангове, ELK граф, сцена, асинхронен API, worker, набори), синтетичният генератор, границата в ESLint и единичните тестове са зелени; lint, typecheck и `pnpm test` минават (bafe383)
+- 2026-10-16 18:05 — `pnpm bench:layout` и `docs/perf/layout-bench.md`, ADR 0005 (избран `NETWORK_SIMPLEX`: 0 от 598 его-изгледа с огънат гръбнак срещу 77 при `BRANDES_KOEPF`; `semiInteractive` пази реда в слоя), `licenses/addenda/elkjs.md` и `scripts/verify.d/M03.sh`; `scripts/verify.sh M03` → PASS (80f8e0a)
+- 2026-10-16 18:20 — поправки след `/code-review` (типизирани грешки за непознати настройки, отговор на всяка заявка към worker-а, измерването следва избрания алгоритъм); `scripts/verify.sh M03` и `scripts/verify.sh all` → PASS (267c44d)
+- 2026-10-16 18:30 — отворен PR #4 към `m00-foundation` (стъпаловиден PR, докато PR #1 и #2 не са слети); статусът в `docs/plan/README.md` е обновен (1d1bf0d)
+- 2026-10-16 21:34 — `m00-foundation` (M00 и M01, PR #2 и #3) е слят в клона с merge commit; `package.json` пази скриптовете и зависимостите на двата етапа, `pnpm-lock.yaml` е генериран наново с `pnpm install`; lint, typecheck и `pnpm test` минават (6989edc)
+- 2026-10-16 22:05 — поправки след независимия преглед: ELK в нишката на worker-а (`createInThreadElk`, тест в отделен файл и E2E в истински module worker), `fixtures/lineage-600.json` от M01 в тестовете, предпазните прагове и измерването (таблица 5), публични изгледи, по-строга граница в ESLint, `INVALID_INPUT` за лош вход; `scripts/verify.sh M03` и `scripts/verify.sh M01` → PASS (c0ccb6c, adaeec1)

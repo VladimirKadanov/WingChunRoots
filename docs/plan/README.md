@@ -11,7 +11,7 @@
 | M01 | [M01 — Модел на данни, роли в базата и фиктивни данни](M01-data-model.md) | M00 | PR отворен ([#3](https://github.com/VladimirKadanov/WingChunRoots/pull/3), клон `m01-data-model`; към `m00-foundation`, после към `main`) |
 | M01b | [M01b — Фонови задачи и поща](M01b-jobs-mail.md) | M01 | не е започнат |
 | M02 | [M02 — Акаунти, роли и съгласия](M02-accounts.md) | M00b, M01b | не е започнат |
-| M03 | [M03 — Модул за подредба на родословието](M03-lineage-layout.md) | M00 | не е започнат |
+| M03 | [M03 — Модул за подредба на родословието](M03-lineage-layout.md) | M00 | PR отворен ([#4](https://github.com/VladimirKadanov/WingChunRoots/pull/4), клон `m03-lineage-layout`; към `main`, след сливането на PR [#5](https://github.com/VladimirKadanov/WingChunRoots/pull/5) с M00 и M01) |
 | M04 | [M04 — API за родословието, публичен профил и списъчен изглед](M04-lineage-api.md) | M02 | не е започнат |
 | M05 | [M05 — Интерактивен изследовател: изгледи и връзки](M05-explorer-views.md) | M03, M04 | не е започнат |
 | M06 | [M06 — Изследовател: клавиатура, екранни четци, телефон и разгъване](M06-explorer-a11y.md) | M05 | не е започнат |
