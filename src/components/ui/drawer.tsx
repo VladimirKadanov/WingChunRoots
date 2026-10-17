@@ -158,7 +158,11 @@ export function Drawer({
               <div aria-hidden="true" className="mx-auto mb-2 h-1 w-10 rounded-full bg-border-strong md:hidden" />
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 pt-1">
-                  <BaseDrawer.Title className="line-clamp-2 font-display text-xl text-fg [overflow-wrap:anywhere]">{title}</BaseDrawer.Title>
+                  {/* line-clamp clips to the line boxes: leading-tight (1.25) holds Gloock's 1.2 em
+                      ascent and descent, so no descender is cut (WebKit counts it as overflow). */}
+                  <BaseDrawer.Title className="line-clamp-2 font-display text-xl leading-tight text-fg [overflow-wrap:anywhere]">
+                    {title}
+                  </BaseDrawer.Title>
                   {description ? <BaseDrawer.Description className="mt-0.5 text-sm text-fg-muted">{description}</BaseDrawer.Description> : null}
                 </div>
                 {snapPoints && snapPoints.length > 1 ? (
