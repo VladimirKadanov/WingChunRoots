@@ -18,6 +18,28 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
+const NOTES = [
+  {
+    title: 'Why we ask',
+    text: 'Confirming shows the address is yours before anyone can sign in with it, and that our e-mails reach you.',
+  },
+  {
+    title: 'One press',
+    text: 'The link opens this page and waits for your press, so a mail scanner that follows links cannot confirm the address for you.',
+  },
+  {
+    title: '24 hours',
+    text: 'The link works for a day. If it has run out, ask for a new one; nothing else about your account changes.',
+  },
+] as const;
+
+/** "e-mail" never breaks at its hyphen in a heading. */
+const TITLE = (
+  <>
+    Confirm your <span className="whitespace-nowrap">e-mail</span> address
+  </>
+);
+
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function VerifyEmailPage({ searchParams }: { searchParams: Search }) {
@@ -27,12 +49,14 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
     return (
       <AuthFrame
         eyebrow="Account"
-        title="Confirm your e-mail address"
+        title={TITLE}
         lede="Press the button to confirm that this address is yours. Then sign in with your password."
+        notes={NOTES}
+        notesLabel="Confirming your address"
       >
         <ConfirmEmailForm token={token} />
         <div className="mt-10 border-t border-border-subtle pt-8">
-          <ResendConfirmationForm title="Link expired? Send a new one" />
+          <ResendConfirmationForm title="Link expired? Send a new one" secondary />
         </div>
       </AuthFrame>
     );
@@ -40,8 +64,10 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
   return (
     <AuthFrame
       eyebrow="Account"
-      title="Confirm your e-mail address"
+      title={TITLE}
       lede="We sent a confirmation link when you created your account. It works for 24 hours. If it did not arrive or has expired, ask for a new one."
+      notes={NOTES}
+      notesLabel="Confirming your address"
     >
       <ResendConfirmationForm />
       <FormFooter>

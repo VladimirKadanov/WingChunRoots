@@ -139,7 +139,7 @@ export function TextField({
   // Passwords are never sent back to the page.
   const value = type === 'password' ? undefined : (state.values?.[name] ?? defaultValue);
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
         {optional ? <span className="font-normal text-fg-muted"> (optional)</span> : null}
@@ -192,7 +192,7 @@ export function SelectField({
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = `${id}-error`;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
         {optional ? <span className="font-normal text-fg-muted"> (optional)</span> : null}
@@ -238,7 +238,7 @@ export function CheckboxField({
   const error = state.status === 'error' ? state.fields?.[name] : undefined;
   const errorId = `${id}-error`;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-1">
+    <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-1">
       {/* The whole row is the label, so the target is the row (at least 44 px tall). */}
       <label htmlFor={id} className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 text-ui">
         <span className="relative grid size-6 shrink-0 place-items-center">
@@ -270,7 +270,21 @@ export function CheckboxField({
   );
 }
 
-export function SubmitButton({ pending, children, pendingLabel }: { pending: boolean; children: ReactNode; pendingLabel: string }) {
+/**
+ * The submit button of a form: the red primary action, or `secondary` for a second form on a page
+ * that already has its primary action (red only for the one primary action, docs/design/direction.md).
+ */
+export function SubmitButton({
+  pending,
+  children,
+  pendingLabel,
+  variant = 'primary',
+}: {
+  pending: boolean;
+  children: ReactNode;
+  pendingLabel: string;
+  variant?: 'primary' | 'secondary';
+}) {
   return (
     <button
       type="submit"
@@ -278,7 +292,7 @@ export function SubmitButton({ pending, children, pendingLabel }: { pending: boo
       onClick={(event) => {
         if (pending) event.preventDefault();
       }}
-      className={cx(buttonVariants({ variant: 'primary', size: 'lg' }), 'w-full sm:w-auto sm:min-w-48')}
+      className={cx(buttonVariants({ variant, size: 'lg' }), 'w-full sm:w-auto sm:min-w-48')}
     >
       {pending ? pendingLabel : children}
     </button>

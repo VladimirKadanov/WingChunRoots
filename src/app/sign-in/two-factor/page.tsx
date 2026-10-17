@@ -16,6 +16,17 @@ export const metadata: Metadata = {
   description: 'Enter the code from your authenticator app to finish signing in.',
 };
 
+const NOTES = [
+  {
+    title: 'The code changes',
+    text: 'Your authenticator app shows a new 6-digit code every 30 seconds. If it is about to change, wait for the next one.',
+  },
+  {
+    title: 'No phone at hand?',
+    text: 'Use one of the backup codes you saved when you turned two-factor authentication on. Each one works once.',
+  },
+] as const;
+
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function TwoFactorPage({ searchParams }: { searchParams: Search }) {
@@ -31,6 +42,8 @@ export default async function TwoFactorPage({ searchParams }: { searchParams: Se
       eyebrow="Sign in · step 2 of 2"
       title={method === 'totp' ? 'Enter your code' : 'Use a backup code'}
       lede="Your password was right. This account also asks for a second factor."
+      notes={NOTES}
+      notesLabel="The second step"
     >
       <TwoFactorForm key={method} method={method} next={next} />
       <FormFooter>

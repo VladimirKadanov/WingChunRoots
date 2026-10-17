@@ -22,6 +22,21 @@ const NOTICES = {
   'signed-out': 'You are signed out.',
 } as const;
 
+const NOTES = [
+  {
+    title: 'A confirmed address',
+    text: 'You can sign in once you have opened the link we e-mailed when you joined. Trying before that sends the link again.',
+  },
+  {
+    title: 'A code, if you turned it on',
+    text: 'Accounts with two-factor authentication also enter the code from their authenticator app. Staff accounts always do.',
+  },
+  {
+    title: 'Forgot the password?',
+    text: 'We e-mail a link that works once, for one hour. Saving a new password signs you out everywhere.',
+  },
+] as const;
+
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function SignInPage({ searchParams }: { searchParams: Search }) {
@@ -29,7 +44,13 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
   const next = safeNextPath(query.next, '');
   const notice = (Object.keys(NOTICES) as (keyof typeof NOTICES)[]).find((key) => query[key] === '1');
   return (
-    <AuthFrame eyebrow="Account" title="Sign in" lede={next ? 'Sign in to open the page you asked for.' : undefined}>
+    <AuthFrame
+      eyebrow="Account"
+      title="Sign in"
+      lede={next ? 'Sign in to open the page you asked for.' : undefined}
+      notes={NOTES}
+      notesLabel="Signing in"
+    >
       {notice ? (
         <p role="status" className="mb-6 flex gap-2 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm">
           <span aria-hidden="true" className="font-semibold">

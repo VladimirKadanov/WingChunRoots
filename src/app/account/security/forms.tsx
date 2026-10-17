@@ -92,7 +92,7 @@ function SetupSteps({ setup }: { setup: TotpSetupView }) {
           <code
             aria-labelledby={secretLabel}
             translate="no"
-            className="w-fit max-w-full rounded-sm border border-border-subtle bg-surface-2 px-3 py-2 font-mono text-base tracking-wider break-all select-all"
+            className="w-fit max-w-full rounded-sm border border-border-subtle bg-surface-2 px-3 py-2 font-mono text-base tracking-wider select-all"
           >
             {setup.secret}
           </code>

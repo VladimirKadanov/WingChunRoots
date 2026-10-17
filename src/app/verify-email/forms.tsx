@@ -26,7 +26,8 @@ export function ConfirmEmailForm({ token }: { token: string }) {
   );
 }
 
-export function ResendConfirmationForm({ title = 'Send the link again' }: { title?: string }) {
+/** `secondary` when the page's primary action is another form (the confirm button). */
+export function ResendConfirmationForm({ title = 'Send the link again', secondary = false }: { title?: string; secondary?: boolean }) {
   const [state, action, pending] = useActionState(resendConfirmationAction, IDLE);
   const form = useFormId('resend-confirmation');
   useFocusOnError(form, state);
@@ -63,7 +64,7 @@ export function ResendConfirmationForm({ title = 'Send the link again' }: { titl
         autoFocus={state.status === 'error' && Boolean(state.fields?.email)}
       />
       <div>
-        <SubmitButton pending={pending} pendingLabel="Sending…">
+        <SubmitButton pending={pending} pendingLabel="Sending…" variant={secondary ? 'secondary' : 'primary'}>
           Send a new link
         </SubmitButton>
       </div>

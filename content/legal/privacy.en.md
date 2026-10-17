@@ -18,7 +18,7 @@ The WingChunRoots pilot team. The full contact details of the controller will be
 
 We do **not** ask for your birth date. The pilot is for adults only, and you confirm your age with a tick.
 
-## 3. How we treat your IP address: `ip_hmac`
+## 3. How we treat your IP address (ip_hmac)
 
 We do not store your IP address. Where an address helps protect accounts (your sessions and the audit log of changes), we store `ip_hmac` instead: a keyed hash, HMAC-SHA-256, of the address with a secret key that only the server knows. It shows that two events came from the same address, but the address cannot be read back from it. The key is replaced every year, after which older values can no longer be matched with new ones. To limit repeated sign-in attempts, the server keeps addresses in memory for a few minutes at most, without writing them anywhere.
 

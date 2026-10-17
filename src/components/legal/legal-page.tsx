@@ -37,11 +37,11 @@ function BlockView({ block }: { block: Block }) {
   switch (block.kind) {
     case 'heading':
       return block.level === 2 ? (
-        <h2 id={block.id} className="mt-6 border-t border-border-subtle pt-6 font-display text-2xl first:mt-0">
+        <h2 id={block.id} className="mt-6 border-t border-border-subtle pt-6 font-display text-2xl text-fg first:mt-0">
           {block.text}
         </h2>
       ) : (
-        <h3 id={block.id} className="mt-2 font-display text-xl">
+        <h3 id={block.id} className="mt-2 font-display text-xl text-fg">
           {block.text}
         </h3>
       );

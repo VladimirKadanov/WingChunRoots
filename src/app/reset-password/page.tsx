@@ -17,6 +17,21 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
+const NOTES = [
+  {
+    title: 'One link, one hour',
+    text: 'The link in the e-mail works once and runs out after an hour. If it has, ask for a new one here.',
+  },
+  {
+    title: 'Every session ends',
+    text: 'Saving the new password signs your account out on every device, so the old password opens nothing.',
+  },
+  {
+    title: 'Your second factor stays',
+    text: 'If you use two-factor authentication, it stays on: you still enter the code from your app when you sign in.',
+  },
+] as const;
+
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function ResetPasswordPage({ searchParams }: { searchParams: Search }) {
@@ -24,7 +39,13 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   const token = typeof query.token === 'string' ? query.token.slice(0, 4096) : '';
   if (token) {
     return (
-      <AuthFrame eyebrow="Account" title="Choose a new password" lede="The link in your e-mail works once, for one hour.">
+      <AuthFrame
+        eyebrow="Account"
+        title="Choose a new password"
+        lede="The link in your e-mail works once, for one hour."
+        notes={NOTES}
+        notesLabel="How a reset works"
+      >
         <NewPasswordForm token={token} />
       </AuthFrame>
     );
@@ -34,6 +55,8 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
       eyebrow="Account"
       title="Reset your password"
       lede="Enter the address of your account. We send a link to choose a new password."
+      notes={NOTES}
+      notesLabel="How a reset works"
     >
       <RequestResetForm />
       <FormFooter>

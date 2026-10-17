@@ -13,7 +13,7 @@ export interface QrModules {
 
 export function QrCode({ qr, label, className }: { qr: QrModules; label: string; className?: string }) {
   return (
-    <div className={cx('theme-light inline-block rounded-sm border border-border-strong bg-surface-1 p-2 text-fg', className)}>
+    <div className={cx('theme-light w-fit justify-self-start rounded-sm border border-border-strong bg-surface-1 p-2 text-fg', className)}>
       <svg role="img" aria-label={label} viewBox={`0 0 ${qr.size} ${qr.size}`} width={200} height={200} shapeRendering="crispEdges" className="block size-[200px]">
         <path d={qr.path} fill="currentColor" />
       </svg>

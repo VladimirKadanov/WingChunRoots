@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 
 import { AuthFrame } from '@/components/account/auth-frame';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { TwoFactorState, type TwoFactorStateKind } from '@/components/account/two-factor-state';
 import { safeNextPath } from '@/server/auth/guards';
 import { isStaffRole } from '@/server/auth/principal';
 import { guardRoute } from '@/server/auth/web';
@@ -50,13 +51,13 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
   const justEnabled = query.enabled === '1';
   const justVerified = query.verified === '1';
 
-  let status: string;
+  let status: { state: TwoFactorStateKind; text: string };
   let body: ReactNode;
   if (!me.user.twoFactorEnabled) {
-    status = '– Two-factor authentication is off.';
+    status = { state: 'off', text: 'Two-factor authentication is off.' };
     body = <TwoFactorSetup pending={me.twoFactorSetupPending} />;
   } else if (!me.session.twoFactorVerified) {
-    status = '! On, but this session has not passed the second factor yet.';
+    status = { state: 'unverified', text: 'On, but this session has not passed the second factor yet.' };
     body = (
       <div className="grid gap-4">
         <p className="max-w-[56ch] text-ui">
@@ -68,7 +69,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
       </div>
     );
   } else {
-    status = '✓ On. This session has passed the second factor.';
+    status = { state: 'on', text: 'On. This session has passed the second factor.' };
     body = (
       <div className="grid gap-3 text-ui">
         {staff ? <p>Staff accounts keep two-factor authentication on.</p> : null}
@@ -102,7 +103,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
           <h2 id="two-factor-heading" className="font-display text-2xl">
             Two-factor authentication
           </h2>
-          <p className="text-ui font-semibold">{status}</p>
+          <p className="text-ui font-semibold">
+            <TwoFactorState state={status.state}>{status.text}</TwoFactorState>
+          </p>
         </div>
         {body}
       </section>

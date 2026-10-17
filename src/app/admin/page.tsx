@@ -5,6 +5,7 @@
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import Link from 'next/link';
 
 import { PageRedirect } from '@/components/account/page-redirect';
 import { guardRoute } from '@/server/auth/web';
@@ -26,6 +27,11 @@ export default async function AdminPage() {
         <p className="eyebrow">Staff</p>
         <h1 className="mt-2 font-display text-feature">Not available</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted">This page is for moderators, archivists and administrators.</p>
+        <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
+          <Link href="/account" className="link inline-flex min-h-11 items-center">
+            Back to your account
+          </Link>
+        </p>
       </div>
     );
   }

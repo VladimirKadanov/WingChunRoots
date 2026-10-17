@@ -8,6 +8,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { PageRedirect } from '@/components/account/page-redirect';
+import { TwoFactorState } from '@/components/account/two-factor-state';
 import { NameList, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, LockIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -99,7 +100,7 @@ export default async function AccountPage() {
               <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">{ROLE_LABELS[me.user.role]}</dd>
               <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Two-factor</dt>
               <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
-                {me.user.twoFactorEnabled ? '✓ On' : '– Off'}
+                <TwoFactorState state={me.user.twoFactorEnabled ? 'on' : 'off'}>{me.user.twoFactorEnabled ? 'On' : 'Off'}</TwoFactorState>
               </dd>
             </dl>
             <div className="mt-5 flex flex-wrap gap-3">

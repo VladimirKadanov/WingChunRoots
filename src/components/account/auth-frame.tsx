@@ -1,6 +1,7 @@
 // The frame of the account pages (milestone M02, Ink Register): the form in a reading column with
-// the page's heading, and, from 1024 px, a short register of what the page means beside it (on
-// phones it follows the form). Server component; the forms inside it are the only client parts.
+// the page's heading, and, from 1024 px, a short register of what the page means beside it, its
+// label level with the page's eyebrow, as the line on the home page sits level with the headline
+// (on phones it follows the form). Server component; the forms inside it are the only client parts.
 
 import type { ReactNode } from 'react';
 
@@ -34,7 +35,7 @@ export function AuthFrame({
           <div className="mt-8">{children}</div>
         </div>
         {notes && notes.length > 0 ? (
-          <aside aria-label={notesLabel} className="min-w-0 lg:border-l lg:border-border-subtle lg:pt-14 lg:pl-10 xl:pl-14">
+          <aside aria-label={notesLabel} className="min-w-0 lg:border-l lg:border-border-subtle lg:pl-10 xl:pl-14">
             <p className="eyebrow mb-1">{notesLabel}</p>
             <ol className="max-w-[46ch]">
               {notes.map((note, i) => (
