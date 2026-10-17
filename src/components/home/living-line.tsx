@@ -1,29 +1,33 @@
 'use client';
 
-// The living lineage of the home page: a demo search and an ink spine of one fictional line,
-// eight generations from Foshan to Sofia. Tapping a row (or picking a search result) traces the
-// line from the founder to that person: the strokes ink in one generation at a time and each
-// seal is pressed after its stroke, within one second, and only after a tap (plan §5.8 (e)).
-// The rows beyond the traced person take the solid dimmed tones (plan §4.7). "Back to <name>"
-// returns to the previous person (the trail chip of the Constellation prototype).
+// The living lineage of the home page: an ink spine of one fictional line, eight generations
+// from Foshan to Sofia, and a demo search. Untraced, the line is a pencil draft: thin strokes in
+// the solid dimmed tone that keep each link's pattern, with ghost seals (plan §4.7). Tapping a
+// row (or a search result, or "Trace this hall's line" further down) traces the line from the
+// founder to that person: the strokes ink in at full weight one generation at a time and each
+// seal is pressed in its state's colour after its stroke, within one second and only after a
+// tap (plan §5.8 (e)). The rows beyond the traced person stay in the draft and take the dimmed
+// text tones. "Back to <name>" returns to the previous person (Constellation's trail chip).
+//
+// On phones the line comes straight after the headline, so the first screen shows the subject
+// itself; the introduction and the search follow it. From 768 px they sit side by side.
 
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CloseIcon, SearchIcon } from '@/components/icons';
 import { InkShapeSvg } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
-import { SEAL_DELAY, inkStep, spineGeometry } from '@/components/ink/spine';
+import { SEAL_DELAY, evenRows, inkStep, spineGeometry } from '@/components/ink/spine';
 import { TrailChip } from '@/components/ui/trail-chip';
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import { DEMO_LINE, DEMO_LINE_LINKS, searchDemoLine } from './demo-lineage';
 import { Name, PersonName } from './names';
+import { ROW_TONES, TRACE_LINE_EVENT, type TraceLineDetail } from './trace-line';
 
 const ROW = 56;
-const geometry = spineGeometry(
-  DEMO_LINE_LINKS.map((link) => link.state),
-  ROW,
-  12,
-);
+const NODE_OFFSET = 12;
+const STATES = DEMO_LINE_LINKS.map((link) => link.state);
+const EVEN = evenRows(DEMO_LINE.length, ROW, NODE_OFFSET);
 const TRY = ['盧嵐峰', 'Probnova', 'Примеров', 'Vienna'];
 const verifiedCount = DEMO_LINE_LINKS.filter((link) => link.state === 'verified').length;
 const reviewCount = DEMO_LINE_LINKS.length - verifiedCount;
@@ -49,13 +53,25 @@ function traceSummary(focus: number): ReactNode {
   );
 }
 
+/** Where each person's node sits: level with the first line of the name, measured per row. */
+function measureRows(list: HTMLOListElement): { ys: number[]; height: number } {
+  const ys = [...list.querySelectorAll<HTMLElement>('[data-row]')].map((row) => {
+    const name = row.querySelector<HTMLElement>('[data-name]');
+    const lineHeight = name ? Number.parseFloat(getComputedStyle(name).lineHeight) || 0 : 0;
+    return Math.round(row.offsetTop + Math.max(NODE_OFFSET, lineHeight / 2 + 1));
+  });
+  return { ys, height: list.offsetHeight };
+}
 
-export function LivingLine({ intro }: { intro: ReactNode }) {
+export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactNode }) {
   const [trail, setTrail] = useState<number[]>([]);
   const [run, setRun] = useState(0);
   const [query, setQuery] = useState('');
   const [composing, setComposing] = useState(false);
+  const [rowsAt, setRowsAt] = useState(EVEN);
   const rows = useRef<(HTMLButtonElement | null)[]>([]);
+  const list = useRef<HTMLOListElement>(null);
+  const figure = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const searchId = useId();
 
@@ -63,6 +79,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
   const previous = trail.length > 1 ? trail[trail.length - 2]! : null;
   const results = composing ? [] : searchDemoLine(query);
   const step = inkStep(focus ?? 0);
+  const geometry = spineGeometry(STATES, rowsAt.ys, rowsAt.height);
 
   const trace = (index: number, moveFocus = false) => {
     setTrail((t) => (t[t.length - 1] === index ? t : [...t, index].slice(-12)));
@@ -74,15 +91,49 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
     }
   };
 
+  // Rows grow with the reader's text size and wrap on narrow phones: the spine follows them.
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el || typeof ResizeObserver !== 'function') return;
+    const update = () => {
+      const next = measureRows(el);
+      setRowsAt((current) =>
+        current.height === next.height && current.ys.every((y, i) => y === next.ys[i]) ? current : next,
+      );
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // "Trace this hall's line" elsewhere on the page.
+  const onTraceRequest = useEffectEvent((event: Event) => {
+    const index = (event as CustomEvent<TraceLineDetail>).detail?.index ?? DEMO_LINE.length - 1;
+    figure.current?.scrollIntoView({ block: 'start' });
+    trace(index, true);
+  });
+  useEffect(() => {
+    window.addEventListener(TRACE_LINE_EVENT, onTraceRequest);
+    return () => window.removeEventListener(TRACE_LINE_EVENT, onTraceRequest);
+  }, []);
+
   return (
-    <div className="grid gap-8 pb-9 md:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)] md:items-start md:gap-12 md:pb-14 lg:gap-16">
-      <div>
-        {intro}
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-y-7 pb-9 [grid-template-areas:'head'_'line'_'search'] md:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)] md:grid-rows-[auto_1fr] md:gap-x-12 md:gap-y-0 md:pb-14 md:[grid-template-areas:'head_line'_'search_line'] lg:gap-x-16">
+      <div className="[grid-area:head]">{heading}</div>
+
+      <div className="border-t border-border-subtle pt-6 [grid-area:search] md:border-t-0 md:pt-5">
+        {lede}
         <search className="mt-6">
           <label htmlFor={searchId} className="sr-only">
             Search the demo line
           </label>
-          <div className="flex min-h-[54px] items-center gap-2.5 rounded-sm border border-border-strong bg-surface-1 pr-1 pl-4 transition-colors duration-(--duration-fast) focus-within:border-fg">
+          <div
+            className={cx(
+              'flex min-h-[54px] items-center gap-2.5 rounded-sm border border-border-strong bg-surface-1 pr-1 pl-4 transition-colors duration-(--duration-fast) focus-within:border-fg',
+              // The system's gold focus ring, on the field's frame (the input itself has none).
+              'has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus',
+            )}
+          >
             <SearchIcon size={19} className="text-fg-subtle" />
             <input
               ref={input}
@@ -103,7 +154,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
               placeholder="Search a name in any script, or a city"
               autoComplete="off"
               spellCheck={false}
-              className="min-h-[52px] min-w-0 flex-1 bg-transparent text-[1rem] text-fg outline-none placeholder:text-fg-subtle [&::-webkit-search-cancel-button]:appearance-none"
+              className="min-h-[52px] min-w-0 flex-1 bg-transparent text-field text-fg outline-none placeholder:text-fg-subtle [&::-webkit-search-cancel-button]:appearance-none"
               aria-describedby={`${searchId}-hint`}
             />
             {query ? (
@@ -114,13 +165,13 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                   input.current?.focus();
                 }}
                 aria-label="Clear the search"
-                className="inline-grid size-11 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
+                className="inline-grid size-11 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg active:bg-surface-pressed"
               >
                 <CloseIcon size={18} />
               </button>
             ) : null}
           </div>
-          <p id={`${searchId}-hint`} className="mt-2 text-[0.8125rem] text-fg-subtle">
+          <p id={`${searchId}-hint`} className="mt-2 text-sm text-fg-subtle">
             Demo: searches the fictional line on this page by name, Chinese characters, Jyutping or city.
           </p>
           <p className="sr-only" aria-live="polite">
@@ -137,10 +188,10 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                         trace(DEMO_LINE.indexOf(person), true);
                         setQuery('');
                       }}
-                      className="flex min-h-14 w-full flex-col items-start justify-center gap-0.5 px-4 py-2 text-left hover:bg-surface-3"
+                      className="flex min-h-14 w-full flex-col items-start justify-center gap-0.5 px-4 py-2 text-left hover:bg-surface-3 active:bg-surface-pressed"
                     >
                       <PersonName name={person.name} original={person.original} className="font-display text-lg" />
-                      <span className="text-[0.8125rem] text-fg-subtle">
+                      <span className="text-sm text-fg-subtle">
                         {person.city} · {person.role} · from {person.startYear}
                       </span>
                     </button>
@@ -154,7 +205,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
               </p>
             )
           ) : null}
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[0.8125rem] text-fg-subtle">
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-sm text-fg-subtle">
             <span className="mr-1">Try</span>
             {TRY.map((term) => (
               <button
@@ -175,106 +226,126 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
         </search>
       </div>
 
-      <figure className="border-t border-border-subtle pt-5 md:border-t-0 md:border-l md:pt-1.5 md:pl-8" aria-labelledby={`${searchId}-cap`}>
+      <figure
+        ref={figure}
+        id="demo-line"
+        className="scroll-mt-4 [grid-area:line] md:row-span-2 md:border-l md:border-border-subtle md:pt-1.5 md:pl-8"
+        aria-labelledby={`${searchId}-cap`}
+      >
         <figcaption id={`${searchId}-cap`} className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className="font-display text-lg">Foshan, 1868 → Sofia, 2019</span>
           <span className="eyebrow">
-            8 generations · {verifiedCount} verified · {reviewCount} under review
+            {DEMO_LINE.length} people · {verifiedCount} links verified · {reviewCount} under review
           </span>
         </figcaption>
 
         <div className="relative">
           <svg
-            className="pointer-events-none absolute top-0 left-[58px] overflow-visible text-fg"
+            className="pointer-events-none absolute top-0 left-16 z-10 overflow-visible text-fg"
             width={44}
             height={geometry.height}
             viewBox={`0 0 44 ${geometry.height}`}
             aria-hidden="true"
-            key={run}
+            data-traced={focus ?? 'none'}
           >
-            {geometry.segments.map((segment) => {
-              const traced = focus !== null && segment.index < focus;
-              const dimmed = focus !== null && segment.index >= focus;
-              return (
-                <g
-                  key={segment.index}
-                  data-state={segment.state}
-                  className={cx(traced && 'animate-ink-draw')}
-                  style={{
-                    color: dimmed ? 'var(--dim-stroke)' : `var(--${linkStyles[segment.state].strokeColor})`,
-                    animationDelay: traced ? `${segment.index * step}ms` : undefined,
-                  }}
-                >
-                  <InkShapeSvg shape={segment.shape} />
-                </g>
-              );
-            })}
+            {/* The pencil draft: every link, thin, in the solid dimmed tone, with ghost seals. */}
+            <g data-layer="draft" style={{ color: 'var(--dim-stroke)' }}>
+              {geometry.segments.map((segment) => (
+                <InkShapeSvg key={segment.index} shape={segment.draft} />
+              ))}
+            </g>
+            {geometry.segments.map((segment) => (
+              <g key={`ghost-${segment.index}`} data-ghost-seal={segment.index} transform={`translate(${segment.seal.x} ${segment.seal.y})`}>
+                <Seal kind={linkStyles[segment.state].seal} size={13} tone="dim" />
+              </g>
+            ))}
+
+            {/* The traced path, inked over the draft (re-keyed per tap so it inks in again). */}
+            <g key={run} data-layer="ink">
+              {geometry.segments
+                .filter((segment) => focus !== null && segment.index < focus)
+                .map((segment) => (
+                  <g key={segment.index}>
+                    <g
+                      data-state={segment.state}
+                      className="animate-ink-draw"
+                      style={{
+                        color: `var(--${linkStyles[segment.state].strokeColor})`,
+                        animationDelay: `${segment.index * step}ms`,
+                      }}
+                    >
+                      <InkShapeSvg shape={segment.shape} />
+                    </g>
+                    <g transform={`translate(${segment.seal.x} ${segment.seal.y})`}>
+                      <g className="animate-seal-press" style={{ animationDelay: `${segment.index * step + SEAL_DELAY}ms` }}>
+                        <Seal kind={linkStyles[segment.state].seal} size={13} />
+                      </g>
+                    </g>
+                  </g>
+                ))}
+            </g>
+
             {geometry.nodes.map((node) => {
               const person = DEMO_LINE[node.index]!;
               const dimmed = focus !== null && node.index > focus;
               const color = dimmed ? 'var(--dim-stroke)' : 'var(--fg)';
+              const ring =
+                focus === node.index ? (
+                  <circle key={`ring-${node.index}`} cx={node.x} cy={node.y} r={8.4} fill="none" stroke="var(--fg)" strokeWidth={1.6} />
+                ) : null;
               if (node.index === 0) {
                 // The founder's end cap (Transit Map): a terminus bar over a square chop.
                 return (
-                  <g key="founder" fill={color}>
+                  <g key="founder" fill={color} data-node={0}>
                     <rect x={node.x - 9} y={node.y - 11} width={18} height={3} rx={1} />
                     <rect x={node.x - 6} y={node.y - 6} width={12} height={12} rx={1.5} transform={`rotate(4 ${node.x} ${node.y})`} />
+                    {focus === 0 ? <rect x={node.x - 9} y={node.y - 9} width={18} height={18} rx={2} fill="none" stroke="var(--fg)" strokeWidth={1.6} /> : null}
                   </g>
                 );
               }
-              return person.living ? (
-                <circle key={node.index} cx={node.x} cy={node.y} r={4.6} fill={color} />
-              ) : (
-                <circle key={node.index} cx={node.x} cy={node.y} r={4.4} fill="var(--bg)" stroke={color} strokeWidth={1.6} />
-              );
-            })}
-            {geometry.segments.map((segment) => {
-              const traced = focus !== null && segment.index < focus;
               return (
-                <g key={`seal-${segment.index}`} transform={`translate(${segment.seal.x} ${segment.seal.y})`}>
-                  <g
-                    className={cx(traced && 'animate-seal-press')}
-                    style={{ animationDelay: traced ? `${segment.index * step + SEAL_DELAY}ms` : undefined }}
-                  >
-                    <Seal kind={linkStyles[segment.state].seal} size={13} />
-                  </g>
+                <g key={node.index} data-node={node.index}>
+                  {ring}
+                  {person.living ? (
+                    <circle cx={node.x} cy={node.y} r={4.6} fill={color} />
+                  ) : (
+                    <circle cx={node.x} cy={node.y} r={4.4} fill="var(--bg)" stroke={color} strokeWidth={1.6} />
+                  )}
                 </g>
               );
             })}
           </svg>
 
-          <ol>
+          <ol ref={list}>
             {DEMO_LINE.map((person, i) => {
               const link = i > 0 ? DEMO_LINE_LINKS[i - 1]! : null;
-              const dimmed = focus !== null && i > focus;
+              const tone = focus !== null && i > focus ? ROW_TONES.dimmed : ROW_TONES.active;
+              const current = focus === i;
               return (
-                <li key={person.slug}>
+                <li key={person.slug} data-row>
                   <button
                     ref={(el) => {
                       rows.current[i] = el;
                     }}
                     type="button"
-                    aria-pressed={focus === i}
+                    aria-current={current ? 'true' : undefined}
                     onClick={() => trace(i)}
                     className={cx(
-                      'grid h-14 w-full grid-cols-[58px_44px_minmax(0,1fr)] rounded-sm text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
-                      focus === i && 'bg-surface-1',
+                      'relative grid min-h-14 w-full grid-cols-[64px_44px_minmax(0,1fr)] content-start rounded-sm pb-2 text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
+                      // The traced person: an ink bar on the row's edge, a tint and a ring on the node.
+                      current && 'bg-surface-1 before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-fg',
                     )}
                   >
-                    <span className={cx('pt-0.5 font-display text-base tabular', dimmed ? 'text-fg-muted' : 'text-fg-subtle')}>
-                      {person.startYear}
-                    </span>
+                    <span className={cx('pt-0.5 pl-3 font-display text-base tabular', tone.year)}>{person.startYear}</span>
                     <span className="col-start-3 flex min-w-0 flex-col pl-1">
                       <PersonName
                         name={person.name}
                         original={person.original}
+                        data-name
                         // Phones: a size at which a Latin name and its original fit one line.
-                        className={cx(
-                          'font-display text-[1.0625rem] leading-[1.22] sm:text-[1.1875rem]',
-                          dimmed ? 'text-fg-muted' : 'text-fg',
-                        )}
+                        className={cx('font-display text-md leading-[1.22] sm:text-lg sm:leading-[1.22]', tone.name)}
                       />
-                      <span className="mt-1 text-[0.6875rem] leading-tight font-semibold tracking-[0.14em] text-fg-subtle uppercase">
+                      <span className="mt-1 text-caption text-fg-subtle uppercase">
                         {person.city} · {person.role}
                       </span>
                       <span className="sr-only">
@@ -288,9 +359,11 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
           </ol>
         </div>
 
-        <div className="mt-2 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-dashed border-border-strong pt-2.5 text-[0.8125rem] text-fg-subtle">
+        <div className="mt-2 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-dashed border-border-strong pt-2.5 text-sm text-fg-subtle">
           <p aria-live="polite" className="min-w-0 flex-1 basis-56">
-            {focus === null ? 'Year each began training. Tap a name to trace the line from the founder.' : traceSummary(focus)}
+            {focus === null
+              ? 'Year each began training. The line is in pencil until you trace it: tap a name to ink it from the founder.'
+              : traceSummary(focus)}
           </p>
           {previous !== null ? (
             <TrailChip
@@ -305,7 +378,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
             <button
               type="button"
               onClick={() => setTrail([])}
-              className="inline-flex min-h-11 items-center rounded-sm px-2 text-[0.8125rem] font-semibold text-fg-muted underline decoration-border-strong underline-offset-4 hover:text-fg"
+              className="inline-flex min-h-11 items-center rounded-sm px-2 text-sm font-semibold text-fg-muted underline decoration-border-strong underline-offset-4 hover:text-fg"
             >
               Clear
             </button>

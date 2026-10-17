@@ -43,7 +43,7 @@ function OverlayDemoList() {
         footer={
           <>
             <DialogClose render={<Button variant="ghost" />}>Keep it</DialogClose>
-            <DialogClose render={<Button variant="primary" />}>Withdraw</DialogClose>
+            <DialogClose render={<Button variant="danger" />}>Withdraw</DialogClose>
           </>
         }
       />
@@ -76,12 +76,12 @@ function OverlayDemoList() {
         open={peek}
         onOpenChange={setPeek}
         modal={false}
-        snapPoints={[PEEK, 1]}
         title="Jade Lantern Hall"
-        description="Foshan · 8 generations · 24 people"
+        description="Foshan · 17 people · 15 of 18 links verified"
       >
         <p className="pt-1 text-fg-muted">
-          A {PEEK} peek that leaves the page usable behind it, as over a map or a graph. Expand it for the details.
+          A peek of at least {PEEK} that leaves the page usable behind it, as over a map or a graph. Expand it for the
+          details; from 768 px it is a side panel.
         </p>
       </Drawer>
 
@@ -102,14 +102,17 @@ function OverlayDemoList() {
 
       <Button
         variant="ink"
-        onClick={() => toast.add({
-            title: 'Request sent',
+        onClick={() =>
+          toast.add({
+            type: 'verified',
+            title: 'Link verified',
             description: (
               <>
-                <Name>Stefan Primerov</Name> sees it the next time he signs in.
+                <Name>Stefan Primerov</Name> confirmed that he taught you.
               </>
             ),
-          })}
+          })
+        }
       >
         Show a toast
         <ArrowRightIcon />

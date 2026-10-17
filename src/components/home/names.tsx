@@ -19,15 +19,18 @@ export function PersonName({
   original,
   className,
   originalClassName,
+  'data-name': dataName,
 }: {
   name: string;
   original?: DemoName | undefined;
   className?: string;
   originalClassName?: string;
+  /** Marks the Latin name, so the living line can measure where its first line sits. */
+  'data-name'?: boolean;
 }) {
   return (
     <span className={cx('inline-flex flex-wrap items-baseline gap-x-[0.42em]', className)}>
-      <span lang="en" translate="no">
+      <span lang="en" translate="no" data-name={dataName ? '' : undefined}>
         {name}
       </span>
       {original ? (

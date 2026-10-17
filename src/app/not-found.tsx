@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <div className="mx-auto grid max-w-content content-start gap-5 px-[max(1rem,env(safe-area-inset-left,0px))] pt-12 pb-16 md:px-10 md:pt-20">
+    <div className="mx-auto grid max-w-content content-start gap-5 px-page pt-12 pb-16 md:pt-20">
       <LinkStroke kind="unconfirmed" width={120} />
       <p className="eyebrow">404 · Not on the record</p>
       <h1 className="max-w-[16ch] font-display text-section">This page is not drawn yet</h1>

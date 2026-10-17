@@ -44,7 +44,7 @@ function Section({ id, eyebrow, title, children }: { id: string; eyebrow: string
   return (
     <section aria-labelledby={id} className="border-t border-border-subtle py-10 md:py-12">
       <p className="eyebrow">{eyebrow}</p>
-      <h2 id={id} className="mt-2 mb-6 font-display text-2xl md:text-[2rem]">
+      <h2 id={id} className="mt-2 mb-6 font-display text-2xl md:text-3xl">
         {title}
       </h2>
       {children}
@@ -54,28 +54,38 @@ function Section({ id, eyebrow, title, children }: { id: string; eyebrow: string
 
 function Specimens() {
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="primary">Send request</Button>
         <Button>Secondary</Button>
         <Button variant="ghost">Ghost</Button>
         <Button variant="ink">Ink</Button>
+        <Button variant="danger">Withdraw</Button>
         <Button size="sm">Small</Button>
         <Button disabled>Disabled</Button>
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
         <label className="text-sm font-semibold">
           Name in the original script
-          <Input className="mt-1.5" placeholder="e.g. 馮霖舟 or Мира Пробнова" />
+          <Input className="mt-1.5" placeholder="e.g. 馮霖舟 or Мира Пробнова" aria-describedby="sg-original-hint" />
         </label>
-        <p className="text-[0.8125rem] text-fg-muted">Optional. Shown next to the Latin-script name.</p>
+        <p id="sg-original-hint" className="text-sm text-fg-muted">
+          Optional. Shown next to the Latin-script name.
+        </p>
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
         <label className="text-sm font-semibold">
           Year you began training
-          <Input className="mt-1.5" defaultValue="20019" aria-invalid="true" inputMode="numeric" />
+          <Input
+            className="mt-1.5"
+            defaultValue="20019"
+            aria-invalid="true"
+            aria-errormessage="sg-year-error"
+            aria-describedby="sg-year-error"
+            inputMode="numeric"
+          />
         </label>
-        <p className="text-[0.8125rem] text-danger">
+        <p id="sg-year-error" className="text-sm text-danger">
           <span aria-hidden="true">✕ </span>Enter a year between 1850 and this year.
         </p>
       </div>
@@ -84,7 +94,7 @@ function Specimens() {
           <StatusBadge key={kind} state={kind} />
         ))}
       </div>
-      <div className="grid gap-2" role="status">
+      <div className="flex flex-col gap-2" role="status">
         <span className="sr-only">Loading a profile</span>
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-64 max-w-full" />
@@ -100,7 +110,7 @@ function Specimens() {
 
 export default function StyleguidePage() {
   return (
-    <div className="mx-auto max-w-content px-[max(1rem,env(safe-area-inset-left,0px))] pt-6 pb-10 md:px-10 md:pt-11">
+    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11">
       <header className="pb-8">
         <p className="eyebrow">Design system · Ink Register</p>
         <h1 className="mt-2 font-display text-feature">Style guide</h1>
@@ -114,7 +124,7 @@ export default function StyleguidePage() {
       </header>
 
       <Section id="sg-themes" eyebrow="Both themes" title="Components side by side">
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           {THEMES.map((theme) => (
             <div key={theme} className={cn(`theme-${theme}`, 'rounded-md border border-border-subtle bg-bg p-4 text-fg md:p-6')}>
               <p className="eyebrow mb-4">{THEME_LABEL[theme]}</p>
@@ -125,14 +135,14 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-overlays" eyebrow="Interaction" title="Dialog, sheet, menu, toast, tabs">
-        <div className="grid gap-8">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
           <OverlayDemos />
           <TabsDemo />
         </div>
       </Section>
 
       <Section id="sg-links" eyebrow="Verification" title="Link states">
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Legend layout="list" descriptions />
           <div className="grid content-start gap-3">
             {KINDS.map((kind) => (
@@ -152,9 +162,9 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-colour" eyebrow="Tokens" title="Colour">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
           {THEMES.map((theme) => (
-            <table key={theme} className="w-full border-collapse text-left text-[0.8125rem]">
+            <table key={theme} className="w-full table-fixed border-collapse text-left text-sm [overflow-wrap:anywhere]">
               <caption className="mb-2 text-left font-semibold">{THEME_LABEL[theme]}: contrast against the page ground</caption>
               <thead>
                 <tr className="border-b border-border-strong text-fg-subtle">
@@ -186,7 +196,7 @@ export default function StyleguidePage() {
                       </th>
                       <td className="py-1.5 pr-2">
                         <code className="font-mono">{hex}</code>
-                        <span className="block font-mono text-[0.6875rem] text-fg-subtle">{formatOklch(hex)}</span>
+                        <span className="block font-mono text-caption font-normal tracking-normal text-fg-subtle">{formatOklch(hex)}</span>
                       </td>
                       <td className="py-1.5 text-right tabular">{contrastRatio(hex, colors[theme].bg).toFixed(2)}</td>
                     </tr>
@@ -199,14 +209,14 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-type" eyebrow="Tokens" title="Type">
-        <div className="grid gap-5">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
           {Object.entries(typeScale)
             .reverse()
             .map(([name, step]) => {
               const display = ['hero', 'feature', 'section', '2xl', 'xl', 'lg'].includes(name);
               return (
-                <div key={name} className="grid gap-1 border-b border-border-subtle pb-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-6">
-                  <p className="text-[0.75rem] text-fg-subtle">
+                <div key={name} className="grid grid-cols-[minmax(0,1fr)] gap-1 border-b border-border-subtle pb-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-6">
+                  <p className="text-xs text-fg-subtle">
                     <code className="font-mono">text-{name}</code>
                     <span className="block">
                       {step.size} / {step.lineHeight}
@@ -225,22 +235,22 @@ export default function StyleguidePage() {
           <p className="text-sm text-fg-muted">
             Cyrillic display text uses Noto Serif Display, downloaded only when a page shows Cyrillic. Chinese names use the
             system&apos;s CJK fonts (Traditional unless <code className="font-mono">lang=&quot;zh-Hans&quot;</code>):{' '}
-            <span lang="zh-Hans" className="cjk font-sans">冯霖舟</span>. Generations are Arabic numerals.
+            <span lang="zh-Hans" translate="no" className="cjk font-sans">冯霖舟</span>. Generations are Arabic numerals.
           </p>
         </div>
       </Section>
 
       <Section id="sg-shape" eyebrow="Tokens" title="Shape and motion">
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-2">
           <ul className="flex flex-wrap gap-4">
             {Object.entries(radius).map(([name, value]) => (
-              <li key={name} className="grid justify-items-center gap-1.5 text-[0.75rem] text-fg-subtle">
+              <li key={name} className="grid justify-items-center gap-1.5 text-xs text-fg-subtle">
                 <span className="block size-14 border border-border-strong bg-surface-2" style={{ borderRadius: value }} />
                 <code className="font-mono">{name}</code>
               </li>
             ))}
           </ul>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[0.8125rem]">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
             {Object.entries(motion.duration).map(([name, value]) => (
               <div key={name} className="contents">
                 <dt className="font-mono text-fg-subtle">--duration-{name}</dt>
@@ -248,7 +258,7 @@ export default function StyleguidePage() {
               </div>
             ))}
           </dl>
-          <p className="mt-2 text-[0.8125rem] text-fg-muted">
+          <p className="mt-2 text-sm text-fg-muted">
             Nothing moves on its own; under prefers-reduced-motion every duration is 0 ms.
           </p>
         </div>

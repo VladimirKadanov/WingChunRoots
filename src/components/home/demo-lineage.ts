@@ -55,10 +55,8 @@ export const DEMO_HALL = {
   romanization: 'Yuk Dang Tong',
   founded: 1868,
   origin: 'Foshan',
-  people: 24,
-  generations: 8,
-  verifiedLinks: 19,
-  links: 23,
+  /** The hall of the cross-lineage teacher in the drawing. */
+  otherHall: 'Silver Willow Hall',
 } as const;
 
 /** Lower-case, without accents, tone numbers, spaces or hyphens: "Laam fung" matches "Laam-fung". */

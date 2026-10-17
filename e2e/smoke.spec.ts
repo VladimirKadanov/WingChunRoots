@@ -216,6 +216,12 @@ test('@M00b fonts are self-hosted (no requests to fonts.googleapis.com or fonts.
     );
     expect(loaded, `${route.path}: the display face`).toContain('Gloock');
     expect(loaded, `${route.path}: the text face`).toContain('Schibsted Grotesk');
+    // Only the two latin faces are preloaded; the Cyrillic display face downloads only where a
+    // page shows Cyrillic in display text (the home page's names), and then once.
+    await expect(page.locator('link[rel="preload"][as="font"]'), `${route.path}: font preloads`).toHaveCount(2);
+    const noto = loaded.filter((family) => family === 'Noto Serif Display');
+    if (route.path === '/') expect(noto, '/: the Cyrillic display face, once').toHaveLength(1);
+    if (route.path === '/legal/licenses') expect(noto, '/legal/licenses: no Cyrillic display text').toHaveLength(0);
 
     // Nor do the stylesheets name a Google host.
     const sheets = await page.evaluate(() => [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => (l as HTMLLinkElement).href));
@@ -234,30 +240,41 @@ test('@M00b fonts are self-hosted (no requests to fonts.googleapis.com or fonts.
 
 test('@M00b /legal/licenses lists the third-party licenses', async ({ page }) => {
   const notices = JSON.parse(readFileSync('src/app/legal/licenses/notices.json', 'utf8')) as {
-    notices: { name: string; version: string; license: string }[];
+    notices: { name: string; version: string; license: string; text: number | null }[];
+    texts: string[];
     addenda: { title: string }[];
   };
   const response = await page.goto('/legal/licenses');
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { level: 1, name: 'Licenses' })).toBeVisible();
 
-  // Every package the app ships, grouped by licence, and every addendum.
+  // Every package the app ships, grouped by licence, and every addendum. Tailwind CSS is listed
+  // because the CSS it generates ships, although it is a development dependency.
   const packages = page.getByRole('region', { name: /packages?$/ }).getByRole('listitem');
   await expect(packages).toHaveCount(notices.notices.length);
-  for (const name of ['next', 'react', 'react-dom', '@base-ui/react', '@fontsource/gloock', '@fontsource-variable/schibsted-grotesk', 'elkjs']) {
+  for (const name of ['next', 'react', 'react-dom', '@base-ui/react', '@fontsource/gloock', '@fontsource-variable/schibsted-grotesk', 'elkjs', 'tailwindcss']) {
     expect(notices.notices.map((n) => n.name), name).toContain(name);
-    await expect(page.locator('summary').getByText(name, { exact: true }).first()).toBeAttached();
+    await expect(packages.getByText(name, { exact: true }).first()).toBeAttached();
   }
   for (const license of ['MIT', 'OFL-1.1', 'Apache-2.0']) {
     await expect(page.getByRole('region', { name: new RegExp(`^${license.replace(/[.]/g, '\\.')}: \\d+ packages?$`) })).toBeVisible();
   }
-  expect(notices.addenda.length).toBeGreaterThanOrEqual(2);
+  expect(notices.addenda.length).toBeGreaterThanOrEqual(3);
   for (const addendum of notices.addenda) {
     await expect(page.getByRole('heading', { level: 3, name: addendum.title })).toBeVisible();
   }
 
+  // Each distinct licence text is on the page once, and every package links to its own.
+  await expect(page.getByRole('region', { name: 'Licence texts' }).getByRole('article')).toHaveCount(notices.texts.length);
+  expect(new Set(notices.texts).size).toBe(notices.texts.length);
+
   // A package opens to its licence text.
-  const react = page.locator('details').filter({ has: page.locator('summary').getByText('react', { exact: true }) }).first();
-  await react.locator('summary').click();
-  await expect(react.locator('pre')).toContainText('Permission is hereby granted');
+  const react = packages.filter({ has: page.getByText('react', { exact: true }) }).first();
+  const link = react.getByRole('link', { name: 'Licence text of react' });
+  const target = (await link.getAttribute('href'))!;
+  await link.click();
+  await expect(page).toHaveURL(new RegExp(`${target}$`));
+  await expect(page.locator(target)).toBeInViewport();
+  await expect(page.locator(target).locator('pre')).toContainText('Permission is hereby granted');
+  await expect(page.locator(target)).toContainText(`react ${notices.notices.find((n) => n.name === 'react')!.version}`);
 });
