@@ -1,7 +1,8 @@
 // /legal/licenses (plan §4.14, §5.5): the third-party licences of everything WingChunRoots
 // ships, generated with THIRD_PARTY_NOTICES.md by `pnpm notices`. Packages are listed by
-// licence and link to their licence text; each distinct text is printed once, at the end, so
-// the page stays light (many packages share one text).
+// licence and link to their licence text; each distinct text is printed once, at the end, with
+// the copyright statements of the packages that use it above it, so the page stays light (MIT,
+// ISC and BSD texts differ only in those statements).
 
 import type { Metadata } from 'next';
 import { ChevronDownIcon } from '@/components/icons';
@@ -18,7 +19,7 @@ interface Notice {
   license: string;
   author: string | null;
   homepage: string | null;
-  /** Index into notices.texts. */
+  /** Index into notices.texts (the licence body without the copyright statements it opens with). */
   text: number | null;
 }
 
@@ -150,6 +151,15 @@ export default function LicensesPage() {
                   Used by{' '}
                   <span translate="no">{users.map((n) => `${n.name} ${n.version}`).join(', ')}</span>
                 </p>
+                {notices.holders[index]?.length ? (
+                  <ul className="mt-2 grid gap-1 font-mono text-xs text-fg-muted [overflow-wrap:anywhere]" translate="no">
+                    {notices.holders[index].map((holder) => (
+                      <li key={holder.line}>
+                        {holder.line} <span className="text-fg-subtle">({holder.packages.join(', ')})</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <pre
                   tabIndex={0}
                   className="mt-2 max-h-80 overflow-auto rounded-sm bg-surface-1 p-3 font-mono text-xs whitespace-pre-wrap text-fg-muted [overflow-wrap:anywhere]"

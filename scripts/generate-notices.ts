@@ -3,7 +3,8 @@
 // whose build output ships (SHIPPED_BUILD_OUTPUT: Tailwind's preflight is in the CSS) and
 // licenses/addenda/*.md (notices a package list cannot express: elkjs's EPL-2.0 choice and
 // source links, the glyph in the brand mark, sharp's per-platform binaries, and from M11 the map
-// attributions). Each distinct licence text is stored once. Plan §4.14, M00b.
+// attributions). Each distinct licence body is stored once; the copyright lines stay with their
+// packages. Plan §4.14, M00b.
 // `pnpm notices --check` writes nothing and exits 1 when the committed files are out of date
 // (scripts/verify.d/M00b.sh, CI).
 
@@ -76,7 +77,7 @@ function collect(): NoticesData {
   return dedupe([...shipped, ...buildOutput], readAddenda());
 }
 
-export function renderMarkdown({ notices, texts, addenda }: NoticesData): string {
+export function renderMarkdown({ notices, texts, holders, addenda }: NoticesData): string {
   const out: string[] = [
     '# Third-party notices',
     '',
@@ -101,9 +102,12 @@ export function renderMarkdown({ notices, texts, addenda }: NoticesData): string
   }
   out.push('## Licence texts', '');
   out.push('Packages without a text ship no licence file; their package.json declares the licence in the table.', '');
+  out.push('Each text is printed once without the copyright statements it opens with; those are listed above it, verbatim, each with the packages it comes from.', '');
   texts.forEach((text, i) => {
     const users = notices.filter((n) => n.text === i).map((n) => `${n.name} ${n.version}`);
     out.push(`### Licence text ${i + 1}`, '', `Used by: ${users.join(', ')}`, '');
+    const lines = holders[i] ?? [];
+    if (lines.length) out.push(['```text', ...lines.map((h) => `${h.line}    (${h.packages.join(', ')})`), '```'].join('\n'), '');
     out.push(['```text', text, '```'].join('\n'), '');
   });
   return `${out.join('\n').trimEnd()}\n`;

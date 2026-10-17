@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupe, flatten, lockedVersions, safeHomepage } from './notices';
+import { dedupe, flatten, lockedVersions, safeHomepage, splitCopyright } from './notices';
 
 describe('safeHomepage', () => {
   it('keeps http and https', () => {
@@ -44,6 +44,63 @@ describe('flatten and dedupe', () => {
 
   it('keeps only the named packages when asked', () => {
     expect(flatten({ MIT: [{ name: 'x', versions: ['1'], paths: [''], license: 'MIT' }, { name: 'y', versions: ['1'], paths: [''], license: 'MIT' }] }, () => null, ['y']).map((n) => n.name)).toEqual(['y']);
+  });
+});
+
+describe('splitCopyright and copyright holders', () => {
+  const mit = (holder: string) =>
+    ['MIT License', '', `Copyright (c) 2024 ${holder}`, '', 'Permission is hereby granted.', '', 'THE COPYRIGHT HOLDERS ARE NOT LIABLE.'].join('\n');
+
+  it('takes out the leading copyright statements only, and loses no line', () => {
+    const { copyright, body } = splitCopyright(mit('Demo Person'));
+    expect(copyright).toEqual(['Copyright (c) 2024 Demo Person']);
+    expect(body).toBe('MIT License\n\nPermission is hereby granted.\n\nTHE COPYRIGHT HOLDERS ARE NOT LIABLE.');
+    for (const line of ['© 2020 A', '(c) 2019 B', 'Copyright 2022 C', 'Copyright (C) 2012-2014 by D', '  Copyright © 2001 E'])
+      expect(splitCopyright(line).copyright).toEqual([line.trim()]);
+    for (const line of ['Copyright Holder(s) and the Author(s)', 'COPYRIGHT HOLDERS BE LIABLE', 'The above copyright notice'])
+      expect(splitCopyright(line).copyright).toEqual([]);
+  });
+
+  it('keeps a wrapped statement whole, and the statements of later sections in their section', () => {
+    const text = [
+      'Copyright (c) 2011 Demo Person,',
+      '  and other demo contributors.',
+      'All rights reserved.',
+      '',
+      'Permission is hereby granted.',
+      '',
+      '## Bundled demo-lib',
+      '',
+      'Copyright (c) 2015 Demo Bundle',
+      '',
+      'Redistribution is permitted.',
+    ].join('\n');
+    const { copyright, body } = splitCopyright(text);
+    expect(copyright).toEqual(['Copyright (c) 2011 Demo Person,', 'and other demo contributors.', 'All rights reserved.']);
+    expect(body).toBe('Permission is hereby granted.\n\n## Bundled demo-lib\n\nCopyright (c) 2015 Demo Bundle\n\nRedistribution is permitted.');
+  });
+
+  it('stores one body for texts that differ only in their copyright lines, and keeps each holder once', () => {
+    const raw = flatten(
+      {
+        MIT: [
+          { name: 'p', versions: ['1'], paths: ['/p'], license: 'MIT' },
+          { name: 'q', versions: ['1'], paths: ['/q'], license: 'MIT' },
+          { name: 'r', versions: ['1'], paths: ['/r'], license: 'MIT' },
+        ],
+      },
+      // r repeats its statement: it is listed once.
+      (dir) => (dir === '/p' ? mit('Demo P') : dir === '/q' ? mit('Demo Q') : mit('Demo P').replace(/^(Copyright.*)$/m, '$1\n$1')),
+    );
+    const data = dedupe(raw, []);
+    expect(data.texts).toHaveLength(1);
+    expect(data.notices.map((n) => n.text)).toEqual([0, 0, 0]);
+    expect(data.holders).toEqual([
+      [
+        { line: 'Copyright (c) 2024 Demo P', packages: ['p 1', 'r 1'] },
+        { line: 'Copyright (c) 2024 Demo Q', packages: ['q 1'] },
+      ],
+    ]);
   });
 });
 
