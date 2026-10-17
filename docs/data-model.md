@@ -98,7 +98,7 @@
 |---|---|
 | `auth_user` | Акаунт за вход: `email` (уникален, винаги с малки букви), `email_verified`, `name` (празно: имената на човека са в `person_name`), **`role`** (`user`, `moderator`, `archivist`, `admin`; не се подава при регистрация), `two_factor_enabled`, `banned`, `ban_reason`, `ban_expires`, `timezone`. Роля на персонала само при `two_factor_enabled` (`CHECK auth_user_staff_needs_2fa`) |
 | `auth_session` | Сесия: `token` (уникален; в бисквитката и като `Authorization: Bearer` е подписан), `expires_at`, `user_agent`, **`ip_address`** (никога IP адресът, а `ip_hmac`: 64 hex знака, `CHECK auth_session_ip_hmac_format`), **`two_factor_verified_at`** (кога тази сесия е минала втория фактор; `requireStaff2FA()` проверява него), `impersonated_by` |
-| `auth_account` | Начин за вход на акаунта: `provider_id` (`credential` за имейл и парола), `account_id`, **`password_hash`** (хеш scrypt със сол, никога паролата; полето `password` на Better Auth); колоните за OAuth токени остават празни във Фаза 1. Уникален `(provider_id, account_id)` |
+| `auth_account` | Начин за вход на акаунта: `provider_id` (`credential` за имейл и парола), `account_id`, **`credential_hash`** (хеш scrypt със сол, никога паролата; полето `password` на Better Auth); колоните за OAuth токени остават празни във Фаза 1. Уникален `(provider_id, account_id)` |
 | `auth_verification` | Краткотрайни стойности: токени за потвърждаване (24 часа) и възстановяване (1 час), чакащ втори фактор, доверено устройство. `identifier` се пази хеширан; `value`, `expires_at` |
 | `auth_two_factor` | TOTP на акаунта (един ред на акаунт): `secret` и `backup_codes`, шифрирани с `BETTER_AUTH_SECRET`; `verified`, `failed_verification_count`, `locked_until` (временно заключване след грешни кодове) |
 
