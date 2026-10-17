@@ -1,5 +1,5 @@
 // The style guide (M00b): the tokens of src/design/tokens.ts and the components, in both
-// themes side by side. Not indexed. All names are fictional demo content (D20).
+// themes side by side. Not indexed. All names are fictional demo content (DEFAULT D20).
 
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';

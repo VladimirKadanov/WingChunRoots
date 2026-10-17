@@ -163,6 +163,7 @@ check "CI runs the visual project (CI=true) and prints failed screenshots for re
   grep -q "visual: ci" playwright.config.ts && grep -q "scripts/visual-baselines.sh print" .github/workflows/ci.yml'
 
 # 7. Budgets (In scope 7): JavaScript per route and Lighthouse CI for / ---------------------------
+# DEFAULT D24: the budgets of plan §5.8 (LCP < 2.5 s, CLS < 0.1, 170 kB) until the owner confirms them.
 if [ -f .next/build-manifest.json ]; then
   check_verbose "initial JavaScript per route within budget (scripts/check-bundle-budget.mjs)" node scripts/check-bundle-budget.mjs
 else

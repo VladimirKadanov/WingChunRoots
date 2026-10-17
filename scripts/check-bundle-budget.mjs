@@ -13,6 +13,8 @@
 // that set, so a change in Next.js's manifests cannot shrink the count unnoticed.
 //
 // 1 kB = 1000 bytes; gzip at the zlib default level, as a server would send it.
+//
+// DEFAULT D24: the budgets of plan §5.8 until the owner confirms the performance targets.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

@@ -1,4 +1,4 @@
-// Demo content of the home page (D20): clearly fictional people, a fictional hall and
+// Demo content of the home page (DEFAULT D20): clearly fictional people, a fictional hall and
 // fictional links, invented for this page. Slugs start with `demo-`. Nothing here describes a
 // real person, lineage, date or rank. The real record comes from the database (M04).
 

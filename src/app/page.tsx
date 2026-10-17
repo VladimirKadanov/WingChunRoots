@@ -1,6 +1,6 @@
 // Home page, first version (M00b; the final one is M13): the thesis through a living lineage,
 // a demo search, how verification works and a featured lineage. All people and halls here are
-// fictional demo content (D20).
+// fictional demo content (DEFAULT D20).
 
 import Link from 'next/link';
 import { ArrowRightIcon, LockIcon } from '@/components/icons';
