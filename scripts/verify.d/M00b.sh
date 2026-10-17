@@ -214,21 +214,40 @@ lighthouse() {
   mkdir -p .verify
   rm -rf .lighthouseci .verify/M00b-lighthouse.log
   local log=.verify/M00b-lighthouse-server.log starter=()
+  local answers="fetch('http://127.0.0.1:$port/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+  # Lighthouse must measure this build: a server that already answers on the port (another agent,
+  # a dev server) would be measured instead, and this check would pass on someone else's page.
+  if node -e "fetch('http://127.0.0.1:$port/').then(() => process.exit(0), () => process.exit(1))" 2>/dev/null; then
+    echo "port $port is already in use; set LHCI_PORT to a free port"
+    return 1
+  fi
   command -v setsid >/dev/null 2>&1 && starter=(setsid)
   "${starter[@]}" node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1 &
   local pid=$! i ready=0
   for i in $(seq 1 120); do
-    if node -e "fetch('http://127.0.0.1:$port/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" 2>/dev/null; then
+    # Our server exited (EADDRINUSE, a crash): whatever answers on the port is not this build.
+    if ! kill -0 "$pid" 2>/dev/null; then
+      break
+    fi
+    if node -e "$answers" 2>/dev/null; then
       ready=1
       break
     fi
     sleep 0.5
   done
+  if [ "$ready" -eq 1 ] && ! kill -0 "$pid" 2>/dev/null; then ready=0; fi
   local rc=1
-  if [ "$ready" -eq 1 ]; then
+  if [ "$ready" -eq 0 ] && ! kill -0 "$pid" 2>/dev/null; then
+    echo "next start exited before Lighthouse ran; see $log:"
+    tail -n 5 "$log"
+  elif [ "$ready" -eq 1 ]; then
     node scripts/lighthouse.mjs --config=lighthouserc.json --url="http://127.0.0.1:$port/" --chrome-path="$chrome" \
       2>&1 | tee .verify/M00b-lighthouse.log
     rc=${PIPESTATUS[0]}
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "next start exited while Lighthouse ran; see $log"
+      rc=1
+    fi
   else
     echo "next start did not answer on port $port; see $log"
   fi
