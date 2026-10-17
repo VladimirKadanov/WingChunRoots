@@ -78,13 +78,19 @@ export function policyFor(path: string): RoutePolicy | null {
   return best === null ? null : ROUTE_POLICIES[best]!;
 }
 
-/** A local path for `?next=`: only same-site paths, never `//host` or a scheme. */
+/**
+ * A local path for `?next=`: only same-site paths, never `//host` or a scheme. The check runs
+ * again on the normalised path, because dot segments can turn a local path into a
+ * protocol-relative one (`/.//host` and `/a/..//host` both normalise to `//host`).
+ */
 export function safeNextPath(value: unknown, fallback = '/'): string {
-  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return fallback;
+  const local = (path: string) => path.startsWith('/') && !path.startsWith('//') && !path.startsWith('/\\');
+  if (typeof value !== 'string' || !local(value)) return fallback;
   try {
     const url = new URL(value, 'http://wcr.invalid');
     if (url.origin !== 'http://wcr.invalid') return fallback;
-    return `${url.pathname}${url.search}`;
+    const path = `${url.pathname}${url.search}`;
+    return local(path) ? path : fallback;
   } catch {
     return fallback;
   }

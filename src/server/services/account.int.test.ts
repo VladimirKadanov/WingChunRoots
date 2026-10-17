@@ -235,6 +235,9 @@ describe('landingPath', () => {
     expect(await landingPath(account.id, undefined)).toBe('/account');
     expect(await landingPath(account.id, '/onboarding')).toBe('/account');
     expect(await landingPath(account.id, '/schools')).toBe('/schools');
+    // Never another site, also when dot segments would make the path protocol-relative.
+    expect(await landingPath(account.id, '/.//example.test')).toBe('/account');
+    expect(await landingPath(account.id, 'https://example.test/')).toBe('/account');
 
     // The terms get a new version: the grant the account gave is for the old one, so it is asked
     // again, even though it already has a profile.
