@@ -124,7 +124,7 @@
   }
 
   /* Seals (src/components/ink/seal.tsx): the dimmed tone keeps the shape and drops the colour
-     (plan §4.7, solid tones only), and small seals leave out the chop's carved detail. */
+     (plan §4.7, solid tones only). */
   .seal-dim {
     --verified: var(--dim-stroke);
     --on-verified: var(--bg);
@@ -133,9 +133,6 @@
     --arbitration: var(--dim-stroke);
     --cross-lineage: var(--dim-stroke);
     --fg-muted: var(--dim-stroke);
-  }
-  .seal-small .seal-detail {
-    display: none;
   }
 
   /* Text links: underlined, never colour alone. The element sets its own 44 px touch area. */
