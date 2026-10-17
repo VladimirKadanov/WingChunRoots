@@ -5,6 +5,7 @@
 import { sql } from 'drizzle-orm';
 import { bigint, boolean, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import {
   deletedAt,
   EVIDENCE_MAX_BYTES,
@@ -36,7 +37,7 @@ export const evidenceFile = pgTable(
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     scanStatus: text('scan_status', { enum: SCAN_STATUSES }).notNull().default('pending'),
     retentionUntil: timestamp('retention_until', { withTimezone: true }),
-    uploadedByUserId: uuid('uploaded_by_user_id'),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     ...timestamps(),
     deletedAt: deletedAt(),
   },
@@ -60,8 +61,8 @@ export const reviewCase = pgTable(
     relationshipId: uuid('relationship_id').references(() => teachingRelationship.id, { onDelete: 'set null' }),
     personId: uuid('person_id').references(() => person.id, { onDelete: 'set null' }),
     schoolId: uuid('school_id').references(() => school.id, { onDelete: 'set null' }),
-    openedByUserId: uuid('opened_by_user_id'),
-    assignedToUserId: uuid('assigned_to_user_id'),
+    openedByUserId: uuid('opened_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
+    assignedToUserId: uuid('assigned_to_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     resolution: text('resolution', { enum: REVIEW_RESOLUTIONS }),
     resolutionReason: text('resolution_reason'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
@@ -91,7 +92,7 @@ export const evidenceLink = pgTable(
     relationshipId: uuid('relationship_id').references(() => teachingRelationship.id, { onDelete: 'cascade' }),
     personId: uuid('person_id').references(() => person.id, { onDelete: 'cascade' }),
     note: text('note'),
-    createdByUserId: uuid('created_by_user_id'),
+    createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     ...timestamps(),
   },
   (t) => [
@@ -110,7 +111,7 @@ export const reviewNote = pgTable(
     reviewCaseId: uuid('review_case_id')
       .notNull()
       .references(() => reviewCase.id, { onDelete: 'cascade' }),
-    authorUserId: uuid('author_user_id'),
+    authorUserId: uuid('author_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     body: text('body').notNull(),
     // Internal notes are for reviewers only; the others are shown to the parties (needs_info).
     isInternal: boolean('is_internal').notNull().default(true),
@@ -127,7 +128,7 @@ export const contentReport = pgTable(
     subjectId: uuid('subject_id').notNull(),
     reason: text('reason', { enum: REPORT_REASONS }).notNull(),
     details: text('details'),
-    reporterUserId: uuid('reporter_user_id'),
+    reporterUserId: uuid('reporter_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     status: text('status', { enum: REPORT_STATUSES }).notNull().default('open'),
     reviewCaseId: uuid('review_case_id').references(() => reviewCase.id, { onDelete: 'set null' }),
     ...timestamps(),

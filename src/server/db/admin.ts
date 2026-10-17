@@ -247,14 +247,26 @@ export function throwawayDatabaseName(prefix: string): string {
  * A stable hash of the contents of `tables`: every row as text, sorted, in UTC. Two loads of the
  * same fixtures give the same hash (milestone M01, Done when 2).
  */
-export async function contentHash(client: Client, tables: readonly string[]): Promise<string> {
+export async function contentHash(
+  client: Client,
+  tables: readonly string[],
+  exclude: Readonly<Record<string, readonly string[]>> = {},
+): Promise<string> {
   await client.query("SET TIME ZONE 'UTC'");
   await client.query("SET DateStyle = 'ISO, YMD'");
   const hash = createHash('sha256');
+  const safe = (name: string) => {
+    if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error(`unsafe identifier: ${name}`);
+    return name;
+  };
   for (const table of tables) {
-    if (!/^[a-z_][a-z0-9_]*$/.test(table)) throw new Error(`unsafe table name: ${table}`);
+    safe(table);
+    // A table with excluded columns is hashed as jsonb without them (always every row and column
+    // otherwise).
+    const columns = (exclude[table] ?? []).map(safe);
+    const row = columns.length ? `(to_jsonb(t) - ARRAY[${columns.map((c) => `'${c}'`).join(', ')}])::text` : 't::text';
     const { rows } = await client.query<{ n: string; digest: string }>(
-      `SELECT count(*)::text AS n, md5(coalesce(string_agg(t::text, E'\\n' ORDER BY t::text), '')) AS digest FROM "${table}" t`,
+      `SELECT count(*)::text AS n, md5(coalesce(string_agg(${row}, E'\\n' ORDER BY ${row}), '')) AS digest FROM "${table}" t`,
     );
     hash.update(`${table}:${rows[0]!.n}:${rows[0]!.digest}\n`);
   }

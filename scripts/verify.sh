@@ -20,6 +20,8 @@
 # scripts/init-env.sh, CI) and, locally, starts it. From M01 the role passwords DB_MIGRATOR_PASSWORD,
 # DB_APP_RW_PASSWORD and DB_APP_PUBLIC_RO_PASSWORD come from the same places, and every run
 # bootstraps the test database (scripts/db-bootstrap.sh, idempotent) before the database steps.
+# From M02 the account settings BETTER_AUTH_SECRET, IP_HMAC_KEY, E2E_PASSWORD and E2E_TOTP_SECRET
+# (and optionally APP_URL) come from the same places; the env step refuses to start without them.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -81,7 +83,9 @@ from_dotenv() {
 }
 DB_PASSWORD_VARS=(DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD)
 MAIL_VARS=(MAIL_TRANSPORT SMTP_URL MAIL_FILE_DIR MAIL_FROM MAILPIT_URL MAILPIT_SMTP_PORT MAILPIT_UI_PORT)
-for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}" "${MAIL_VARS[@]}"; do
+AUTH_SECRET_VARS=(BETTER_AUTH_SECRET IP_HMAC_KEY E2E_PASSWORD E2E_TOTP_SECRET)
+for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}" "${MAIL_VARS[@]}" \
+  APP_URL "${AUTH_SECRET_VARS[@]}"; do
   from_dotenv "$name"
 done
 
@@ -90,7 +94,7 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
   if [ -z "${TEST_DATABASE_URL:-}" ]; then
     eval "$(scripts/cloud-setup.sh --print-env 2>/dev/null | grep '^export TEST_DATABASE_URL=')"
   fi
-  for name in "${DB_PASSWORD_VARS[@]}"; do
+  for name in "${DB_PASSWORD_VARS[@]}" "${AUTH_SECRET_VARS[@]}"; do
     if [ -z "${!name:-}" ]; then
       eval "$(scripts/cloud-setup.sh --print-env 2>/dev/null | grep "^export ${name}=")"
     fi
@@ -181,6 +185,21 @@ check_env() {
   echo "PW_CHROMIUM_EXECUTABLE: ${PW_CHROMIUM_EXECUTABLE:-<not set: the browsers installed by Playwright>}"
   if introduced M01b; then
     echo "MAIL_TRANSPORT: ${MAIL_TRANSPORT:-<not set: file>}"
+  fi
+  if introduced M02; then
+    # The web server, the worker, the seed and the tests must share these values (the seeded
+    # TOTP secrets are encrypted with BETTER_AUTH_SECRET). Never printed.
+    local name missing=()
+    for name in "${AUTH_SECRET_VARS[@]}"; do
+      [ -n "${!name:-}" ] || missing+=("$name")
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+      echo "Not set: ${missing[*]}."
+      echo "  cloud session: eval \"\$(scripts/cloud-setup.sh --print-env)\""
+      echo "  local:         scripts/init-env.sh (appends them to an existing .env)"
+      return 1
+    fi
+    echo "${AUTH_SECRET_VARS[*]}: set"
   fi
   echo "CI: ${CI:-<not set>}"
 }

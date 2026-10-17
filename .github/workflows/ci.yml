@@ -90,6 +90,22 @@ jobs:
         run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
       - name: Create the test database (same SQL as Docker Compose)
         run: psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -f docker/postgres/20-create-test-database.sql
+      - name: Generate the throwaway account settings (from M02)
+        # Random per run and never in the repository: the Better Auth secret, the ip_hmac key and
+        # the test-only credentials of the seeded demo accounts (.env.example).
+        run: |
+          random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+          auth_secret="$(random_hex 32)"
+          ip_key="$(random_hex 32)"
+          password="wcr-$(random_hex 12)"
+          totp_secret="$(node -e "const a='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';console.log(Array.from(require('node:crypto').randomBytes(32),(b)=>a[b%32]).join(''))")"
+          for value in "$auth_secret" "$ip_key" "$password" "$totp_secret"; do echo "::add-mask::$value"; done
+          {
+            echo "BETTER_AUTH_SECRET=$auth_secret"
+            echo "IP_HMAC_KEY=$ip_key"
+            echo "E2E_PASSWORD=$password"
+            echo "E2E_TOTP_SECRET=$totp_secret"
+          } >> "$GITHUB_ENV"
       - name: scripts/verify.sh all
         run: scripts/verify.sh all
       # verify.sh shows only the last 80 lines of a failed step; Playwright's numbered failure

@@ -5,6 +5,7 @@
 import { sql } from 'drizzle-orm';
 import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import { GRANT_SOURCES, idColumn, inList, PLAN_CODES, timestamps } from './common';
 import { organization } from './organizations';
 
@@ -13,16 +14,16 @@ export const entitlementGrant = pgTable(
   {
     id: idColumn(),
     // The subject is exactly one of an account (auth_user, foreign key from M02) or an organization.
-    subjectUserId: uuid('subject_user_id'),
+    subjectUserId: uuid('subject_user_id').references(() => authUser.id, { onDelete: 'cascade' }),
     subjectOrganizationId: uuid('subject_organization_id').references(() => organization.id, { onDelete: 'cascade' }),
     planCode: text('plan_code', { enum: PLAN_CODES }).notNull(),
     source: text('source', { enum: GRANT_SOURCES }).notNull(),
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull().defaultNow(),
     endsAt: timestamp('ends_at', { withTimezone: true }),
-    grantedByUserId: uuid('granted_by_user_id'),
+    grantedByUserId: uuid('granted_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     reason: text('reason').notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    revokedByUserId: uuid('revoked_by_user_id'),
+    revokedByUserId: uuid('revoked_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     revokeReason: text('revoke_reason'),
     ...timestamps(),
   },

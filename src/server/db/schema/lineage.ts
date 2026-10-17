@@ -17,6 +17,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import {
   ACTIVE_RELATIONSHIP_STATUSES,
   DATE_PRECISIONS,
@@ -70,8 +71,8 @@ export const teachingRelationship = pgTable(
     isDisplayPrimary: boolean('is_display_primary').notNull().default(false),
     // DEFAULT D03: private to the people involved and the reviewers until verified.
     visibility: text('visibility', { enum: VISIBILITIES }).notNull().default('involved_only'),
-    requestedByUserId: uuid('requested_by_user_id'),
-    confirmedByUserId: uuid('confirmed_by_user_id'),
+    requestedByUserId: uuid('requested_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
+    confirmedByUserId: uuid('confirmed_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     statusReason: text('status_reason'),
     ...timestamps(),
@@ -153,7 +154,7 @@ export const relationshipEvent = pgTable(
       .references(() => teachingRelationship.id, { onDelete: 'restrict' }),
     fromStatus: text('from_status', { enum: RELATIONSHIP_STATUSES }),
     toStatus: text('to_status', { enum: RELATIONSHIP_STATUSES }).notNull(),
-    actorUserId: uuid('actor_user_id'),
+    actorUserId: uuid('actor_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     actorRole: text('actor_role'),
     reason: text('reason'),
     ...timestamps(),

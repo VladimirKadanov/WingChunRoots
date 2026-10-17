@@ -55,6 +55,9 @@ async function seed(): Promise<void> {
     .join(', ');
   log(`db:seed: seed ${result.seed} loaded into ${redactUrl(url)}: ${counts}`);
   log(`db:seed: content hash ${result.hash}`);
+  for (const what of result.skipped) {
+    log(`db:seed: warning: demo accounts created without ${what}; scripts/init-env.sh adds the variables`);
+  }
 }
 
 async function reset(): Promise<void> {

@@ -113,18 +113,35 @@ describe('structure', () => {
     for (const d of defaults) expect(d.column_default, d.table_name).toBe('gen_random_uuid()');
   });
 
-  it('has no Better Auth tables and no media_asset (M02, Phase 2)', async () => {
+  it('keeps the Better Auth tables under the auth_ prefix and has no media_asset (M02, Phase 2)', async () => {
     const tables = (await q<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).map((r) => r.tablename);
-    for (const t of ['user', 'session', 'account', 'verification', 'media_asset']) expect(tables).not.toContain(t);
+    for (const t of ['user', 'session', 'account', 'verification', 'two_factor', 'twoFactor', 'media_asset']) expect(tables).not.toContain(t);
+    expect(tables).toEqual(
+      expect.arrayContaining(['auth_user', 'auth_session', 'auth_account', 'auth_verification', 'auth_two_factor']),
+    );
     expect(tables).toEqual(expect.arrayContaining(['person', 'teaching_relationship', 'school_private_location', 'audit_log', 'evidence_file']));
   });
 
-  it('keeps *_user_id columns as uuid without a foreign key until M02', async () => {
-    const fks = await q<{ conname: string }>(
-      `SELECT c.conname FROM pg_constraint c
-         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
-        WHERE c.contype = 'f' AND a.attname LIKE '%user_id'`,
+  it('gives every *_user_id column a foreign key to auth_user, except the append-only audit log (M02)', async () => {
+    const columns = await q<{ table_name: string; column_name: string; target: string | null }>(
+      `SELECT c.table_name, c.column_name,
+              (SELECT f.relname FROM pg_constraint k
+                 JOIN pg_class t ON t.oid = k.conrelid
+                 JOIN pg_class f ON f.oid = k.confrelid
+                 JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = ANY (k.conkey)
+                WHERE k.contype = 'f' AND t.relname = c.table_name AND a.attname = c.column_name) AS target
+         FROM information_schema.columns c
+         JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+        WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+          AND (c.column_name LIKE '%user_id' OR c.column_name LIKE '%\\_by' ESCAPE '\\')
+          AND c.table_name NOT LIKE 'auth\\_%' ESCAPE '\\'
+        ORDER BY 1, 2`,
     );
-    expect(fks).toEqual([]);
+    expect(columns.length).toBeGreaterThanOrEqual(20);
+    for (const c of columns) {
+      const where = `${c.table_name}.${c.column_name}`;
+      if (where === 'audit_log.actor_user_id') expect(c.target, where).toBeNull();
+      else expect(c.target, where).toBe('auth_user');
+    }
   });
 });
