@@ -1,6 +1,6 @@
 // Self-hosted web fonts (plan §5.3; ADR 0006): next/font/local from the @fontsource packages
-// (SIL OFL 1.1). Never next/font/google, never a request to Google at build time or in the
-// browser. One call per subset, so each face carries its own unicode-range and the browser
+// (SIL OFL 1.1). Never the Google loader of next/font, never a request to Google at build time
+// or in the browser. One call per subset, so each face carries its own unicode-range and the browser
 // downloads a subset only when the page has a character from it. The family names are fixed
 // ('Gloock', 'Schibsted Grotesk', 'Noto Serif Display') so the font stacks in
 // src/design/tokens.ts can name them; the size-matched fallback faces live in the generated
