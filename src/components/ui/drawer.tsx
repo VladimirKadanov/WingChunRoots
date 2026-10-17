@@ -19,12 +19,14 @@
 // While a sheet is open it publishes how much room it takes on <html> (globals.css reads it):
 // - --sheet-clear: px from the bottom of the window to the top edge of a bottom sheet at its snap
 //   point, and --sheet-inline: the side panel's width. Toasts land above or beside the sheet.
-// - --sheet-head and data-sheet-full: a bottom sheet that leaves less than 9rem above it is
-//   "full"; toasts then sit under its header, clear of its title and its buttons.
+// - --sheet-head and data-sheet-full: a bottom sheet that leaves less than 9rem above it, with
+//   more room under its header than above it, is "full"; toasts then sit under its header, clear
+//   of its title and its buttons.
 // - --sheet-page-clear and --sheet-page-inline, for a non-modal sheet only (the page behind it is
 //   live): the page keeps that room clear, so focus never lands on a control under the sheet
-//   (WCAG 2.4.11). From 1024 px the page narrows beside the side panel.
-// - data-sheet-open while any sheet is open.
+//   (WCAG 2.4.11). From 1024 px the page narrows beside the side panel. A bottom sheet that leaves
+//   less than 9rem of the page above it keeps no room: the page is behind it whatever its padding,
+//   and a screen of padding would only make the page jump when the sheet comes down again.
 // With two sheets open, the newer one's room is published (for the page: the newer non-modal
 // one's), and the older one's again when it closes. The room follows the snap point, not a drag
 // in progress (that would restyle the page on every frame); it catches up when the drag settles.
@@ -249,6 +251,8 @@ export function Drawer({
 }
 
 interface Room {
+  /** When the sheet opened (rooms are published in this order, see the top of this file). */
+  order: number;
   /** A non-modal sheet leaves the page live behind it, so the page keeps its room clear. */
   modal: boolean;
   /** Bottom sheet: px from the bottom of the window to its top edge. */
@@ -257,12 +261,16 @@ interface Room {
   inline: number | null;
   /** Bottom sheet: px from the top of the window to the bottom of its header. */
   head: number | null;
-  /** A bottom sheet with less than 9rem of the window above it. */
+  /** A bottom sheet with less than 9rem of the window above it and more room under its header. */
   full: boolean;
+  /** A bottom sheet with less than 9rem of the window above it: the page is behind it. */
+  covers: boolean;
 }
 
-/** The room of every open sheet, in the order they opened (see the top of this file). */
+/** The room of every open sheet, by sheet. */
 const rooms = new Map<symbol, Room>();
+/** Counts openings, so a sheet keeps its place among the rooms when its effect runs again. */
+let openings = 0;
 
 /** Air between a focused page control and a non-modal sheet, for the 2 px focus ring and its offset. */
 const FOCUS_AIR = 8;
@@ -270,7 +278,7 @@ const FOCUS_AIR = 8;
 /** Writes the newest open sheet's room on <html>, or removes it when no sheet is open. */
 function publishRooms() {
   const root = document.documentElement;
-  const all = [...rooms.values()];
+  const all = [...rooms.values()].sort((a, b) => a.order - b.order);
   const newest = all.at(-1);
   const page = all.filter((room) => !room.modal).at(-1);
   const px = (value: number | null | undefined) => (value === null || value === undefined ? null : `${Math.round(value)}px`);
@@ -278,13 +286,12 @@ function publishRooms() {
     ['--sheet-clear', px(newest?.clear)],
     ['--sheet-inline', px(newest?.inline)],
     ['--sheet-head', newest?.full ? px(newest.head) : null],
-    ['--sheet-page-clear', page?.clear == null ? null : px(page.clear + FOCUS_AIR)],
+    ['--sheet-page-clear', page?.clear == null || page.covers ? null : px(page.clear + FOCUS_AIR)],
     ['--sheet-page-inline', px(page?.inline)],
   ] as const) {
     if (value) root.style.setProperty(name, value);
     else root.style.removeProperty(name);
   }
-  root.toggleAttribute('data-sheet-open', !!newest);
   root.toggleAttribute('data-sheet-full', !!newest?.full);
 }
 
@@ -310,30 +317,47 @@ function useSheetRoom(
   popup: HTMLElement | null,
   header: HTMLElement | null,
 ) {
+  // One key per sheet, and one place in the opening order per opening: the effect below runs
+  // again when the sheet turns into a side panel or its elements change, and must not move the
+  // sheet ahead of one opened after it.
+  const [key] = useState(() => Symbol('sheet'));
+  const order = useRef(0);
+  useEffect(() => {
+    if (open) order.current = ++openings;
+  }, [open]);
+
   useEffect(() => {
     if (!open || !viewport || !popup) return;
-    const key = Symbol('sheet');
     let offset: string | null = null;
+    let inset = 0;
     const measure = (force: boolean) => {
       if (side) {
-        rooms.set(key, { modal, clear: null, inline: popup.offsetWidth, head: null, full: false });
+        rooms.set(key, { order: order.current, modal, clear: null, inline: popup.offsetWidth, head: null, full: false, covers: false });
         publishRooms();
         return;
       }
       const next = popup.style.getPropertyValue('--drawer-snap-point-offset');
       if (!force && next === offset) return;
       offset = next;
+      // The insets change only with the window (rotation), which resizes the viewport.
+      if (force) inset = topInset();
       const visible = Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
       const bottom = viewport.getBoundingClientRect().bottom;
       const top = bottom - visible;
+      // The popup's 1 px top border, then the header.
+      const head = top + 1 + (header?.offsetHeight ?? 0);
       const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const covers = top < inset + 9 * rem;
       rooms.set(key, {
+        order: order.current,
         modal,
         clear: window.innerHeight - top,
         inline: null,
-        // The popup's 1 px top border, then the header.
-        head: top + 1 + (header?.offsetHeight ?? 0),
-        full: top < topInset() + 9 * rem,
+        head,
+        // Under the header only where that leaves more room than above the sheet (not over a
+        // peek in a short landscape window, where the header itself is low on the screen).
+        full: covers && window.innerHeight - head > top - inset,
+        covers,
       });
       publishRooms();
     };
@@ -343,11 +367,14 @@ function useSheetRoom(
     const sizes = typeof ResizeObserver === 'function' ? new ResizeObserver(() => measure(true)) : null;
     sizes?.observe(popup);
     sizes?.observe(viewport);
+    // At full height the popup is capped, so a header that grows (a longer title, larger text)
+    // does not resize it; the header is watched on its own for --sheet-head.
+    if (header) sizes?.observe(header);
     return () => {
       styles.disconnect();
       sizes?.disconnect();
       rooms.delete(key);
       publishRooms();
     };
-  }, [open, side, modal, viewport, popup, header]);
+  }, [key, open, side, modal, viewport, popup, header]);
 }
