@@ -2,7 +2,7 @@
 
 // Publishes the real height of the phone tab bar on <html> as --tab-bar (without the home
 // indicator's inset). The bar's labels are sized in rem, so it grows with the reader's text
-// (73 px at 150 %, 89 px at 200 %), while the --tab-h token is its smallest height. Everything
+// (67 px at 150 %, 89 px at 200 %), while the --tab-h token is its smallest height. Everything
 // that keeps clear of the bar (scroll padding, <main>'s padding, a non-modal sheet's bottom edge,
 // toasts) reads --tab-clear in globals.css, which uses --tab-bar once this has run and the
 // token before. From 768 px the nav is the side rail and nothing is published.

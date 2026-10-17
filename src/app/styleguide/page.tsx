@@ -123,7 +123,9 @@ function Specimens() {
 
 export default function StyleguidePage() {
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11">
+    // A size container: the sections lay out by the page's own width, which a docked side panel
+    // (a non-modal sheet from 1024 px) narrows, not by the window's.
+    <div className="@container mx-auto max-w-content px-page pt-6 pb-10 md:pt-11">
       <header className="pb-8">
         <p className="eyebrow">Design system · Ink Register</p>
         <h1 className="mt-2 font-display text-feature">Style guide</h1>
@@ -137,7 +139,7 @@ export default function StyleguidePage() {
       </header>
 
       <Section id="sg-themes" eyebrow="Both themes" title="Components side by side">
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @min-[44rem]:grid-cols-2">
           {THEMES.map((theme) => (
             <div key={theme} className={cn(`theme-${theme}`, 'rounded-md border border-border-subtle bg-bg p-4 text-fg md:p-6')}>
               <p className="eyebrow mb-4">{THEME_LABEL[theme]}</p>
@@ -155,7 +157,7 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-links" eyebrow="Verification" title="Link states">
-        {/* Two columns only where both fit (a size container: the rail takes 232 px from 768 px). */}
+        {/* Two columns only where both fit (its own size container: the rail takes 232 px from 768 px). */}
         <div className="@container">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Legend layout="list" descriptions />
@@ -178,7 +180,7 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-colour" eyebrow="Tokens" title="Colour">
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @min-[44rem]:grid-cols-2">
           {THEMES.map((theme) => (
             <table key={theme} className="w-full table-fixed border-collapse text-left text-sm [overflow-wrap:anywhere]">
               <caption className="mb-2 text-left font-semibold">{THEME_LABEL[theme]}: contrast against the page ground</caption>
@@ -237,7 +239,7 @@ export default function StyleguidePage() {
             .map(([name, step]) => {
               const display = DISPLAY_STEPS.has(name);
               return (
-                <div key={name} className="grid grid-cols-[minmax(0,1fr)] gap-1 border-b border-border-subtle pb-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-6">
+                <div key={name} className="grid grid-cols-[minmax(0,1fr)] gap-1 border-b border-border-subtle pb-4 @min-[28rem]:grid-cols-[10rem_minmax(0,1fr)] @min-[28rem]:gap-6">
                   <p className="text-xs text-fg-subtle">
                     <code className="font-mono">text-{name}</code>
                     <span className="block">
@@ -263,7 +265,7 @@ export default function StyleguidePage() {
       </Section>
 
       <Section id="sg-shape" eyebrow="Tokens" title="Shape and motion">
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @min-[28rem]:grid-cols-2">
           <ul className="flex flex-wrap gap-4">
             {Object.entries(radius).map(([name, value]) => (
               <li key={name} className="grid justify-items-center gap-1.5 text-xs text-fg-subtle">

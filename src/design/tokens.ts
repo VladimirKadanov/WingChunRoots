@@ -305,7 +305,7 @@ export const layout = {
   'content-max': '1180px',
   /** Comfortable reading measure. */
   measure: '62ch',
-  /** Width of a side sheet from 768 px (the sheet becomes a right-hand panel there). */
+  /** Width of a side sheet from 1024 px (the sheet becomes a right-hand panel there). */
   'sheet-w': '420px',
 } as const;
 

@@ -315,7 +315,8 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
                   {person.living ? (
                     <circle cx={node.x} cy={node.y} r={4.6} fill={color} />
                   ) : (
-                    <circle cx={node.x} cy={node.y} r={4.4} fill="var(--bg)" stroke={color} strokeWidth={1.6} />
+                    // Hollow, filled with the ground behind it: the current row is tinted (surface-1).
+                    <circle cx={node.x} cy={node.y} r={4.4} fill={focus === node.index ? 'var(--surface-1)' : 'var(--bg)'} stroke={color} strokeWidth={1.6} />
                   )}
                 </g>
               );
