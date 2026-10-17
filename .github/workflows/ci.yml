@@ -23,7 +23,7 @@ jobs:
   verify:
     # Everything `scripts/verify.sh all` runs: lint, typecheck, unit, build, the whole E2E
     # suite in desktop-chromium, mobile-chromium and mobile-webkit, and every
-    # scripts/verify.d/*.sh, against PostgreSQL 18 + PostGIS 3.6.
+    # scripts/verify.d/*.sh, against PostgreSQL 18 + PostGIS 3.6 and Mailpit.
     name: verify (Node 24, PostgreSQL 18, Playwright)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -45,8 +45,27 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 30
+      mailpit:
+        # The same image as docker-compose.yml (from M01b): the worker sends e-mail over SMTP
+        # (1025) and e2e/helpers/mailbox.ts reads it back through the Mailpit API (8025).
+        image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: "1"
+          MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+          MP_MAX_MESSAGES: "5000"
+        ports:
+          - 1025:1025
+          - 8025:8025
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     env:
-      # Throwaway credentials of the service container above; not a secret.
+      # E-mail goes to the Mailpit service above (SMTP_URL and MAILPIT_URL keep their defaults,
+      # smtp://127.0.0.1:1025 and http://127.0.0.1:8025).
+      MAIL_TRANSPORT: smtp
+      # Throwaway credentials of the postgres service container above; not a secret.
       TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/wingchunroots_test
       # Throwaway passwords of the database roles (from M01); scripts/verify.sh bootstraps the
       # roles with scripts/db-bootstrap.sh before the database steps.

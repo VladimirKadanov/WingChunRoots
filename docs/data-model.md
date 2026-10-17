@@ -1,6 +1,6 @@
 # Модел на данните (Фаза 1)
 
-Етап M01 · план §6.2–§6.7 · решение: [ADR 0002](adr/0002-data-model.md)
+Етапи M01 и M01b · план §6.2–§6.7 · решения: [ADR 0002](adr/0002-data-model.md), [ADR 0003](adr/0003-jobs-and-mail.md) (задачи и поща)
 
 Този документ описва базата данни на WingChunRoots такава, каквато я създават миграциите в `drizzle/`: таблиците, изгледите, ролите и правата, ограниченията, личните данни и сроковете им на пазене, и фиктивните данни за разработка. Източникът на истината е кодът: схемата на Drizzle в `src/server/db/schema/` и SQL-ът на миграциите. При разминаване важи кодът, а документът се поправя.
 
@@ -38,7 +38,7 @@
 | `person_name_key` | Нормализирани ключове за търсене (M07): `key`, `key_kind` (`latin`, `jyutping`, `pinyin`, `han`, `cyrillic`), `is_primary`. В M01 остава празна; GIN `gin_trgm_ops` и B-tree `text_pattern_ops` върху `key` |
 | `person_bio` | Биография на даден език: една на личност и език (`person_id`, `lang`) |
 | `person_claim` | Заявка „това съм аз“: `user_id`, `status` (`pending`, `approved`, `rejected`, `withdrawn`), `message`, `review_case_id`, кой и кога е решил (`decided_by_user_id`, `decided_at`). Най-много една чакаща заявка от един потребител за една личност; няколко души могат да заявят една и съща личност и прегледът решава |
-| `invitation` | Покана към жив учител без акаунт (статус `awaiting_claim`, план §6.7): `email`, `token_hash` (SHA-256 на токена в hex; самият токен не се пази), `status` (`pending`, `accepted`, `expired`, `revoked`), `expires_at`, `relationship_id` |
+| `invitation` | Покана към жив учител без акаунт (статус `awaiting_claim`, план §6.7): `email` (`NULL`, след като срокът на пазене изтече; задължителен при `pending`), `token_hash` (SHA-256 на токена в hex; самият токен не се пази), `status` (`pending`, `accepted`, `expired`, `revoked`), `expires_at`, `relationship_id` |
 
 ### Линии и връзки
 
@@ -85,10 +85,14 @@
 |---|---|
 | `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy`, `age_18_plus`, `publication`), `document_version`, `action` (`granted`, `withdrawn`), `occurred_at` |
 | `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at` |
-| `email_delivery` | Един ред на имейл: `to_email`, `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `provider_message_id`, `error`, `sent_at` |
+| `email_delivery` | Един ред на имейл (M01b: `Mailer` и outbox-ът): `to_email` (`NULL`, след като срокът на пазене изтече; задължителен при `queued`), `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `attempts` (брой опити, ≥ 0), `last_attempt_at`, `provider_message_id`, `error` (без адреси, до 500 знака), `sent_at` |
 | `audit_log` | Одитен журнал само за добавяне (раздел 6) |
 
-Таблиците на Better Auth (M02), схемата на pg-boss (M01b) и `media_asset` (Фаза 2) не са част от M01.
+Таблиците на Better Auth (M02) и `media_asset` (Фаза 2) не са част от M01.
+
+### Схемата `pgboss` (M01b)
+
+Опашката на pg-boss е в същата база, в отделна схема `pgboss` (версия 46 при pg-boss 12.38.0). Не я създават миграциите на Drizzle, а стъпка в `pnpm db:migrate` след тях, като `migrator`, от плановете за създаване и миграция на самия pg-boss (`src/server/jobs/schema.ts`, [ADR 0003](adr/0003-jobs-and-mail.md)). Приложението не пише в нея с SQL, а само през pg-boss. Задачите на имейлите носят `deliveryId` и данните на шаблона, но не и адреса; изпълнените задачи се трият след 7 дни.
 
 ## 3. Публични изгледи
 
@@ -109,8 +113,8 @@
 | Роля | Права |
 |---|---|
 | `migrator` | Собственик на базата и на всеки обект на приложението. `pnpm db:migrate` и `pnpm db:seed` работят като `migrator` (`SET ROLE migrator`), независимо кой се свързва, затова собственикът е един и същ навсякъде. Създава разширенията `pg_trgm`, `unaccent` и `fuzzystrmatch` (trusted) |
-| `app_rw` | Услугите и worker-ът. `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците на приложението; върху `audit_log` и `relationship_event` само `SELECT` и `INSERT`; `SELECT` върху трите изгледа. Няма `CREATE` в схемата и в базата |
-| `app_public_ro` | Анонимното четене: само `SELECT` върху `v_public_person`, `v_public_edge` и `v_public_school`. Всяка таблица, включително `school_private_location`, `evidence_file` и `evidence_link`, дава `permission denied`. Към базата има само `CONNECT`: без `TEMPORARY`, така че не може да създава временни таблици (`PUBLIC` също губи подразбиращото се `TEMPORARY`; има го само `app_rw`). Интеграционен тест сверява пълния списък с релации, които ролята може да чете, и че не може да пише в нито една |
+| `app_rw` | Услугите и worker-ът. `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците на приложението; върху `audit_log` и `relationship_event` само `SELECT` и `INSERT`; `SELECT` върху трите изгледа. В схемата `pgboss` (M01b): `USAGE`, `SELECT`, `INSERT`, `UPDATE`, `DELETE` върху таблиците и `USAGE`, `SELECT`, `UPDATE` върху поредиците (и за таблиците от бъдещи версии чрез `ALTER DEFAULT PRIVILEGES`). Няма `CREATE` в нито една схема и в базата |
+| `app_public_ro` | Анонимното четене: само `SELECT` върху `v_public_person`, `v_public_edge` и `v_public_school`; няма достъп до схемата `pgboss`. Всяка таблица, включително `school_private_location`, `evidence_file` и `evidence_link`, дава `permission denied`. Към базата има само `CONNECT`: без `TEMPORARY`, така че не може да създава временни таблици (`PUBLIC` също губи подразбиращото се `TEMPORARY`; има го само `app_rw`). Интеграционен тест сверява пълния списък с релации, които ролята може да чете, и че не може да пише в нито една |
 
 Приложението се свързва като `app_rw` (`getDb()`) и като `app_public_ro` (`getPublicDb()`) от `src/server/db/index.ts`, с отделен пул за всяка роля и `statement_timeout` 2 s, към хоста и базата от `DATABASE_URL` (в облачната сесия и в CI: `TEST_DATABASE_URL`). Всеки пул има слушател за събитието `error`: когато сървърът прекъсне неактивна връзка (рестарт на PostgreSQL или Docker Desktop, заспал компютър, `pg_terminate_backend`), процесът (`next start`, worker-ът) не пада, а пулът отваря нова връзка при следващата заявка. В лога отиват само ролята и SQLSTATE, никога адрес, заявка или параметри.
 
@@ -125,6 +129,7 @@
 - Покриващи индекси `(student_person_id) INCLUDE (teacher_person_id, status, lineage_id)` и `(teacher_person_id) INCLUDE (student_person_id, status, lineage_id)` за рекурсивните заявки от план §6.3 (в отделна миграция, защото Drizzle не поддържа `INCLUDE`).
 - `person_name_key.key`: GIN `gin_trgm_ops` (триграмна прилика) и B-tree `text_pattern_ops` (префикс).
 - GiST върху трите `geography` колони.
+- `email_delivery_queued_has_address` и `invitation_pending_has_email` (M01b): писмо в `queued` и покана в `pending` винаги имат адрес; адресът се заличава само след края им. `email_delivery_attempts_check`: `attempts >= 0`.
 - Уникални: `slug` в четирите таблици със slug; `place.geonames_id`; `invitation.token_hash`; `evidence_file.storage_key`; `email_delivery.idempotency_key`; една основна `person_name` на личност; една `person_bio` на личност и език; една чакаща `person_claim` от потребител за личност; една личност на потребител (`person.claimed_by_user_id`).
 - Формати: `slug`, двубуквени държави, ISO 15924 писмености, BCP 47 езици, SHA-256 в hex (`evidence_file`, `invitation`), `ip_hmac` (64 hex знака), действията в одита (`обект.действие`, например `relationship.verify`).
 - Личности, линии и връзки по правило не се трият физически: скриват се (`deleted_at`) или връзката сменя статуса си и приключва. Базата го подкрепя: `teaching_relationship` държи личностите и линията с `ON DELETE RESTRICT`, а `relationship_event` държи връзката с `ON DELETE RESTRICT` (каскадните действия вървят с правата на собственика на таблицата и биха заобиколили правилото „само добавяне“). Имената, биографиите, заявките, поканите, периодите и членствата се трият заедно със своята личност или връзка (`CASCADE`), а препратките от случаите за преглед стават `NULL`.
@@ -152,13 +157,16 @@
 |---|---|---|
 | `ip_hmac` | `audit_log` | **Свързваемостта се пази до 13 месеца.** Ключът се сменя на всеки 12 месеца, а старият се унищожава до един месец след смяната. След това старите стойности не могат да се свържат с IP адрес и престават да са лични данни. Редовете не се трият (журналът е само за добавяне), затова срокът се постига чрез унищожаване на ключа. Новата стойност на ключа не се извежда от старата |
 | Имена, биография, държава, дата на раждане | `person`, `person_name`, `person_bio` | Докато профилът съществува. При заявка за изтриване (`review_case.kind = 'deletion_request'`) личните полета се премахват или профилът се скрива (`deleted_at`), а връзките остават в графа като анонимни, ако други потребители зависят от тях (M10b) |
-| Имейл в поканата | `invitation.email` | До приемане, изтичане или отмяна на поканата плюс 30 дни; после се заличава (задача в M01b) |
-| Имейл на получателя | `email_delivery.to_email` | 90 дни (отстраняване на проблеми с доставката); после се заличава (M01b) |
+| Имейл в поканата | `invitation.email` | До приемане, изтичане или отмяна на поканата плюс 30 дни; после се заличава (`NULL`), а покана, която още е `pending`, става `expired`. Изпълнява го задачата `retention.purge` (M01b) |
+| Имейл на получателя | `email_delivery.to_email` | 90 дни от създаването на реда (отстраняване на проблеми с доставката); после се заличава (`NULL`), а неизпратено писмо става `failed`. Изпълнява го задачата `retention.purge` (M01b) |
+| Имена и адрес в писмото | Задачите в `pgboss`, файловете на транспорта `file` (`.mail/`), Mailpit | Задачите се трият 7 дни след изпълнението си. `.mail/` и Mailpit са само за разработка с фиктивни данни; Mailpit пази до 5000 писма |
 | Точна точка и адрес на школа | `school_private_location` | Докато школата съществува; никога в публичен отговор, лог, sitemap, Open Graph или JSON-LD |
 | Доказателства | `evidence_file` и частният бъкет | До `retention_until`, определен при решаването на случая (M10a) |
 | Одитни записи (без `ip_hmac`) | `audit_log` | Без срок: доказателство за всяко одобрение и архивна промяна (план §6.6) |
 
-Логовете на приложението не съдържат имена, имейли, IP адреси и координати (план §6.4, M12).
+Задачата `retention.purge` (`src/server/services/retention.ts`) върви всеки ден в 03:17 UTC в worker-а, като `app_rw`, и е идемпотентна. Променя редовете на партиди по 1000 (всяка в своя транзакция, далеч от `statement_timeout`) и прескача ред, заключен от писмо, което се изпраща в момента; следващото пускане го изтрива. Неуспех се записва в лога само със SQLSTATE. Ключът за идемпотентност в `email_delivery` остава и след изтриването на адреса, затова никога не съдържа лични данни (`@` се отказва, ADR 0003).
+
+Логовете на приложението не съдържат имена, имейли, IP адреси и координати (план §6.4, M12). Worker-ът пише само идентификатори на задачи и доставки, а грешките на SMTP се записват в `email_delivery.error` с адресите заменени с `<address>`.
 
 ## 8. Миграции и команди
 
@@ -166,11 +174,11 @@
 |---|---|
 | `scripts/db-bootstrap.sh` | Роли, пароли, собственик на базата и PostGIS за базите от `DATABASE_URL` и `TEST_DATABASE_URL` (или подадените адреси). Веднъж за всяка среда и след създаване на нова база; `scripts/verify.sh` и `scripts/cloud-setup.sh` го пускат сами за тестовата база |
 | `pnpm db:generate` | `drizzle-kit generate`: нова миграция от промяна в схемата. SQL, който Drizzle не изразява (изгледи, права, тригери, `INCLUDE`), е в миграция, създадена с `pnpm db:generate --custom --name <име>` |
-| `pnpm db:migrate` | Прилага чакащите миграции като `migrator` върху `DATABASE_URL` (или `TEST_DATABASE_URL`, ако `DATABASE_URL` не е зададен). Всички чакащи миграции вървят в една транзакция |
+| `pnpm db:migrate` | Прилага чакащите миграции като `migrator` върху `DATABASE_URL` (или `TEST_DATABASE_URL`, ако `DATABASE_URL` не е зададен). Всички чакащи миграции вървят в една транзакция. След тях създава или обновява схемата `pgboss` (M01b) и дава правата на `app_rw` |
 | `pnpm db:seed` | Изпразва таблиците на приложението (без `audit_log`) и зарежда фиктивните данни; отпечатва броя редове и хеша на съдържанието. Отказва при `NODE_ENV=production` |
-| `pnpm db:reset` | Трие всички обекти на приложението (схемите `public` и `drizzle`) и възстановява празната база с PostGIS. Само за локален хост или `TEST_DATABASE_URL`, никога при `NODE_ENV=production`, и само като суперпотребител. След него: `pnpm db:migrate && pnpm db:seed` |
-| `pnpm db:check` | `drizzle-kit check` (конфликти между миграции от паралелни клонове), проверка, че схемата няма промени без миграция, и прилагане на всички миграции в нова празна база (два пъти: вторият път не прилага нищо) |
-| `pnpm test:int` | Интеграционните тестове `src/server/db/*.int.test.ts`: всеки файл създава своя база, прилага bootstrap и миграциите, и я трие накрая. Срещу `TEST_DATABASE_URL`, а без него — Testcontainers с образа `postgis/postgis:18-3.6` по digest (нужен е Docker) |
+| `pnpm db:reset` | Трие всички обекти на приложението (схемите `public`, `drizzle` и `pgboss`) и възстановява празната база с PostGIS. Само за локален хост или `TEST_DATABASE_URL`, никога при `NODE_ENV=production`, и само като суперпотребител. След него: `pnpm db:migrate && pnpm db:seed` |
+| `pnpm db:check` | `drizzle-kit check` (конфликти между миграции от паралелни клонове), проверка, че схемата няма промени без миграция, и прилагане на всички миграции в нова празна база (два пъти: вторият път не прилага нищо), включително стъпката за `pgboss` (създава версията на закачения pg-boss, а вторият път не променя нищо) |
+| `pnpm test:int` | Интеграционните тестове `src/server/**/*.int.test.ts` (базата, задачите, пощата, сроковете на пазене): всеки файл създава своя база, прилага bootstrap и миграциите, и я трие накрая. Срещу `TEST_DATABASE_URL`, а без него — Testcontainers с образа `postgis/postgis:18-3.6` по digest (нужен е Docker) |
 | `pnpm fixtures:generate` | Записва `fixtures/lineage-600.json` от генератора |
 
 Миграциите в M01:
@@ -181,6 +189,10 @@
 4. `*_relationship_event_keep_history`: `ON DELETE RESTRICT` вместо `CASCADE` за `relationship_event` → `teaching_relationship`.
 5. `*_display_primary_after_verification` (след прегледа на M01): индексът за `is_display_primary` брои само `verified` и `in_arbitration`, а `CHECK` не позволява флага на заявка.
 6. `*_school_public_point_and_views` (след прегледа на M01): тригерите за `school.public_point` при `city_only`; `v_public_edge` иска основно име и за двата края, както `v_public_person`.
+
+Миграцията в M01b:
+
+7. `*_mail_delivery_attempts_and_retention`: `email_delivery.attempts` и `last_attempt_at`, индекс по `created_at` за почистването; `email_delivery.to_email` и `invitation.email` допускат `NULL` (сроковете на пазене от §7) с `CHECK`, че писмо в `queued` и покана в `pending` имат адрес.
 
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 

@@ -29,6 +29,15 @@ M01. Върви паралелно с M00b и M03.
 
 Имейлите за вход и регистрация (M02). Известията в таблото (M08). Доставчик на реални писма (отложен с хостинга, план §3.3).
 
+**Последваща работа: ръководството за администратора.** `docs/guides/` още не съществува: ръководствата се създават в M00b. M01b добавя поведение за администратора, което `docs/guides/admin-guide.bg.md` трябва да опише, когато и двата етапа са в `main` (етапът, който се слее втори, го дописва):
+
+- worker-ът е отделен процес: `pnpm worker` (и `pnpm worker:dev`), свързва се само като `app_rw`, спира плавно при `SIGTERM`;
+- пощата: `MAIL_TRANSPORT=smtp` към Mailpit (`docker compose up -d --wait mailpit`, http://localhost:8025) или `file` (писмата са в `.mail/`); във Фаза 1 `SMTP_URL` сочи само към местния Mailpit;
+- `pnpm mail:check <адрес>` за пробно писмо;
+- ежедневната задача `retention.purge` (03:17 UTC): адресите в `email_delivery` се изтриват след 90 дни, а в поканите 30 дни след края им.
+
+`scripts/verify.d/M01b.sh` проверява това, щом `docs/guides/admin-guide.bg.md` съществува.
+
 ## Ограничения (Constraints)
 
 `docs/plan/RULES.md`, а освен това: worker-ът се свързва само като `app_rw`.
@@ -55,3 +64,10 @@ M01. Върви паралелно с M00b и M03.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-10-16 22:25 — pg-boss 12.38.0 (схема `pgboss` от миграционна стъпка като `migrator`, `migrate: false`), `Mailer` с транспорти SMTP (Mailpit) и файл, шаблон `mail-check` с React Email и `notifications.ts`, outbox (`queueEmail` в транзакцията на Drizzle), worker като `app_rw`, задача за срока на пазене на адресите, `e2e/helpers/mailbox.ts`; lint, typecheck, unit (82) и интеграционни тестове (64) са зелени на PostgreSQL 16.15, `mailbox.int.test.ts` минава и с файловия транспорт, и през SMTP към Mailpit 1.31.6; `db:check` минава (339b64c)
+- 2026-10-16 22:35 — `playwright.config.ts` пуска и `pnpm worker`, `e2e/mail.spec.ts` (@M01b) чете пощата и с файловия транспорт, и през Mailpit; `scripts/verify.sh` пуска E2E срещу тестовата база; Mailpit в CI; променливите за пощата в `.env.example`, `init-env.sh` и `cloud-setup.sh` (9f5251e)
+- 2026-10-16 22:50 — `scripts/verify.d/M01b.sh`, ESLint граници за `nodemailer`, `pg-boss` и `react-email`, ADR 0003, `docs/data-model.md`, `README.md`; проверките на M00, M01 и M01b минават (0f4c050)
+- 2026-10-16 23:15 — поправки от /code-review: производителят създава липсващите опашки, неуспешен старт спира инстанцията, стъпката за pg-boss изгражда отново прекъснати индекси, `mail:check` без `--name`, `.env` преди проверката за production, грешките на базата в лога само със SQLSTATE, реалният прозорец на повторните опити (31–60 min); unit (85) и интеграционни тестове (66) са зелени
+- 2026-10-16 23:35 — `scripts/verify.sh M01b` и `scripts/verify.sh all` завършват с PASS; PR [#7](https://github.com/VladimirKadanov/WingChunRoots/pull/7) към `main` (след #5 и #6)
+- 2026-10-16 23:42 — поправки от независимия преглед: стъпка `mail` в `scripts/verify.sh` (проверява и локално пуска Mailpit при `MAIL_TRANSPORT=smtp`), ключ за идемпотентност без `@` и грешка при ключ, използван за друго писмо, `SMTP_URL` само към местния Mailpit, `retention.purge` на партиди със `SKIP LOCKED` и запис на неуспеха в лога, нови тестове (истинско състезание на нов ключ, `supervise()` като `app_rw`), бележка за ръководството на администратора; unit (92) и интеграционни тестове (71) са зелени, `scripts/verify.sh M01b` и `all` завършват с PASS (090a489)

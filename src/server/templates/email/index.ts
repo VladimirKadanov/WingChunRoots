@@ -1,0 +1,44 @@
+// The e-mail templates (milestone M01b, In scope 3): the registry and the renderer that turns a
+// template and its data into a subject, an HTML body and a plain-text body. English only; the
+// only place with the text of e-mails (plan §6.1). Rendering runs in the worker.
+
+import { render } from '@react-email/render';
+
+import { mailCheck } from './mail-check';
+import { type EmailTemplate, TemplateDataError } from './types';
+
+export { TemplateDataError } from './types';
+export type { EmailTemplate, NameData } from './types';
+export type { MailCheckData } from './mail-check';
+
+/** Every e-mail template, by name (= template.name). A new template is added here and in its own file. */
+export const EMAIL_TEMPLATES = {
+  'mail-check': mailCheck,
+} as const;
+
+export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;
+export type EmailTemplateData<N extends EmailTemplateName> =
+  (typeof EMAIL_TEMPLATES)[N] extends EmailTemplate<infer D> ? D : never;
+
+export function isEmailTemplateName(name: string): name is EmailTemplateName {
+  return Object.hasOwn(EMAIL_TEMPLATES, name);
+}
+
+export interface RenderedEmail {
+  subject: string;
+  html: string;
+  text: string;
+}
+
+/**
+ * Renders `template` with untrusted `data` (JSON from the queue). Throws TemplateDataError for an
+ * unknown template or data the template refuses.
+ */
+export async function renderEmail(template: string, data: unknown): Promise<RenderedEmail> {
+  if (!isEmailTemplateName(template)) throw new TemplateDataError(template, 'unknown template');
+  const definition = EMAIL_TEMPLATES[template] as EmailTemplate<unknown>;
+  const parsed = definition.parse(data);
+  const element = definition.render(parsed);
+  const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
+  return { subject: definition.subject(parsed), html, text };
+}

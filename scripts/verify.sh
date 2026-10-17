@@ -15,7 +15,9 @@
 # Database: TEST_DATABASE_URL from the environment (cloud session: scripts/cloud-setup.sh;
 # CI: the PostGIS service container) or, failing that, from .env (scripts/init-env.sh).
 # Locally, when that database does not answer and Docker is available, the Compose
-# `postgres` service is started. From M01 the role passwords DB_MIGRATOR_PASSWORD,
+# `postgres` service is started (and `mailpit` with it when MAIL_TRANSPORT=smtp, from M01b).
+# From M01b the `mail` step checks that Mailpit answers when MAIL_TRANSPORT=smtp (.env from
+# scripts/init-env.sh, CI) and, locally, starts it. From M01 the role passwords DB_MIGRATOR_PASSWORD,
 # DB_APP_RW_PASSWORD and DB_APP_PUBLIC_RO_PASSWORD come from the same places, and every run
 # bootstraps the test database (scripts/db-bootstrap.sh, idempotent) before the database steps.
 set -uo pipefail
@@ -78,7 +80,8 @@ from_dotenv() {
   return 0
 }
 DB_PASSWORD_VARS=(DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD)
-for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}"; do
+MAIL_VARS=(MAIL_TRANSPORT SMTP_URL MAIL_FILE_DIR MAIL_FROM MAILPIT_URL MAILPIT_SMTP_PORT MAILPIT_UI_PORT)
+for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}" "${MAIL_VARS[@]}"; do
   from_dotenv "$name"
 done
 
@@ -96,6 +99,8 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
     PW_CHROMIUM_EXECUTABLE="$(scripts/pw-chromium.sh 2>/dev/null || true)"
     [ -n "$PW_CHROMIUM_EXECUTABLE" ] && export PW_CHROMIUM_EXECUTABLE
   fi
+  # No Docker, so no Mailpit: the worker writes e-mail to files (M01b).
+  export MAIL_TRANSPORT="${MAIL_TRANSPORT:-file}"
 fi
 export TEST_DATABASE_URL="${TEST_DATABASE_URL:-}"
 
@@ -174,6 +179,9 @@ check_env() {
   fi
   echo "TEST_DATABASE_URL: set (database '$(db_name)')"
   echo "PW_CHROMIUM_EXECUTABLE: ${PW_CHROMIUM_EXECUTABLE:-<not set: the browsers installed by Playwright>}"
+  if introduced M01b; then
+    echo "MAIL_TRANSPORT: ${MAIL_TRANSPORT:-<not set: file>}"
+  fi
   echo "CI: ${CI:-<not set>}"
 }
 
@@ -186,6 +194,18 @@ db_answers() {
   psql_url "$TEST_DATABASE_URL" -X -q -At -c 'SELECT 1' >/dev/null 2>&1
 }
 
+# Local Docker: not CI, not a cloud session, a docker-compose.yml and a Docker daemon that answers.
+local_docker() {
+  [ -z "${CI:-}" ] && [ "${CLAUDE_CODE_REMOTE:-}" != "true" ] && [ -f docker-compose.yml ] \
+    && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+# The worker sends over SMTP to Mailpit (M01b): MAIL_TRANSPORT=smtp, which scripts/init-env.sh
+# writes to .env and CI sets. The default, file, needs no service.
+mail_over_smtp() {
+  introduced M01b && [ "${MAIL_TRANSPORT:-file}" = "smtp" ]
+}
+
 check_db() {
   if db_answers; then
     psql_url "$TEST_DATABASE_URL" -X -q -At -c 'SELECT version()'
@@ -194,10 +214,11 @@ check_db() {
   if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
     echo "The test database does not answer; running scripts/cloud-setup.sh (idempotent)."
     scripts/cloud-setup.sh >/dev/null || return 1
-  elif [ -z "${CI:-}" ] && [ -f docker-compose.yml ] && command -v docker >/dev/null 2>&1 \
-    && docker info >/dev/null 2>&1; then
-    echo "The test database does not answer; starting the Docker Compose postgres service."
-    docker compose up -d --wait postgres || return 1
+  elif local_docker; then
+    local services=(postgres)
+    mail_over_smtp && services+=(mailpit)
+    echo "The test database does not answer; starting the Docker Compose service(s): ${services[*]}."
+    docker compose up -d --wait "${services[@]}" || return 1
     local i
     for i in $(seq 1 30); do
       db_answers && break
@@ -217,7 +238,54 @@ check_db() {
   return 1
 }
 
+# Mailpit's API answers /readyz and its SMTP port accepts a connection (3 s each). The same
+# defaults as src/server/mail/config.ts and e2e/helpers/mailbox.ts. No URL is printed: SMTP_URL may
+# carry credentials.
+mailpit_answers() {
+  MAILPIT_API="${MAILPIT_URL:-http://127.0.0.1:${MAILPIT_UI_PORT:-8025}}" \
+    MAILPIT_SMTP="${SMTP_URL:-smtp://127.0.0.1:${MAILPIT_SMTP_PORT:-1025}}" node - <<'JS'
+const net = require('node:net');
+const fail = (what) => { console.log(`Mailpit: ${what}`); process.exit(1); };
+(async () => {
+  let api;
+  try { api = new URL('readyz', process.env.MAILPIT_API.replace(/\/?$/, '/')); } catch { fail('MAILPIT_URL is not a valid URL'); }
+  const response = await fetch(api, { signal: AbortSignal.timeout(3000) }).catch(() => undefined);
+  if (!response?.ok) fail(`the API at ${api.host} does not answer /readyz${response ? ` (HTTP ${response.status})` : ''}`);
+  let smtp;
+  try { smtp = new URL(process.env.MAILPIT_SMTP); } catch { fail('SMTP_URL is not a valid URL'); }
+  const port = Number(smtp.port || (smtp.protocol === 'smtps:' ? 465 : 25));
+  const host = smtp.hostname.replace(/^\[|\]$/g, '');
+  await new Promise((resolve) => {
+    const socket = net.connect({ host, port, timeout: 3000 }, () => { socket.destroy(); resolve(); });
+    socket.on('timeout', () => { socket.destroy(); fail(`no SMTP connection to ${host}:${port} within 3 s`); });
+    socket.on('error', (e) => fail(`no SMTP connection to ${host}:${port} (${e.code || e.message})`));
+  });
+  console.log(`Mailpit answers: API ${api.host}, SMTP ${host}:${port}`);
+})();
+JS
+}
+
+check_mail() {
+  if ! mail_over_smtp; then
+    echo "MAIL_TRANSPORT=${MAIL_TRANSPORT:-file}: the worker writes e-mail to files; no Mailpit needed."
+    return 0
+  fi
+  mailpit_answers && return 0
+  if local_docker; then
+    echo "Starting the Docker Compose mailpit service."
+    docker compose up -d --wait mailpit || return 1
+    mailpit_answers && return 0
+  fi
+  echo "Mailpit is not reachable: docker compose up -d --wait mailpit (or set MAIL_TRANSPORT=file)"
+  return 1
+}
+
+# The web server, the worker (M01b) and the tests use the test database that the steps above
+# reset, migrated and seeded, never the development database of .env.
 run_e2e() {
+  if introduced M01; then
+    export DATABASE_URL="$TEST_DATABASE_URL"
+  fi
   pnpm e2e "$@"
 }
 
@@ -247,6 +315,9 @@ reset_migrate_seed() {
 step env check_env
 step install pnpm install --frozen-lockfile
 step db check_db
+if introduced M01b; then
+  step mail check_mail
+fi
 step db-env-check scripts/db-env-check.sh
 if introduced M01; then
   step db-bootstrap bootstrap_test_db

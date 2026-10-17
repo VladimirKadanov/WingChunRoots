@@ -67,6 +67,8 @@ print_base_env() {
   echo "export DB_APP_RW_PASSWORD='${DB_APP_RW_PASSWORD}'"
   echo "export DB_APP_PUBLIC_RO_PASSWORD='${DB_APP_PUBLIC_RO_PASSWORD}'"
   echo "export NEXT_TELEMETRY_DISABLED=1"
+  # No Docker here, so no Mailpit: the worker writes e-mail to files (M01b).
+  echo "export MAIL_TRANSPORT=file"
 }
 
 # Needs node_modules (it asks the pinned Playwright which Chromium build it expects).
