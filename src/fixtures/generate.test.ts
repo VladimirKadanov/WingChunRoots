@@ -117,13 +117,25 @@ describe('generateFixtures', () => {
     }
   });
 
-  it('keeps at most one display-primary active relationship per student (DEFAULT D05)', () => {
-    const active = new Set(['pending_teacher', 'awaiting_claim', 'under_review', 'verified', 'in_arbitration']);
+  it('keeps at most one display-primary established relationship per student (DEFAULT D05)', () => {
+    const established = new Set(['verified', 'in_arbitration']);
     const counts = new Map<string, number>();
     for (const r of f.relationships) {
-      if (r.isDisplayPrimary && active.has(r.status)) counts.set(r.studentPersonId, (counts.get(r.studentPersonId) ?? 0) + 1);
+      if (r.isDisplayPrimary && established.has(r.status)) counts.set(r.studentPersonId, (counts.get(r.studentPersonId) ?? 0) + 1);
     }
     expect(Math.max(...counts.values())).toBe(1);
+  });
+
+  it('never marks a request as display-primary, so a hidden request cannot show (DEFAULT D05, D03)', () => {
+    const requests = f.relationships.filter((r) => !['verified', 'in_arbitration', 'revoked'].includes(r.status));
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.filter((r) => r.isDisplayPrimary)).toEqual([]);
+    // Every public student with a single established relationship has it as the primary line.
+    for (const slug of ['demo-historical-only', 'demo-latin-name', 'demo-arbitration'] as const) {
+      const id = f.anchors[slug]!;
+      const established = f.relationships.filter((r) => r.studentPersonId === id && ['verified', 'in_arbitration'].includes(r.status));
+      expect(established.filter((r) => r.isDisplayPrimary), slug).toHaveLength(1);
+    }
   });
 
   it('uses UUIDv7 ids', () => {

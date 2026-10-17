@@ -8,7 +8,7 @@
 |---|---|---|---|
 | M00 | [M00 — Основа на хранилището и проверка](M00-foundation.md) | Стъпка 0 (PR `docs-bootstrap`) | PR отворен ([#2](https://github.com/VladimirKadanov/WingChunRoots/pull/2), клон `m00-foundation`; към `main` след сливането на PR #1) |
 | M00b | [M00b — Дизайн система по избраната посока](M00b-design-system.md) | M00 и изборът на посока в `docs/design/direction.md` | не е започнат |
-| M01 | [M01 — Модел на данни, роли в базата и фиктивни данни](M01-data-model.md) | M00 | PR отворен ([#3](https://github.com/VladimirKadanov/WingChunRoots/pull/3), клон `m01-data-model`; към `m00-foundation`, после към `main`) |
+| M01 | [M01 — Модел на данни, роли в базата и фиктивни данни](M01-data-model.md) | M00 | слят в `m00-foundation` ([#3](https://github.com/VladimirKadanov/WingChunRoots/pull/3)); към `main` с [#5](https://github.com/VladimirKadanov/WingChunRoots/pull/5); поправки от прегледа: PR отворен ([#6](https://github.com/VladimirKadanov/WingChunRoots/pull/6), клон `m01-review-fixes`, след #5) |
 | M01b | [M01b — Фонови задачи и поща](M01b-jobs-mail.md) | M01 | не е започнат |
 | M02 | [M02 — Акаунти, роли и съгласия](M02-accounts.md) | M00b, M01b | не е започнат |
 | M03 | [M03 — Модул за подредба на родословието](M03-lineage-layout.md) | M00 | PR отворен ([#4](https://github.com/VladimirKadanov/WingChunRoots/pull/4), клон `m03-lineage-layout`; към `main`, след сливането на PR [#5](https://github.com/VladimirKadanov/WingChunRoots/pull/5) с M00 и M01) |

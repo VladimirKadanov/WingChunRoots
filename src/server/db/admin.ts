@@ -2,16 +2,17 @@
 // M01): bootstrap, migrations, reset, throwaway databases, migration checks and the content hash
 // of the seeded data. Never imported by the application at run time.
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Client } from 'pg';
 
-import { assertSafeToReset, databaseName, redactUrl, withDatabase } from './env';
+import { assertSafeToReset, databaseName, redactUrl, splitPassword, withDatabase } from './env';
 
 /** The repository root: the nearest directory with this project's package.json. */
 export function repoRoot(start = process.cwd()): string {
@@ -67,20 +68,77 @@ export async function retryOnConcurrentRoleUpdate(attempt: () => Promise<{ ok: b
   }
 }
 
+/** scripts/db-bootstrap.sql reads the role passwords with \getenv, which psql 15 added. */
+export const PSQL_MIN_MAJOR = 15;
+
+/** The major version in `psql --version` output, or 0 when there is none. */
+export function psqlMajor(versionOutput: string): number {
+  const match = /(\d+)/.exec(versionOutput);
+  return match ? Number(match[1]) : 0;
+}
+
+let psqlChecked = false;
+
+/** Fails with a clear hint unless the psql on PATH is new enough for scripts/db-bootstrap.sql. */
+export function assertPsqlVersion(): void {
+  if (psqlChecked) return;
+  const result = spawnSync('psql', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (result.error) throw new Error(`psql could not run (install the PostgreSQL client): ${result.error.message}`);
+  const major = psqlMajor(result.stdout);
+  if (major < PSQL_MIN_MAJOR) {
+    throw new Error(
+      `psql ${major} is too old: scripts/db-bootstrap.sql needs psql ${PSQL_MIN_MAJOR} or newer (\\getenv). ` +
+        'On Ubuntu 24.04 (WSL2) install postgresql-client (psql 16); Ubuntu 22.04 ships psql 14, so install ' +
+        'postgresql-client-16 from the PostgreSQL apt repository or move to Ubuntu 24.04 (README.md).',
+    );
+  }
+  psqlChecked = true;
+}
+
+/**
+ * psql against `url` with the password in PGPASSWORD instead of the command line, where every
+ * local user could read it (ps, /proc/<pid>/cmdline).
+ */
+export function spawnPsql(url: string, args: string[], env: NodeJS.ProcessEnv = process.env): SpawnSyncReturns<string> {
+  const { url: bare, password } = splitPassword(url);
+  return spawnSync('psql', [bare, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: password ? { ...env, PGPASSWORD: password } : env,
+  });
+}
+
 /**
  * Runs scripts/db-bootstrap.sql against `superuserUrl` with psql (the script uses psql meta
  * commands). Role passwords come from the environment through \getenv; unset ones stay as they are.
  */
 export async function runBootstrap(superuserUrl: string): Promise<void> {
+  assertPsqlVersion();
   await retryOnConcurrentRoleUpdate(async () => {
-    const result = spawnSync(
-      'psql',
-      [superuserUrl, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(repoRoot(), 'scripts', 'db-bootstrap.sql')],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const result = spawnPsql(superuserUrl, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(repoRoot(), 'scripts', 'db-bootstrap.sql')]);
     if (result.error) throw new Error(`psql could not run (install the PostgreSQL client): ${result.error.message}`);
     return { ok: result.status === 0, stderr: result.stderr };
   }, redactUrl(superuserUrl));
+}
+
+/**
+ * The pinned drizzle-kit, run with this Node: `node <drizzle-kit>/bin.cjs <args>`. Not the
+ * node_modules/.bin shim, which is a POSIX script on Linux and a .cmd file on native Windows
+ * (and .cmd files need a shell since Node's fix for CVE-2024-27980).
+ */
+export function runDrizzleKit(args: string[]): SpawnSyncReturns<string> {
+  const root = repoRoot();
+  // drizzle-kit's `exports` hide package.json and bin.cjs, so start from its main entry point.
+  let dir = path.dirname(createRequire(path.join(root, 'package.json')).resolve('drizzle-kit'));
+  while (!existsSync(path.join(dir, 'package.json'))) {
+    const parent = path.dirname(dir);
+    if (parent === dir) throw new Error('cannot find the drizzle-kit package');
+    dir = parent;
+  }
+  const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as { bin?: string | Record<string, string> };
+  const bin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.['drizzle-kit'];
+  if (!bin) throw new Error('drizzle-kit has no bin entry');
+  return spawnSync(process.execPath, [path.join(dir, bin), ...args], { cwd: root, encoding: 'utf8' });
 }
 
 /**

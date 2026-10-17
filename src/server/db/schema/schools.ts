@@ -1,6 +1,8 @@
 // Schools and geography (plan §6.2, §6.4). The exact point of a school lives in a separate
 // table that the public role cannot read; school.public_point is the exact point for
-// location_privacy = 'exact' and the city centroid for 'city_only'.
+// location_privacy = 'exact' and the city centroid for 'city_only'. The trigger
+// school_city_only_point (drizzle/*_school_public_point_and_views) enforces the centroid for
+// city_only whoever writes the row, so the radius query of plan §6.3 can run on public_point.
 
 import { sql } from 'drizzle-orm';
 import { check, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
