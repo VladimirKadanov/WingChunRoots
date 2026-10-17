@@ -162,6 +162,23 @@
   }
 }
 
+/* Phone toasts (src/components/ui/toast.tsx): above the tab bar, or above the top edge of an open
+   sheet (--sheet-clear, published by Drawer) while at least 9rem of the screen remain above it.
+   With less room (a sheet at full height) the toast stays in its usual place over the sheet's
+   lower part, never over the sheet's title and buttons. The clamp is a step: below 9rem of room
+   the middle term is 0 or less, and just above it far larger than the lift it is clamped to. */
+@utility bottom-toast {
+  --toast-base: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));
+  bottom: calc(
+    var(--toast-base) + 0.75rem +
+      clamp(
+        0px,
+        (100dvh - env(safe-area-inset-top, 0px) - var(--sheet-clear, 0px) - 9rem) * 1000,
+        var(--sheet-clear, 0px) - var(--toast-base)
+      )
+  );
+}
+
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {

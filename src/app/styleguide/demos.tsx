@@ -68,6 +68,13 @@ function OverlayDemoList() {
             </p>
           </div>
           <Legend layout="list" descriptions />
+          {/* The end of a sheet is where a profile's actions go (M05): a keyboard focus here
+              expands a half-height sheet first, so it is never off screen. */}
+          <div className="flex flex-wrap gap-3 border-t border-border-subtle pt-4">
+            <Button onClick={() => toast.add({ title: 'Link copied', description: 'The address of this profile is on the clipboard.' })}>
+              Copy the link
+            </Button>
+          </div>
         </div>
       </Drawer>
 

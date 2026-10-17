@@ -1,7 +1,7 @@
 'use client';
 
 // Toast (shadcn/ui on Base UI): a paper slip at the bottom, above the phone tab bar and the
-// safe area, with a rule on its left edge in the colour of its kind and, for a link state, that
+// safe area (and above an open sheet, or beside a side panel), with a rule on its left edge in the colour of its kind and, for a link state, that
 // state's seal (the kind is also in the words). Toasts are polite status messages; they never
 // carry the only copy of an action (plan §5.6). They stay 10 s, pause while hovered or focused,
 // and Dismiss closes them at once. Wrap the part of a page that toasts in ToastProvider; the root
@@ -29,7 +29,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <BaseToast.Provider timeout={10000}>
       {children}
       <BaseToast.Portal>
-        <BaseToast.Viewport className="fixed right-[max(1rem,env(safe-area-inset-right,0px))] bottom-[calc(var(--tab-h)+env(safe-area-inset-bottom,0px)+0.75rem)] left-[max(1rem,env(safe-area-inset-left,0px))] z-[60] mx-auto w-auto max-w-[24rem] outline-none md:right-[max(2rem,env(safe-area-inset-right,0px))] md:bottom-[max(2rem,env(safe-area-inset-bottom,0px))] md:left-auto md:w-[24rem]">
+        <BaseToast.Viewport
+          className={cx(
+            'fixed right-[max(1rem,env(safe-area-inset-right,0px))] left-[max(1rem,env(safe-area-inset-left,0px))] z-[60] mx-auto w-auto max-w-[24rem] outline-none',
+            // Phone: above the tab bar, or above an open sheet (globals.css, bottom-toast).
+            'bottom-toast',
+            // From 768 px: bottom right, left of an open side panel (--sheet-inline).
+            'md:right-[calc(max(2rem,env(safe-area-inset-right,0px))+var(--sheet-inline,0px))] md:bottom-[max(2rem,env(safe-area-inset-bottom,0px))] md:left-auto md:w-[min(24rem,calc(100vw-var(--sheet-inline,0px)-4rem))]',
+          )}
+        >
           <ToastList />
         </BaseToast.Viewport>
       </BaseToast.Portal>

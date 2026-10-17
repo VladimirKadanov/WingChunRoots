@@ -9,11 +9,20 @@
 // A modal sheet opens at half height, so the scrim above it shows that the page waits. A
 // non-modal one (over a map or a graph) opens at the peek from the Transit Map prototype: at
 // least PEEK tall and never shorter than its own header, so a title that wraps at 150 % text
-// still shows whole. It sits above the phone tab bar, which keeps the home indicator's inset,
-// and its body is inert while it peeks, so the keyboard never reaches content that is off screen.
+// still shows whole. It rests on the phone tab bar, which keeps the home indicator's inset, and
+// is clipped there, so the tabs stay visible and tappable. Its body is inert while it peeks, so
+// the keyboard never reaches content that is off screen. Below full height, a keyboard focus
+// that lands under the bottom edge expands the sheet first (WCAG 2.4.11).
+//
+// While a sheet is open it publishes how much room it takes on <html>: --sheet-clear (phone:
+// px from the bottom of the window to the sheet's top edge at its snap point) and --sheet-inline
+// (from 768 px: the side panel's width), so toasts land beside the sheet instead of on it. With
+// two sheets open, the newer one's room is published, and the older one's again when it closes.
+// The room follows the snap point, not a drag in progress (that would restyle the page on every
+// frame); it catches up when the drag settles.
 
 import { Drawer as BaseDrawer } from '@base-ui/react/drawer';
-import { useLayoutEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactElement, type ReactNode } from 'react';
 import { ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { useBackToClose } from './use-back-to-close';
@@ -104,6 +113,23 @@ export function Drawer({
   const expanded = snapIndex === lastIndex;
   const peeking = !side && snapIndex === peekIndex;
 
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [popup, setPopup] = useState<HTMLDivElement | null>(null);
+  useSheetRoom(open, side, viewport, popup);
+
+  // Below full height the lower part of the sheet is off screen. A focus that lands there (Tab,
+  // or a script restoring focus) expands the sheet first, so the focused control is never hidden
+  // (WCAG 2.4.11). "There" means the control's first 48 px (or all of it, when shorter) do not
+  // fit above the bottom edge, so a tall focusable region whose top shows does not expand it.
+  // A focus that comes with a press of a finger or a mouse is left alone: moving the sheet in
+  // the middle of a tap on a control that peeks over the edge would lose the tap.
+  const pressedAt = useRef(Number.NEGATIVE_INFINITY);
+  const onContentFocus = (event: FocusEvent<HTMLDivElement>) => {
+    if (side || expanded || !viewport || event.timeStamp - pressedAt.current < 1000) return;
+    const box = event.target.getBoundingClientRect();
+    if (Math.min(box.bottom, box.top + 48) > viewport.getBoundingClientRect().bottom - 1) setSnapIndex(lastIndex);
+  };
+
   return (
     <BaseDrawer.Root
       open={open}
@@ -129,18 +155,21 @@ export function Drawer({
           />
         ) : null}
         <BaseDrawer.Viewport
+          ref={setViewport}
           className={cn(
             'fixed inset-0 z-50 flex items-end justify-center md:items-stretch md:justify-end',
-            // A non-modal sheet lets taps through to the page around it, and on phones it rests
-            // on the tab bar, which keeps the bottom safe-area inset.
-            !modal && 'pointer-events-none bottom-[calc(var(--tab-h)+env(safe-area-inset-bottom,0px))] md:bottom-0',
+            // A non-modal sheet lets taps through to the page around it. On phones it rests on the
+            // tab bar, which keeps the bottom safe-area inset, and the viewport clips the part of
+            // the popup that its snap point moves below that edge: the tabs stay seen and tappable.
+            !modal && 'pointer-events-none bottom-[calc(var(--tab-h)+env(safe-area-inset-bottom,0px))] max-md:overflow-hidden md:bottom-0',
           )}
         >
           <BaseDrawer.Popup
+            ref={setPopup}
             className={cn(
               'pointer-events-auto relative flex min-h-0 w-full flex-col border-border-subtle bg-surface-2 text-fg shadow-sheet outline-none',
-              // Phone: a bottom sheet.
-              'max-h-[calc(100dvh-env(safe-area-inset-top,0px)-0.75rem)] max-w-[40rem] touch-none rounded-t-sheet border border-b-0',
+              // Phone: a bottom sheet, never taller than its viewport (above the tab bar when non-modal).
+              'max-h-[calc(100%-env(safe-area-inset-top,0px)-0.75rem)] max-w-[40rem] touch-none rounded-t-sheet border border-b-0',
               '[transform:translateY(calc(var(--drawer-snap-point-offset,0px)+var(--drawer-swipe-movement-y,0px)))]',
               'data-starting-style:[transform:translateY(100%)] data-ending-style:[transform:translateY(100%)]',
               // From 768 px: a side panel on the right, the full height of the window.
@@ -182,6 +211,10 @@ export function Drawer({
             </div>
             <BaseDrawer.Content
               inert={peeking}
+              onPointerDown={(event) => {
+                pressedAt.current = event.timeStamp;
+              }}
+              onFocus={onContentFocus}
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:px-6 md:pr-[max(1.5rem,env(safe-area-inset-right,0px))]"
             >
               {children}
@@ -191,4 +224,63 @@ export function Drawer({
       </BaseDrawer.Portal>
     </BaseDrawer.Root>
   );
+}
+
+interface Room {
+  clear: string | null;
+  inline: string | null;
+}
+
+/** The room of every open sheet, in the order they opened (see the top of this file). */
+const rooms = new Map<symbol, Room>();
+
+/** Writes the newest open sheet's room on <html>, or removes it when no sheet is open. */
+function publishRooms() {
+  const root = document.documentElement.style;
+  const newest = [...rooms.values()].at(-1);
+  for (const [name, value] of [
+    ['--sheet-clear', newest?.clear],
+    ['--sheet-inline', newest?.inline],
+  ] as const) {
+    if (value) root.setProperty(name, value);
+    else root.removeProperty(name);
+  }
+}
+
+/**
+ * Publishes the room an open sheet takes. The snap offset comes from the popup's inline style
+ * (Base UI), so the page is restyled only when the snap point or a size changes.
+ */
+function useSheetRoom(open: boolean, side: boolean, viewport: HTMLElement | null, popup: HTMLElement | null) {
+  useEffect(() => {
+    if (!open || !viewport || !popup) return;
+    const key = Symbol('sheet');
+    let offset: string | null = null;
+    const measure = (force: boolean) => {
+      if (side) {
+        rooms.set(key, { clear: null, inline: `${popup.offsetWidth}px` });
+        publishRooms();
+        return;
+      }
+      const next = popup.style.getPropertyValue('--drawer-snap-point-offset');
+      if (!force && next === offset) return;
+      offset = next;
+      const visible = Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
+      const clear = window.innerHeight - viewport.getBoundingClientRect().bottom + visible;
+      rooms.set(key, { clear: `${Math.round(clear)}px`, inline: null });
+      publishRooms();
+    };
+    measure(true);
+    const styles = new MutationObserver(() => measure(false));
+    styles.observe(popup, { attributes: true, attributeFilter: ['style'] });
+    const sizes = typeof ResizeObserver === 'function' ? new ResizeObserver(() => measure(true)) : null;
+    sizes?.observe(popup);
+    sizes?.observe(viewport);
+    return () => {
+      styles.disconnect();
+      sizes?.disconnect();
+      rooms.delete(key);
+      publishRooms();
+    };
+  }, [open, side, viewport, popup]);
 }
