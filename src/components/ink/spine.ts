@@ -50,3 +50,27 @@ export function spineGeometry(states: VerificationState[], rowHeight: number, of
   });
   return { nodes, segments, height: count * rowHeight };
 }
+
+/**
+ * Timing of the ink trace (motion tokens in src/design/tokens.ts): one link per step, each
+ * stroke drawn for --duration-ink-draw and its seal pressed SEAL_DELAY later for
+ * --duration-slow. The step shrinks for long lines so the whole trace, the last seal included,
+ * ends within --duration-ink-total (1 s, ADR 0006).
+ */
+export const INK_TOTAL = 1000;
+export const INK_STEP = 110;
+export const INK_DRAW = 220;
+export const SEAL_DELAY = 130;
+export const SEAL_PRESS = 250;
+
+/** The delay between generations when `links` links are traced. */
+export function inkStep(links: number): number {
+  if (links <= 1) return INK_STEP;
+  return Math.min(INK_STEP, Math.floor((INK_TOTAL - Math.max(INK_DRAW, SEAL_DELAY + SEAL_PRESS)) / (links - 1)));
+}
+
+/** When the trace of `links` links ends (ms). */
+export function inkTraceEnd(links: number): number {
+  if (links <= 0) return 0;
+  return (links - 1) * inkStep(links) + Math.max(INK_DRAW, SEAL_DELAY + SEAL_PRESS);
+}

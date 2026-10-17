@@ -11,12 +11,12 @@ import { useId, useRef, useState, type ReactNode } from 'react';
 import { CloseIcon, SearchIcon } from '@/components/icons';
 import { InkShapeSvg } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
-import { spineGeometry } from '@/components/ink/spine';
+import { SEAL_DELAY, inkStep, spineGeometry } from '@/components/ink/spine';
 import { TrailChip } from '@/components/ui/trail-chip';
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import { DEMO_LINE, DEMO_LINE_LINKS, searchDemoLine } from './demo-lineage';
-import { PersonName } from './names';
+import { Name, PersonName } from './names';
 
 const ROW = 56;
 const geometry = spineGeometry(
@@ -28,16 +28,27 @@ const TRY = ['盧嵐峰', 'Probnova', 'Примеров', 'Vienna'];
 const verifiedCount = DEMO_LINE_LINKS.filter((link) => link.state === 'verified').length;
 const reviewCount = DEMO_LINE_LINKS.length - verifiedCount;
 
-function traceSummary(focus: number): string {
+function traceSummary(focus: number): ReactNode {
   const person = DEMO_LINE[focus]!;
-  if (focus === 0) return `${person.name} founded the line in ${person.startYear}.`;
+  if (focus === 0)
+    return (
+      <>
+        <Name>{person.name}</Name> founded the line in {person.startYear}.
+      </>
+    );
   const links = DEMO_LINE_LINKS.slice(0, focus);
   const verified = links.filter((l) => l.state === 'verified').length;
   const review = links.length - verified;
   const parts = [`${verified} verified`];
   if (review) parts.push(`${review} under review`);
-  return `Traced from ${DEMO_LINE[0]!.name} to ${person.name}: ${links.length} ${links.length === 1 ? 'link' : 'links'}, ${parts.join(', ')}.`;
+  return (
+    <>
+      Traced from <Name>{DEMO_LINE[0]!.name}</Name> to <Name>{person.name}</Name>: {links.length}{' '}
+      {links.length === 1 ? 'link' : 'links'}, {parts.join(', ')}.
+    </>
+  );
 }
+
 
 export function LivingLine({ intro }: { intro: ReactNode }) {
   const [trail, setTrail] = useState<number[]>([]);
@@ -51,7 +62,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
   const focus = trail.length ? trail[trail.length - 1]! : null;
   const previous = trail.length > 1 ? trail[trail.length - 2]! : null;
   const results = composing ? [] : searchDemoLine(query);
-  const step = focus ? Math.min(110, Math.floor((1000 - 220) / focus)) : 110;
+  const step = inkStep(focus ?? 0);
 
   const trace = (index: number, moveFocus = false) => {
     setTrail((t) => (t[t.length - 1] === index ? t : [...t, index].slice(-12)));
@@ -190,7 +201,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                   data-state={segment.state}
                   className={cx(traced && 'animate-ink-draw')}
                   style={{
-                    color: dimmed ? 'var(--dim-stroke)' : undefined,
+                    color: dimmed ? 'var(--dim-stroke)' : `var(--${linkStyles[segment.state].strokeColor})`,
                     animationDelay: traced ? `${segment.index * step}ms` : undefined,
                   }}
                 >
@@ -223,7 +234,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                 <g key={`seal-${segment.index}`} transform={`translate(${segment.seal.x} ${segment.seal.y})`}>
                   <g
                     className={cx(traced && 'animate-seal-press')}
-                    style={{ animationDelay: traced ? `${segment.index * step + 130}ms` : undefined }}
+                    style={{ animationDelay: traced ? `${segment.index * step + SEAL_DELAY}ms` : undefined }}
                   >
                     <Seal kind={linkStyles[segment.state].seal} size={13} />
                   </g>

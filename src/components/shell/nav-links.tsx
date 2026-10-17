@@ -16,7 +16,9 @@ export function NavLinks({ variant }: { variant: 'tabs' | 'rail' }) {
   return (
     <ul className={cx(variant === 'tabs' ? 'flex flex-1' : 'flex flex-col gap-0.5')}>
       {NAV_ITEMS.map((item) => {
-        const current = item.match(pathname);
+        // A destination that is not built yet is never current: its address renders the shared
+        // not-found page, prerendered without a pathname, so the server and client agree.
+        const current = item.built && item.match(pathname);
         const Icon = ICONS[item.icon];
         return (
           <li key={item.href} className={cx(variant === 'tabs' && 'flex flex-1')}>

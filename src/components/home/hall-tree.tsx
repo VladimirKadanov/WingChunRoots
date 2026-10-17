@@ -8,6 +8,8 @@ import { InkShapeSvg } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { linkStyles } from '@/design/tokens';
 
+const NO_TRANSLATE = { translate: 'no' } as Record<string, string>;
+
 type Node = { id: string; x: number; g: number; living?: boolean; founder?: boolean; other?: boolean };
 type Link = { from: string; to: string; state: VerificationState; cross?: boolean; second?: boolean };
 
@@ -118,7 +120,8 @@ export function HallTree({ className }: { className?: string }) {
       <g transform={`translate(${byId.get('x')!.x + 10} ${y(5) + 6})`}>
         <Seal kind="bridge" size={14} />
       </g>
-      <text x={byId.get('a')!.x + 22} y={y(1) - 4} className="fill-fg font-display text-[15px]">
+      {/* A name: never translated (CLAUDE.md §2); React's SVG types do not list `translate`. */}
+      <text x={byId.get('a')!.x + 22} y={y(1) - 4} className="fill-fg font-display text-[15px]" lang="en" {...NO_TRANSLATE}>
         Lo Laam-fung
       </text>
       <text x={byId.get('a')!.x + 22} y={y(1) + 11} className="fill-fg-subtle font-sans text-[12px] font-semibold tracking-[0.12em]">

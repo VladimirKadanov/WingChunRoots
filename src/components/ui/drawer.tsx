@@ -23,9 +23,9 @@ export interface DrawerProps {
   trigger?: ReactElement;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  title: string;
+  title: ReactNode;
   /** One line under the title; visible at the peek. */
-  description?: string;
+  description?: ReactNode;
   children?: ReactNode;
   /** Snap points; the first one is where the sheet opens. */
   snapPoints?: SnapPoint[];
@@ -52,10 +52,16 @@ export function Drawer({
   const open = openProp ?? openState;
   const first = snapPoints[0] ?? 1;
   const [snapPoint, setSnapPoint] = useState<SnapPoint | null>(first);
+  // Every opening starts at the first snap point, however the sheet was closed before (Close,
+  // Esc, Back) and whoever opens it (the trigger or a controlling parent).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSnapPoint(first);
+  }
   const setOpen = (next: boolean) => {
     if (openProp === undefined) setOpenState(next);
     onOpenChange?.(next);
-    if (next) setSnapPoint(first);
   };
   useBackToClose(open, () => setOpen(false));
 

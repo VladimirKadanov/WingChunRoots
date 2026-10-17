@@ -13,8 +13,8 @@ import { useBackToClose } from './use-back-to-close';
 export interface DialogProps {
   /** The element that opens the dialog, e.g. <Button>Open</Button>. */
   trigger: ReactElement;
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   children?: ReactNode;
   /** Buttons at the bottom; a Close button is always in the corner. */
   footer?: ReactNode;

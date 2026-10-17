@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Tab, Tabs, TabsList, TabsPanel } from '@/components/ui/tabs';
 import { ToastProvider, useToast } from '@/components/ui/toast';
 import { TrailChip } from '@/components/ui/trail-chip';
+import { Name } from '@/components/home/names';
 
 /** The toast provider lives with the components that toast (not in the root layout: JS budget). */
 export function OverlayDemos() {
@@ -34,7 +35,11 @@ function OverlayDemoList() {
       <Dialog
         trigger={<Button>Open a dialog</Button>}
         title="Withdraw this claim?"
-        description="The link to Mira Probnova goes back to unconfirmed. You can submit it again later."
+        description={
+          <>
+            The link to <Name>Mira Probnova</Name> goes back to unconfirmed. You can submit it again later.
+          </>
+        }
         footer={
           <>
             <DialogClose render={<Button variant="ghost" />}>Keep it</DialogClose>
@@ -44,7 +49,7 @@ function OverlayDemoList() {
       />
 
       <Button onClick={() => setSheet(true)}>Open a sheet</Button>
-      <Drawer open={sheet} onOpenChange={setSheet} title="Mira Probnova" description="Sofia · Sifu · from 2009">
+      <Drawer open={sheet} onOpenChange={setSheet} title={<Name>Mira Probnova</Name>} description="Sofia · Sifu · from 2009">
         <div className="grid gap-4 pt-1">
           <p className="text-fg-muted">
             Drag the sheet by any part of it, or use Expand and Close. Back closes it, and so does Esc.
@@ -52,7 +57,9 @@ function OverlayDemoList() {
           <div className="grid gap-2">
             <p className="eyebrow">Teachers</p>
             <p className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-display text-lg">Stefan Primerov</span>
+              <span className="font-display text-lg" lang="en" translate="no">
+                Stefan Primerov
+              </span>
               <StatusBadge state="verified" />
             </p>
             <p className="flex flex-wrap items-center justify-between gap-2">
@@ -95,7 +102,14 @@ function OverlayDemoList() {
 
       <Button
         variant="ink"
-        onClick={() => toast.add({ title: 'Request sent', description: 'Stefan Primerov sees it the next time he signs in.' })}
+        onClick={() => toast.add({
+            title: 'Request sent',
+            description: (
+              <>
+                <Name>Stefan Primerov</Name> sees it the next time he signs in.
+              </>
+            ),
+          })}
       >
         Show a toast
         <ArrowRightIcon />

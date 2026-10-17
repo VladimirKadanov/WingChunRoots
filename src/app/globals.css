@@ -23,8 +23,13 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     background: var(--bg);
-    /* The phone tab bar overlays the bottom: anchors scroll clear of it. */
+    /* The phone tab bar overlays the bottom: anchors and focus scroll clear of it. */
     scroll-padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));
+    /* The sticky phone top bar covers the top (WCAG 2.4.11); the desktop rail covers nothing. */
+    scroll-padding-top: calc(var(--top-h) + env(safe-area-inset-top, 0px));
+    @media (width >= 48rem) {
+      scroll-padding-top: 0px;
+    }
   }
 
   body {
@@ -94,18 +99,27 @@
       scroll-behavior: auto !important;
     }
   }
+}
 
-  @media print {
-    :root {
-      --bg: var(--print-paper);
-      --surface-1: var(--print-paper);
-      --surface-2: var(--print-paper);
-      --fg: var(--print-ink);
-      --fg-muted: var(--print-ink);
-      --fg-subtle: var(--print-ink);
-      --brand: var(--print-seal);
-      --verified: var(--print-verified);
-    }
+/*
+ * Print (plan §5.2): ink on paper in every theme. Outside any layer, after the token import and
+ * with selectors as specific as the theme selectors of tokens.css, so it wins over all of them
+ * (a layered rule never beats the unlayered theme tokens).
+ */
+@media print {
+  :root,
+  :root[data-theme],
+  .theme-dark,
+  .theme-light {
+    color-scheme: light;
+    --bg: var(--print-paper);
+    --surface-1: var(--print-paper);
+    --surface-2: var(--print-paper);
+    --fg: var(--print-ink);
+    --fg-muted: var(--print-ink);
+    --fg-subtle: var(--print-ink);
+    --brand: var(--print-seal);
+    --verified: var(--print-verified);
   }
 }
 
@@ -125,11 +139,16 @@
   .cjk {
     letter-spacing: 0.06em;
   }
+  /* An inherited font-family was resolved with the Traditional fonts of :root, so a
+     Simplified original sets it again where :lang(zh-Hans) switches --font-cjk-*. */
+  .cjk:where(:lang(zh-Hans)) {
+    font-family: var(--font-cjk-sans), sans-serif;
+  }
   .cjk:where(.font-display *, .font-display) {
     font-family: var(--font-cjk-serif), serif;
   }
 
-  /* Inline text links: underlined, never colour alone; 44 px tall touch area on phones. */
+  /* Text links: underlined, never colour alone. The element sets its own 44 px touch area. */
   .link {
     text-decoration-line: underline;
     text-decoration-thickness: 1px;

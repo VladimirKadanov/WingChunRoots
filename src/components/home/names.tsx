@@ -5,6 +5,15 @@
 import { cx } from '@/lib/cx';
 import type { DemoName } from './demo-lineage';
 
+/** A Latin-script name inside running text: its own lang, never translated (CLAUDE.md §2). */
+export function Name({ children }: { children: string }) {
+  return (
+    <span lang="en" translate="no">
+      {children}
+    </span>
+  );
+}
+
 export function PersonName({
   name,
   original,

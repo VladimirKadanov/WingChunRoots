@@ -28,7 +28,7 @@ function Linkified({ text }: { text: string }) {
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
-          <a key={i} href={part} className="link break-all">
+          <a key={i} href={part} className="link inline-flex min-h-11 items-center break-all">
             {part}
           </a>
         ) : (
