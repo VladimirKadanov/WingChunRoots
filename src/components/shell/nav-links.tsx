@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LineageIcon, MeIcon, SchoolsIcon, SearchIcon } from '@/components/icons';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 import { NAV_ITEMS } from './nav';
 
 const ICONS = { search: SearchIcon, lineage: LineageIcon, schools: SchoolsIcon, me: MeIcon } as const;
@@ -14,17 +14,17 @@ const ICONS = { search: SearchIcon, lineage: LineageIcon, schools: SchoolsIcon, 
 export function NavLinks({ variant }: { variant: 'tabs' | 'rail' }) {
   const pathname = usePathname();
   return (
-    <ul className={cn(variant === 'tabs' ? 'flex flex-1' : 'flex flex-col gap-0.5')}>
+    <ul className={cx(variant === 'tabs' ? 'flex flex-1' : 'flex flex-col gap-0.5')}>
       {NAV_ITEMS.map((item) => {
         const current = item.match(pathname);
         const Icon = ICONS[item.icon];
         return (
-          <li key={item.href} className={cn(variant === 'tabs' && 'flex flex-1')}>
+          <li key={item.href} className={cx(variant === 'tabs' && 'flex flex-1')}>
             <Link
               href={item.href}
               prefetch={item.built ? null : false}
               aria-current={current ? 'page' : undefined}
-              className={cn(
+              className={cx(
                 'group relative flex items-center text-fg-subtle transition-colors duration-(--duration-fast) hover:text-fg aria-[current=page]:text-fg',
                 variant === 'tabs'
                   ? 'min-h-11 flex-1 flex-col justify-center gap-[5px] text-[0.6875rem] leading-none font-semibold tracking-[0.12em] uppercase'
@@ -35,7 +35,7 @@ export function NavLinks({ variant }: { variant: 'tabs' | 'rail' }) {
               <span>{item.label}</span>
               <span
                 aria-hidden="true"
-                className={cn(
+                className={cx(
                   'absolute size-[7px] scale-0 rotate-[-20deg] rounded-[1px] bg-fg transition-transform duration-(--duration-slow) ease-stamp group-aria-[current=page]:scale-100 group-aria-[current=page]:rotate-[4deg]',
                   variant === 'tabs' ? 'top-[9px] left-[calc(50%+11px)]' : 'top-1/2 right-3 -mt-[3.5px]',
                 )}

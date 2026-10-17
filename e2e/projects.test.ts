@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildProjects } from './projects';
+import { SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects } from './projects';
 
 describe('buildProjects', () => {
   it('runs desktop and mobile Chromium outside CI, without WebKit', () => {
@@ -40,6 +40,40 @@ describe('buildProjects', () => {
   it('leaves launch options alone when no executable is given', () => {
     for (const project of buildProjects({ ci: false })) {
       expect(project.use?.launchOptions).toBeUndefined();
+    }
+  });
+});
+
+describe('buildProjects: visual and screenshots (M00b)', () => {
+  it('adds neither project unless asked', () => {
+    for (const ci of [false, true]) {
+      const names = buildProjects({ ci }).map((p) => p.name);
+      expect(names).not.toContain('visual');
+      expect(names).not.toContain('screenshots');
+    }
+  });
+
+  it('adds a Chromium visual project that runs only visual.spec.ts, with platform baselines', () => {
+    const executablePath = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+    const projects = buildProjects({ ci: true, visual: true, chromiumExecutable: executablePath });
+    expect(projects.map((p) => p.name)).toEqual(['desktop-chromium', 'mobile-chromium', 'mobile-webkit', 'visual']);
+    const visual = projects.find((p) => p.name === 'visual');
+    expect(visual?.testMatch).toBe(VISUAL_SPEC);
+    expect(visual?.snapshotPathTemplate).toContain('{platform}');
+    expect(visual?.use?.defaultBrowserType).toBe('chromium');
+    expect(visual?.use?.launchOptions?.executablePath).toBe(executablePath);
+  });
+
+  it('adds a Chromium screenshots project that runs only screenshots.spec.ts', () => {
+    const projects = buildProjects({ ci: false, screenshots: true });
+    expect(projects.map((p) => p.name)).toEqual(['desktop-chromium', 'mobile-chromium', 'screenshots']);
+    expect(projects.at(-1)?.testMatch).toBe(SCREENSHOTS_SPEC);
+    expect(projects.at(-1)?.use?.defaultBrowserType).toBe('chromium');
+  });
+
+  it('keeps the visual and screenshot specs out of the other projects', () => {
+    for (const project of buildProjects({ ci: true })) {
+      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC]);
     }
   });
 });

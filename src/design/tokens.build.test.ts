@@ -43,6 +43,16 @@ describe('the CSS', () => {
     expect(css).toContain(":root[data-theme='light'] {\n  color-scheme: light;");
     expect(css).toMatch(/^:root \{\n {2}color-scheme: dark;/m);
   });
+  it('declares the colour aliases again on every scoped theme, so they resolve in that theme', () => {
+    const block = /^:root, \.theme-dark, \.theme-light \{\n([\s\S]*?)^\}/m.exec(css);
+    expect(block).not.toBeNull();
+    expect(block![1]).toContain('--dim-stroke: var(--unconfirmed);');
+    expect(block![1]).toContain('--link-verified-color: var(--verified);');
+    expect(block![1]).toContain('--link-unconfirmed-label: var(--fg-muted);');
+    // Nowhere else: an alias declared on :root alone would keep the root theme's colour.
+    expect(css.match(/--link-verified-color:/g)).toHaveLength(1);
+    expect(css.match(/--dim-stroke:/g)).toHaveLength(1);
+  });
   it('defines a Tailwind theme with only the semantic tokens', () => {
     expect(css).toContain('@theme inline {');
     for (const reset of ['--color-*: initial;', '--font-*: initial;', '--text-*: initial;', '--radius-*: initial;', '--shadow-*: initial;']) {

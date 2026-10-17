@@ -76,8 +76,20 @@ describe('status is never colour alone (plan §4.6)', () => {
     expect(new Set(styles.map((s) => s.seal)).size).toBe(styles.length);
     for (const style of styles) expect(style.label.length).toBeGreaterThan(0);
   });
+  it('every status label colour is text-grade (4.5:1) in both themes', () => {
+    for (const theme of THEMES) {
+      for (const style of Object.values(linkStyles)) {
+        const pair = CONTRAST_PAIRS.find((p) => p.fg === style.labelColor && p.bg === 'bg');
+        expect(pair?.min, `${theme}: ${style.label} label (${style.labelColor})`).toBe(MIN_TEXT);
+        expect(contrastRatio(colors[theme][style.labelColor], colors[theme].bg)).toBeGreaterThanOrEqual(MIN_TEXT);
+      }
+    }
+  });
   it('red is reserved for the brand: no verification state uses a brand role', () => {
-    for (const style of Object.values(linkStyles)) expect(style.color.startsWith('brand')).toBe(false);
+    for (const style of Object.values(linkStyles)) {
+      expect(style.color.startsWith('brand')).toBe(false);
+      expect(style.labelColor.startsWith('brand')).toBe(false);
+    }
   });
   it('focus is neither red nor a verification colour', () => {
     for (const theme of THEMES) {

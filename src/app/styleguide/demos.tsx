@@ -11,10 +11,19 @@ import { Drawer, PEEK } from '@/components/ui/drawer';
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Tab, Tabs, TabsList, TabsPanel } from '@/components/ui/tabs';
-import { useToast } from '@/components/ui/toast';
+import { ToastProvider, useToast } from '@/components/ui/toast';
 import { TrailChip } from '@/components/ui/trail-chip';
 
+/** The toast provider lives with the components that toast (not in the root layout: JS budget). */
 export function OverlayDemos() {
+  return (
+    <ToastProvider>
+      <OverlayDemoList />
+    </ToastProvider>
+  );
+}
+
+function OverlayDemoList() {
   const toast = useToast();
   const [sheet, setSheet] = useState(false);
   const [peek, setPeek] = useState(false);

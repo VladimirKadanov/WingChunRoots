@@ -75,7 +75,7 @@ export default function LicensesPage() {
                       Full licence text
                       <ChevronDownIcon size={18} className="text-fg-subtle transition-transform duration-(--duration-fast) group-open:rotate-180" />
                     </summary>
-                    <pre className="mt-2 max-h-96 overflow-auto rounded-sm bg-surface-2 p-3 font-mono text-[0.75rem] whitespace-pre-wrap text-fg-muted [overflow-wrap:anywhere]">
+                    <pre tabIndex={0} className="mt-2 max-h-96 overflow-auto rounded-sm bg-surface-2 p-3 font-mono text-[0.75rem] whitespace-pre-wrap text-fg-muted [overflow-wrap:anywhere]">
                       {rest.join('\n---\n').trim()}
                     </pre>
                   </details>
@@ -120,7 +120,7 @@ export default function LicensesPage() {
                           </p>
                         ) : null}
                         {item.text ? (
-                          <pre className="mt-1 max-h-80 overflow-auto rounded-sm bg-surface-1 p-3 font-mono text-[0.75rem] whitespace-pre-wrap text-fg-muted [overflow-wrap:anywhere]">
+                          <pre tabIndex={0} className="mt-1 max-h-80 overflow-auto rounded-sm bg-surface-1 p-3 font-mono text-[0.75rem] whitespace-pre-wrap text-fg-muted [overflow-wrap:anywhere]">
                             {item.text}
                           </pre>
                         ) : (

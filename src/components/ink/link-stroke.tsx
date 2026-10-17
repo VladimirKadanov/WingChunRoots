@@ -3,7 +3,7 @@
 
 import { inkShapes, type Cubic, type InkShape } from '@/design/ink';
 import { linkStyles, type VerificationState } from '@/design/tokens';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 export type LinkKind = VerificationState | 'cross_lineage' | 'historical';
 
@@ -61,7 +61,7 @@ export function LinkStroke({ kind, className, width = 62 }: { kind: LinkKind; cl
       height={(width * 22) / 62}
       aria-hidden="true"
       focusable="false"
-      className={cn('inline-block shrink-0 overflow-visible', className)}
+      className={cx('inline-block shrink-0 overflow-visible', className)}
       style={{ color: `var(--${linkStyles[kind].color})` }}
       data-stroke={linkStyles[kind].stroke}
     >

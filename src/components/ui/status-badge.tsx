@@ -24,7 +24,7 @@ export function StatusBadge({ state, label, size = 'md', className }: StatusBadg
         size === 'sm' ? 'text-label' : 'text-sm',
         className,
       )}
-      style={{ color: `var(--${style.color})` }}
+      style={{ color: `var(--${style.labelColor})` }}
     >
       <Seal kind={style.seal} size={size === 'sm' ? 14 : 16} />
       <span>{label ?? style.label}</span>

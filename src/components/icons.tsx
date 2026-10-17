@@ -3,7 +3,7 @@
 // label or inside a control with an accessible name. No icon library is added (ADR 0006).
 
 import type { ReactNode, SVGProps } from 'react';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, 'children'> & { size?: number };
 
@@ -21,7 +21,7 @@ function icon(name: string, body: ReactNode, strokeWidth = 1.6) {
         strokeLinejoin="round"
         aria-hidden="true"
         focusable="false"
-        className={cn('block shrink-0', className)}
+        className={cx('block shrink-0', className)}
         {...props}
       >
         {body}

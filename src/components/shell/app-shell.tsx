@@ -29,12 +29,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* Phone: bottom tabs. Desktop: the side rail (its border runs the full page height). */}
+      {/* Phone: bottom tabs, var(--tab-h) tall with their 1 px top border, above the home
+          indicator. Desktop: the side rail (its border runs the full page height). */}
       <nav
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle bg-bg/[0.975] backdrop-blur-lg md:static md:border-t-0 md:border-r md:bg-bg md:backdrop-blur-none"
       >
-        <div className="flex h-[calc(var(--tab-h)+env(safe-area-inset-bottom,0px))] pr-[max(0.25rem,env(safe-area-inset-right,0px))] pb-[env(safe-area-inset-bottom,0px)] pl-[max(0.25rem,env(safe-area-inset-left,0px))] md:sticky md:top-0 md:h-dvh md:flex-col md:px-3.5 md:pt-6 md:pb-[max(1.125rem,env(safe-area-inset-bottom,0px))] md:pl-[max(0.875rem,env(safe-area-inset-left,0px))]">
+        <div className="flex h-[calc(var(--tab-h)-1px+env(safe-area-inset-bottom,0px))] pr-[max(0.25rem,env(safe-area-inset-right,0px))] pb-[env(safe-area-inset-bottom,0px)] pl-[max(0.25rem,env(safe-area-inset-left,0px))] md:sticky md:top-0 md:h-dvh md:flex-col md:px-3.5 md:pt-6 md:pb-[max(1.125rem,env(safe-area-inset-bottom,0px))] md:pl-[max(0.875rem,env(safe-area-inset-left,0px))]">
           <Link href="/" className="mb-7 hidden min-h-11 items-center px-2 md:inline-flex" aria-label="WingChunRoots, home">
             <BrandMark />
           </Link>

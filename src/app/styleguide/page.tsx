@@ -84,7 +84,8 @@ function Specimens() {
           <StatusBadge key={kind} state={kind} />
         ))}
       </div>
-      <div className="grid gap-2" aria-busy="true" aria-label="Loading a profile">
+      <div className="grid gap-2" role="status">
+        <span className="sr-only">Loading a profile</span>
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-64 max-w-full" />
         <Skeleton className="h-4 w-40" />
@@ -246,10 +247,10 @@ export default function StyleguidePage() {
                 <dd>{value}</dd>
               </div>
             ))}
-            <dt className="col-span-2 mt-2 text-fg-muted">
-              Nothing moves on its own; under prefers-reduced-motion every duration is 0 ms.
-            </dt>
           </dl>
+          <p className="mt-2 text-[0.8125rem] text-fg-muted">
+            Nothing moves on its own; under prefers-reduced-motion every duration is 0 ms.
+          </p>
         </div>
       </Section>
     </div>

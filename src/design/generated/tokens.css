@@ -183,10 +183,6 @@
   --print-ink: oklch(21.78% 0.0000 0.00); /* #1A1A1A */
   --print-seal: oklch(50.16% 0.1887 27.48); /* #B71C1C */
   --print-verified: oklch(50.77% 0.1328 152.26); /* #007A3D */
-  /* Solid dimming tones (plan §4.7): never opacity. */
-  --dim-stroke: var(--unconfirmed);
-  --dim-frame: var(--border-strong);
-  --dim-text: var(--fg-muted);
   /* Chinese names use system CJK fonts (plan §5.3); Traditional unless lang="zh-Hans". */
   --font-cjk-serif: 'Songti TC', 'PMingLiU', 'Noto Serif CJK TC', 'Noto Serif TC', serif;
   --font-cjk-sans: 'PingFang TC', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC', sans-serif;
@@ -206,25 +202,42 @@
   --duration-ink-step: 110ms;
   --duration-ink-draw: 220ms;
   --duration-ink-total: 1000ms;
-  /* Link styles by verification state (plan §4.6): stroke, dash and width. */
-  --link-unconfirmed-color: var(--unconfirmed);
+  /* Link styles by verification state (plan §4.6): dash and width. */
   --link-unconfirmed-dash: 0.1 4;
   --link-unconfirmed-width: 1.5px;
-  --link-under-review-color: var(--review);
   --link-under-review-dash: 7 4;
   --link-under-review-width: 2px;
-  --link-verified-color: var(--verified);
   --link-verified-dash: none;
   --link-verified-width: 2px;
-  --link-arbitration-color: var(--arbitration);
   --link-arbitration-dash: none;
   --link-arbitration-width: 1.25px;
-  --link-cross-lineage-color: var(--cross-lineage);
   --link-cross-lineage-dash: 9 3 2 3;
   --link-cross-lineage-width: 1.75px;
-  --link-historical-color: var(--fg-muted);
   --link-historical-dash: none;
   --link-historical-width: 1px;
+}
+/*
+ * Aliases of theme colours. A custom property resolves var() where it is declared, so they
+ * are declared again on every element that sets a theme (a scoped panel keeps its colours).
+ */
+:root, .theme-dark, .theme-light {
+  /* Solid dimming tones (plan §4.7): never opacity. */
+  --dim-stroke: var(--unconfirmed);
+  --dim-frame: var(--border-strong);
+  --dim-text: var(--fg-muted);
+  /* Link colours by verification state (plan §4.6): stroke and seal, then the text label. */
+  --link-unconfirmed-color: var(--unconfirmed);
+  --link-unconfirmed-label: var(--fg-muted);
+  --link-under-review-color: var(--review);
+  --link-under-review-label: var(--review);
+  --link-verified-color: var(--verified);
+  --link-verified-label: var(--verified);
+  --link-arbitration-color: var(--arbitration);
+  --link-arbitration-label: var(--arbitration);
+  --link-cross-lineage-color: var(--cross-lineage);
+  --link-cross-lineage-label: var(--cross-lineage);
+  --link-historical-color: var(--fg-muted);
+  --link-historical-label: var(--fg-muted);
 }
 :lang(zh-Hans) {
   --font-cjk-serif: 'Songti SC', 'SimSun', 'Noto Serif CJK SC', 'Noto Serif SC', serif;

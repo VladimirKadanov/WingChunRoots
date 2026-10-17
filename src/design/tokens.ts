@@ -348,8 +348,13 @@ export type VerificationState = (typeof VERIFICATION_STATES)[number];
 
 export interface LinkStyle {
   label: string;
-  /** Colour role of the stroke, seal and label. */
+  /** Colour role of the stroke and the seal. */
   color: ColorRole;
+  /**
+   * Colour role of the text label (status badges): text-grade (4.5:1). Unconfirmed grey is a
+   * stroke colour at 3:1 only, so its label is set in the secondary text colour.
+   */
+  labelColor: ColorRole;
   /** How the stroke is drawn. */
   stroke: 'dotted' | 'broken' | 'solid' | 'double' | 'hollow-curve' | 'thin';
   /** SVG stroke-dasharray of a 2 px stroke, or null for a continuous stroke. */
@@ -366,6 +371,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   unconfirmed: {
     label: 'Unconfirmed',
     color: 'unconfirmed',
+    labelColor: 'fg-muted',
     stroke: 'dotted',
     dash: '0.1 4',
     width: 1.5,
@@ -375,6 +381,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   under_review: {
     label: 'Under review',
     color: 'review',
+    labelColor: 'review',
     stroke: 'broken',
     dash: '7 4',
     width: 2,
@@ -384,6 +391,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   verified: {
     label: 'Verified',
     color: 'verified',
+    labelColor: 'verified',
     stroke: 'solid',
     dash: null,
     width: 2,
@@ -393,6 +401,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   arbitration: {
     label: 'In arbitration',
     color: 'arbitration',
+    labelColor: 'arbitration',
     stroke: 'double',
     dash: null,
     width: 1.25,
@@ -402,6 +411,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   cross_lineage: {
     label: 'Cross-lineage',
     color: 'cross-lineage',
+    labelColor: 'cross-lineage',
     stroke: 'hollow-curve',
     dash: '9 3 2 3',
     width: 1.75,
@@ -411,6 +421,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
   historical: {
     label: 'Historical',
     color: 'fg-muted',
+    labelColor: 'fg-muted',
     stroke: 'thin',
     dash: null,
     width: 1,

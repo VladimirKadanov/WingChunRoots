@@ -14,7 +14,7 @@ import { Seal } from '@/components/ink/seal';
 import { spineGeometry } from '@/components/ink/spine';
 import { TrailChip } from '@/components/ui/trail-chip';
 import { linkStyles } from '@/design/tokens';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 import { DEMO_LINE, DEMO_LINE_LINKS, searchDemoLine } from './demo-lineage';
 import { PersonName } from './names';
 
@@ -188,7 +188,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                 <g
                   key={segment.index}
                   data-state={segment.state}
-                  className={cn(traced && 'animate-ink-draw')}
+                  className={cx(traced && 'animate-ink-draw')}
                   style={{
                     color: dimmed ? 'var(--dim-stroke)' : undefined,
                     animationDelay: traced ? `${segment.index * step}ms` : undefined,
@@ -222,7 +222,7 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
               return (
                 <g key={`seal-${segment.index}`} transform={`translate(${segment.seal.x} ${segment.seal.y})`}>
                   <g
-                    className={cn(traced && 'animate-seal-press')}
+                    className={cx(traced && 'animate-seal-press')}
                     style={{ animationDelay: traced ? `${segment.index * step + 130}ms` : undefined }}
                   >
                     <Seal kind={linkStyles[segment.state].seal} size={13} />
@@ -245,19 +245,19 @@ export function LivingLine({ intro }: { intro: ReactNode }) {
                     type="button"
                     aria-pressed={focus === i}
                     onClick={() => trace(i)}
-                    className={cn(
+                    className={cx(
                       'grid h-14 w-full grid-cols-[58px_44px_minmax(0,1fr)] rounded-sm text-left transition-colors duration-(--duration-fast) hover:bg-surface-1',
                       focus === i && 'bg-surface-1',
                     )}
                   >
-                    <span className={cn('pt-0.5 font-display text-base tabular text-fg-subtle', dimmed && 'text-fg-muted')}>
+                    <span className={cx('pt-0.5 font-display text-base tabular', dimmed ? 'text-fg-muted' : 'text-fg-subtle')}>
                       {person.startYear}
                     </span>
                     <span className="col-start-3 flex min-w-0 flex-col pl-1">
                       <PersonName
                         name={person.name}
                         original={person.original}
-                        className={cn('font-display text-[1.1875rem] leading-[1.22]', dimmed ? 'text-fg-muted' : 'text-fg')}
+                        className={cx('font-display text-[1.1875rem] leading-[1.22]', dimmed ? 'text-fg-muted' : 'text-fg')}
                       />
                       <span className="mt-px text-[0.6875rem] leading-tight font-semibold tracking-[0.14em] text-fg-subtle uppercase">
                         {person.city} · {person.role}

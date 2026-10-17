@@ -27,7 +27,18 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: buildProjects({ ci, chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE }),
+  // Visual regression (M00b, e2e/visual.spec.ts): CI never writes a missing baseline, it fails;
+  // baselines change only through a commit (docs/guides/admin-guide.bg.md).
+  updateSnapshots: ci ? 'none' : 'missing',
+  expect: {
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', scale: 'css' },
+  },
+  projects: buildProjects({
+    ci,
+    chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE,
+    visual: ci || process.env.PW_VISUAL === '1',
+    screenshots: process.env.PW_SCREENSHOTS === '1',
+  }),
   webServer: [
     {
       name: 'web',

@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
-import { ToastProvider } from '@/components/ui/toast';
 import { fontFaceClassNames } from '@/design/fonts';
 import { THEME_COLOR, THEME_SCRIPT } from '@/design/theme';
 import './globals.css';
@@ -31,9 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
-        <ToastProvider>
-          <AppShell>{children}</AppShell>
-        </ToastProvider>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

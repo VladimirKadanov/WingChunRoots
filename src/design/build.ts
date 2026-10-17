@@ -120,8 +120,6 @@ export function buildCss(): string {
   for (const [name, hex] of Object.entries(print)) {
     out.push(`  --print-${name.replace(/^print-/, '')}: ${formatOklch(hex)}; /* ${hex} */`);
   }
-  out.push('  /* Solid dimming tones (plan §4.7): never opacity. */');
-  for (const [name, role] of Object.entries(DIM_TONES)) out.push(`  --dim-${name}: var(--${role});`);
   out.push('  /* Chinese names use system CJK fonts (plan §5.3); Traditional unless lang="zh-Hans". */');
   out.push(`  --font-cjk-serif: ${fontStack(fontFamilies['cjk-serif-hant'])};`);
   out.push(`  --font-cjk-sans: ${fontStack(fontFamilies['cjk-sans-hant'])};`);
@@ -129,12 +127,25 @@ export function buildCss(): string {
   for (const [name, value] of Object.entries(layout)) out.push(`  --${name}: ${value};`);
   out.push('  /* Motion (plan §5.8 (e)). */');
   for (const [name, value] of Object.entries(motion.duration)) out.push(`  --duration-${name}: ${value};`);
-  out.push('  /* Link styles by verification state (plan §4.6): stroke, dash and width. */');
+  out.push('  /* Link styles by verification state (plan §4.6): dash and width. */');
+  for (const [state, style] of Object.entries(linkStyles)) {
+    const key = state.replace(/_/g, '-');
+    out.push(`  --link-${key}-dash: ${style.dash ?? 'none'};`);
+    out.push(`  --link-${key}-width: ${style.width}px;`);
+  }
+  out.push('}');
+  out.push('/*');
+  out.push(' * Aliases of theme colours. A custom property resolves var() where it is declared, so they');
+  out.push(' * are declared again on every element that sets a theme (a scoped panel keeps its colours).');
+  out.push(' */');
+  out.push(`:root, ${THEMES.map((theme) => `.theme-${theme}`).join(', ')} {`);
+  out.push('  /* Solid dimming tones (plan §4.7): never opacity. */');
+  for (const [name, role] of Object.entries(DIM_TONES)) out.push(`  --dim-${name}: var(--${role});`);
+  out.push('  /* Link colours by verification state (plan §4.6): stroke and seal, then the text label. */');
   for (const [state, style] of Object.entries(linkStyles)) {
     const key = state.replace(/_/g, '-');
     out.push(`  --link-${key}-color: var(--${style.color});`);
-    out.push(`  --link-${key}-dash: ${style.dash ?? 'none'};`);
-    out.push(`  --link-${key}-width: ${style.width}px;`);
+    out.push(`  --link-${key}-label: var(--${style.labelColor});`);
   }
   out.push('}');
   out.push(':lang(zh-Hans) {');

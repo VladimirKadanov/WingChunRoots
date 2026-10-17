@@ -2,7 +2,8 @@
 
 // Toast (shadcn/ui on Base UI): an ink slip at the bottom, above the phone tab bar and the
 // safe area. Toasts are polite status messages; they never carry the only copy of an action
-// and stay until dismissed when they hold one (plan §5.6).
+// and stay until dismissed when they hold one (plan §5.6). Wrap the part of a page that toasts
+// in ToastProvider; the root layout does not, so pages without toasts do not load this code.
 
 import { Toast as BaseToast } from '@base-ui/react/toast';
 import type { ReactNode } from 'react';

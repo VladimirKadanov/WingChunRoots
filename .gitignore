@@ -45,3 +45,6 @@ next-env.d.ts
 
 # local Docker data written by mistake to a bind mount
 /.data/
+
+# Lighthouse CI results (scripts/verify.d/M00b.sh)
+/.lighthouseci/

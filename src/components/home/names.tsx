@@ -2,7 +2,7 @@
 // each with its own lang and translate="no", so browsers neither translate nor mispronounce
 // them. Chinese uses the system CJK fonts; Cyrillic display text uses Noto Serif Display.
 
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 import type { DemoName } from './demo-lineage';
 
 export function PersonName({
@@ -17,7 +17,7 @@ export function PersonName({
   originalClassName?: string;
 }) {
   return (
-    <span className={cn('inline-flex flex-wrap items-baseline gap-x-2', className)}>
+    <span className={cx('inline-flex flex-wrap items-baseline gap-x-2', className)}>
       <span lang="en" translate="no">
         {name}
       </span>
@@ -25,7 +25,7 @@ export function PersonName({
         <span
           lang={original.lang}
           translate="no"
-          className={cn(original.lang.startsWith('zh') && 'cjk', 'text-[0.74em] text-fg-muted', originalClassName)}
+          className={cx(original.lang.startsWith('zh') && 'cjk', 'text-[0.74em] text-fg-muted', originalClassName)}
         >
           {original.text}
         </span>

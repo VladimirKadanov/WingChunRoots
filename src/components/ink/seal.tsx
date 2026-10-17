@@ -4,7 +4,7 @@
 
 import type { ReactNode, SVGProps } from 'react';
 import type { LinkStyle } from '@/design/tokens';
-import { cn } from '@/lib/utils';
+import { cx } from '@/lib/cx';
 
 export type SealKind = LinkStyle['seal'];
 
@@ -88,7 +88,7 @@ export function Seal({ kind, size = 18, className, ...props }: SealProps) {
       height={size}
       aria-hidden="true"
       focusable="false"
-      className={cn('inline-block shrink-0', className)}
+      className={cx('inline-block shrink-0', className)}
       data-seal={kind}
       {...props}
     >
