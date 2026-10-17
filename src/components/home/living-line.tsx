@@ -9,8 +9,10 @@
 // tap (plan §5.8 (e)). The rows beyond the traced person stay in the draft and take the dimmed
 // text tones. "Back to <name>" returns to the previous person (Constellation's trail chip).
 //
-// On phones the line comes straight after the headline, so the first screen shows the subject
-// itself; the introduction and the search follow it. From 768 px they sit side by side.
+// On phones and tablets the line comes straight after the headline, so the first screen shows
+// the subject itself; the introduction and the search follow it. From 1280 px the line has a
+// column of its own, wide enough that each name and its original stay on one line (so the rows
+// keep the even height the server draws the spine for), beside the headline and the search.
 
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CloseIcon, SearchIcon } from '@/components/icons';
@@ -118,10 +120,10 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
   }, []);
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-y-7 pb-9 [grid-template-areas:'head'_'line'_'search'] md:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)] md:grid-rows-[auto_1fr] md:gap-x-12 md:gap-y-0 md:pb-14 md:[grid-template-areas:'head_line'_'search_line'] lg:gap-x-16">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-y-7 pb-9 [grid-template-areas:'head'_'line'_'search'] md:gap-y-9 md:pb-14 xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[auto_1fr] xl:gap-x-12 xl:gap-y-0 2xl:grid-cols-[minmax(0,1fr)_30rem] 2xl:gap-x-16 xl:[grid-template-areas:'head_line'_'search_line']">
       <div className="[grid-area:head]">{heading}</div>
 
-      <div className="border-t border-border-subtle pt-6 [grid-area:search] md:border-t-0 md:pt-5">
+      <div className="max-w-[40rem] border-t border-border-subtle pt-6 [grid-area:search] xl:max-w-none xl:border-t-0 xl:pt-5">
         {lede}
         <search className="mt-6">
           <label htmlFor={searchId} className="sr-only">
@@ -229,7 +231,7 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
       <figure
         ref={figure}
         id="demo-line"
-        className="scroll-mt-4 [grid-area:line] md:row-span-2 md:border-l md:border-border-subtle md:pt-1.5 md:pl-8"
+        className="max-w-[40rem] scroll-mt-4 [grid-area:line] xl:row-span-2 xl:max-w-none xl:border-l xl:border-border-subtle xl:pt-1.5 xl:pl-8"
         aria-labelledby={`${searchId}-cap`}
       >
         <figcaption id={`${searchId}-cap`} className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
