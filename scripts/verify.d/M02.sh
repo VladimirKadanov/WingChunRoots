@@ -199,7 +199,9 @@ check "oRPC: RPCHandler under /api/rpc and OpenAPIHandler under /api/v1, CSRF or
   grep -q "new RPCHandler(router)" "$f" && grep -q "new OpenAPIHandler(router)" "$f" &&
   grep -q "export function csrfRefusal" "$f" && grep -q "private, no-store" "$f"'
 check "the procedures account.onboard and consent.record exist and take the cookie or bearer session" bash -c '
-  grep -q "onboard: base" src/server/rpc/router.ts && grep -q "record: base" src/server/rpc/router.ts &&
+  f=src/server/rpc/router.ts
+  grep -Eq "onboard: (base|signedIn)$" "$f" && grep -Eq "record: (base|signedIn)$" "$f" &&
+  grep -q "requireUser(context.principal)" "$f" &&
   grep -q "principalFromHeaders" src/server/rpc/context.ts'
 check "the session comes from the cookie or Authorization: Bearer (one principal for both)" bash -c '
   grep -qi "bearer" src/server/auth/session.ts'
