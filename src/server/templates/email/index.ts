@@ -5,15 +5,21 @@
 import { render } from '@react-email/render';
 
 import { mailCheck } from './mail-check';
+import { resetPassword } from './reset-password';
 import { type EmailTemplate, TemplateDataError } from './types';
+import { verifyEmail } from './verify-email';
 
 export { TemplateDataError } from './types';
 export type { EmailTemplate, NameData } from './types';
 export type { MailCheckData } from './mail-check';
+export type { ResetPasswordData } from './reset-password';
+export type { VerifyEmailData } from './verify-email';
 
 /** Every e-mail template, by name (= template.name). A new template is added here and in its own file. */
 export const EMAIL_TEMPLATES = {
   'mail-check': mailCheck,
+  'verify-email': verifyEmail,
+  'reset-password': resetPassword,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;

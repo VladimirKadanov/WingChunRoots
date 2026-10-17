@@ -1,8 +1,9 @@
 // Credential helpers in Better Auth's own storage formats, for the seed (demo accounts) and the
-// tests: a password hash (scrypt with a random salt) and the TOTP secret and backup codes,
-// encrypted with BETTER_AUTH_SECRET exactly as the twoFactor plugin stores them.
+// tests: a password hash (scrypt with a random salt), the TOTP secret and backup codes,
+// encrypted with BETTER_AUTH_SECRET exactly as the twoFactor plugin stores them, and the signed
+// value of a session cookie (the bearer token) for a session row a test creates itself.
 
-import { generateRandomString, hashPassword, symmetricEncrypt } from 'better-auth/crypto';
+import { generateRandomString, hashPassword, makeSignature, symmetricEncrypt } from 'better-auth/crypto';
 
 export function hashAccountPassword(password: string): Promise<string> {
   return hashPassword(password);
@@ -19,4 +20,9 @@ export async function generateBackupCodes(authSecret: string): Promise<{ codes: 
     (code) => `${code.slice(0, 5)}-${code.slice(5)}`,
   );
   return { codes, encrypted: await symmetricEncrypt({ key: authSecret, data: JSON.stringify(codes) }) };
+}
+
+/** The session cookie value and bearer token of a session `token`: `token.signature`. */
+export async function signedSessionToken(token: string, authSecret: string): Promise<string> {
+  return `${token}.${await makeSignature(token, authSecret)}`;
 }

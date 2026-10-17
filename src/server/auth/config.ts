@@ -1,0 +1,132 @@
+// Better Auth 1.7 (milestone M02; plan §3.2; docs/adr/0004-auth.md). One instance per process,
+// created on first use so that `next build` never needs the secrets.
+//
+// - Drizzle adapter over the app_rw pool; tables auth_* (modelName); UUIDv7 ids from the app.
+// - E-mail and password with verification (24 h) and password reset (1 h); sign-in needs a
+//   confirmed address; a reset ends every session.
+// - Rate limiting on in every environment (Better Auth turns it off outside production unless
+//   asked), in memory: one `next start` process in Phase 1.
+// - Plugins: twoFactor (TOTP and backup codes), admin (the role field, bans), bearer (the same
+//   session in `Authorization: Bearer`, signed tokens only).
+// - The admin plugin's HTTP endpoints and the e-mail OTP second factor are switched off
+//   (disabledPaths): roles change only through src/server/services/roles.ts, which checks 2FA and
+//   writes the audit log; later milestones open what they need behind requireStaff2FA().
+
+import { betterAuth } from 'better-auth/minimal';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { admin } from 'better-auth/plugins/admin';
+import { bearer } from 'better-auth/plugins/bearer';
+import { twoFactor } from 'better-auth/plugins/two-factor';
+
+import { getDb } from '../db';
+import { uuidv7 } from '../db/ids';
+import { AUTH_TABLES } from '../db/schema';
+import { RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
+import { appUrl, authSecret } from './env';
+import { afterHook, afterUserCreate, afterUserUpdate, beforeHook, beforeSessionCreate } from './hooks';
+import { logAuth } from './logger';
+
+export const AUTH_BASE_PATH = '/api/auth';
+export const COOKIE_PREFIX = 'wcr';
+export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_PASSWORD_LENGTH = 128;
+export const TOTP_ISSUER = 'WingChunRoots';
+
+/** Endpoints that are not served over HTTP in M02 (404). */
+export const DISABLED_AUTH_PATHS = [
+  // E-mail OTP as a second factor is not offered: TOTP and backup codes only.
+  '/two-factor/send-otp',
+  '/two-factor/verify-otp',
+  // The admin plugin's endpoints: no user management over HTTP yet (see above).
+  '/admin/set-role',
+  '/admin/get-user',
+  '/admin/create-user',
+  '/admin/update-user',
+  '/admin/list-users',
+  '/admin/list-user-sessions',
+  '/admin/unban-user',
+  '/admin/ban-user',
+  '/admin/impersonate-user',
+  '/admin/stop-impersonating',
+  '/admin/revoke-user-session',
+  '/admin/revoke-user-sessions',
+  '/admin/remove-user',
+  '/admin/set-user-password',
+  '/admin/has-permission',
+];
+
+export function createAuth() {
+  const origin = appUrl();
+  return betterAuth({
+    appName: TOTP_ISSUER,
+    baseURL: origin,
+    basePath: AUTH_BASE_PATH,
+    secret: authSecret(),
+    trustedOrigins: [origin],
+    telemetry: { enabled: false },
+    logger: { level: 'warn', log: (level, message, ...args) => logAuth(level, message, ...args) },
+    database: drizzleAdapter(getDb(), { provider: 'pg', schema: AUTH_TABLES, transaction: false }),
+    user: { modelName: 'auth_user' },
+    session: {
+      modelName: 'auth_session',
+      additionalFields: {
+        twoFactorVerifiedAt: { type: 'date', required: false, input: false },
+      },
+    },
+    account: { modelName: 'auth_account' },
+    verification: { modelName: 'auth_verification', storeIdentifier: 'hashed' },
+    advanced: {
+      cookiePrefix: COOKIE_PREFIX,
+      database: { generateId: () => uuidv7() },
+    },
+    emailAndPassword: {
+      enabled: true,
+      requireEmailVerification: true,
+      autoSignIn: false,
+      minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
+      resetPasswordTokenExpiresIn: RESET_PASSWORD_EXPIRES_IN_S,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: ({ user, token }) => sendPasswordResetEmail(user, token),
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendOnSignIn: true,
+      autoSignInAfterVerification: false,
+      expiresIn: VERIFY_EMAIL_EXPIRES_IN_S,
+      sendVerificationEmail: ({ user, token }) => sendVerificationEmail(user, token),
+    },
+    rateLimit: {
+      enabled: true,
+      storage: 'memory',
+      customRules: {
+        '/request-password-reset': { window: 60, max: 3 },
+        '/send-verification-email': { window: 60, max: 3 },
+      },
+    },
+    disabledPaths: DISABLED_AUTH_PATHS,
+    hooks: { before: beforeHook, after: afterHook },
+    databaseHooks: {
+      user: { create: { after: afterUserCreate }, update: { after: afterUserUpdate } },
+      session: { create: { before: beforeSessionCreate } },
+    },
+    plugins: [
+      twoFactor({
+        issuer: TOTP_ISSUER,
+        schema: { twoFactor: { modelName: 'auth_two_factor' } },
+      }),
+      admin({ defaultRole: 'user', adminRoles: ['admin'] }),
+      bearer({ requireSignature: true }),
+    ],
+  });
+}
+
+export type Auth = ReturnType<typeof createAuth>;
+
+// One instance per process; on globalThis so `next dev` reloads do not create more.
+const globalAuth = globalThis as unknown as { __wcrAuth?: Auth };
+
+export function getAuth(): Auth {
+  globalAuth.__wcrAuth ??= createAuth();
+  return globalAuth.__wcrAuth;
+}

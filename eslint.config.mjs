@@ -47,6 +47,16 @@ const modulePackages = [
     group: ['react-email', 'react-email/*', '@react-email/*'],
     message: 'E-mail templates live only in src/server/templates/email (CLAUDE.md §2).',
   },
+  {
+    module: 'src/server/auth',
+    group: ['better-auth', 'better-auth/*'],
+    message: 'Only src/server/auth talks to Better Auth: use its guards, session and web helpers (milestone M02).',
+  },
+  {
+    module: 'src/server/rpc',
+    group: ['@orpc/*'],
+    message: 'Only src/server/rpc builds the oRPC router and handlers; Server Actions call serverClient() (plan §6.8).',
+  },
 ];
 
 /**

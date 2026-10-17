@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { EMAIL_TEMPLATES, renderEmail, TemplateDataError, type NameData } from './email';
+import { EMAIL_TEMPLATES, type EmailTemplate, renderEmail, TemplateDataError, type NameData } from './email';
 import { NOTIFICATION_TEMPLATES, NotificationDataError, renderNotification } from './notifications';
 
 // What a missing or mistyped variable leaves behind in the output.
@@ -34,7 +34,7 @@ const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
 describe('e-mail templates', () => {
-  const entries = Object.entries(EMAIL_TEMPLATES);
+  const entries = Object.entries(EMAIL_TEMPLATES) as [keyof typeof EMAIL_TEMPLATES, EmailTemplate<unknown>][];
 
   it('the registry is not empty and every key is the template name', () => {
     expect(entries.length).toBeGreaterThan(0);
@@ -97,6 +97,40 @@ describe('e-mail templates', () => {
     expect(html).not.toContain('<b>Student</b>');
     expect(html).toContain('Demo &lt;b&gt;Student&lt;/b&gt;');
   });
+});
+
+describe('account e-mails (M02)', () => {
+  const cases = [
+    { name: 'verify-email', path: '/verify-email', subject: /Confirm your e-mail address/ },
+    { name: 'reset-password', path: '/reset-password', subject: /Reset your WingChunRoots password/ },
+  ] as const;
+
+  for (const { name, path, subject } of cases) {
+    describe(name, () => {
+      const url = `http://127.0.0.1:3100${path}?token=demo-token-123`;
+
+      it('shows the link as a button and as text, and how long it works, without a name before onboarding', async () => {
+        const email = await renderEmail(name, { url, expiresInHours: 1 });
+        expect(email.subject).toMatch(subject);
+        expect(email.html).toContain(`href="${url.replaceAll('&', '&amp;')}"`);
+        expect(email.text).toContain(url);
+        expect(email.text).toContain('Hello,');
+        expect(email.text).toContain('1 hour ');
+        expect(email.html).not.toContain('translate="no"');
+      });
+
+      it('refuses a link to another page, without a token or not over http(s), and odd lifetimes', async () => {
+        await expect(renderEmail(name, { url: 'http://127.0.0.1:3100/elsewhere?token=x', expiresInHours: 1 })).rejects.toThrow(
+          new RegExp(`point at ${path}`),
+        );
+        await expect(renderEmail(name, { url: `http://127.0.0.1:3100${path}`, expiresInHours: 1 })).rejects.toThrow(/with a token/);
+        await expect(renderEmail(name, { url: `javascript:alert(1)//${path}?token=x`, expiresInHours: 1 })).rejects.toThrow(/http\(s\)/);
+        await expect(renderEmail(name, { url, expiresInHours: 0 })).rejects.toThrow(/hours/);
+        await expect(renderEmail(name, { url, expiresInHours: 1.5 })).rejects.toThrow(/hours/);
+        await expect(renderEmail(name, { url })).rejects.toBeInstanceOf(TemplateDataError);
+      });
+    });
+  }
 });
 
 describe('notification templates', () => {

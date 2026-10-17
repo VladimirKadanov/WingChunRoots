@@ -50,9 +50,16 @@ export const CONSENT_DOCUMENT: Record<ConsentKind, LegalDocumentId> = {
   publication: 'privacy',
 };
 
-/** The four ticks of the sign-up form, all required (DEFAULT D10). */
+/** The four ticks of the sign-up form, none of them ticked in advance. */
 export const SIGN_UP_CONSENTS = ['terms', 'privacy_ack', 'authenticity_declaration', 'age_18_plus'] as const satisfies readonly ConsentKind[];
 export type SignUpConsent = (typeof SIGN_UP_CONSENTS)[number];
+
+/**
+ * The ticks without which sign-up is refused (milestone M02, In scope 4): the adult confirmation
+ * (DEFAULT D10: the pilot is for adults only), the terms and the authenticity declaration. The
+ * privacy acknowledgement is recorded when it is ticked; the privacy notice applies either way.
+ */
+export const REQUIRED_SIGN_UP_CONSENTS = ['terms', 'authenticity_declaration', 'age_18_plus'] as const satisfies readonly SignUpConsent[];
 
 export function consentVersion(kind: ConsentKind): string {
   return LEGAL_DOCUMENTS[CONSENT_DOCUMENT[kind]].version;

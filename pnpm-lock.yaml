@@ -187,9 +187,6 @@ importers:
       '@orpc/server':
         specifier: 1.15.7
         version: 1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)
-      '@orpc/zod':
-        specifier: 1.15.7
-        version: 1.15.7(@opentelemetry/api@1.9.1)(@orpc/contract@1.15.7(@opentelemetry/api@1.9.1))(@orpc/server@1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3))(ws@8.21.3)(zod@4.6.7)
       '@react-email/render':
         specifier: 2.1.0
         version: 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1273,9 +1270,6 @@ packages:
   '@orpc/interop@1.15.7':
     resolution: {integrity: sha512-iel0l0Kgg2lydO5yVHPWHvjz/AHYcF2W2A6uQSMH5mjOpd4MKfUqKfVEGmU2v67s2OGcSAqnDYIgUc6E7WLduw==}
 
-  '@orpc/json-schema@1.15.7':
-    resolution: {integrity: sha512-et9YCZgPqfRhfSOFtG2SfF5WlhNGAGrIhjYLUhERJT0ZO4kUCe53C0iMGEuN/1UKiPSGP/2Kw18CbuREkmAw9Q==}
-
   '@orpc/openapi-client@1.15.7':
     resolution: {integrity: sha512-AzQZjNVtiXl6EoD2nGkEPLw32RajePd8nm6vZ7OlW7o9X/nOsnFJH91c9jcj1twMm+wikqsRqKlY0GfBrDMpBA==}
 
@@ -1323,13 +1317,6 @@ packages:
 
   '@orpc/standard-server@1.15.7':
     resolution: {integrity: sha512-iKfg90hyYhbS06C7adQxPAx+M/NLsWFjsQ7JGD6NFdmxOPhSueKrQUuQPQrDjwY482ivjxNbUFrLiOg44P97vA==}
-
-  '@orpc/zod@1.15.7':
-    resolution: {integrity: sha512-W3W23hzmwwbAPDzhRH1g6Nt0YKjx3JCYyMxy6szqvpO8470iqzLjvh12ZJMjbWLiXlM+8qWWCKv5onMlw2efUw==}
-    peerDependencies:
-      '@orpc/contract': 1.15.7
-      '@orpc/server': 1.15.7
-      zod: '>=3.25.0'
 
   '@oxc-project/types@0.154.0':
     resolution: {integrity: sha512-KYOUGQFlLWR+s4QMV2Q9ko38TZm7EdO87Qm7rvZLqk/webse/cDjtyxKhg/47l0byCbs/k46LT8qc4PKjAikzA==}
@@ -2712,10 +2699,6 @@ packages:
   escape-string-regexp@4.0.0:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
-
-  escape-string-regexp@5.0.0:
-    resolution: {integrity: sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw==}
-    engines: {node: '>=12'}
 
   eslint-config-next@16.4.1:
     resolution: {integrity: sha512-6AsojbCfRdpWkP6BIUnMBv3MH4OvtfmH9p4hSfLh8ZgsW7nfhu7DpUMNBB7leisDyyMz+YYxTc+NAdBOQfovlA==}
@@ -4569,9 +4552,6 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
-  wildcard-match@5.1.6:
-    resolution: {integrity: sha512-Dh5N543my42ynFsbT0v6iPpaqJt95MOK1n/lhojVTe/hS3gpP6e938bbzsfaS0goLlJbhEOCIJPe/Tc3hckoaQ==}
-
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
@@ -5464,20 +5444,6 @@ snapshots:
 
   '@orpc/interop@1.15.7': {}
 
-  '@orpc/json-schema@1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)':
-    dependencies:
-      '@orpc/contract': 1.15.7(@opentelemetry/api@1.9.1)
-      '@orpc/interop': 1.15.7
-      '@orpc/openapi': 1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)
-      '@orpc/server': 1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)
-      '@orpc/shared': 1.15.7(@opentelemetry/api@1.9.1)
-      json-schema-typed: 8.0.2
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - crossws
-      - fastify
-      - ws
-
   '@orpc/openapi-client@1.15.7(@opentelemetry/api@1.9.1)':
     dependencies:
       '@orpc/client': 1.15.7(@opentelemetry/api@1.9.1)
@@ -5574,22 +5540,6 @@ snapshots:
       '@orpc/shared': 1.15.7(@opentelemetry/api@1.9.1)
     transitivePeerDependencies:
       - '@opentelemetry/api'
-
-  '@orpc/zod@1.15.7(@opentelemetry/api@1.9.1)(@orpc/contract@1.15.7(@opentelemetry/api@1.9.1))(@orpc/server@1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3))(ws@8.21.3)(zod@4.6.7)':
-    dependencies:
-      '@orpc/contract': 1.15.7(@opentelemetry/api@1.9.1)
-      '@orpc/json-schema': 1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)
-      '@orpc/openapi': 1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)
-      '@orpc/server': 1.15.7(@opentelemetry/api@1.9.1)(ws@8.21.3)
-      '@orpc/shared': 1.15.7(@opentelemetry/api@1.9.1)
-      escape-string-regexp: 5.0.0
-      wildcard-match: 5.1.6
-      zod: 4.6.7
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - crossws
-      - fastify
-      - ws
 
   '@oxc-project/types@0.154.0': {}
 
@@ -6891,8 +6841,6 @@ snapshots:
   escalade@3.2.0: {}
 
   escape-string-regexp@4.0.0: {}
-
-  escape-string-regexp@5.0.0: {}
 
   eslint-config-next@16.4.1(@typescript-eslint/parser@8.71.2(eslint@9.39.5(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3))(eslint@9.39.5(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3):
     dependencies:
@@ -8964,8 +8912,6 @@ snapshots:
       isexe: 2.0.0
 
   why-is-node-running@3.2.1: {}
-
-  wildcard-match@5.1.6: {}
 
   word-wrap@1.2.5: {}
 
