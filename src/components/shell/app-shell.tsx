@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
 import { BrandMark } from '@/components/brand/brand-mark';
 import { DEMO_NOTICE } from './demo-notice';
+import { FocusInView } from './focus-in-view';
 import { NavLinks, NavList } from './nav-links';
 import { TabBarRoom } from './tab-bar-room';
 import { ThemeMenu } from './theme-menu';
@@ -70,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           globals.css) or, from 1024 px, beside it (--sheet-page-inline: the side panel docks and
           the page narrows), so no page control is ever under a sheet (WCAG 2.4.11). */}
       <div className="min-w-0 pr-[var(--sheet-page-inline,0px)] pb-(--page-clear-bottom)">
+        <FocusInView />
         <main id="main" tabIndex={-1} className="outline-none">
           {children}
         </main>
