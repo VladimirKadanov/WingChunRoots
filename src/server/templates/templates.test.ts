@@ -70,6 +70,11 @@ describe('e-mail templates', () => {
       it('parses its own sample data unchanged', () => {
         expect(template.parse(template.sample)).toEqual(template.sample);
       });
+
+      it('parses its parsed data to the same value (the outbox stores parsed data; the worker parses it again)', () => {
+        const once = template.parse(template.sample);
+        expect(template.parse(JSON.parse(JSON.stringify(once)))).toStrictEqual(once);
+      });
     });
   }
 
@@ -86,7 +91,7 @@ describe('e-mail templates', () => {
   });
 
   it('mail-check without recipient names greets without a name (pnpm mail:check without --name)', async () => {
-    expect(EMAIL_TEMPLATES['mail-check'].parse({})).toEqual({ recipientNames: [] });
+    expect(EMAIL_TEMPLATES['mail-check'].parse({})).toStrictEqual({});
     const { text, html } = await renderEmail('mail-check', {});
     expect(text).toContain('Hello,');
     expect(html).not.toContain('translate="no"');
@@ -108,6 +113,12 @@ describe('account e-mails (M02)', () => {
   for (const { name, path, subject } of cases) {
     describe(name, () => {
       const url = `http://127.0.0.1:3100${path}?token=demo-token-123`;
+
+      it('without names (before onboarding) parses to data that parses again', () => {
+        const once = EMAIL_TEMPLATES[name].parse({ url, expiresInHours: 1 });
+        expect(once).toStrictEqual({ url, expiresInHours: 1 });
+        expect(EMAIL_TEMPLATES[name].parse(JSON.parse(JSON.stringify(once)))).toStrictEqual(once);
+      });
 
       it('shows the link as a button and as text, and how long it works, without a name before onboarding', async () => {
         const email = await renderEmail(name, { url, expiresInHours: 1 });

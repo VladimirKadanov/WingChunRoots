@@ -3,15 +3,16 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 
-import { FormMessage, SubmitButton, TextField, firstInvalid, useFocusOnError } from '@/components/account/fields';
+import { FormMessage, SubmitButton, TextField, firstInvalid, useFocusOnError, useFormId } from '@/components/account/fields';
 import { MAX_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { IDLE } from '@/lib/form-state';
 import { signInAction } from './actions';
 
-const FORM = 'sign-in';
+const FORM_NAME = 'sign-in';
 
 export function SignInForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState(signInAction, IDLE);
+  const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
   const first = firstInvalid(state, ['email', 'password']);
   return (

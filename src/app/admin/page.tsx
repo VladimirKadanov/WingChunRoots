@@ -6,6 +6,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 
+import { PageRedirect } from '@/components/account/page-redirect';
 import { guardRoute } from '@/server/auth/web';
 import { serverClient } from '@/server/rpc/server';
 
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
 
 export default async function AdminPage() {
   const guard = await guardRoute('/admin');
+  if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) {
     return (
       <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11">

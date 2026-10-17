@@ -4,15 +4,16 @@ import Link from 'next/link';
 import { useActionState } from 'react';
 
 import { CONSENT_LABELS, CONSENT_ORDER } from '@/components/account/consents';
-import { CheckboxField, DoneNotice, FormMessage, SubmitButton, TextField, firstInvalid, useFocusOnError } from '@/components/account/fields';
+import { CheckboxField, DoneNotice, FormMessage, SubmitButton, TextField, firstInvalid, useFocusOnError, useFormId } from '@/components/account/fields';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { IDLE } from '@/lib/form-state';
 import { signUpAction } from './actions';
 
-const FORM = 'sign-up';
+const FORM_NAME = 'sign-up';
 
 export function SignUpForm({ required }: { required: readonly string[] }) {
   const [state, action, pending] = useActionState(signUpAction, IDLE);
+  const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
 
   if (state.status === 'done') {

@@ -8,6 +8,8 @@ const ci = process.env.CI === 'true';
 // A dedicated port, so E2E always runs against a fresh `next start` and never reuses `pnpm dev`.
 const port = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://127.0.0.1:${port}`;
+// The origin the app builds its e-mail links with and accepts requests from (M02): the test server.
+const serverEnv = { APP_URL: baseURL };
 // Created here rather than with `mkdir -p` in webServer.command, which must also run in cmd.exe.
 mkdirSync('test-results', { recursive: true });
 
@@ -47,6 +49,7 @@ export default defineConfig({
       // `pnpm build` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
       command: `pnpm start --hostname 127.0.0.1 --port ${port} > test-results/server.log 2>&1`,
       url: `${baseURL}/`,
+      env: serverEnv,
       reuseExistingServer: false,
       timeout: 120_000,
     },
@@ -56,6 +59,7 @@ export default defineConfig({
       // prints its ready line; its output appears in the test output with the prefix [worker].
       name: 'worker',
       command: 'pnpm worker',
+      env: serverEnv,
       wait: { stdout: /worker: ready/ },
       stdout: 'pipe',
       reuseExistingServer: false,

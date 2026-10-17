@@ -3,7 +3,6 @@
 // browser. Only pages, layouts and Server Actions import this file (it reads next/headers).
 
 import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { cache } from 'react';
 
 import { type AuthCallInit, type AuthCallResult, callAuthEndpoint } from './endpoint';
@@ -14,18 +13,24 @@ import { principalFromHeaders } from './session';
 /** The principal of the current request, read once per request. */
 export const getRequestPrincipal = cache(async (): Promise<Principal | null> => principalFromHeaders(await headers()));
 
+export type RouteGuard =
+  | { principal: Principal; redirectTo?: never; forbidden?: never }
+  | { redirectTo: string; principal?: never; forbidden?: never }
+  | { forbidden: true; principal?: never; redirectTo?: never };
+
 /**
- * The guard of a protected page (ROUTE_POLICIES in guards.ts): the principal, or a redirect to
- * sign-in (no session) or to /account/security (a staff session without a verified second
- * factor). Any other refusal returns `{ forbidden: true }` and the page says so.
+ * The guard of a protected page (ROUTE_POLICIES in guards.ts): the principal, or where to send
+ * the visitor (sign-in without a session, /account/security for a staff session without a
+ * verified second factor), which the page renders with <PageRedirect> rather than redirect()
+ * (see page-redirect.tsx). Any other refusal returns `{ forbidden: true }` and the page says so.
  */
-export async function guardRoute(path: string): Promise<{ principal: Principal; forbidden?: never } | { forbidden: true }> {
+export async function guardRoute(path: string): Promise<RouteGuard> {
   const decision = checkRoute(path, await getRequestPrincipal());
   if (decision.ok) {
-    if (!decision.principal) redirect(`/sign-in?next=${encodeURIComponent(path)}`);
+    if (!decision.principal) return { redirectTo: `/sign-in?next=${encodeURIComponent(path)}` };
     return { principal: decision.principal };
   }
-  if (decision.redirectTo) redirect(decision.redirectTo);
+  if (decision.redirectTo) return { redirectTo: decision.redirectTo };
   return { forbidden: true };
 }
 

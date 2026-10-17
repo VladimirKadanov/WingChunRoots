@@ -3,17 +3,18 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 
-import { DoneNotice, FormMessage, SubmitButton, TextField, useFocusOnError } from '@/components/account/fields';
+import { DoneNotice, FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { IDLE } from '@/lib/form-state';
 import { confirmEmailAction, resendConfirmationAction } from './actions';
 
 export function ConfirmEmailForm({ token }: { token: string }) {
   const [state, action, pending] = useActionState(confirmEmailAction, IDLE);
-  useFocusOnError('confirm-email', state);
+  const form = useFormId('confirm-email');
+  useFocusOnError(form, state);
   return (
-    <form id="confirm-email" action={action} className="grid gap-6">
+    <form id={form} action={action} className="grid gap-6">
       <input type="hidden" name="token" value={token} />
-      <FormMessage form="confirm-email" state={state} />
+      <FormMessage form={form} state={state} />
       {state.status === 'error' ? null : (
         <div>
           <SubmitButton pending={pending} pendingLabel="Confirming…">
@@ -27,10 +28,11 @@ export function ConfirmEmailForm({ token }: { token: string }) {
 
 export function ResendConfirmationForm({ title = 'Send the link again' }: { title?: string }) {
   const [state, action, pending] = useActionState(resendConfirmationAction, IDLE);
-  useFocusOnError('resend-confirmation', state);
+  const form = useFormId('resend-confirmation');
+  useFocusOnError(form, state);
   if (state.status === 'done') {
     return (
-      <DoneNotice form="resend-confirmation" title="Check your inbox">
+      <DoneNotice form={form} title="Check your inbox">
         <p>
           If <strong className="font-semibold text-fg">{state.values?.email}</strong> belongs to an account that waits for confirmation,
           we have sent it a new link. It works for 24 hours.
@@ -42,13 +44,13 @@ export function ResendConfirmationForm({ title = 'Send the link again' }: { titl
     );
   }
   return (
-    <form id="resend-confirmation" action={action} noValidate aria-labelledby="resend-confirmation-title" className="grid gap-5">
-      <h2 id="resend-confirmation-title" className="font-display text-xl">
+    <form id={form} action={action} noValidate aria-labelledby={`${form}-title`} className="grid gap-5">
+      <h2 id={`${form}-title`} className="font-display text-xl">
         {title}
       </h2>
-      <FormMessage form="resend-confirmation" state={state} />
+      <FormMessage form={form} state={state} />
       <TextField
-        form="resend-confirmation"
+        form={form}
         name="email"
         type="email"
         label="E-mail address"

@@ -7,7 +7,7 @@
 // the first field with an error, or the form's message, gets the focus: through `autoFocus` in
 // the server-rendered page without JavaScript, and through an effect with it.
 
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -18,6 +18,15 @@ export const fieldClassName = cx(
   'placeholder:text-fg-subtle transition-[border-color,background-color] duration-(--duration-fast) ease-out',
   'hover:border-fg-muted focus-visible:border-fg aria-invalid:border-danger',
 );
+
+/**
+ * The id of one form instance. With Cache Components, Next.js keeps up to three earlier routes in
+ * the document, hidden (React Activity), so the same form can be there twice, for example
+ * /sign-in and /sign-in?verified=1; a fixed id would tie a visible label to a hidden input.
+ */
+export function useFormId(name: string): string {
+  return `${name}${useId()}`;
+}
 
 /** Moves the focus to the first invalid field, or to the form's message, after a failed submit. */
 export function useFocusOnError(formId: string, state: FormState) {

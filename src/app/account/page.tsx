@@ -5,9 +5,9 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { PageRedirect } from '@/components/account/page-redirect';
 import { NameList, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, LockIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -38,7 +38,8 @@ function Section({ id, title, children }: { id: string; title: string; children:
 
 export default async function AccountPage() {
   const guard = await guardRoute('/account');
-  if (guard.forbidden) redirect('/sign-in');
+  if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const me = await serverClient(await headers()).account.me();
   const primary = me.person?.names.find((name) => name.isPrimary);
 

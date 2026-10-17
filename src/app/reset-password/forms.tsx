@@ -3,17 +3,18 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 
-import { DoneNotice, FormMessage, SubmitButton, TextField, useFocusOnError } from '@/components/account/fields';
+import { DoneNotice, FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { IDLE } from '@/lib/form-state';
 import { requestResetAction, resetPasswordAction } from './actions';
 
 export function RequestResetForm() {
   const [state, action, pending] = useActionState(requestResetAction, IDLE);
-  useFocusOnError('request-reset', state);
+  const form = useFormId('request-reset');
+  useFocusOnError(form, state);
   if (state.status === 'done') {
     return (
-      <DoneNotice form="request-reset" title="Check your inbox">
+      <DoneNotice form={form} title="Check your inbox">
         <p>
           If <strong className="font-semibold text-fg">{state.values?.email}</strong> belongs to an account, we have sent it a link to
           choose a new password. The link works for one hour and only once.
@@ -25,10 +26,10 @@ export function RequestResetForm() {
     );
   }
   return (
-    <form id="request-reset" action={action} noValidate className="grid gap-6">
-      <FormMessage form="request-reset" state={state} />
+    <form id={form} action={action} noValidate className="grid gap-6">
+      <FormMessage form={form} state={state} />
       <TextField
-        form="request-reset"
+        form={form}
         name="email"
         type="email"
         label="E-mail address"
@@ -51,12 +52,13 @@ export function RequestResetForm() {
 
 export function NewPasswordForm({ token }: { token: string }) {
   const [state, action, pending] = useActionState(resetPasswordAction, IDLE);
-  useFocusOnError('new-password', state);
+  const form = useFormId('new-password');
+  useFocusOnError(form, state);
   const expired = state.status === 'error' && !state.fields;
   return (
-    <form id="new-password" action={action} noValidate className="grid gap-6">
+    <form id={form} action={action} noValidate className="grid gap-6">
       <input type="hidden" name="token" value={token} />
-      <FormMessage form="new-password" state={state} />
+      <FormMessage form={form} state={state} />
       {expired ? (
         <p className="text-ui">
           <Link href="/reset-password" className="link inline-flex min-h-11 items-center">
@@ -66,7 +68,7 @@ export function NewPasswordForm({ token }: { token: string }) {
       ) : (
         <>
           <TextField
-            form="new-password"
+            form={form}
             name="password"
             type="password"
             label="New password"

@@ -21,12 +21,29 @@ export interface AppRoute {
    * docs/screenshots/<milestone>/ by the screenshots project (e2e/screenshots.spec.ts).
    */
   key?: boolean;
+  /**
+   * A page behind sign-in (M02): the specs first sign in with e2e/helpers/auth.ts signInAs():
+   * a seeded demo account or role, or `new` (a confirmed account without a profile yet).
+   */
+  signInAs?: 'new' | 'user' | 'admin';
 }
 
 export const ROUTES: readonly AppRoute[] = [
   { path: '/', name: 'home', status: 200, milestone: 'M00b', key: true },
   { path: '/styleguide', name: 'styleguide', status: 200, milestone: 'M00b', key: true },
   { path: '/legal/licenses', name: 'licenses', status: 200, milestone: 'M00b' },
+  // Accounts (M02).
+  { path: '/sign-up', name: 'sign-up', status: 200, milestone: 'M02', key: true },
+  { path: '/sign-in', name: 'sign-in', status: 200, milestone: 'M02', key: true },
+  { path: '/sign-in/two-factor', name: 'two-factor', status: 200, milestone: 'M02' },
+  { path: '/verify-email', name: 'verify-email', status: 200, milestone: 'M02' },
+  { path: '/reset-password', name: 'reset-password', status: 200, milestone: 'M02' },
+  { path: '/onboarding', name: 'onboarding', status: 200, milestone: 'M02', key: true, signInAs: 'new' },
+  { path: '/account', name: 'account', status: 200, milestone: 'M02', signInAs: 'user' },
+  { path: '/account/security', name: 'security', status: 200, milestone: 'M02', signInAs: 'user' },
+  { path: '/admin', name: 'admin', status: 200, milestone: 'M02', signInAs: 'admin' },
+  { path: '/legal/terms', name: 'terms', status: 200, milestone: 'M02' },
+  { path: '/legal/privacy', name: 'privacy', status: 200, milestone: 'M02' },
   // The not-found page, through a path that no route will ever use.
   { path: '/demo-no-such-page', name: 'not-found', status: 404, milestone: 'M00b' },
 ];

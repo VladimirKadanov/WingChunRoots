@@ -4,7 +4,7 @@
 import { Text } from 'react-email';
 
 import { EmailLayout, PersonName, textStyle } from './components';
-import { type EmailTemplate, type NameData, parseNames, parseObject } from './types';
+import { type EmailTemplate, type NameData, parseObject, parseOptionalNames } from './types';
 
 export interface MailCheckData {
   /** The recipient's names, if known (1 to 4); the first is the Latin-script display name. */
@@ -18,8 +18,7 @@ export const mailCheck: EmailTemplate<MailCheckData> = {
   name: NAME,
   parse(data) {
     const object = parseObject(NAME, data);
-    const names = object.recipientNames;
-    return { recipientNames: names === undefined ? [] : parseNames(NAME, 'recipientNames', names) };
+    return parseOptionalNames(NAME, 'recipientNames', object.recipientNames);
   },
   subject: () => 'WingChunRoots mail check',
   preview,

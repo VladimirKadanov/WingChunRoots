@@ -5,10 +5,10 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { AuthFrame } from '@/components/account/auth-frame';
+import { PageRedirect } from '@/components/account/page-redirect';
 import { safeNextPath } from '@/server/auth/guards';
 import { isStaffRole } from '@/server/auth/principal';
 import { guardRoute } from '@/server/auth/web';
@@ -41,7 +41,8 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function SecurityPage({ searchParams }: { searchParams: Search }) {
   const guard = await guardRoute('/account/security');
-  if (guard.forbidden) redirect('/sign-in');
+  if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const next = safeNextPath(query.next, '');
   const me = await serverClient(await headers()).account.me();

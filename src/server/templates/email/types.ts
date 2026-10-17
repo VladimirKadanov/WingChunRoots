@@ -98,7 +98,10 @@ export function parseHours(template: string, field: string, value: unknown): num
   return value;
 }
 
-/** Optional names of the recipient (see parseNames); an empty list when absent. */
-export function parseOptionalNames(template: string, field: string, value: unknown): NameData[] {
-  return value === undefined ? [] : parseNames(template, field, value);
+/**
+ * Optional names of the recipient (see parseNames): `{}` when absent, so that the parsed data,
+ * which the outbox stores in the job, parses again to the same value in the worker.
+ */
+export function parseOptionalNames(template: string, field: string, value: unknown): { recipientNames?: NameData[] } {
+  return value === undefined ? {} : { recipientNames: parseNames(template, field, value) };
 }

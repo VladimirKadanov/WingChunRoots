@@ -22,7 +22,7 @@ export const resetPassword: EmailTemplate<ResetPasswordData> = {
     return {
       url: parseActionUrl(NAME, 'url', object.url, '/reset-password'),
       expiresInHours: parseHours(NAME, 'expiresInHours', object.expiresInHours),
-      recipientNames: parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
+      ...parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
     };
   },
   subject: () => 'Reset your WingChunRoots password',

@@ -23,7 +23,7 @@ export const verifyEmail: EmailTemplate<VerifyEmailData> = {
     return {
       url: parseActionUrl(NAME, 'url', object.url, '/verify-email'),
       expiresInHours: parseHours(NAME, 'expiresInHours', object.expiresInHours),
-      recipientNames: parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
+      ...parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
     };
   },
   subject: () => 'Confirm your e-mail address for WingChunRoots',

@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 
 import { CONSENT_LABELS, CONSENT_ORDER, type ConsentName } from '@/components/account/consents';
-import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, firstInvalid, useFocusOnError } from '@/components/account/fields';
+import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, firstInvalid, useFocusOnError, useFormId } from '@/components/account/fields';
 import { IDLE } from '@/lib/form-state';
 import { onboardAction } from './actions';
 
-const FORM = 'onboarding';
+const FORM_NAME = 'onboarding';
 
 const FIELD_ORDER = [
   ...CONSENT_ORDER,
@@ -41,6 +41,7 @@ export function OnboardingForm({
 }) {
   const [state, action, pending] = useActionState(onboardAction, IDLE);
   const [originalLang, setOriginalLang] = useState(state.values?.originalLang ?? '');
+  const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
   const first = firstInvalid(state, FIELD_ORDER);
   const countryName = new Map(options.countries.map((c) => [c.code, c.name]));

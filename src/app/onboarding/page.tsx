@@ -6,9 +6,9 @@
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
 
 import { AuthFrame } from '@/components/account/auth-frame';
+import { PageRedirect } from '@/components/account/page-redirect';
 import { safeNextPath } from '@/server/auth/guards';
 import { guardRoute } from '@/server/auth/web';
 import { serverClient } from '@/server/rpc/server';
@@ -40,12 +40,13 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Search }) {
   const guard = await guardRoute('/onboarding');
-  if (guard.forbidden) redirect('/sign-in');
+  if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const next = safeNextPath(query.next, '/account');
   const client = serverClient(await headers());
   const me = await client.account.me();
-  if (me.person) redirect(next === '/onboarding' ? '/account' : next);
+  if (me.person) return <PageRedirect to={next === '/onboarding' ? '/account' : next} title="Your profile is already set up" />;
   const options = await client.account.onboardingOptions();
   return (
     <AuthFrame

@@ -13,7 +13,10 @@ import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { closeHelpers, signInAs } from './helpers/auth';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
+
+test.afterAll(closeHelpers);
 
 for (const size of SCREEN_SIZES) {
   test.describe(size.name, () => {
@@ -28,6 +31,7 @@ for (const size of SCREEN_SIZES) {
       for (const theme of THEMES) {
         test(`${route.path} (${route.name}) at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
           await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+          if (route.signInAs) await signInAs(page, route.signInAs);
           const response = await page.goto(route.path);
           expect(response?.status()).toBe(route.status);
           await page.evaluate(() => document.fonts.ready.then(() => undefined));

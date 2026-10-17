@@ -2,15 +2,16 @@
 
 import { useActionState } from 'react';
 
-import { FormMessage, SubmitButton, TextField, useFocusOnError } from '@/components/account/fields';
+import { FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TOTP_DIGITS } from '@/lib/account-limits';
 import { IDLE } from '@/lib/form-state';
 import { verifySecondFactorAction } from '../actions';
 
-const FORM = 'second-factor';
+const FORM_NAME = 'second-factor';
 
 export function TwoFactorForm({ method, next }: { method: 'totp' | 'backup'; next: string }) {
   const [state, action, pending] = useActionState(verifySecondFactorAction, IDLE);
+  const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
   const totp = method === 'totp';
   return (
