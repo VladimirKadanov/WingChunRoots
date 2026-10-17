@@ -119,7 +119,7 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 
 ## 7. Лицензи
 
-`THIRD_PARTY_NOTICES.md` и страницата `/legal/licenses` се генерират от `pnpm notices` (от `pnpm licenses list --json --prod` и от бележките в `licenses/addenda/`). След промяна на зависимостите пуснете `pnpm notices` и включете промените в commit-а; CI проверява, че файловете са актуални.
+`THIRD_PARTY_NOTICES.md` и страницата `/legal/licenses` се генерират от `pnpm notices`: от `pnpm licenses list --json --prod`, от `tailwindcss` (пакет за разработка, чийто генериран CSS стига до браузъра) и от бележките в `licenses/addenda/`. Там са и пакетите, които `--prod` пропуска, защото са незадължителни, например `sharp` и `libvips` на Next.js (LGPL-3.0-or-later). Заглавието на такава бележка съдържа версиите; ако обновяване на Next.js смени версията на `sharp` в lockfile-а, `pnpm notices` спира с грешка, докато бележката не бъде обновена. Еднаквите текстове на лицензи се показват веднъж, а всеки пакет сочи към своя. След промяна на зависимостите пуснете `pnpm notices` и включете промените в commit-а; CI проверява, че файловете са актуални.
 
 ## 8. Проверки на качеството
 
@@ -130,7 +130,7 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 | `pnpm e2e` | Playwright срещу `next start` на порт 3100 и worker-а (първо `pnpm build`); axe на всяка страница в двете теми |
 | `pnpm screenshots` | Снимките в `docs/screenshots/<етап>/` при 390×844 и 1440×900 в двете теми (първо `pnpm build`) |
 
-Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил) върви като част от `scripts/verify.sh M00b`. Ползва Chromium от `pnpm exec playwright install chromium`; отчетите са в `.lighthouseci/`.
+Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, медианата от три пускания) върви като част от `scripts/verify.sh M00b` и в CI чрез `scripts/lighthouse.mjs` (Lighthouse 13 и `chrome-launcher`); праговете са в `lighthouserc.json`. Ползва Chromium на Playwright: локално от `pnpm exec playwright install chromium`, а в облачната сесия от `PW_CHROMIUM_EXECUTABLE`. Отчетите са в `.lighthouseci/reports/`. Пускане на ръка срещу работещ сървър: `node scripts/lighthouse.mjs --url=http://127.0.0.1:3000/`.
 
 ## 9. Визуална регресия
 

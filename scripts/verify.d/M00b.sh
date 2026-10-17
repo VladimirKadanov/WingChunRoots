@@ -5,7 +5,7 @@
 # licences). They stay valid after M00b, so `scripts/verify.sh all` keeps running them (CI, M13).
 #
 # Here: required files, the generated tokens and notices are current, self-hosted fonts only,
-# the JavaScript budget per route, Lighthouse CI (mobile profile) for /, the committed visual
+# the JavaScript budget per route, Lighthouse (mobile profile) for /, the committed visual
 # baselines and screenshots, and the documentation.
 set -uo pipefail
 
@@ -181,7 +181,7 @@ done
 check "CI runs the visual project (CI=true) and prints failed screenshots for review" bash -c '
   grep -q "visual: ci" playwright.config.ts && grep -q "scripts/visual-baselines.sh print" .github/workflows/ci.yml'
 
-# 7. Budgets (In scope 7): JavaScript per route and Lighthouse CI for / ---------------------------
+# 7. Budgets (In scope 7): JavaScript per route and Lighthouse for / ------------------------------
 # DEFAULT D24: the budgets of plan §5.8 (LCP < 2.5 s, CLS < 0.1, 170 kB) until the owner confirms them.
 if [ -f .next/build-manifest.json ]; then
   check_verbose "initial JavaScript per route within budget (scripts/check-bundle-budget.mjs)" node scripts/check-bundle-budget.mjs
