@@ -79,12 +79,16 @@ test.describe('@M00b phone', () => {
     expect(await settledTop(sheet)).toBeGreaterThan(PHONE.height * 0.5 - 24);
     expect(await settledTop(sheet)).toBeLessThan(PHONE.height * 0.5 + 24);
     expect(await hitsPage(page, PHONE.width / 2, 120), 'the scrim covers the page').toBe(false);
+    // The scrim is seen, not only hit: fully opaque at every snap point.
+    const scrim = page.locator('[data-drawer-backdrop]');
+    await expect(scrim).toHaveCSS('opacity', '1');
 
     // Expanded, the whole sheet shows (as tall as its content allows).
     await sheet.getByRole('button', { name: 'Expand' }).click();
     const top = await settledTop(sheet);
     expect(top).toBeLessThan(PHONE.height * 0.5 - 100);
     expect(top + (await sheet.boundingBox())!.height).toBeCloseTo(PHONE.height, 0);
+    await expect(scrim).toHaveCSS('opacity', '1');
     await sheet.getByRole('button', { name: 'Collapse' }).click();
     expect(await settledTop(sheet)).toBeGreaterThan(PHONE.height * 0.5 - 24);
     await sheet.getByRole('button', { name: 'Close' }).click();

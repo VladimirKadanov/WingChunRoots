@@ -24,20 +24,33 @@ export const metadata: Metadata = {
 };
 
 const KINDS: LinkKind[] = ['verified', 'under_review', 'unconfirmed', 'arbitration', 'cross_lineage', 'historical'];
-// Literal class names, so Tailwind sees every type step.
+// Literal class names, so Tailwind sees every type step. A step missing here fails the build
+// (the page is prerendered), so the specimen never shows a step at the inherited size.
 const TYPE_CLASS: Record<string, string> = {
   caption: 'text-caption',
   label: 'text-label',
+  xs: 'text-xs',
   sm: 'text-sm',
+  ui: 'text-ui',
   base: 'text-base',
+  field: 'text-field',
   md: 'text-md',
   lg: 'text-lg',
   xl: 'text-xl',
   '2xl': 'text-2xl',
+  '3xl': 'text-3xl',
   section: 'text-section',
   feature: 'text-feature',
   hero: 'text-hero',
 };
+/** The steps set in the display face (Gloock); 3xl is for figures, such as the hall's counts. */
+const DISPLAY_STEPS = new Set(['hero', 'feature', 'section', '3xl', '2xl', 'xl', 'lg']);
+
+function typeClass(name: string): string {
+  const className = TYPE_CLASS[name];
+  if (!className) throw new Error(`Style guide: no specimen class for the type step "${name}".`);
+  return className;
+}
 const THEME_LABEL: Record<ThemeName, string> = { dark: 'Dark · night paper', light: 'Light · paper' };
 
 function Section({ id, eyebrow, title, children }: { id: string; eyebrow: string; title: string; children: ReactNode }) {
@@ -166,6 +179,12 @@ export default function StyleguidePage() {
           {THEMES.map((theme) => (
             <table key={theme} className="w-full table-fixed border-collapse text-left text-sm [overflow-wrap:anywhere]">
               <caption className="mb-2 text-left font-semibold">{THEME_LABEL[theme]}: contrast against the page ground</caption>
+              {/* The role names are the longest words: they get the widest column, the ratio the narrowest. */}
+              <colgroup>
+                <col className="w-[46%]" />
+                <col />
+                <col className="w-16" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border-strong text-fg-subtle">
                   <th scope="col" className="py-2 pr-2 font-semibold">
@@ -213,7 +232,7 @@ export default function StyleguidePage() {
           {Object.entries(typeScale)
             .reverse()
             .map(([name, step]) => {
-              const display = ['hero', 'feature', 'section', '2xl', 'xl', 'lg'].includes(name);
+              const display = DISPLAY_STEPS.has(name);
               return (
                 <div key={name} className="grid grid-cols-[minmax(0,1fr)] gap-1 border-b border-border-subtle pb-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-6">
                   <p className="text-xs text-fg-subtle">
@@ -223,7 +242,7 @@ export default function StyleguidePage() {
                       {display ? ' · Gloock' : ' · Schibsted Grotesk'}
                     </span>
                   </p>
-                  <p className={cn(display ? 'font-display' : 'font-sans', TYPE_CLASS[name], name === 'caption' && 'uppercase')}>
+                  <p className={cn(display ? 'font-display' : 'font-sans', typeClass(name), name === 'caption' && 'uppercase')}>
                     {name === 'caption' ? '8 generations · 6 verified' : <PersonName name="Fung Lam-chau" original={{ text: '馮霖舟', lang: 'zh-Hant' }} />}
                   </p>
                 </div>

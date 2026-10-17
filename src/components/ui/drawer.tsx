@@ -121,7 +121,12 @@ export function Drawer({
       {trigger ? <BaseDrawer.Trigger render={trigger} /> : null}
       <BaseDrawer.Portal>
         {modal ? (
-          <BaseDrawer.Backdrop className="fixed inset-0 z-50 min-h-dvh bg-scrim opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-(--duration-slow) ease-out data-swiping:duration-0 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+          // A steady scrim at every snap point. Base UI's --drawer-swipe-progress counts from the
+          // highest snap point, so it reads 1 at half height and would hide the scrim there.
+          <BaseDrawer.Backdrop
+            data-drawer-backdrop=""
+            className="fixed inset-0 z-50 min-h-dvh bg-scrim transition-opacity duration-(--duration-slow) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0"
+          />
         ) : null}
         <BaseDrawer.Viewport
           className={cn(
