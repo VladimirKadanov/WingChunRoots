@@ -1,38 +1,25 @@
 // `pnpm notices`: writes THIRD_PARTY_NOTICES.md and src/app/legal/licenses/notices.json from
-// `pnpm licenses list --json --prod` (every package the app ships) and licenses/addenda/*.md
-// (notices a package list cannot express: elkjs's EPL-2.0 choice and source links, the glyph
-// in the brand mark, and from M11 the map attributions). Plan §4.14, M00b.
+// `pnpm licenses list --json --prod` (every package the app ships), the development packages
+// whose build output ships (SHIPPED_BUILD_OUTPUT: Tailwind's preflight is in the CSS) and
+// licenses/addenda/*.md (notices a package list cannot express: elkjs's EPL-2.0 choice and
+// source links, the glyph in the brand mark, sharp's per-platform binaries, and from M11 the map
+// attributions). Each distinct licence text is stored once. Plan §4.14, M00b.
 // `pnpm notices --check` writes nothing and exits 1 when the committed files are out of date
 // (scripts/verify.d/M00b.sh, CI).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-
-interface PnpmPackage {
-  name: string;
-  versions: string[];
-  paths: string[];
-  license: string;
-  author?: string;
-  homepage?: string;
-}
-
-export interface Notice {
-  name: string;
-  version: string;
-  license: string;
-  author: string | null;
-  homepage: string | null;
-  /** The package's own licence file, verbatim (normalised line endings). */
-  text: string | null;
-}
-
-export interface Addendum {
-  file: string;
-  title: string;
-  body: string;
-}
+import { pathToFileURL } from 'node:url';
+import {
+  SHIPPED_BUILD_OUTPUT,
+  dedupe,
+  flatten,
+  lockedVersions,
+  type Addendum,
+  type NoticesData,
+  type PnpmPackage,
+} from './lib/notices';
 
 const root = resolve(import.meta.dirname, '..');
 const NOTICES_MD = 'THIRD_PARTY_NOTICES.md';
@@ -46,28 +33,14 @@ function licenseText(dir: string): string | null {
   return readFileSync(join(dir, file), 'utf8').replace(/\r\n?/g, '\n').trim();
 }
 
-function collect(): { notices: Notice[]; addenda: Addendum[] } {
-  const raw = execFileSync('pnpm', ['licenses', 'list', '--json', '--prod'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  const byLicense = JSON.parse(raw) as Record<string, PnpmPackage[]>;
-  const notices: Notice[] = [];
-  for (const packages of Object.values(byLicense)) {
-    for (const pkg of packages) {
-      pkg.versions.forEach((version, i) => {
-        notices.push({
-          name: pkg.name,
-          version,
-          license: pkg.license,
-          author: pkg.author?.trim() || null,
-          homepage: pkg.homepage?.trim() || null,
-          text: licenseText(pkg.paths[i] ?? pkg.paths[0] ?? ''),
-        });
-      });
-    }
-  }
-  notices.sort((a, b) => a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en'));
+function licenseList(scope: '--prod' | '--dev'): Record<string, PnpmPackage[]> {
+  const raw = execFileSync('pnpm', ['licenses', 'list', '--json', scope], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return JSON.parse(raw) as Record<string, PnpmPackage[]>;
+}
 
+function readAddenda(): Addendum[] {
   const addendaDir = join(root, 'licenses/addenda');
-  const addenda = readdirSync(addendaDir)
+  return readdirSync(addendaDir)
     .filter((file) => file.endsWith('.md'))
     .sort()
     .map((file) => {
@@ -79,22 +52,46 @@ function collect(): { notices: Notice[]; addenda: Addendum[] } {
         .trim();
       return { file: `licenses/addenda/${file}`, title, body };
     });
-  return { notices, addenda };
 }
 
-export function renderMarkdown(notices: Notice[], addenda: Addendum[]): string {
+/** The sharp addendum names the locked versions of sharp and libvips (optional, per platform). */
+function checkSharpAddendum(addenda: Addendum[]): string[] {
+  const lockfile = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8');
+  const sharp = lockedVersions(lockfile, 'sharp');
+  const libvips = lockedVersions(lockfile, '@img/sharp-libvips-linux-x64');
+  const addendum = addenda.find((a) => a.file.endsWith('/sharp.md'));
+  if (!sharp.length) return [];
+  if (!addendum) return ['licenses/addenda/sharp.md is missing although pnpm-lock.yaml installs sharp'];
+  const errors: string[] = [];
+  if (sharp.length !== 1 || !addendum.title.includes(`sharp ${sharp[0]}`))
+    errors.push(`licenses/addenda/sharp.md: the title must name sharp ${sharp.join(', ')} (pnpm-lock.yaml)`);
+  if (libvips.length !== 1 || !addendum.title.includes(`@img/sharp-libvips ${libvips[0]}`))
+    errors.push(`licenses/addenda/sharp.md: the title must name @img/sharp-libvips ${libvips.join(', ')} (pnpm-lock.yaml)`);
+  return errors;
+}
+
+function collect(): NoticesData {
+  const shipped = flatten(licenseList('--prod'), licenseText);
+  const buildOutput = flatten(licenseList('--dev'), licenseText, SHIPPED_BUILD_OUTPUT);
+  return dedupe([...shipped, ...buildOutput], readAddenda());
+}
+
+export function renderMarkdown({ notices, texts, addenda }: NoticesData): string {
   const out: string[] = [
     '# Third-party notices',
     '',
-    '<!-- Generated by `pnpm notices` from `pnpm licenses list --json --prod` and licenses/addenda/. Do not edit by hand. -->',
+    '<!-- Generated by `pnpm notices` from `pnpm licenses list --json --prod`, the shipped build output of development packages and licenses/addenda/. Do not edit by hand. -->',
     '',
     'WingChunRoots ships the open-source packages below to the browser or runs them on the server.',
-    'Development tools (tests, linters, build tools) are not distributed and are not listed. The same',
-    'list is on the /legal/licenses page.',
+    'Other development tools (tests, linters, build tools) are not distributed and are not listed;',
+    'Tailwind CSS is, because the CSS it generates ships. The same list is on the /legal/licenses page.',
     '',
-    '| Package | Version | Licence |',
-    '|---|---|---|',
-    ...notices.map((n) => `| ${n.homepage ? `[${n.name}](${n.homepage})` : n.name} | ${n.version} | ${n.license} |`),
+    '| Package | Version | Licence | Licence text |',
+    '|---|---|---|---|',
+    ...notices.map(
+      (n) =>
+        `| ${n.homepage ? `[${n.name}](${n.homepage})` : n.name} | ${n.version} | ${n.license} | ${n.text === null ? 'none shipped' : `[text ${n.text + 1}](#licence-text-${n.text + 1})`} |`,
+    ),
     '',
     '## Additional notices',
     '',
@@ -103,24 +100,29 @@ export function renderMarkdown(notices: Notice[], addenda: Addendum[]): string {
     out.push(`### ${addendum.title}`, '', `<!-- ${addendum.file} -->`, '', addendum.body.replace(/^#/gm, '###'), '');
   }
   out.push('## Licence texts', '');
-  for (const n of notices) {
-    out.push(`### ${n.name} ${n.version}`, '', `Licence: ${n.license}${n.author ? ` · Author: ${n.author}` : ''}`, '');
-    out.push(n.text ? ['```text', n.text, '```'].join('\n') : '_The package ships no licence file; its package.json declares the licence above._');
-    out.push('');
-  }
+  out.push('Packages without a text ship no licence file; their package.json declares the licence in the table.', '');
+  texts.forEach((text, i) => {
+    const users = notices.filter((n) => n.text === i).map((n) => `${n.name} ${n.version}`);
+    out.push(`### Licence text ${i + 1}`, '', `Used by: ${users.join(', ')}`, '');
+    out.push(['```text', text, '```'].join('\n'), '');
+  });
   return `${out.join('\n').trimEnd()}\n`;
 }
 
-export function renderJson(notices: Notice[], addenda: Addendum[]): string {
-  return `${JSON.stringify({ notices, addenda }, null, 2)}\n`;
+export function renderJson(data: NoticesData): string {
+  return `${JSON.stringify(data, null, 2)}\n`;
 }
 
 function main() {
   const check = process.argv.includes('--check');
-  const { notices, addenda } = collect();
+  const data = collect();
+  const { notices, addenda } = data;
+  const errors = checkSharpAddendum(addenda);
+  for (const error of errors) console.error(error);
+  if (errors.length) process.exit(1);
   const outputs: [string, string][] = [
-    [NOTICES_MD, renderMarkdown(notices, addenda)],
-    [NOTICES_JSON, renderJson(notices, addenda)],
+    [NOTICES_MD, renderMarkdown(data)],
+    [NOTICES_JSON, renderJson(data)],
   ];
   let stale = 0;
   for (const [path, content] of outputs) {
@@ -139,4 +141,4 @@ function main() {
   if (stale) process.exit(1);
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

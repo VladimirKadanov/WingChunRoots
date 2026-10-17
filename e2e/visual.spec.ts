@@ -5,9 +5,11 @@
  * expects; baselines are Linux-only and change only through a commit. How to review and update
  * them: docs/guides/admin-guide.bg.md.
  *
- * Chinese names are masked: they use the system CJK fonts (plan §5.3), which a runner image can
- * change without any change in the app.
+ * Chinese names are made transparent by e2e/visual.css: they use the system CJK fonts (plan
+ * §5.3), which a runner image can change without any change in the app.
  */
+
+import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
@@ -30,7 +32,7 @@ for (const size of SCREEN_SIZES) {
           expect(response?.status()).toBe(route.status);
           await page.evaluate(() => document.fonts.ready.then(() => undefined));
           await expect(page).toHaveScreenshot(`${route.name}-${size.name}-${theme}.png`, {
-            mask: [page.locator('[lang^="zh"]')],
+            stylePath: resolve('e2e/visual.css'),
           });
         });
       }

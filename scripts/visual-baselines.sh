@@ -17,6 +17,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASELINES="$ROOT/e2e/__screenshots__/visual.spec.ts"
+# A baseline name (e.g. home-390x844-dark): it becomes a file name, so nothing else is accepted.
+NAME_PATTERN='^[a-z0-9][a-z0-9-]*$'
 
 usage() {
   sed -n '2,3p' "$0" | sed 's/^# //' >&2
@@ -36,27 +38,39 @@ print_actuals() {
 }
 
 accept() {
-  local source="${1:-}" count=0
+  local source="${1:-}" count=0 name
   [ -n "$source" ] || usage
   mkdir -p "$BASELINES"
   if [ -d "$source" ]; then
     local f
     while IFS= read -r f; do
-      cp "$f" "$BASELINES/$(basename "$f" -actual.png)-linux.png"
+      name="$(basename "$f" -actual.png)"
+      if ! [[ "$name" =~ $NAME_PATTERN ]]; then
+        echo "visual-baselines: refusing the file name $name" >&2
+        exit 1
+      fi
+      cp "$f" "$BASELINES/$name-linux.png"
       count=$((count + 1))
     done < <(find "$source" -path '*-visual/*' -name '*-actual.png' | sort)
   elif [ -f "$source" ]; then
     # GitHub prefixes each log line with a timestamp; the payload is the last field.
-    count="$(node - "$source" "$BASELINES" <<'JS'
+    count="$(node - "$source" "$BASELINES" "$NAME_PATTERN" <<'JS'
 const fs = require('fs');
 const crypto = require('crypto');
-const [log, out] = process.argv.slice(2);
+const [log, out, namePattern] = process.argv.slice(2);
 let current = null;
 let written = 0;
 for (const raw of fs.readFileSync(log, 'utf8').split(/\r?\n/)) {
   const line = raw.replace(/^\S*Z\s/, '').trim();
   const begin = /^VISUAL-PNG-BEGIN (\S+) (\d+) ([0-9a-f]{64})$/.exec(line);
-  if (begin) { current = { name: begin[1], bytes: Number(begin[2]), sha: begin[3], chunks: [] }; continue; }
+  if (begin) {
+    if (!new RegExp(namePattern).test(begin[1])) {
+      console.error(`visual-baselines: refusing the name ${JSON.stringify(begin[1])} in the log`);
+      process.exit(1);
+    }
+    current = { name: begin[1], bytes: Number(begin[2]), sha: begin[3], chunks: [] };
+    continue;
+  }
   if (current && line === `VISUAL-PNG-END ${current.name}`) {
     const png = Buffer.from(current.chunks.join(''), 'base64');
     const sha = crypto.createHash('sha256').update(png).digest('hex');

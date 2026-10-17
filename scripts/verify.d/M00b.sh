@@ -100,12 +100,15 @@ check "every licence addendum is listed on the licences page" node -e "
 check "components.json: shadcn/ui on Base UI (base style), RSC, aliases to src/components/ui and src/lib/utils" node -e "
   const c = require('./components.json');
   process.exit(c.style.startsWith('base-') && c.rsc === true && c.aliases.ui === '@/components/ui' && c.aliases.utils === '@/lib/utils' && c.tailwind.css === 'src/app/globals.css' ? 0 : 1)"
-check "Base UI, Tailwind 4.3.3, the font packages and @lhci/cli are pinned exactly" node -e "
+check "Base UI, Tailwind 4.3.3, the font packages, lighthouse and chrome-launcher are pinned exactly" node -e "
   const p = require('./package.json');
   const d = { ...p.dependencies, ...p.devDependencies };
-  const names = ['@base-ui/react', 'tailwindcss', '@tailwindcss/postcss', '@fontsource/gloock', '@fontsource-variable/schibsted-grotesk', '@fontsource/noto-serif-display', '@lhci/cli', 'clsx', 'tailwind-merge', 'class-variance-authority'];
-  process.exit(d.tailwindcss === '4.3.3' && names.every((n) => /^\d+\.\d+\.\d+$/.test(d[n] || '')) ? 0 : 1)"
+  const names = ['@base-ui/react', 'tailwindcss', '@tailwindcss/postcss', '@fontsource/gloock', '@fontsource-variable/schibsted-grotesk', '@fontsource/noto-serif-display', 'lighthouse', 'chrome-launcher', 'clsx', 'tailwind-merge', 'class-variance-authority'];
+  process.exit(d.tailwindcss === '4.3.3' && !d['@lhci/cli'] && names.every((n) => /^\d+\.\d+\.\d+$/.test(d[n] || '')) ? 0 : 1)"
 refute "no Radix UI packages or asChild in src/ (Base UI uses render)" grep_code "@radix-ui/|asChild" "${SRC_FILES[@]}"
+mapfile -t UI_FILES < <(find src/app src/components -type f \( -name '*.ts' -o -name '*.tsx' \) | sort)
+refute "no arbitrary rem or px font sizes in src/app and src/components (the type scale of src/design/tokens.ts)" \
+  grep_code 'text-\[[0-9.]+(rem|px)\]' "${UI_FILES[@]}"
 check "CLAUDE.md keeps the rule: render, not asChild" grep -q "asChild" CLAUDE.md
 check "package.json has tokens:build, notices and screenshots" node -e "
   const s = require('./package.json').scripts;
@@ -127,6 +130,22 @@ check "the root layout sets viewport-fit=cover, both color schemes, theme-color 
   f=src/app/layout.tsx
   grep -q "viewportFit: '"'"'cover'"'"'" "$f" && grep -q "colorScheme" "$f" && grep -q "theme-color" "$f" && grep -q "THEME_SCRIPT" "$f"'
 refute "no 100vh in src/ (dvh or svh)" grep_code "100vh|h-screen|min-h-screen" "${SRC_FILES[@]}"
+if compgen -G ".next/static/chunks/*.css" >/dev/null || compgen -G ".next/static/css/*.css" >/dev/null; then
+  refute "no 100vh in the built CSS either" grep -rl "100vh" .next/static --include=*.css
+else
+  bad "no 100vh in the built CSS (no CSS under .next/static: pnpm build)"
+fi
+check_verbose "the app shell renders every <NavLinks> inside <Suspense> (usePathname suspends on dynamic routes)" node -e "
+  const src = require('fs').readFileSync('src/components/shell/app-shell.tsx', 'utf8');
+  const uses = [...src.matchAll(/<NavLinks\b/g)];
+  if (!uses.length) { console.error('no <NavLinks> in app-shell.tsx'); process.exit(1); }
+  for (const use of uses) {
+    const before = src.slice(0, use.index);
+    if (before.lastIndexOf('<Suspense') <= before.lastIndexOf('</Suspense>')) {
+      console.error('<NavLinks> outside <Suspense> at offset ' + use.index);
+      process.exit(1);
+    }
+  }"
 if [ -f .next/server/app/styleguide.html ]; then
   check "/styleguide is noindex in the built HTML" grep -q 'name="robots" content="noindex' .next/server/app/styleguide.html
 else
@@ -177,7 +196,7 @@ check "lighthouserc.json asserts LCP < 2.5 s and CLS < 0.1 in the mobile profile
   process.exit(a['largest-contentful-paint'][1].maxNumericValue === 2500 && a['cumulative-layout-shift'][1].maxNumericValue === 0.1
     && !s.preset && (s.formFactor || 'mobile') === 'mobile' && c.upload.target === 'filesystem' ? 0 : 1)"
 
-# Lighthouse CI against `next start` on its own port. Chromium: PW_CHROMIUM_EXECUTABLE (cloud
+# Lighthouse (scripts/lighthouse.mjs) against `next start` on its own port. Chromium: PW_CHROMIUM_EXECUTABLE (cloud
 # sessions) or the one the pinned Playwright installed (CI, local).
 lighthouse() {
   local port="${LHCI_PORT:-3102}" chrome="${PW_CHROMIUM_EXECUTABLE:-}"
@@ -193,7 +212,7 @@ lighthouse() {
     return 1
   fi
   mkdir -p .verify
-  rm -rf .lighthouseci
+  rm -rf .lighthouseci .verify/M00b-lighthouse.log
   local log=.verify/M00b-lighthouse-server.log starter=()
   command -v setsid >/dev/null 2>&1 && starter=(setsid)
   "${starter[@]}" node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1 &
@@ -207,18 +226,9 @@ lighthouse() {
   done
   local rc=1
   if [ "$ready" -eq 1 ]; then
-    pnpm exec lhci collect --config=lighthouserc.json --url="http://127.0.0.1:$port/" --chromePath="$chrome" \
-      && pnpm exec lhci upload --config=lighthouserc.json >/dev/null \
-      && node -e "
-        const fs = require('fs');
-        const runs = fs.readdirSync('.lighthouseci').filter((f) => /^lhr-.*\.json$/.test(f)).map((f) => JSON.parse(fs.readFileSync('.lighthouseci/' + f, 'utf8')));
-        const median = (xs) => xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)];
-        const lcp = median(runs.map((r) => r.audits['largest-contentful-paint'].numericValue));
-        const cls = median(runs.map((r) => r.audits['cumulative-layout-shift'].numericValue));
-        const s = runs[0].configSettings;
-        console.log('Lighthouse ' + runs[0].lighthouseVersion + ', ' + s.formFactor + ', ' + s.throttlingMethod + ' throttling, ' + runs.length + ' runs: median LCP ' + Math.round(lcp) + ' ms, median CLS ' + cls.toFixed(3));" \
-      && pnpm exec lhci assert --config=lighthouserc.json
-    rc=$?
+    node scripts/lighthouse.mjs --config=lighthouserc.json --url="http://127.0.0.1:$port/" --chrome-path="$chrome" \
+      2>&1 | tee .verify/M00b-lighthouse.log
+    rc=${PIPESTATUS[0]}
   else
     echo "next start did not answer on port $port; see $log"
   fi
@@ -226,13 +236,8 @@ lighthouse() {
   wait "$pid" 2>/dev/null
   return "$rc"
 }
-check_verbose "Lighthouse CI for / in the mobile profile: LCP < 2.5 s, CLS < 0.1 (lighthouserc.json)" lighthouse
-[ -d .lighthouseci ] && ls .lighthouseci/lhr-*.json >/dev/null 2>&1 && node -e "
-  const fs = require('fs');
-  const runs = fs.readdirSync('.lighthouseci').filter((f) => /^lhr-.*\.json$/.test(f)).map((f) => JSON.parse(fs.readFileSync('.lighthouseci/' + f, 'utf8')));
-  const lcp = runs.map((r) => Math.round(r.audits['largest-contentful-paint'].numericValue)).join(', ');
-  const cls = runs.map((r) => r.audits['cumulative-layout-shift'].numericValue.toFixed(3)).join(', ');
-  console.log('     LCP per run (ms): ' + lcp + '; CLS per run: ' + cls);" 2>/dev/null
+check_verbose "Lighthouse for / in the mobile profile: LCP < 2.5 s, CLS < 0.1 (lighthouserc.json, median of 3 runs)" lighthouse
+[ -f .verify/M00b-lighthouse.log ] && grep -E '^(run |Lighthouse )' .verify/M00b-lighthouse.log | sed 's/^/     /'
 
 # 8. Documentation (In scope 1, 9; docs/plan/RULES.md) ------------------------------------------
 check "docs/design/direction.md records the direction and its status" bash -c '
