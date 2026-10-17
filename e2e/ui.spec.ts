@@ -367,8 +367,10 @@ test.describe('@M00b desktop', () => {
   });
 });
 
-test('@M00b the dialog, the sheets, the menu and a toast have no axe violations in either theme', async ({ page }) => {
-  for (const theme of THEMES) {
+// One test per theme: ten axe scans of /styleguide in one test came close to the 30 s test
+// timeout in mobile WebKit (32.5 s in CI run 39041835017, 22.5 s in mobile Chromium).
+for (const theme of THEMES) {
+  test(`@M00b the dialog, the sheets, the menu and a toast have no axe violations in the ${theme} theme`, async ({ page }) => {
     await openInTheme(page, '/styleguide', theme);
 
     await page.getByRole('button', { name: 'Open a dialog' }).click();
@@ -398,8 +400,8 @@ test('@M00b the dialog, the sheets, the menu and a toast have no axe violations 
     await page.getByRole('button', { name: 'Show a toast' }).click();
     await expect(page.getByText('Link verified')).toBeVisible();
     await expectNoAxeViolations(page, `/styleguide toast (${theme})`);
-  }
-});
+  });
+}
 
 test('@M00b no text on the home page renders under 11 px, the hall tree included, from 320 px to desktop', async ({ page }) => {
   for (const viewport of [
