@@ -1,0 +1,13 @@
+# LF everywhere, so Windows (Docker Desktop + WSL2) checkouts produce no line-ending diffs
+# and shell scripts mounted into containers keep working.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

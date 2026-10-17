@@ -1,0 +1,94 @@
+# Local services for development and tests (plan §3.1, §7.6).
+#
+#   scripts/init-env.sh          # once: writes .env with local-only values
+#   docker compose up -d --wait  # PostgreSQL 18 + PostGIS 3.6, Mailpit, SeaweedFS
+#
+# Windows: keep the repository inside the WSL2 filesystem (for example ~/src/wingchunroots)
+# and run these commands from the WSL2 shell with Docker Desktop's WSL2 backend. Data lives
+# in named volumes, never in bind mounts under C:\ (permissions and speed). See README.md.
+#
+# Every image is pinned by @sha256 digest; Renovate keeps the digests current (renovate.json).
+# The application image (profile "app": web, worker, migrate) arrives in M12.
+name: wingchunroots
+
+services:
+  postgres:
+    # postgis/postgis publishes linux/amd64 only; Apple Silicon and Windows on Arm run it
+    # under emulation. SQL stays compatible with PostgreSQL 16+ and PostGIS 3.4+ (plan §3.2).
+    image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set; run scripts/init-env.sh to create .env}
+      # The image loads PostGIS and its companion extensions (postgis_topology among them)
+      # into POSTGRES_DB, so it stays the maintenance database `postgres`. The application
+      # databases are created empty from template0 by docker/postgres/*.sql, like the test
+      # database in CI and in the cloud session: migrations create the extensions they need.
+      POSTGRES_DB: postgres
+      # UTF-8 everywhere: pg_trgm needs a UTF-8 LC_CTYPE for Cyrillic and Chinese names.
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+    ports:
+      # Loopback only: the database is not reachable from the local network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18 images keep PGDATA in /var/lib/postgresql/18/docker, so the volume
+      # is mounted on the parent directory (mounting .../data would fail on 18+).
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/20-create-dev-database.sql:/docker-entrypoint-initdb.d/20-create-dev-database.sql:ro
+      - ./docker/postgres/20-create-test-database.sql:/docker-entrypoint-initdb.d/20-create-test-database.sql:ro
+    shm_size: 256mb
+    healthcheck:
+      # TCP, not the Unix socket: the temporary server used during initdb only listens on the
+      # socket, so TCP answers only after every docker-entrypoint-initdb.d script has run.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mailpit:
+    # Catches every e-mail locally (plan §3.1): SMTP on 1025, web UI on http://localhost:8025.
+    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "5000"
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    # The image ships its own HEALTHCHECK (`/mailpit readyz`).
+
+  seaweedfs:
+    # S3-compatible object storage for the ObjectStore S3 driver (plan §3.1, §6.1):
+    # `weed mini` runs master, volume, filer and the S3 gateway in one process.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    restart: unless-stopped
+    command:
+      - mini
+      - -dir=/data
+      - -webdav=false
+      - -admin.ui=false
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+    environment:
+      # SeaweedFS turns AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY into its S3 admin identity.
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is not set; run scripts/init-env.sh to create .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is not set; run scripts/init-env.sh to create .env}
+      # Buckets created on start-up: private evidence and public media (plan §3.3).
+      S3_BUCKET: ${S3_BUCKET_EVIDENCE:-wcr-evidence},${S3_BUCKET_MEDIA:-wcr-media}
+    ports:
+      - "127.0.0.1:${S3_PORT:-8333}:8333"
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  seaweedfs-data:
