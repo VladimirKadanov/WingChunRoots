@@ -212,9 +212,12 @@ export async function submitStaffCode(page: Page, button: string, email = 'demo-
   throw new Error('every TOTP code was taken');
 }
 
-/** Signs in with a password and, when the account asks for it, the staff TOTP code. */
-export async function signInWithPassword(page: Page, email: string, password: string): Promise<void> {
-  const first = await authPost(page, '/sign-in/email', { email, password });
+/**
+ * Signs in with a password and, when the account asks for it, the staff TOTP code: from the
+ * context's address, or from `address` (see authPost).
+ */
+export async function signInWithPassword(page: Page, email: string, password: string, address?: string): Promise<void> {
+  const first = await authPost(page, '/sign-in/email', { email, password }, address);
   expect(first.status(), await first.text()).toBe(200);
   const body = (await first.json()) as { twoFactorRedirect?: boolean };
   if (body.twoFactorRedirect) {
@@ -222,25 +225,28 @@ export async function signInWithPassword(page: Page, email: string, password: st
     // server does not count a code refused as used as a failed attempt (src/server/auth/hooks.ts),
     // and each pick waits for a step with a free code, so the bound is one of time: a worker can
     // lose several races in a row to others that sign the same staff account in.
-    let second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) });
+    let second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) }, address);
     for (let retry = 0; retry < STAFF_CODE_PICKS && second.status() === 401; retry += 1) {
       if (((await second.json()) as { code?: string }).code !== 'CODE_ALREADY_USED') break;
-      second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) });
+      second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) }, address);
     }
     expect(second.status(), await second.text()).toBe(200);
   }
 }
 
-/** Signs the page's context in as a seeded demo account, a staff role, `user` or a new account. */
-export async function signInAs(page: Page, target: SignInTarget): Promise<SignedInAccount> {
+/**
+ * Signs the page's context in as a seeded demo account, a staff role, `user` or a new account;
+ * the sign-in comes from `options.address` when given (see authPost).
+ */
+export async function signInAs(page: Page, target: SignInTarget, options: { address?: string } = {}): Promise<SignedInAccount> {
   if (target === 'new') {
     const account = await createConfirmedAccount(page);
-    await signInWithPassword(page, account.email, account.password);
+    await signInWithPassword(page, account.email, account.password, options.address);
     return account;
   }
   const slug = slugFor(target);
   const account = { email: demoAccountEmail(slug), password: demoPassword(), slug };
-  await signInWithPassword(page, account.email, account.password);
+  await signInWithPassword(page, account.email, account.password, options.address);
   return account;
 }
 
@@ -249,10 +255,12 @@ const signedInFor = new WeakMap<Page, SignInTarget>();
 /**
  * Signs the page in as a route of e2e/routes.ts needs (`signInAs`), once per page and account
  * kind, so that a loop over the routes checks the guarded pages themselves, not the sign-in page
- * they send an anonymous visitor to.
+ * they send an anonymous visitor to. A loop signs in as several accounts within seconds (M08 adds
+ * four in a row), and sign-in allows 3 requests in 10 s per address: each sign-in comes from a
+ * client address of its own.
  */
 export async function signInForRoute(page: Page, route: { signInAs?: SignInTarget }): Promise<void> {
   if (!route.signInAs || signedInFor.get(page) === route.signInAs) return;
-  await signInAs(page, route.signInAs);
+  await signInAs(page, route.signInAs, { address: clientAddress() });
   signedInFor.set(page, route.signInAs);
 }
