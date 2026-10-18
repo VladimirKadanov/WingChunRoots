@@ -22,7 +22,7 @@ We do **not** ask for your birth date. The pilot is for adults only, and you con
 
 We do not store your IP address. Where an address helps protect accounts (your sessions and the audit log of changes), we store `ip_hmac` instead: a keyed fingerprint of your IP address (HMAC-SHA-256 with a secret key that only the server knows). It shows that two events came from the same address, but the address cannot be read back from it. The key is replaced every year, after which older values can no longer be matched with new ones.
 
-To limit repeated attempts, the server counts failed sign-ins per e-mail address and remembers the sign-in codes it has just accepted. It stores only keyed fingerprints of the e-mail address and the code, never the address or the code itself, and deletes them after 15 minutes at most. Requests for confirmation and reset e-mails are counted per IP address in the server's memory for a minute, without writing the address anywhere.
+To limit repeated attempts, the server counts failed sign-ins per e-mail address (and, for a browser that has signed in to that address before, per browser) and remembers the sign-in codes it has just accepted. It stores only keyed fingerprints of the e-mail address, the browser and the code, never the address or the code itself, and deletes them after 15 minutes at most. Requests for confirmation and reset e-mails are counted per IP address in the server's memory for a minute, without writing the address anywhere, and the e-mails each account gets are counted per hour in the log of sent e-mail.
 
 ## 4. Why we use it
 
@@ -54,6 +54,7 @@ You can ask to see, correct or delete your data, to receive a copy, or to object
 - `wcr.form`: when your browser sends a form without JavaScript, holds the form's answer (its messages and the values you typed, never a password or a code) for 2 minutes, so the page can show it. Necessary.
 - `wcr.sign-in-email`: after you confirm your e-mail address, fills it into the sign-in form for 10 minutes. Sent only to the sign-in page. Necessary.
 - `wcr.codes`: holds your new backup codes, encrypted, for 30 minutes while you save them. Sent only to the security page. Necessary.
+- `wcr.known_device`: remembers that this browser has signed in to your account before (or set its new password), so that wrong passwords someone else types for your e-mail address never lock you out here. It holds a keyed fingerprint of the address and a random number, not the address itself, for 180 days. Necessary.
 - `wcr.totp-setup`: holds the key of a two-factor setup you started, encrypted, for 30 minutes, so the security page can show it again after a reload or a trip to your authenticator app. Sent only to the security page. Necessary.
 - `wcr-theme`: remembers the light or dark theme if you choose one.
 
