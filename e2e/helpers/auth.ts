@@ -16,7 +16,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import path from 'node:path';
 
-import { expect, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { sql } from 'drizzle-orm';
 
 import { DEMO_PERSON_ACCOUNT_SLUGS, DEMO_STAFF_ACCOUNTS, demoAccountEmail, type DemoAccountSlug } from '../../src/fixtures/generate';
@@ -78,9 +78,26 @@ export async function staffTotpCode(email = 'demo-admin@example.test'): Promise<
       const used = await getDb().execute(sql`SELECT 1 FROM auth_throttle WHERE key = ${totpKey(userId, code)} AND expires_at > now()`);
       if (used.rows.length === 0) return code;
     }
-    await new Promise((resolve) => setTimeout(resolve, STEP_MS - (Date.now() % STEP_MS) + 250));
+    const wait = STEP_MS - (Date.now() % STEP_MS) + 250;
+    extendTimeout(wait);
+    await new Promise((resolve) => setTimeout(resolve, wait));
   }
   throw new Error(`no unused TOTP code for ${email} within two minutes`);
+}
+
+/**
+ * The wait for the next TOTP step is the clock's time, not the test's: it is added to the running
+ * test's timeout, so a test that signs staff in while other workers hold every code of the window
+ * still has its own time for its steps. Outside a test (no test.info()) nothing changes.
+ */
+function extendTimeout(ms: number): void {
+  let info: ReturnType<typeof test.info>;
+  try {
+    info = test.info();
+  } catch {
+    return;
+  }
+  if (info.timeout > 0) info.setTimeout(info.timeout + ms);
 }
 
 /** A fictional client address of its own (198.18.0.0/15). */
