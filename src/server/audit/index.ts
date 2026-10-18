@@ -7,8 +7,17 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02; later milestones add theirs (plan §6.6). */
-export type AuditAction = 'role.change' | 'consent.grant' | 'auth.2fa.enable' | 'person.create';
+/** The actions of M02 and M08; later milestones add theirs (plan §6.6). */
+export type AuditAction =
+  | 'role.change'
+  | 'consent.grant'
+  | 'auth.2fa.enable'
+  | 'person.create'
+  // M08: plans (plan §6.5, §6.6).
+  | 'grant.create'
+  | 'grant.revoke'
+  | 'account.type_change'
+  | 'pilot_access.request';
 
 export interface AuditEntry {
   action: AuditAction;

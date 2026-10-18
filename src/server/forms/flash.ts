@@ -56,7 +56,7 @@ function cleanState(value: unknown): FormState | null {
 }
 
 /** Whether React posted this Server Action with fetch (JavaScript), not the browser a plain form. */
-async function postedByReact(): Promise<boolean> {
+export async function postedByReact(): Promise<boolean> {
   return (await headers()).has('next-action');
 }
 

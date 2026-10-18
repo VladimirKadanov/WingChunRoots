@@ -29,4 +29,10 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/account/security/actions.ts#disableTwoFactorAction': { auth: ['/two-factor/disable'] },
   'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard'] },
   'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
+  // M08: plans, test plans and notifications.
+  'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead'] },
+  'src/app/dashboard/actions.ts#requestPilotAccessAction': { rpc: ['plans.requestPilotAccess'] },
+  'src/app/dashboard/settings/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
+  'src/app/admin/grants/actions.ts#createGrantAction': { rpc: ['grants.create'] },
+  'src/app/admin/grants/actions.ts#revokeGrantAction': { rpc: ['grants.revoke'] },
 };

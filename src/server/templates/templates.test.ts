@@ -170,6 +170,32 @@ describe('notification templates', () => {
   it('refuses an unknown template', () => {
     expect(() => renderNotification('no-such-template', {})).toThrow(NotificationDataError);
   });
+
+  it('links only to a local path of the app (M08)', () => {
+    for (const [name, template] of entries) {
+      const { action } = renderNotification(name, template.sample);
+      if (!action) continue;
+      expect(action.label.trim().length, name).toBeGreaterThan(0);
+      expect(action.href, name).toMatch(/^\/(?!\/)[^\s\\]*$/);
+    }
+  });
+
+  it('the plan notifications refuse a plan an admin cannot grant, a request id that is not one and odd names (M08)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    expect(() => renderNotification('pilot-access.requested', { ...sample, planCode: 'federation' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('pilot-access.requested', { ...sample, requestId: '../users' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('pilot-access.requested', { ...sample, requester: { value: 'Demo', lang: '"><b>' } })).toThrow(NotificationDataError);
+    expect(renderNotification('pilot-access.requested', { ...sample, requester: null }).body[0]).toEqual({ text: 'An account without a profile' });
+    expect(() => renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: 'tomorrow' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('plan.revoked', null)).toThrow(NotificationDataError);
+  });
+
+  it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
+    const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
+    expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('until 31 December 2026. No payment is involved.');
+    const revoked = renderNotification('plan.revoked', { planCode: 'pro_sifu' });
+    expect(revoked.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('Every confirmed link stays confirmed and public');
+  });
 });
 
 describe('account-exists (M02)', () => {

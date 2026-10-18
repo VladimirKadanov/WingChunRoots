@@ -15,6 +15,9 @@ const ROOT = process.cwd();
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
+    // The lint probes of the boundary tests (git-ignored) come and go while this test runs in
+    // parallel with them; they are not app code, and one removed after the listing broke the read.
+    if (name.startsWith('__boundary-probe-')) return [];
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) return sourceFiles(full);
     return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : [];
