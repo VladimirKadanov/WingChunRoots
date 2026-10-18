@@ -44,6 +44,7 @@ export const evidenceFile = pgTable(
   (t) => [
     uniqueIndex('evidence_file_storage_key_key').on(t.storageKey),
     index('evidence_file_sha256_idx').on(t.sha256),
+    index('evidence_file_uploaded_by_user_id_idx').on(t.uploadedByUserId),
     check('evidence_file_scan_status_check', inList(t.scanStatus.name, SCAN_STATUSES)),
     check('evidence_file_sha256_format', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
     check('evidence_file_original_sha256_format', sql`${t.originalSha256} IS NULL OR ${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
@@ -74,6 +75,7 @@ export const reviewCase = pgTable(
     index('review_case_person_id_idx').on(t.personId),
     index('review_case_school_id_idx').on(t.schoolId),
     index('review_case_assigned_to_user_id_idx').on(t.assignedToUserId),
+    index('review_case_opened_by_user_id_idx').on(t.openedByUserId),
     check('review_case_kind_check', inList(t.kind.name, REVIEW_CASE_KINDS)),
     check('review_case_status_check', inList(t.status.name, REVIEW_CASE_STATUSES)),
     check('review_case_resolution_check', sql`${t.resolution} IS NULL OR ${inList(t.resolution.name, REVIEW_RESOLUTIONS)}`),
@@ -100,6 +102,7 @@ export const evidenceLink = pgTable(
     index('evidence_link_review_case_id_idx').on(t.reviewCaseId),
     index('evidence_link_relationship_id_idx').on(t.relationshipId),
     index('evidence_link_person_id_idx').on(t.personId),
+    index('evidence_link_created_by_user_id_idx').on(t.createdByUserId),
     check('evidence_link_one_subject', sql`num_nonnulls(${t.reviewCaseId}, ${t.relationshipId}, ${t.personId}) = 1`),
   ],
 );
@@ -117,7 +120,10 @@ export const reviewNote = pgTable(
     isInternal: boolean('is_internal').notNull().default(true),
     ...timestamps(),
   },
-  (t) => [index('review_note_review_case_id_idx').on(t.reviewCaseId, t.createdAt)],
+  (t) => [
+    index('review_note_review_case_id_idx').on(t.reviewCaseId, t.createdAt),
+    index('review_note_author_user_id_idx').on(t.authorUserId),
+  ],
 );
 
 export const contentReport = pgTable(
@@ -136,6 +142,7 @@ export const contentReport = pgTable(
   (t) => [
     index('content_report_subject_idx').on(t.subjectType, t.subjectId),
     index('content_report_status_idx').on(t.status),
+    index('content_report_reporter_user_id_idx').on(t.reporterUserId),
     check('content_report_subject_type_check', inList(t.subjectType.name, REPORT_SUBJECTS)),
     check('content_report_reason_check', inList(t.reason.name, REPORT_REASONS)),
     check('content_report_status_check', inList(t.status.name, REPORT_STATUSES)),

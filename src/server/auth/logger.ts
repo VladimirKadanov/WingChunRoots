@@ -33,3 +33,13 @@ export function logAuth(level: Level, message: string, ...args: unknown[]): void
   else if (level === 'warn') console.warn(line);
   else console.info(line);
 }
+
+/**
+ * Better Auth's onAPIError.onError: an expected refusal (an APIError below 500: wrong password,
+ * expired link, ...) is not logged; anything else is, through logAuth (name and code only).
+ */
+export function logAuthApiError(error: unknown): void {
+  const status = (error as { statusCode?: unknown } | null)?.statusCode;
+  if (typeof status === 'number' && status < 500) return;
+  logAuth('error', 'request failed', error);
+}

@@ -10,9 +10,11 @@ import type { JobWithMetadata, PgBoss, WorkOptions } from 'pg-boss';
 import type { Database } from '../db';
 import { emailDelivery } from '../db/schema';
 import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
+import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
-import { purgeExpiredEmailAddresses, purgeExpiredSessions } from '../services/retention';
+import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from '../services/retention';
 import { TemplateDataError } from '../templates/email';
+import { jobTemplateData } from './outbox';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
 export interface WorkerOptions {
@@ -39,7 +41,7 @@ export interface RunningWorker {
 export function emailSendHandler(db: Database, mailer: Mailer, log: (line: string) => void) {
   return async (jobs: JobWithMetadata<EmailSendJob>[]): Promise<void> => {
     for (const job of jobs) {
-      const { deliveryId, data } = job.data;
+      const { deliveryId } = job.data;
       const [row] = await db.select().from(emailDelivery).where(eq(emailDelivery.id, deliveryId));
       if (!row) {
         // db:seed or a reset removed it; nothing left to send.
@@ -48,6 +50,16 @@ export function emailSendHandler(db: Database, mailer: Mailer, log: (line: strin
       }
       if (row.status !== 'queued' || row.toEmail === null) {
         log(`${QUEUE.emailSend}: job ${job.id}: delivery ${row.id} is already ${row.status}`);
+        continue;
+      }
+      let data: unknown;
+      try {
+        data = jobTemplateData(job.data);
+      } catch (error) {
+        if (!(error instanceof SealError)) throw error;
+        // Another MAIL_SEAL_KEY or a changed payload: retrying cannot help.
+        await mailer.markFailed(row.id, error.message);
+        log(`${QUEUE.emailSend}: job ${job.id}: delivery ${row.id} failed permanently (${error.name})`);
         continue;
       }
       try {
@@ -107,7 +119,12 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         const result = await purgeExpiredEmailAddresses(db);
         log(`${QUEUE.retentionPurge}: erased ${result.emailDeliveries} delivery address(es), ${result.invitations} invitation address(es)`);
         const signIn = await purgeExpiredSessions(db);
-        log(`${QUEUE.retentionPurge}: deleted ${signIn.sessions} expired session(s), ${signIn.verifications} expired verification value(s)`);
+        log(
+          `${QUEUE.retentionPurge}: deleted ${signIn.sessions} expired session(s), ${signIn.verifications} expired verification value(s), ` +
+            `${signIn.throttles} expired throttle row(s)`,
+        );
+        const unconfirmed = await purgeUnconfirmedAccounts(db);
+        log(`${QUEUE.retentionPurge}: deleted ${unconfirmed.accounts} unconfirmed account(s), kept ${unconfirmed.kept} still referred to`);
       } catch (error) {
         const code = failureCode(error);
         const last = job.retryCount >= job.retryLimit;

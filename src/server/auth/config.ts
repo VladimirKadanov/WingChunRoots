@@ -8,9 +8,11 @@
 //   asked), in memory: one `next start` process in Phase 1.
 // - Plugins: twoFactor (TOTP and backup codes), admin (the role field, bans), bearer (the same
 //   session in `Authorization: Bearer`, signed tokens only).
-// - The admin plugin's HTTP endpoints and the e-mail OTP second factor are switched off
-//   (disabledPaths): roles change only through src/server/services/roles.ts, which checks 2FA and
-//   writes the audit log; later milestones open what they need behind requireStaff2FA().
+// - The admin plugin's HTTP endpoints, the e-mail OTP second factor and /update-user are switched
+//   off (disabledPaths): roles change only through src/server/services/roles.ts, which checks 2FA
+//   and writes the audit log; later milestones open what they need behind requireStaff2FA().
+// - A duplicate sign-up wipes the password of an unconfirmed account and a reset confirms the
+//   address (accounts.ts): only the owner of a mailbox ever holds a working password for it.
 
 import { betterAuth } from 'better-auth/minimal';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -22,10 +24,12 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/account-limi
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { AUTH_TABLES } from '../db/schema';
+import { onExistingUserSignUp, onPasswordReset } from './accounts';
+import { BACKUP_CODE_COUNT, newBackupCodes } from './credentials';
 import { RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
-import { appUrl, authSecret } from './env';
+import { appUrl, authSecret, trustedProxies } from './env';
 import { afterHook, afterUserCreate, afterUserUpdate, beforeHook, beforeSessionCreate } from './hooks';
-import { logAuth } from './logger';
+import { logAuth, logAuthApiError } from './logger';
 
 export const AUTH_BASE_PATH = '/api/auth';
 export const COOKIE_PREFIX = 'wcr';
@@ -33,6 +37,9 @@ export const TOTP_ISSUER = 'WingChunRoots';
 
 /** Endpoints that are not served over HTTP in M02 (404). */
 export const DISABLED_AUTH_PATHS = [
+  // The name and image of an account are not edited through Better Auth: names live in the
+  // profile (person_name), and an account has no image (CHECK auth_user_no_image).
+  '/update-user',
   // E-mail OTP as a second factor is not offered: TOTP and backup codes only.
   '/two-factor/send-otp',
   '/two-factor/verify-otp',
@@ -56,6 +63,8 @@ export const DISABLED_AUTH_PATHS = [
 
 export function createAuth() {
   const origin = appUrl();
+  // Fails closed on a public deployment without TRUSTED_PROXIES (src/server/auth/env.ts).
+  trustedProxies();
   return betterAuth({
     appName: TOTP_ISSUER,
     baseURL: origin,
@@ -64,6 +73,8 @@ export function createAuth() {
     trustedOrigins: [origin],
     telemetry: { enabled: false },
     logger: { level: 'warn', log: (level, message, ...args) => logAuth(level, message, ...args) },
+    // The router would print unexpected errors through its own global logger, unredacted.
+    onAPIError: { onError: (error) => logAuthApiError(error) },
     database: drizzleAdapter(getDb(), { provider: 'pg', schema: AUTH_TABLES, transaction: false }),
     user: { modelName: 'auth_user' },
     session: {
@@ -87,6 +98,9 @@ export function createAuth() {
       resetPasswordTokenExpiresIn: RESET_PASSWORD_EXPIRES_IN_S,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: ({ user, token }) => sendPasswordResetEmail(user, token),
+      // A duplicate sign-up and a password reset decide who owns the address (accounts.ts, H1).
+      onExistingUserSignUp: ({ user }) => onExistingUserSignUp({ user }),
+      onPasswordReset: ({ user }) => onPasswordReset({ user }),
     },
     emailVerification: {
       sendOnSignUp: true,
@@ -113,6 +127,9 @@ export function createAuth() {
       twoFactor({
         issuer: TOTP_ISSUER,
         schema: { twoFactor: { modelName: 'auth_two_factor' } },
+        // Upper-case XXXX-XXXX codes without look-alike characters (credentials.ts); the before
+        // hook reads a typed code in this form.
+        backupCodeOptions: { amount: BACKUP_CODE_COUNT, customBackupCodesGenerate: newBackupCodes },
       }),
       admin({ defaultRole: 'user', adminRoles: ['admin'] }),
       bearer({ requireSignature: true }),

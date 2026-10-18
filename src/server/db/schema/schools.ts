@@ -68,6 +68,7 @@ export const school = pgTable(
     uniqueIndex('school_slug_key').on(t.slug),
     index('school_place_id_idx').on(t.placeId),
     index('school_status_idx').on(t.status),
+    index('school_created_by_user_id_idx').on(t.createdByUserId),
     index('school_public_point_gist_idx').using('gist', t.publicPoint),
     check('school_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
     check('school_location_privacy_check', inList(t.locationPrivacy.name, LOCATION_PRIVACIES)),

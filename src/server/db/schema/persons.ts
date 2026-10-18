@@ -70,6 +70,7 @@ export const person = pgTable(
       sql`${t.trainingStartYear} IS NULL OR ${t.trainingStartYear} BETWEEN 1900 AND 2100`,
     ),
     index('person_place_id_idx').on(t.placeId),
+    index('person_created_by_user_id_idx').on(t.createdByUserId),
   ],
 );
 
@@ -178,6 +179,7 @@ export const personClaim = pgTable(
   (t) => [
     index('person_claim_person_id_idx').on(t.personId),
     index('person_claim_user_id_idx').on(t.userId),
+    index('person_claim_decided_by_user_id_idx').on(t.decidedByUserId),
     uniqueIndex('person_claim_one_pending_key').on(t.personId, t.userId).where(sql`${t.status} = 'pending'`),
     check('person_claim_status_check', inList(t.status.name, CLAIM_STATUSES)),
   ],
@@ -209,6 +211,7 @@ export const invitation = pgTable(
     uniqueIndex('invitation_token_hash_key').on(t.tokenHash),
     index('invitation_person_id_idx').on(t.personId),
     index('invitation_relationship_id_idx').on(t.relationshipId),
+    index('invitation_invited_by_user_id_idx').on(t.invitedByUserId),
     check('invitation_status_check', inList(t.status.name, INVITATION_STATUSES)),
     check('invitation_token_hash_format', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check('invitation_pending_has_email', sql`${t.status} <> 'pending' OR ${t.email} IS NOT NULL`),

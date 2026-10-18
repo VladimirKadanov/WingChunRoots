@@ -5,9 +5,13 @@
 
 import { getAuth, AUTH_BASE_PATH } from './config';
 import { appUrl } from './env';
+import { withClientIp } from './ip';
 
-/** Request headers passed on from the browser's request. The session travels in the cookie. */
-const FORWARDED_HEADERS = ['cookie', 'user-agent', 'x-forwarded-for', 'x-real-ip', 'x-request-id', 'accept-language'];
+/**
+ * Request headers passed on from the browser's request. The session travels in the cookie; the
+ * client address as the single address clientIp() resolved (ip.ts).
+ */
+const FORWARDED_HEADERS = ['cookie', 'user-agent', 'x-forwarded-for', 'x-request-id', 'accept-language'];
 
 export interface AuthCallInit {
   method?: 'GET' | 'POST';
@@ -31,9 +35,10 @@ export async function callAuthEndpoint<T = unknown>(path: string, init: AuthCall
   const origin = appUrl();
   const url = new URL(`${AUTH_BASE_PATH}${path}`, origin);
   for (const [key, value] of Object.entries(init.query ?? {})) url.searchParams.set(key, value);
+  const forwarded = withClientIp(init.headers);
   const headers = new Headers();
   for (const name of FORWARDED_HEADERS) {
-    const value = init.headers.get(name);
+    const value = forwarded.get(name);
     if (value) headers.set(name, value);
   }
   // Next.js has already checked that the Server Action came from this site (Origin against Host).

@@ -40,6 +40,7 @@ export const resetPassword: EmailTemplate<ResetPasswordData> = {
       />
     );
   },
+  secretFields: ['url'],
   // Fictional (D20).
   sample: {
     url: 'http://localhost:3000/reset-password?token=demo-token',

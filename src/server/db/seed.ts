@@ -24,6 +24,7 @@ import {
   auditLog,
   authAccount,
   authSession,
+  authThrottle,
   authTwoFactor,
   authUser,
   authVerification,
@@ -59,6 +60,7 @@ import {
 export const RESETTABLE_TABLES: readonly PgTable[] = [
   authAccount,
   authSession,
+  authThrottle,
   authTwoFactor,
   authUser,
   authVerification,

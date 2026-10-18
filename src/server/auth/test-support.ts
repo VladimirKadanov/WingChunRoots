@@ -5,8 +5,6 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { base32 } from '@better-auth/utils/base32';
-import { createOTP } from '@better-auth/utils/otp';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { closeDb, getDb } from '../db';
@@ -14,7 +12,12 @@ import { uuidv7 } from '../db/ids';
 import { authAccount, authTwoFactor, authUser } from '../db/schema';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { stopProducer } from '../jobs/boss';
+import { jobTemplateData } from '../jobs/outbox';
+import type { EmailSendJob } from '../jobs/queues';
 import { encryptTotpSecret, generateBackupCodes, hashAccountPassword } from './credentials';
+import { totp } from './otp';
+
+export { secretFromTotpUri } from './otp';
 
 export const TEST_APP_URL = 'http://127.0.0.1:3999';
 export const TEST_PASSWORD = 'demo-password-for-tests';
@@ -23,7 +26,9 @@ export const TEST_PASSWORD = 'demo-password-for-tests';
 export function setTestAuthEnv(): void {
   process.env.BETTER_AUTH_SECRET = `test-${randomBytes(24).toString('hex')}`;
   process.env.IP_HMAC_KEY = `test-${randomBytes(24).toString('hex')}`;
+  process.env.MAIL_SEAL_KEY = `test-${randomBytes(24).toString('hex')}`;
   process.env.APP_URL = TEST_APP_URL;
+  delete process.env.TRUSTED_PROXIES;
 }
 
 /** A migrated throwaway database that getDb(), the outbox producer and Better Auth use. */
@@ -143,15 +148,23 @@ export async function createAccount(
   return { id, email, password: TEST_PASSWORD, totpSecret };
 }
 
-export function totpCode(secret: string): Promise<string> {
-  return createOTP(secret).totp();
+/** The current TOTP code of a secret; `step` +1 or -1 gives the next or previous one (also accepted). */
+export function totpCode(secret: string, step: -1 | 0 | 1 = 0): Promise<string> {
+  return Promise.resolve(totp(secret, Date.now() + step * 30_000));
 }
 
-/** The secret behind an otpauth:// URI (base32 in the URI, as authenticator apps read it). */
-export function secretFromTotpUri(uri: string): string {
-  const encoded = new URL(uri).searchParams.get('secret');
-  if (!encoded) throw new Error('the TOTP URI has no secret');
-  return new TextDecoder().decode(base32.decode(encoded));
+/**
+ * /two-factor/verify-totp with a code of `secret` that has not been used yet: a code works once
+ * (replay protection), so a test that signs the same account in twice within 30 seconds moves on
+ * to the next and then the previous code, which the plugin also accepts.
+ */
+export async function verifyTotpOnce(browser: TestBrowser, secret: string, extra: Record<string, unknown> = {}) {
+  let result = await authFetch(browser, '/two-factor/verify-totp', { body: { code: await totpCode(secret), ...extra } });
+  for (const step of [1, -1] as const) {
+    if (result.data?.code !== 'CODE_ALREADY_USED') break;
+    result = await authFetch(browser, '/two-factor/verify-totp', { body: { code: await totpCode(secret, step), ...extra } });
+  }
+  return result;
 }
 
 /**
@@ -168,9 +181,7 @@ export async function signIn(
   let tokenHeader = first.response.headers.get('set-auth-token');
   if (first.data?.twoFactorRedirect) {
     if (!account.totpSecret) throw new Error('sign-in asks for a second factor, but the account has no TOTP secret');
-    const second = await authFetch(browser, '/two-factor/verify-totp', {
-      body: { code: await totpCode(account.totpSecret), ...(opts.trustDevice ? { trustDevice: true } : {}) },
-    });
+    const second = await verifyTotpOnce(browser, account.totpSecret, opts.trustDevice ? { trustDevice: true } : {});
     if (second.status !== 200) throw new Error(`verify-totp failed: ${second.status} ${JSON.stringify(second.data)}`);
     tokenHeader = second.response.headers.get('set-auth-token');
   }
@@ -178,20 +189,37 @@ export async function signIn(
   return { browser, token: tokenHeader };
 }
 
-/** The token in the newest account e-mail of `template` to `to`, from the queued job's data. */
-export async function tokenFromOutbox(template: 'verify-email' | 'reset-password', to: string): Promise<string> {
-  const rows = await getDb().execute<{ url: string }>(sql`
-    SELECT j.data -> 'data' ->> 'url' AS url
+export type AccountEmailTemplate = 'verify-email' | 'reset-password' | 'finish-sign-up' | 'account-exists';
+
+/** The newest queued email.send job of `template` to `to` (its payload as stored), or null. */
+export async function outboxJob(template: AccountEmailTemplate, to: string): Promise<EmailSendJob | null> {
+  const rows = await getDb().execute<{ data: EmailSendJob }>(sql`
+    SELECT j.data
       FROM pgboss.job j
       JOIN email_delivery d ON d.id::text = j.data ->> 'deliveryId'
-     WHERE d.template = ${template} AND d.to_email = ${to}
+     WHERE j.name = 'email.send' AND d.template = ${template} AND d.to_email = ${to}
      ORDER BY d.created_at DESC
      LIMIT 1`);
-  const url = rows.rows[0]?.url;
-  if (!url) throw new Error(`no ${template} e-mail to ${to} in the outbox`);
+  return rows.rows[0]?.data ?? null;
+}
+
+/** The token in the newest account e-mail of `template` to `to`: the sealed link, opened. */
+export async function tokenFromOutbox(template: Exclude<AccountEmailTemplate, 'account-exists'>, to: string): Promise<string> {
+  const job = await outboxJob(template, to);
+  if (!job) throw new Error(`no ${template} e-mail to ${to} in the outbox`);
+  const url = (jobTemplateData(job) as { url?: unknown }).url;
+  if (typeof url !== 'string') throw new Error('the e-mail has no link');
   const token = new URL(url).searchParams.get('token');
   if (!token) throw new Error('the e-mail link has no token');
   return token;
+}
+
+/** How many account e-mails of `template` went to `to`. */
+export async function deliveryCount(template: AccountEmailTemplate, to: string): Promise<number> {
+  const rows = await getDb().execute<{ n: number }>(
+    sql`SELECT count(*)::int AS n FROM email_delivery WHERE template = ${template} AND to_email = ${to}`,
+  );
+  return rows.rows[0]?.n ?? 0;
 }
 
 export async function sessionCount(userId: string): Promise<number> {

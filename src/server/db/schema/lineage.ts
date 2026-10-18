@@ -104,6 +104,8 @@ export const teachingRelationship = pgTable(
       sql`NOT ${t.isDisplayPrimary} OR ${inList(t.status.name, PUBLISHABLE_RELATIONSHIP_STATUSES)}`,
     ),
     index('teaching_relationship_lineage_id_idx').on(t.lineageId),
+    index('teaching_relationship_requested_by_user_id_idx').on(t.requestedByUserId),
+    index('teaching_relationship_confirmed_by_user_id_idx').on(t.confirmedByUserId),
     // The covering indexes (student|teacher) INCLUDE (...) are created in the custom migration
     // drizzle/*_roles_views_audit: Drizzle's index builder has no INCLUDE clause.
   ],
@@ -161,6 +163,7 @@ export const relationshipEvent = pgTable(
   },
   (t) => [
     index('relationship_event_relationship_id_idx').on(t.relationshipId, t.createdAt),
+    index('relationship_event_actor_user_id_idx').on(t.actorUserId),
     check(
       'relationship_event_from_status_check',
       sql`${t.fromStatus} IS NULL OR ${inList(t.fromStatus.name, RELATIONSHIP_STATUSES)}`,

@@ -69,6 +69,7 @@ export const emailDelivery = pgTable(
     uniqueIndex('email_delivery_idempotency_key_key').on(t.idempotencyKey),
     index('email_delivery_status_idx').on(t.status),
     index('email_delivery_created_at_idx').on(t.createdAt),
+    index('email_delivery_user_id_idx').on(t.userId, t.createdAt),
     check('email_delivery_status_check', inList(t.status.name, EMAIL_STATUSES)),
     check('email_delivery_attempts_check', sql`${t.attempts} >= 0`),
     check('email_delivery_queued_has_address', sql`${t.status} <> 'queued' OR ${t.toEmail} IS NOT NULL`),

@@ -93,9 +93,10 @@ check "better-auth 1.7.10, oRPC (server and openapi, same version), zod and uqr 
   const exact = (n) => /^\d+\.\d+\.\d+$/.test(d[n] || '');
   process.exit(d['better-auth'] === '1.7.10' && ['@orpc/server', '@orpc/openapi', 'zod', 'uqr'].every(exact)
     && d['@orpc/server'] === d['@orpc/openapi'] ? 0 : 1)"
-check "@better-auth/utils (TOTP codes in tests) is a pinned dev dependency" node -e "
-  const p = require('./package.json');
-  process.exit(/^\d+\.\d+\.\d+$/.test((p.devDependencies || {})['@better-auth/utils'] || '') ? 0 : 1)"
+check "TOTP codes in tests come from src/server/auth/otp.ts (node:crypto), not a second OTP library" bash -c '
+  [ -f src/server/auth/otp.ts ] && [ -f src/server/auth/otp.test.ts ] &&
+  ! grep -rqE "from .@better-auth/utils" src e2e scripts --include=*.ts --include=*.tsx &&
+  node -e "const p=require(\"./package.json\");process.exit(((p.devDependencies||{})[\"@better-auth/utils\"]||(p.dependencies||{})[\"@better-auth/utils\"])?1:0)"'
 check "out of scope stays out: no @better-auth/expo, passkeys, magic links or social sign-in" node -e "
   const p = require('./package.json');
   const d = { ...p.dependencies, ...p.devDependencies };
@@ -283,24 +284,24 @@ for title in "${titles[@]}"; do
   check "E2E test: $title" grep -qF "$title" e2e/m02-auth.spec.ts
 done
 check "e2e/helpers/auth.ts exports signInAs(slugOrRole)" grep -q "export async function signInAs" e2e/helpers/auth.ts
-check "guards.int.test.ts: role x route matrix, 403 without two_factor_verified_at, trustDevice, 2FA before a staff role, role change ends sessions, cookie and bearer" bash -c '
+check "guards.int.test.ts: role x route matrix, refused without two_factor_verified_at, trustDevice, 2FA before a staff role, role change ends sessions, cookie and bearer" bash -c '
   f=src/server/auth/guards.int.test.ts
-  grep -q "role × route matrix" "$f" && grep -q "without two_factor_verified_at gets 403 on /admin" "$f" &&
+  grep -q "role × route matrix" "$f" && grep -q "without two_factor_verified_at is refused on /admin (403 decision)" "$f" &&
   grep -q "trustDevice is ignored for staff" "$f" && grep -q "a staff role is not given to an account without 2FA" "$f" &&
   grep -q "a role change ends every session" "$f" && grep -q "accepts a cookie session and a bearer session and refuses a request without one" "$f"'
 check "templates.test.ts covers verify-email and reset-password" bash -c '
   grep -q "verify-email" src/server/templates/templates.test.ts && grep -q "reset-password" src/server/templates/templates.test.ts'
 
 # 9. Test-only secrets (Constraints) --------------------------------------------------------------
-for name in APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+for name in APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY TRUSTED_PROXIES E2E_PASSWORD E2E_TOTP_SECRET; do
   check ".env.example names $name without a value" grep -qE "^$name=$" .env.example
 done
 check "scripts/init-env.sh and scripts/cloud-setup.sh generate the account secrets (never in the repository)" bash -c '
-  for n in BETTER_AUTH_SECRET IP_HMAC_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+  for n in BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
     grep -q "$n" scripts/init-env.sh && grep -q "$n" scripts/cloud-setup.sh || exit 1
   done'
 check "CI generates the account secrets per run and masks them" bash -c '
-  grep -q "::add-mask::" .github/workflows/ci.yml && grep -q "E2E_TOTP_SECRET=" .github/workflows/ci.yml'
+  grep -q "::add-mask::" .github/workflows/ci.yml && grep -q "E2E_TOTP_SECRET=" .github/workflows/ci.yml && grep -q "MAIL_SEAL_KEY=" .github/workflows/ci.yml'
 check "db:seed and admin:create refuse NODE_ENV=production" bash -c '
   grep -q "assertNotProduction('\''db:seed'\'')" src/server/db/seed.ts && grep -q "assertNotProduction('\''admin:create'\''" src/server/auth/admin-create.ts'
 check "admin:create refuses a database that is not on this machine" grep -q "isLocalHost(targetDatabaseUrl(env))" src/server/auth/admin-create.ts

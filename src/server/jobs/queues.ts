@@ -18,8 +18,10 @@ export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
 /** The payload of email.send (and of its dead letters). The address stays in email_delivery. */
 export interface EmailSendJob {
   deliveryId: string;
-  /** Template data, checked again by the template before rendering. */
+  /** Template data, checked again by the template before rendering; without its secret fields. */
   data: unknown;
+  /** The template's secret fields (account links), sealed for this delivery (src/server/mail/seal.ts). */
+  sealed?: string;
 }
 
 export interface JobData {

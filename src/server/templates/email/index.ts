@@ -4,6 +4,8 @@
 
 import { render } from '@react-email/render';
 
+import { accountExists } from './account-exists';
+import { finishSignUp } from './finish-sign-up';
 import { mailCheck } from './mail-check';
 import { resetPassword } from './reset-password';
 import { type EmailTemplate, TemplateDataError } from './types';
@@ -11,6 +13,8 @@ import { verifyEmail } from './verify-email';
 
 export { TemplateDataError } from './types';
 export type { EmailTemplate, NameData } from './types';
+export type { AccountExistsData } from './account-exists';
+export type { FinishSignUpData } from './finish-sign-up';
 export type { MailCheckData } from './mail-check';
 export type { ResetPasswordData } from './reset-password';
 export type { VerifyEmailData } from './verify-email';
@@ -20,6 +24,8 @@ export const EMAIL_TEMPLATES = {
   'mail-check': mailCheck,
   'verify-email': verifyEmail,
   'reset-password': resetPassword,
+  'finish-sign-up': finishSignUp,
+  'account-exists': accountExists,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;

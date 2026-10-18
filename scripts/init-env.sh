@@ -18,11 +18,6 @@ if [ -f .env ] && [ "${1:-}" = "--force" ]; then
 fi
 
 random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
-# $1 base32 characters (RFC 4648 alphabet), 5 random bits each: 256 is a multiple of 32.
-random_base32() {
-  local alphabet=ABCDEFGHIJKLMNOPQRSTUVWXYZ234567 b
-  for b in $(od -An -N"$1" -tu1 /dev/urandom); do printf '%s' "${alphabet:$((b % 32)):1}"; done
-}
 
 pg_user=postgres
 pg_password="$(random_hex 16)"
@@ -35,13 +30,15 @@ db_app_public_ro_password="$(random_hex 16)"
 s3_access_key="wcr$(random_hex 8)"
 s3_secret_key="$(random_hex 20)"
 
-# Accounts (M02): the Better Auth secret, the ip_hmac key and the test-only credentials of the
-# seeded demo accounts. The TOTP secret is 32 random characters (160 bits, RFC 4226), stored as
-# Better Auth stores its own; an authenticator app takes its base32 encoding (admin guide).
+# Accounts (M02): the Better Auth secret, the ip_hmac key, the key that seals the links of account
+# e-mails in the job queue, and the test-only credentials of the seeded demo accounts. The TOTP
+# secret is 40 hex characters (160 random bits, RFC 4226), the string Better Auth stores; an
+# authenticator app takes the base32 encoding of its bytes (admin guide).
 better_auth_secret="$(random_hex 32)"
 ip_hmac_key="$(random_hex 32)"
+mail_seal_key="$(random_hex 32)"
 e2e_password="wcr-$(random_hex 12)"
-e2e_totp_secret="$(random_base32 32)"
+e2e_totp_secret="$(random_hex 20)"
 
 # Portable lookup (macOS ships bash 3.2, which has no associative arrays).
 value_for() {
@@ -67,6 +64,7 @@ value_for() {
     APP_URL) echo http://localhost:3000 ;;
     BETTER_AUTH_SECRET) echo "$better_auth_secret" ;;
     IP_HMAC_KEY) echo "$ip_hmac_key" ;;
+    MAIL_SEAL_KEY) echo "$mail_seal_key" ;;
     E2E_PASSWORD) echo "$e2e_password" ;;
     E2E_TOTP_SECRET) echo "$e2e_totp_secret" ;;
     *) return 1 ;;
@@ -81,7 +79,7 @@ umask 077
 if [ -f .env ] && [ "${1:-}" != "--force" ]; then
   added=()
   for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD MAIL_TRANSPORT \
-    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
     if grep -q "^${name}=$" .env.example && ! grep -q "^${name}=" .env; then
       # Keep the last existing line intact when the file does not end with a newline.
       [ -z "$(tail -c 1 .env)" ] || echo >> .env

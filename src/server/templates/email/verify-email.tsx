@@ -37,10 +37,11 @@ export const verifyEmail: EmailTemplate<VerifyEmailData> = {
         action="Confirm e-mail address"
         url={url}
         expiresInHours={expiresInHours}
-        notExpected="If you did not create an account, ignore this e-mail; the account stays unconfirmed and nobody can sign in to it."
+        notExpected="If you did not create an account, ignore this e-mail: nobody can sign in to an unconfirmed account, and it is removed after 7 days."
       />
     );
   },
+  secretFields: ['url'],
   // Fictional (D20).
   sample: {
     url: 'http://localhost:3000/verify-email?token=demo-token',

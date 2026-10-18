@@ -44,6 +44,11 @@ export const authUser = pgTable(
       sql`${t.twoFactorEnabled} OR NOT ${inList(t.role.name, STAFF_ROLES)}`,
     ),
     check('auth_user_email_lowercase', sql`${t.email} = lower(${t.email})`),
+    // Better Auth's /update-user is switched off and sign-up refuses a name or an image
+    // (src/server/auth/hooks.ts); these are the last line: a bounded name, never an image URL
+    // (an image would be a link that the app shows, for example a javascript: URL).
+    check('auth_user_name_length', sql`char_length(${t.name}) <= 200`),
+    check('auth_user_no_image', sql`${t.image} IS NULL`),
   ],
 );
 
@@ -60,7 +65,8 @@ export const authSession = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => authUser.id, { onDelete: 'cascade' }),
-    // Admin plugin field. Impersonation is refused in M02 (src/server/auth/hooks.ts).
+    // Admin plugin field. Impersonation is off in M02: its endpoints are in DISABLED_AUTH_PATHS
+    // (src/server/auth/config.ts).
     impersonatedBy: uuid('impersonated_by'),
     // Set by hooks.after on /two-factor/verify-totp and /two-factor/verify-backup-code: when this
     // session proved the second factor. requireStaff2FA() checks it (plan §3.2).
@@ -137,6 +143,26 @@ export const authTwoFactor = pgTable(
   (t) => [
     uniqueIndex('auth_two_factor_user_id_key').on(t.userId),
     check('auth_two_factor_failed_count_check', sql`${t.failedVerificationCount} >= 0`),
+  ],
+);
+
+/**
+ * Counters and one-time markers of the accounts module (src/server/auth/throttle.ts): failed
+ * sign-ins per address (a keyed hash of the address, never the address), used TOTP codes (replay)
+ * and the like. Not a Better Auth table. A row counts until `expires_at`; the retention job
+ * deletes expired rows.
+ */
+export const authThrottle = pgTable(
+  'auth_throttle',
+  {
+    key: text('key').primaryKey(),
+    count: integer('count').notNull().default(1),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index('auth_throttle_expires_at_idx').on(t.expiresAt),
+    check('auth_throttle_key_length', sql`char_length(${t.key}) <= 200`),
+    check('auth_throttle_count_check', sql`${t.count} >= 0`),
   ],
 );
 

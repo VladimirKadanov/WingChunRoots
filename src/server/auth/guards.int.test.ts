@@ -1,6 +1,6 @@
 // Guards and the rules of plan §3.2 (milestone M02, Done when 3): a role × route matrix; a staff
-// session without two_factor_verified_at gets 403 on /admin; trustDevice is ignored for staff; a
-// staff role needs 2FA; a role change ends every session; a protected oRPC procedure accepts a
+// session without two_factor_verified_at is refused on /admin (a 403 decision; the page sends it
+// to /account/security); trustDevice is ignored for staff and works for members; a staff role needs 2FA; a role change ends every session; a protected oRPC procedure accepts a
 // cookie session and a bearer session and refuses a request without one.
 
 import { randomBytes } from 'node:crypto';
@@ -119,8 +119,16 @@ describe('role × route matrix', () => {
   }
 });
 
+/** Drops the session cookies of `browser` and keeps the rest (the trust-device cookie). */
+function signOutKeepingOtherCookies(browser: TestBrowser): void {
+  for (const name of [...browser.cookies.keys()]) {
+    if (name.includes('session_token') || name.includes('session_data')) browser.cookies.delete(name);
+  }
+  browser.bearer = null;
+}
+
 describe('second factor of staff sessions', () => {
-  it('a staff session without two_factor_verified_at gets 403 on /admin and is sent to /account/security', async () => {
+  it('a staff session without two_factor_verified_at is refused on /admin (403 decision) and sent to /account/security', async () => {
     const admin = await createAccount({ role: 'admin', label: 'unverified-admin' });
     const token = await unverifiedSession(admin.id);
     for (const headers of [bearerHeaders(token), new Headers({ cookie: `wcr.session_token=${encodeURIComponent(token)}` })]) {
@@ -171,14 +179,21 @@ describe('second factor of staff sessions', () => {
       .from(authVerification)
       .where(and(eq(authVerification.value, staff.id)));
     expect(trusted).toHaveLength(0);
-    // The next sign-in on the same browser asks for the second factor again.
-    browser.cookies.clear();
+    // The next sign-in on the same browser asks for the second factor again. Only the session
+    // cookies go: a trust-device cookie, had one been set, would stay and be used.
+    signOutKeepingOtherCookies(browser);
     const again = await authFetch(browser, '/sign-in/email', { body: { email: staff.email, password: staff.password } });
     expect(again.data?.twoFactorRedirect).toBe(true);
 
     const member = await createAccount({ role: 'user', twoFactor: true, label: 'trust-member' });
     const signedIn = await signIn(member, { trustDevice: true });
     expect(signedIn.browser.hasCookie('trust_device')).toBe(true);
+    // The member's next sign-in on that browser skips the second factor: the device is trusted.
+    signOutKeepingOtherCookies(signedIn.browser);
+    const trustedSignIn = await authFetch(signedIn.browser, '/sign-in/email', { body: { email: member.email, password: member.password } });
+    expect(trustedSignIn.status).toBe(200);
+    expect(trustedSignIn.data?.twoFactorRedirect).toBeUndefined();
+    expect(signedIn.browser.hasCookie('session_token')).toBe(true);
   });
 
   it('a staff account cannot turn two-factor authentication off', async () => {

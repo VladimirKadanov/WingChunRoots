@@ -108,6 +108,7 @@ describe('account e-mails (M02)', () => {
   const cases = [
     { name: 'verify-email', path: '/verify-email', subject: /Confirm your e-mail address/ },
     { name: 'reset-password', path: '/reset-password', subject: /Reset your WingChunRoots password/ },
+    { name: 'finish-sign-up', path: '/reset-password', subject: /Finish creating your WingChunRoots account/ },
   ] as const;
 
   for (const { name, path, subject } of cases) {
@@ -168,5 +169,36 @@ describe('notification templates', () => {
 
   it('refuses an unknown template', () => {
     expect(() => renderNotification('no-such-template', {})).toThrow(NotificationDataError);
+  });
+});
+
+describe('account-exists (M02)', () => {
+  const data = { signInUrl: 'http://127.0.0.1:3100/sign-in', resetUrl: 'http://127.0.0.1:3100/reset-password' };
+
+  it('links to sign-in and to a new password, with no token', async () => {
+    const email = await renderEmail('account-exists', data);
+    expect(email.subject).toBe('You already have a WingChunRoots account');
+    expect(email.html).toContain('href="http://127.0.0.1:3100/sign-in"');
+    expect(email.html).toContain('href="http://127.0.0.1:3100/reset-password"');
+    expect(email.text).toContain('nothing was changed');
+  });
+
+  it('refuses links elsewhere, with a query or not over http(s)', async () => {
+    await expect(renderEmail('account-exists', { ...data, signInUrl: 'http://127.0.0.1:3100/account' })).rejects.toThrow(/point at \/sign-in/);
+    await expect(renderEmail('account-exists', { ...data, resetUrl: 'http://127.0.0.1:3100/reset-password?token=x' })).rejects.toThrow(
+      /point at \/reset-password/,
+    );
+    await expect(renderEmail('account-exists', { ...data, signInUrl: 'javascript:alert(1)//sign-in' })).rejects.toThrow(/http\(s\)/);
+  });
+});
+
+describe('secret fields (M02 fix round 1)', () => {
+  it('every template whose data carries a token declares it secret, so the outbox seals it', () => {
+    for (const [name, template] of Object.entries(EMAIL_TEMPLATES) as [string, EmailTemplate<unknown>][]) {
+      const tokenFields = Object.entries(template.sample as Record<string, unknown>)
+        .filter(([, value]) => typeof value === 'string' && /[?&]token=/.test(value))
+        .map(([field]) => field);
+      expect(template.secretFields ?? [], name).toEqual(tokenFields);
+    }
   });
 });

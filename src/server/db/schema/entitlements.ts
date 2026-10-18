@@ -30,6 +30,8 @@ export const entitlementGrant = pgTable(
   (t) => [
     index('entitlement_grant_subject_user_id_idx').on(t.subjectUserId),
     index('entitlement_grant_subject_organization_id_idx').on(t.subjectOrganizationId),
+    index('entitlement_grant_granted_by_user_id_idx').on(t.grantedByUserId),
+    index('entitlement_grant_revoked_by_user_id_idx').on(t.revokedByUserId),
     check('entitlement_grant_one_subject', sql`num_nonnulls(${t.subjectUserId}, ${t.subjectOrganizationId}) = 1`),
     check('entitlement_grant_plan_code_check', inList(t.planCode.name, PLAN_CODES)),
     check('entitlement_grant_source_check', inList(t.source.name, GRANT_SOURCES)),

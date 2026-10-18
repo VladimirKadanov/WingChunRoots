@@ -1,8 +1,8 @@
 // Better Auth's log lines without e-mail or IP addresses (plan §6.4, CLAUDE.md §6).
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { redactLogText } from './logger';
+import { logAuthApiError, redactLogText } from './logger';
 
 describe('redactLogText', () => {
   it.each([
@@ -25,5 +25,32 @@ describe('redactLogText', () => {
   it('leaves ordinary text with a colon alone', () => {
     expect(redactLogText('Rate limit: /sign-in/email')).toBe('Rate limit: /sign-in/email');
     expect(redactLogText('Error: INVALID_CODE')).toBe('Error: INVALID_CODE');
+  });
+});
+
+describe('logAuthApiError (Better Auth onAPIError.onError)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('logs nothing for an expected refusal (an APIError below 500)', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    logAuthApiError(Object.assign(new Error('Invalid email or password'), { statusCode: 401 }));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('logs an unexpected error by name and code only, never its message', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = Object.assign(new Error('insert failed for demo-someone@example.test from 198.18.0.7'), { code: 'DB_DOWN' });
+    logAuthApiError(failure);
+    expect(error).toHaveBeenCalledTimes(1);
+    const line = String(error.mock.calls[0]?.[0]);
+    expect(line).toBe('auth error: request failed (Error DB_DOWN)');
+    expect(line).not.toContain('@');
+    expect(line).not.toContain('198.18');
+  });
+
+  it('logs a server error status (500 and above)', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    logAuthApiError(Object.assign(new Error('boom'), { statusCode: 500 }));
+    expect(error).toHaveBeenCalledTimes(1);
   });
 });

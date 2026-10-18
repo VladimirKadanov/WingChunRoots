@@ -20,8 +20,9 @@
 # scripts/init-env.sh, CI) and, locally, starts it. From M01 the role passwords DB_MIGRATOR_PASSWORD,
 # DB_APP_RW_PASSWORD and DB_APP_PUBLIC_RO_PASSWORD come from the same places, and every run
 # bootstraps the test database (scripts/db-bootstrap.sh, idempotent) before the database steps.
-# From M02 the account settings BETTER_AUTH_SECRET, IP_HMAC_KEY, E2E_PASSWORD and E2E_TOTP_SECRET
-# (and optionally APP_URL) come from the same places; the env step refuses to start without them.
+# From M02 the account settings BETTER_AUTH_SECRET, IP_HMAC_KEY, MAIL_SEAL_KEY, E2E_PASSWORD and
+# E2E_TOTP_SECRET (and optionally APP_URL and TRUSTED_PROXIES) come from the same places; the env
+# step refuses to start without them.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -83,9 +84,9 @@ from_dotenv() {
 }
 DB_PASSWORD_VARS=(DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD)
 MAIL_VARS=(MAIL_TRANSPORT SMTP_URL MAIL_FILE_DIR MAIL_FROM MAILPIT_URL MAILPIT_SMTP_PORT MAILPIT_UI_PORT)
-AUTH_SECRET_VARS=(BETTER_AUTH_SECRET IP_HMAC_KEY E2E_PASSWORD E2E_TOTP_SECRET)
+AUTH_SECRET_VARS=(BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET)
 for name in TEST_DATABASE_URL E2E_PORT PW_CHROMIUM_EXECUTABLE "${DB_PASSWORD_VARS[@]}" "${MAIL_VARS[@]}" \
-  APP_URL "${AUTH_SECRET_VARS[@]}"; do
+  APP_URL TRUSTED_PROXIES "${AUTH_SECRET_VARS[@]}"; do
   from_dotenv "$name"
 done
 
