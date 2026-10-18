@@ -25,6 +25,7 @@ import { TwoFactorState, type TwoFactorStateKind } from '@/components/account/tw
 import { DownloadIcon, ExternalAppIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { IDLE } from '@/lib/form-state';
+import { cn } from '@/lib/utils';
 import { BACKUP_CODE_COUNT } from '@/server/auth/credentials';
 import { safeNextPath } from '@/server/auth/guards';
 import { qrModules } from '@/server/auth/totp';
@@ -217,8 +218,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
               </code>
               <div className="flex flex-wrap gap-3">
                 <CopyButton text={setup.key.replace(/\s/g, '')} label="Copy key" />
-                {/* Only where a tap can open another app: phones and tablets. */}
-                <a href={setup.uri} className={`${buttonVariants({ variant: 'secondary' })} hidden pointer-coarse:inline-flex`}>
+                {/* Only where a tap can open another app: phones and tablets. cn() drops the
+                    button's own inline-flex, which would otherwise win over `hidden`. */}
+                <a href={setup.uri} className={cn(buttonVariants({ variant: 'secondary' }), 'hidden pointer-coarse:inline-flex')}>
                   <ExternalAppIcon />
                   Open in authenticator app
                 </a>

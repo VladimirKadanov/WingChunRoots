@@ -666,7 +666,7 @@ async function codeOfSetup(page: Page, step: 0 | 1 = 0): Promise<{ uri: string; 
 
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
-test('@M02 two-factor setup survives a reload and asks to save the backup codes before it is done', async ({ page, browser }) => {
+test('@M02 two-factor setup survives a reload and asks to save the backup codes before it is done', async ({ page, browser }, testInfo) => {
   const account = await signInAs(page, 'new');
   await page.goto('/account/security');
   await expect(page.getByRole('heading', { level: 1, name: 'Two-factor authentication' })).toBeVisible();
@@ -677,6 +677,14 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
   await expect(page.getByText('Setup not finished')).toBeVisible();
   await expect(page.getByRole('img', { name: /QR code/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Copy key' })).toBeVisible();
+  // "Open in authenticator app" only where a tap can open another app (a coarse pointer): on a
+  // desktop the link would do nothing.
+  const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+  if (testInfo.project.name === 'desktop-chromium') expect(coarse).toBe(false);
+  if (testInfo.project.name === 'mobile-chromium') expect(coarse).toBe(true);
+  const openInApp = page.getByRole('link', { name: 'Open in authenticator app' });
+  if (coarse) await expect(openInApp).toBeVisible();
+  else await expect(openInApp).toBeHidden();
   const key = (await page.locator('code').filter({ visible: true }).innerText()).trim();
   expect(key).toMatch(/^[A-Z2-7]{4}( [A-Z2-7]{1,4})+$/);
   const { uri } = await codeOfSetup(page);
