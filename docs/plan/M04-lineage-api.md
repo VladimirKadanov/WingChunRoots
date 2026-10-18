@@ -72,3 +72,4 @@ M02.
 ## Дневник на напредъка (Progress log)
 
 - 2026-10-18 — Изгледите `v_public_person` (+ `city_name`) и `v_public_edge` (+ линия: slug, име, корен) са разширени с нова миграция; услугата за родословието (`lineage.ego`, `ancestors`, `subtree`, `paths`, `people.get`, `people.students`), публичните DTO, кешът с тагове, превключвателят `WCR_TEST_FAULTS` и `pnpm api:openapi [--check]` са готови; интеграционните тестове минават.
+- 2026-10-18 — Профилът `/people/[slug]` (с `catchError` и Retry) и списъчният изглед `/people/[slug]/lineage` (без JavaScript: учители, пътища на произход, ученици на страници, наследници с `<details>`/`<summary>`) са готови; „Not on the record“ е еднакво за скрит и липсващ запис; `e2e/m04-lineage.spec.ts` и axe минават.

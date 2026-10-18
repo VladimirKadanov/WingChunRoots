@@ -9,7 +9,8 @@ const ci = process.env.CI === 'true';
 const port = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://127.0.0.1:${port}`;
 // The origin the app builds its e-mail links with and accepts requests from (M02): the test server.
-const serverEnv = { APP_URL: baseURL };
+// M04: the test fault switch, honoured only with this loopback APP_URL (src/server/faults.ts).
+const serverEnv = { APP_URL: baseURL, WCR_TEST_FAULTS: 'lineage-once' };
 // Created here rather than with `mkdir -p` in webServer.command, which must also run in cmd.exe.
 mkdirSync('test-results', { recursive: true });
 
