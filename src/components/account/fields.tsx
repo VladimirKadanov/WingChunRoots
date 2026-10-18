@@ -11,7 +11,7 @@
 // JavaScript the server-rendered page does the same with `autofocus` (src/server/forms/flash.ts
 // brings the state back to the page).
 
-import { type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { type InputHTMLAttributes, type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { AlertIcon, CheckIcon, ChevronDownIcon } from '@/components/icons';
@@ -329,34 +329,47 @@ export function CodeField({
   const errorId = `${id}-error`;
   const { pending } = useFormStatus();
   const totp = kind === 'totp';
+  const shared = {
+    id,
+    name: 'code',
+    type: 'text',
+    enterKeyHint,
+    autoCorrect: 'off',
+    spellCheck: false,
+    translate: 'no',
+    required: true,
+    autoFocus,
+    readOnly: pending,
+    'aria-invalid': error ? true : undefined,
+    'aria-errormessage': error ? errorId : undefined,
+    'aria-describedby': describedBy(hintId, error && errorId),
+    className: cx(fieldClassName, 'min-h-14 font-mono text-2xl tabular-nums'),
+  } satisfies InputHTMLAttributes<HTMLInputElement>;
   return (
     <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
       <FieldLabel id={id} label={label ?? (totp ? '6-digit code' : 'Backup code')} />
-      <input
-        id={id}
-        name="code"
-        type="text"
-        autoComplete={totp ? 'one-time-code' : 'off'}
-        inputMode={totp ? 'numeric' : 'text'}
-        pattern={totp ? '[0-9]*' : undefined}
-        enterKeyHint={enterKeyHint}
-        maxLength={totp ? 9 : 16}
-        autoCapitalize={totp ? 'none' : 'characters'}
-        autoCorrect="off"
-        spellCheck={false}
-        translate="no"
-        required
-        autoFocus={autoFocus}
-        readOnly={pending}
-        aria-invalid={error ? true : undefined}
-        aria-errormessage={error ? errorId : undefined}
-        aria-describedby={describedBy(hintId, error && errorId)}
-        className={cx(
-          fieldClassName,
-          'min-h-14 font-mono text-2xl tabular-nums',
-          totp ? 'max-w-[12rem] tracking-[0.3em]' : 'max-w-[14rem] tracking-[0.12em] uppercase',
-        )}
-      />
+      {totp ? (
+        // The phone may offer the code it has just received; the number pad comes up.
+        <input
+          {...shared}
+          autoComplete="one-time-code"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={9}
+          autoCapitalize="none"
+          className={cx(shared.className, 'max-w-[12rem] tracking-[0.3em]')}
+        />
+      ) : (
+        // A backup code is typed from paper or a saved file: no offer of a code from a message.
+        <input
+          {...shared}
+          autoComplete="off"
+          inputMode="text"
+          maxLength={16}
+          autoCapitalize="characters"
+          className={cx(shared.className, 'max-w-[14rem] tracking-[0.12em] uppercase')}
+        />
+      )}
       <Hint id={hintId} hint={hint} />
       <FieldError id={errorId} error={error} />
     </div>

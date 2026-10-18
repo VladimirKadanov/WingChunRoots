@@ -724,7 +724,10 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
   await page.context().clearCookies();
   await signInThroughForm(page, account.email, account.password);
   await expect(page).toHaveURL(/\/sign-in\/two-factor$/);
+  // The app's code takes what the phone offers; a backup code field must not offer a code from a message.
+  await expect(field(page, '6-digit code')).toHaveAttribute('autocomplete', 'one-time-code');
   await page.getByRole('link', { name: 'No phone at hand? Use a backup code' }).click();
+  await expect(field(page, 'Backup code')).toHaveAttribute('autocomplete', 'off');
   await field(page, 'Backup code').fill(codes[0]!.toLowerCase());
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page).toHaveURL(/\/onboarding$/);
