@@ -38,10 +38,10 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     id: 'privacy',
     title: 'Privacy notice',
     file: 'content/legal/privacy.en.md',
-    version: '2026-10-18-draft-2',
+    version: '2026-10-18-draft-3',
     path: '/legal/privacy',
     date: '18 October 2026',
-    changes: 'Says that unconfirmed accounts are deleted after 7 days, how sign-in attempts are limited, and which cookies keep a form’s answer, a two-factor setup or a browser you have signed in from.',
+    changes: 'Says that unconfirmed accounts are deleted after 7 days, how sign-in attempts are limited and when their counters are deleted, and which cookies keep a form’s answer, a two-factor setup or a browser you have signed in from.',
   },
 };
 
