@@ -65,4 +65,9 @@ describe('db:reset safety (M01, In scope 1)', () => {
   it('refuses NODE_ENV=production, even for a local database', () => {
     expect(() => assertSafeToReset(LOCAL, { NODE_ENV: 'production' })).toThrow(/production/);
   });
+
+  it('names the command it guards (db:seed empties every table too)', () => {
+    expect(() => assertSafeToReset(TEST, {}, 'db:seed')).toThrow(/^db:seed refuses a database that is neither local/);
+    expect(() => assertSafeToReset(LOCAL, { NODE_ENV: 'production' }, 'db:seed')).toThrow(/^db:seed refuses to run/);
+  });
 });

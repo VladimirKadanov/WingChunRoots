@@ -27,7 +27,8 @@ import {
   runDrizzleKit,
   throwawayDatabaseName,
 } from './admin';
-import { loadDotEnv, redactUrl, targetDatabaseUrl } from './env';
+import { loadDotEnv } from './dotenv';
+import { redactUrl, targetDatabaseUrl } from './env';
 import { seedDatabase } from './seed';
 
 const log = (message: string) => console.log(message);
@@ -55,6 +56,9 @@ async function seed(): Promise<void> {
     .join(', ');
   log(`db:seed: seed ${result.seed} loaded into ${redactUrl(url)}: ${counts}`);
   log(`db:seed: content hash ${result.hash}`);
+  for (const what of result.skipped) {
+    log(`db:seed: warning: demo accounts created without ${what}; scripts/init-env.sh adds the variables`);
+  }
 }
 
 async function reset(): Promise<void> {

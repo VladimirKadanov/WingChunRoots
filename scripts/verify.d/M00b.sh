@@ -222,7 +222,9 @@ lighthouse() {
     return 1
   fi
   command -v setsid >/dev/null 2>&1 && starter=(setsid)
-  "${starter[@]}" node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1 &
+  # APP_URL is this server's own origin: from M02 a production server checks its account settings
+  # when it starts (src/instrumentation.ts) and exits without one.
+  APP_URL="http://127.0.0.1:$port" "${starter[@]}" node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1 &
   local pid=$! i ready=0
   for i in $(seq 1 120); do
     # Our server exited (EADDRINUSE, a crash): whatever answers on the port is not this build.

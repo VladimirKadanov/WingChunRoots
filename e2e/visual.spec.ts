@@ -13,7 +13,11 @@ import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { NAV_ITEMS } from '../src/components/shell/nav';
+import { closeHelpers, signInAs } from './helpers/auth';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
+
+test.afterAll(closeHelpers);
 
 for (const size of SCREEN_SIZES) {
   test.describe(size.name, () => {
@@ -28,9 +32,17 @@ for (const size of SCREEN_SIZES) {
       for (const theme of THEMES) {
         test(`${route.path} (${route.name}) at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
           await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+          if (route.signInAs) await signInAs(page, route.signInAs);
           const response = await page.goto(route.path);
           expect(response?.status()).toBe(route.status);
           await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          // The shell marks the page's tab once its navigation has streamed in or hydrated
+          // (src/components/shell/nav-links.tsx); a screenshot taken before that shows no tab.
+          const tab = NAV_ITEMS.find((item) => item.match(route.path));
+          if (tab) {
+            const currentTab = page.getByRole('navigation', { name: 'Main' }).locator('a[aria-current="page"]').filter({ visible: true });
+            await expect(currentTab).toHaveAttribute('href', tab.href);
+          }
           await expect(page).toHaveScreenshot(`${route.name}-${size.name}-${theme}.png`, {
             stylePath: resolve('e2e/visual.css'),
           });

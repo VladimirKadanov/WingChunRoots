@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { closeDb, getDb } from '../src/server/db';
-import { loadDotEnv } from '../src/server/db/env';
+import { loadDotEnv } from '../src/server/db/dotenv';
 import { stopProducer } from '../src/server/jobs/boss';
 import { queueEmail } from '../src/server/jobs/outbox';
 import { openMailbox } from './helpers/mailbox';

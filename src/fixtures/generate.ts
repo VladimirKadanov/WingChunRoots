@@ -18,6 +18,10 @@ import { createHash } from 'node:crypto';
 
 import { uuidv7FromParts } from '../server/db/ids';
 import type {
+  authAccount,
+  authTwoFactor,
+  authUser,
+  consentRecord,
   invitation,
   lineage,
   organization,
@@ -41,6 +45,7 @@ import {
   PUBLISHABLE_RELATIONSHIP_STATUSES,
   RELATIONSHIP_STATUSES,
 } from '../server/db/schema/common';
+import { consentVersion, SIGN_UP_CONSENTS } from '../server/legal/documents';
 import { GEONAMES_CITIES, type GeoNamesCity } from './geonames-cities';
 import {
   CYRILLIC_GIVEN,
@@ -59,6 +64,8 @@ export const TARGET_PERSONS = 600;
 export const FICTIONAL_MARK = 'Fictional demo record';
 /** Fixed base time of all fixture ids and timestamps: 2026-01-01T00:00:00Z. */
 const BASE_MS = Date.UTC(2026, 0, 1);
+/** Fixed time of the demo accounts (M02): 2026-02-01T00:00:00Z, after every archival record. */
+const ACCOUNT_BASE_MS = Date.UTC(2026, 1, 1);
 const LAST_YEAR = 2025;
 
 /** Anchor records with fixed slugs (milestone M01, In scope 10). */
@@ -85,6 +92,34 @@ export const ANCHOR_PERSON_SLUGS = [
 export const ANCHOR_SCHOOL_SLUGS = ['demo-school-city-only', 'demo-school-two-lineages'] as const;
 export type AnchorSlug = (typeof ANCHOR_PERSON_SLUGS)[number] | (typeof ANCHOR_SCHOOL_SLUGS)[number];
 
+/**
+ * Sign-in accounts for the tests (milestone M02, In scope 9), never in production: one linked to
+ * each of these anchor records (stewardship = self), plus three staff accounts without a record.
+ * E-mail: `<slug>@example.test`. The seed adds the credentials from E2E_PASSWORD and, for staff,
+ * the TOTP secret from E2E_TOTP_SECRET (src/server/db/seed.ts).
+ */
+export const DEMO_PERSON_ACCOUNT_SLUGS = [
+  'demo-pending',
+  'demo-root-a',
+  'demo-hub-a',
+  'demo-free-sifu-5',
+  'demo-pro-sifu-8',
+  'demo-two-lineages',
+] as const;
+export const DEMO_STAFF_ACCOUNTS = [
+  { slug: 'demo-admin', role: 'admin', name: 'Demo Admin' },
+  { slug: 'demo-archivist', role: 'archivist', name: 'Demo Archivist' },
+  { slug: 'demo-moderator', role: 'moderator', name: 'Demo Moderator' },
+] as const;
+export type DemoAccountSlug =
+  | (typeof DEMO_PERSON_ACCOUNT_SLUGS)[number]
+  | (typeof DEMO_STAFF_ACCOUNTS)[number]['slug'];
+export const DEMO_ACCOUNT_SLUGS: readonly DemoAccountSlug[] = [
+  ...DEMO_PERSON_ACCOUNT_SLUGS,
+  ...DEMO_STAFF_ACCOUNTS.map((a) => a.slug),
+];
+export const demoAccountEmail = (slug: DemoAccountSlug): string => `${slug}@example.test`;
+
 type Row<T extends { $inferInsert: object }> = Required<T['$inferInsert']>;
 export type LineageRow = Row<typeof lineage>;
 export type PersonRow = Row<typeof person>;
@@ -102,6 +137,12 @@ export type OrganizationMembershipRow = Row<typeof organizationMembership>;
 export type ReviewCaseRow = Row<typeof reviewCase>;
 export type ReviewNoteRow = Row<typeof reviewNote>;
 export type InvitationRow = Row<typeof invitation>;
+export type AuthUserRow = Row<typeof authUser>;
+export type ConsentRecordRow = Row<typeof consentRecord>;
+/** A credential account without its password hash, which the seed adds (secret, env-dependent). */
+export type CredentialShell = Omit<Row<typeof authAccount>, 'password'>;
+/** A TOTP row without its encrypted secret and backup codes, which the seed adds. */
+export type TwoFactorShell = Omit<Row<typeof authTwoFactor>, 'secret' | 'backupCodes'>;
 
 export interface Fixtures {
   seed: number;
@@ -123,6 +164,13 @@ export interface Fixtures {
   invitations: InvitationRow[];
   /** Fixed slug → id, for tests and later milestones. */
   anchors: Record<AnchorSlug, string>;
+  /** Demo sign-in accounts (M02) and their consents of sign-up. */
+  users: AuthUserRow[];
+  consentRecords: ConsentRecordRow[];
+  credentials: CredentialShell[];
+  twoFactors: TwoFactorShell[];
+  /** Account slug → auth_user.id. */
+  accounts: Record<DemoAccountSlug, string>;
 }
 
 type LineageKey = 'a' | 'b' | 'c';
@@ -223,6 +271,8 @@ class Builder {
       claimedByUserId: null,
       createdByUserId: null,
       countryCode: this.rng.pick(countries),
+      placeId: null,
+      trainingStartYear: null,
       birthDate: null,
       createdAt: at,
       updatedAt: at,
@@ -857,6 +907,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   for (const slug of ANCHOR_PERSON_SLUGS) anchors[slug] = b.bySlug.get(slug)!.row.id;
   for (const slug of ANCHOR_SCHOOL_SLUGS) anchors[slug] = schools.find((s) => s.slug === slug)!.id;
 
+  const accountData = demoAccounts(seed, b);
+
   return {
     seed,
     lineages: [b.lineages.a, b.lineages.b, b.lineages.c],
@@ -876,7 +928,84 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     reviewNotes,
     invitations,
     anchors,
+    ...accountData,
   };
+}
+
+/**
+ * The demo sign-in accounts (M02). Their ids come from a random stream of their own, so adding
+ * accounts never shifts the ids of the archival records above.
+ */
+function demoAccounts(seed: number, b: Builder): Pick<Fixtures, 'users' | 'consentRecords' | 'credentials' | 'twoFactors' | 'accounts'> {
+  const idRng = createRandom((seed ^ 0x0acc_0a75) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(ACCOUNT_BASE_MS + seq++, 0, idRng.bytes(8));
+  const at = new Date(ACCOUNT_BASE_MS);
+  const users: AuthUserRow[] = [];
+  const consentRecords: ConsentRecordRow[] = [];
+  const credentials: CredentialShell[] = [];
+  const twoFactors: TwoFactorShell[] = [];
+  const accounts = {} as Record<DemoAccountSlug, string>;
+  const add = (slug: DemoAccountSlug, name: string, role: AuthUserRow['role']): string => {
+    const userId = id();
+    const staff = role !== 'user';
+    users.push({
+      id: userId,
+      name,
+      email: demoAccountEmail(slug),
+      emailVerified: true,
+      image: null,
+      role,
+      banned: false,
+      banReason: null,
+      banExpires: null,
+      twoFactorEnabled: staff,
+      timezone: null,
+      createdAt: at,
+      updatedAt: at,
+    });
+    // DEFAULT D10: every account ticked the four boxes of sign-up, with the current versions.
+    for (const kind of SIGN_UP_CONSENTS) {
+      consentRecords.push({
+        id: id(),
+        userId,
+        kind,
+        documentVersion: consentVersion(kind),
+        action: 'granted',
+        occurredAt: at,
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+    credentials.push({
+      id: id(),
+      accountId: userId,
+      providerId: 'credential',
+      userId,
+      accessToken: null,
+      refreshToken: null,
+      idToken: null,
+      accessTokenExpiresAt: null,
+      refreshTokenExpiresAt: null,
+      scope: null,
+      createdAt: at,
+      updatedAt: at,
+    });
+    if (staff) {
+      twoFactors.push({ id: id(), userId, verified: true, failedVerificationCount: 0, lockedUntil: null, createdAt: at, updatedAt: at });
+    }
+    accounts[slug] = userId;
+    return userId;
+  };
+  for (const slug of DEMO_PERSON_ACCOUNT_SLUGS) {
+    const p = b.bySlug.get(slug)!;
+    const displayName = b.names.find((n) => n.personId === p.row.id && n.isPrimary)!.value;
+    const userId = add(slug, displayName, 'user');
+    p.row.stewardship = 'self';
+    p.row.claimedByUserId = userId;
+  }
+  for (const staff of DEMO_STAFF_ACCOUNTS) add(staff.slug, staff.name, staff.role);
+  return { users, consentRecords, credentials, twoFactors, accounts };
 }
 
 function round5(x: number): number {

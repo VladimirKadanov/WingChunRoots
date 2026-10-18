@@ -22,7 +22,8 @@ import {
   runBootstrap,
   throwawayDatabaseName,
 } from './admin';
-import { type DbRole, loadDotEnv, ROLE_PASSWORD_ENV, rolePassword, roleUrl, withDatabase } from './env';
+import { loadDotEnv } from './dotenv';
+import { type DbRole, ROLE_PASSWORD_ENV, rolePassword, roleUrl, withDatabase } from './env';
 import { seedDatabase, type SeedResult } from './seed';
 
 /** Same image and digest as docker-compose.yml and CI (scripts/verify.d/M01.sh compares them). */

@@ -7,6 +7,7 @@
 import { sql } from 'drizzle-orm';
 import { check, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import {
   deletedAt,
   idColumn,
@@ -59,7 +60,7 @@ export const school = pgTable(
     websiteUrl: text('website_url'),
     // DEFAULT D17: changes only when the school is edited or confirmed, never on sign-in.
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
-    createdByUserId: uuid('created_by_user_id'),
+    createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     ...timestamps(),
     deletedAt: deletedAt(),
   },
@@ -67,6 +68,7 @@ export const school = pgTable(
     uniqueIndex('school_slug_key').on(t.slug),
     index('school_place_id_idx').on(t.placeId),
     index('school_status_idx').on(t.status),
+    index('school_created_by_user_id_idx').on(t.createdByUserId),
     index('school_public_point_gist_idx').using('gist', t.publicPoint),
     check('school_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
     check('school_location_privacy_check', inList(t.locationPrivacy.name, LOCATION_PRIVACIES)),

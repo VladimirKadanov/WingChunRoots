@@ -9,11 +9,12 @@ import { fromDrizzle, type PgBoss, type SendOptions } from 'pg-boss';
 import type { Database } from '../db';
 import { emailDelivery } from '../db/schema';
 import { checkAddress, checkIdempotencyKey, checkSameEmail } from '../mail/mailer';
+import { seal, unseal } from '../mail/seal';
 import type { SendInput } from '../mail/types';
 import { EMAIL_TEMPLATES, type EmailTemplateName, isEmailTemplateName, TemplateDataError } from '../templates/email';
 import type { EmailTemplate } from '../templates/email/types';
 import { getProducer } from './boss';
-import { type JobData, QUEUE, type QueueName } from './queues';
+import { type EmailSendJob, type JobData, QUEUE, type QueueName } from './queues';
 
 /** A Drizzle transaction on the app_rw database. */
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -31,6 +32,31 @@ export async function enqueue<Q extends QueueName>(
 ): Promise<string | null> {
   const producer = boss ?? (await getProducer());
   return producer.send(queue, data as object, { ...options, db: fromDrizzle(tx, sql) });
+}
+
+/**
+ * The email.send payload: the template data without its secret fields, which travel sealed for
+ * this delivery (src/server/mail/seal.ts), so pgboss.job never holds a token in clear.
+ */
+export function jobPayload(deliveryId: string, template: EmailTemplateName, data: unknown): EmailSendJob {
+  const secretFields = (EMAIL_TEMPLATES[template] as EmailTemplate<unknown>).secretFields ?? [];
+  if (secretFields.length === 0 || data === null || typeof data !== 'object') return { deliveryId, data };
+  const open: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+  const secret: Record<string, unknown> = {};
+  for (const field of secretFields) {
+    if (field in open) {
+      secret[field] = open[field];
+      delete open[field];
+    }
+  }
+  return { deliveryId, data: open, sealed: seal(secret, deliveryId) };
+}
+
+/** The template data of a job: its open fields and, when sealed, the secret ones. Throws SealError. */
+export function jobTemplateData(job: EmailSendJob): unknown {
+  if (!job.sealed) return job.data;
+  const open = job.data && typeof job.data === 'object' ? (job.data as Record<string, unknown>) : {};
+  return { ...open, ...unseal(job.sealed, job.deliveryId) };
 }
 
 export interface QueuedEmail {
@@ -70,6 +96,6 @@ export async function queueEmail<N extends EmailTemplateName>(
     checkSameEmail(existing, { to, template: input.template });
     return { deliveryId: existing.id, queued: false };
   }
-  await enqueue(tx, QUEUE.emailSend, { deliveryId: created.id, data }, {}, boss);
+  await enqueue(tx, QUEUE.emailSend, jobPayload(created.id, input.template, data), {}, boss);
   return { deliveryId: created.id, queued: true };
 }

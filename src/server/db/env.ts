@@ -7,8 +7,6 @@
 //                      by scripts/db-bootstrap.sh. The application connects as app_rw and
 //                      app_public_ro to the host and database of DATABASE_URL.
 
-import { existsSync } from 'node:fs';
-
 export type DbRole = 'migrator' | 'app_rw' | 'app_public_ro';
 
 export const ROLE_PASSWORD_ENV: Record<DbRole, string> = {
@@ -18,11 +16,6 @@ export const ROLE_PASSWORD_ENV: Record<DbRole, string> = {
 };
 
 type Env = Record<string, string | undefined>;
-
-/** Loads .env from the current directory for the CLI scripts; the environment always wins. */
-export function loadDotEnv(path = '.env'): void {
-  if (existsSync(path)) process.loadEnvFile(path);
-}
 
 function parse(url: string): URL {
   try {
@@ -109,14 +102,14 @@ export function assertNotProduction(command: string, env: Env = process.env): vo
 }
 
 /**
- * db:reset only runs against a local database or TEST_DATABASE_URL, and never with
- * NODE_ENV=production (milestone M01, In scope 1).
+ * db:reset and db:seed (which empties every application table first) only run against a local
+ * database or TEST_DATABASE_URL, and never with NODE_ENV=production (milestone M01, In scope 1).
  */
-export function assertSafeToReset(url: string, env: Env = process.env): void {
-  assertNotProduction('db:reset', env);
+export function assertSafeToReset(url: string, env: Env = process.env, command = 'db:reset'): void {
+  assertNotProduction(command, env);
   const isTestDatabase = !!env.TEST_DATABASE_URL && sameDatabase(url, env.TEST_DATABASE_URL);
   if (!isLocalHost(url) && !isTestDatabase) {
-    throw new Error(`db:reset refuses a database that is neither local nor TEST_DATABASE_URL: ${redactUrl(url)}`);
+    throw new Error(`${command} refuses a database that is neither local nor TEST_DATABASE_URL: ${redactUrl(url)}`);
   }
 }
 

@@ -33,6 +33,25 @@
     }
   }
 
+  /* While the on-screen keyboard is up (FocusInView in the app shell sets `data-keyboard`: a
+     text field of the page has focus and the window got shorter), a webview that resizes for it
+     (Android adjustResize, Chrome with interactive-widget=resizes-content in layout.tsx) would
+     carry the fixed tab bar up over the form's button: on a touch phone the bar steps aside. */
+  @media (width < 48rem) and (pointer: coarse) {
+    html[data-keyboard] {
+      --tab-clear: env(safe-area-inset-bottom, 0px);
+    }
+    /* It comes back a moment after the field loses focus, so the press that took the focus away
+       (on a box or a button where the bar will be) lands on that control, not on the bar. */
+    [data-tab-bar] {
+      transition: visibility 0s linear 300ms;
+    }
+    html[data-keyboard] [data-tab-bar] {
+      visibility: hidden;
+      transition-delay: 0s;
+    }
+  }
+
   body {
     min-height: 100dvh;
     background: var(--bg);
@@ -155,6 +174,13 @@
   }
   .link:hover {
     text-decoration-color: currentColor;
+  }
+  /* A link inside a sentence on a touch screen: a hit area about 44 px tall. Vertical padding of
+     an inline box grows what a tap hits without moving a line (plan §5.8 (b), CLAUDE.md §10). */
+  @media (pointer: coarse) {
+    .link:where(:not(.inline-flex, .flex, .block, .grid)) {
+      padding-block: 0.75rem;
+    }
   }
 }
 

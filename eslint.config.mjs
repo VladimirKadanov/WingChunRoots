@@ -47,6 +47,16 @@ const modulePackages = [
     group: ['react-email', 'react-email/*', '@react-email/*'],
     message: 'E-mail templates live only in src/server/templates/email (CLAUDE.md §2).',
   },
+  {
+    module: 'src/server/auth',
+    group: ['better-auth', 'better-auth/*', '@better-auth/*'],
+    message: 'Only src/server/auth talks to Better Auth: use its guards, session and web helpers (milestone M02).',
+  },
+  {
+    module: 'src/server/rpc',
+    group: ['@orpc/*'],
+    message: 'Only src/server/rpc builds the oRPC router and handlers; Server Actions call serverClient() (plan §6.8).',
+  },
 ];
 
 /**
@@ -95,6 +105,22 @@ const noLayoutInRequestPath = {
   message:
     'Layouts run in the Web Worker (src/components/lineage/useLayoutWorker.ts) or in a background job, never in a page bundle or the request path (plan §4.1). Types, presets and ranks may be imported.',
 };
+
+// Routes and components (src/app, src/components) never touch the database, the queue or the mailer:
+// they go through src/server/services (plan §6.1). Every block for those folders spreads these, since
+// a later block replaces the rule of an earlier one for the same files.
+const routeBans = [
+  {
+    group: ['@/server/db', '@/server/db/*', '**/server/db', '**/server/db/*'],
+    message: 'Routes and components never touch the database: go through src/server/services (plan §6.1).',
+  },
+  {
+    group: ['@/server/jobs', '@/server/jobs/*', '**/server/jobs', '**/server/jobs/*', '@/server/mail', '@/server/mail/*', '**/server/mail', '**/server/mail/*'],
+    message: 'Routes and components never queue jobs or send e-mail: go through src/server/services (plan §6.1).',
+  },
+  elkOnlyInLayoutModule,
+  noLayoutInRequestPath,
+];
 
 // Browser and DOM globals that src/lib/lineage-layout must not use (plan §6.1). Only
 // *.worker.ts files are exempt, so layout.worker.ts may use `self` and `postMessage`.
@@ -165,31 +191,25 @@ export default defineConfig([
   {
     files: ['src/app/**/*.{ts,tsx}', 'src/components/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': restrictImports([
-        {
-          group: ['@/server/db', '@/server/db/*', '**/server/db', '**/server/db/*'],
-          message: 'Routes and components never touch the database: go through src/server/services (plan §6.1).',
-        },
-        {
-          group: ['@/server/jobs', '@/server/jobs/*', '**/server/jobs', '**/server/jobs/*', '@/server/mail', '@/server/mail/*', '**/server/mail', '**/server/mail/*'],
-          message: 'Routes and components never queue jobs or send e-mail: go through src/server/services (plan §6.1).',
-        },
-        elkOnlyInLayoutModule,
-        noLayoutInRequestPath,
-        baseUiOnlyInUi,
-      ]),
+      'no-restricted-imports': restrictImports([...routeBans, baseUiOnlyInUi]),
     },
   },
   {
     files: ['src/components/ui/**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath]),
+      'no-restricted-imports': restrictImports(routeBans),
     },
   },
   {
-    files: ['src/components/shell/**/*.{ts,tsx}', 'src/components/home/**/*.{ts,tsx}', 'src/components/ink/**/*.{ts,tsx}'],
+    // The account forms (M02) are client islands too: they use button-variants.ts, not the Button.
+    files: [
+      'src/components/shell/**/*.{ts,tsx}',
+      'src/components/home/**/*.{ts,tsx}',
+      'src/components/ink/**/*.{ts,tsx}',
+      'src/components/account/**/*.{ts,tsx}',
+    ],
     rules: {
-      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath, baseUiOnlyInUi, noTailwindMerge]),
+      'no-restricted-imports': restrictImports([...routeBans, baseUiOnlyInUi, noTailwindMerge]),
     },
   },
   {
@@ -219,6 +239,26 @@ export default defineConfig([
       ),
     },
   })),
+  {
+    // src/server/auth/test-support.ts sets throwaway secrets and drives the auth endpoints for the
+    // integration tests: no module of the app may import it, only tests.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}'],
+    rules: {
+      'import/no-restricted-paths': [
+        'error',
+        {
+          zones: [
+            {
+              target: './src',
+              from: './src/server/auth/test-support.ts',
+              message: 'Only tests import src/server/auth/test-support.ts (it sets throwaway secrets).',
+            },
+          ],
+        },
+      ],
+    },
+  },
   {
     // layout.worker.ts may use worker globals (plan §4.1), but the import bans apply to it too.
     files: ['src/lib/lineage-layout/**/*.{ts,tsx}'],

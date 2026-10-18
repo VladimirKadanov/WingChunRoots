@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { openMailbox } from '../../../e2e/helpers/mailbox';
 import { repoRoot } from '../db/admin';
-import { loadDotEnv } from '../db/env';
+import { loadDotEnv } from '../db/dotenv';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { createTransportFromConfig, mailConfig } from '../mail';
 import { queueEmail } from './outbox';

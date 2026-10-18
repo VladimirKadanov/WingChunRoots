@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { EMAIL_TEMPLATES, renderEmail, TemplateDataError, type NameData } from './email';
+import { EMAIL_TEMPLATES, type EmailTemplate, renderEmail, TemplateDataError, type NameData } from './email';
 import { NOTIFICATION_TEMPLATES, NotificationDataError, renderNotification } from './notifications';
 
 // What a missing or mistyped variable leaves behind in the output.
@@ -34,7 +34,7 @@ const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
 describe('e-mail templates', () => {
-  const entries = Object.entries(EMAIL_TEMPLATES);
+  const entries = Object.entries(EMAIL_TEMPLATES) as [keyof typeof EMAIL_TEMPLATES, EmailTemplate<unknown>][];
 
   it('the registry is not empty and every key is the template name', () => {
     expect(entries.length).toBeGreaterThan(0);
@@ -70,6 +70,11 @@ describe('e-mail templates', () => {
       it('parses its own sample data unchanged', () => {
         expect(template.parse(template.sample)).toEqual(template.sample);
       });
+
+      it('parses its parsed data to the same value (the outbox stores parsed data; the worker parses it again)', () => {
+        const once = template.parse(template.sample);
+        expect(template.parse(JSON.parse(JSON.stringify(once)))).toStrictEqual(once);
+      });
     });
   }
 
@@ -86,7 +91,7 @@ describe('e-mail templates', () => {
   });
 
   it('mail-check without recipient names greets without a name (pnpm mail:check without --name)', async () => {
-    expect(EMAIL_TEMPLATES['mail-check'].parse({})).toEqual({ recipientNames: [] });
+    expect(EMAIL_TEMPLATES['mail-check'].parse({})).toStrictEqual({});
     const { text, html } = await renderEmail('mail-check', {});
     expect(text).toContain('Hello,');
     expect(html).not.toContain('translate="no"');
@@ -97,6 +102,47 @@ describe('e-mail templates', () => {
     expect(html).not.toContain('<b>Student</b>');
     expect(html).toContain('Demo &lt;b&gt;Student&lt;/b&gt;');
   });
+});
+
+describe('account e-mails (M02)', () => {
+  const cases = [
+    { name: 'verify-email', path: '/verify-email', subject: /Confirm your e-mail address/ },
+    { name: 'reset-password', path: '/reset-password', subject: /Reset your WingChunRoots password/ },
+    { name: 'finish-sign-up', path: '/reset-password', subject: /Finish creating your WingChunRoots account/ },
+  ] as const;
+
+  for (const { name, path, subject } of cases) {
+    describe(name, () => {
+      const url = `http://127.0.0.1:3100${path}?token=demo-token-123`;
+
+      it('without names (before onboarding) parses to data that parses again', () => {
+        const once = EMAIL_TEMPLATES[name].parse({ url, expiresInHours: 1 });
+        expect(once).toStrictEqual({ url, expiresInHours: 1 });
+        expect(EMAIL_TEMPLATES[name].parse(JSON.parse(JSON.stringify(once)))).toStrictEqual(once);
+      });
+
+      it('shows the link as a button and as text, and how long it works, without a name before onboarding', async () => {
+        const email = await renderEmail(name, { url, expiresInHours: 1 });
+        expect(email.subject).toMatch(subject);
+        expect(email.html).toContain(`href="${url.replaceAll('&', '&amp;')}"`);
+        expect(email.text).toContain(url);
+        expect(email.text).toContain('Hello,');
+        expect(email.text).toContain('1 hour ');
+        expect(email.html).not.toContain('translate="no"');
+      });
+
+      it('refuses a link to another page, without a token or not over http(s), and odd lifetimes', async () => {
+        await expect(renderEmail(name, { url: 'http://127.0.0.1:3100/elsewhere?token=x', expiresInHours: 1 })).rejects.toThrow(
+          new RegExp(`point at ${path}`),
+        );
+        await expect(renderEmail(name, { url: `http://127.0.0.1:3100${path}`, expiresInHours: 1 })).rejects.toThrow(/with a token/);
+        await expect(renderEmail(name, { url: `javascript:alert(1)//${path}?token=x`, expiresInHours: 1 })).rejects.toThrow(/http\(s\)/);
+        await expect(renderEmail(name, { url, expiresInHours: 0 })).rejects.toThrow(/hours/);
+        await expect(renderEmail(name, { url, expiresInHours: 1.5 })).rejects.toThrow(/hours/);
+        await expect(renderEmail(name, { url })).rejects.toBeInstanceOf(TemplateDataError);
+      });
+    });
+  }
 });
 
 describe('notification templates', () => {
@@ -123,5 +169,36 @@ describe('notification templates', () => {
 
   it('refuses an unknown template', () => {
     expect(() => renderNotification('no-such-template', {})).toThrow(NotificationDataError);
+  });
+});
+
+describe('account-exists (M02)', () => {
+  const data = { signInUrl: 'http://127.0.0.1:3100/sign-in', resetUrl: 'http://127.0.0.1:3100/reset-password' };
+
+  it('links to sign-in and to a new password, with no token', async () => {
+    const email = await renderEmail('account-exists', data);
+    expect(email.subject).toBe('You already have a WingChunRoots account');
+    expect(email.html).toContain('href="http://127.0.0.1:3100/sign-in"');
+    expect(email.html).toContain('href="http://127.0.0.1:3100/reset-password"');
+    expect(email.text).toContain('nothing was changed');
+  });
+
+  it('refuses links elsewhere, with a query or not over http(s)', async () => {
+    await expect(renderEmail('account-exists', { ...data, signInUrl: 'http://127.0.0.1:3100/account' })).rejects.toThrow(/point at \/sign-in/);
+    await expect(renderEmail('account-exists', { ...data, resetUrl: 'http://127.0.0.1:3100/reset-password?token=x' })).rejects.toThrow(
+      /point at \/reset-password/,
+    );
+    await expect(renderEmail('account-exists', { ...data, signInUrl: 'javascript:alert(1)//sign-in' })).rejects.toThrow(/http\(s\)/);
+  });
+});
+
+describe('secret fields (M02 fix round 1)', () => {
+  it('every template whose data carries a token declares it secret, so the outbox seals it', () => {
+    for (const [name, template] of Object.entries(EMAIL_TEMPLATES) as [string, EmailTemplate<unknown>][]) {
+      const tokenFields = Object.entries(template.sample as Record<string, unknown>)
+        .filter(([, value]) => typeof value === 'string' && /[?&]token=/.test(value))
+        .map(([field]) => field);
+      expect(template.secretFields ?? [], name).toEqual(tokenFields);
+    }
   });
 });

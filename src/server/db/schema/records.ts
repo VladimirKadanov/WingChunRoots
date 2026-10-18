@@ -3,6 +3,7 @@
 import { sql } from 'drizzle-orm';
 import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import { CONSENT_ACTIONS, CONSENT_KINDS, EMAIL_STATUSES, idColumn, inList, timestamps } from './common';
 
 /** Consent given or withdrawn: kind, document version, time and who (plan §6.2). */
@@ -10,7 +11,9 @@ export const consentRecord = pgTable(
   'consent_record',
   {
     id: idColumn(),
-    userId: uuid('user_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'restrict' }),
     kind: text('kind', { enum: CONSENT_KINDS }).notNull(),
     documentVersion: text('document_version').notNull(),
     action: text('action', { enum: CONSENT_ACTIONS }).notNull(),
@@ -29,7 +32,9 @@ export const notification = pgTable(
   'notification',
   {
     id: idColumn(),
-    userId: uuid('user_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
     template: text('template').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     readAt: timestamp('read_at', { withTimezone: true }),
@@ -48,7 +53,7 @@ export const emailDelivery = pgTable(
   'email_delivery',
   {
     id: idColumn(),
-    userId: uuid('user_id'),
+    userId: uuid('user_id').references(() => authUser.id, { onDelete: 'set null' }),
     toEmail: text('to_email'),
     template: text('template').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
@@ -64,6 +69,7 @@ export const emailDelivery = pgTable(
     uniqueIndex('email_delivery_idempotency_key_key').on(t.idempotencyKey),
     index('email_delivery_status_idx').on(t.status),
     index('email_delivery_created_at_idx').on(t.createdAt),
+    index('email_delivery_user_id_idx').on(t.userId, t.createdAt),
     check('email_delivery_status_check', inList(t.status.name, EMAIL_STATUSES)),
     check('email_delivery_attempts_check', sql`${t.attempts} >= 0`),
     check('email_delivery_queued_has_address', sql`${t.status} <> 'queued' OR ${t.toEmail} IS NOT NULL`),

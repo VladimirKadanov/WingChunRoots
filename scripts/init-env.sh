@@ -2,7 +2,7 @@
 # Creates .env for local development from .env.example (plan §7.7): local-only random
 # passwords and keys, default ports, and the database URLs that match docker-compose.yml.
 # Never overwrites an existing .env unless --force is given; it only appends the role passwords
-# (M01) and MAIL_TRANSPORT (M01b) when an older .env lacks them.
+# (M01), MAIL_TRANSPORT (M01b) and the account settings (M02) when an older .env lacks them.
 #
 # Usage: scripts/init-env.sh [--force]
 set -euo pipefail
@@ -30,6 +30,16 @@ db_app_public_ro_password="$(random_hex 16)"
 s3_access_key="wcr$(random_hex 8)"
 s3_secret_key="$(random_hex 20)"
 
+# Accounts (M02): the Better Auth secret, the ip_hmac key, the key that seals the links of account
+# e-mails in the job queue, and the test-only credentials of the seeded demo accounts. The TOTP
+# secret is 40 hex characters (160 random bits, RFC 4226), the string Better Auth stores; an
+# authenticator app takes the base32 encoding of its bytes (admin guide).
+better_auth_secret="$(random_hex 32)"
+ip_hmac_key="$(random_hex 32)"
+mail_seal_key="$(random_hex 32)"
+e2e_password="wcr-$(random_hex 12)"
+e2e_totp_secret="$(random_hex 20)"
+
 # Portable lookup (macOS ships bash 3.2, which has no associative arrays).
 value_for() {
   case "$1" in
@@ -51,6 +61,12 @@ value_for() {
     S3_BUCKET_EVIDENCE) echo wcr-evidence ;;
     S3_BUCKET_MEDIA) echo wcr-media ;;
     E2E_PORT) echo 3100 ;;
+    APP_URL) echo http://localhost:3000 ;;
+    BETTER_AUTH_SECRET) echo "$better_auth_secret" ;;
+    IP_HMAC_KEY) echo "$ip_hmac_key" ;;
+    MAIL_SEAL_KEY) echo "$mail_seal_key" ;;
+    E2E_PASSWORD) echo "$e2e_password" ;;
+    E2E_TOTP_SECRET) echo "$e2e_totp_secret" ;;
     *) return 1 ;;
   esac
 }
@@ -59,10 +75,11 @@ umask 077
 
 # An existing .env is kept. Variables added to .env.example since it was written, and whose
 # value depends on nothing else in it (the database role passwords of M01, the mail transport of
-# M01b), are appended.
+# M01b, the account settings of M02), are appended.
 if [ -f .env ] && [ "${1:-}" != "--force" ]; then
   added=()
-  for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD MAIL_TRANSPORT; do
+  for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD MAIL_TRANSPORT \
+    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
     if grep -q "^${name}=$" .env.example && ! grep -q "^${name}=" .env; then
       # Keep the last existing line intact when the file does not end with a newline.
       [ -z "$(tail -c 1 .env)" ] || echo >> .env

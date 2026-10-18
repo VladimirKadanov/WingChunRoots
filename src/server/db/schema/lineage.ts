@@ -17,6 +17,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import {
   ACTIVE_RELATIONSHIP_STATUSES,
   DATE_PRECISIONS,
@@ -70,8 +71,8 @@ export const teachingRelationship = pgTable(
     isDisplayPrimary: boolean('is_display_primary').notNull().default(false),
     // DEFAULT D03: private to the people involved and the reviewers until verified.
     visibility: text('visibility', { enum: VISIBILITIES }).notNull().default('involved_only'),
-    requestedByUserId: uuid('requested_by_user_id'),
-    confirmedByUserId: uuid('confirmed_by_user_id'),
+    requestedByUserId: uuid('requested_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
+    confirmedByUserId: uuid('confirmed_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     statusReason: text('status_reason'),
     ...timestamps(),
@@ -103,6 +104,8 @@ export const teachingRelationship = pgTable(
       sql`NOT ${t.isDisplayPrimary} OR ${inList(t.status.name, PUBLISHABLE_RELATIONSHIP_STATUSES)}`,
     ),
     index('teaching_relationship_lineage_id_idx').on(t.lineageId),
+    index('teaching_relationship_requested_by_user_id_idx').on(t.requestedByUserId),
+    index('teaching_relationship_confirmed_by_user_id_idx').on(t.confirmedByUserId),
     // The covering indexes (student|teacher) INCLUDE (...) are created in the custom migration
     // drizzle/*_roles_views_audit: Drizzle's index builder has no INCLUDE clause.
   ],
@@ -153,13 +156,14 @@ export const relationshipEvent = pgTable(
       .references(() => teachingRelationship.id, { onDelete: 'restrict' }),
     fromStatus: text('from_status', { enum: RELATIONSHIP_STATUSES }),
     toStatus: text('to_status', { enum: RELATIONSHIP_STATUSES }).notNull(),
-    actorUserId: uuid('actor_user_id'),
+    actorUserId: uuid('actor_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     actorRole: text('actor_role'),
     reason: text('reason'),
     ...timestamps(),
   },
   (t) => [
     index('relationship_event_relationship_id_idx').on(t.relationshipId, t.createdAt),
+    index('relationship_event_actor_user_id_idx').on(t.actorUserId),
     check(
       'relationship_event_from_status_check',
       sql`${t.fromStatus} IS NULL OR ${inList(t.fromStatus.name, RELATIONSHIP_STATUSES)}`,

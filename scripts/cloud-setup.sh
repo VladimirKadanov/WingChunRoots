@@ -11,8 +11,9 @@
 #   4. never installs browsers: if the pinned Playwright expects a different
 #      Chromium build than the preinstalled one, it sets PW_CHROMIUM_EXECUTABLE;
 #   5. exports TEST_DATABASE_URL, the role passwords DB_MIGRATOR_PASSWORD, DB_APP_RW_PASSWORD
-#      and DB_APP_PUBLIC_RO_PASSWORD, NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE to
-#      $CLAUDE_ENV_FILE (SessionStart hook) and prints them as `export` lines;
+#      and DB_APP_PUBLIC_RO_PASSWORD, the account settings BETTER_AUTH_SECRET, IP_HMAC_KEY,
+#      MAIL_SEAL_KEY, E2E_PASSWORD and E2E_TOTP_SECRET (M02), NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE
+#      to $CLAUDE_ENV_FILE (SessionStart hook) and prints them as `export` lines;
 #   6. bootstraps the roles migrator, app_rw and app_public_ro and the test database with
 #      scripts/db-bootstrap.sh (from M01; plan §6.2).
 #
@@ -49,6 +50,39 @@ export DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD
 
 log() { printf '[cloud-setup] %s\n' "$*" >&2; }
 
+# Throwaway account settings of this sandbox (M02): random, generated once and kept outside the
+# repository, so that every shell of the session sees the same values (the seeded TOTP secrets are
+# encrypted with BETTER_AUTH_SECRET). Never real secrets: the sandbox has no real users or services.
+CLOUD_SECRETS_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/wingchunroots/cloud-secrets.env"
+random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+new_secret() {
+  case "$1" in
+    E2E_PASSWORD) echo "wcr-$(random_hex 12)" ;;
+    # The TOTP secret string Better Auth stores (hex, like the tests' own accounts).
+    E2E_TOTP_SECRET) random_hex 20 ;;
+    *) random_hex 32 ;;
+  esac
+}
+cloud_secret() {
+  if [ ! -s "$CLOUD_SECRETS_FILE" ]; then
+    local tmp name
+    mkdir -p "$(dirname "$CLOUD_SECRETS_FILE")"
+    tmp="$(mktemp "${CLOUD_SECRETS_FILE}.XXXXXX")"
+    for name in BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+      echo "${name}=$(new_secret "$name")"
+    done > "$tmp"
+    chmod 600 "$tmp"
+    # No clobber: when two sessions race, the first file wins and both read it below.
+    mv -n "$tmp" "$CLOUD_SECRETS_FILE"
+    rm -f "$tmp"
+  fi
+  # A setting added after the file was written (MAIL_SEAL_KEY in M02 fix round 1) is appended.
+  if ! grep -q "^$1=" "$CLOUD_SECRETS_FILE"; then
+    echo "$1=$(new_secret "$1")" >> "$CLOUD_SECRETS_FILE"
+  fi
+  sed -n "s/^$1=//p" "$CLOUD_SECRETS_FILE"
+}
+
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
 }
@@ -69,6 +103,10 @@ print_base_env() {
   echo "export NEXT_TELEMETRY_DISABLED=1"
   # No Docker here, so no Mailpit: the worker writes e-mail to files (M01b).
   echo "export MAIL_TRANSPORT=file"
+  local name
+  for name in BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+    echo "export ${name}='${!name:-$(cloud_secret "$name")}'"
+  done
 }
 
 # Needs node_modules (it asks the pinned Playwright which Chromium build it expects).

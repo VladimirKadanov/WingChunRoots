@@ -26,6 +26,11 @@ export interface EmailTemplate<Data> {
   render(data: Data): ReactElement;
   /** Fictional example data (D20) for the tests and for previews. */
   readonly sample: Data;
+  /**
+   * Fields that carry a secret (the token in an account link). The outbox stores them sealed in the
+   * job, never in clear (src/server/mail/seal.ts); the worker opens them before rendering.
+   */
+  readonly secretFields?: readonly string[];
 }
 
 /** Data that a template cannot render. Permanent: retrying cannot fix it. */
@@ -67,4 +72,55 @@ export function parseObject(template: string, data: unknown): Record<string, unk
     throw new TemplateDataError(template, 'data must be an object');
   }
   return data as Record<string, unknown>;
+}
+
+const MAX_URL_LENGTH = 2048;
+
+/**
+ * Checks the link of an account e-mail (M02): an absolute http(s) URL to `path` with a `token`
+ * query parameter, built by src/server/auth/emails.ts from APP_URL.
+ */
+export function parseActionUrl(template: string, field: string, value: unknown, path: string): string {
+  if (typeof value !== 'string' || value.length > MAX_URL_LENGTH) throw new TemplateDataError(template, `${field} must be a URL`);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TemplateDataError(template, `${field} must be a URL`);
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new TemplateDataError(template, `${field} must be an http(s) URL`);
+  if (url.pathname !== path || !url.searchParams.get('token')) {
+    throw new TemplateDataError(template, `${field} must point at ${path} with a token`);
+  }
+  return value;
+}
+
+/** Checks a plain link to a page of the app (no token): an absolute http(s) URL to `path`. */
+export function parseAppUrl(template: string, field: string, value: unknown, path: string): string {
+  if (typeof value !== 'string' || value.length > MAX_URL_LENGTH) throw new TemplateDataError(template, `${field} must be a URL`);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TemplateDataError(template, `${field} must be a URL`);
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new TemplateDataError(template, `${field} must be an http(s) URL`);
+  if (url.pathname !== path || url.search || url.hash) throw new TemplateDataError(template, `${field} must point at ${path}`);
+  return value;
+}
+
+/** A whole number of hours from 1 to 168, for "this link works for N hours". */
+export function parseHours(template: string, field: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 168) {
+    throw new TemplateDataError(template, `${field} must be a whole number of hours from 1 to 168`);
+  }
+  return value;
+}
+
+/**
+ * Optional names of the recipient (see parseNames): `{}` when absent, so that the parsed data,
+ * which the outbox stores in the job, parses again to the same value in the worker.
+ */
+export function parseOptionalNames(template: string, field: string, value: unknown): { recipientNames?: NameData[] } {
+  return value === undefined ? {} : { recipientNames: parseNames(template, field, value) };
 }

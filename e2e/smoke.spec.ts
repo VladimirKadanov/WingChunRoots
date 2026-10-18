@@ -5,8 +5,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { THEME_COLOR } from '../src/design/theme';
 import { THEME_COOKIE } from '../src/design/tokens';
+import { closeHelpers, signInForRoute } from './helpers/auth';
 import { expectNoAxeViolations, openInTheme, resolvedTheme } from './helpers/ui';
 import { ROUTES, THEMES } from './routes';
+
+test.afterAll(closeHelpers);
 
 test('@smoke home page responds with 200 and has no axe violations', async ({ page }) => {
   const response = await page.goto('/');
@@ -115,6 +118,7 @@ test.describe('@M00b phone layout', () => {
     const bottom = PHONE.height - (emulated ? insets.bottom : 0);
 
     for (const route of ROUTES) {
+      await signInForRoute(page, route);
       const response = await page.goto(route.path);
       expect(response?.status(), route.path).toBe(route.status);
       await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
@@ -217,6 +221,7 @@ test('@M00b fonts are self-hosted (no requests to fonts.googleapis.com or fonts.
   const origin = new URL(baseURL!).origin;
 
   for (const route of ROUTES) {
+    await signInForRoute(page, route);
     await page.goto(route.path);
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
     const loaded = await page.evaluate(() =>

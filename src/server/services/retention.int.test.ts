@@ -1,5 +1,6 @@
-// The retention job of M01b (docs/data-model.md §7): e-mail addresses are erased when their period
-// is over, and only then. Runs as app_rw, like the worker.
+// The retention job of M01b and M02 (docs/data-model.md §7): e-mail addresses are erased when their
+// period is over, and expired sessions and verification values are deleted, and only then. Runs as
+// app_rw, like the worker.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -8,7 +9,7 @@ import { withClient } from '../db/admin';
 import { rolePassword } from '../db/env';
 import { PG, pgError, rows } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
-import { purgeExpiredEmailAddresses } from './retention';
+import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from './retention';
 
 let testDb: TestDatabase;
 let db: Database;
@@ -105,5 +106,76 @@ describe('purgeExpiredEmailAddresses', () => {
       expect(pending.code).toBe(PG.checkViolation);
       expect(pending.constraint).toBe('invitation_pending_has_email');
     });
+  });
+});
+
+describe('purgeExpiredSessions', () => {
+  it('deletes expired sessions and verification values and keeps the current ones', async () => {
+    await withClient(testDb.url, async (c) => {
+      const [{ id: userId }] = (
+        await c.query<{ id: string }>(`INSERT INTO auth_user (email, email_verified) VALUES ('demo-retention@example.test', true) RETURNING id`)
+      ).rows as [{ id: string }];
+      await c.query(
+        `INSERT INTO auth_session (token, user_id, expires_at, ip_address) VALUES
+           ('expired-1', $1, now() - interval '1 minute', $2),
+           ('expired-2', $1, now() - interval '30 days', NULL),
+           ('current',   $1, now() + interval '7 days', $2)`,
+        [userId, hash(7)],
+      );
+      await c.query(`
+        INSERT INTO auth_verification (identifier, value, expires_at) VALUES
+          ('expired-token', 'demo', now() - interval '1 hour'),
+          ('current-token', 'demo', now() + interval '1 hour')`);
+      await c.query(`
+        INSERT INTO auth_throttle (key, count, expires_at) VALUES
+          ('sign-in:expired', 3, now() - interval '1 second'),
+          ('sign-in:current', 3, now() + interval '15 minutes')`);
+    });
+
+    expect(await purgeExpiredSessions(db, { batchSize: 1 })).toEqual({ sessions: 2, verifications: 1, throttles: 1 });
+    expect(await purgeExpiredSessions(db)).toEqual({ sessions: 0, verifications: 0, throttles: 0 });
+    await withClient(testDb.url, async (c) => {
+      expect(await rows(c, `SELECT token FROM auth_session ORDER BY token`)).toEqual([{ token: 'current' }]);
+      expect(await rows(c, `SELECT identifier FROM auth_verification ORDER BY identifier`)).toEqual([{ identifier: 'current-token' }]);
+      expect(await rows(c, `SELECT key FROM auth_throttle ORDER BY key`)).toEqual([{ key: 'sign-in:current' }]);
+    });
+    await expect(purgeExpiredSessions(db, { batchSize: 0 })).rejects.toThrow(/batchSize/);
+  });
+});
+
+describe('purgeUnconfirmedAccounts', () => {
+  it('deletes accounts unconfirmed for 7 days with their consents, and keeps confirmed, recent and referred-to ones', async () => {
+    const ids = await withClient(testDb.url, async (c) => {
+      const insert = async (email: string, verified: boolean, age: string) =>
+        (
+          (
+            await c.query<{ id: string }>(
+              `INSERT INTO auth_user (email, email_verified, created_at) VALUES ($1, $2, now() - $3::interval) RETURNING id`,
+              [email, verified, age],
+            )
+          ).rows[0] as { id: string }
+        ).id;
+      const old1 = await insert('demo-unconfirmed-old-1@example.test', false, '8 days');
+      const old2 = await insert('demo-unconfirmed-old-2@example.test', false, '8 days');
+      const referred = await insert('demo-unconfirmed-referred@example.test', false, '8 days');
+      const recent = await insert('demo-unconfirmed-recent@example.test', false, '6 days');
+      const confirmed = await insert('demo-confirmed-old@example.test', true, '30 days');
+      for (const id of [old1, old2, referred, recent, confirmed]) {
+        await c.query(`INSERT INTO consent_record (user_id, kind, document_version, action) VALUES ($1, 'terms', 'demo-v1', 'granted')`, [id]);
+        await c.query(`INSERT INTO auth_account (user_id, provider_id, account_id) VALUES ($1, 'credential', $2)`, [id, id]);
+      }
+      await c.query(`INSERT INTO person (slug, kind, created_by_user_id) VALUES ('demo-retention-referred', 'living', $1)`, [referred]);
+      return { old1, old2, referred, recent, confirmed };
+    });
+
+    expect(await purgeUnconfirmedAccounts(db, { batchSize: 1 })).toEqual({ accounts: 2, kept: 1 });
+    expect(await purgeUnconfirmedAccounts(db)).toEqual({ accounts: 0, kept: 1 });
+    await withClient(testDb.url, async (c) => {
+      const left = (await rows(c, `SELECT id FROM auth_user WHERE email LIKE 'demo-%confirmed%' ORDER BY id`)).map((r) => (r as { id: string }).id);
+      expect(left.sort()).toEqual([ids.referred, ids.recent, ids.confirmed].sort());
+      expect(await rows(c, `SELECT count(*)::int AS n FROM consent_record WHERE user_id IN ($1, $2)`, [ids.old1, ids.old2])).toEqual([{ n: 0 }]);
+      expect(await rows(c, `SELECT count(*)::int AS n FROM auth_account WHERE user_id IN ($1, $2)`, [ids.old1, ids.old2])).toEqual([{ n: 0 }]);
+    });
+    await expect(purgeUnconfirmedAccounts(db, { batchSize: 0 })).rejects.toThrow(/batchSize/);
   });
 });

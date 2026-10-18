@@ -1,12 +1,14 @@
 // People and their names (plan §6.2, §5.3). A person is an archival record, separate from the
-// login account (auth_user arrives in M02): historical and unclaimed people exist without one.
-// Every *_user_id column is a uuid without a foreign key; M02 adds the foreign keys to auth_user.
+// login account (auth_user, M02): historical and unclaimed people exist without one, and an
+// account gets its own record at onboarding (stewardship = self, claimed_by_user_id).
 
 import { sql } from 'drizzle-orm';
 import { boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
+import { authUser } from './auth';
 import { reviewCase } from './evidence';
 import { teachingRelationship } from './lineage';
+import { place } from './schools';
 import {
   CLAIM_STATUSES,
   deletedAt,
@@ -37,10 +39,14 @@ export const person = pgTable(
     // DEFAULT D03: a record is private to the people involved until one of its relationships is
     // verified, or until its own claimed owner publishes it.
     visibility: text('visibility', { enum: VISIBILITIES }).notNull().default('involved_only'),
-    claimedByUserId: uuid('claimed_by_user_id'),
-    createdByUserId: uuid('created_by_user_id'),
+    claimedByUserId: uuid('claimed_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
+    createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     // ISO 3166-1 alpha-2 country of residence or activity, when known.
     countryCode: text('country_code'),
+    // City of residence or activity from the GeoNames excerpt (onboarding, M02), when known.
+    placeId: uuid('place_id').references(() => place.id, { onDelete: 'set null' }),
+    // The year this person started training, as they state it (onboarding, M02).
+    trainingStartYear: integer('training_start_year'),
     // Private and not collected in the pilot (D16); the public role never sees it.
     birthDate: date('birth_date'),
     ...timestamps(),
@@ -59,6 +65,12 @@ export const person = pgTable(
     // A self-stewarded record always belongs to an account.
     check('person_self_needs_account', sql`${t.stewardship} <> 'self' OR ${t.claimedByUserId} IS NOT NULL`),
     check('person_country_code_format', sql`${t.countryCode} IS NULL OR ${t.countryCode} ~ '^[A-Z]{2}$'`),
+    check(
+      'person_training_start_year_range',
+      sql`${t.trainingStartYear} IS NULL OR ${t.trainingStartYear} BETWEEN 1900 AND 2100`,
+    ),
+    index('person_place_id_idx').on(t.placeId),
+    index('person_created_by_user_id_idx').on(t.createdByUserId),
   ],
 );
 
@@ -154,17 +166,20 @@ export const personClaim = pgTable(
     personId: uuid('person_id')
       .notNull()
       .references(() => person.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
     status: text('status', { enum: CLAIM_STATUSES }).notNull().default('pending'),
     message: text('message'),
     reviewCaseId: uuid('review_case_id').references(() => reviewCase.id, { onDelete: 'set null' }),
-    decidedByUserId: uuid('decided_by_user_id'),
+    decidedByUserId: uuid('decided_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     ...timestamps(),
   },
   (t) => [
     index('person_claim_person_id_idx').on(t.personId),
     index('person_claim_user_id_idx').on(t.userId),
+    index('person_claim_decided_by_user_id_idx').on(t.decidedByUserId),
     uniqueIndex('person_claim_one_pending_key').on(t.personId, t.userId).where(sql`${t.status} = 'pending'`),
     check('person_claim_status_check', inList(t.status.name, CLAIM_STATUSES)),
   ],
@@ -182,7 +197,7 @@ export const invitation = pgTable(
       .notNull()
       .references(() => person.id, { onDelete: 'cascade' }),
     relationshipId: uuid('relationship_id').references(() => teachingRelationship.id, { onDelete: 'set null' }),
-    invitedByUserId: uuid('invited_by_user_id'),
+    invitedByUserId: uuid('invited_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     // Erased 30 days after the invitation ends (retention job, docs/data-model.md §7); a pending
     // invitation always has one.
     email: text('email'),
@@ -196,6 +211,7 @@ export const invitation = pgTable(
     uniqueIndex('invitation_token_hash_key').on(t.tokenHash),
     index('invitation_person_id_idx').on(t.personId),
     index('invitation_relationship_id_idx').on(t.relationshipId),
+    index('invitation_invited_by_user_id_idx').on(t.invitedByUserId),
     check('invitation_status_check', inList(t.status.name, INVITATION_STATUSES)),
     check('invitation_token_hash_format', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check('invitation_pending_has_email', sql`${t.status} <> 'pending' OR ${t.email} IS NOT NULL`),

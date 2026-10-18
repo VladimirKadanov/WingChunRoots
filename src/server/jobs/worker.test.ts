@@ -25,7 +25,11 @@ describe('retentionPurgeHandler', () => {
   it('logs the counts after a purge', async () => {
     const lines: string[] = [];
     await retentionPurgeHandler(countingDb, (line) => lines.push(line))([job(0)]);
-    expect(lines).toEqual(['retention.purge: erased 0 delivery address(es), 0 invitation address(es)']);
+    expect(lines).toEqual([
+      'retention.purge: erased 0 delivery address(es), 0 invitation address(es)',
+      'retention.purge: deleted 0 expired session(s), 0 expired verification value(s), 0 expired throttle row(s)',
+      'retention.purge: deleted 0 unconfirmed account(s), kept 0 still referred to',
+    ]);
   });
 
   it('logs a failure with its SQLSTATE only and rethrows it without the message', async () => {

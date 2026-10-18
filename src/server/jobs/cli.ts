@@ -7,7 +7,8 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import { closeDb, getDb } from '../db';
-import { assertNotProduction, loadDotEnv } from '../db/env';
+import { loadDotEnv } from '../db/dotenv';
+import { assertNotProduction } from '../db/env';
 import { stopProducer } from './boss';
 import { queueEmail } from './outbox';
 

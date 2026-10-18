@@ -108,7 +108,20 @@ export const ORGANIZATION_ROLES = ['leader', 'admin', 'member'] as const;
 export const PLAN_CODES = ['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] as const;
 export const GRANT_SOURCES = ['test_grant', 'complimentary', 'stripe'] as const;
 
+// --- Accounts (Better Auth, M02; plan §3.2) ----------------------------------------------------------
+export const USER_ROLES = ['user', 'moderator', 'archivist', 'admin'] as const;
+/** Staff roles: only for an account with two_factor_enabled (CHECK auth_user_staff_needs_2fa). */
+export const STAFF_ROLES = ['moderator', 'archivist', 'admin'] as const;
+
 // --- Consents, notifications, e-mail ------------------------------------------------------------------
-export const CONSENT_KINDS = ['terms', 'privacy', 'age_18_plus', 'publication'] as const;
+// The four ticks of the sign-up form (terms, privacy_ack, authenticity_declaration and age_18_plus,
+// DEFAULT D10) and the optional publication of the own profile at onboarding (plan §6.2).
+export const CONSENT_KINDS = [
+  'terms',
+  'privacy_ack',
+  'authenticity_declaration',
+  'age_18_plus',
+  'publication',
+] as const;
 export const CONSENT_ACTIONS = ['granted', 'withdrawn'] as const;
 export const EMAIL_STATUSES = ['queued', 'sent', 'failed'] as const;
