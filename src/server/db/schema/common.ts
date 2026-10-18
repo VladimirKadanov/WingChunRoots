@@ -107,6 +107,10 @@ export const ORGANIZATION_ROLES = ['leader', 'admin', 'member'] as const;
 // --- Entitlements (plan §6.5) ----------------------------------------------------------------------
 export const PLAN_CODES = ['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] as const;
 export const GRANT_SOURCES = ['test_grant', 'complimentary', 'stripe'] as const;
+/** What an account calls itself (M08): it picks the free plan (free_student or free_sifu), never a verification (D04). */
+export const ACCOUNT_TYPES = ['student', 'sifu'] as const;
+/** A request for pilot access to a plan (M08): open until an admin grants that plan or closes it. */
+export const PILOT_REQUEST_STATUSES = ['open', 'closed'] as const;
 
 // --- Accounts (Better Auth, M02; plan §3.2) ----------------------------------------------------------
 export const USER_ROLES = ['user', 'moderator', 'archivist', 'admin'] as const;

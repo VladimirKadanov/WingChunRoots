@@ -13,6 +13,8 @@
 # lint probes of src/lib/lineage-layout/boundary.test.ts, left behind only by a killed run
 /src/lib/__boundary-probe-*
 /src/lib/lineage-layout/__boundary-probe-*
+# lint probes of src/server/entitlements/boundary.test.ts (M08)
+/src/components/__boundary-probe-*
 
 # verify logs (scripts/verify.sh)
 /.verify/

@@ -84,11 +84,11 @@ describe('role × route matrix', () => {
   const ROUTES = ['/', '/legal/terms', ...Object.keys(ROUTE_POLICIES)];
   type Who = 'anonymous' | Role;
   const expected: Record<Who, Record<string, 200 | 401 | 403>> = {
-    anonymous: { '/': 200, '/legal/terms': 200, '/onboarding': 401, '/account': 401, '/account/security': 401, '/admin': 401 },
-    user: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 403 },
-    moderator: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 200 },
-    archivist: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 200 },
-    admin: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 200 },
+    anonymous: { '/': 200, '/legal/terms': 200, '/onboarding': 401, '/account': 401, '/account/security': 401, '/admin': 401, '/dashboard': 401, '/admin/grants': 401 },
+    user: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 403, '/dashboard': 200, '/admin/grants': 403 },
+    moderator: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 200, '/dashboard': 200, '/admin/grants': 403 },
+    archivist: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 200, '/dashboard': 200, '/admin/grants': 403 },
+    admin: { '/': 200, '/legal/terms': 200, '/onboarding': 200, '/account': 200, '/account/security': 200, '/admin': 200, '/dashboard': 200, '/admin/grants': 200 },
   };
 
   it('covers every protected route', () => {

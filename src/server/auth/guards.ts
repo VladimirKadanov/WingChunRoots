@@ -52,7 +52,8 @@ export function requireStaff2FA(
 
 // --- Pages -------------------------------------------------------------------------------------
 
-export type RoutePolicy = { kind: 'user' } | { kind: 'staff2fa' };
+/** `roles` narrows a staff page to some staff roles (M08: /admin/grants is for admins only). */
+export type RoutePolicy = { kind: 'user' } | { kind: 'staff2fa'; roles?: readonly StaffRole[] };
 
 /** What each protected page needs. Every other page is public. */
 export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
@@ -60,6 +61,9 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/account': { kind: 'user' },
   '/account/security': { kind: 'user' },
   '/admin': { kind: 'staff2fa' },
+  // M08: the dashboards and their settings; plan grants for admins only (plan §6.5).
+  '/dashboard': { kind: 'user' },
+  '/admin/grants': { kind: 'staff2fa', roles: ['admin'] },
 };
 
 export const SIGN_IN_PATH = '/sign-in';
@@ -106,7 +110,7 @@ export function checkRoute(path: string, principal: Principal | null): RouteDeci
   if (!policy) return { ok: true, principal };
   try {
     if (policy.kind === 'user') return { ok: true, principal: requireUser(principal) };
-    return { ok: true, principal: requireStaff2FA(principal) };
+    return { ok: true, principal: requireStaff2FA(principal, policy.roles) };
   } catch (error) {
     if (!(error instanceof AuthError)) throw error;
     if (error.code === 'UNAUTHORIZED') {

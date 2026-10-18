@@ -12,7 +12,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
-import { idColumn, inList, STAFF_ROLES, timestamps, USER_ROLES } from './common';
+import { ACCOUNT_TYPES, idColumn, inList, STAFF_ROLES, timestamps, USER_ROLES } from './common';
 
 export const authUser = pgTable(
   'auth_user',
@@ -32,6 +32,10 @@ export const authUser = pgTable(
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
     // IANA time zone for e-mail digests (plan §6.2); null means UTC.
     timezone: text('timezone'),
+    // Student or Sifu (M08, plan §6.5): the account's own choice, which sets its free plan
+    // (free_student or free_sifu). It verifies nothing (DEFAULT D04). Not a Better Auth field, so
+    // sign-up cannot set it; only src/server/services/plans.ts changes it, audited.
+    accountType: text('account_type', { enum: ACCOUNT_TYPES }).notNull().default('student'),
     ...timestamps(),
   },
   (t) => [
@@ -49,6 +53,7 @@ export const authUser = pgTable(
     // (an image would be a link that the app shows, for example a javascript: URL).
     check('auth_user_name_length', sql`char_length(${t.name}) <= 200`),
     check('auth_user_no_image', sql`${t.image} IS NULL`),
+    check('auth_user_account_type_check', inList(t.accountType.name, ACCOUNT_TYPES)),
   ],
 );
 

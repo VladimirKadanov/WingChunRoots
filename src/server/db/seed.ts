@@ -45,6 +45,7 @@ import {
   personClaim,
   personName,
   personNameKey,
+  pilotAccessRequest,
   place,
   relationshipEvent,
   reviewCase,
@@ -81,6 +82,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   personClaim,
   personName,
   personNameKey,
+  pilotAccessRequest,
   place,
   relationshipEvent,
   reviewCase,
@@ -187,6 +189,7 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows): Promise
   await insert(reviewCase, f.reviewCases);
   await insert(reviewNote, f.reviewNotes);
   await insert(invitation, f.invitations);
+  await insert(entitlementGrant, f.entitlementGrants);
   return counts;
 }
 
