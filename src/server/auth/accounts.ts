@@ -8,7 +8,9 @@
 // The rules:
 // - A sign-up with the address of an UNCONFIRMED account wipes that account's password and sends
 //   the address a finish-sign-up e-mail: a password-reset link. Whoever controls the mailbox
-//   chooses the password; nobody else ever holds a working one.
+//   chooses the password; nobody else ever holds a working one. Exception (fix round 2): the same
+//   password as the account's is the person who created it signing up again (a double tap, an
+//   e-mail that seemed slow); hooks.ts sends a fresh confirmation link and wipes nothing.
 // - A sign-up with the address of a CONFIRMED account changes nothing and sends the owner an
 //   account-exists e-mail (sign in, or ask for a new password).
 // - A password reset confirms the address: the link reached the mailbox.
@@ -52,13 +54,24 @@ export async function onExistingUserSignUp({ user }: { user: ExistingUser }): Pr
   await sendFinishSignUpEmail(user);
 }
 
-/** emailAndPassword.onPasswordReset: the link reached the mailbox, so the address is confirmed. */
-export async function onPasswordReset({ user }: { user: { id: string; email: string } }): Promise<void> {
+/** The address whose password a request has just reset, for the after hook (known-devices.ts). */
+const resetAddresses = new WeakMap<Request, string>();
+
+export function resetAddressOf(request: Request): string | null {
+  return resetAddresses.get(request) ?? null;
+}
+
+/**
+ * emailAndPassword.onPasswordReset: the link reached the mailbox, so the address is confirmed and
+ * its sign-in lock ends; the after hook makes the browser a known one.
+ */
+export async function onPasswordReset({ user }: { user: { id: string; email: string } }, request?: Request): Promise<void> {
   await getDb()
     .update(authUser)
     .set({ emailVerified: true, updatedAt: new Date() })
     .where(and(eq(authUser.id, user.id), eq(authUser.emailVerified, false)));
   await clear(signInKey(user.email));
+  if (request) resetAddresses.set(request, user.email);
 }
 
 const linkGone = () =>

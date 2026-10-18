@@ -33,7 +33,7 @@ export const finishSignUp: EmailTemplate<FinishSignUpData> = {
       <AccountLinkEmail
         preview={preview()}
         recipientNames={recipientNames}
-        intro="Someone, hopefully you, signed up for WingChunRoots with this e-mail address, which already had an account that was never confirmed. So that only the owner of this address can use it, choose your password with the button below. This also confirms the address."
+        intro="Someone, hopefully you, signed up for WingChunRoots again with this e-mail address, with a different password, before the address was confirmed. So that only the owner of this address can use the account, no password works for it now: choose yours with the button below. This also confirms the address."
         action="Choose your password"
         url={url}
         expiresInHours={expiresInHours}

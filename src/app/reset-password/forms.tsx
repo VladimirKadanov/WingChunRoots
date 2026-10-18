@@ -53,6 +53,9 @@ export function RequestResetForm({
               , if it belongs to an account. Its link lets you choose a new password once, within one hour.
             </p>
             <p>
+              Asked more than once? Any of the links works until it expires. At most three e-mails go out in an hour.
+            </p>
+            <p>
               Remembered it? <Link href="/sign-in" className="link">Sign in</Link>.
             </p>
           </DoneText>

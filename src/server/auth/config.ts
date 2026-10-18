@@ -43,6 +43,10 @@ export const DISABLED_AUTH_PATHS = [
   // E-mail OTP as a second factor is not offered: TOTP and backup codes only.
   '/two-factor/send-otp',
   '/two-factor/verify-otp',
+  // Hands out the account's TOTP secret for the password alone, which would let a session that
+  // has not passed the second factor verify itself. The key of a new setup comes only from
+  // /two-factor/enable, once (the web page keeps it sealed for its browser).
+  '/two-factor/get-totp-uri',
   // The admin plugin's endpoints: no user management over HTTP yet (see above).
   '/admin/set-role',
   '/admin/get-user',
@@ -100,7 +104,7 @@ export function createAuth() {
       sendResetPassword: ({ user, token }) => sendPasswordResetEmail(user, token),
       // A duplicate sign-up and a password reset decide who owns the address (accounts.ts, H1).
       onExistingUserSignUp: ({ user }) => onExistingUserSignUp({ user }),
-      onPasswordReset: ({ user }) => onPasswordReset({ user }),
+      onPasswordReset: ({ user }, request) => onPasswordReset({ user }, request),
     },
     emailVerification: {
       sendOnSignUp: true,

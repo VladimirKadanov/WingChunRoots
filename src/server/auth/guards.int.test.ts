@@ -170,6 +170,32 @@ describe('second factor of staff sessions', () => {
     expect((await principalFromHeaders(bearerHeaders(token)))?.session.twoFactorVerifiedAt).toBeNull();
   });
 
+  it('the password alone never verifies a staff session: no TOTP secret, no new backup codes, no new setup', async () => {
+    const moderator = await createAccount({ role: 'moderator', label: 'password-only' });
+    const token = await unverifiedSession(moderator.id);
+    // A new client address per request, so the per-address rate limit never answers instead.
+    const asSession = () => {
+      const browser = new TestBrowser();
+      browser.bearer = token;
+      return browser;
+    };
+    const password = { password: moderator.password };
+    expect((await authFetch(asSession(), '/two-factor/get-totp-uri', { body: password })).status).toBe(404);
+    for (const path of ['/two-factor/generate-backup-codes', '/two-factor/enable']) {
+      const refused = await authFetch(asSession(), path, { body: password });
+      expect(refused.status, path).toBe(403);
+      expect(refused.data?.code, path).toBe('SECOND_FACTOR_REQUIRED');
+    }
+    expect((await rpc('/admin/overview', { headers: bearerHeaders(token) })).status).toBe(403);
+    expect((await principalFromHeaders(bearerHeaders(token)))?.session.twoFactorVerifiedAt).toBeNull();
+
+    // Once the session has passed the second factor, new backup codes need only the password.
+    expect((await authFetch(asSession(), '/two-factor/verify-totp', { body: { code: await totpCode(moderator.totpSecret!) } })).status).toBe(200);
+    const codes = await authFetch(asSession(), '/two-factor/generate-backup-codes', { body: password });
+    expect(codes.status).toBe(200);
+    expect(codes.data?.backupCodes).toHaveLength(10);
+  });
+
   it('trustDevice is ignored for staff and kept for other accounts', async () => {
     const staff = await createAccount({ role: 'archivist', label: 'trust-staff' });
     const { browser } = await signIn(staff, { trustDevice: true });

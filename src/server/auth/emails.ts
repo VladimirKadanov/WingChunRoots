@@ -5,9 +5,16 @@
 // cannot confirm an address or spend a reset token. The token travels sealed in the job
 // (secretFields; src/server/mail/seal.ts), never in clear.
 //
-// At most ACCOUNT_EMAIL_HOURLY_CAP account e-mails per account and hour: the per-address limits of
-// the endpoints can be dodged by changing the client address, this cap cannot. An e-mail over the
-// cap is dropped silently (the forms answer the same way, so nothing is revealed).
+// An hourly budget per account and template (ACCOUNT_EMAIL_HOURLY_CAPS; fix round 2): the
+// per-address limits of the endpoints can be dodged by changing the client address, these cannot.
+// Each template has its own budget, so mail that anyone can trigger never uses up the mail that
+// gets the owner in. Every template with a link has a budget of 3 and a link that stays valid at
+// least as long as the hour the budget counts, so when the budget is spent the mailbox already
+// holds a link that works, whoever asked for it. The account-exists notice has no link and a
+// budget of 1: repeats inside the hour are not sent. An e-mail over the budget is dropped
+// silently (the forms answer the same way, so nothing is revealed). The count and the queueing
+// run in one transaction under an advisory lock per account and template, so parallel requests
+// cannot pass the budget together.
 
 import { createHash } from 'node:crypto';
 
@@ -16,16 +23,21 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm';
 
 import { getDb } from '../db';
 import { authAccount, person, personName } from '../db/schema';
-import { queueEmail } from '../jobs/outbox';
+import { queueEmail, type Transaction } from '../jobs/outbox';
 import type { NameData } from '../templates/email';
 import { appUrl } from './env';
 import { logAuth } from './logger';
 
 export const VERIFY_EMAIL_EXPIRES_IN_S = 24 * 3600;
 export const RESET_PASSWORD_EXPIRES_IN_S = 3600;
-export const ACCOUNT_EMAIL_HOURLY_CAP = 5;
-/** The templates that count toward the cap. */
-export const ACCOUNT_EMAIL_TEMPLATES = ['verify-email', 'reset-password', 'finish-sign-up', 'account-exists'] as const;
+/** The e-mails of one template that one account gets in an hour, at most. */
+export const ACCOUNT_EMAIL_HOURLY_CAPS = {
+  'verify-email': 3,
+  'reset-password': 3,
+  'finish-sign-up': 3,
+  'account-exists': 1,
+} as const;
+export type AccountEmailTemplate = keyof typeof ACCOUNT_EMAIL_HOURLY_CAPS;
 
 interface Recipient {
   id: string;
@@ -50,18 +62,28 @@ async function recipientNames(userId: string): Promise<NameData[] | undefined> {
   return sorted.slice(0, 2).map(({ value, lang }) => ({ value, lang }));
 }
 
-/** False when the account already had ACCOUNT_EMAIL_HOURLY_CAP account e-mails in the last hour. */
-export async function underHourlyCap(userId: string): Promise<boolean> {
-  const templates = sql.join(
-    ACCOUNT_EMAIL_TEMPLATES.map((template) => sql`${template}`),
-    sql`, `,
-  );
-  const rows = await getDb().execute<{ n: number }>(sql`
-    SELECT count(*)::int AS n FROM email_delivery
-     WHERE user_id = ${userId} AND template IN (${templates}) AND created_at > now() - interval '1 hour'`);
-  const under = (rows.rows[0]?.n ?? 0) < ACCOUNT_EMAIL_HOURLY_CAP;
-  if (!under) logAuth('warn', 'account e-mail dropped: the hourly cap of the account is reached');
-  return under;
+/**
+ * Runs `queue` inside a transaction when the account has budget left for `template` this hour,
+ * and returns whether it ran. The advisory lock makes the count and the insert one step per
+ * account and template.
+ */
+export async function withinHourlyCap(
+  userId: string,
+  template: AccountEmailTemplate,
+  queue: (tx: Transaction) => Promise<unknown>,
+): Promise<boolean> {
+  return getDb().transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`account-email:${userId}:${template}`}, 0))`);
+    const rows = await tx.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM email_delivery
+       WHERE user_id = ${userId} AND template = ${template} AND created_at > now() - interval '1 hour'`);
+    if ((rows.rows[0]?.n ?? 0) >= ACCOUNT_EMAIL_HOURLY_CAPS[template]) {
+      logAuth('warn', `account e-mail dropped: the hourly cap of the account for ${template} is reached`);
+      return false;
+    }
+    await queue(tx);
+    return true;
+  });
 }
 
 /** Whether the account has a password (a duplicate sign-up wipes it; accounts.ts). */
@@ -77,10 +99,9 @@ export async function sendVerificationEmail(user: Recipient, token: string): Pro
   // An unconfirmed account without a password (its password was wiped by a later sign-up) is
   // finished by choosing a password, never by confirming the address alone.
   if (!(await hasPassword(user.id))) return sendFinishSignUpEmail(user);
-  if (!(await underHourlyCap(user.id))) return;
   const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}`;
   const names = await recipientNames(user.id);
-  await getDb().transaction((tx) =>
+  await withinHourlyCap(user.id, 'verify-email', (tx) =>
     queueEmail(tx, {
       template: 'verify-email',
       to: user.email,
@@ -94,11 +115,10 @@ export async function sendVerificationEmail(user: Recipient, token: string): Pro
 export async function sendPasswordResetEmail(user: Recipient, token: string): Promise<void> {
   // A reset of an unconfirmed account without a password is how a duplicate sign-up finishes.
   const finish = user.emailVerified === false && !(await hasPassword(user.id));
-  if (!(await underHourlyCap(user.id))) return;
   const url = `${appUrl()}/reset-password?token=${encodeURIComponent(token)}${finish ? '&finish=1' : ''}`;
   const names = await recipientNames(user.id);
   const template = finish ? 'finish-sign-up' : 'reset-password';
-  await getDb().transaction((tx) =>
+  await withinHourlyCap(user.id, template, (tx) =>
     queueEmail(tx, {
       template,
       to: user.email,
@@ -111,21 +131,24 @@ export async function sendPasswordResetEmail(user: Recipient, token: string): Pr
 
 /**
  * A password-reset token for `user` (Better Auth's own `reset-password:<token>` verification value,
- * so /reset-password accepts it) and the finish-sign-up e-mail with it.
+ * so /reset-password accepts it) and the finish-sign-up e-mail with it. A token whose e-mail is
+ * over the budget is deleted again. It is created before the budget's transaction, never inside
+ * it: the adapter takes a connection of its own, and waiting for one while holding another could
+ * exhaust the pool.
  */
 export async function sendFinishSignUpEmail(user: Recipient): Promise<void> {
-  if (!(await underHourlyCap(user.id))) return;
   // Imported here: config.ts imports this module.
   const { getAuth } = await import('./config');
   const context = await getAuth().$context;
   const token = generateRandomString(24, 'a-z', 'A-Z', '0-9');
+  const identifier = `reset-password:${token}`;
   await context.internalAdapter.createVerificationValue({
     value: user.id,
-    identifier: `reset-password:${token}`,
+    identifier,
     expiresAt: new Date(Date.now() + RESET_PASSWORD_EXPIRES_IN_S * 1000),
   });
   const url = `${appUrl()}/reset-password?token=${encodeURIComponent(token)}&finish=1`;
-  await getDb().transaction((tx) =>
+  const queued = await withinHourlyCap(user.id, 'finish-sign-up', (tx) =>
     queueEmail(tx, {
       template: 'finish-sign-up',
       to: user.email,
@@ -134,19 +157,19 @@ export async function sendFinishSignUpEmail(user: Recipient): Promise<void> {
       data: { url, expiresInHours: RESET_PASSWORD_EXPIRES_IN_S / 3600 },
     }),
   );
+  if (!queued) await context.internalAdapter.deleteVerificationByIdentifier(identifier);
 }
 
-/** Tells the owner of a confirmed account that someone tried to sign up with the address. */
+/** Tells the owner of a confirmed account that someone tried to sign up with the address (once an hour). */
 export async function sendAccountExistsEmail(user: Recipient): Promise<void> {
-  if (!(await underHourlyCap(user.id))) return;
   const origin = appUrl();
   const names = await recipientNames(user.id);
-  await getDb().transaction((tx) =>
+  await withinHourlyCap(user.id, 'account-exists', (tx) =>
     queueEmail(tx, {
       template: 'account-exists',
       to: user.email,
       userId: user.id,
-      // One per sign-up attempt: random, never derived from the address.
+      // One per sign-up attempt that passes the budget: random, never derived from the address.
       idempotencyKey: keyFor('account-exists', generateRandomString(24, 'a-z', '0-9')),
       data: { signInUrl: `${origin}/sign-in`, resetUrl: `${origin}/reset-password`, ...(names ? { recipientNames: names } : {}) },
     }),

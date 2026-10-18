@@ -10,8 +10,10 @@ import { getDb } from '../db';
 import { withClient } from '../db/admin';
 import { authAccount, authSession, authTwoFactor, authUser, emailDelivery } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
+import { jobTemplateData } from '../jobs/outbox';
+import type { EmailSendJob } from '../jobs/queues';
 import { generateBackupCodes } from './credentials';
-import { ACCOUNT_EMAIL_HOURLY_CAP } from './emails';
+import { ACCOUNT_EMAIL_HOURLY_CAPS } from './emails';
 import { handleAuthRequest } from './route';
 import { SIGN_IN_FAILURE_LIMIT } from './throttle';
 import {
@@ -103,6 +105,28 @@ describe('pre-registration takeover (H1)', () => {
     expect((await signInWith(victim, attackerPassword)).status).toBe(401);
   });
 
+  it('a second sign-up with the same password (a double tap) keeps the account and sends a fresh confirmation link', async () => {
+    const email = address('double-tap');
+    const password = 'the same password twice';
+    expect((await signUp(email, password)).status).toBe(200);
+    const firstLink = await tokenFromOutbox('verify-email', email);
+    // A double tap within the same second makes the same link: it is not sent twice.
+    expect((await signUp(email, password)).status).toBe(200);
+    expect(await deliveryCount('finish-sign-up', email)).toBe(0);
+    // Later (the first e-mail seemed slow), a new link goes out.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect((await signUp(email, password)).status).toBe(200);
+    expect(await deliveryCount('verify-email', email)).toBeGreaterThanOrEqual(2);
+    expect(await deliveryCount('finish-sign-up', email)).toBe(0);
+    // Nothing was wiped: both links work, and the password signs in once the address is confirmed.
+    const secondLink = await tokenFromOutbox('verify-email', email);
+    expect(secondLink).not.toBe(firstLink);
+    const confirm = await authFetch(new TestBrowser(), '/verify-email', { method: 'GET', query: { token: firstLink } });
+    expect(confirm.status).toBe(200);
+    expect((await userRow(await userId(email)))?.emailVerified).toBe(true);
+    expect((await signInWith(email, password)).status).toBe(200);
+  });
+
   it('a sign-up with the address of a confirmed account changes nothing and tells the owner', async () => {
     const owner = await createAccount({ label: 'confirmed-owner' });
     const result = await signUp(owner.email, 'someone else tried this');
@@ -123,16 +147,23 @@ describe('pre-registration takeover (H1)', () => {
 });
 
 describe('sign-up answer (no account enumeration)', () => {
-  it('is the same body for a new address, an unconfirmed one and a confirmed one', async () => {
+  it('is the same answer for a new address, an unconfirmed one (same or other password) and a confirmed one', async () => {
     const fresh = await signUp(address('fresh'), 'a long demo password');
     const unconfirmed = address('unconfirmed');
     await signUp(unconfirmed, 'a long demo password');
     const again = await signUp(unconfirmed, 'a long demo password');
+    const other = await signUp(unconfirmed, 'another long demo password');
     const confirmed = await createAccount({ label: 'enumeration' });
     const existing = await signUp(confirmed.email, 'a long demo password');
-    for (const result of [fresh, again, existing]) {
+    const shape = (response: Response) => ({
+      contentType: response.headers.get('content-type'),
+      cookies: response.headers.getSetCookie(),
+      headers: [...response.headers.keys()].sort(),
+    });
+    for (const result of [fresh, again, other, existing]) {
       expect(result.status).toBe(200);
       expect(result.data).toEqual({ token: null, user: null });
+      expect(shape(result.response)).toEqual(shape(fresh.response));
     }
   });
 
@@ -163,14 +194,32 @@ describe('outbox', () => {
     for (const row of raw.rows) expect(row.data).not.toContain(token);
   });
 
-  it(`sends at most ${ACCOUNT_EMAIL_HOURLY_CAP} account e-mails an hour to one address, whatever the client address`, async () => {
+  const resetCap = ACCOUNT_EMAIL_HOURLY_CAPS['reset-password'];
+
+  it(`sends at most ${resetCap} reset e-mails an hour to one address, whatever the client address; the first link still works`, async () => {
     const account = await createAccount({ label: 'mail-cap' });
-    for (let i = 0; i < ACCOUNT_EMAIL_HOURLY_CAP + 3; i += 1) {
+    for (let i = 0; i < resetCap + 3; i += 1) {
       // A new browser (client address) each time: the per-address limit of the endpoint never applies.
       const result = await authFetch(new TestBrowser(), '/request-password-reset', { body: { email: account.email } });
       expect(result.status).toBe(200);
     }
-    expect(await deliveryCount('reset-password', account.email)).toBe(ACCOUNT_EMAIL_HOURLY_CAP);
+    expect(await deliveryCount('reset-password', account.email)).toBe(resetCap);
+    // Whoever spent the budget, the mailbox holds links that work: the oldest one too.
+    const rows = await getDb().execute<{ data: EmailSendJob }>(sql`
+      SELECT j.data FROM pgboss.job j JOIN email_delivery d ON d.id::text = j.data ->> 'deliveryId'
+       WHERE j.name = 'email.send' AND d.template = 'reset-password' AND d.to_email = ${account.email}
+       ORDER BY d.created_at ASC LIMIT 1`);
+    const oldest = new URL((jobTemplateData(rows.rows[0]!.data) as { url: string }).url).searchParams.get('token')!;
+    expect((await authFetch(new TestBrowser(), '/reset-password', { body: { token: oldest, newPassword: 'the oldest link worked' } })).status).toBe(200);
+  });
+
+  it('counts the budget in one step: a parallel burst of requests sends no more than the budget', async () => {
+    const account = await createAccount({ label: 'mail-cap-burst' });
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => authFetch(new TestBrowser(), '/request-password-reset', { body: { email: account.email } })),
+    );
+    for (const result of results) expect(result.status).toBe(200);
+    expect(await deliveryCount('reset-password', account.email)).toBe(resetCap);
   });
 });
 
@@ -217,12 +266,117 @@ describe('limits that a changed client address cannot dodge', () => {
     expect((await signInWith(account.email, 'a new long password')).status).toBe(200);
   });
 
+  it(`a parallel burst from many client addresses gets at most ${SIGN_IN_FAILURE_LIMIT} password checks`, async () => {
+    const account = await createAccount({ label: 'sign-in-burst' });
+    const burst = 50;
+    const results = await Promise.all(
+      Array.from({ length: burst }, (_, i) =>
+        viaRoute('/sign-in/email', { email: account.email, password: `wrong burst password ${i}` }, `192.0.2.${i + 1}`),
+      ),
+    );
+    const tally = (status: number, code: string) => results.filter((r) => r.status === status && r.data?.code === code).length;
+    expect(tally(401, 'INVALID_EMAIL_OR_PASSWORD')).toBeLessThanOrEqual(SIGN_IN_FAILURE_LIMIT);
+    expect(tally(401, 'INVALID_EMAIL_OR_PASSWORD') + tally(429, 'TOO_MANY_ATTEMPTS')).toBe(burst);
+    // The lock holds for the right password afterwards too.
+    expect((await signInWith(account.email, account.password)).status).toBe(429);
+  });
+
   it('a right password clears the failures counted so far', async () => {
     const account = await createAccount({ label: 'sign-in-clear' });
     for (let i = 0; i < SIGN_IN_FAILURE_LIMIT - 1; i += 1) await signInWith(account.email, `wrong ${i}`);
     expect((await signInWith(account.email, account.password)).status).toBe(200);
     for (let i = 0; i < SIGN_IN_FAILURE_LIMIT - 1; i += 1) await signInWith(account.email, `wrong ${i}`);
     expect((await signInWith(account.email, account.password)).status).toBe(200);
+  });
+});
+
+describe('nobody can lock the owner out of an account', () => {
+  it('duplicate sign-ups do not use up the e-mails that get the owner back in', async () => {
+    const owner = await createAccount({ label: 'notice-flood' });
+    for (let i = 0; i < 5; i += 1) expect((await signUp(owner.email, `someone else tried ${i}`)).status).toBe(200);
+    // The notice goes once an hour; repeats inside the hour are not sent again.
+    expect(await deliveryCount('account-exists', owner.email)).toBe(1);
+    expect((await authFetch(new TestBrowser(), '/request-password-reset', { body: { email: owner.email } })).status).toBe(200);
+    expect(await deliveryCount('reset-password', owner.email)).toBe(1);
+  });
+
+  it('a stranger who keeps an address locked and floods it with sign-ups cannot keep the owner out', async () => {
+    const owner = await createAccount({ label: 'kept-out' });
+    const lockAgain = async (round: number) => {
+      for (let i = 0; i < SIGN_IN_FAILURE_LIMIT; i += 1) await signInWith(owner.email, `stranger ${round} guess ${i}`);
+    };
+    await lockAgain(1);
+    for (let i = 0; i < 5; i += 1) await signUp(owner.email, `stranger sign-up ${i}`);
+    expect((await signInWith(owner.email, owner.password)).status).toBe(429);
+
+    // The owner asks for a reset: it is sent, whatever the stranger did.
+    expect((await authFetch(new TestBrowser(), '/request-password-reset', { body: { email: owner.email } })).status).toBe(200);
+    const token = await tokenFromOutbox('reset-password', owner.email);
+    const ownersBrowser = new TestBrowser();
+    expect((await authFetch(ownersBrowser, '/reset-password', { body: { token, newPassword: 'the owner is back in' } })).status).toBe(200);
+
+    // The stranger locks the address again right away; the owner's browser still signs in...
+    await lockAgain(2);
+    expect((await signInWith(owner.email, 'the owner is back in')).data?.code).toBe('TOO_MANY_ATTEMPTS');
+    const back = await signInWith(owner.email, 'the owner is back in', ownersBrowser);
+    expect(back.status).toBe(200);
+    // ...and keeps doing so after the session ends, because the browser is now a known one.
+    await lockAgain(3);
+    const later = new TestBrowser();
+    for (const [name, value] of ownersBrowser.cookies) if (name.includes('known_device')) later.cookies.set(name, value);
+    expect((await signInWith(owner.email, 'the owner is back in', later)).status).toBe(200);
+  });
+
+  it('a known browser has a lock of its own: its failures never lock the address for others', async () => {
+    const owner = await createAccount({ label: 'known-own-lock' });
+    const { browser } = await signIn(owner);
+    expect(browser.hasCookie('known_device')).toBe(true);
+    // The same browser (its known-device cookie) from a new client address each time, so the
+    // per-address rate limit of the endpoint never answers instead of the lock.
+    const sameBrowser = () => {
+      const copy = new TestBrowser();
+      for (const [name, value] of browser.cookies) if (name.includes('known_device')) copy.cookies.set(name, value);
+      return copy;
+    };
+    for (let i = 0; i < SIGN_IN_FAILURE_LIMIT; i += 1) expect((await signInWith(owner.email, `typo ${i}`, sameBrowser())).status).toBe(401);
+    const locked = await signInWith(owner.email, owner.password, sameBrowser());
+    expect(locked.status).toBe(429);
+    expect(locked.data?.code).toBe('TOO_MANY_ATTEMPTS');
+    // A new browser (no known-device cookie) is not affected by those failures.
+    expect((await signInWith(owner.email, owner.password)).status).toBe(200);
+  });
+
+  it('a known-device cookie of one address does nothing for another address', async () => {
+    const first = await createAccount({ label: 'known-first' });
+    const second = await createAccount({ label: 'known-second' });
+    const { browser } = await signIn(first);
+    for (let i = 0; i < SIGN_IN_FAILURE_LIMIT; i += 1) await signInWith(second.email, `stranger guess ${i}`);
+    const refused = await signInWith(second.email, second.password, browser);
+    expect(refused.status).toBe(429);
+    expect(refused.data?.code).toBe('TOO_MANY_ATTEMPTS');
+  });
+
+  it('wrong passwords through a stolen session count toward the lock of the address', async () => {
+    const owner = await createAccount({ label: 'session-guess' });
+    const { browser } = await signIn(owner);
+    // A thief with the session cookie only (not the owner's known-device cookie), from a new
+    // client address per request.
+    const thief = () => {
+      const copy = new TestBrowser();
+      for (const [name, value] of browser.cookies) if (!name.includes('known_device')) copy.cookies.set(name, value);
+      return copy;
+    };
+    const guess = (i: number) =>
+      authFetch(thief(), '/change-password', { body: { currentPassword: `thief guess ${i}`, newPassword: 'the thief wants this one' } });
+    for (let i = 0; i < SIGN_IN_FAILURE_LIMIT; i += 1) expect((await guess(i)).data?.code).toBe('INVALID_PASSWORD');
+    const locked = await guess(SIGN_IN_FAILURE_LIMIT);
+    expect(locked.status).toBe(429);
+    expect(locked.data?.code).toBe('TOO_MANY_ATTEMPTS');
+    // The same lock as sign-in: strangers are refused there too, the owner's own browser is not.
+    expect((await signInWith(owner.email, owner.password)).data?.code).toBe('TOO_MANY_ATTEMPTS');
+    const ownBrowser = new TestBrowser();
+    for (const [name, value] of browser.cookies) if (name.includes('known_device')) ownBrowser.cookies.set(name, value);
+    expect((await signInWith(owner.email, owner.password, ownBrowser)).status).toBe(200);
   });
 });
 
@@ -275,6 +429,25 @@ describe('TOTP', () => {
     expect(locked.data?.code).toBe('ACCOUNT_TEMPORARILY_LOCKED');
     const [row] = await getDb().select({ lockedUntil: authTwoFactor.lockedUntil }).from(authTwoFactor).where(eq(authTwoFactor.userId, moderator.id));
     expect(row?.lockedUntil?.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
+  });
+
+  it('a parallel burst of codes inside a session gets at most 10 checks', async () => {
+    const moderator = await createAccount({ role: 'moderator', label: 'session-burst' });
+    const session = await unverifiedSession(moderator);
+    const fromNewAddress = () => {
+      const browser = new TestBrowser();
+      for (const [name, value] of session.cookies) browser.cookies.set(name, value);
+      return browser;
+    };
+    // Codes that are certainly wrong: none of the ones the plugin would accept now.
+    const valid = new Set(await Promise.all(([-1, 0, 1] as const).map((step) => totpCode(moderator.totpSecret!, step))));
+    const codes: string[] = [];
+    for (let candidate = 200000; codes.length < 40; candidate += 7) if (!valid.has(String(candidate))) codes.push(String(candidate));
+    const results = await Promise.all(codes.map((code) => authFetch(fromNewAddress(), '/two-factor/verify-totp', { body: { code } })));
+    const wrong = results.filter((r) => r.status === 401 && r.data?.code === 'INVALID_CODE').length;
+    const locked = results.filter((r) => r.status === 429 && r.data?.code === 'ACCOUNT_TEMPORARILY_LOCKED').length;
+    expect(wrong).toBeLessThanOrEqual(10);
+    expect(wrong + locked).toBe(codes.length);
   });
 });
 
