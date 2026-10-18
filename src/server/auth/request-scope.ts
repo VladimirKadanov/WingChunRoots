@@ -16,6 +16,13 @@
 //
 // Outside runAuthRequest() (a direct `auth.api.*` call) there is no scope: nothing is held, and
 // the hooks fall back to what they can work out on their own.
+//
+// The storage is one per process, on globalThis like the Better Auth instance (config.ts). The
+// bundler copies this module into several server chunks (the /api/auth route, the Server Actions of
+// each page), and a module-level AsyncLocalStorage would then be one per copy: the instance's hooks,
+// created from whichever chunk asked first, would never see the scope that runAuthRequest() of
+// another chunk set, and every path but the first would lose its reservations, the double-tap mark
+// and the reset address (fix round 3; e2e/m02-auth.spec.ts tests both paths).
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 
@@ -35,7 +42,8 @@ export interface RequestScope {
   resetEmail?: string;
 }
 
-const storage = new AsyncLocalStorage<RequestScope>();
+const globalScope = globalThis as unknown as { __wcrAuthScope?: AsyncLocalStorage<RequestScope> };
+const storage = (globalScope.__wcrAuthScope ??= new AsyncLocalStorage<RequestScope>());
 
 /** The scope of the request being handled, if it came through runAuthRequest(). */
 export function requestScope(): RequestScope | undefined {

@@ -73,3 +73,27 @@ describe('outside a request scope', () => {
     expect(settle('password')).toBeUndefined();
   });
 });
+
+describe('two copies of this module (the bundler puts one in each server chunk)', () => {
+  it('share one scope: a hook of one copy sees what runAuthRequest() of the other set', async () => {
+    // Fix round 3: the Better Auth instance is one per process (config.ts), created from whichever
+    // chunk asked first; its hooks import that chunk's copy of this module, while the route or a
+    // Server Action of another chunk runs runAuthRequest() from its own copy.
+    vi.resetModules();
+    const route = await import('./request-scope');
+    vi.resetModules();
+    const hooks = await import('./request-scope');
+    expect(hooks).not.toBe(route);
+
+    const giveBack = vi.fn(async () => undefined);
+    await route.runAuthRequest(async () => {
+      const scope = hooks.requestScope();
+      expect(scope).toBeDefined();
+      scope!.resetEmail = 'demo-scope@example.test';
+      hooks.hold('password', 'sign-in:abc', giveBack);
+      expect(route.requestScope()?.resetEmail).toBe('demo-scope@example.test');
+    });
+    // The reservation the other copy held is given back by the copy that ran the request.
+    expect(giveBack).toHaveBeenCalledTimes(1);
+  });
+});

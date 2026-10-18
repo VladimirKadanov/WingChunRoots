@@ -7,7 +7,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { sql } from 'drizzle-orm';
 
 import { signedSessionToken } from '../src/server/auth/credentials';
@@ -161,6 +161,108 @@ test('@M02 password reset through the emailed link', async ({ page }) => {
   expect(old.status()).toBe(401);
   await signInThroughForm(page, account.email, newPassword);
   await expect(page).toHaveURL(/\/onboarding$/);
+});
+
+/**
+ * Fix round 3 (requirements-1): the request scope (src/server/auth/request-scope.ts) must reach the
+ * hooks on every path into Better Auth, through the built server. The bundler copies that module
+ * into the /api/auth route and into the Server Actions; the one Better Auth instance is created
+ * from whichever path asks first, so each test below goes through the other path before the one it
+ * checks. Between them the tests cover both orders, whichever request warmed the server.
+ */
+test.describe('the request scope on both paths', () => {
+  /** Ten wrong passwords for `email` from strangers (no cookies, a new client address each): the address is locked. */
+  async function strangersLock(request: APIRequestContext, email: string) {
+    const wrong = () =>
+      request.post('/api/auth/sign-in/email', {
+        data: { email, password: 'a password the owner never chose' },
+        headers: { origin: BASE_URL, 'x-forwarded-for': clientAddress() },
+      });
+    for (const response of await Promise.all(Array.from({ length: 10 }, wrong))) expect([401, 429]).toContain(response.status());
+    const locked = await wrong();
+    expect(locked.status(), 'the address is locked for browsers it does not know').toBe(429);
+  }
+
+  /**
+   * The e-mails queued for `email` (within the request, so all are there once it answered) and
+   * whether its account still has a password. Two taps in the same second send one confirmation
+   * e-mail: the same link, so the same idempotency key.
+   */
+  async function afterTaps(email: string): Promise<{ templates: string[]; password: boolean }> {
+    const sent = await getDb().execute<{ template: string }>(sql`
+      SELECT template FROM email_delivery WHERE to_email = ${email} ORDER BY created_at`);
+    const account = await getDb().execute<{ password: boolean }>(sql`
+      SELECT a.credential_hash IS NOT NULL AS password
+        FROM auth_user u JOIN auth_account a ON a.user_id = u.id AND a.provider_id = 'credential'
+       WHERE u.email = ${email}`);
+    return { templates: [...new Set(sent.rows.map((row) => row.template))], password: account.rows[0]?.password === true };
+  }
+
+  test('@M02 a reset through the web form makes the browser known: a stranger who locks the address again cannot keep the owner out', async ({ page, request }) => {
+    // The HTTP API first (sign-up and confirmation), then the Server Actions.
+    const account = await createConfirmedAccount(page, 'scope-web-reset');
+    await strangersLock(request, account.email);
+
+    await page.goto('/reset-password');
+    await field(page, 'E-mail address').fill(account.email);
+    await page.getByRole('button', { name: 'Send the reset link' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Check your inbox' })).toBeVisible();
+    const link = new URL(await emailLinkFromOutbox('reset-password', account.email));
+    const newPassword = `demo-new-password-${randomBytes(4).toString('hex')}`;
+    await page.goto(link.pathname + link.search);
+    await field(page, 'New password').fill(newPassword);
+    await page.getByRole('button', { name: 'Save the new password' }).click();
+    await expect(page).toHaveURL(/\/sign-in\?reset=1$/);
+    const cookies = await page.context().cookies();
+    expect(cookies.map((cookie) => cookie.name), 'the reset made this browser a known one').toContain('wcr.known_device');
+
+    // The stranger locks the address again; the owner's browser signs in all the same.
+    await strangersLock(request, account.email);
+    await signInThroughForm(page, account.email, newPassword);
+    await expect(page).toHaveURL(/\/onboarding$/);
+  });
+
+  test('@M02 the same sign-up submitted twice through the web form keeps the password and sends no finish-sign-up e-mail', async ({ page }) => {
+    // The HTTP API first (a refused sign-in), then the Server Actions.
+    const warm = await authPost(page, '/sign-in/email', { email: uniqueEmail('scope-warm'), password: 'a password nobody has' });
+    expect(warm.status()).toBe(401);
+
+    const email = uniqueEmail('scope-web-twice');
+    for (let tap = 0; tap < 2; tap += 1) {
+      await fillSignUp(page, email, ['age_18_plus', 'terms', 'authenticity_declaration']);
+      await expect(page.getByRole('heading', { level: 1, name: 'Check your inbox' })).toBeVisible();
+    }
+    expect(await afterTaps(email)).toEqual({ templates: ['verify-email'], password: true });
+
+    const link = new URL(await emailLinkFromOutbox('verify-email', email));
+    const confirm = await page.request.get(`/api/auth/verify-email?token=${encodeURIComponent(link.searchParams.get('token') ?? '')}`);
+    expect(confirm.status(), await confirm.text()).toBe(200);
+    await signInThroughForm(page, email, NEW_ACCOUNT_PASSWORD);
+    await expect(page).toHaveURL(/\/onboarding$/);
+  });
+
+  test('@M02 after the Server Actions, an HTTP API reset makes the client known and a double sign-up keeps the password', async ({ page }) => {
+    // The Server Actions first (a refused sign-in through the form), then the HTTP API.
+    await signInThroughForm(page, uniqueEmail('scope-warm'), 'a password nobody has');
+    await expect(formError(page)).toBeVisible();
+
+    const account = await createConfirmedAccount(page, 'scope-api-reset');
+    const asked = await authPost(page, '/request-password-reset', { email: account.email, redirectTo: '/reset-password' });
+    expect(asked.status(), await asked.text()).toBe(200);
+    const token = new URL(await emailLinkFromOutbox('reset-password', account.email)).searchParams.get('token');
+    const reset = await authPost(page, '/reset-password', { token, newPassword: `demo-new-password-${randomBytes(4).toString('hex')}` });
+    expect(reset.status(), await reset.text()).toBe(200);
+    const set = reset.headersArray().filter((header) => header.name.toLowerCase() === 'set-cookie').map((header) => header.value.split('=')[0]);
+    expect(set, 'the reset answer makes the client a known one').toContain('wcr.known_device');
+
+    const email = uniqueEmail('scope-api-twice');
+    const consents = { terms: true, privacy_ack: false, authenticity_declaration: true, age_18_plus: true };
+    for (let tap = 0; tap < 2; tap += 1) {
+      const signUp = await authPost(page, '/sign-up/email', { name: '', email, password: NEW_ACCOUNT_PASSWORD, consents }, clientAddress());
+      expect(signUp.status(), await signUp.text()).toBe(200);
+    }
+    expect(await afterTaps(email)).toEqual({ templates: ['verify-email'], password: true });
+  });
 });
 
 test('@M02 a signed-in visitor asking for a new confirmation link gets the same neutral answer', async ({ page }) => {
