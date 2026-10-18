@@ -159,8 +159,11 @@ down(id, depth) AS (
     FROM down
     CROSS JOIN LATERAL (
       SELECT s.student_id FROM (
-        SELECT pe.student_person_id AS student_id, 1 AS rank, vp.display_name AS name
-          FROM v_public_edge pe JOIN v_public_person vp ON vp.id = pe.student_person_id
+        -- The name per row through the primary key: a join let the planner hash all of
+        -- v_public_person (docs/perf/api.md).
+        SELECT pe.student_person_id AS student_id, 1 AS rank,
+               (SELECT vp.display_name FROM v_public_person vp WHERE vp.id = pe.student_person_id) AS name
+          FROM v_public_edge pe
          WHERE pe.teacher_person_id = down.id
         UNION ALL
         SELECT x.student_id, 0, '' FROM extra x WHERE x.teacher_id = down.id
@@ -203,34 +206,43 @@ SELECT id::text AS id FROM up GROUP BY id ORDER BY min(depth), id LIMIT ${NODE_C
   return result.map((r) => r.id);
 }
 
-/** Descendants of `rootId` to `depth` generations, optionally along one lineage only. */
+/**
+ * Descendants of `rootId` to `depth` generations, optionally along one lineage only: generation
+ * by generation, each ordered by id, until NODE_CAP + 1 people (the same set as ordering all
+ * descendants by generation, then id). One query per generation, so the walk never goes past
+ * the cap: a single recursive query explores every descendant to the full depth before it can
+ * cut, which took 0.7 s at depth 6 on the 100,000-relationship graph of docs/perf/api.md.
+ */
 export async function subtreeNodeIds(
   ex: Executor,
   input: { rootId: string; lineageId: string | null; depth: number },
   extras: ViewerExtras,
 ): Promise<string[]> {
   const lineage = input.lineageId;
-  const result = await rows<{ id: string }>(
-    ex,
-    sql`
-WITH RECURSIVE ${extraCte(extras)},
-down(id, depth) AS (
-  SELECT ${input.rootId}::uuid, 0
-  UNION
-  SELECT c.student_id, down.depth + 1
-    FROM down
-    CROSS JOIN LATERAL (
-      SELECT pe.student_person_id AS student_id FROM v_public_edge pe
-       WHERE pe.teacher_person_id = down.id AND (${lineage}::uuid IS NULL OR pe.lineage_id = ${lineage}::uuid)
-      UNION ALL
-      SELECT x.student_id FROM extra x
-       WHERE x.teacher_id = down.id AND (${lineage}::uuid IS NULL OR x.lineage_id = ${lineage}::uuid)
-    ) c
-   WHERE down.depth < ${input.depth}::int
-)
-SELECT id::text AS id FROM down GROUP BY id ORDER BY min(depth), id LIMIT ${NODE_CAP + 1}`,
-  );
-  return result.map((r) => r.id);
+  const seen = [input.rootId];
+  let frontier = [input.rootId];
+  for (let generation = 1; generation <= input.depth && frontier.length > 0 && seen.length <= NODE_CAP; generation += 1) {
+    const next = await rows<{ id: string }>(
+      ex,
+      sql`
+WITH ${extraCte(extras)}
+SELECT c.student_id::text AS id
+  FROM (
+    SELECT pe.student_person_id AS student_id FROM v_public_edge pe
+     WHERE pe.teacher_person_id = ANY(${uuids(frontier)}) AND (${lineage}::uuid IS NULL OR pe.lineage_id = ${lineage}::uuid)
+    UNION ALL
+    SELECT x.student_id FROM extra x
+     WHERE x.teacher_id = ANY(${uuids(frontier)}) AND (${lineage}::uuid IS NULL OR x.lineage_id = ${lineage}::uuid)
+  ) c
+ WHERE c.student_id <> ALL(${uuids(seen)})
+ GROUP BY c.student_id
+ ORDER BY c.student_id
+ LIMIT ${NODE_CAP + 1 - seen.length}`,
+    );
+    frontier = next.map((r) => r.id);
+    seen.push(...frontier);
+  }
+  return seen;
 }
 
 /**
@@ -257,8 +269,10 @@ p(id, nodes, edges, depth) AS (
 SELECT p.nodes::text[] AS nodes, p.edges::text[] AS edges
   FROM p
  WHERE NOT p.is_cycle AND p.depth > 0
-   AND NOT EXISTS (SELECT 1 FROM v_public_edge pe WHERE pe.student_person_id = p.id)
-   AND NOT EXISTS (SELECT 1 FROM extra x WHERE x.student_id = p.id)
+   -- Scalar subqueries, not NOT EXISTS: the planner turned that into a hash anti-join over all
+   -- of v_public_edge (docs/perf/api.md); these stay index lookups per route end.
+   AND (SELECT pe.id FROM v_public_edge pe WHERE pe.student_person_id = p.id LIMIT 1) IS NULL
+   AND (SELECT x.id FROM extra x WHERE x.student_id = p.id LIMIT 1) IS NULL
  LIMIT ${PATHS_COUNT_CAP + 1}`,
   );
 }
@@ -340,21 +354,24 @@ export async function isPublicPerson(ex: Executor, personId: string): Promise<bo
   return list.length > 0;
 }
 
-/** Counts from v_public_edge only (plan §6.2): public teachers, students and lineages. */
+/**
+ * Counts from v_public_edge only (plan §6.2): public teachers, students and lineages. Each public
+ * edge touching a person is read once from each end, by index (docs/perf/api.md).
+ */
 async function publicCounts(ex: Executor, ids: readonly string[]): Promise<Map<string, CountRow>> {
   if (ids.length === 0) return new Map();
   const list = await rows<CountRow>(
     ex,
     sql`
-SELECT n.id::text AS id,
-       (SELECT count(DISTINCT e.teacher_person_id)::int FROM v_public_edge e WHERE e.student_person_id = n.id) AS teachers,
-       (SELECT count(DISTINCT e.student_person_id)::int FROM v_public_edge e WHERE e.teacher_person_id = n.id) AS students,
-       ARRAY(SELECT l.lineage_id::text FROM (
-               SELECT e.lineage_id FROM v_public_edge e WHERE e.student_person_id = n.id
-               UNION
-               SELECT e.lineage_id FROM v_public_edge e WHERE e.teacher_person_id = n.id) l
-             ORDER BY 1) AS lineage_ids
-  FROM unnest(${uuids(ids)}) AS n(id)`,
+SELECT n.id::text AS id, up.teachers, down.students,
+       ARRAY(SELECT DISTINCT l.id::text FROM unnest(up.lineages || down.lineages) AS l(id) ORDER BY 1) AS lineage_ids
+  FROM unnest(${uuids(ids)}) AS n(id)
+ CROSS JOIN LATERAL (
+       SELECT count(DISTINCT e.teacher_person_id)::int AS teachers, COALESCE(array_agg(e.lineage_id), '{}') AS lineages
+         FROM v_public_edge e WHERE e.student_person_id = n.id) up
+ CROSS JOIN LATERAL (
+       SELECT count(DISTINCT e.student_person_id)::int AS students, COALESCE(array_agg(e.lineage_id), '{}') AS lineages
+         FROM v_public_edge e WHERE e.teacher_person_id = n.id) down`,
   );
   return new Map(list.map((c) => [c.id, c]));
 }
