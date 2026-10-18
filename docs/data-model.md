@@ -78,13 +78,14 @@
 | `organization` | Скелет за федерации и асоциации (DEFAULT D12): `slug`, `name`, `kind` (`federation`, `association`, `school_group`), `status` (`pending`, `active`, `suspended`), `country_code`, `website_url` |
 | `organization_membership` | Членство на личност в организация: `role` (`leader`, `admin`, `member`), `starts_on`, `ends_on`. Отделно е от историята на обучение и не я променя |
 | `entitlement_grant` | Право на план (M08): точно един получател (`subject_user_id` или `subject_organization_id`), `plan_code` (`free_student`, `premium_student`, `free_sifu`, `pro_sifu`, `federation`), `source` (`test_grant`, `complimentary`, `stripe`), `starts_at`, `ends_at`, задължителна `reason`, отмяна с `revoked_at`, `revoked_by_user_id` и `revoke_reason` |
+| `pilot_access_request` | Заявка „Request pilot access“ от подканата за по-висок план (M08, план §5.6): `user_id`, `plan_code`, `status` (`open`, `closed`), `closed_at`, `closed_by_user_id`, `grant_id` (правото, с което администраторът я е затворил). Най-много една отворена заявка на акаунт. Не води до плащане ([`docs/entitlements.md`](entitlements.md)) |
 
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
 |---|---|
 | `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy_ack`, `authenticity_declaration`, `age_18_plus`, `publication`; M02), `document_version` (версията на документа от `content/legal/`, например `2026-10-17-draft`), `action` (`granted`, `withdrawn`), `occurred_at`. Редовете не се променят: нова версия или оттегляне е нов ред |
-| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at` |
+| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `plan.granted` и `plan.revoked`; частичният индекс `notification_user_id_unread_idx` брои непрочетените |
 | `email_delivery` | Един ред на имейл (M01b: `Mailer` и outbox-ът): `to_email` (`NULL`, след като срокът на пазене изтече; задължителен при `queued`), `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `attempts` (брой опити, ≥ 0), `last_attempt_at`, `provider_message_id`, `error` (без адреси, до 500 знака), `sent_at` |
 | `audit_log` | Одитен журнал само за добавяне (раздел 6) |
 
@@ -96,7 +97,7 @@
 
 | Таблица | Предназначение и важни колони |
 |---|---|
-| `auth_user` | Акаунт за вход: `email` (уникален, винаги с малки букви), `email_verified`, `name` (празно: имената на човека са в `person_name`), **`role`** (`user`, `moderator`, `archivist`, `admin`; не се подава при регистрация), `two_factor_enabled`, `banned`, `ban_reason`, `ban_expires`, `timezone`. Роля на персонала само при `two_factor_enabled` (`CHECK auth_user_staff_needs_2fa`) |
+| `auth_user` | Акаунт за вход: `email` (уникален, винаги с малки букви), `email_verified`, `name` (празно: имената на човека са в `person_name`), **`role`** (`user`, `moderator`, `archivist`, `admin`; не се подава при регистрация), `two_factor_enabled`, `banned`, `ban_reason`, `ban_expires`, `timezone`, **`account_type`** (M08: `student` по подразбиране или `sifu`; изборът на човека, който определя безплатния план и не потвърждава нищо, DEFAULT D04). Роля на персонала само при `two_factor_enabled` (`CHECK auth_user_staff_needs_2fa`) |
 | `auth_session` | Сесия: `token` (уникален; в бисквитката и като `Authorization: Bearer` е подписан), `expires_at`, `user_agent`, **`ip_address`** (никога IP адресът, а `ip_hmac`: 64 hex знака, `CHECK auth_session_ip_hmac_format`), **`two_factor_verified_at`** (кога тази сесия е минала втория фактор; `requireStaff2FA()` проверява него), `impersonated_by` |
 | `auth_account` | Начин за вход на акаунта: `provider_id` (`credential` за имейл и парола), `account_id`, **`credential_hash`** (хеш scrypt със сол, никога паролата; полето `password` на Better Auth); колоните за OAuth токени остават празни във Фаза 1. Уникален `(provider_id, account_id)` |
 | `auth_verification` | Краткотрайни стойности: токени за потвърждаване (24 часа) и възстановяване (1 час), чакащ втори фактор, доверено устройство. `identifier` се пази хеширан; `value`, `expires_at` |
@@ -151,6 +152,7 @@
 - Акаунти (M02): `auth_user_role_check` (четирите роли), `auth_user_staff_needs_2fa` (роля на персонала само с включен 2FA), `auth_user_email_lowercase`, `auth_user_name_length` (до 200 знака), `auth_user_no_image` (`image` винаги `NULL`), `auth_session_ip_hmac_format`, `auth_two_factor_failed_count_check` (≥ 0), `auth_throttle_key_length`, `auth_throttle_count_check`, `person_training_start_year_range` (1900–2100). Уникални: `auth_user.email`, `auth_session.token`, `auth_two_factor.user_id`, `auth_account (provider_id, account_id)`.
 - Тригерът `auth_user_end_sessions` (`AFTER UPDATE OF role, two_factor_enabled` върху `auth_user`): при смяна на ролята и при включване на 2FA трие всички сесии на акаунта и краткотрайните му стойности в `auth_verification` (план §3.2). Важи за всеки път, за бисквитки и за токени.
 - Външни ключове към `auth_user` (M02): `CASCADE` само за редовете, които принадлежат изцяло на акаунта (`auth_*`, `notification`, `person_claim.user_id`, `entitlement_grant.subject_user_id`); `SET NULL` за `content_report.reporter_user_id`, `review_case.assigned_to_user_id` и `email_delivery.user_id`; `RESTRICT` за всички останали, включително `consent_record.user_id` (доказателство за съгласието) и авторите на записи, решения и доказателства. `person.place_id` → `place` е `SET NULL`.
+- Права по план (M08): `auth_user_account_type_check` (`student`, `sifu`); `pilot_access_request_plan_code_check`, `pilot_access_request_status_check`, `pilot_access_request_closed` (затворената заявка има `closed_at`, отворената няма); частичният уникален индекс `pilot_access_request_one_open_key` (една отворена заявка на акаунт). `pilot_access_request.user_id` е `CASCADE`, `closed_by_user_id` е `RESTRICT`, `grant_id` е `SET NULL`. `app_rw` чете и пише `pilot_access_request`, а `app_public_ro` няма права върху нея.
 - Циклите в графа не се проверяват от база данни: проверката е в услугата при преход към `verified`, под глобален advisory lock (план §6.3, M04).
 
 ## 6. Одитен журнал
@@ -251,7 +253,7 @@
 - `demo-admin@example.test`, `demo-archivist@example.test` и `demo-moderator@example.test` с ролите си и включен TOTP;
 - съгласията от регистрацията за всеки акаунт, с текущите версии (DEFAULT D10).
 
-Паролата на всички е `E2E_PASSWORD`, а TOTP тайната на персонала е `E2E_TOTP_SECRET`, шифрирана с `BETTER_AUTH_SECRET`. Тези стойности са само за локалната среда и CI, генерират се случайно и не са в хранилището; без тях seed-ът пропуска паролите и тайните. Права по план и доказателства seed-ът не създава.
+Паролата на всички е `E2E_PASSWORD`, а TOTP тайната на персонала е `E2E_TOTP_SECRET`, шифрирана с `BETTER_AUTH_SECRET`. Тези стойности са само за локалната среда и CI, генерират се случайно и не са в хранилището; без тях seed-ът пропуска паролите и тайните. Доказателства seed-ът не създава. Единственото право по план е тестовият Professional Sifu на `demo-pro-sifu-8` (M08: от 1.2.2026, без край, дадено от `demo-admin`, с причина „Fictional demo record: …“); `demo-free-sifu-5` е Free Sifu с 5 от 5 одобрени ученици и една чакаща заявка.
 
 ## 10. Решения по подразбиране
 
@@ -259,7 +261,10 @@
 |---|---|
 | DEFAULT D03 | Чакащите заявки и личностите, създадени чрез заявка или покана, са `involved_only`; връзка става `public` само след `verified` (`CHECK` в базата); изгледите показват само публичното |
 | DEFAULT D04 | Акаунтът (`auth_user`) е отделен от личността (`person`); ролите на персонала са отделни от плановете (`entitlement_grant`) и от проверката на връзките |
+| DEFAULT D04/D13 (M08) | `auth_user.account_type` само избира безплатния план; Sifu без одобрен случай `instructor_verification` се показва като „Instructor (unverified)“ |
 | DEFAULT D05 | Всички активни връзки се пазят; `is_display_primary` е само визуално предпочитание, най-много една на ученик сред `verified` и `in_arbitration`; заявка не носи флага, слага го потвърждаването (M09) |
+| DEFAULT D06, D08 (M08) | Отнемането на право по план (`revoked_at`) и смяната Sifu → Student не пипат `teaching_relationship`: потвърдените връзки остават потвърдени и публични |
+| DEFAULT D07, D09 (M08) | Медийните квоти и предложените цени са в матрицата в код (`src/server/entitlements/plans.ts`), не в базата; не се налагат и не се таксуват |
 | DEFAULT D10 | Пилотът е само за пълнолетни: съгласие `age_18_plus` при регистрация, без рождена дата |
 | DEFAULT D12 | `organization` и `organization_membership` са само скелет; членството не променя историята на обучение |
 | DEFAULT D13 | Доказателствата са в отделна таблица и частен бъкет; публичната роля няма достъп до `evidence_file` и `evidence_link` |

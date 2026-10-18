@@ -64,6 +64,8 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [@socket.io/component-emitter](https://github.com/socketio/emitter#readme) | 3.1.2 | MIT | [text 11](#licence-text-11) |
 | [@standard-schema/spec](https://standardschema.dev/) | 1.1.0 | MIT | [text 3](#licence-text-3) |
 | [@swc/helpers](https://swc.rs/) | 0.5.23 | Apache-2.0 | [text 12](#licence-text-12) |
+| [@tanstack/store](https://tanstack.com/store) | 0.11.2 | MIT | [text 3](#licence-text-3) |
+| [@tanstack/table-core](https://tanstack.com/table) | 9.3.1 | MIT | [text 3](#licence-text-3) |
 | [@types/cors](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/cors) | 2.8.19 | MIT | [text 13](#licence-text-13) |
 | [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) | 24.19.2 | MIT | [text 13](#licence-text-13) |
 | [@types/ws](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ws) | 8.18.2 | MIT | [text 13](#licence-text-13) |
@@ -620,7 +622,7 @@ THE SOFTWARE.
 
 ### Licence text 3
 
-Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 7.24.6, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7
+Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 7.24.6, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7
 
 ```text
 Copyright (c) 2019 Material-UI SAS    (@base-ui/react 1.9.0, @base-ui/utils 0.5.0)
@@ -628,6 +630,8 @@ Copyright (c) Bereket Engida    (@better-fetch/fetch 1.3.2)
 Copyright (c) 2023 oRPC    (@orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7)
 Copyright (c) 2021-2022 KillyMXI <killy@mxii.eu.org>    (@selderee/plugin-htmlparser2 0.11.0, leac 0.6.0, parseley 0.12.1, peberminta 0.9.0, selderee 0.11.0)
 Copyright (c) 2024 Colin McDonnell    (@standard-schema/spec 1.1.0)
+Copyright (c) 2021 Tanner Linsley    (@tanstack/store 0.11.2)
+Copyright (c) 2016 Tanner Linsley    (@tanstack/table-core 9.3.1)
 Copyright (c) 2020 Evgeny Poberezkin    (ajv-formats 3.0.1)
 Copyright (c) 2025 Bereket Engida    (better-call 1.4.2)
 Copyright (c) Pooya Parsa <pooya@pi0.io>    (citty 0.2.2, defu 6.1.7, jiti 2.6.1, nypm 0.6.6, rou3 0.7.12, rou3 0.9.2)
