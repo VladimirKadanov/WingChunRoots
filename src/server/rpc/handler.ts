@@ -3,9 +3,11 @@
 //
 // CSRF (docs/adr/0004-auth.md): a request that changes something and carries cookies must come
 // from this site: Origin equal to APP_URL, or, without an Origin header, Sec-Fetch-Site:
-// same-origin. A request with an Authorization header is exempt: a browser cannot add that header
-// to a cross-site request without a CORS preflight, and the app answers no preflight. Next.js
-// checks Server Actions itself (Origin against Host).
+// same-origin. A request with `Authorization: Bearer <token>` is exempt: a browser cannot add that
+// header to a cross-site request without a CORS preflight, and the app answers no preflight. Any
+// other scheme is not (fix round 3, security-6): a browser attaches Basic or Negotiate credentials
+// on its own, and the session would still come from the cookie. Next.js checks Server Actions
+// itself (Origin against Host).
 
 import { OpenAPIHandler } from '@orpc/openapi/fetch';
 import { RPCHandler } from '@orpc/server/fetch';
@@ -21,11 +23,13 @@ const rpcHandler = new RPCHandler(router);
 const openApiHandler = new OpenAPIHandler(router);
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+/** The bearer session of a native client: the same test as session.ts. */
+const BEARER = /^bearer\s/i;
 
 /** null when the request may proceed; otherwise the reason it looks like a cross-site request. */
 export function csrfRefusal(request: Request, origin: string = appUrl()): string | null {
   if (SAFE_METHODS.has(request.method.toUpperCase())) return null;
-  if (request.headers.has('authorization')) return null;
+  if (BEARER.test(request.headers.get('authorization') ?? '')) return null;
   if (!request.headers.has('cookie')) return null;
   const requestOrigin = request.headers.get('origin');
   if (requestOrigin !== null) return requestOrigin === origin ? null : 'origin';

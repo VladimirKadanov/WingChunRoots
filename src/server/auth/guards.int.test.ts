@@ -360,6 +360,14 @@ describe('oRPC', () => {
     expect(crossSite.status).toBe(403);
     const noOrigin = await rpc('/consent/record', { headers: new Headers({ cookie: browser.cookieHeader() }), body });
     expect(noOrigin.status).toBe(403);
+    // Only a bearer token exempts a request: Basic or Negotiate credentials a browser adds by itself.
+    for (const authorization of ['Basic eDp5', 'Negotiate abc']) {
+      const withCredentials = await rpc('/consent/record', {
+        headers: new Headers({ cookie: browser.cookieHeader(), origin: 'https://evil.example', authorization }),
+        body,
+      });
+      expect(withCredentials.status).toBe(403);
+    }
     const sameSite = await rpc('/consent/record', { headers: new Headers({ cookie: browser.cookieHeader(), origin: TEST_APP_URL }), body });
     expect(sameSite.status).toBe(200);
     const bearer = await v1('/consent/record', { method: 'POST', headers: bearerHeaders(token), body: { kinds: ['privacy_ack'] } });
