@@ -73,3 +73,5 @@ Stripe и всякакви плащания. Налагане на медийн�
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 18.10.2026: матрицата на петте плана, `effectivePlan()`, `requireEntitlement()` и `withQuota()` с `pg_advisory_xact_lock`; миграция (`account_type`, `pilot_access_request`); тестови данни; `plans.test.ts`, `requireEntitlement.test.ts` и `quota.int.test.ts` минават.
