@@ -39,7 +39,8 @@ export function checkTestFaults(env: Env = process.env): void {
   if (faults.length === 0) return;
   const unknown = faults.find((f) => !KNOWN_FAULTS.has(f));
   if (unknown !== undefined) throw new Error(`${TEST_FAULTS_ENV} names an unknown fault (allowed: lineage-once)`);
-  if (!hasLoopbackAppUrl(env)) {
+  // An APP_URL that is missing or invalid counts as not loopback, so the refusal names the switch.
+  if (!testFaultsEnabled(env)) {
     throw new Error(`${TEST_FAULTS_ENV} is a test switch and is refused unless APP_URL is a loopback host`);
   }
 }

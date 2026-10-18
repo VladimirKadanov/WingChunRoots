@@ -156,6 +156,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # M04: docs/api/openapi.json matches the router (plan §6.8).
+      - run: pnpm api:openapi --check
 
   security:
     name: security (gitleaks, pnpm audit)

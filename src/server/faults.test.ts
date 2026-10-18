@@ -34,6 +34,12 @@ describe('WCR_TEST_FAULTS', () => {
       /loopback/,
     );
     expect(() => checkTestFaults({ WCR_TEST_FAULTS: 'everything' })).toThrow(/unknown fault/);
+    // An APP_URL that fails its own check (http behind a public host, or none in production) still
+    // gets a refusal that names the switch.
+    expect(() => checkTestFaults({ ...publicProduction, APP_URL: 'http://wingchunroots.example', WCR_TEST_FAULTS: 'lineage-once' })).toThrow(
+      /WCR_TEST_FAULTS is a test switch/,
+    );
+    expect(() => checkTestFaults({ NODE_ENV: 'production', WCR_TEST_FAULTS: 'lineage-once' })).toThrow(/WCR_TEST_FAULTS is a test switch/);
     expect(() => checkProductionSettings({ ...loopbackProduction, WCR_TEST_FAULTS: 'lineage-once' })).not.toThrow();
     expect(() => checkProductionSettings(publicProduction)).not.toThrow();
 
