@@ -2,7 +2,7 @@
 // M02, In scope 4): on the onboarding form and on the consent-only form of /onboarding for an
 // account that already has its profile. Names each document with its date and what changed in
 // it. Never ticked in advance; the privacy notice tick stays optional. Rendered inside the client
-// forms that import it; consentsToAsk is also called by the page.
+// forms that import it.
 
 import Link from 'next/link';
 
@@ -24,7 +24,18 @@ export function consentsToAsk(missingConsents: readonly string[]): ConsentName[]
   return CONSENT_ORDER.filter((name) => missingConsents.includes(name) || (missingConsents.length > 0 && name === 'privacy_ack'));
 }
 
-export const PRIVACY_TICK_HINT = 'You can continue without this tick. The privacy notice applies either way; the tick records that you read this version.';
+/** The hint under the optional privacy tick, with a link to the notice it records. */
+function PrivacyTickHint() {
+  return (
+    <>
+      You can continue without this tick. The{' '}
+      <Link href="/legal/privacy" className="link">
+        privacy notice
+      </Link>{' '}
+      applies either way; the tick records that you read this version.
+    </>
+  );
+}
 
 export function MissingConsents({
   form,
@@ -72,7 +83,7 @@ export function MissingConsents({
                   {required ? null : <span className="text-fg-muted"> (optional)</span>}
                 </>
               }
-              hint={required ? undefined : PRIVACY_TICK_HINT}
+              hint={required ? undefined : <PrivacyTickHint />}
               required={required}
               state={state}
               autoFocus={first === name}

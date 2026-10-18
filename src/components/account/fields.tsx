@@ -106,6 +106,7 @@ export function FormMessage({
     return (
       <div
         id={summaryId(form)}
+        data-form-message=""
         role="alert"
         tabIndex={-1}
         autoFocus
@@ -392,11 +393,21 @@ export function SelectField({
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = `${id}-error`;
   const ref = useRef<HTMLSelectElement>(null);
-  // The reset React does after an action (form.reset()) also moves a controlled select back to
-  // its first option, after React has rendered the new state: put the chosen value back.
+  const hydrated = useRef(false);
   useEffect(() => {
-    if (ref.current && ref.current.value !== value) ref.current.value = value;
-  }, [state, value]);
+    const select = ref.current;
+    if (!select) return;
+    if (!hydrated.current) {
+      hydrated.current = true;
+      // A choice made before the page became interactive: hydration keeps it in the DOM, so the
+      // state takes it over (overwriting it would undo what the person picked).
+      if (select.value !== value) onValue(select.value);
+      return;
+    }
+    // The reset React does after an action (form.reset()) also moves a controlled select back to
+    // its first option, after React has rendered the new state: put the chosen value back.
+    if (select.value !== value) select.value = value;
+  }, [state, value, onValue]);
   return (
     <div data-field="" className={cx('grid grid-cols-[minmax(0,1fr)] content-start gap-1.5', className)}>
       <FieldLabel id={id} label={label} optional={optional} />

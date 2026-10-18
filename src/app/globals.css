@@ -33,17 +33,22 @@
     }
   }
 
-  /* While a text field of the page has focus on a touch phone, the on-screen keyboard is up. In
-     a webview that resizes for it (Android adjustResize, Chrome with interactive-widget=
-     resizes-content in layout.tsx) the fixed tab bar would ride on the keyboard and cover the
-     form's button: it steps aside until the field loses focus. */
+  /* While the on-screen keyboard is up (FocusInView in the app shell sets `data-keyboard`: a
+     text field of the page has focus and the window got shorter), a webview that resizes for it
+     (Android adjustResize, Chrome with interactive-widget=resizes-content in layout.tsx) would
+     carry the fixed tab bar up over the form's button: on a touch phone the bar steps aside. */
   @media (width < 48rem) and (pointer: coarse) {
-    html:has(main :is(input:not([type='checkbox'], [type='radio'], [type='submit'], [type='button']), select, textarea):focus) {
+    html[data-keyboard] {
       --tab-clear: env(safe-area-inset-bottom, 0px);
     }
-    html:has(main :is(input:not([type='checkbox'], [type='radio'], [type='submit'], [type='button']), select, textarea):focus)
-      [data-tab-bar] {
+    /* It comes back a moment after the field loses focus, so the press that took the focus away
+       (on a box or a button where the bar will be) lands on that control, not on the bar. */
+    [data-tab-bar] {
+      transition: visibility 0s linear 300ms;
+    }
+    html[data-keyboard] [data-tab-bar] {
       visibility: hidden;
+      transition-delay: 0s;
     }
   }
 

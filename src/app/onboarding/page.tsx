@@ -16,7 +16,6 @@ import { readFormResult } from '@/server/forms/flash';
 import { documentsFor } from '@/server/legal/documents';
 import { serverClient } from '@/server/rpc/server';
 import { ConfirmConsentsForm } from './confirm-consents-form';
-import { consentsToAsk } from './missing-consents';
 import { OnboardingForm } from './onboarding-form';
 
 export const instant = false;
@@ -51,7 +50,8 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const next = safeNextPath(query.next, '/account');
   const client = serverClient(await headers(), guard.principal);
   const me = await client.account.me();
-  const documents = documentsFor(consentsToAsk(me.missingConsents));
+  // The documents whose required confirmation is missing; the optional privacy tick links its own.
+  const documents = documentsFor(me.missingConsents);
   if (me.person) {
     const after = next === '/onboarding' ? '/account' : next;
     if (me.missingConsents.length === 0) return <PageRedirect to={after} title="Your profile is already set up" />;
