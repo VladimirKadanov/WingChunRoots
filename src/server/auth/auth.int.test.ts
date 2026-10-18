@@ -11,6 +11,7 @@ import { LEGAL_DOCUMENTS } from '../legal/documents';
 import { ipHmac } from './ip';
 import {
   authFetch,
+  deliveryCount,
   sessionCount,
   startAuthTestDatabase,
   stopAuthTestDatabase,
@@ -117,10 +118,14 @@ describe('sign-up', () => {
     const deliveries = await getDb().select().from(emailDelivery).where(eq(emailDelivery.userId, user!.id));
     expect(deliveries.map((d) => d.template)).toEqual(['verify-email']);
 
+    // Before the confirmation the right password is answered like a wrong one (fix round 3,
+    // security-1), and a new confirmation link goes out.
     const browser = new TestBrowser();
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // a new second: a new link, not the same one again
     const early = await authFetch(browser, '/sign-in/email', { body: { email, password: PASSWORD } });
-    expect(early.status).toBe(403);
-    expect(early.data?.code).toBe('EMAIL_NOT_VERIFIED');
+    expect(early.status).toBe(401);
+    expect(early.data?.code).toBe('INVALID_EMAIL_OR_PASSWORD');
+    expect(await deliveryCount('verify-email', email)).toBe(2);
 
     const token = await tokenFromOutbox('verify-email', email);
     const confirmed = await authFetch(browser, '/verify-email', { method: 'GET', query: { token } });

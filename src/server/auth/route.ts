@@ -6,7 +6,8 @@
 // rate limiter, the session's ip_hmac and the audit log agree, and a client cannot pick a new
 // address per request by adding entries to the header.
 
-import { getAuth } from './config';
+import { answerFloorMs, waitForFloor } from './answer-floor';
+import { AUTH_BASE_PATH, getAuth } from './config';
 import { withClientIp } from './ip';
 import { runAuthRequest } from './request-scope';
 
@@ -22,9 +23,18 @@ export async function authRequest(request: Request): Promise<Request> {
   return new Request(request.url, { method, headers: withClientIp(request.headers), body });
 }
 
-/** Hands `request` to Better Auth in a request scope of its own (request-scope.ts): the only way in. */
-export function dispatchAuth(request: Request): Promise<Response> {
-  return runAuthRequest(() => getAuth().handler(request));
+/**
+ * Hands `request` to Better Auth in a request scope of its own (request-scope.ts): the only way in.
+ * An answer that could tell whether an address has an account waits for its floor
+ * (answer-floor.ts), on the forms' path and the HTTP API's alike.
+ */
+export async function dispatchAuth(request: Request): Promise<Response> {
+  const startedAt = performance.now();
+  const response = await runAuthRequest(() => getAuth().handler(request));
+  const pathname = new URL(request.url).pathname;
+  const path = pathname.startsWith(AUTH_BASE_PATH) ? pathname.slice(AUTH_BASE_PATH.length) : pathname;
+  await waitForFloor(answerFloorMs(path, response.status), startedAt);
+  return response;
 }
 
 export async function handleAuthRequest(request: Request): Promise<Response> {

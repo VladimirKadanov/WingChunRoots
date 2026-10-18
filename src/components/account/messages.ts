@@ -2,12 +2,13 @@
 // data, so the Server Actions and the forms share it. Calm wording: no urgency, no blame.
 
 export const AUTH_MESSAGES: Record<string, string> = {
-  INVALID_EMAIL_OR_PASSWORD: 'The e-mail address or the password is not right.',
+  // The right password of an unconfirmed account gets this answer too (no account enumeration);
+  // the server has sent that account a new confirmation link.
+  INVALID_EMAIL_OR_PASSWORD: 'The e-mail address or the password is not right. Just signed up? Confirm your address first with the link we sent you.',
   INVALID_EMAIL: 'Enter a valid e-mail address, for example name@example.com.',
   INVALID_PASSWORD: 'The password is not right.',
   PASSWORD_TOO_SHORT: 'Use at least 12 characters.',
   PASSWORD_TOO_LONG: 'Use at most 128 characters.',
-  EMAIL_NOT_VERIFIED: 'Confirm your e-mail address first. We sent you a new link.',
   INVALID_TOKEN: 'The link has expired or was already used. Ask for a new one below.',
   TOKEN_EXPIRED: 'The link has expired. Ask for a new one below.',
   INVALID_CODE: 'That code is not right. Codes change every 30 seconds; try the current one.',

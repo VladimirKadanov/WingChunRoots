@@ -96,9 +96,10 @@ test('@M02 sign up, confirm the email from the outbox and sign in', async ({ pag
   await expect(page.getByRole('heading', { name: 'Create your account' })).toHaveCount(0);
   await expect(doneText(page, email)).toBeVisible();
 
-  // Signing in before the address is confirmed is refused (and sends the link again).
+  // Signing in before the address is confirmed is refused like a wrong password (no account
+  // enumeration) and sends the link again; the message says what to do in either case.
   await signInThroughForm(page, email, NEW_ACCOUNT_PASSWORD);
-  await expect(formError(page)).toContainText('Confirm your e-mail address first');
+  await expect(formError(page)).toContainText('Just signed up? Confirm your address first with the link we sent you.');
 
   // The e-mail went through the outbox and the worker to the mailbox.
   const message = await openMailbox().waitFor(email, { subject: 'Confirm your e-mail address for WingChunRoots', timeoutMs: 20_000 });

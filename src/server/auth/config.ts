@@ -24,7 +24,7 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/account-limi
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { AUTH_TABLES } from '../db/schema';
-import { onExistingUserSignUp, onPasswordReset } from './accounts';
+import { onEmailVerified, onExistingUserSignUp, onPasswordReset, refuseStaleConfirmationLink } from './accounts';
 import { BACKUP_CODE_COUNT, newBackupCodes } from './credentials';
 import { RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
 import { appUrl, authSecret, trustedProxies } from './env';
@@ -120,6 +120,10 @@ export function createAuth() {
       autoSignInAfterVerification: false,
       expiresIn: VERIFY_EMAIL_EXPIRES_IN_S,
       sendVerificationEmail: ({ user, token }) => sendVerificationEmail(user, token),
+      // After Better Auth has checked the token: a link from before the password changed, or of an
+      // account without one, is refused (accounts.ts); a confirmed address's sign-in lock ends.
+      beforeEmailVerification: (user, request) => refuseStaleConfirmationLink(user, request),
+      afterEmailVerification: (user) => onEmailVerified(user),
     },
     rateLimit: {
       enabled: true,

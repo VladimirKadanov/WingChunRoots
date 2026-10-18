@@ -13,7 +13,7 @@
 //                                  refused (429 TOO_MANY_ATTEMPTS) once 10 in a row failed for the
 //                                  address, or for this browser when it is a known one
 //                                  (known-devices.ts); the demo accounts cannot sign in on a public
-//                                  deployment.
+//                                  deployment (answered like a wrong password).
 //   password-gated endpoints       /two-factor/enable, /two-factor/disable,
 //                                  /two-factor/generate-backup-codes and /change-password reserve an
 //                                  attempt on the same key, so a stolen session cannot guess the
@@ -21,8 +21,6 @@
 //                                  enable and new backup codes are refused (403
 //                                  SECOND_FACTOR_REQUIRED) for a staff session that has not passed
 //                                  the second factor: a password alone never verifies it.
-//   /verify-email                  a link older than the account's password, or of an account without
-//                                  one, is refused (accounts.ts).
 //   /two-factor/verify-totp        `trustDevice` is dropped for staff (the trust-device cookie would
 //   /two-factor/verify-backup-code skip the second factor); a TOTP code works once (replay); inside a
 //                                  session the attempt is reserved first and refused once 10 in a row
@@ -37,6 +35,10 @@
 //   /sign-up/email                 the same body for a new and an existing address (no enumeration).
 //   /sign-in/email                 a wrong password keeps its reservation; a right one clears the key
 //                                  and makes this browser a known one; anything else gives it back.
+//                                  The right password of an unconfirmed account is answered and
+//                                  counted like a wrong one (Better Auth has sent a new confirmation
+//                                  link): otherwise a sign-up followed by a sign-in with the password
+//                                  just chosen would tell a free address (403) from a taken one (401).
 //   /reset-password                the browser that used the e-mailed link becomes a known one (the
 //                                  address comes from onPasswordReset through the request scope).
 //   password-gated endpoints       as for sign-in (INVALID_PASSWORD keeps the reservation); the
@@ -65,7 +67,6 @@ import { getDb } from '../db';
 import { authAccount, authSession, authTwoFactor, authUser, emailDelivery } from '../db/schema';
 import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../services/consent';
 import { requestMeta } from '../services/context';
-import { assertConfirmationLinkCurrent } from './accounts';
 import { normalizeBackupCode } from './credentials';
 import { isPublicDeployment } from './env';
 import { clientIp, ipHmac } from './ip';
@@ -91,6 +92,17 @@ const SESSION_2FA_LOCK_S = 15 * 60;
 /** Addresses of the demo accounts (pnpm db:seed, tests); never on a public deployment. */
 const DEMO_ADDRESS = /^demo-[a-z0-9-]+@example\.test$/i;
 const TOO_MANY_ATTEMPTS = 'Too many wrong passwords for this address. Try again in 15 minutes, or choose a new password.';
+
+/** Better Auth's answer to a wrong password, byte for byte (APIError.from keeps message before code). */
+const WRONG_PASSWORD = { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' };
+const wrongPassword = () => new APIError('UNAUTHORIZED', WRONG_PASSWORD);
+/**
+ * The same answer from an after hook. An APIError thrown there would keep the endpoint's status
+ * (better-call answers with the status the endpoint refused with), so the hook hands back the
+ * response itself: 401, the same JSON body and content type.
+ */
+const wrongPasswordResponse = () =>
+  new Response(JSON.stringify(WRONG_PASSWORD), { status: 401, statusText: 'UNAUTHORIZED', headers: { 'content-type': 'application/json' } });
 
 type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 type DbHookContext = { path?: string; body?: unknown; headers?: Headers; request?: Request } | null;
@@ -157,31 +169,38 @@ function succeeded(returned: unknown): boolean {
 }
 
 /**
- * Settles the password attempt the before hook reserved: a wrong password (`wrongCode`) keeps
- * it, a right one clears the key, anything else gives it back. A refusal that still proves the
- * password (`rightCode`: the address is not confirmed yet) clears it too. True when the request
- * succeeded with the right password.
+ * Settles the password attempt the before hook reserved: a refusal in `counted` (a wrong password)
+ * keeps it, success clears the key, anything else gives it back. True when the request succeeded
+ * with the right password.
  */
 async function settlePasswordAttempt(
   ctx: HookContext,
   /** The key outside a request scope, where nothing was held. */
   keyOf: () => Promise<string | null>,
-  wrongCode: string,
-  rightCode?: string,
+  counted: ReadonlySet<string>,
 ): Promise<boolean> {
   const held = settle('password');
   const key = held === undefined ? await keyOf() : held;
   if (key === null) return false;
   const returned = ctx.context.returned;
   const code = errorCode(returned);
-  if (code === wrongCode) return false;
-  if (succeeded(returned) || (rightCode !== undefined && code === rightCode)) {
+  if (code !== null && counted.has(code)) return false;
+  if (succeeded(returned)) {
     await clear(key);
-    return succeeded(returned);
+    return true;
   }
   await release(key);
   return false;
 }
+
+/**
+ * The sign-in refusals that count toward the lock: a wrong password, and the right password of an
+ * unconfirmed account, which is answered like a wrong one (security-1): if it cleared or gave back
+ * the attempt, ten sign-ins with the password just chosen would lock a taken address and never a
+ * free one. The lock of the address ends when its owner confirms it (accounts.ts).
+ */
+const SIGN_IN_COUNTED = new Set(['INVALID_EMAIL_OR_PASSWORD', 'EMAIL_NOT_VERIFIED']);
+const SESSION_PASSWORD_COUNTED = new Set(['INVALID_PASSWORD']);
 
 let dummyHash: Promise<string> | undefined;
 
@@ -267,9 +286,7 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
   if (ctx.path === '/sign-in/email') {
     const email = bodyOf(ctx).email;
     if (typeof email !== 'string') return;
-    if (DEMO_ADDRESS.test(email.trim()) && isPublicDeployment()) {
-      refuse('UNAUTHORIZED', 'INVALID_EMAIL_OR_PASSWORD', 'Invalid email or password');
-    }
+    if (DEMO_ADDRESS.test(email.trim()) && isPublicDeployment()) throw wrongPassword();
     await reservePasswordAttempt(ctx, email);
     return;
   }
@@ -286,11 +303,6 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
       refuse('FORBIDDEN', 'SECOND_FACTOR_REQUIRED', 'Confirm this session with your authenticator app first.');
     }
     await reservePasswordAttempt(ctx, session.user.email);
-    return;
-  }
-
-  if (ctx.path === '/verify-email') {
-    await assertConfirmationLinkCurrent((ctx.query as Record<string, unknown> | undefined)?.token);
     return;
   }
 
@@ -341,10 +353,11 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
   if (ctx.path === '/sign-in/email') {
     const email = bodyOf(ctx).email;
     if (typeof email !== 'string') return;
-    // The password was also right when only the address is unconfirmed: the attempts are cleared,
-    // but the browser becomes a known one only for an account that can sign in.
-    const right = await settlePasswordAttempt(ctx, () => passwordAttemptKey(ctx, email), 'INVALID_EMAIL_OR_PASSWORD', 'EMAIL_NOT_VERIFIED');
+    const right = await settlePasswordAttempt(ctx, () => passwordAttemptKey(ctx, email), SIGN_IN_COUNTED);
     if (right) await rememberDevice(ctx, email);
+    // Better Auth has sent the unconfirmed account a new confirmation link; the answer is the one
+    // of a wrong password, so a sign-up and a sign-in together tell nothing about the address.
+    if (errorCode(returned) === 'EMAIL_NOT_VERIFIED') return wrongPasswordResponse();
     return;
   }
 
@@ -361,7 +374,7 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
       const session = await sessionOf(ctx);
       return session ? passwordAttemptKey(ctx, session.user.email) : null;
     };
-    const right = await settlePasswordAttempt(ctx, keyOf, 'INVALID_PASSWORD');
+    const right = await settlePasswordAttempt(ctx, keyOf, SESSION_PASSWORD_COUNTED);
     // A new password ends the account's known browsers; the one that chose it stays known.
     const email = (returned as { user?: { email?: unknown } } | undefined)?.user?.email;
     if (right && ctx.path === '/change-password' && typeof email === 'string') await rememberDevice(ctx, email);

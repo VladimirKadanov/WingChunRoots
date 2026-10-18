@@ -18,7 +18,13 @@
 // - A password reset confirms the address: the link reached the mailbox.
 // - A confirmation link is refused while the account has no password, and when it was issued
 //   before the password last changed (its `iat` against auth_account.updated_at), so a link from
-//   before a wipe or a reset never confirms an account someone else set up.
+//   before a wipe or a reset never confirms an account someone else set up. This runs in
+//   emailVerification.beforeEmailVerification, after Better Auth has checked the token's signature
+//   and expiry and found the unconfirmed account (fix round 3, code-2: it used to run in the before
+//   hook on the unchecked claims, so a forged token told whether an address had a pending account),
+//   and it refuses with Better Auth's own answer to a bad token.
+// - Confirming the address ends its sign-in lock: only the mailbox owner has the link, and the
+//   right password of an unconfirmed account counts like a wrong one (hooks.ts, security-1).
 // - Unconfirmed accounts are deleted after 7 days (src/server/services/retention.ts; a DEFAULT).
 //
 // What remains: the owner of an address who confirms an account they never created (from the
@@ -79,25 +85,41 @@ export async function onPasswordReset({ user }: { user: { id: string; email: str
   if (scope) scope.resetEmail = user.email;
 }
 
-const linkGone = () =>
-  new APIError('UNAUTHORIZED', { code: 'INVALID_TOKEN', message: 'This link no longer works. Ask for a new one.' });
+/** Better Auth's answer to a token it cannot use (verify-email's redirectOnError, INVALID_TOKEN). */
+function invalidToken(callbackURL: string | null): APIError {
+  const error = { message: 'Invalid token', code: 'INVALID_TOKEN' };
+  if (!callbackURL) return new APIError('UNAUTHORIZED', error);
+  // Better Auth's originCheck has accepted callbackURL before the endpoint ran (a root-relative path
+  // or a trusted origin); the error goes on it the way appendQueryParams does.
+  const relative = callbackURL.startsWith('/');
+  const url = new URL(callbackURL, 'http://placeholder.invalid');
+  url.searchParams.append('error', error.code);
+  return new APIError('FOUND', undefined, new Headers({ location: relative ? url.href.slice(url.origin.length) : url.href }));
+}
 
 /**
- * Before /verify-email: refuses the link of an unconfirmed account that has no password, or whose
- * password changed after the link was issued. Only ever refuses; a token it cannot read is left to
- * the endpoint, which refuses it anyway.
+ * emailVerification.beforeEmailVerification: Better Auth has verified the token (signature,
+ * expiry) and found `user` unconfirmed; refuses the link while the account has no password, or when
+ * the password changed after the link was issued. The token's `iat` is read from the request only
+ * now that its signature is known to be good.
  */
-export async function assertConfirmationLinkCurrent(token: unknown): Promise<void> {
-  if (typeof token !== 'string') return;
-  const claim = confirmationClaims(token);
-  if (!claim || typeof claim.email !== 'string' || typeof claim.iat !== 'number') return;
+export async function refuseStaleConfirmationLink(user: { id: string }, request?: Request): Promise<void> {
+  const query = request ? new URL(request.url).searchParams : null;
+  const token = query?.get('token');
+  const iat = token ? confirmationClaims(token)?.iat : undefined;
   const [row] = await getDb()
-    .select({ emailVerified: authUser.emailVerified, password: authAccount.password, changedAt: authAccount.updatedAt })
-    .from(authUser)
-    .leftJoin(authAccount, and(eq(authAccount.userId, authUser.id), eq(authAccount.providerId, 'credential')))
-    .where(eq(authUser.email, claim.email.toLowerCase()));
-  if (!row || row.emailVerified) return;
-  if (!row.password || !row.changedAt) throw linkGone();
-  // A few seconds of tolerance: the token's clock is the app's, updated_at may be the database's.
-  if (Math.floor(row.changedAt.getTime() / 1000) > claim.iat + CLOCK_SKEW_S) throw linkGone();
+    .select({ password: authAccount.password, changedAt: authAccount.updatedAt })
+    .from(authAccount)
+    .where(and(eq(authAccount.userId, user.id), eq(authAccount.providerId, 'credential')));
+  const stale =
+    typeof iat !== 'number' ||
+    !row?.password ||
+    // A few seconds of tolerance: the token's clock is the app's, updated_at may be the database's.
+    Math.floor(row.changedAt.getTime() / 1000) > iat + CLOCK_SKEW_S;
+  if (stale) throw invalidToken(query?.get('callbackURL') ?? null);
+}
+
+/** emailVerification.afterEmailVerification: the owner has the mailbox, so the address's sign-in lock ends. */
+export async function onEmailVerified(user: { email: string }): Promise<void> {
+  await clear(signInKey(user.email));
 }
