@@ -54,6 +54,7 @@ You can ask to see, correct or delete your data, to receive a copy, or to object
 - `wcr.form`: when your browser sends a form without JavaScript, holds the form's answer (its messages and the values you typed, never a password or a code) for 2 minutes, so the page can show it. Necessary.
 - `wcr.sign-in-email`: after you confirm your e-mail address, fills it into the sign-in form for 10 minutes. Sent only to the sign-in page. Necessary.
 - `wcr.codes`: holds your new backup codes, encrypted, for 30 minutes while you save them. Sent only to the security page. Necessary.
+- `wcr.totp-setup`: holds the key of a two-factor setup you started, encrypted, for 30 minutes, so the security page can show it again after a reload or a trip to your authenticator app. Sent only to the security page. Necessary.
 - `wcr-theme`: remembers the light or dark theme if you choose one.
 
 There are no advertising or analytics cookies.

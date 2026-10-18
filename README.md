@@ -56,7 +56,7 @@ Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~
 
 4. Check everything: `scripts/verify.sh M02` (the last line must be `VERIFY M02: PASS`).
 
-If your `.env` was created before M01, M01b or M02, run `scripts/init-env.sh` once more: it keeps the file and only adds what is missing, the three database role passwords (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`), `MAIL_TRANSPORT=smtp` and, from M02, the account settings (`APP_URL`, `BETTER_AUTH_SECRET`, `IP_HMAC_KEY`, `E2E_PASSWORD`, `E2E_TOTP_SECRET`). After new role passwords, run `scripts/db-bootstrap.sh`.
+If your `.env` was created before M01, M01b or M02, run `scripts/init-env.sh` once more: it keeps the file and only adds what is missing, the three database role passwords (`DB_MIGRATOR_PASSWORD`, `DB_APP_RW_PASSWORD`, `DB_APP_PUBLIC_RO_PASSWORD`), `MAIL_TRANSPORT=smtp` and, from M02, the account settings (`APP_URL`, `BETTER_AUTH_SECRET`, `IP_HMAC_KEY`, `MAIL_SEAL_KEY`, `E2E_PASSWORD`, `E2E_TOTP_SECRET`). `TRUSTED_PROXIES` stays empty locally: it names the reverse proxies of a future deployment. After new role passwords, run `scripts/db-bootstrap.sh`.
 
 #### E-mail
 
@@ -87,7 +87,7 @@ Install Docker Desktop, Node 24 (nvm or Homebrew), `npm install --global pnpm@12
 
 ### Claude Code cloud session
 
-Nothing to do: the SessionStart hook in `.claude/settings.json` runs `scripts/cloud-setup.sh`, which installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (cloud sessions have no Docker daemon and cannot reach apt.postgresql.org), creates the UTF-8 test database, bootstraps the database roles with throwaway passwords, installs the pinned pnpm and the dependencies, and exports `TEST_DATABASE_URL`, the role passwords, `MAIL_TRANSPORT=file` (no Mailpit without Docker), the account settings of M02 (`BETTER_AUTH_SECRET`, `IP_HMAC_KEY`, `E2E_PASSWORD`, `E2E_TOTP_SECRET`: random throwaway values kept in `~/.local/state/wingchunroots/cloud-secrets.env`, outside the repository) (and `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects a different Chromium build than the preinstalled one). To run it by hand:
+Nothing to do: the SessionStart hook in `.claude/settings.json` runs `scripts/cloud-setup.sh`, which installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (cloud sessions have no Docker daemon and cannot reach apt.postgresql.org), creates the UTF-8 test database, bootstraps the database roles with throwaway passwords, installs the pinned pnpm and the dependencies, and exports `TEST_DATABASE_URL`, the role passwords, `MAIL_TRANSPORT=file` (no Mailpit without Docker), the account settings of M02 (`BETTER_AUTH_SECRET`, `IP_HMAC_KEY`, `MAIL_SEAL_KEY`, `E2E_PASSWORD`, `E2E_TOTP_SECRET`: random throwaway values kept in `~/.local/state/wingchunroots/cloud-secrets.env`, outside the repository) (and `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects a different Chromium build than the preinstalled one). To run it by hand:
 
 ```bash
 scripts/cloud-setup.sh
