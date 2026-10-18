@@ -46,8 +46,10 @@ export function FocusInView() {
         const bottom = height - (Number.parseFloat(root.scrollPaddingBottom) || 0);
         const box = el.getBoundingClientRect();
         // Below the clear band: up until its bottom shows, never past its top. Above it: down.
-        if (box.bottom > bottom) window.scrollBy(0, Math.max(0, Math.min(box.bottom - bottom, box.top - top)));
-        else if (box.top < top) window.scrollBy(0, box.top - top);
+        // Whole pixels, rounded away from the edge: WebKit scrolls by whole pixels and would
+        // otherwise leave a fraction of the field under the keyboard or the top bar.
+        if (box.bottom > bottom) window.scrollBy(0, Math.max(0, Math.min(Math.ceil(box.bottom - bottom), Math.floor(box.top - top))));
+        else if (box.top < top) window.scrollBy(0, Math.floor(box.top - top));
       });
     };
     const inPage = (el: unknown): el is Element => el instanceof Element && Boolean(document.getElementById('main')?.contains(el));
