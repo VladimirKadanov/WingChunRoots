@@ -21,7 +21,6 @@ const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
 const IPV6 = /(?<![\w:.])[0-9a-f.]*:[0-9a-f.]*:[0-9a-f:.]*(?![\w:.])/gi;
 
 // C0 controls (CR and LF among them), DEL, C1 controls and the Unicode line and paragraph separators.
-// eslint-disable-next-line no-control-regex -- matching control characters is the point
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 const ESCAPES: Record<string, string> = { '\n': '\\n', '\r': '\\r', '\t': '\\t' };
 
