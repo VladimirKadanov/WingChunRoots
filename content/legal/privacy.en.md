@@ -1,5 +1,5 @@
 ---
-version: 2026-10-18-draft
+version: 2026-10-18-draft-2
 title: Privacy notice
 ---
 
@@ -54,7 +54,7 @@ You can ask to see, correct or delete your data, to receive a copy, or to object
 - `wcr.form`: when your browser sends a form without JavaScript, holds the form's answer (its messages and the values you typed, never a password or a code) for 2 minutes, so the page can show it. Necessary.
 - `wcr.sign-in-email`: after you confirm your e-mail address, fills it into the sign-in form for 10 minutes. Sent only to the sign-in page. Necessary.
 - `wcr.codes`: holds your new backup codes, encrypted, for 30 minutes while you save them. Sent only to the security page. Necessary.
-- `wcr.known_device`: remembers that this browser has signed in to your account before (or set its new password), so that wrong passwords someone else types for your e-mail address never lock you out here. It holds a keyed fingerprint of the address and a random number, not the address itself, for 180 days. Necessary.
+- `wcr.known_device`: remembers that this browser has signed in to your account before (or set its new password), so that wrong passwords someone else types for your e-mail address never lock you out here. It holds a keyed fingerprint of the address and of your current password, and a random number, not the address itself, for 180 days; a new password makes it count for nothing, except in the browser that set it. Necessary.
 - `wcr.totp-setup`: holds the key of a two-factor setup you started, encrypted, for 30 minutes, so the security page can show it again after a reload or a trip to your authenticator app. Sent only to the security page. Necessary.
 - `wcr-theme`: remembers the light or dark theme if you choose one.
 
