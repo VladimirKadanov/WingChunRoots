@@ -3,12 +3,15 @@
 
 import { requestIdFrom } from '../audit';
 import { clientIp, ipHmac } from '../auth/ip';
+import { testFaultToken } from '../faults';
 
 export interface RequestMeta {
   requestId: string;
   ipHmac: string | null;
+  /** M04: the test fault token of this request (src/server/faults.ts); null unless the switch is on. */
+  testFault?: string | null;
 }
 
 export function requestMeta(headers: Headers): RequestMeta {
-  return { requestId: requestIdFrom(headers), ipHmac: ipHmac(clientIp(headers)) };
+  return { requestId: requestIdFrom(headers), ipHmac: ipHmac(clientIp(headers)), testFault: testFaultToken(headers) };
 }

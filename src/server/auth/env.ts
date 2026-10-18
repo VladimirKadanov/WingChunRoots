@@ -53,6 +53,11 @@ export function trustedProxies(env: Env = process.env): string[] {
   return entries;
 }
 
+/** True when APP_URL (or its development default) names a loopback host (M04: the test fault switch). */
+export function hasLoopbackAppUrl(env: Env = process.env): boolean {
+  return isLoopback(new URL(appUrl(env)));
+}
+
 /**
  * A production server behind a public origin (not `next start` on a loopback host, which the E2E
  * tests use): the demo accounts cannot sign in there, and TRUSTED_PROXIES is required.

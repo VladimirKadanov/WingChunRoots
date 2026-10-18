@@ -18,6 +18,21 @@ import type { RequestMeta } from '../services/context';
 import { isServiceError } from '../services/errors';
 import { setRoleInput, setUserRole } from '../services/roles';
 import { twoFactorOverview } from '../services/two-factor';
+import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
+import {
+  ancestorsInput,
+  egoInput,
+  lineageAncestors,
+  lineageEgo,
+  lineagePaths,
+  lineageSubtree,
+  pathsInput,
+  personInput,
+  personProfile,
+  personStudents,
+  studentsInput,
+  subtreeInput,
+} from '../services/lineage';
 
 export interface RpcContext {
   principal: Principal | null;
@@ -94,6 +109,42 @@ export const router = {
       .route({ method: 'POST', path: '/admin/set-role', summary: "Change an account's role (admin with a verified second factor)" })
       .input(setRoleInput)
       .handler(({ context, input }) => setUserRole(context.principal, input, context.meta)),
+  },
+  // M04: the public lineage reads (plan §6.3). Anonymous callers get the public graph; a signed-in
+  // participant also gets their own involved_only relationships, marked (DEFAULT D03).
+  lineage: {
+    ego: base
+      .route({ method: 'GET', path: '/lineage/ego', summary: 'Ego network of a person: teachers up, students down, capped' })
+      .input(egoInput)
+      .output(lineageGraphSchema)
+      .handler(({ context, input }) => lineageEgo(context.principal, input, context.meta)),
+    ancestors: base
+      .route({ method: 'GET', path: '/lineage/ancestors', summary: 'Every recorded ancestor of a person' })
+      .input(ancestorsInput)
+      .output(lineageGraphSchema)
+      .handler(({ context, input }) => lineageAncestors(context.principal, input, context.meta)),
+    subtree: base
+      .route({ method: 'GET', path: '/lineage/subtree', summary: 'Descendants of a person, optionally in one lineage, to a depth' })
+      .input(subtreeInput)
+      .output(lineageGraphSchema)
+      .handler(({ context, input }) => lineageSubtree(context.principal, input, context.meta)),
+    paths: base
+      .route({ method: 'GET', path: '/lineage/paths', summary: 'Routes of descent from the earliest recorded teachers to a person' })
+      .input(pathsInput)
+      .output(lineagePathsSchema)
+      .handler(({ context, input }) => lineagePaths(context.principal, input, context.meta)),
+  },
+  people: {
+    get: base
+      .route({ method: 'GET', path: '/people/{slug}', summary: 'Public profile of a person (404 when missing or not public)' })
+      .input(personInput)
+      .output(personProfileSchema)
+      .handler(({ context, input }) => personProfile(context.principal, input)),
+    students: base
+      .route({ method: 'GET', path: '/people/{slug}/students', summary: "A page of a person's students, active then historical" })
+      .input(studentsInput)
+      .output(studentsPageSchema)
+      .handler(({ context, input }) => personStudents(context.principal, input, context.meta)),
   },
 };
 

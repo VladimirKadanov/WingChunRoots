@@ -70,3 +70,5 @@ M02.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-10-18 — Изгледите `v_public_person` (+ `city_name`) и `v_public_edge` (+ линия: slug, име, корен) са разширени с нова миграция; услугата за родословието (`lineage.ego`, `ancestors`, `subtree`, `paths`, `people.get`, `people.students`), публичните DTO, кешът с тагове, превключвателят `WCR_TEST_FAULTS` и `pnpm api:openapi [--check]` са готови; интеграционните тестове минават.

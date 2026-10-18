@@ -30,7 +30,9 @@
     "notices": "tsx scripts/generate-notices.ts",
     "worker": "tsx src/worker.ts",
     "worker:dev": "tsx watch src/worker.ts",
-    "mail:check": "tsx src/server/jobs/cli.ts mail-check"
+    "mail:check": "tsx src/server/jobs/cli.ts mail-check",
+    "api:openapi": "tsx src/server/rpc/openapi-cli.ts",
+    "perf:queries": "tsx scripts/perf-queries.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
