@@ -60,6 +60,10 @@ function required(name: 'E2E_PASSWORD' | 'E2E_TOTP_SECRET' | 'BETTER_AUTH_SECRET
 export const demoPassword = () => required('E2E_PASSWORD');
 
 const STEP_MS = 30_000;
+/** Steps staffTotpCode() waits at most for a free code (the seeded staff share one per step). */
+const STAFF_CODE_ROUNDS = 10;
+/** How many more codes a sign-in picks after another worker took its code first. */
+const STAFF_CODE_PICKS = 12;
 
 /**
  * A TOTP code of the seeded staff accounts that `email` has not used yet (see the top of this
@@ -70,7 +74,7 @@ export async function staffTotpCode(email = 'demo-admin@example.test'): Promise<
   const secret = required('E2E_TOTP_SECRET');
   required('IP_HMAC_KEY');
   const userId = await userIdOf(email);
-  for (let round = 0; round < 4; round += 1) {
+  for (let round = 0; round < STAFF_CODE_ROUNDS; round += 1) {
     const steps = [0, 1, -1].sort(() => Math.random() - 0.5);
     for (const step of steps) {
       const code = totp(secret, Date.now() + step * STEP_MS);
@@ -78,11 +82,13 @@ export async function staffTotpCode(email = 'demo-admin@example.test'): Promise<
       const used = await getDb().execute(sql`SELECT 1 FROM auth_throttle WHERE key = ${totpKey(userId, code)} AND expires_at > now()`);
       if (used.rows.length === 0) return code;
     }
-    const wait = STEP_MS - (Date.now() % STEP_MS) + 250;
+    // Workers that wait for the same step would all wake at its start and post its one new code at
+    // once; a random delay lets the first one claim it, and the others see it used and wait on.
+    const wait = STEP_MS - (Date.now() % STEP_MS) + 250 + randomInt(2_000);
     extendTimeout(wait);
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
-  throw new Error(`no unused TOTP code for ${email} within two minutes`);
+  throw new Error(`no unused TOTP code for ${email} within ${STAFF_CODE_ROUNDS} steps`);
 }
 
 /**
@@ -195,7 +201,7 @@ function slugFor(target: Exclude<SignInTarget, 'new'>): DemoAccountSlug {
  * error.
  */
 export async function submitStaffCode(page: Page, button: string, email = 'demo-admin@example.test'): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt <= STAFF_CODE_PICKS; attempt += 1) {
     await page.getByLabel('6-digit code', { exact: false }).fill(await staffTotpCode(email));
     await page.getByRole('button', { name: button }).click();
     const used = page.getByText('This code has just been used', { exact: false });
@@ -212,9 +218,12 @@ export async function signInWithPassword(page: Page, email: string, password: st
   expect(first.status(), await first.text()).toBe(200);
   const body = (await first.json()) as { twoFactorRedirect?: boolean };
   if (body.twoFactorRedirect) {
-    // Another worker may take the same code between the pick and the request: pick again.
+    // Another worker may take the same code between the pick and the request: pick again. The
+    // server does not count a code refused as used as a failed attempt (src/server/auth/hooks.ts),
+    // and each pick waits for a step with a free code, so the bound is one of time: a worker can
+    // lose several races in a row to others that sign the same staff account in.
     let second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) });
-    for (let retry = 0; retry < 3 && second.status() === 401; retry += 1) {
+    for (let retry = 0; retry < STAFF_CODE_PICKS && second.status() === 401; retry += 1) {
       if (((await second.json()) as { code?: string }).code !== 'CODE_ALREADY_USED') break;
       second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) });
     }
