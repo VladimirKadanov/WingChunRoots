@@ -47,13 +47,13 @@ export function RequestResetForm({
           <DoneText>
             <p>
               We sent an e-mail to{' '}
-              <strong className="font-semibold break-all text-fg" translate="no">
+              <strong className="font-semibold text-fg [overflow-wrap:anywhere]" translate="no">
                 {state.values?.email}
               </strong>
               , if it belongs to an account. Its link lets you choose a new password once, within one hour.
             </p>
             <p>
-              Asked more than once? Any of the links works until it expires. At most three e-mails go out in an hour.
+              Asked more than once? Each link works until it expires, and at most three e-mails go out in an hour.
             </p>
             <p>
               Remembered it? <Link href="/sign-in" className="link">Sign in</Link>.

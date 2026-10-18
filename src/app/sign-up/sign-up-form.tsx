@@ -68,7 +68,7 @@ export function SignUpForm({
           <DoneText>
             <p>
               We sent an e-mail to{' '}
-              <strong className="font-semibold break-all text-fg" translate="no">
+              <strong className="font-semibold text-fg [overflow-wrap:anywhere]" translate="no">
                 {state.values?.email}
               </strong>
               . Open its link within 24 hours to confirm the address, then sign in. If the address already has an account, the e-mail says

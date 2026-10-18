@@ -70,7 +70,7 @@ export function ResendConfirmationForm({
           <DoneText>
             <p>
               We sent a new link to{' '}
-              <strong className="font-semibold break-all text-fg" translate="no">
+              <strong className="font-semibold text-fg [overflow-wrap:anywhere]" translate="no">
                 {state.values?.email}
               </strong>
               , if it belongs to an account that waits for confirmation. It works for 24 hours.
