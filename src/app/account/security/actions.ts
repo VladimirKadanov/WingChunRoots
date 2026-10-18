@@ -61,8 +61,9 @@ async function enableTwoFactor(form: FormData): Promise<FormState> {
   const result = await authAction<{ totpURI?: string; backupCodes?: string[] }>('/two-factor/enable', { body: { password } });
   if (!result.ok || !result.data?.totpURI) return passwordRefused(result.code);
   await keepForPage({ codes: result.data.backupCodes, uri: result.data.totpURI });
-  // The page renders the pending setup: QR code, key, link.
-  redirect(PAGE);
+  // The page renders the pending setup: QR code, key, link. `setup` changes with every new key, so
+  // the first step's heading takes the focus again after "Start again" (page.tsx, screens-1).
+  redirect(`${PAGE}?setup=${Date.now().toString(36)}`);
 }
 
 async function verifyCode(form: FormData): Promise<FormState | { ok: true }> {

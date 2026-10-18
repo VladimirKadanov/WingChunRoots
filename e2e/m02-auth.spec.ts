@@ -769,15 +769,38 @@ async function codeOfSetup(page: Page, step: 0 | 1 = 0): Promise<{ uri: string; 
 
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
+/** No axe violations on the security page as it is now, in both themes (fix round 3, screens-2). */
+async function expectSecurityPageClean(page: Page, state: string) {
+  for (const theme of ['dark', 'light'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expectNoAxeViolations(page, `/account/security, ${state} (${theme})`);
+  }
+  await page.emulateMedia({ colorScheme: null });
+}
+
+/** The heading or notice of the state the security page just arrived in has the focus (screens-1). */
+async function expectArrivalFocus(page: Page, target: ReturnType<Page['getByRole']>) {
+  await expect(target).toBeVisible();
+  await expect(target).toBeFocused();
+}
+
+const FIRST_STEP = 'Add WingChunRoots to your authenticator app';
+
 test('@M02 two-factor setup survives a reload and asks to save the backup codes before it is done', async ({ page, browser }, testInfo) => {
   const account = await signInAs(page, 'new');
   await page.goto('/account/security');
   await expect(page.getByRole('heading', { level: 1, name: 'Two-factor authentication' })).toBeVisible();
+  await expectSecurityPageClean(page, 'off');
   await field(page, 'Your password').fill(account.password);
   await page.getByRole('button', { name: 'Set up two-factor authentication' }).click();
 
   // The pending key is rendered by the server: QR code, the key as text with Copy, the app link.
+  // The first step's heading (an h2 under the page's h1) takes the focus.
   await expect(page.getByText('Setup not finished')).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/security\?setup=[0-9a-z]+$/);
+  await expectArrivalFocus(page, page.getByRole('heading', { level: 2, name: FIRST_STEP }));
+  await expect(page.getByText('the same key waits here')).toBeVisible();
+  await expectSecurityPageClean(page, 'setup');
   await expect(page.getByRole('img', { name: /QR code/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Copy key' })).toBeVisible();
   // "Open in authenticator app" only where a tap can open another app (a coarse pointer): on a
@@ -805,15 +828,37 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
     await expect(otherPage.getByText('This setup was started in another browser')).toBeVisible();
     await expect(otherPage.locator('a[href^="otpauth:"]')).toHaveCount(0);
     expect(await otherPage.content()).not.toContain(key.replace(/ /g, ''));
+    // The notes beside it do not promise the key that this browser is not shown (screens-4).
+    await expect(otherPage.getByText('Setup was started but not finished.')).toBeVisible();
+    await expect(otherPage.getByText('the same key waits here')).toHaveCount(0);
   } finally {
     await other.close();
   }
 
-  // The first code turns it on; the backup codes come next, with Copy all and Download.
+  // Start again: a new key, and the first step's heading takes the focus again.
+  const setupUrl = page.url();
+  const again = page.locator('details').filter({ hasText: 'Start again with a new key' }).filter({ visible: true });
+  await again.locator('summary').click();
+  await again.getByLabel('Your password').fill(account.password);
+  await again.locator('button[type="submit"]').click();
+  await expect(page).not.toHaveURL(setupUrl);
+  await expect(page.locator('code').filter({ visible: true })).not.toHaveText(key);
+  await expectArrivalFocus(page, page.getByRole('heading', { level: 2, name: FIRST_STEP }));
+
+  // A wrong code: the field says so, and the page stays clean.
+  await field(page, '6-digit code').fill('000000');
+  await page.getByRole('button', { name: 'Turn on two-factor authentication' }).click();
+  await expect(field(page, '6-digit code')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('That code is not right.').filter({ visible: true })).toBeVisible();
+  await expectSecurityPageClean(page, 'setup with a wrong code');
+
+  // The first code turns it on; the backup codes come next, with Copy all and Download, and
+  // their heading takes the focus.
   await field(page, '6-digit code').fill((await codeOfSetup(page)).code);
   await page.getByRole('button', { name: 'Turn on two-factor authentication' }).click();
   await expect(page).toHaveURL(/\/account\/security\?codes=new$/);
-  await expect(page.getByRole('heading', { name: 'Save your backup codes' })).toBeVisible();
+  await expectArrivalFocus(page, page.getByRole('heading', { level: 2, name: 'Save your backup codes' }));
+  await expectSecurityPageClean(page, 'backup codes');
   const codes = await page.getByRole('list', { name: 'Backup codes' }).locator('li span.font-mono').allInnerTexts();
   expect(codes).toHaveLength(10);
   for (const code of codes) expect(code).toMatch(CODE_PATTERN);
@@ -828,13 +873,15 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
   await field(page, 'I have saved these codes somewhere safe.').check();
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page).toHaveURL(/\?saved=on$/);
-  await expect(doneText(page, 'Backup codes saved')).toBeVisible();
+  await expectArrivalFocus(page, doneText(page, 'Backup codes saved'));
   await expect(page.getByText('10 of 10 left')).toBeVisible();
+  await expectSecurityPageClean(page, 'on');
 
   // A backup code signs in once, instead of the app's code.
   await page.context().clearCookies();
   await signInThroughForm(page, account.email, account.password);
   await expect(page).toHaveURL(/\/sign-in\/two-factor$/);
+  await expect(page.getByText('Your password was right.')).toBeVisible();
   // The app's code takes what the phone offers; a backup code field must not offer a code from a message.
   await expect(field(page, '6-digit code')).toHaveAttribute('autocomplete', 'one-time-code');
   await page.getByRole('link', { name: 'No phone at hand? Use a backup code' }).click();
@@ -844,6 +891,23 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
   await expect(page).toHaveURL(/\/onboarding$/);
   await page.goto('/account/security');
   await expect(page.getByText('9 of 10 left')).toBeVisible();
+
+  // Turning it off: the notice says so and takes the focus.
+  const off = page.locator('details').filter({ hasText: 'Turn off two-factor authentication' }).filter({ visible: true });
+  await off.locator('summary').click();
+  await off.getByLabel('Your password').fill(account.password);
+  await off.locator('button[type="submit"]').click();
+  await expect(page).toHaveURL(/\/account\/security\?off=1$/);
+  await expectArrivalFocus(page, doneText(page, 'Two-factor authentication turned off'));
+});
+
+test('@M02 /sign-in/two-factor tells only a sign-in that waits for its code that the password was right', async ({ page }) => {
+  // No sign-in waits in this browser (screens-5).
+  for (const path of ['/sign-in/two-factor', '/sign-in/two-factor?method=backup']) {
+    await page.goto(path);
+    await expect(page.getByText('asks for a code after the password')).toBeVisible();
+    await expect(page.getByText('Your password was right')).toHaveCount(0);
+  }
 });
 
 test('@M02 /admin sends no staff data to anyone but a verified staff session', async ({ page, browser }) => {
@@ -943,12 +1007,14 @@ test.describe('without JavaScript', () => {
     await field(page, 'Your password').fill(account.password);
     await page.getByRole('button', { name: 'Set up two-factor authentication' }).click();
     await expect(page.getByRole('img', { name: /QR code/ })).toBeVisible();
+    // Each new state's heading or notice has the focus (autofocus at load, screens-1).
+    await expectArrivalFocus(page, page.getByRole('heading', { level: 2, name: FIRST_STEP }));
     await field(page, '6-digit code').fill((await codeOfSetup(page)).code);
     await page.getByRole('button', { name: 'Turn on two-factor authentication' }).click();
-    await expect(page.getByRole('heading', { name: 'Save your backup codes' })).toBeVisible();
+    await expectArrivalFocus(page, page.getByRole('heading', { level: 2, name: 'Save your backup codes' }));
     expect(await page.getByRole('list', { name: 'Backup codes' }).locator('li').count()).toBe(10);
     await field(page, 'I have saved these codes somewhere safe.').check();
     await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('Backup codes saved')).toBeVisible();
+    await expectArrivalFocus(page, page.getByRole('status').filter({ hasText: 'Backup codes saved' }));
   });
 });

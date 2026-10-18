@@ -24,6 +24,15 @@ export interface FrameHeading {
 }
 
 /**
+ * The attributes of the element that takes the focus when a page arrives in a new state without a
+ * new path (ArrivalFocus, arrival-focus.tsx): focusable from script, and autofocus for a page
+ * loaded without JavaScript. Empty when `on` is false.
+ */
+export function arrivalProps(on: boolean) {
+  return on ? ({ 'data-arrival': '', tabIndex: -1, autoFocus: true } as const) : {};
+}
+
+/**
  * The eyebrow, the page's h1 and the lede. `id` and `focus` make the heading the place focus moves
  * to when a form's outcome replaces the form (useFocusOnError; autofocus without JavaScript).
  */
@@ -115,9 +124,13 @@ export function FormFooter({ children }: { children: ReactNode }) {
  * authentication on): words and the register's chop, stamped in the neutral dimmed tone (never
  * red, which is the brand and the primary action).
  */
-export function Notice({ children }: { children: ReactNode }) {
+export function Notice({ arrival = false, children }: { /** Takes the focus on arrival (arrivalProps). */ arrival?: boolean; children: ReactNode }) {
   return (
-    <p role="status" className="mb-6 flex items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm [--seal-ground:var(--surface-2)]">
+    <p
+      role="status"
+      {...arrivalProps(arrival)}
+      className="mb-6 flex items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm outline-offset-4 [--seal-ground:var(--surface-2)]"
+    >
       <Seal kind="check" tone="dim" size={24} className="-mt-0.5" />
       <span>{children}</span>
     </p>

@@ -5,6 +5,7 @@
 import { cookies, headers } from 'next/headers';
 import { cache } from 'react';
 
+import { COOKIE_PREFIX } from './config';
 import { type AuthCallInit, type AuthCallResult, callAuthEndpoint } from './endpoint';
 import { checkRoute } from './guards';
 import type { Principal } from './principal';
@@ -12,6 +13,17 @@ import { principalFromHeaders } from './session';
 
 /** The principal of the current request, read once per request. */
 export const getRequestPrincipal = cache(async (): Promise<Principal | null> => principalFromHeaders(await headers()));
+
+/**
+ * Whether this browser has a sign-in that waits for its second factor: Better Auth's signed
+ * `two_factor` cookie (`__Secure-` over HTTPS). Only for the wording of /sign-in/two-factor
+ * (fix round 3, screens-5); the plugin checks the cookie itself when a code is sent.
+ */
+export async function hasPendingSecondFactor(): Promise<boolean> {
+  const jar = await cookies();
+  const name = `${COOKIE_PREFIX}.two_factor`;
+  return jar.has(name) || jar.has(`__Secure-${name}`);
+}
 
 export type RouteGuard =
   | { principal: Principal; redirectTo?: never; forbidden?: never }

@@ -6,8 +6,12 @@
 //   setup with the password (QR code, the key as text with a Copy button, and on touch screens a
 //   link that opens the authenticator app), then the first code. Works without JavaScript and
 //   after a reload; another browser, or the same one after 30 minutes, starts again.
+//   Right after the password (`?setup=…`, a new value for every new key) the first step's
+//   heading takes the focus.
 // - On, right after the first code or new codes (`?codes=new`): the backup codes to save (Copy
-//   all, Download as a text file, a required "I have saved these codes").
+//   all, Download as a text file, a required "I have saved these codes"); their heading takes the
+//   focus, and so does the notice after "Done", a verified session or turning it off (fix round 3,
+//   screens-1: the path and the title stay the same, so Next.js announces nothing).
 // - On: the backup codes left, new codes with the password, and, for members, turning it off.
 //   A session that has not passed the second factor verifies it here (`?next=/admin`).
 
@@ -16,7 +20,8 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
-import { AuthFrame, Notice } from '@/components/account/auth-frame';
+import { ArrivalFocus } from '@/components/account/arrival-focus';
+import { AuthFrame, Notice, arrivalProps } from '@/components/account/auth-frame';
 import { CopyButton } from '@/components/account/copy-button';
 import { CheckboxField } from '@/components/account/fields';
 import { PageRedirect } from '@/components/account/page-redirect';
@@ -50,8 +55,11 @@ export const metadata: Metadata = {
 
 type Note = { title: string; text: string };
 
-/** The register beside the form says what matters in the state the account is in now. */
-function notesFor(status: 'off' | 'pending' | 'on', staff: boolean): readonly Note[] {
+/**
+ * The register beside the form says what matters in the state the account is in now. `keyHere`:
+ * whether this browser is shown the pending setup's key (fix round 3, screens-4).
+ */
+function notesFor(status: 'off' | 'pending' | 'on', staff: boolean, keyHere: boolean): readonly Note[] {
   if (status === 'off') {
     return [
       {
@@ -72,7 +80,9 @@ function notesFor(status: 'off' | 'pending' | 'on', staff: boolean): readonly No
     return [
       {
         title: 'Nothing changes yet',
-        text: 'Until you enter the first code, signing in needs only your password. You can leave and come back: the same key waits here.',
+        text: keyHere
+          ? 'Until you enter the first code, signing in needs only your password. You can leave and come back: the same key waits here.'
+          : 'Setup was started but not finished. Until a first code is entered, signing in needs only your password.',
       },
       {
         title: 'After the first code',
@@ -102,15 +112,16 @@ const NOTICES = {
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+/** A step of the setup. Its heading is an h2, the level below the page's h1 (screens-2). */
+function Step({ n, title, arrival = false, children }: { n: number; title: string; arrival?: boolean; children: ReactNode }) {
   return (
     <li className="grid gap-4 border-t border-border-subtle pt-6">
-      <h3 className="flex items-baseline gap-3 font-display text-xl [overflow-wrap:anywhere]">
+      <h2 {...arrivalProps(arrival)} className="flex items-baseline gap-3 font-display text-xl outline-offset-4 [overflow-wrap:anywhere]">
         <span aria-hidden="true" className="font-display text-fg-subtle">
           {n}
         </span>
         <span>{title}</span>
-      </h3>
+      </h2>
       {children}
     </li>
   );
@@ -158,6 +169,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
   const newCodes = tf.status === 'on' && query.codes === 'new' && user ? await readBackupCodes(user.id) : null;
   const setup = tf.status === 'pending' && user ? await readPendingSetup(user.id, user.email) : null;
   const notice = (Object.keys(NOTICES) as (keyof typeof NOTICES)[]).find((key) => typeof query[key] === 'string');
+  // The state the page arrived in right after one of its forms, whose heading or notice takes the
+  // focus (screens-1); null for a visit to the page.
+  const arrival = notice ? `notice:${notice}` : newCodes ? 'codes' : setup && typeof query.setup === 'string' ? `setup:${query.setup}` : null;
 
   const state: { kind: TwoFactorStateKind; text: string } =
     tf.status === 'off'
@@ -198,7 +212,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
     const qr = qrModules(setup.uri);
     body = (
       <ol className="grid gap-8">
-        <Step n={1} title="Add WingChunRoots to your authenticator app">
+        <Step n={1} title="Add WingChunRoots to your authenticator app" arrival={arrival?.startsWith('setup:')}>
           {/* On a phone the app is on the same screen: the key and the app link come first. */}
           <div className="flex flex-col gap-6">
             <div className="grid gap-2 pointer-coarse:order-2">
@@ -241,7 +255,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
   } else if (newCodes) {
     body = (
       <section aria-labelledby="codes-heading" className="grid gap-5">
-        <h2 id="codes-heading" className="font-display text-2xl [overflow-wrap:anywhere]">
+        <h2 id="codes-heading" {...arrivalProps(arrival === 'codes')} className="font-display text-2xl outline-offset-4 [overflow-wrap:anywhere]">
           Save your backup codes
         </h2>
         <p className="max-w-[56ch] text-ui text-fg-muted">
@@ -327,36 +341,43 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
     <AuthFrame
       eyebrow="Account · security"
       title="Two-factor authentication"
-      notes={notesFor(tf.status, tf.staff)}
+      notes={notesFor(tf.status, tf.staff, setup !== null)}
       notesLabel="About two-factor authentication"
     >
-      {notice ? <Notice>{NOTICES[notice]}</Notice> : null}
-      <dl aria-label="Two-factor authentication" className="mb-8 grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)]">
-        <RegisterRow label="Status">
-          <TwoFactorState state={state.kind} className="font-semibold">
-            {state.text}
-          </TwoFactorState>
-        </RegisterRow>
-        {tf.status === 'on' ? (
-          <RegisterRow label="Backup codes">
-            {tf.backupCodesLeft === 1 ? '1 left' : `${tf.backupCodesLeft ?? 0} of ${BACKUP_CODE_COUNT} left`}
-            {(tf.backupCodesLeft ?? 0) <= 3 && !newCodes ? <span className="text-fg-muted"> · get new ones below</span> : null}
+      <ArrivalFocus arrival={arrival}>
+        {notice ? <Notice arrival={arrival?.startsWith('notice:')}>{NOTICES[notice]}</Notice> : null}
+        {/* On phones a rule between rows, none under the last: the section after it draws its own
+            (screens-8: two rules with an empty band between them looked like a seam). */}
+        <dl
+          aria-label="Two-factor authentication"
+          className="mb-8 grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)] [&>div:last-child>dd]:border-b-0"
+        >
+          <RegisterRow label="Status">
+            <TwoFactorState state={state.kind} className="font-semibold">
+              {state.text}
+            </TwoFactorState>
           </RegisterRow>
-        ) : null}
-        <RegisterRow label="Sign-in">
-          {tf.status === 'on'
-            ? 'Your password, then the code from your app (or a backup code).'
-            : tf.status === 'pending'
-              ? 'Still only your password, until you enter the first code below.'
-              : 'Only your password.'}
-        </RegisterRow>
-      </dl>
-      {body}
-      <p className="mt-10 border-t border-border-subtle pt-5 text-ui">
-        <Link href="/account" className="link inline-flex min-h-11 items-center">
-          Back to your account
-        </Link>
-      </p>
+          {tf.status === 'on' ? (
+            <RegisterRow label="Backup codes">
+              {tf.backupCodesLeft === 1 ? '1 left' : `${tf.backupCodesLeft ?? 0} of ${BACKUP_CODE_COUNT} left`}
+              {(tf.backupCodesLeft ?? 0) <= 3 && !newCodes ? <span className="text-fg-muted"> · get new ones below</span> : null}
+            </RegisterRow>
+          ) : null}
+          <RegisterRow label="Sign-in">
+            {tf.status === 'on'
+              ? 'Your password, then the code from your app (or a backup code).'
+              : tf.status === 'pending'
+                ? 'Still only your password, until you enter the first code below.'
+                : 'Only your password.'}
+          </RegisterRow>
+        </dl>
+        {body}
+        <p className="mt-10 border-t border-border-subtle pt-5 text-ui">
+          <Link href="/account" className="link inline-flex min-h-11 items-center">
+            Back to your account
+          </Link>
+        </p>
+      </ArrivalFocus>
     </AuthFrame>
   );
 }
