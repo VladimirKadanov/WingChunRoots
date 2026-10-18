@@ -3,9 +3,10 @@
 // rate limiting, disabled paths, the origin check and the hooks. Server Actions use it through
 // src/server/auth/web.ts; they are thin wrappers, never a second implementation (plan §6.8).
 
-import { getAuth, AUTH_BASE_PATH } from './config';
+import { AUTH_BASE_PATH } from './config';
 import { appUrl } from './env';
 import { withClientIp } from './ip';
+import { dispatchAuth } from './route';
 
 /**
  * Request headers passed on from the browser's request. The session travels in the cookie; the
@@ -45,9 +46,8 @@ export async function callAuthEndpoint<T = unknown>(path: string, init: AuthCall
   headers.set('origin', origin);
   const method = init.method ?? 'POST';
   if (method === 'POST') headers.set('content-type', 'application/json');
-  const response = await getAuth().handler(
-    new Request(url, { method, headers, body: method === 'POST' ? JSON.stringify(init.body ?? {}) : undefined }),
-  );
+  const request = new Request(url, { method, headers, body: method === 'POST' ? JSON.stringify(init.body ?? {}) : undefined });
+  const response = await dispatchAuth(request);
   const text = await response.text();
   let data: unknown = null;
   try {

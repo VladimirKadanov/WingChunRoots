@@ -23,10 +23,14 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm';
 
 import { getDb } from '../db';
 import { authAccount, person, personName } from '../db/schema';
+import { getProducer } from '../jobs/boss';
 import { queueEmail, type Transaction } from '../jobs/outbox';
 import type { NameData } from '../templates/email';
 import { appUrl } from './env';
 import { logAuth } from './logger';
+
+/** This process's job producer (pg-boss stays inside src/server/jobs). */
+type Producer = Awaited<ReturnType<typeof getProducer>>;
 
 export const VERIFY_EMAIL_EXPIRES_IN_S = 24 * 3600;
 export const RESET_PASSWORD_EXPIRES_IN_S = 3600;
@@ -65,13 +69,16 @@ async function recipientNames(userId: string): Promise<NameData[] | undefined> {
 /**
  * Runs `queue` inside a transaction when the account has budget left for `template` this hour,
  * and returns whether it ran. The advisory lock makes the count and the insert one step per
- * account and template.
+ * account and template. The job producer is started before the transaction, so the lock is only
+ * ever held for a count and two inserts (the requests that wait for it share the 2 s statement
+ * timeout of app_rw).
  */
 export async function withinHourlyCap(
   userId: string,
   template: AccountEmailTemplate,
-  queue: (tx: Transaction) => Promise<unknown>,
+  queue: (tx: Transaction, boss: Producer) => Promise<unknown>,
 ): Promise<boolean> {
+  const boss = await getProducer();
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`account-email:${userId}:${template}`}, 0))`);
     const rows = await tx.execute<{ n: number }>(sql`
@@ -81,7 +88,7 @@ export async function withinHourlyCap(
       logAuth('warn', `account e-mail dropped: the hourly cap of the account for ${template} is reached`);
       return false;
     }
-    await queue(tx);
+    await queue(tx, boss);
     return true;
   });
 }
@@ -101,14 +108,14 @@ export async function sendVerificationEmail(user: Recipient, token: string): Pro
   if (!(await hasPassword(user.id))) return sendFinishSignUpEmail(user);
   const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}`;
   const names = await recipientNames(user.id);
-  await withinHourlyCap(user.id, 'verify-email', (tx) =>
+  await withinHourlyCap(user.id, 'verify-email', (tx, boss) =>
     queueEmail(tx, {
       template: 'verify-email',
       to: user.email,
       userId: user.id,
       idempotencyKey: keyFor('verify-email', token),
       data: { url, expiresInHours: VERIFY_EMAIL_EXPIRES_IN_S / 3600, ...(names ? { recipientNames: names } : {}) },
-    }),
+    }, boss),
   );
 }
 
@@ -118,14 +125,14 @@ export async function sendPasswordResetEmail(user: Recipient, token: string): Pr
   const url = `${appUrl()}/reset-password?token=${encodeURIComponent(token)}${finish ? '&finish=1' : ''}`;
   const names = await recipientNames(user.id);
   const template = finish ? 'finish-sign-up' : 'reset-password';
-  await withinHourlyCap(user.id, template, (tx) =>
+  await withinHourlyCap(user.id, template, (tx, boss) =>
     queueEmail(tx, {
       template,
       to: user.email,
       userId: user.id,
       idempotencyKey: keyFor(template, token),
       data: { url, expiresInHours: RESET_PASSWORD_EXPIRES_IN_S / 3600, ...(names ? { recipientNames: names } : {}) },
-    }),
+    }, boss),
   );
 }
 
@@ -148,14 +155,14 @@ export async function sendFinishSignUpEmail(user: Recipient): Promise<void> {
     expiresAt: new Date(Date.now() + RESET_PASSWORD_EXPIRES_IN_S * 1000),
   });
   const url = `${appUrl()}/reset-password?token=${encodeURIComponent(token)}&finish=1`;
-  const queued = await withinHourlyCap(user.id, 'finish-sign-up', (tx) =>
+  const queued = await withinHourlyCap(user.id, 'finish-sign-up', (tx, boss) =>
     queueEmail(tx, {
       template: 'finish-sign-up',
       to: user.email,
       userId: user.id,
       idempotencyKey: keyFor('finish-sign-up', token),
       data: { url, expiresInHours: RESET_PASSWORD_EXPIRES_IN_S / 3600 },
-    }),
+    }, boss),
   );
   if (!queued) await context.internalAdapter.deleteVerificationByIdentifier(identifier);
 }
@@ -164,7 +171,7 @@ export async function sendFinishSignUpEmail(user: Recipient): Promise<void> {
 export async function sendAccountExistsEmail(user: Recipient): Promise<void> {
   const origin = appUrl();
   const names = await recipientNames(user.id);
-  await withinHourlyCap(user.id, 'account-exists', (tx) =>
+  await withinHourlyCap(user.id, 'account-exists', (tx, boss) =>
     queueEmail(tx, {
       template: 'account-exists',
       to: user.email,
@@ -172,6 +179,6 @@ export async function sendAccountExistsEmail(user: Recipient): Promise<void> {
       // One per sign-up attempt that passes the budget: random, never derived from the address.
       idempotencyKey: keyFor('account-exists', generateRandomString(24, 'a-z', '0-9')),
       data: { signInUrl: `${origin}/sign-in`, resetUrl: `${origin}/reset-password`, ...(names ? { recipientNames: names } : {}) },
-    }),
+    }, boss),
   );
 }

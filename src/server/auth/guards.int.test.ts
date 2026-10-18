@@ -180,7 +180,9 @@ describe('second factor of staff sessions', () => {
       return browser;
     };
     const password = { password: moderator.password };
+    // Not served: the TOTP secret for the password, and an uncounted check of the password.
     expect((await authFetch(asSession(), '/two-factor/get-totp-uri', { body: password })).status).toBe(404);
+    expect((await authFetch(asSession(), '/verify-password', { body: password })).status).toBe(404);
     for (const path of ['/two-factor/generate-backup-codes', '/two-factor/enable']) {
       const refused = await authFetch(asSession(), path, { body: password });
       expect(refused.status, path).toBe(403);

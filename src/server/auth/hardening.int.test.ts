@@ -15,7 +15,7 @@ import type { EmailSendJob } from '../jobs/queues';
 import { generateBackupCodes } from './credentials';
 import { ACCOUNT_EMAIL_HOURLY_CAPS } from './emails';
 import { handleAuthRequest } from './route';
-import { SIGN_IN_FAILURE_LIMIT } from './throttle';
+import { SIGN_IN_FAILURE_LIMIT, signInKey } from './throttle';
 import {
   authFetch,
   createAccount,
@@ -125,6 +125,32 @@ describe('pre-registration takeover (H1)', () => {
     expect(confirm.status).toBe(200);
     expect((await userRow(await userId(email)))?.emailVerified).toBe(true);
     expect((await signInWith(email, password)).status).toBe(200);
+  });
+
+  it('a sign-up that Better Auth refuses tells nothing about the password and changes nothing', async () => {
+    const email = address('oracle');
+    const password = 'the password of whoever signed up';
+    expect((await signUp(email, password)).status).toBe(200);
+    const verifyBefore = await deliveryCount('verify-email', email);
+    // Bodies the endpoint refuses before it looks at the address: no name field, a padded address.
+    const refused = [
+      (guess: string) => authFetch(new TestBrowser(), '/sign-up/email', { body: { email, password: guess, consents: ALL_TICKS } }),
+      (guess: string) => signUp(` ${email}`, guess),
+    ];
+    for (const send of refused) {
+      const right = await send(password);
+      const wrong = await send('not the password at all');
+      expect(right.status).toBe(400);
+      expect({ status: wrong.status, data: wrong.data }).toEqual({ status: right.status, data: right.data });
+    }
+    // No confirmation link went out for the right guess, and no password was wiped for a wrong one.
+    expect(await deliveryCount('verify-email', email)).toBe(verifyBefore);
+    expect(await deliveryCount('finish-sign-up', email)).toBe(0);
+    const [credential] = await getDb()
+      .select({ password: authAccount.password })
+      .from(authAccount)
+      .where(and(eq(authAccount.userId, await userId(email)), eq(authAccount.providerId, 'credential')));
+    expect(credential?.password).not.toBeNull();
   });
 
   it('a sign-up with the address of a confirmed account changes nothing and tells the owner', async () => {
@@ -290,6 +316,33 @@ describe('limits that a changed client address cannot dodge', () => {
   });
 });
 
+/** The live count of a throttle key (0 when absent or expired). */
+async function throttleCount(key: string): Promise<number> {
+  const rows = await getDb().execute<{ count: number }>(sql`SELECT count FROM auth_throttle WHERE key = ${key} AND expires_at > now()`);
+  return rows.rows[0]?.count ?? 0;
+}
+
+describe('a reservation whose request fails unexpectedly', () => {
+  it('is given back: errors that checked no password never lock an address', async () => {
+    const account = await createAccount({ label: 'unexpected-error' });
+    const { getAuth } = await import('./config');
+    const context = await getAuth().$context;
+    const broken = vi.spyOn(context.internalAdapter, 'findUserByEmail').mockRejectedValue(new Error('the database went away'));
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      for (let i = 0; i < SIGN_IN_FAILURE_LIMIT + 2; i += 1) {
+        const result = await viaRoute('/sign-in/email', { email: account.email, password: `whatever ${i}` }, `203.0.113.${i + 100}`);
+        expect(result.status).toBe(500);
+      }
+    } finally {
+      broken.mockRestore();
+      quiet.mockRestore();
+    }
+    expect(await throttleCount(signInKey(account.email))).toBe(0);
+    expect((await signInWith(account.email, account.password)).status).toBe(200);
+  });
+});
+
 describe('nobody can lock the owner out of an account', () => {
   it('duplicate sign-ups do not use up the e-mails that get the owner back in', async () => {
     const owner = await createAccount({ label: 'notice-flood' });
@@ -344,6 +397,28 @@ describe('nobody can lock the owner out of an account', () => {
     expect(locked.data?.code).toBe('TOO_MANY_ATTEMPTS');
     // A new browser (no known-device cookie) is not affected by those failures.
     expect((await signInWith(owner.email, owner.password)).status).toBe(200);
+  });
+
+  it('a new password ends every known browser of the account but the one that chose it', async () => {
+    const owner = await createAccount({ label: 'known-reset' });
+    const knownOnly = (browser: TestBrowser) => {
+      const copy = new TestBrowser();
+      for (const [name, value] of browser.cookies) if (name.includes('known_device')) copy.cookies.set(name, value);
+      return copy;
+    };
+    // The owner's browser, and a browser of someone who learned the old password.
+    const { browser: ownersOld } = await signIn(owner);
+    const { browser: leaked } = await signIn(owner);
+    await authFetch(new TestBrowser(), '/request-password-reset', { body: { email: owner.email } });
+    const token = await tokenFromOutbox('reset-password', owner.email);
+    const chooser = new TestBrowser();
+    expect((await authFetch(chooser, '/reset-password', { body: { token, newPassword: 'the new password of the owner' } })).status).toBe(200);
+    for (let i = 0; i < SIGN_IN_FAILURE_LIMIT; i += 1) await signInWith(owner.email, `stranger guess ${i}`);
+    // The cookies of the old password are not known any more: they share the address-wide lock.
+    expect((await signInWith(owner.email, 'the new password of the owner', knownOnly(leaked))).data?.code).toBe('TOO_MANY_ATTEMPTS');
+    expect((await signInWith(owner.email, 'the new password of the owner', knownOnly(ownersOld))).data?.code).toBe('TOO_MANY_ATTEMPTS');
+    // The browser that chose the new password is known for it.
+    expect((await signInWith(owner.email, 'the new password of the owner', knownOnly(chooser))).status).toBe(200);
   });
 
   it('a known-device cookie of one address does nothing for another address', async () => {

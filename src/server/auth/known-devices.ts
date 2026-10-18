@@ -11,14 +11,21 @@
 // apply to it. A stranger without the cookie still has the address-wide limit, and cannot forge
 // the cookie: it is signed with BETTER_AUTH_SECRET.
 //
-// The cookie holds no address in clear: each entry is a keyed hash of the address (IP_HMAC_KEY)
-// and the device id; up to five addresses per browser, the newest first. It lasts 180 days and is
-// renewed by every right password. A native client keeps it like any other cookie of the auth
-// endpoints (docs/adr/0004-auth.md, section 7).
+// The cookie holds no address in clear: each entry is a keyed hash (IP_HMAC_KEY) of the address and
+// of the account's current password hash, and the device id; up to five entries per browser, the
+// newest first. Because the password hash is part of the entry, a new password (a reset, a change)
+// ends every known browser of the account at once: a browser that learned an old password, or
+// many cookies collected with it, count for nothing afterwards. The browser that sets the new
+// password becomes a known one again. It lasts 180 days and is renewed by every right password. A
+// native client keeps it like any other cookie of the auth endpoints (docs/adr/0004-auth.md,
+// section 7).
 
 import { generateRandomString } from 'better-auth/crypto';
 import type { createAuthMiddleware } from 'better-auth/api';
+import { and, eq } from 'drizzle-orm';
 
+import { getDb } from '../db';
+import { authAccount, authUser } from '../db/schema';
 import { normalizeAddress, signInDeviceKey, signInKey, throttleDigest } from './throttle';
 
 export const KNOWN_DEVICE_COOKIE = 'known_device';
@@ -33,7 +40,18 @@ interface Entry {
   device: string;
 }
 
-const addressTag = (email: string) => throttleDigest(`known-device:${normalizeAddress(email)}`).slice(0, 24);
+/** The password hash of the account with `email`, or null (no such account, or no password). */
+async function passwordHashOf(email: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ hash: authAccount.password })
+    .from(authUser)
+    .innerJoin(authAccount, and(eq(authAccount.userId, authUser.id), eq(authAccount.providerId, 'credential')))
+    .where(eq(authUser.email, normalizeAddress(email)));
+  return row?.hash ?? null;
+}
+
+/** The entry tag of `email` while its password is the one hashed as `hash`. */
+const entryTag = (email: string, hash: string) => throttleDigest(`known-device:${normalizeAddress(email)}:${hash}`).slice(0, 24);
 
 async function entriesOf(ctx: HookContext): Promise<Entry[]> {
   const cookie = ctx.context.createAuthCookie(KNOWN_DEVICE_COOKIE);
@@ -47,10 +65,17 @@ async function entriesOf(ctx: HookContext): Promise<Entry[]> {
   return entries.slice(0, MAX_ENTRIES);
 }
 
-/** The device id of this request's browser for `email`, or null when the browser is not known for it. */
+/**
+ * The device id of this request's browser for `email`, or null when the browser is not known for
+ * the account's current password.
+ */
 export async function knownDevice(ctx: HookContext, email: string): Promise<string | null> {
-  const tag = addressTag(email);
-  return (await entriesOf(ctx)).find((entry) => entry.tag === tag)?.device ?? null;
+  const entries = await entriesOf(ctx);
+  if (entries.length === 0) return null;
+  const hash = await passwordHashOf(email);
+  if (!hash) return null;
+  const tag = entryTag(email, hash);
+  return entries.find((entry) => entry.tag === tag)?.device ?? null;
 }
 
 /** The throttle key of a password attempt for `email` from this request's browser. */
@@ -59,9 +84,14 @@ export async function passwordAttemptKey(ctx: HookContext, email: string): Promi
   return device ? signInDeviceKey(email, device) : signInKey(email);
 }
 
-/** Marks this request's browser as a known one for `email` (sets or renews the cookie). */
+/**
+ * Marks this request's browser as a known one for `email` and its current password (sets or renews
+ * the cookie).
+ */
 export async function rememberDevice(ctx: HookContext, email: string): Promise<void> {
-  const tag = addressTag(email);
+  const hash = await passwordHashOf(email);
+  if (!hash) return;
+  const tag = entryTag(email, hash);
   const entries = await entriesOf(ctx);
   const device = entries.find((entry) => entry.tag === tag)?.device ?? generateRandomString(24, 'a-z', 'A-Z', '0-9');
   const next = [{ tag, device }, ...entries.filter((entry) => entry.tag !== tag)].slice(0, MAX_ENTRIES);

@@ -89,18 +89,18 @@ export class TestBrowser {
   }
 }
 
-/** Calls a Better Auth endpoint through auth.handler, as `browser`. */
+/** Calls a Better Auth endpoint the way /api/auth does (dispatchAuth), as `browser`. */
 export async function authFetch(
   browser: TestBrowser,
   path: string,
   init: { method?: 'GET' | 'POST'; body?: unknown; query?: Record<string, string> } = {},
 ): Promise<{ status: number; data: Record<string, unknown> | null; response: Response }> {
-  const { getAuth } = await import('./config');
+  const { dispatchAuth } = await import('./route');
   const url = new URL(`/api/auth${path}`, TEST_APP_URL);
   for (const [k, v] of Object.entries(init.query ?? {})) url.searchParams.set(k, v);
   const method = init.method ?? 'POST';
   const headers = browser.headers(method === 'POST' ? { 'content-type': 'application/json' } : {});
-  const response = await getAuth().handler(
+  const response = await dispatchAuth(
     new Request(url, { method, headers, body: method === 'POST' ? JSON.stringify(init.body ?? {}) : undefined }),
   );
   browser.absorb(response);

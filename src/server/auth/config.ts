@@ -47,6 +47,12 @@ export const DISABLED_AUTH_PATHS = [
   // has not passed the second factor verify itself. The key of a new setup comes only from
   // /two-factor/enable, once (the web page keeps it sealed for its browser).
   '/two-factor/get-totp-uri',
+  // Answers whether a password is right for any session, with no attempt counted: a stolen session
+  // could guess the password through it. Nothing in the app needs it.
+  '/verify-password',
+  // Deleting an account is not offered yet (user.deleteUser is off, so it answers 404 anyway); it
+  // takes the password, and would have to be one of the password-gated endpoints (hooks.ts).
+  '/delete-user',
   // The admin plugin's endpoints: no user management over HTTP yet (see above).
   '/admin/set-role',
   '/admin/get-user',
@@ -104,7 +110,7 @@ export function createAuth() {
       sendResetPassword: ({ user, token }) => sendPasswordResetEmail(user, token),
       // A duplicate sign-up and a password reset decide who owns the address (accounts.ts, H1).
       onExistingUserSignUp: ({ user }) => onExistingUserSignUp({ user }),
-      onPasswordReset: ({ user }, request) => onPasswordReset({ user }, request),
+      onPasswordReset: ({ user }) => onPasswordReset({ user }),
     },
     emailVerification: {
       sendOnSignUp: true,

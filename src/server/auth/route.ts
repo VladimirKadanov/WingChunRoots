@@ -8,6 +8,7 @@
 
 import { getAuth } from './config';
 import { withClientIp } from './ip';
+import { runAuthRequest } from './request-scope';
 
 /**
  * The request Better Auth handles: the same URL, method and body, with the resolved client address.
@@ -21,6 +22,11 @@ export async function authRequest(request: Request): Promise<Request> {
   return new Request(request.url, { method, headers: withClientIp(request.headers), body });
 }
 
+/** Hands `request` to Better Auth in a request scope of its own (request-scope.ts): the only way in. */
+export function dispatchAuth(request: Request): Promise<Response> {
+  return runAuthRequest(() => getAuth().handler(request));
+}
+
 export async function handleAuthRequest(request: Request): Promise<Response> {
-  return getAuth().handler(await authRequest(request));
+  return dispatchAuth(await authRequest(request));
 }

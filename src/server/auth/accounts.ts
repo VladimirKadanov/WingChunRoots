@@ -10,7 +10,9 @@
 //   the address a finish-sign-up e-mail: a password-reset link. Whoever controls the mailbox
 //   chooses the password; nobody else ever holds a working one. Exception (fix round 2): the same
 //   password as the account's is the person who created it signing up again (a double tap, an
-//   e-mail that seemed slow); hooks.ts sends a fresh confirmation link and wipes nothing.
+//   e-mail that seemed slow): a fresh confirmation link, nothing wiped. The before hook (hooks.ts)
+//   notes the match in the request scope; it is acted on only here, once Better Auth has accepted
+//   the request (its body, the origin), so a request it refuses learns nothing and changes nothing.
 // - A sign-up with the address of a CONFIRMED account changes nothing and sends the owner an
 //   account-exists e-mail (sign in, or ask for a new password).
 // - A password reset confirms the address: the link reached the mailbox.
@@ -24,12 +26,14 @@
 // was not expected, and the owner can take the account back at any time with a password reset,
 // which ends every session.
 
-import { APIError } from 'better-auth/api';
+import { APIError, createEmailVerificationToken } from 'better-auth/api';
 import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../db';
 import { authAccount, authUser } from '../db/schema';
-import { sendAccountExistsEmail, sendFinishSignUpEmail } from './emails';
+import { sendAccountExistsEmail, sendFinishSignUpEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
+import { authSecret } from './env';
+import { requestScope } from './request-scope';
 import { clear, signInKey } from './throttle';
 import { confirmationClaims } from './tokens';
 
@@ -47,6 +51,12 @@ export async function onExistingUserSignUp({ user }: { user: ExistingUser }): Pr
     await sendAccountExistsEmail(user);
     return;
   }
+  if (requestScope()?.samePasswordUserId === user.id) {
+    // sendVerificationEmail sends the finish-sign-up e-mail instead if the password has been
+    // wiped in the meantime (a sign-up with another password).
+    await sendVerificationEmail(user, await createEmailVerificationToken(authSecret(), user.email, undefined, VERIFY_EMAIL_EXPIRES_IN_S));
+    return;
+  }
   await getDb()
     .update(authAccount)
     .set({ password: null, updatedAt: new Date() })
@@ -54,24 +64,19 @@ export async function onExistingUserSignUp({ user }: { user: ExistingUser }): Pr
   await sendFinishSignUpEmail(user);
 }
 
-/** The address whose password a request has just reset, for the after hook (known-devices.ts). */
-const resetAddresses = new WeakMap<Request, string>();
-
-export function resetAddressOf(request: Request): string | null {
-  return resetAddresses.get(request) ?? null;
-}
-
 /**
  * emailAndPassword.onPasswordReset: the link reached the mailbox, so the address is confirmed and
- * its sign-in lock ends; the after hook makes the browser a known one.
+ * its sign-in lock ends; the after hook makes the browser a known one (the address travels in the
+ * request scope).
  */
-export async function onPasswordReset({ user }: { user: { id: string; email: string } }, request?: Request): Promise<void> {
+export async function onPasswordReset({ user }: { user: { id: string; email: string } }): Promise<void> {
   await getDb()
     .update(authUser)
     .set({ emailVerified: true, updatedAt: new Date() })
     .where(and(eq(authUser.id, user.id), eq(authUser.emailVerified, false)));
   await clear(signInKey(user.email));
-  if (request) resetAddresses.set(request, user.email);
+  const scope = requestScope();
+  if (scope) scope.resetEmail = user.email;
 }
 
 const linkGone = () =>

@@ -208,5 +208,23 @@ describe('Server Actions and the API', () => {
         }
       }
     });
+
+    it('every endpoint served over HTTP that checks an existing password counts the attempt (hooks.ts)', async () => {
+      const { createAuth, DISABLED_AUTH_PATHS } = await import('../auth/config');
+      const { PASSWORD_GATED_PATHS } = await import('../auth/hooks');
+      type Endpoint = { path?: string; options?: { body?: { shape?: Record<string, unknown> }; metadata?: { SERVER_ONLY?: boolean } } };
+      const checksPassword = Object.values(createAuth().api as Record<string, Endpoint>)
+        .filter((endpoint) => typeof endpoint.path === 'string' && !DISABLED_AUTH_PATHS.includes(endpoint.path))
+        .filter((endpoint) => !endpoint.options?.metadata?.SERVER_ONLY)
+        .filter((endpoint) => {
+          const shape = endpoint.options?.body?.shape ?? {};
+          return 'password' in shape || 'currentPassword' in shape;
+        })
+        .map((endpoint) => endpoint.path as string);
+      // Sign-up sets a password; sign-in reserves its attempts itself; the rest are gated.
+      const counted = new Set(['/sign-up/email', '/sign-in/email', ...PASSWORD_GATED_PATHS]);
+      expect(checksPassword.filter((p) => !counted.has(p))).toEqual([]);
+      expect(checksPassword).toEqual(expect.arrayContaining(['/sign-in/email', '/change-password', '/two-factor/enable']));
+    });
   });
 });

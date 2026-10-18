@@ -71,14 +71,6 @@ export async function release(key: string): Promise<void> {
      WHERE key = ${key} AND count > 0 AND expires_at > now()`);
 }
 
-/** The live count of `key` (0 when absent or expired). */
-export async function countOf(key: string): Promise<number> {
-  const rows = await getDb().execute<{ count: number }>(
-    sql`SELECT count FROM auth_throttle WHERE key = ${key} AND expires_at > now()`,
-  );
-  return rows.rows[0]?.count ?? 0;
-}
-
 /** Forgets `key`. */
 export async function clear(key: string): Promise<void> {
   await getDb().execute(sql`DELETE FROM auth_throttle WHERE key = ${key}`);

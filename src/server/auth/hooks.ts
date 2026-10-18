@@ -3,10 +3,12 @@
 // hooks.before
 //   /sign-up/email                 refused (400 CONSENT_REQUIRED) without the adult, terms and
 //                                  authenticity ticks (DEFAULT D10); refused with a name or an image
-//                                  (names live in the profile; no image URLs). A second sign-up with
-//                                  the password of an unconfirmed account (a double tap, an e-mail
-//                                  that seemed slow) sends a fresh confirmation link and changes
-//                                  nothing; any other password goes on to accounts.ts (wipe).
+//                                  (names live in the profile; no image URLs). Notes, for
+//                                  accounts.ts, whether the password is the one of the unconfirmed
+//                                  account with this address (a double tap, an e-mail that seemed
+//                                  slow): one password check for every sign-up, so the time says
+//                                  nothing. Nothing is decided here: the endpoint checks the request
+//                                  first, and only a request it accepts reaches accounts.ts.
 //   /sign-in/email                 reserves the attempt before the password is checked (throttle.ts),
 //                                  refused (429 TOO_MANY_ATTEMPTS) once 10 in a row failed for the
 //                                  address, or for this browser when it is a known one
@@ -15,23 +17,30 @@
 //   password-gated endpoints       /two-factor/enable, /two-factor/disable,
 //                                  /two-factor/generate-backup-codes and /change-password reserve an
 //                                  attempt on the same key, so a stolen session cannot guess the
-//                                  password through them; enable and new backup codes are refused
-//                                  (403 SECOND_FACTOR_REQUIRED) for a staff session that has not
-//                                  passed the second factor: a password alone never verifies it.
+//                                  password through them (/verify-password is not served; config.ts);
+//                                  enable and new backup codes are refused (403
+//                                  SECOND_FACTOR_REQUIRED) for a staff session that has not passed
+//                                  the second factor: a password alone never verifies it.
 //   /verify-email                  a link older than the account's password, or of an account without
 //                                  one, is refused (accounts.ts).
 //   /two-factor/verify-totp        `trustDevice` is dropped for staff (the trust-device cookie would
 //   /two-factor/verify-backup-code skip the second factor); a TOTP code works once (replay); inside a
 //                                  session the attempt is reserved first and refused once 10 in a row
 //                                  failed (15 minutes; the plugin locks only sign-ins); a backup code
-//                                  is read in its stored form.
+//                                  is read in its stored form. That lock is the account's, the one
+//                                  the plugin checks at sign-in: only a holder of the password can
+//                                  reach either.
 //   /two-factor/disable            refused for staff (a staff role needs 2FA).
+//   Each reservation stays open in the request's scope (request-scope.ts) until the after hook
+//   settles it, and is given back when the request ends without the after hook.
 // hooks.after
 //   /sign-up/email                 the same body for a new and an existing address (no enumeration).
 //   /sign-in/email                 a wrong password keeps its reservation; a right one clears the key
 //                                  and makes this browser a known one; anything else gives it back.
-//   /reset-password                the browser that used the e-mailed link becomes a known one.
-//   password-gated endpoints       as for sign-in (INVALID_PASSWORD keeps the reservation).
+//   /reset-password                the browser that used the e-mailed link becomes a known one (the
+//                                  address comes from onPasswordReset through the request scope).
+//   password-gated endpoints       as for sign-in (INVALID_PASSWORD keeps the reservation); the
+//                                  browser that changed the password stays a known one.
 //   /two-factor/verify-totp        the session that proved the second factor gets
 //   /two-factor/verify-backup-code two_factor_verified_at (requireStaff2FA() checks it); a wrong code
 //                                  keeps the session's reservation, anything else gives it back.
@@ -46,7 +55,7 @@
 // User hooks run before plugin hooks, so the bearer plugin has not yet turned an
 // `Authorization: Bearer` header into a cookie when these run: sessionOf() reads both.
 
-import { APIError, createAuthMiddleware, createEmailVerificationToken, getSessionFromCtx, isAPIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware, getSessionFromCtx, isAPIError } from 'better-auth/api';
 import { setRequestCookie } from 'better-auth/cookies/utils';
 import { and, eq, gt, sql } from 'drizzle-orm';
 
@@ -56,20 +65,20 @@ import { getDb } from '../db';
 import { authAccount, authSession, authTwoFactor, authUser, emailDelivery } from '../db/schema';
 import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../services/consent';
 import { requestMeta } from '../services/context';
-import { assertConfirmationLinkCurrent, resetAddressOf } from './accounts';
+import { assertConfirmationLinkCurrent } from './accounts';
 import { normalizeBackupCode } from './credentials';
-import { sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
 import { isPublicDeployment } from './env';
 import { clientIp, ipHmac } from './ip';
 import { passwordAttemptKey, rememberDevice } from './known-devices';
 import { isStaffRole } from './principal';
+import { hold, requestScope, settle } from './request-scope';
 import { claimOnce, clear, release, reserve, SIGN_IN_FAILURE_LIMIT, SIGN_IN_LOCK_S, TOTP_REPLAY_WINDOW_S, totpKey } from './throttle';
 
 export const VERIFY_TOTP_PATH = '/two-factor/verify-totp';
 export const VERIFY_BACKUP_CODE_PATH = '/two-factor/verify-backup-code';
 const SECOND_FACTOR_PATHS = new Set([VERIFY_TOTP_PATH, VERIFY_BACKUP_CODE_PATH]);
-/** Endpoints of a signed-in session that check the account's password. */
-const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password']);
+/** Endpoints of a signed-in session that check the account's password (password-gates.test.ts). */
+export const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password']);
 /** Of those, the ones that hand out a second factor: a staff session must have passed it first. */
 const SECOND_FACTOR_ISSUING_PATHS = new Set(['/two-factor/enable', '/two-factor/generate-backup-codes']);
 /** The two-factor plugin's cookie for a sign-in waiting for its second factor. */
@@ -136,23 +145,39 @@ async function secondFactorUser(ctx: HookContext): Promise<{ id: string; role?: 
 
 /** Reserves a password attempt for `email` from this browser, or refuses with 429 when it is locked. */
 async function reservePasswordAttempt(ctx: HookContext, email: string): Promise<void> {
-  if (!(await reserve(await passwordAttemptKey(ctx, email), SIGN_IN_LOCK_S, SIGN_IN_FAILURE_LIMIT))) {
+  const key = await passwordAttemptKey(ctx, email);
+  if (!(await reserve(key, SIGN_IN_LOCK_S, SIGN_IN_FAILURE_LIMIT))) {
     refuse('TOO_MANY_REQUESTS', 'TOO_MANY_ATTEMPTS', TOO_MANY_ATTEMPTS);
   }
+  hold('password', key, () => release(key));
+}
+
+function succeeded(returned: unknown): boolean {
+  return returned !== undefined && !(returned instanceof Response) && !isAPIError(returned);
 }
 
 /**
- * Settles the attempt reserved for `email`: a wrong password (`wrongCode`) keeps it, a right one
- * clears the key (true is returned), anything else gives it back.
+ * Settles the password attempt the before hook reserved: a wrong password (`wrongCode`) keeps
+ * it, a right one clears the key, anything else gives it back. A refusal that still proves the
+ * password (`rightCode`: the address is not confirmed yet) clears it too. True when the request
+ * succeeded with the right password.
  */
-async function settlePasswordAttempt(ctx: HookContext, email: string, wrongCode: string): Promise<boolean> {
-  const key = await passwordAttemptKey(ctx, email);
+async function settlePasswordAttempt(
+  ctx: HookContext,
+  /** The key outside a request scope, where nothing was held. */
+  keyOf: () => Promise<string | null>,
+  wrongCode: string,
+  rightCode?: string,
+): Promise<boolean> {
+  const held = settle('password');
+  const key = held === undefined ? await keyOf() : held;
+  if (key === null) return false;
   const returned = ctx.context.returned;
   const code = errorCode(returned);
   if (code === wrongCode) return false;
-  if (returned !== undefined && !(returned instanceof Response) && !isAPIError(returned)) {
+  if (succeeded(returned) || (rightCode !== undefined && code === rightCode)) {
     await clear(key);
-    return true;
+    return succeeded(returned);
   }
   await release(key);
   return false;
@@ -161,21 +186,22 @@ async function settlePasswordAttempt(ctx: HookContext, email: string, wrongCode:
 let dummyHash: Promise<string> | undefined;
 
 /**
- * The unconfirmed account with `email` whose password is `password`, or null. Every sign-up pays
- * for exactly one password check (against a made-up hash when there is no such account), so the
- * time of the answer says nothing about the address.
+ * The id of the unconfirmed account with `email` whose password is `password`, or null. Every
+ * sign-up pays for exactly one password check (against a made-up hash when there is no such
+ * account), so the time of the answer says nothing about the address. The address is matched the
+ * way Better Auth stores it (lower case, nothing trimmed).
  */
-async function unconfirmedWithPassword(ctx: HookContext, email: string, password: string) {
+async function unconfirmedWithPassword(ctx: HookContext, email: string, password: string): Promise<string | null> {
   const [row] = await getDb()
-    .select({ id: authUser.id, email: authUser.email, emailVerified: authUser.emailVerified, hash: authAccount.password })
+    .select({ id: authUser.id, emailVerified: authUser.emailVerified, hash: authAccount.password })
     .from(authUser)
     .leftJoin(authAccount, and(eq(authAccount.userId, authUser.id), eq(authAccount.providerId, 'credential')))
-    .where(eq(authUser.email, email.trim().toLowerCase()));
+    .where(eq(authUser.email, email.toLowerCase()));
   const candidate = row && !row.emailVerified && row.hash ? row : null;
   dummyHash ??= ctx.context.password.hash('a password that no account has, for an even time');
   const hash = candidate?.hash ?? (await dummyHash);
   const same = await ctx.context.password.verify({ hash, password }).catch(() => false);
-  return candidate && same ? candidate : null;
+  return candidate && same ? candidate.id : null;
 }
 
 /**
@@ -231,13 +257,9 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
     if (body.image !== undefined && body.image !== null) refuse('BAD_REQUEST', 'IMAGE_NOT_ACCEPTED', 'An account has no image.');
     if (typeof body.email === 'string' && typeof body.password === 'string' && body.password.length <= MAX_PASSWORD_LENGTH) {
       const same = await unconfirmedWithPassword(ctx, body.email, body.password);
-      if (same) {
-        // The person who created the account, signing up again before confirming it: a fresh
-        // confirmation link, nothing wiped. The endpoint hashes the password on every other path.
-        await ctx.context.password.hash(body.password);
-        await sendVerificationEmail(same, await createEmailVerificationToken(ctx.context.secret, same.email, undefined, VERIFY_EMAIL_EXPIRES_IN_S));
-        return ctx.json({ token: null, user: null });
-      }
+      // Only noted: onExistingUserSignUp acts on it once the endpoint has accepted the request.
+      const scope = requestScope();
+      if (same && scope) scope.samePasswordUserId = same;
     }
     return;
   }
@@ -287,6 +309,11 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
       if (claim) await clear(claim);
       refuse('TOO_MANY_REQUESTS', 'ACCOUNT_TEMPORARILY_LOCKED', 'Too many wrong codes. Try again in 15 minutes.');
     }
+    if (claim) hold('totp-claim', claim, () => clear(claim));
+    if (user?.inSession) {
+      const userId = user.id;
+      hold('second-factor', userId, () => releaseSessionSecondFactor(userId));
+    }
     // trustDevice only matters for a sign-in waiting for its second factor (the endpoint ignores
     // it for a signed-in session). Kept only for an account that is certainly not staff.
     if (body.trustDevice && !(user && !user.inSession && !isStaffRole(user.role))) changes.trustDevice = false;
@@ -314,39 +341,49 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
   if (ctx.path === '/sign-in/email') {
     const email = bodyOf(ctx).email;
     if (typeof email !== 'string') return;
-    const right = await settlePasswordAttempt(ctx, email, 'INVALID_EMAIL_OR_PASSWORD');
     // The password was also right when only the address is unconfirmed: the attempts are cleared,
     // but the browser becomes a known one only for an account that can sign in.
-    if (errorCode(returned) === 'EMAIL_NOT_VERIFIED') await clear(await passwordAttemptKey(ctx, email));
+    const right = await settlePasswordAttempt(ctx, () => passwordAttemptKey(ctx, email), 'INVALID_EMAIL_OR_PASSWORD', 'EMAIL_NOT_VERIFIED');
     if (right) await rememberDevice(ctx, email);
     return;
   }
 
   if (ctx.path === '/reset-password') {
-    const email = ctx.request ? resetAddressOf(ctx.request) : null;
-    if (email && returned && !isAPIError(returned) && !(returned instanceof Response)) {
-      // The mailbox owner: this browser's own lock goes too (accounts.ts clears the address-wide one).
-      await clear(await passwordAttemptKey(ctx, email));
-      await rememberDevice(ctx, email);
-    }
+    // The mailbox owner. The new password has ended every earlier known browser of the account,
+    // and onPasswordReset has cleared the address-wide lock.
+    const email = requestScope()?.resetEmail;
+    if (email && succeeded(returned)) await rememberDevice(ctx, email);
     return;
   }
 
   if (PASSWORD_GATED_PATHS.has(ctx.path)) {
-    const session = await sessionOf(ctx);
-    if (session) await settlePasswordAttempt(ctx, session.user.email, 'INVALID_PASSWORD');
+    const keyOf = async () => {
+      const session = await sessionOf(ctx);
+      return session ? passwordAttemptKey(ctx, session.user.email) : null;
+    };
+    const right = await settlePasswordAttempt(ctx, keyOf, 'INVALID_PASSWORD');
+    // A new password ends the account's known browsers; the one that chose it stays known.
+    const email = (returned as { user?: { email?: unknown } } | undefined)?.user?.email;
+    if (right && ctx.path === '/change-password' && typeof email === 'string') await rememberDevice(ctx, email);
     return;
   }
 
   if (!SECOND_FACTOR_PATHS.has(ctx.path)) return;
-  if (!returned || returned instanceof Response || isAPIError(returned)) {
-    const user = await secondFactorUser(ctx);
-    if (!user) return;
+  // Settled here, whatever the outcome.
+  const claim = settle('totp-claim');
+  const reserved = settle('second-factor');
+  if (!succeeded(returned)) {
     const code = errorCode(returned);
     const wrong = code === 'INVALID_CODE' || code === 'INVALID_BACKUP_CODE';
+    if (wrong && claim) await clear(claim);
+    // A wrong code inside a session keeps its reservation (the plugin counts those of a sign-in).
+    if (reserved && !wrong) await releaseSessionSecondFactor(reserved);
+    if (claim !== undefined) return;
+    // Outside a request scope: work out what the before hook reserved.
+    const user = await secondFactorUser(ctx);
+    if (!user) return;
     const typed = bodyOf(ctx).code;
     if (wrong && ctx.path === VERIFY_TOTP_PATH && typeof typed === 'string') await clear(totpKey(user.id, typed));
-    // A wrong code inside a session keeps its reservation (the plugin counts those of a sign-in).
     if (user.inSession && !wrong) await releaseSessionSecondFactor(user.id);
     return;
   }
