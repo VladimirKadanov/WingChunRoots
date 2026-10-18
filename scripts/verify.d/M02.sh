@@ -320,7 +320,23 @@ check "db:seed and admin:create refuse NODE_ENV=production" bash -c '
   grep -q "assertNotProduction('\''db:seed'\'')" src/server/db/seed.ts && grep -q "assertNotProduction('\''admin:create'\''" src/server/auth/admin-create.ts'
 check "admin:create refuses a database that is not on this machine" grep -q "isLocalHost(targetDatabaseUrl(env))" src/server/auth/admin-create.ts
 
-# 10. Decisions by default and documentation (In scope 11, 12; docs/plan/RULES.md) ----------------
+# 10. The start-up check of a production server (fix round 3, code-1) ---------------------------
+# Next.js 16.4 only logs a failed instrumentation hook and keeps listening, answering 500 on every
+# route; src/instrumentation.ts exits instead. The built server is started with an unsafe APP_URL (a
+# value in the environment wins over .env) and must exit with a non-zero status within 30 s and name
+# the setting. 124 is `timeout` stopping a server that kept running.
+startup_probe() {
+  [ -f .next/BUILD_ID ] || { echo "no build in .next: scripts/verify.sh runs pnpm build before these checks"; return 1; }
+  local port=$((${E2E_PORT:-3100} + 40)) log=.verify/M02-startup.log status
+  mkdir -p .verify
+  APP_URL=http://wingchunroots.example timeout 30 node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1
+  status=$?
+  [ "$status" -ne 0 ] && [ "$status" -ne 124 ] &&
+    grep -q "WingChunRoots cannot start: APP_URL must be https in production" "$log"
+}
+check "a production server with an unsafe APP_URL exits at start with a non-zero status (log: .verify/M02-startup.log)" startup_probe
+
+# 11. Decisions by default and documentation (In scope 11, 12; docs/plan/RULES.md) ----------------
 for d in D04 D10 D16 D23; do
   check "DEFAULT $d is marked in the code" grep -rqE "DEFAULT $d" src
 done

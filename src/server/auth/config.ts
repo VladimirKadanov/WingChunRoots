@@ -29,6 +29,7 @@ import { BACKUP_CODE_COUNT, newBackupCodes } from './credentials';
 import { RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
 import { appUrl, authSecret, trustedProxies } from './env';
 import { afterHook, afterUserCreate, afterUserUpdate, beforeHook, beforeSessionCreate } from './hooks';
+import { proxyList } from './ip';
 import { logAuth, logAuthApiError } from './logger';
 
 export const AUTH_BASE_PATH = '/api/auth';
@@ -73,8 +74,9 @@ export const DISABLED_AUTH_PATHS = [
 
 export function createAuth() {
   const origin = appUrl();
-  // Fails closed on a public deployment without TRUSTED_PROXIES (src/server/auth/env.ts).
-  trustedProxies();
+  // Fails closed on a public deployment without TRUSTED_PROXIES (src/server/auth/env.ts), and on an
+  // entry that is not an address or a CIDR range, before the first request needs the client address.
+  proxyList(trustedProxies());
   return betterAuth({
     appName: TOTP_ISSUER,
     baseURL: origin,
