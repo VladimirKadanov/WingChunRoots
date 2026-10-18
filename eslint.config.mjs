@@ -213,6 +213,7 @@ export default defineConfig([
       'src/components/home/**/*.{ts,tsx}',
       'src/components/ink/**/*.{ts,tsx}',
       'src/components/account/**/*.{ts,tsx}',
+      'src/components/plans/**/*.{ts,tsx}',
     ],
     rules: {
       'no-restricted-imports': restrictImports([...routeBans, baseUiOnlyInUi, noTailwindMerge]),

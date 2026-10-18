@@ -10,6 +10,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { PageRedirect } from '@/components/account/page-redirect';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
 import { serverClient } from '@/server/rpc/server';
 
@@ -66,6 +67,15 @@ export default async function AdminPage() {
           </span>
         </dd>
       </dl>
+      {/* M08: the administrators' tool for test plans. */}
+      {guard.principal?.user.role === 'admin' ? (
+        <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+          <Link href="/admin/grants" className={buttonVariants({ variant: 'secondary' })}>
+            Plan grants
+          </Link>
+          <p className="text-sm text-fg-muted">Give and revoke test plans of the pilot, and answer pilot access requests.</p>
+        </div>
+      ) : null}
       <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
         <Link href="/account" className="link inline-flex min-h-11 items-center">
           Back to your account

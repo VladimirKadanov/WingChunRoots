@@ -1,0 +1,163 @@
+// /admin/grants (milestone M08, In scope 3; plan §6.5): administrators give and revoke test plans
+// of the pilot, each with a reason, a start and an end, audited as grant.create and grant.revoke.
+// Open "Request pilot access" requests are listed first; "Give …" fills the form in. Guarded by
+// requireStaff2FA(['admin']): an administrator whose session passed the second factor (others are
+// told plainly, or sent to verify the session). The data and both actions go through the
+// grants.list, grants.create and grants.revoke procedures (the same ones /api/v1 serves).
+// DEFAULT D06/D08: revoking never touches a confirmed link.
+
+import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import Link from 'next/link';
+import type { ReactNode } from 'react';
+
+import { PageRedirect } from '@/components/account/page-redirect';
+import { buttonVariants } from '@/components/ui/button-variants';
+import { formatDay, isoDay } from '@/lib/dates';
+import { guardRoute } from '@/server/auth/web';
+import { readFormResult } from '@/server/forms/flash';
+import { serverClient } from '@/server/rpc/server';
+import { CreateGrantForm } from './forms';
+import { GrantsTable } from './grants-table';
+
+export const instant = false;
+
+export const metadata: Metadata = {
+  title: 'Plan grants',
+  robots: { index: false },
+};
+
+type Search = Promise<Record<string, string | string[] | undefined>>;
+
+const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : undefined);
+
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section id={id} aria-labelledby={`${id}-heading`} className="grid content-start gap-4 border-t border-border-subtle pt-6">
+      <h2 id={`${id}-heading`} className="font-display text-2xl">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+export default async function AdminGrantsPage({ searchParams }: { searchParams: Search }) {
+  const guard = await guardRoute('/admin/grants');
+  if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  if (guard.forbidden) {
+    return (
+      <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
+        <div className="max-w-[46rem]">
+          <p className="eyebrow">Administration</p>
+          <h1 className="mt-2 font-display text-feature">Not available</h1>
+          <p className="mt-3 max-w-[56ch] text-fg-muted">You don&apos;t have access to plan grants. They are available to administrators.</p>
+          <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
+            <Link href="/account" className="link inline-flex min-h-11 items-center">
+              Back to your account
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  const query = await searchParams;
+  const request = one(query.request);
+  const sort = one(query.sort);
+  const dir = one(query.dir);
+  const list = await serverClient(await headers(), guard.principal).grants.list({
+    q: one(query.q)?.slice(0, 320) || undefined,
+    // Unknown values fall back to the defaults instead of an error page.
+    sort: sort && ['created', 'email', 'plan', 'starts', 'ends', 'state'].includes(sort) ? (sort as 'created') : undefined,
+    dir: dir === 'asc' || dir === 'desc' ? dir : undefined,
+    page: Number(one(query.page)) > 0 ? Math.min(10_000, Math.floor(Number(one(query.page)))) : undefined,
+    request: request && /^[0-9a-f-]{36}$/.test(request) ? request : undefined,
+  });
+  const [created, revoked] = await Promise.all([readFormResult('create-grant', query.outcome), readFormResult('revoke-grant', query.outcome)]);
+
+  return (
+    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
+      <header className="max-w-[46rem]">
+        <p className="eyebrow">Administration</p>
+        <h1 className="mt-2 font-display text-feature">Plan grants</h1>
+        <p className="mt-3 max-w-[60ch] text-fg-muted">
+          Give a test plan of the pilot to an account, or revoke one. There are no payments in the pilot. Every grant and revocation is
+          kept in the audit log with its reason; confirmed links never change.
+        </p>
+      </header>
+
+      <div className="mt-8 grid gap-10">
+        {list.requests.length > 0 ? (
+          <Section id="pilot-requests" title="Pilot access requests">
+            <ul data-testid="pilot-requests" className="grid max-w-[46rem]">
+              {list.requests.map((item) => (
+                <li key={item.id} className="grid gap-1 border-b border-border-subtle py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-4">
+                  <span className="grid gap-0.5">
+                    <span translate="no" className="font-semibold [overflow-wrap:anywhere]">
+                      {item.email}
+                    </span>
+                    <span className="text-sm text-fg-muted">
+                      {item.planName} · asked on {formatDay(item.createdAt)}
+                    </span>
+                  </span>
+                  <Link href={`/admin/grants?request=${item.id}#give-plan`} className="link inline-flex min-h-11 items-center text-ui">
+                    Give {item.planName}
+                    <span className="sr-only"> to {item.email}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+
+        <Section id="give-plan" title="Give a test plan">
+          <div className="max-w-[46rem]">
+            <CreateGrantForm
+              key={list.prefill?.requestId ?? 'new'}
+              plans={list.grantablePlans}
+              prefill={list.prefill}
+              today={isoDay(new Date())}
+              initial={created}
+            />
+          </div>
+        </Section>
+
+        <Section id="grants" title="Grants">
+          <form role="search" action="/admin/grants" method="get" className="flex max-w-[34rem] flex-wrap items-end gap-3">
+            <div className="grid min-w-0 flex-1 gap-1.5">
+              <label htmlFor="grants-q" className="text-sm font-semibold">
+                Find by e-mail
+              </label>
+              <input
+                id="grants-q"
+                name="q"
+                type="search"
+                defaultValue={list.q}
+                maxLength={320}
+                autoComplete="off"
+                spellCheck={false}
+                translate="no"
+                className="block min-h-12 w-full min-w-0 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg hover:border-fg-muted focus-visible:border-fg"
+              />
+            </div>
+            <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+              Search
+            </button>
+            {list.q ? (
+              <Link href="/admin/grants" className="link inline-flex min-h-12 items-center text-ui">
+                Show all
+              </Link>
+            ) : null}
+          </form>
+          <GrantsTable list={list} revoked={revoked} />
+        </Section>
+
+        <p className="border-t border-border-subtle pt-5 text-ui">
+          <Link href="/admin" className="link inline-flex min-h-11 items-center">
+            Back to administration
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

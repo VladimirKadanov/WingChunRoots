@@ -226,7 +226,8 @@ export function TextField({
   className,
   inputClassName,
 }: BaseFieldProps & {
-  type?: 'text' | 'email' | 'password';
+  /** 'date' (M08): the native date picker, value "YYYY-MM-DD". */
+  type?: 'text' | 'email' | 'password' | 'date';
   autoComplete: string;
   inputMode?: 'text' | 'email' | 'numeric';
   enterKeyHint?: EnterKeyHint;

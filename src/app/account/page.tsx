@@ -101,6 +101,14 @@ export default async function AccountPage() {
           {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your account</span>}
         </h1>
 
+        {/* M08: teachers, requests, schools, notifications and the plan. */}
+        <p className="mt-5">
+          <Link href="/dashboard" className={buttonVariants({ variant: 'secondary' })}>
+            Open your dashboard
+            <ArrowRightIcon />
+          </Link>
+        </p>
+
         <div className="mt-8 grid gap-10">
           <Section id="profile-heading" title="Profile">
             {me.person ? (
