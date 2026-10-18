@@ -45,7 +45,8 @@ export function NameLine({
         {original?.value ? <NameText name={original} className="text-[0.74em] text-fg-muted" /> : null}
       </span>
       {readings.length > 0 ? (
-        <span className="flex flex-wrap gap-x-3 font-sans text-sm text-fg-muted">
+        // tracking-normal: a display size above sets a tight letter spacing in px, which inherits.
+        <span className="flex flex-wrap gap-x-3 font-sans text-sm tracking-normal text-fg-muted">
           {readings.map((reading) => (
             <NameText key={reading.lang} name={reading} />
           ))}

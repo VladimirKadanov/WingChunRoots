@@ -33,6 +33,24 @@ for (const size of SCREEN_SIZES) {
           const response = await page.goto(route.path);
           expect(response?.status()).toBe(route.status);
           await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          // A full-page capture draws the fixed phone tab bar where the first screen ends, over
+          // the content. Here it sits at the end of the page instead, in the room the page keeps
+          // for it (--page-clear-bottom), where a visitor who scrolls down sees it too.
+          await page.evaluate(() => {
+            document.getElementById('screenshot-tab-bar')?.remove();
+            const bar = document.querySelector<HTMLElement>('[data-tab-bar]');
+            if (!bar || getComputedStyle(bar).position !== 'fixed') return;
+            // A style rule, not the element's style: it holds when React renders the bar again.
+            const rule = document.createElement('style');
+            rule.id = 'screenshot-tab-bar';
+            const place = (top: number) => {
+              rule.textContent = `[data-tab-bar] { position: absolute !important; bottom: auto !important; top: ${top}px !important; }`;
+            };
+            place(0);
+            document.head.append(rule);
+            const origin = bar.getBoundingClientRect().top + window.scrollY;
+            place(document.documentElement.scrollHeight - bar.offsetHeight - origin);
+          });
           await page.screenshot({
             path: `docs/screenshots/${route.milestone}/${route.name}-${size.name}-${theme}.png`,
             fullPage: true,

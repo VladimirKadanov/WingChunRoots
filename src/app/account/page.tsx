@@ -94,7 +94,8 @@ export default async function AccountPage() {
           </div>
         ) : null}
 
-        <p className="eyebrow">Your account</p>
+        {/* Without a profile the heading itself says "Your account". */}
+        <p className="eyebrow">{primary ? 'Your account' : 'Signed in'}</p>
         <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
           {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your account</span>}
         </h1>

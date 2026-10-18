@@ -706,6 +706,8 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
   const codes = await page.getByRole('list', { name: 'Backup codes' }).locator('li span.font-mono').allInnerTexts();
   expect(codes).toHaveLength(10);
   for (const code of codes) expect(code).toMatch(CODE_PATTERN);
+  // The list fits the window: no sideways scroll on a phone.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole('button', { name: 'Copy all codes' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Download as a text file' })).toHaveAttribute('download', 'wingchunroots-backup-codes.txt');
 

@@ -211,7 +211,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
               <code
                 aria-labelledby="totp-key-label"
                 translate="no"
-                className="w-fit max-w-full rounded-sm border border-border-subtle bg-surface-2 px-3 py-2 font-mono text-lg tracking-wider break-all select-all"
+                className="w-fit max-w-full rounded-sm border border-border-subtle bg-surface-2 px-3 py-2 font-mono text-lg tracking-wider [overflow-wrap:anywhere] select-all"
               >
                 {setup.key}
               </code>
@@ -249,7 +249,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
         <ol
           aria-label="Backup codes"
           translate="no"
-          className="grid max-w-[30rem] grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-6 gap-y-1.5 rounded-sm border border-border-subtle bg-surface-2 px-5 py-4"
+          className="grid min-w-0 max-w-[30rem] grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-6 gap-y-1.5 rounded-sm border border-border-subtle bg-surface-2 px-5 py-4"
         >
           {newCodes.map((code, i) => (
             <li key={code} className="flex items-baseline gap-3 whitespace-nowrap">
