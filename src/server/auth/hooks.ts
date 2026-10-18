@@ -26,8 +26,10 @@
 //                                  session the attempt is reserved first and refused once 10 in a row
 //                                  failed (15 minutes; the plugin locks only sign-ins); a backup code
 //                                  is read in its stored form. That lock is the account's, the one
-//                                  the plugin checks at sign-in: only a holder of the password can
-//                                  reach either.
+//                                  the plugin checks at sign-in. A session that has already passed
+//                                  the second factor is refused (400 SECOND_FACTOR_ALREADY_VERIFIED)
+//                                  unless it confirms a pending setup: its codes would count on that
+//                                  lock, and a stolen session could lock the owner's sign-in.
 //   /two-factor/disable            refused for staff (a staff role needs 2FA).
 //   Each reservation stays open in the request's scope (request-scope.ts) until the after hook
 //   settles it, and is given back when the request ends without the after hook.
@@ -45,7 +47,8 @@
 //                                  browser that changed the password stays a known one.
 //   /two-factor/verify-totp        the session that proved the second factor gets
 //   /two-factor/verify-backup-code two_factor_verified_at (requireStaff2FA() checks it); a wrong code
-//                                  keeps the session's reservation, anything else gives it back.
+//                                  keeps the session's reservation, anything else gives it back; the
+//                                  claim on a TOTP code is kept only when the code was accepted.
 // databaseHooks
 //   user.create.after              the sign-up ticks become consent_record rows (consent.grant).
 //   user.update.after              auth.2fa.enable in the audit log.
@@ -78,7 +81,10 @@ import { claimOnce, clear, release, reserve, SIGN_IN_FAILURE_LIMIT, SIGN_IN_LOCK
 export const VERIFY_TOTP_PATH = '/two-factor/verify-totp';
 export const VERIFY_BACKUP_CODE_PATH = '/two-factor/verify-backup-code';
 const SECOND_FACTOR_PATHS = new Set([VERIFY_TOTP_PATH, VERIFY_BACKUP_CODE_PATH]);
-/** Endpoints of a signed-in session that check the account's password (password-gates.test.ts). */
+/**
+ * Endpoints of a signed-in session that check the account's password: src/server/rpc/api-parity.test.ts
+ * keeps the list complete, hardening.int.test.ts tests what they count.
+ */
 export const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password']);
 /** Of those, the ones that hand out a second factor: a staff session must have passed it first. */
 const SECOND_FACTOR_ISSUING_PATHS = new Set(['/two-factor/enable', '/two-factor/generate-backup-codes']);
@@ -147,12 +153,29 @@ function refuse(status: 'BAD_REQUEST' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'TOO_MANY
   throw new APIError(status, { code, message });
 }
 
+interface SecondFactorUser {
+  id: string;
+  role?: unknown;
+  inSession: boolean;
+  /** A signed-in session that has already passed the second factor (two_factor_verified_at). */
+  verified: boolean;
+}
+
 /** The account a second-factor request is for: the session's, or the sign-in's that waits for it. */
-async function secondFactorUser(ctx: HookContext): Promise<{ id: string; role?: unknown; inSession: boolean } | null> {
+async function secondFactorUser(ctx: HookContext): Promise<SecondFactorUser | null> {
   const session = await sessionOf(ctx);
-  if (session) return { id: session.user.id, role: (session.user as { role?: unknown }).role, inSession: true };
+  if (session) {
+    const verifiedAt = (session.session as { twoFactorVerifiedAt?: unknown }).twoFactorVerifiedAt;
+    return { id: session.user.id, role: (session.user as { role?: unknown }).role, inSession: true, verified: Boolean(verifiedAt) };
+  }
   const pending = await pendingSignInUser(ctx);
-  return pending ? { id: pending.id, role: (pending as { role?: unknown }).role, inSession: false } : null;
+  return pending ? { id: pending.id, role: (pending as { role?: unknown }).role, inSession: false, verified: false } : null;
+}
+
+/** Whether the account has a TOTP setup that waits for its first code (/two-factor/enable). */
+async function hasPendingSetup(userId: string): Promise<boolean> {
+  const [row] = await getDb().select({ verified: authTwoFactor.verified }).from(authTwoFactor).where(eq(authTwoFactor.userId, userId));
+  return row?.verified === false;
 }
 
 /** Reserves a password attempt for `email` from this browser, or refuses with 429 when it is locked. */
@@ -309,19 +332,28 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
   if (SECOND_FACTOR_PATHS.has(ctx.path)) {
     const body = bodyOf(ctx);
     const user = await secondFactorUser(ctx);
+    // Nothing to prove for a session that has passed the second factor, except a new setup's first
+    // code. Refused before anything is claimed or counted (fix round 3, code-3).
+    if (user?.verified && !(await hasPendingSetup(user.id))) {
+      refuse('BAD_REQUEST', 'SECOND_FACTOR_ALREADY_VERIFIED', 'This session has already passed the second factor.');
+    }
     const changes: Record<string, unknown> = {};
     if (ctx.path === VERIFY_BACKUP_CODE_PATH && typeof body.code === 'string') changes.code = normalizeBackupCode(body.code);
     const claim = ctx.path === VERIFY_TOTP_PATH && user && typeof body.code === 'string' && /^\d{6}$/.test(body.code) ? totpKey(user.id, body.code) : null;
-    // Claimed before the plugin checks it, so two requests with one code cannot both pass;
-    // released by the after hook when the code was wrong. Not counted as an attempt.
+    // Claimed before the plugin checks it, so two requests with one code cannot both pass; held at
+    // once, before any other await, so a request that ends early gives it back, and the after hook
+    // keeps it only when the code was accepted (code-4). Not counted as an attempt.
     if (claim && !(await claimOnce(claim, TOTP_REPLAY_WINDOW_S))) {
       refuse('UNAUTHORIZED', 'CODE_ALREADY_USED', 'This code has just been used. Wait for the next code in your app.');
     }
+    if (claim) hold('totp-claim', claim, () => clear(claim));
     if (user?.inSession && !(await reserveSessionSecondFactor(user.id))) {
-      if (claim) await clear(claim);
+      if (claim) {
+        settle('totp-claim');
+        await clear(claim);
+      }
       refuse('TOO_MANY_REQUESTS', 'ACCOUNT_TEMPORARILY_LOCKED', 'Too many wrong codes. Try again in 15 minutes.');
     }
-    if (claim) hold('totp-claim', claim, () => clear(claim));
     if (user?.inSession) {
       const userId = user.id;
       hold('second-factor', userId, () => releaseSessionSecondFactor(userId));
@@ -388,7 +420,9 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
   if (!succeeded(returned)) {
     const code = errorCode(returned);
     const wrong = code === 'INVALID_CODE' || code === 'INVALID_BACKUP_CODE';
-    if (wrong && claim) await clear(claim);
+    // A code that was not accepted, for whatever reason (wrong, too many tries in this challenge, a
+    // locked account, an expired challenge), stays usable: only an accepted code is used up.
+    if (claim) await clear(claim);
     // A wrong code inside a session keeps its reservation (the plugin counts those of a sign-in).
     if (reserved && !wrong) await releaseSessionSecondFactor(reserved);
     if (claim !== undefined) return;
@@ -396,7 +430,7 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
     const user = await secondFactorUser(ctx);
     if (!user) return;
     const typed = bodyOf(ctx).code;
-    if (wrong && ctx.path === VERIFY_TOTP_PATH && typeof typed === 'string') await clear(totpKey(user.id, typed));
+    if (ctx.path === VERIFY_TOTP_PATH && typeof typed === 'string' && /^\d{6}$/.test(typed)) await clear(totpKey(user.id, typed));
     if (user.inSession && !wrong) await releaseSessionSecondFactor(user.id);
     return;
   }

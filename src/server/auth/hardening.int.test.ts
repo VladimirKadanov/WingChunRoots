@@ -22,6 +22,7 @@ import {
   createAccount,
   deliveryCount,
   outboxJob,
+  secretFromTotpUri,
   signIn,
   startAuthTestDatabase,
   stopAuthTestDatabase,
@@ -623,6 +624,79 @@ describe('TOTP', () => {
     const locked = results.filter((r) => r.status === 429 && r.data?.code === 'ACCOUNT_TEMPORARILY_LOCKED').length;
     expect(wrong).toBeLessThanOrEqual(10);
     expect(wrong + locked).toBe(codes.length);
+  });
+});
+
+describe('the second factor of a session that has passed it (fix round 3)', () => {
+  /** The same browser (its cookies) from a new client address: the per-address limit never applies. */
+  const fromNewAddress = (browser: TestBrowser) => {
+    const copy = new TestBrowser();
+    for (const [name, value] of browser.cookies) copy.cookies.set(name, value);
+    return copy;
+  };
+
+  it('posts no codes: wrong codes through a stolen verified session neither count nor lock the owner\'s sign-in', async () => {
+    // Before, each wrong code counted on the account-wide lock: ten of them through a stolen
+    // cookie, without the password, locked the owner's sign-in (and backup codes) for 15 minutes.
+    const member = await createAccount({ twoFactor: true, label: 'verified-session' });
+    const { browser } = await signIn(member);
+    for (let i = 0; i < 12; i += 1) {
+      const wrong = await authFetch(fromNewAddress(browser), '/two-factor/verify-totp', { body: { code: String(300000 + i) } });
+      expect(wrong.status).toBe(400);
+      expect(wrong.data?.code).toBe('SECOND_FACTOR_ALREADY_VERIFIED');
+    }
+    const backup = await authFetch(fromNewAddress(browser), '/two-factor/verify-backup-code', { body: { code: 'AAAA-AAAA' } });
+    expect(backup.data?.code).toBe('SECOND_FACTOR_ALREADY_VERIFIED');
+    const [row] = await getDb()
+      .select({ failed: authTwoFactor.failedVerificationCount, lockedUntil: authTwoFactor.lockedUntil })
+      .from(authTwoFactor)
+      .where(eq(authTwoFactor.userId, member.id));
+    expect(row).toEqual({ failed: 0, lockedUntil: null });
+    // The owner signs in from another browser with the code in the app.
+    const owner = new TestBrowser();
+    expect((await signInWith(member.email, member.password, owner)).data?.twoFactorRedirect).toBe(true);
+    expect((await verifyTotpOnce(owner, member.totpSecret!)).status).toBe(200);
+  });
+
+  it('still confirms a new setup with its first code', async () => {
+    const member = await createAccount({ twoFactor: true, label: 're-setup' });
+    const { browser } = await signIn(member);
+    expect((await authFetch(browser, '/two-factor/disable', { body: { password: member.password } })).status).toBe(200);
+    const enabled = await authFetch(browser, '/two-factor/enable', { body: { password: member.password } });
+    expect(enabled.status).toBe(200);
+    // Whatever the plugin did to the session on the way, this session has passed the second factor.
+    await getDb().update(authSession).set({ twoFactorVerifiedAt: new Date() }).where(eq(authSession.userId, member.id));
+    const secret = secretFromTotpUri(String(enabled.data?.totpURI));
+    const confirmed = await authFetch(browser, '/two-factor/verify-totp', { body: { code: await totpCode(secret) } });
+    expect(confirmed.status, JSON.stringify(confirmed.data)).toBe(200);
+    expect((await userRow(member.id))?.twoFactorEnabled).toBe(true);
+  });
+});
+
+describe('a TOTP code that was not accepted (fix round 3)', () => {
+  it('stays usable whatever refused it: five wrong codes, the right one refused for too many tries, then a new challenge takes it', async () => {
+    // Before, the claim on the code was given back only for a wrong code: the next sign-in with the
+    // code shown in the app got CODE_ALREADY_USED for two minutes.
+    const moderator = await createAccount({ role: 'moderator', label: 'claim-release' });
+    const challenge = new TestBrowser();
+    await signInWith(moderator.email, moderator.password, challenge);
+    const fromNewAddress = () => {
+      const copy = new TestBrowser();
+      for (const [name, value] of challenge.cookies) copy.cookies.set(name, value);
+      return copy;
+    };
+    const valid = new Set(await Promise.all(([-1, 0, 1] as const).map((step) => totpCode(moderator.totpSecret!, step))));
+    const wrongCodes = ['400001', '400002', '400003', '400004', '400005', '400006', '400007'].filter((code) => !valid.has(code)).slice(0, 5);
+    for (const code of wrongCodes) {
+      expect((await authFetch(fromNewAddress(), '/two-factor/verify-totp', { body: { code } })).data?.code).toBe('INVALID_CODE');
+    }
+    const code = await totpCode(moderator.totpSecret!);
+    const refused = await authFetch(fromNewAddress(), '/two-factor/verify-totp', { body: { code } });
+    expect(refused.data?.code).toBe('TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE');
+    const again = new TestBrowser();
+    await signInWith(moderator.email, moderator.password, again);
+    const accepted = await authFetch(again, '/two-factor/verify-totp', { body: { code } });
+    expect(accepted.status, JSON.stringify(accepted.data)).toBe(200);
   });
 });
 

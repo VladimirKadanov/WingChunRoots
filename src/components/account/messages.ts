@@ -19,6 +19,7 @@ export const AUTH_MESSAGES: Record<string, string> = {
   CODE_ALREADY_USED: 'This code has just been used. Wait for the next code in your app.',
   TOO_MANY_ATTEMPTS: 'Too many wrong passwords for this address. Wait 15 minutes, or choose a new password to sign in from this browser at once.',
   SECOND_FACTOR_REQUIRED: 'Confirm this session with the code from your authenticator app first.',
+  SECOND_FACTOR_ALREADY_VERIFIED: 'This session has already passed the second factor.',
   TOTP_NOT_ENABLED: 'Two-factor authentication is not set up for this account.',
   CONSENT_REQUIRED: 'Confirm that you are 18 or older and accept the terms and the authenticity declaration.',
   STAFF_NEEDS_TWO_FACTOR: 'A staff account keeps two-factor authentication on.',
