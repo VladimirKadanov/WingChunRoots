@@ -14,7 +14,7 @@ import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { authUser, notification, person, personName, pilotAccessRequest, reviewCase } from '../db/schema';
+import { authUser, notification, person, pilotAccessRequest, reviewCase } from '../db/schema';
 import { ACCOUNT_TYPES } from '../db/schema/common';
 import { effectivePlan, type Executor, grantsOf } from '../entitlements/access';
 import { grantState } from '../entitlements/effective';
@@ -30,7 +30,6 @@ import {
   type PlanCode,
   PLANS,
 } from '../entitlements/plans';
-import type { NameData } from '../templates/email/types';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 
@@ -149,12 +148,31 @@ export interface PilotRequestView {
   createdAt: string;
 }
 
-async function openPilotRequest(db: Executor, userId: string): Promise<PilotRequestView | null> {
+/** The account's open pilot access request, if any (at most one). */
+export async function openPilotRequest(db: Executor, userId: string): Promise<PilotRequestView | null> {
   const [row] = await db
     .select({ id: pilotAccessRequest.id, planCode: pilotAccessRequest.planCode, status: pilotAccessRequest.status, createdAt: pilotAccessRequest.createdAt })
     .from(pilotAccessRequest)
     .where(and(eq(pilotAccessRequest.userId, userId), eq(pilotAccessRequest.status, 'open')));
   return row ? { ...row, planName: PLANS[row.planCode].name, createdAt: row.createdAt.toISOString() } : null;
+}
+
+/** Serializes the pilot requests of one account (requestPilotAccess and the account type switch). */
+async function lockPilotRequests(tx: Executor, userId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`pilot_access_request:${userId}`}, 0))`);
+}
+
+/**
+ * Closes the account's open pilot request when its plan is for the other account type (the
+ * account switched between Student and Sifu): no admin can grant that plan any more, and the open
+ * request would block a new one. Closed by the account itself, so closed_by_user_id stays empty.
+ * Returns the closed request's id, or null.
+ */
+async function closeStalePilotRequest(tx: Executor, userId: string, accountType: AccountType, now: Date): Promise<string | null> {
+  const open = await openPilotRequest(tx, userId);
+  if (!open || PLANS[open.planCode].audience === accountType) return null;
+  await tx.update(pilotAccessRequest).set({ status: 'closed', closedAt: now, updatedAt: now }).where(eq(pilotAccessRequest.id, open.id));
+  return open.id;
 }
 
 export interface MyPlan {
@@ -228,9 +246,13 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
     const [account] = await tx.select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, p.user.id)).for('update');
     if (!account) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
     if (account.accountType === next) return false;
+    const now = new Date();
     const before = await effectivePlan(subject, { db: tx });
-    await tx.update(authUser).set({ accountType: next, updatedAt: new Date() }).where(eq(authUser.id, p.user.id));
+    await tx.update(authUser).set({ accountType: next, updatedAt: now }).where(eq(authUser.id, p.user.id));
     const after = await effectivePlan(subject, { db: tx });
+    // An open pilot request for a plan of the old account type can no longer be granted.
+    await lockPilotRequests(tx, p.user.id);
+    const closedPilotRequestId = await closeStalePilotRequest(tx, p.user.id, next, now);
     await writeAudit(tx, {
       action: 'account.type_change',
       actorUserId: p.user.id,
@@ -238,7 +260,7 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
       subjectType: 'user',
       subjectId: p.user.id,
       before: { accountType: account.accountType, plan: before.plan },
-      after: { accountType: next, plan: after.plan },
+      after: { accountType: next, plan: after.plan, ...(closedPilotRequestId ? { closedPilotRequestId } : {}) },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
@@ -269,16 +291,6 @@ export interface PilotAccessOutcome {
   charged: false;
 }
 
-/** The Latin-script display name of the account's own person, for the admins' notification. */
-async function ownName(db: Executor, userId: string): Promise<NameData | null> {
-  const [row] = await db
-    .select({ value: personName.value, lang: personName.lang })
-    .from(personName)
-    .innerJoin(person, eq(person.id, personName.personId))
-    .where(and(eq(person.claimedByUserId, userId), eq(personName.isPrimary, true)));
-  return row ?? null;
-}
-
 /**
  * "Request pilot access" (plan §5.6): asks the admins for a test plan instead of a payment. Every
  * admin gets a notification; nothing is charged and the plan does not change until an admin
@@ -294,11 +306,12 @@ export async function requestPilotAccess(principal: Principal | null, raw: unkno
 
   return getDb()
     .transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`pilot_access_request:${p.user.id}`}, 0))`);
+      await lockPilotRequests(tx, p.user.id);
+      const effective = await effectivePlan(subject, { db: tx });
+      await closeStalePilotRequest(tx, p.user.id, effective.accountType, new Date());
       const existing = await openPilotRequest(tx, p.user.id);
       if (existing) return { request: existing, created: false, charged: false as const };
 
-      const effective = await effectivePlan(subject, { db: tx });
       const wanted = PLANS[planCode];
       if (wanted.audience !== PLANS[effective.floor].audience) {
         throw new ServiceError('BAD_REQUEST', `${wanted.name} is for ${wanted.audience === 'sifu' ? 'Sifu' : 'Student'} accounts.`, {
@@ -324,12 +337,13 @@ export async function requestPilotAccess(principal: Principal | null, raw: unkno
 
       const admins = await tx.select({ id: authUser.id }).from(authUser).where(eq(authUser.role, 'admin'));
       if (admins.length > 0) {
-        const requester = await ownName(tx, p.user.id);
+        // No name in the payload: the admins' list looks the requester up when it is read
+        // (services/notifications.ts), so no copy of a name outlives the account (plan §6.4).
         await tx.insert(notification).values(
           admins.map((admin) => ({
             userId: admin.id,
             template: 'pilot-access.requested',
-            payload: { requestId: request.id, planCode, requester },
+            payload: { requestId: request.id, planCode },
           })),
         );
       }

@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 
 import type { Database } from '../db';
-import { type EntitlementSubject, requireEntitlement } from './access';
+import { alreadyCounted, type EntitlementSubject, requireEntitlement } from './access';
 import type { EntitlementDecision } from './effective';
 import type { FeatureKey } from './plans';
 
@@ -38,6 +38,16 @@ export async function lockQuota(tx: QuotaTransaction, subject: EntitlementSubjec
 
 export type QuotaOutcome<T> = { ok: true; value: T; decision: Extract<EntitlementDecision, { ok: true }> } | Extract<EntitlementDecision, { ok: false }>;
 
+export interface QuotaOptions {
+  now?: Date;
+  /**
+   * The counted unit the write adds (for approve_students, the student's person id). A unit that
+   * already counts adds nothing, so its write runs even at the limit: a second link of a student
+   * who is already approved (D06 counts distinct students).
+   */
+  unit?: string;
+}
+
 /**
  * Locks, checks and, when the plan allows one more, runs `write` in the same transaction. A
  * refusal returns the machine-readable decision and writes nothing.
@@ -47,10 +57,15 @@ export async function withQuota<T>(
   subject: EntitlementSubject,
   key: FeatureKey,
   write: () => Promise<T>,
-  now?: Date,
+  options: QuotaOptions = {},
 ): Promise<QuotaOutcome<T>> {
   await lockQuota(tx, subject, key);
-  const decision = await requireEntitlement(subject, key, { db: tx, now });
-  if (!decision.ok) return decision;
-  return { ok: true, value: await write(), decision };
+  const decision = await requireEntitlement(subject, key, { db: tx, now: options.now });
+  if (decision.ok) return { ok: true, value: await write(), decision };
+  // Only a used-up allowance can be passed this way; a plan without the feature never is.
+  if (decision.code === 'quota' && options.unit !== undefined && (await alreadyCounted(tx, subject, key, options.unit))) {
+    const { plan, limit, current } = decision;
+    return { ok: true, value: await write(), decision: { ok: true, plan, limit, current } };
+  }
+  return decision;
 }

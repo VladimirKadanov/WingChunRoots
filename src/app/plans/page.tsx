@@ -173,7 +173,7 @@ export default function PlansPage() {
 
         <div className="mt-10 grid gap-12">
           {GROUPS.map((group) => (
-            <section key={group.id} aria-labelledby={`${group.id}-heading`} className="grid gap-5 border-t border-border-subtle pt-6">
+            <section key={group.id} id={group.id} aria-labelledby={`${group.id}-heading`} className="grid scroll-mt-4 gap-5 border-t border-border-subtle pt-6">
               <header className="grid gap-1">
                 <h2 id={`${group.id}-heading`} className="font-display text-2xl sm:text-3xl">
                   {group.title}
@@ -189,7 +189,7 @@ export default function PlansPage() {
             </section>
           ))}
 
-          <section aria-labelledby="organizations-heading" className="grid gap-5 border-t border-border-subtle pt-6">
+          <section id="organizations" aria-labelledby="organizations-heading" className="grid scroll-mt-4 gap-5 border-t border-border-subtle pt-6">
             <header className="grid gap-1">
               <h2 id="organizations-heading" className="font-display text-2xl sm:text-3xl">
                 For organizations

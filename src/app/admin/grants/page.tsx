@@ -17,6 +17,7 @@ import { formatDay, isoDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
+import { listGrantsInput } from '@/server/services/grants';
 import { CreateGrantForm } from './forms';
 import { GrantsTable } from './grants-table';
 
@@ -30,6 +31,7 @@ export const metadata: Metadata = {
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : undefined);
+const valid = <T,>(result: { success: true; data: T } | { success: false }): T | undefined => (result.success ? result.data : undefined);
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
@@ -62,16 +64,16 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
     );
   }
   const query = await searchParams;
-  const request = one(query.request);
-  const sort = one(query.sort);
-  const dir = one(query.dir);
+  // Each parameter is checked against the field of grants.list: an unknown or malformed value falls
+  // back to the default instead of an error page.
+  const field = listGrantsInput.shape;
+  const request = valid(field.request.safeParse(one(query.request)));
   const list = await serverClient(await headers(), guard.principal).grants.list({
-    q: one(query.q)?.slice(0, 320) || undefined,
-    // Unknown values fall back to the defaults instead of an error page.
-    sort: sort && ['created', 'email', 'plan', 'starts', 'ends', 'state'].includes(sort) ? (sort as 'created') : undefined,
-    dir: dir === 'asc' || dir === 'desc' ? dir : undefined,
-    page: Number(one(query.page)) > 0 ? Math.min(10_000, Math.floor(Number(one(query.page)))) : undefined,
-    request: request && /^[0-9a-f-]{36}$/.test(request) ? request : undefined,
+    q: valid(field.q.safeParse(one(query.q)?.slice(0, 320) || undefined)),
+    sort: valid(field.sort.safeParse(one(query.sort))),
+    dir: valid(field.dir.safeParse(one(query.dir))),
+    page: valid(field.page.safeParse(one(query.page))),
+    request,
   });
   const [created, revoked] = await Promise.all([readFormResult('create-grant', query.outcome), readFormResult('revoke-grant', query.outcome)]);
 
@@ -112,8 +114,10 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
 
         <Section id="give-plan" title="Give a test plan">
           <div className="max-w-[46rem]">
+            {/* Keyed by the request in the address, not by the prefill: a grant closes the request and
+                the prefill goes away, but the form keeps its success message. */}
             <CreateGrantForm
-              key={list.prefill?.requestId ?? 'new'}
+              key={request ?? 'new'}
               plans={list.grantablePlans}
               prefill={list.prefill}
               today={isoDay(new Date())}

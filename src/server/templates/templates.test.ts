@@ -192,9 +192,22 @@ describe('notification templates', () => {
 
   it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
     const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
-    expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('until 31 December 2026. No payment is involved.');
+    expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('for the pilot, until the start of 31 December 2026 (UTC). No payment is involved.');
     const revoked = renderNotification('plan.revoked', { planCode: 'pro_sifu' });
     expect(revoked.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('Every confirmed link stays confirmed and public');
+    // A Student plan approves nobody: its text does not speak of approvals.
+    const student = renderNotification('plan.revoked', { planCode: 'premium_student' });
+    const studentText = student.body.map((segment) => ('text' in segment ? segment.text : '')).join('');
+    expect(studentText).toContain('Your profile and every confirmed link stay as they are.');
+    expect(studentText).not.toContain('approval');
+  });
+
+  it('the pilot request notification names no deleted account and links nowhere for it (M08)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    expect(renderNotification('pilot-access.requested', sample).body[0]).toEqual({ name: sample.requester });
+    const gone = renderNotification('pilot-access.requested', { ...sample, requester: null, requesterDeleted: true });
+    expect(gone.body).toEqual([{ text: 'A since deleted account asked for pilot access to Professional Sifu. The request was removed with the account.' }]);
+    expect(gone.action).toBeUndefined();
   });
 });
 

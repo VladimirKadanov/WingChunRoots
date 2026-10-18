@@ -19,7 +19,7 @@ import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { cx } from '@/lib/cx';
-import { formatDay } from '@/lib/dates';
+import { formatDay, untilPlanEnd } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
@@ -239,7 +239,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             <dt className="text-sm text-fg-muted">Plan</dt>
             <dd data-testid="plan-name" className="text-ui font-semibold">
               {overview.plan.name}
-              {overview.until ? <span className="font-normal text-fg-muted"> until {formatDay(overview.until)}</span> : null}
+              {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
             </dd>
           </div>
         </dl>

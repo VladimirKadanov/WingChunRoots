@@ -79,6 +79,28 @@ export async function currentUse(db: Executor, subject: EntitlementSubject, key:
 }
 
 /**
+ * Whether `unit` already counts in the current use of `key`: for approved students, whether that
+ * student already has an established relationship with the account's own person. Approving another
+ * link of a student who counts adds nothing to the count (D06 counts distinct students).
+ */
+export async function alreadyCounted(db: Executor, subject: EntitlementSubject, key: FeatureKey, unit: string): Promise<boolean> {
+  if (key !== 'approve_students') return false;
+  const [row] = await db
+    .select({ n: countDistinct(teachingRelationship.studentPersonId) })
+    .from(teachingRelationship)
+    .innerJoin(person, eq(person.id, teachingRelationship.teacherPersonId))
+    .where(
+      and(
+        eq(person.claimedByUserId, subject.userId),
+        isNull(person.deletedAt),
+        eq(teachingRelationship.studentPersonId, unit),
+        inArray(teachingRelationship.status, [...PUBLIC_RELATIONSHIP_STATUSES]),
+      ),
+    );
+  return (row?.n ?? 0) > 0;
+}
+
+/**
  * Whether the subject may use one more of `key` (plan §6.5): `{ ok: true }` or a machine-readable
  * refusal `{ ok: false, code: 'quota' | 'plan', limit, current, grantedBy }`. The upgrade prompt is
  * built only from this refusal and the matrix. On its own it decides and locks nothing: a check

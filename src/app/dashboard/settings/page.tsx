@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 
 import { PageRedirect } from '@/components/account/page-redirect';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { formatDay } from '@/lib/dates';
+import { formatDay, untilPlanEnd } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
@@ -71,7 +71,7 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
               <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Plan in effect</dt>
               <dd data-testid="settings-plan" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
                 <span className="font-semibold">{mine.plan.name}</span>
-                {mine.until ? <span className="text-fg-muted"> until {formatDay(mine.until)}</span> : null}
+                {mine.until ? <span className="text-fg-muted"> {untilPlanEnd(mine.until)}</span> : null}
               </dd>
               <dt className="pt-3 text-sm text-fg-muted sm:border-y sm:border-border-subtle sm:pb-3">Test plans</dt>
               <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:pt-3">
@@ -84,7 +84,7 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
                         <span className="font-semibold">{grant.planName}</span>
                         <span className="text-fg-muted">
                           {grant.state === 'scheduled' ? ` from ${formatDay(grant.startsAt)}` : ` since ${formatDay(grant.startsAt)}`}
-                          {grant.endsAt ? ` until ${formatDay(grant.endsAt)}` : ', no end date'}
+                          {grant.endsAt ? ` ${untilPlanEnd(grant.endsAt)}` : ', no end date'}
                           {grant.state === 'active' && !grant.inEffect ? '. It counts while the account type matches the plan.' : '.'}
                         </span>
                       </li>

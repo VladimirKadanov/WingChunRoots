@@ -5,7 +5,7 @@
 // A body is a list of segments rather than one string, so that a person's name keeps its `lang`
 // attribute and translate="no" when the dashboard renders it (plan §5.3).
 
-import { formatDay } from '../../lib/dates';
+import { untilPlanEnd } from '../../lib/dates';
 import { GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
 import type { NameData } from './email/types';
 
@@ -87,7 +87,12 @@ function optionalDate(template: string, value: unknown): string | null {
 interface PilotAccessRequested {
   requestId: string;
   planCode: PlanCode;
+  /**
+   * Not stored: services/notifications.ts adds the requester's current name (null without a
+   * profile) when an admin's list is read, and `requesterDeleted` when the account is gone.
+   */
   requester: NameData | null;
+  requesterDeleted: boolean;
 }
 
 /**
@@ -105,17 +110,29 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
       requestId: data.requestId,
       planCode: grantablePlan('pilot-access.requested', data.planCode),
       requester: optionalName('pilot-access.requested', data.requester),
+      requesterDeleted: data.requesterDeleted === true,
     };
   },
-  render: ({ requestId, planCode, requester }) => ({
-    title: 'Pilot access requested',
-    body: [
-      requester ? { name: requester } : { text: 'An account without a profile' },
-      { text: ` asked for pilot access to ${PLANS[planCode].name}. There are no payments in the pilot: you can give a test plan or leave the request open.` },
-    ],
-    action: { label: 'Review the request', href: `/admin/grants?request=${requestId}` },
-  }),
-  sample: { requestId: '0190a5c0-0000-7000-8000-000000000001', planCode: 'pro_sifu', requester: { value: 'Demo Sifu Example', lang: 'und-Latn' } },
+  render: ({ requestId, planCode, requester, requesterDeleted }) =>
+    requesterDeleted
+      ? {
+          title: 'Pilot access requested',
+          body: [{ text: `A since deleted account asked for pilot access to ${PLANS[planCode].name}. The request was removed with the account.` }],
+        }
+      : {
+          title: 'Pilot access requested',
+          body: [
+            requester ? { name: requester } : { text: 'An account without a profile' },
+            { text: ` asked for pilot access to ${PLANS[planCode].name}. There are no payments in the pilot: you can give a test plan or leave the request open.` },
+          ],
+          action: { label: 'Review the request', href: `/admin/grants?request=${requestId}` },
+        },
+  sample: {
+    requestId: '0190a5c0-0000-7000-8000-000000000001',
+    planCode: 'pro_sifu',
+    requester: { value: 'Demo Sifu Example', lang: 'und-Latn' },
+    requesterDeleted: false,
+  },
 };
 
 interface PlanGranted {
@@ -134,7 +151,7 @@ const planGranted: NotificationTemplate<PlanGranted> = {
     title: `Pilot plan added: ${PLANS[planCode].name}`,
     body: [
       {
-        text: `An administrator gave your account ${PLANS[planCode].name} for the pilot${endsAt ? `, until ${formatDay(endsAt)}` : ''}. No payment is involved.`,
+        text: `An administrator gave your account ${PLANS[planCode].name} for the pilot${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
       },
     ],
     action: { label: 'Open your dashboard', href: '/dashboard' },
@@ -152,7 +169,11 @@ const planRevoked: NotificationTemplate<{ planCode: PlanCode }> = {
     title: `Pilot plan ended: ${PLANS[planCode].name}`,
     body: [
       {
-        text: `An administrator ended your pilot plan ${PLANS[planCode].name}. Every confirmed link stays confirmed and public; only new approvals above your plan's limit wait.`,
+        // A Student plan approves nobody, so only a Sifu plan speaks of approvals (DEFAULT D06/D08).
+        text:
+          PLANS[planCode].audience === 'sifu'
+            ? `An administrator ended your pilot plan ${PLANS[planCode].name}. Every confirmed link stays confirmed and public; only new approvals above your plan's limit wait.`
+            : `An administrator ended your pilot plan ${PLANS[planCode].name}. Your profile and every confirmed link stay as they are.`,
       },
     ],
     action: { label: 'Open your dashboard', href: '/dashboard' },

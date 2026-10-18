@@ -8,7 +8,8 @@ import * as z from 'zod';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { notification } from '../db/schema';
+import { notification, person, personName, pilotAccessRequest } from '../db/schema';
+import type { NameData } from '../templates/email/types';
 import { type NotificationSegment, renderNotification } from '../templates/notifications';
 import { ServiceError } from './errors';
 
@@ -29,8 +30,49 @@ export interface NotificationList {
   items: NotificationView[];
 }
 
+interface NotificationRow {
+  id: string;
+  template: string;
+  payload: unknown;
+  createdAt: Date;
+  readAt: Date | null;
+}
+
+/** The request id of a "pilot-access.requested" payload, or null when it holds none. */
+function pilotRequestIdOf(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const id = (payload as { requestId?: unknown }).requestId;
+  return z.uuid().safeParse(id).success ? (id as string) : null;
+}
+
+/**
+ * Adds the requester to each "pilot-access.requested" notification when the list is read: the
+ * current primary name of the requesting account's person, never a copy kept in the payload, so a
+ * renamed account shows its new name and a deleted one no name at all (plan §6.4). Only an admin
+ * reads names here; anyone else gets none.
+ */
+async function withPilotRequesters(rows: NotificationRow[], isAdmin: boolean): Promise<NotificationRow[]> {
+  const ids = [...new Set(rows.filter((row) => row.template === 'pilot-access.requested').map((row) => pilotRequestIdOf(row.payload)))].filter(
+    (id): id is string => id !== null,
+  );
+  if (ids.length === 0) return rows;
+  const found = await getDb()
+    .select({ id: pilotAccessRequest.id, value: personName.value, lang: personName.lang })
+    .from(pilotAccessRequest)
+    .leftJoin(person, and(eq(person.claimedByUserId, pilotAccessRequest.userId), isNull(person.deletedAt)))
+    .leftJoin(personName, and(eq(personName.personId, person.id), eq(personName.isPrimary, true)))
+    .where(inArray(pilotAccessRequest.id, ids));
+  const names = new Map<string, NameData | null>(found.map((r) => [r.id, isAdmin && r.value !== null && r.lang !== null ? { value: r.value, lang: r.lang } : null]));
+  return rows.map((row) => {
+    const id = row.template === 'pilot-access.requested' ? pilotRequestIdOf(row.payload) : null;
+    if (id === null) return row;
+    // The looked-up requester replaces anything stored under that key.
+    return { ...row, payload: { ...(row.payload as Record<string, unknown>), requester: names.get(id) ?? null, requesterDeleted: !names.has(id) } };
+  });
+}
+
 /** A rendered notification; one whose template or data no longer fits says so instead of failing. */
-function view(row: { id: string; template: string; payload: unknown; createdAt: Date; readAt: Date | null }): NotificationView {
+function view(row: NotificationRow): NotificationView {
   let rendered: ReturnType<typeof renderNotification>;
   try {
     rendered = renderNotification(row.template, row.payload);
@@ -67,7 +109,7 @@ export async function listNotifications(principal: Principal | null): Promise<No
     .where(eq(notification.userId, p.user.id))
     .orderBy(desc(notification.createdAt), desc(notification.id))
     .limit(NOTIFICATION_PAGE_SIZE);
-  return { unread: await unreadCount(p.user.id), items: rows.map(view) };
+  return { unread: await unreadCount(p.user.id), items: (await withPilotRequesters(rows, p.user.role === 'admin')).map(view) };
 }
 
 export const markReadInput = z.union([

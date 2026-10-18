@@ -6,7 +6,7 @@
 // DEFAULT D06/D08: revoking a plan never touches a relationship. Every confirmed link stays
 // confirmed and public; requireEntitlement() refuses only new approvals above the free limit.
 
-import { and, asc, count, desc, eq, ilike, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, isNull, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import * as z from 'zod';
 
@@ -282,7 +282,7 @@ export const createGrantInput = z.object({
   startsOn: optionalDay,
   /** "YYYY-MM-DD", the day the plan stops (00:00 UTC); no end when empty. */
   endsOn: optionalDay,
-  /** The pilot access request this grant answers, if any: it is closed with the grant. */
+  /** The pilot access request this grant answers, if any: closed with the grant when it is the account's. */
   requestId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
 });
 
@@ -370,11 +370,15 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    // The account's open request for this plan is answered.
+    // The grant answers the account's open request: the one the form came from (requestId), or
+    // the one for this plan. A requestId of another account closes nothing of that account.
+    const answers = input.requestId
+      ? or(eq(pilotAccessRequest.id, input.requestId), eq(pilotAccessRequest.planCode, input.planCode))
+      : eq(pilotAccessRequest.planCode, input.planCode);
     await tx
       .update(pilotAccessRequest)
       .set({ status: 'closed', closedAt: now, closedByUserId: actor.user.id, grantId, updatedAt: now })
-      .where(and(eq(pilotAccessRequest.userId, account.id), eq(pilotAccessRequest.status, 'open'), eq(pilotAccessRequest.planCode, input.planCode)));
+      .where(and(eq(pilotAccessRequest.userId, account.id), eq(pilotAccessRequest.status, 'open'), answers));
     await tx.insert(notification).values({
       userId: account.id,
       template: 'plan.granted',
@@ -426,7 +430,8 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    // Only a plan that was in effect or about to be is worth a notification.
+    // The account hears of every revocation (active or scheduled, in effect or kept for the other
+    // account type): it is the account's plan either way.
     await tx.insert(notification).values({ userId: grant.subjectUserId, template: 'plan.revoked', payload: { planCode: grant.planCode } });
   });
   return rowById(getDb(), grantId, now);

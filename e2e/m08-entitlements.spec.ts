@@ -440,7 +440,8 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await expect(page.getByTestId('upgrade-prompt')).toHaveCount(0);
   await link('empty-schools').click();
   await expect(page).toHaveURL(/\/plans#instructors$/);
-  await expect(page.getByRole('heading', { level: 2, name: 'For instructors (Sifu)' })).toBeVisible();
+  // The anchor exists: the instructors section, with its heading, is where the link lands.
+  await expect(page.locator('section#instructors').getByRole('heading', { level: 2, name: 'For instructors (Sifu)' })).toBeInViewport();
   expect(account.email).toMatch(/^demo-e2e-/);
 });
 

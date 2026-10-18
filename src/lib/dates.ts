@@ -8,6 +8,14 @@ export function formatDay(value: Date | string): string {
   return DAY.format(typeof value === 'string' ? new Date(value) : value);
 }
 
+/**
+ * The end of a plan, which stops at 00:00 UTC of its end day (milestone M08): "until the start of
+ * 31 December 2026 (UTC)", so nobody reads the end day as included.
+ */
+export function untilPlanEnd(value: Date | string): string {
+  return `until the start of ${formatDay(value)} (UTC)`;
+}
+
 /** "2026-02-01": the value of an <input type="date">. */
 export function isoDay(value: Date | string): string {
   return (typeof value === 'string' ? new Date(value) : value).toISOString().slice(0, 10);

@@ -175,6 +175,54 @@ describe('withQuota() under concurrent approvals', () => {
     expect(waiterDone).toBe(true);
   });
 
+  it('at the limit, a second link of a student who already counts is approved; a new student is not (D06 counts distinct students)', async () => {
+    const sifu = await sifuWith(5, 1);
+    const subject = { kind: 'user' as const, userId: sifu.userId };
+    const [counted] = await getDb()
+      .select({ studentId: teachingRelationship.studentPersonId })
+      .from(teachingRelationship)
+      .where(and(eq(teachingRelationship.teacherPersonId, sifu.personId), eq(teachingRelationship.status, 'verified')))
+      .limit(1);
+    const otherLineage = uuidv7();
+    await getDb().insert(lineage).values({ id: otherLineage, slug: `demo-quota-${randomBytes(3).toString('hex')}`, name: 'Demo Quota Lineage Two' });
+    const secondLink = uuidv7();
+    await getDb().insert(teachingRelationship).values({
+      id: secondLink,
+      teacherPersonId: sifu.personId,
+      studentPersonId: counted!.studentId,
+      lineageId: otherLineage,
+      status: 'pending_teacher',
+      visibility: 'involved_only',
+    });
+    const [newStudent] = await getDb()
+      .select({ id: teachingRelationship.id, studentId: teachingRelationship.studentPersonId })
+      .from(teachingRelationship)
+      .where(and(eq(teachingRelationship.teacherPersonId, sifu.personId), eq(teachingRelationship.lineageId, lineageId), eq(teachingRelationship.status, 'pending_teacher')));
+
+    const run = (relationshipId: string, unit: string) =>
+      getDb().transaction((tx) =>
+        withQuota(
+          tx,
+          subject,
+          'approve_students',
+          async () => {
+            const updated = await tx
+              .update(teachingRelationship)
+              .set({ status: 'verified', confirmedByUserId: sifu.userId, confirmedAt: new Date() })
+              .where(and(eq(teachingRelationship.id, relationshipId), eq(teachingRelationship.status, 'pending_teacher')))
+              .returning({ id: teachingRelationship.id });
+            return updated.length;
+          },
+          { unit },
+        ),
+      );
+
+    expect(await run(newStudent!.id, newStudent!.studentId)).toEqual({ ok: false, code: 'quota', plan: 'free_sifu', limit: 5, current: 5, grantedBy: 'pro_sifu' });
+    expect(await run(secondLink, counted!.studentId)).toEqual({ ok: true, value: 1, decision: { ok: true, plan: 'free_sifu', limit: 5, current: 5 } });
+    // Still five distinct students.
+    expect(await requireEntitlement(subject, 'approve_students')).toMatchObject({ ok: false, code: 'quota', current: 5 });
+  });
+
   it('requireEntitlement() alone reads the same decision without writing', async () => {
     const sifu = await sifuWith(5, 1);
     expect(await requireEntitlement({ kind: 'user', userId: sifu.userId }, 'approve_students')).toMatchObject({ ok: false, code: 'quota', current: 5 });

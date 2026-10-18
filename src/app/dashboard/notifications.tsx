@@ -21,12 +21,14 @@ const ALL = '*';
 
 export function Notifications({ list }: { list: NotificationList }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [items, markOptimistic] = useOptimistic(list.items, (current, id: string) =>
-    current.map((item) => (!item.readAt && (id === ALL || item.id === id) ? { ...item, readAt: new Date().toISOString() } : item)),
-  );
-  // The server counts every unread notification (the list shows the newest 20).
-  const markedHere = items.filter((item, i) => item.readAt && !list.items[i]?.readAt).length;
-  const unread = Math.max(0, list.unread - markedHere);
+  // The server counts every unread notification (the list shows the newest 20): marking one read
+  // takes one off that count, and "Mark all as read" brings it to zero, beyond the 20 shown too.
+  const [{ items, unread }, markOptimistic] = useOptimistic({ items: list.items, unread: list.unread }, (current, id: string) => {
+    const readAt = new Date().toISOString();
+    if (id === ALL) return { items: current.items.map((item) => (item.readAt ? item : { ...item, readAt })), unread: 0 };
+    if (!current.items.some((item) => item.id === id && !item.readAt)) return current;
+    return { items: current.items.map((item) => (item.id === id ? { ...item, readAt } : item)), unread: Math.max(0, current.unread - 1) };
+  });
 
   function submit(event: FormEvent<HTMLFormElement>, id: string) {
     // React skips the form's action when the submit event is cancelled; the transition calls it.

@@ -19,7 +19,7 @@ import {
 } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, authSession, entitlementGrant, notification, pilotAccessRequest } from '../db/schema';
+import { auditLog, authSession, entitlementGrant, lineage, notification, person, personName, pilotAccessRequest, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleApiRequest } from '../rpc/handler';
 import { PILOT_REQUESTS_PER_WINDOW, PLANS_BANNER, PROPOSED_PRICE_LABEL } from './plans';
@@ -189,6 +189,57 @@ describe('plans.requestPilotAccess', () => {
     expect((await v1(sifu.token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' })).status).toBe(409);
   });
 
+  it('switching the account type closes an open request for a plan of the old type, so a new one can follow', async () => {
+    const { account, token } = await member('pilot-switch');
+    const first = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'premium_student' });
+    const firstId = (first.data.request as { id: string }).id;
+    expect((await v1(token, 'POST', '/account/type', { accountType: 'sifu' })).status).toBe(200);
+
+    const [closed] = await getDb().select().from(pilotAccessRequest).where(eq(pilotAccessRequest.id, firstId));
+    expect(closed).toMatchObject({ status: 'closed', closedByUserId: null, grantId: null });
+    expect(closed!.closedAt).not.toBeNull();
+    const [audit] = await getDb()
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'account.type_change'), eq(auditLog.subjectId, account.id)));
+    expect(audit!.after).toMatchObject({ accountType: 'sifu', closedPilotRequestId: firstId });
+
+    const second = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+    expect(second.data).toMatchObject({ created: true, request: { planCode: 'pro_sifu', status: 'open' } });
+    expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({ pilotRequest: { planCode: 'pro_sifu' } });
+  });
+
+  it('the admins’ notification keeps no name: the list shows the requester’s current name, and none once the request is gone', async () => {
+    const { account, token } = await member('pilot-name', 'sifu');
+    const personId = uuidv7();
+    await getDb()
+      .insert(person)
+      .values({ id: personId, slug: `demo-pilot-name-${randomBytes(4).toString('hex')}`, kind: 'living', stewardship: 'self', claimedByUserId: account.id });
+    await getDb().insert(personName).values({ personId, value: 'Demo Pilot Asker', script: 'Latn', lang: 'und-Latn', isPrimary: true });
+    const result = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+    const requestId = (result.data.request as { id: string }).id;
+
+    const admin = admins[0]!;
+    const [stored] = (await notificationsOf(admin.account.id, 'pilot-access.requested')).filter((row) => (row.payload as { requestId: string }).requestId === requestId);
+    expect(stored!.payload).toEqual({ requestId, planCode: 'pro_sifu' });
+
+    type Item = { body: ({ text: string } | { name: { value: string } })[]; action: { href: string } | null; template: string };
+    const shown = async () => {
+      const items = (await v1(admin.token, 'GET', '/notifications')).data.items as Item[];
+      return items.find((item) => item.action?.href === `/admin/grants?request=${requestId}`);
+    };
+    expect((await shown())?.body[0]).toEqual({ name: { value: 'Demo Pilot Asker', lang: 'und-Latn' } });
+    await getDb().update(personName).set({ value: 'Demo Pilot Renamed' }).where(eq(personName.personId, personId));
+    expect((await shown())?.body[0]).toEqual({ name: { value: 'Demo Pilot Renamed', lang: 'und-Latn' } });
+
+    // The request goes with its account (ON DELETE CASCADE): the notification names nobody.
+    await getDb().delete(pilotAccessRequest).where(eq(pilotAccessRequest.id, requestId));
+    const items = (await v1(admin.token, 'GET', '/notifications')).data.items as Item[];
+    const gone = items.find((item) => item.template === 'pilot-access.requested' && item.action === null);
+    expect(gone?.body).toEqual([{ text: 'A since deleted account asked for pilot access to Professional Sifu. The request was removed with the account.' }]);
+    expect(JSON.stringify(items)).not.toContain('Demo Pilot');
+  });
+
   it(`allows ${PILOT_REQUESTS_PER_WINDOW} requests in the window, then answers 429`, async () => {
     const { account, token } = await member('pilot-rate', 'student');
     for (let i = 0; i < PILOT_REQUESTS_PER_WINDOW; i += 1) {
@@ -264,6 +315,22 @@ describe('grants.* (admin with a verified second factor)', () => {
     expect(await notificationsOf(sifu.account.id, 'plan.revoked')).toHaveLength(1);
     expect((await v1(sifu.token, 'GET', '/plans/mine')).data).toMatchObject({ plan: { code: 'free_sifu' } });
     expect((await v1(admin.token, 'POST', '/admin/grants/revoke', { grantId, reason: 'Again' })).status).toBe(409);
+  });
+
+  it('a grant answers the request the form came from only when it is the account’s own', async () => {
+    const admin = admins[0]!;
+    const asking = await member('grant-request-a', 'sifu');
+    const other = await member('grant-request-b', 'sifu');
+    const a = (await v1(asking.token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' })).data.request as { id: string };
+    const b = (await v1(other.token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' })).data.request as { id: string };
+
+    // The form came from A's request, but the admin gave the plan to B: A's request stays open.
+    const created = await v1(admin.token, 'POST', '/admin/grants/create', { email: other.account.email, planCode: 'pro_sifu', reason: 'Demo: other account', requestId: a.id });
+    expect(created.status).toBe(200);
+    const rows = await getDb().select({ id: pilotAccessRequest.id, status: pilotAccessRequest.status }).from(pilotAccessRequest).where(eq(pilotAccessRequest.id, a.id));
+    expect(rows).toEqual([{ id: a.id, status: 'open' }]);
+    const [answered] = await getDb().select().from(pilotAccessRequest).where(eq(pilotAccessRequest.id, b.id));
+    expect(answered).toMatchObject({ status: 'closed', grantId: created.data.id });
   });
 
   it('refuses a missing reason, dates in the wrong order, an unknown account and a plan of the other account type', async () => {
@@ -345,5 +412,49 @@ describe('dashboard.overview', () => {
       student: null,
       sifu: { requests: [], schools: [], students: { approved: 0, limit: 5 }, upgrade: null },
     });
+  });
+
+  it('at the Free Sifu limit the upgrade offer counts every waiting request, beyond the 50 listed', async () => {
+    const sifu = await member('dash-limit', 'sifu');
+    const lineageId = uuidv7();
+    const otherLineageId = uuidv7();
+    await getDb()
+      .insert(lineage)
+      .values([
+        { id: lineageId, slug: `demo-dash-${randomBytes(3).toString('hex')}`, name: 'Demo Dashboard Lineage' },
+        { id: otherLineageId, slug: `demo-dash-${randomBytes(3).toString('hex')}`, name: 'Demo Dashboard Lineage Two' },
+      ]);
+    const newPeople = async (n: number, claimedByUserId: string | null = null) => {
+      const ids = Array.from({ length: n }, () => uuidv7());
+      await getDb()
+        .insert(person)
+        .values(ids.map((id) => ({ id, slug: `demo-dash-${randomBytes(5).toString('hex')}`, kind: 'living' as const, stewardship: claimedByUserId ? ('self' as const) : ('unclaimed' as const), claimedByUserId })));
+      await getDb()
+        .insert(personName)
+        .values(ids.map((personId, i) => ({ personId, value: `Demo Dash ${i + 1}`, script: 'Latn', lang: 'und-Latn', isPrimary: true })));
+      return ids;
+    };
+    const [own] = await newPeople(1, sifu.account.id);
+    const students = await newPeople(5 + 52);
+    await getDb()
+      .insert(teachingRelationship)
+      .values(
+        students.map((studentPersonId, i) => ({
+          id: uuidv7(),
+          teacherPersonId: own!,
+          studentPersonId,
+          lineageId,
+          status: i < 5 ? ('verified' as const) : ('pending_teacher' as const),
+          visibility: 'involved_only' as const,
+        })),
+      );
+
+    // One more request from a student who already counts: approving it would not grow the count.
+    await getDb().insert(teachingRelationship).values({ id: uuidv7(), teacherPersonId: own!, studentPersonId: students[0]!, lineageId: otherLineageId, status: 'pending_teacher', visibility: 'involved_only' });
+
+    const overview = (await v1(sifu.token, 'GET', '/dashboard')).data as { sifu: { requests: unknown[]; students: { approved: number }; upgrade: { waiting: number; to: { code: string } } | null } };
+    expect(overview.sifu.students.approved).toBe(5);
+    expect(overview.sifu.requests).toHaveLength(50);
+    expect(overview.sifu.upgrade).toMatchObject({ waiting: 52, to: { code: 'pro_sifu' } });
   });
 });

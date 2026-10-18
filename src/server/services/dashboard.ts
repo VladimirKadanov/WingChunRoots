@@ -7,17 +7,17 @@
 // people in its own requests only (D03: a request is visible to the people involved); never
 // cached (no 'use cache': the page reads the session).
 
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { lineage, person, personName, place, school, schoolInstructor, teachingRelationship } from '../db/schema';
+import { lineage, person, personName, place, PUBLIC_RELATIONSHIP_STATUSES, school, schoolInstructor, teachingRelationship } from '../db/schema';
 import { effectivePlan, requireEntitlement } from '../entitlements/access';
 import { feature, type Benefit, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from '../templates/email/types';
 import { listNotifications, type NotificationList } from './notifications';
-import { INSTRUCTOR_LABELS, instructorStatus, myPlan, type PilotRequestView, type PlanSummary, planSummary } from './plans';
+import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotRequestView, type PlanSummary, planSummary } from './plans';
 
 export interface PersonRef {
   id: string;
@@ -194,6 +194,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
 
   // Sifu.
   let requests: StudentRequestItem[] = [];
+  let waiting = 0;
   let schools: SchoolItem[] = [];
   if (own) {
     const rows = await db
@@ -203,6 +204,23 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       .where(and(eq(teachingRelationship.teacherPersonId, own.id), eq(teachingRelationship.status, 'pending_teacher')))
       .orderBy(asc(teachingRelationship.createdAt), asc(teachingRelationship.id))
       .limit(50);
+    // The list shows the oldest 50; the upgrade prompt counts every request the limit holds back:
+    // a request of a student who already counts would not grow the count (withQuota's `unit`).
+    const established = db
+      .select({ id: teachingRelationship.studentPersonId })
+      .from(teachingRelationship)
+      .where(and(eq(teachingRelationship.teacherPersonId, own.id), inArray(teachingRelationship.status, [...PUBLIC_RELATIONSHIP_STATUSES])));
+    const [pending] = await db
+      .select({ n: count() })
+      .from(teachingRelationship)
+      .where(
+        and(
+          eq(teachingRelationship.teacherPersonId, own.id),
+          eq(teachingRelationship.status, 'pending_teacher'),
+          notInArray(teachingRelationship.studentPersonId, established),
+        ),
+      );
+    waiting = pending?.n ?? 0;
     const refs = await peopleRefs(rows.map((r) => r.studentId));
     requests = rows.map((r) => ({ relationshipId: r.id, student: refs.get(r.studentId)!, lineage: r.lineage, createdAt: r.createdAt.toISOString() }));
     const schoolRows = await db
@@ -236,7 +254,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   const limit = decision.limit;
   let upgrade: UpgradeOffer | null = null;
   // Plan §5.6: only at a real limit, where a request waits because of it.
-  if (!decision.ok && decision.code === 'quota' && decision.grantedBy && requests.length > 0 && limit !== null) {
+  if (!decision.ok && decision.code === 'quota' && decision.grantedBy && waiting > 0 && limit !== null) {
     const unit = feature('approve_students').unit!;
     const from = planSummary(decision.plan);
     upgrade = {
@@ -249,8 +267,8 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       from,
       to: planSummary(decision.grantedBy),
       benefits: upgradeBenefits(decision.plan, decision.grantedBy),
-      waiting: requests.length,
-      pilotRequest: (await myPlan(principal)).pilotRequest,
+      waiting,
+      pilotRequest: await openPilotRequest(db, p.user.id),
     };
   }
   return { ...base, student: null, sifu: { requests, students: { approved: decision.current, limit }, schools, upgrade } };
