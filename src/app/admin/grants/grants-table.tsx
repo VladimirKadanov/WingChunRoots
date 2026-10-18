@@ -112,9 +112,16 @@ const columns = helper.columns([
 ]);
 
 function ActionsCell({ row, revoked }: { row: GrantRow; revoked: FormState | null }) {
-  if (row.state !== 'active' && row.state !== 'scheduled') return <span className="text-sm text-fg-muted">None</span>;
   const initial = revoked?.values?.grantId === row.id ? revoked : null;
-  return <RevokeGrantForm grantId={row.id} planName={row.planName} email={row.email} initial={initial} />;
+  return (
+    <RevokeGrantForm
+      grantId={row.id}
+      planName={row.planName}
+      email={row.email}
+      revocable={row.state === 'active' || row.state === 'scheduled'}
+      initial={initial}
+    />
+  );
 }
 
 /** The address of this page with the list's state and `changes` applied. */
@@ -134,7 +141,8 @@ function hrefWith(list: GrantList, changes: Partial<{ sort: GrantSort; dir: 'asc
 }
 
 export function GrantsTable({ list, revoked }: { list: GrantList; revoked?: FormState | null }) {
-  const table = constructTable({ features, columns, data: list.rows });
+  // Rows keyed by the grant, so a row keeps its revoke form (and its outcome) when the page refreshes.
+  const table = constructTable({ features, columns, data: list.rows, getRowId: (row) => row.id });
   return (
     <div className="@container grid gap-4">
       {list.rows.length === 0 ? (
@@ -168,7 +176,7 @@ export function GrantsTable({ list, revoked }: { list: GrantList; revoked?: Form
                           <span aria-hidden="true" className={cx('text-xs', current ? 'text-fg' : 'text-fg-subtle')}>
                             {current ? (list.dir === 'asc' ? '▲' : '▼') : '△'}
                           </span>
-                          <span className="sr-only">, sort {current && list.dir === 'asc' ? 'descending' : 'ascending'}</span>
+                          <span className="sr-only"> (sort {current && list.dir === 'asc' ? 'descending' : 'ascending'})</span>
                         </Link>
                       ) : (
                         <span className="inline-flex min-h-11 items-center">{FlexRender({ header }) as ReactNode}</span>

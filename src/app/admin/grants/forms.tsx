@@ -104,13 +104,29 @@ export function CreateGrantForm({
 
 /**
  * Revoking a grant, behind a disclosure on its row: the reason, then the button. <details> opens
- * without JavaScript and by keyboard. The button names the plan and the account.
+ * without JavaScript and by keyboard. The button names the plan and the account. The row keeps
+ * this component once the grant is revoked (`revocable` false), so the outcome stays on screen
+ * after the page refreshes; a row that was never revoked here says "None".
  */
-export function RevokeGrantForm({ grantId, planName, email, initial }: { grantId: string; planName: string; email: string; initial?: FormState | null }) {
+export function RevokeGrantForm({
+  grantId,
+  planName,
+  email,
+  revocable,
+  initial,
+}: {
+  grantId: string;
+  planName: string;
+  email: string;
+  revocable: boolean;
+  initial?: FormState | null;
+}) {
   const [state, action, pending] = useActionState(revokeGrantAction, initial ?? IDLE);
   const formId = useFormId('revoke-grant');
   useFocusOnError(formId, state);
   const failed = state.status === 'error';
+  if (state.status === 'done') return <FormMessage form={formId} state={state} single />;
+  if (!revocable) return <span className="text-sm text-fg-muted">None</span>;
   return (
     <details open={failed || undefined} className="group">
       <summary

@@ -102,7 +102,7 @@ export function Notifications({ list }: { list: NotificationList }) {
                     <form action={markReadAction} onSubmit={(event) => submit(event, item.id)}>
                       <input type="hidden" name="id" value={item.id} />
                       <button type="submit" className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3')}>
-                        Mark as read<span className="sr-only">: {item.title}</span>
+                        Mark as read<span className="sr-only"> ({item.title})</span>
                       </button>
                     </form>
                   ) : null}

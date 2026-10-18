@@ -4,6 +4,8 @@
  * Pure data, so scripts can read it too.
  */
 
+import type { DemoAccountSlug } from '../src/fixtures/generate';
+
 export type Theme = 'dark' | 'light';
 export const THEMES: readonly Theme[] = ['dark', 'light'];
 
@@ -24,8 +26,9 @@ export interface AppRoute {
   /**
    * A page behind sign-in (M02): the specs first sign in with e2e/helpers/auth.ts signInAs():
    * a seeded demo account or role, or `new` (a confirmed account without a profile yet).
+   * M08: also a demo account by slug (src/fixtures/generate.ts), for the dashboards.
    */
-  signInAs?: 'new' | 'user' | 'admin';
+  signInAs?: 'new' | 'user' | 'admin' | DemoAccountSlug;
 }
 
 export const ROUTES: readonly AppRoute[] = [
@@ -46,6 +49,15 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/legal/privacy', name: 'privacy', status: 200, milestone: 'M02' },
   // The not-found page, through a path that no route will ever use.
   { path: '/demo-no-such-page', name: 'not-found', status: 404, milestone: 'M00b' },
+  // Plans and dashboards (M08). The dashboards of demo accounts that no test changes: Free Sifu at
+  // its limit with the upgrade prompt, and a student with a pending request. /admin/grants lists
+  // grants and requests that the tests add while the visual regression runs, so its screenshots
+  // come from a screen state (e2e/screenshots.spec.ts) instead.
+  { path: '/plans', name: 'plans', status: 200, milestone: 'M08', key: true },
+  { path: '/dashboard', name: 'dashboard-sifu', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/dashboard', name: 'dashboard-student', status: 200, milestone: 'M08', key: true, signInAs: 'demo-pending' },
+  { path: '/dashboard/settings', name: 'dashboard-settings', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/admin/grants', name: 'admin-grants', status: 200, milestone: 'M08', signInAs: 'admin' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

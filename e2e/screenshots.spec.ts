@@ -9,6 +9,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { freshAccount, giveStudents } from './helpers/plans';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -45,6 +46,39 @@ const STATES: readonly ScreenState[] = [
       await page.getByLabel('E-mail address', { exact: true }).fill(uniqueEmail('screenshot'));
       await page.getByRole('button', { name: 'Send the reset link' }).click();
       await expect(page.getByRole('heading', { level: 1, name: 'Check your inbox' })).toBeVisible();
+    },
+  },
+  {
+    // M08: /admin/grants, with the grants and the pilot requests of the moment (not in the visual
+    // regression: the tests add rows to it while it runs).
+    name: 'admin-grants',
+    milestone: 'M08',
+    async reach(page) {
+      await signInAs(page, 'admin');
+      await page.goto('/admin/grants');
+      await expect(page.getByRole('heading', { level: 1, name: 'Plan grants' })).toBeVisible();
+    },
+  },
+  {
+    // M08: a new Sifu's dashboard, every list empty with its next action.
+    name: 'dashboard-sifu-empty',
+    milestone: 'M08',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo New Sifu', sifu: true });
+      await page.goto('/dashboard');
+      await expect(page.getByTestId('empty-schools')).toBeVisible();
+    },
+  },
+  {
+    // M08: the upgrade prompt once "Request pilot access" was pressed.
+    name: 'upgrade-requested',
+    milestone: 'M08',
+    async reach(page) {
+      const sifu = await freshAccount(page, { name: 'Demo Asking Sifu', sifu: true });
+      await giveStudents(sifu.userId, 5, 1);
+      await page.goto('/dashboard');
+      await page.getByTestId('request-pilot-access').click();
+      await expect(page.getByRole('status').filter({ hasText: 'Nothing is charged.' })).toBeVisible();
     },
   },
 ];
