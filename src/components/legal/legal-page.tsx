@@ -37,11 +37,11 @@ function BlockView({ block }: { block: Block }) {
   switch (block.kind) {
     case 'heading':
       return block.level === 2 ? (
-        <h2 id={block.id} className="mt-6 border-t border-border-subtle pt-6 font-display text-2xl text-fg first:mt-0">
+        <h2 id={block.id} className="mt-6 border-t border-border-subtle pt-6 font-display text-2xl text-fg [overflow-wrap:anywhere] first:mt-0">
           {block.text}
         </h2>
       ) : (
-        <h3 id={block.id} className="mt-2 font-display text-xl text-fg">
+        <h3 id={block.id} className="mt-2 font-display text-xl text-fg [overflow-wrap:anywhere]">
           {block.text}
         </h3>
       );
@@ -77,8 +77,8 @@ export function LegalPage({ title, version, blocks }: { title: string; version: 
     <div className="mx-auto max-w-content px-page pt-6 pb-12 md:pt-11">
       <article className="max-w-[44rem]">
         <p className="eyebrow">Legal · version {version}</p>
-        <h1 className="mt-2 font-display text-feature">{title}</h1>
-        <div className="mt-6 grid gap-4 text-base leading-relaxed text-fg-muted">
+        <h1 className="mt-2 font-display text-feature [overflow-wrap:anywhere]">{title}</h1>
+        <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-4 text-base leading-relaxed text-fg-muted">
           {blocks.map((block, i) => (
             <BlockView key={i} block={block} />
           ))}

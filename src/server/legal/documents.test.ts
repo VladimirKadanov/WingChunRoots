@@ -7,7 +7,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { parseInline, parseMarkdown } from '../../lib/markdown';
-import { CONSENT_DOCUMENT, consentVersion, LEGAL_DOCUMENTS, REQUIRED_SIGN_UP_CONSENTS, SIGN_UP_CONSENTS } from './documents';
+import {
+  CONSENT_DOCUMENT,
+  consentVersion,
+  documentsFor,
+  LEGAL_DOCUMENTS,
+  REQUIRED_SIGN_UP_CONSENTS,
+  SIGN_UP_CONSENTS,
+} from './documents';
 
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
 
@@ -42,6 +49,28 @@ describe('legal documents', () => {
   it('every sign-up consent refers to a document version; the required ticks are age, terms and authenticity', () => {
     for (const kind of SIGN_UP_CONSENTS) expect(consentVersion(kind)).toBe(LEGAL_DOCUMENTS[CONSENT_DOCUMENT[kind]].version);
     expect([...REQUIRED_SIGN_UP_CONSENTS].sort()).toEqual(['age_18_plus', 'authenticity_declaration', 'terms']);
+  });
+
+  it('each version has a date and a sentence on what changed; the date matches the version', () => {
+    for (const document of Object.values(LEGAL_DOCUMENTS)) {
+      expect(document.changes).toMatch(/^[A-Z].{8,}\.$/);
+      const [year, month, day] = document.version.split('-').map(Number);
+      const named = new Date(Date.UTC(year!, month! - 1, day!)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+      expect(document.date).toBe(named);
+    }
+  });
+
+  it('documentsFor names the documents behind the confirmations a form asks for, terms first', () => {
+    expect(documentsFor(['privacy_ack', 'age_18_plus']).map((d) => d.id)).toEqual(['terms', 'privacy']);
+    expect(documentsFor(['authenticity_declaration']).map((d) => d.id)).toEqual(['terms']);
+    expect(documentsFor(['privacy_ack'])[0]).toEqual({
+      id: 'privacy',
+      title: LEGAL_DOCUMENTS.privacy.title,
+      path: LEGAL_DOCUMENTS.privacy.path,
+      date: LEGAL_DOCUMENTS.privacy.date,
+      changes: LEGAL_DOCUMENTS.privacy.changes,
+    });
+    expect(documentsFor(['nonsense', 'toString'])).toEqual([]);
   });
 });
 

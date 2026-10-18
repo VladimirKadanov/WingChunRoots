@@ -12,6 +12,7 @@ import { keepValues, textValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { safeNextPath } from '@/server/auth/guards';
 import { getRequestPrincipal } from '@/server/auth/web';
+import { formResult } from '@/server/forms/flash';
 import { formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 
@@ -27,9 +28,18 @@ function missingTicks(form: FormData): Record<string, string> {
   return fields;
 }
 
+/** The address of /onboarding with its `next`. */
+function onboardingPage(next: string): string {
+  return next === '/account' ? '/onboarding' : `/onboarding?${new URLSearchParams({ next })}`;
+}
+
 export async function onboardAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, TEXT_FIELDS, ['showPublicly', ...CONSENT_ORDER]);
   const next = safeNextPath(textValue(form, 'next'), '/account');
+  return formResult({ form: 'onboarding', page: onboardingPage(next) }, await onboard(form, next));
+}
+
+async function onboard(form: FormData, next: string): Promise<FormState> {
+  const values = keepValues(form, TEXT_FIELDS, ['showPublicly', ...CONSENT_ORDER]);
   const client = serverClient(await headers(), await getRequestPrincipal());
 
   // The ticks are on the form only when a required confirmation is missing for the current
@@ -83,8 +93,12 @@ export async function onboardAction(_previous: FormState, form: FormData): Promi
  * refused here with its message; landingPath and /onboarding ask again while one is missing.
  */
 export async function confirmConsentsAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, ['next'], CONSENT_ORDER);
   const next = safeNextPath(textValue(form, 'next'), '/account');
+  return formResult({ form: 'confirm-consents', page: onboardingPage(next) }, await confirmConsents(form, next));
+}
+
+async function confirmConsents(form: FormData, next: string): Promise<FormState> {
+  const values = keepValues(form, ['next'], CONSENT_ORDER);
   const fields = missingTicks(form);
   if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
   const kinds = CONSENT_ORDER.filter((kind) => ticked(form, kind));

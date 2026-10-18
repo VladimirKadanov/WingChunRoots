@@ -10,9 +10,14 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { emailValue, keepValues, looksLikeEmail, secretValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { authAction } from '@/server/auth/web';
+import { formResult } from '@/server/forms/flash';
 import { REQUIRED_SIGN_UP_CONSENTS, SIGN_UP_CONSENTS } from '@/server/legal/documents';
 
 export async function signUpAction(_previous: FormState, form: FormData): Promise<FormState> {
+  return formResult({ form: 'sign-up', page: '/sign-up' }, await signUp(form));
+}
+
+async function signUp(form: FormData): Promise<FormState> {
   const email = emailValue(form);
   const password = secretValue(form, 'password', MAX_PASSWORD_LENGTH + 1);
   const consents = Object.fromEntries(SIGN_UP_CONSENTS.map((kind) => [kind, ticked(form, kind)]));
@@ -21,7 +26,8 @@ export async function signUpAction(_previous: FormState, form: FormData): Promis
   const fields: Record<string, string> = {};
   if (!email) fields.email = 'Enter your e-mail address.';
   else if (!looksLikeEmail(email)) fields.email = authMessage('INVALID_EMAIL');
-  if (password.length < MIN_PASSWORD_LENGTH) fields.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (!password) fields.password = 'Enter a password.';
+  else if (password.length < MIN_PASSWORD_LENGTH) fields.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
   else if (password.length > MAX_PASSWORD_LENGTH) fields.password = `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
   for (const kind of REQUIRED_SIGN_UP_CONSENTS) {
     if (!consents[kind]) fields[kind] = CONSENT_REQUIRED_MESSAGES[kind as ConsentName];

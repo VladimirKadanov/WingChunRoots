@@ -1,15 +1,23 @@
 'use client';
 
-import { useActionState, useId, useState } from 'react';
+// The forms of /account/security (milestone M02): the code of the authenticator app (finishing the
+// setup, verifying a session) and the forms that take the password (set up, new backup codes, turn
+// off). `initial` is the outcome of a submit without JavaScript (src/server/forms/flash.ts).
 
-import { FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
-import { QrCode } from '@/components/account/qr-code';
-import { MAX_PASSWORD_LENGTH, TOTP_DIGITS } from '@/lib/account-limits';
+import { useActionState, useState } from 'react';
+
+import { CodeField, FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { MAX_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { IDLE, type FormState } from '@/lib/form-state';
-import type { TotpSetupView } from '@/server/auth/totp';
-import { confirmTwoFactorAction, enableTwoFactorAction, verifySessionAction } from './actions';
+import {
+  confirmTwoFactorAction,
+  disableTwoFactorAction,
+  enableTwoFactorAction,
+  newBackupCodesAction,
+  verifySessionAction,
+} from './actions';
 
-type CodeAction = (previous: FormState, form: FormData) => Promise<FormState>;
+type Action = (previous: FormState, form: FormData) => Promise<FormState>;
 
 /** A form that asks for the current TOTP code (or a backup code) and posts it to `action`. */
 function CodeForm({
@@ -18,33 +26,29 @@ function CodeForm({
   submitLabel,
   next,
   allowBackup,
+  initial,
 }: {
   id: string;
-  action: CodeAction;
+  action: Action;
   submitLabel: string;
   next?: string;
   allowBackup?: boolean;
+  initial?: FormState | null;
 }) {
-  const [state, action, pending] = useActionState(serverAction, IDLE);
-  const [method, setMethod] = useState<'totp' | 'backup'>('totp');
+  const [state, action, pending] = useActionState(serverAction, initial ?? IDLE);
+  const [method, setMethod] = useState<'totp' | 'backup'>(state.values?.method === 'backup' ? 'backup' : 'totp');
   const formId = useFormId(id);
   useFocusOnError(formId, state);
   const totp = method === 'totp';
   return (
-    <form id={formId} action={action} noValidate className="grid gap-5">
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5">
       <input type="hidden" name="method" value={method} />
       {next ? <input type="hidden" name="next" value={next} /> : null}
-      <FormMessage form={formId} state={state} />
-      <TextField
+      <FormMessage form={formId} state={state} single />
+      <CodeField
         key={method}
         form={formId}
-        name="code"
-        label={totp ? '6-digit code' : 'Backup code'}
-        autoComplete="one-time-code"
-        inputMode={totp ? 'numeric' : 'text'}
-        autoCapitalize="none"
-        spellCheck={false}
-        maxLength={totp ? TOTP_DIGITS + 2 : 32}
+        kind={method}
         hint={totp ? 'The code your authenticator app shows for WingChunRoots now.' : 'One of your saved backup codes. Each works once.'}
         state={state}
         autoFocus={state.status === 'error' && Boolean(state.fields?.code)}
@@ -54,11 +58,7 @@ function CodeForm({
           {submitLabel}
         </SubmitButton>
         {allowBackup ? (
-          <button
-            type="button"
-            onClick={() => setMethod(totp ? 'backup' : 'totp')}
-            className="link inline-flex min-h-11 items-center text-ui"
-          >
+          <button type="button" onClick={() => setMethod(totp ? 'backup' : 'totp')} className="link inline-flex min-h-11 items-center text-ui">
             {totp ? 'Use a backup code instead' : 'Use the authenticator app instead'}
           </button>
         ) : null}
@@ -67,96 +67,110 @@ function CodeForm({
   );
 }
 
-export function VerifySessionForm({ next }: { next: string }) {
-  return <CodeForm id="verify-session" action={verifySessionAction} submitLabel="Verify this session" next={next} allowBackup />;
+export function VerifySessionForm({ next, initial }: { next: string; initial?: FormState | null }) {
+  return <CodeForm id="verify-session" action={verifySessionAction} submitLabel="Verify this session" next={next} allowBackup initial={initial} />;
 }
 
-function SetupSteps({ setup }: { setup: TotpSetupView }) {
-  const secretLabel = useId();
+export function ConfirmTwoFactorForm({ initial }: { initial?: FormState | null }) {
+  return <CodeForm id="confirm-two-factor" action={confirmTwoFactorAction} submitLabel="Turn on two-factor authentication" initial={initial} />;
+}
+
+/** A form of one password field and one button. */
+function PasswordForm({
+  id,
+  action: serverAction,
+  submitLabel,
+  pendingLabel,
+  hint,
+  variant,
+  initial,
+}: {
+  id: string;
+  action: Action;
+  submitLabel: string;
+  pendingLabel: string;
+  hint: string;
+  variant: 'primary' | 'secondary';
+  initial?: FormState | null;
+}) {
+  const [state, action, pending] = useActionState(serverAction, initial ?? IDLE);
+  const form = useFormId(id);
+  useFocusOnError(form, state);
   return (
-    <ol className="grid gap-8">
-      <li className="grid gap-3">
-        <h3 className="font-display text-xl">1. Add WingChunRoots to your authenticator app</h3>
-        <p className="max-w-[56ch] text-ui text-fg-muted">
-          Scan the code with an app such as a password manager or an authenticator. On this phone,{' '}
-          <a href={setup.uri} className="link">
-            open it in your authenticator app
-          </a>
-          .
-        </p>
-        <QrCode qr={setup.qr} label="QR code of your two-factor secret for WingChunRoots" />
-        <div className="grid gap-1">
-          <p className="text-sm text-fg-muted" id={secretLabel}>
-            Cannot scan? Type this key instead (time-based, 6 digits):
-          </p>
-          <code
-            aria-labelledby={secretLabel}
-            translate="no"
-            className="w-fit max-w-full rounded-sm border border-border-subtle bg-surface-2 px-3 py-2 font-mono text-base tracking-wider select-all"
-          >
-            {setup.secret}
-          </code>
-        </div>
-      </li>
-      <li className="grid gap-3">
-        <h3 className="font-display text-xl">2. Save your backup codes</h3>
-        <p className="max-w-[56ch] text-ui text-fg-muted">
-          If you lose your phone, each of these codes signs you in once. Keep them somewhere safe; they are shown only now.
-        </p>
-        <ul
-          aria-label="Backup codes"
-          translate="no"
-          className="grid w-fit grid-cols-2 gap-x-6 gap-y-1 rounded-sm border border-border-subtle bg-surface-2 px-4 py-3 font-mono text-base select-all"
-        >
-          {setup.backupCodes.map((code) => (
-            <li key={code}>{code}</li>
-          ))}
-        </ul>
-      </li>
-      <li className="grid gap-3">
-        <h3 className="font-display text-xl">3. Enter the code from the app</h3>
-        <CodeForm id="confirm-two-factor" action={confirmTwoFactorAction} submitLabel="Turn on two-factor authentication" />
-      </li>
-    </ol>
+    <form id={form} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5">
+      <FormMessage form={form} state={state} single />
+      <TextField
+        form={form}
+        name="password"
+        type="password"
+        label="Your password"
+        autoComplete="current-password"
+        enterKeyHint="go"
+        maxLength={MAX_PASSWORD_LENGTH}
+        hint={hint}
+        state={state}
+        autoFocus={state.status === 'error' && Boolean(state.fields?.password)}
+      />
+      <div>
+        <SubmitButton pending={pending} pendingLabel={pendingLabel} variant={variant}>
+          {submitLabel}
+        </SubmitButton>
+      </div>
+    </form>
   );
 }
 
-export function TwoFactorSetup({ pending: setupPending }: { pending: boolean }) {
-  const [state, action, pending] = useActionState(enableTwoFactorAction, IDLE);
-  const form = useFormId('enable-two-factor');
-  useFocusOnError(form, state);
-  const setup = state.status === 'done' ? (state.data?.setup as TotpSetupView | undefined) : undefined;
-  if (setup) return <SetupSteps setup={setup} />;
+/**
+ * Sets up two-factor authentication with the password. `again`: a second action under a pending
+ * setup (secondary); `restart`: the page's main action when the pending key cannot be shown here.
+ */
+export function EnableTwoFactorForm({
+  again = false,
+  restart = false,
+  initial,
+}: {
+  again?: boolean;
+  restart?: boolean;
+  initial?: FormState | null;
+}) {
+  const anew = again || restart;
   return (
-    <div className="grid gap-8">
-      {setupPending ? (
-        <div className="grid gap-4">
-          <p className="max-w-[56ch] text-ui">
-            You started the setup earlier. If WingChunRoots is already in your authenticator app, enter its code to finish.
-          </p>
-          <CodeForm id="confirm-two-factor" action={confirmTwoFactorAction} submitLabel="Turn on two-factor authentication" />
-        </div>
-      ) : null}
-      <form id={form} action={action} noValidate className="grid gap-5">
-        {setupPending ? <h3 className="font-display text-xl">Or start again</h3> : null}
-        <FormMessage form={form} state={state} />
-        <TextField
-          form={form}
-          name="password"
-          type="password"
-          label="Your password"
-          autoComplete="current-password"
-          maxLength={MAX_PASSWORD_LENGTH}
-          hint="To protect the setup, confirm it is you."
-          state={state}
-          autoFocus={state.status === 'error' && Boolean(state.fields?.password)}
-        />
-        <div>
-          <SubmitButton pending={pending} pendingLabel="Preparing…">
-            {setupPending ? 'Start the setup again' : 'Set up two-factor authentication'}
-          </SubmitButton>
-        </div>
-      </form>
-    </div>
+    <PasswordForm
+      id="enable-two-factor"
+      action={enableTwoFactorAction}
+      submitLabel={anew ? 'Start again with a new key' : 'Set up two-factor authentication'}
+      pendingLabel="Preparing…"
+      hint={anew ? 'A key you already added to your app stops working; you add the new one instead.' : 'To protect the setup, confirm it is you.'}
+      variant={again ? 'secondary' : 'primary'}
+      initial={initial}
+    />
+  );
+}
+
+export function NewBackupCodesForm({ initial }: { initial?: FormState | null }) {
+  return (
+    <PasswordForm
+      id="new-backup-codes"
+      action={newBackupCodesAction}
+      submitLabel="Get new backup codes"
+      pendingLabel="Making new codes…"
+      hint="Your current backup codes stop working; you save the new ones instead."
+      variant="secondary"
+      initial={initial}
+    />
+  );
+}
+
+export function DisableTwoFactorForm({ initial }: { initial?: FormState | null }) {
+  return (
+    <PasswordForm
+      id="disable-two-factor"
+      action={disableTwoFactorAction}
+      submitLabel="Turn off two-factor authentication"
+      pendingLabel="Turning off…"
+      hint="Signing in then needs only your password. You can turn it on again at any time."
+      variant="secondary"
+      initial={initial}
+    />
   );
 }

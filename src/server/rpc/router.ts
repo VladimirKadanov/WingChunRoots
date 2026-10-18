@@ -17,6 +17,7 @@ import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
 import { isServiceError } from '../services/errors';
 import { setRoleInput, setUserRole } from '../services/roles';
+import { twoFactorOverview } from '../services/two-factor';
 
 export interface RpcContext {
   principal: Principal | null;
@@ -68,6 +69,9 @@ export const router = {
       .route({ method: 'GET', path: '/account/landing', summary: 'Where the signed-in account goes next (onboarding or the page it asked for)' })
       .input(landingInput)
       .handler(async ({ context, input }) => ({ path: await landingPath(context.principal, input.next) })),
+    twoFactor: base
+      .route({ method: 'GET', path: '/account/two-factor', summary: 'Two-factor authentication: off, the pending setup, or on with the backup codes left' })
+      .handler(({ context }) => twoFactorOverview(context.principal)),
     onboardingOptions: base
       .route({ method: 'GET', path: '/account/onboarding-options', summary: 'Countries, cities and scripts for onboarding' })
       .handler(({ context }) => onboardingOptions(context.principal)),

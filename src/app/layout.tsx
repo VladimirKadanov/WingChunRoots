@@ -16,6 +16,9 @@ export const viewport: Viewport = {
   // Mobile webview readiness (plan §5.8 (b)): content extends under the notch and the app
   // shell pads with env(safe-area-inset-*).
   viewportFit: 'cover',
+  // The on-screen keyboard resizes the layout, as an Android webview with adjustResize does, so
+  // dvh and the fixed bars follow it in Chrome too (globals.css hides the tab bar meanwhile).
+  interactiveWidget: 'resizes-content',
   colorScheme: 'dark light',
 };
 

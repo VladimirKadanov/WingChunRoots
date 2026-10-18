@@ -1,13 +1,17 @@
 // /sign-up (milestone M02, In scope 4 and 7): e-mail, password and four confirmations, none of
-// them ticked in advance. The page itself is static; the form posts to a Server Action and works
-// before JavaScript loads.
+// them ticked in advance. The form posts to a Server Action and works before JavaScript loads; a
+// submit without JavaScript comes back as `?outcome=` (src/server/forms/flash.ts), so the page reads
+// the query string and renders per request (instant = false, docs/adr/0004-auth.md).
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AuthFrame, FormFooter } from '@/components/account/auth-frame';
-import { REQUIRED_SIGN_UP_CONSENTS } from '@/server/legal/documents';
+import { readFormResult } from '@/server/forms/flash';
+import { LEGAL_DOCUMENTS, REQUIRED_SIGN_UP_CONSENTS } from '@/server/legal/documents';
 import { SignUpForm } from './sign-up-form';
+
+export const instant = false;
 
 export const metadata: Metadata = {
   title: 'Create an account',
@@ -29,24 +33,31 @@ const NOTES = [
   },
 ] as const;
 
-export default function SignUpPage() {
+type Search = Promise<Record<string, string | string[] | undefined>>;
+
+const doc = ({ title, path, date }: { title: string; path: string; date: string }) => ({ title, path, date });
+
+export default async function SignUpPage({ searchParams }: { searchParams: Search }) {
+  const query = await searchParams;
+  const initial = await readFormResult('sign-up', query.outcome);
   return (
-    <AuthFrame
-      eyebrow="Join the pilot"
-      title="Create your account"
-      lede="An account lets you record who taught you and whom you teach. Every link is confirmed by the other person or by evidence before it is shown as fact."
-      notes={NOTES}
-      notesLabel="How joining works"
-    >
-      <SignUpForm required={REQUIRED_SIGN_UP_CONSENTS} />
-      <FormFooter>
-        <p>
-          Already have an account?{' '}
-          <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
-            Sign in
-          </Link>
-        </p>
-      </FormFooter>
+    <AuthFrame notes={NOTES} notesLabel="How joining works">
+      <SignUpForm
+        required={REQUIRED_SIGN_UP_CONSENTS}
+        terms={doc(LEGAL_DOCUMENTS.terms)}
+        privacy={doc(LEGAL_DOCUMENTS.privacy)}
+        initial={initial}
+        footer={
+          <FormFooter>
+            <p>
+              Already have an account?{' '}
+              <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
+                Sign in
+              </Link>
+            </p>
+          </FormFooter>
+        }
+      />
     </AuthFrame>
   );
 }

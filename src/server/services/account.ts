@@ -85,7 +85,9 @@ export const onboardInput = z
     countryCode: z.string().max(2).optional().transform((s) => (s ? s.toUpperCase() : undefined)),
     placeId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
     // '' first: z.coerce.number() would read an empty field as 0.
-    trainingStartYear: z.literal('').transform(() => undefined).or(z.coerce.number().int()).optional(),
+    trainingStartYear: z
+      .union([z.literal('').transform(() => undefined), z.coerce.number().int()], { error: 'Enter the year as four digits, for example 2009.' })
+      .optional(),
     showPublicly: z.boolean().default(false),
   })
   .superRefine((input, ctx) => {
@@ -93,7 +95,7 @@ export const onboardInput = z
     if (!input.primaryName) issue('primaryName', 'Enter your name in Latin letters.');
     else if (input.primaryName.length > NAME_MAX_LENGTH) issue('primaryName', `Use at most ${NAME_MAX_LENGTH} characters.`);
     else if (!isLatinName(input.primaryName)) {
-      issue('primaryName', 'Use Latin letters here (for example "So Chuk-ching"). Add the name in its own script below.');
+      issue('primaryName', 'Use Latin letters here (for example “So Chuk-ching”). Add the name in its own script below.');
     }
     if (input.originalName) {
       const script = input.originalLang ? originalScript(input.originalLang) : undefined;
@@ -104,16 +106,16 @@ export const onboardInput = z
       issue('originalLang', 'Choose one of the listed scripts.');
     }
     if (input.jyutping && (input.jyutping.length > NAME_MAX_LENGTH || !isJyutping(input.jyutping))) {
-      issue('jyutping', 'Write Jyutping in Latin letters with tone numbers, for example "sou1 zuk1 cing4".');
+      issue('jyutping', 'Write Jyutping in Latin letters with tone numbers, for example “sou1 zuk1 cing4”.');
     }
     if (input.pinyin && (input.pinyin.length > NAME_MAX_LENGTH || !isPinyin(input.pinyin))) {
-      issue('pinyin', 'Write pinyin in Latin letters, for example "Sū Zhúqíng".');
+      issue('pinyin', 'Write pinyin in Latin letters, for example “Sū Zhúqíng”.');
     }
     if (input.countryCode && !isCountryCode(input.countryCode)) issue('countryCode', 'Choose a country from the list.');
     const thisYear = new Date().getUTCFullYear();
-    if (input.trainingStartYear !== undefined && (input.trainingStartYear < 1900 || input.trainingStartYear > thisYear)) {
-      issue('trainingStartYear', `Enter a year between 1900 and ${thisYear}.`);
-    }
+    const year = input.trainingStartYear;
+    if (year !== undefined && year < 1900) issue('trainingStartYear', `${year} is before 1900. Enter a year from 1900 to ${thisYear}.`);
+    else if (year !== undefined && year > thisYear) issue('trainingStartYear', `${year} is after this year. Enter a year from 1900 to ${thisYear}.`);
   });
 
 export type OnboardInput = z.input<typeof onboardInput>;

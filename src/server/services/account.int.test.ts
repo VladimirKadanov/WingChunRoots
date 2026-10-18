@@ -6,18 +6,21 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  authFetch,
   createAccount,
   signIn,
   startAuthTestDatabase,
   stopAuthTestDatabase,
   TEST_APP_URL,
   type TestAccount,
+  verifyTotpOnce,
 } from '../auth/test-support';
 import { getDb } from '../db';
 import { auditLog, consentRecord, person, personName } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { LEGAL_DOCUMENTS } from '../legal/documents';
 import { AuthError } from '../auth/guards';
+import { secretFromTotpUri } from '../auth/otp';
 import { principalFromHeaders } from '../auth/session';
 import { handleApiRequest } from '../rpc/handler';
 import { landingPath as landingPathOf } from './account';
@@ -212,6 +215,17 @@ describe('account.onboard', () => {
     expect(fieldsOf(result.data)[field]).toEqual(expect.any(String));
   });
 
+  it('names the problem with a training year: too early, in the future, not a number', async () => {
+    const { token } = await readyAccount('year');
+    const thisYear = new Date().getUTCFullYear();
+    const early = await call(token, 'POST', '/account/onboard', { primaryName: 'Demo Year', trainingStartYear: '1850' });
+    expect(fieldsOf(early.data).trainingStartYear).toBe(`1850 is before 1900. Enter a year from 1900 to ${thisYear}.`);
+    const late = await call(token, 'POST', '/account/onboard', { primaryName: 'Demo Year', trainingStartYear: String(thisYear + 1) });
+    expect(fieldsOf(late.data).trainingStartYear).toBe(`${thisYear + 1} is after this year. Enter a year from 1900 to ${thisYear}.`);
+    const words = await call(token, 'POST', '/account/onboard', { primaryName: 'Demo Year', trainingStartYear: '19x9' });
+    expect(fieldsOf(words.data).trainingStartYear).toBe('Enter the year as four digits, for example 2009.');
+  });
+
   it('refuses a city that is not in the chosen country, and an unknown city', async () => {
     const { token } = await readyAccount('city');
     const mismatch = await call(token, 'POST', '/account/onboard', { primaryName: 'Demo City', countryCode: 'BG', placeId: hongKong });
@@ -272,5 +286,36 @@ describe('landingPath', () => {
       data: { path: '/onboarding?next=%2Fschools' },
     });
     expect((await call(null, 'GET', '/account/landing?next=%2Fschools')).status).toBe(401);
+  });
+});
+
+describe('account.twoFactor', () => {
+  it('says off, pending and on, and never returns the pending key or the backup codes', async () => {
+    const { account, token } = await readyAccount('two-factor');
+    const { browser } = await signIn(account);
+    expect((await call(token, 'GET', '/account/two-factor')).data).toMatchObject({ status: 'off', backupCodesLeft: null });
+
+    const enabled = await authFetch(browser, '/two-factor/enable', { body: { password: account.password } });
+    expect(enabled.status).toBe(200);
+    const uri = String(enabled.data?.totpURI);
+    const secret = new URL(uri).searchParams.get('secret')!;
+    const pending = await call(token, 'GET', '/account/two-factor');
+    expect(pending.data).toMatchObject({ status: 'pending', backupCodesLeft: null });
+    const body = JSON.stringify(pending.data);
+    expect(body).not.toContain(secret);
+    expect(body).not.toContain('otpauth');
+    for (const code of enabled.data?.backupCodes as string[]) expect(body).not.toContain(code);
+
+    // The first code turns it on and ends the other sessions; the browser keeps a new, verified one.
+    const verified = await verifyTotpOnce(browser, secretFromTotpUri(uri));
+    expect(verified.status).toBe(200);
+    const token2 = verified.response.headers.get('set-auth-token')!;
+    expect((await call(token, 'GET', '/account/two-factor')).status).toBe(401);
+    const on = await call(token2, 'GET', '/account/two-factor');
+    expect(on.data).toMatchObject({ status: 'on', sessionVerified: true, staff: false, backupCodesLeft: 10 });
+  });
+
+  it('is refused without a session', async () => {
+    expect((await call(null, 'GET', '/account/two-factor')).status).toBe(401);
   });
 });

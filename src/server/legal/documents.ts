@@ -18,6 +18,10 @@ export interface LegalDocument {
   version: string;
   /** The public route that shows it. */
   path: string;
+  /** The date of this version, as the forms name it. */
+  date: string;
+  /** What changed in this version, in a sentence (shown when an account is asked to confirm it again). */
+  changes: string;
 }
 
 export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
@@ -27,13 +31,17 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
     file: 'content/legal/terms.en.md',
     version: '2026-10-17-draft',
     path: '/legal/terms',
+    date: '17 October 2026',
+    changes: 'The first draft for the pilot.',
   },
   privacy: {
     id: 'privacy',
     title: 'Privacy notice',
     file: 'content/legal/privacy.en.md',
-    version: '2026-10-17-draft',
+    version: '2026-10-18-draft',
     path: '/legal/privacy',
+    date: '18 October 2026',
+    changes: 'Says that unconfirmed accounts are deleted after 7 days and how sign-in attempts are limited.',
   },
 };
 
@@ -61,6 +69,28 @@ export type SignUpConsent = (typeof SIGN_UP_CONSENTS)[number];
  */
 export const REQUIRED_SIGN_UP_CONSENTS = ['terms', 'authenticity_declaration', 'age_18_plus'] as const satisfies readonly SignUpConsent[];
 
+/** What a form says about a document: its title, route, date and what changed. */
+export interface DocumentSummary {
+  id: LegalDocumentId;
+  title: string;
+  path: string;
+  date: string;
+  changes: string;
+}
+
+export function documentSummaries(): Record<LegalDocumentId, DocumentSummary> {
+  const summary = ({ id, title, path, date, changes }: LegalDocument): DocumentSummary => ({ id, title, path, date, changes });
+  return { terms: summary(LEGAL_DOCUMENTS.terms), privacy: summary(LEGAL_DOCUMENTS.privacy) };
+}
+
 export function consentVersion(kind: ConsentKind): string {
   return LEGAL_DOCUMENTS[CONSENT_DOCUMENT[kind]].version;
+}
+
+/** The documents behind the confirmations `kinds` (what a form asks for), terms first. */
+export function documentsFor(kinds: readonly string[]): DocumentSummary[] {
+  const summaries = documentSummaries();
+  const isKind = (kind: string): kind is ConsentKind => Object.hasOwn(CONSENT_DOCUMENT, kind);
+  const ids = new Set(kinds.filter(isKind).map((kind) => CONSENT_DOCUMENT[kind]));
+  return (['terms', 'privacy'] as const).filter((id) => ids.has(id)).map((id) => summaries[id]);
 }

@@ -1,7 +1,8 @@
 // The confirmations an account still owes for the current versions of the documents (milestone
 // M02, In scope 4): on the onboarding form and on the consent-only form of /onboarding for an
-// account that already has its profile. Never ticked in advance; the privacy notice tick stays
-// optional. Rendered inside the client forms that import it.
+// account that already has its profile. Names each document with its date and what changed in
+// it. Never ticked in advance; the privacy notice tick stays optional. Rendered inside the client
+// forms that import it; consentsToAsk is also called by the page.
 
 import Link from 'next/link';
 
@@ -9,21 +10,34 @@ import { CONSENT_LABELS, CONSENT_ORDER, type ConsentName } from '@/components/ac
 import { CheckboxField } from '@/components/account/fields';
 import type { FormState } from '@/lib/form-state';
 
+/** What a form says about a document (src/server/legal/documents.ts, documentsFor). */
+export interface DocumentNote {
+  id: string;
+  title: string;
+  path: string;
+  date: string;
+  changes: string;
+}
+
 /** The ticks to show: the missing required ones, and the privacy notice beside them. */
 export function consentsToAsk(missingConsents: readonly string[]): ConsentName[] {
   return CONSENT_ORDER.filter((name) => missingConsents.includes(name) || (missingConsents.length > 0 && name === 'privacy_ack'));
 }
 
+export const PRIVACY_TICK_HINT = 'You can continue without this tick. The privacy notice applies either way; the tick records that you read this version.';
+
 export function MissingConsents({
   form,
   state,
   missingConsents,
+  documents,
   first,
   legend,
 }: {
   form: string;
   state: FormState;
   missingConsents: readonly string[];
+  documents: readonly DocumentNote[];
   first: string | null;
   legend: string;
 }) {
@@ -32,11 +46,18 @@ export function MissingConsents({
   return (
     <fieldset className="grid gap-1">
       <legend className="mb-1 font-display text-2xl">{legend}</legend>
-      <p className="mb-2 text-sm text-fg-muted">
-        The <Link href="/legal/terms" className="link">terms of use</Link> or the{' '}
-        <Link href="/legal/privacy" className="link">privacy notice</Link> changed since you joined, or your account was created without
-        them.
-      </p>
+      <p className="text-sm text-fg-muted">Confirm the current version of {documents.length === 1 ? 'this document' : 'these documents'}:</p>
+      <ul className="mb-3 grid gap-2 text-sm">
+        {documents.map((document) => (
+          <li key={document.id} className="border-l-2 border-border-strong pl-3">
+            <Link href={document.path} className="link font-semibold">
+              {document.title}
+            </Link>
+            <span className="text-fg-muted">, draft of {document.date}.</span>
+            <span className="block text-fg-muted">What changed: {document.changes}</span>
+          </li>
+        ))}
+      </ul>
       {ask.map((name) => {
         const required = missingConsents.includes(name);
         return (
@@ -51,6 +72,7 @@ export function MissingConsents({
                   {required ? null : <span className="text-fg-muted"> (optional)</span>}
                 </>
               }
+              hint={required ? undefined : PRIVACY_TICK_HINT}
               required={required}
               state={state}
               autoFocus={first === name}

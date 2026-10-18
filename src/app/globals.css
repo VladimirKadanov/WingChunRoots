@@ -33,6 +33,20 @@
     }
   }
 
+  /* While a text field of the page has focus on a touch phone, the on-screen keyboard is up. In
+     a webview that resizes for it (Android adjustResize, Chrome with interactive-widget=
+     resizes-content in layout.tsx) the fixed tab bar would ride on the keyboard and cover the
+     form's button: it steps aside until the field loses focus. */
+  @media (width < 48rem) and (pointer: coarse) {
+    html:has(main :is(input:not([type='checkbox'], [type='radio'], [type='submit'], [type='button']), select, textarea):focus) {
+      --tab-clear: env(safe-area-inset-bottom, 0px);
+    }
+    html:has(main :is(input:not([type='checkbox'], [type='radio'], [type='submit'], [type='button']), select, textarea):focus)
+      [data-tab-bar] {
+      visibility: hidden;
+    }
+  }
+
   body {
     min-height: 100dvh;
     background: var(--bg);
@@ -155,6 +169,13 @@
   }
   .link:hover {
     text-decoration-color: currentColor;
+  }
+  /* A link inside a sentence on a touch screen: a hit area about 44 px tall. Vertical padding of
+     an inline box grows what a tap hits without moving a line (plan §5.8 (b), CLAUDE.md §10). */
+  @media (pointer: coarse) {
+    .link:where(:not(.inline-flex, .flex, .block, .grid)) {
+      padding-block: 0.75rem;
+    }
   }
 }
 

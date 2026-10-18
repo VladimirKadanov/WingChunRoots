@@ -1,94 +1,173 @@
 'use client';
 
-import Link from 'next/link';
-import { useActionState } from 'react';
+// The sign-up form (milestone M02). It renders the page's heading too: once the account is made,
+// "Check your inbox" replaces "Create your account" and takes the focus. `initial` is the outcome
+// of a submit without JavaScript (src/server/forms/flash.ts).
 
+import Link from 'next/link';
+import { type ReactNode, useActionState } from 'react';
+
+import { FrameBody, FrameHeader } from '@/components/account/auth-frame';
 import { CONSENT_LABELS, CONSENT_ORDER } from '@/components/account/consents';
-import { CheckboxField, DoneNotice, FormMessage, SubmitButton, TextField, firstInvalid, useFocusOnError, useFormId } from '@/components/account/fields';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { IDLE } from '@/lib/form-state';
+import {
+  CheckboxField,
+  DoneText,
+  FormMessage,
+  SubmitButton,
+  TextField,
+  doneId,
+  firstInvalid,
+  useFocusOnError,
+  useFormId,
+} from '@/components/account/fields';
+import { EMAIL_MAX_LENGTH, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
+import { IDLE, type FormState } from '@/lib/form-state';
 import { signUpAction } from './actions';
 
 const FORM_NAME = 'sign-up';
+const EYEBROW = 'Join the pilot';
 
-export function SignUpForm({ required }: { required: readonly string[] }) {
-  const [state, action, pending] = useActionState(signUpAction, IDLE);
+export interface SignUpDocument {
+  title: string;
+  path: string;
+  date: string;
+}
+
+/** The names of the fields in the error summary, in the order of the form. */
+const LABELS: Record<string, string> = {
+  email: 'E-mail address',
+  password: 'Password',
+  age_18_plus: 'Age',
+  terms: 'Terms of use',
+  authenticity_declaration: 'What you record',
+  privacy_ack: 'Privacy notice',
+};
+
+export function SignUpForm({
+  required,
+  terms,
+  privacy,
+  initial,
+  footer,
+}: {
+  required: readonly string[];
+  terms: SignUpDocument;
+  privacy: SignUpDocument;
+  initial?: FormState | null;
+  footer: ReactNode;
+}) {
+  const [state, action, pending] = useActionState(signUpAction, initial ?? IDLE);
   const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
 
   if (state.status === 'done') {
     return (
-      <DoneNotice form={FORM} title="Check your inbox">
-        <p>
-          If <strong className="font-semibold text-fg">{state.values?.email}</strong> can be used for a new account, we have sent it a link to
-          confirm the address. The link works for 24 hours; after that, ask for a new one.
-        </p>
-        <p>
-          Nothing arrived, or you already have an account? <Link href="/verify-email" className="link">Send the link again</Link>,{' '}
-          <Link href="/sign-in" className="link">sign in</Link> or <Link href="/reset-password" className="link">reset your password</Link>.
-        </p>
-      </DoneNotice>
+      <>
+        <FrameHeader eyebrow={EYEBROW} title="Check your inbox" id={doneId(FORM)} focus />
+        <FrameBody>
+          <DoneText>
+            <p>
+              We sent an e-mail to{' '}
+              <strong className="font-semibold break-all text-fg" translate="no">
+                {state.values?.email}
+              </strong>
+              . Open its link within 24 hours to confirm the address, then sign in. If the address already has an account, the e-mail says
+              how to get into it instead.
+            </p>
+            <p>
+              Nothing arrived after a few minutes? Look in the spam folder, or{' '}
+              <Link href="/verify-email" className="link">
+                send the link again
+              </Link>
+              . Already have an account? <Link href="/sign-in" className="link">Sign in</Link> or{' '}
+              <Link href="/reset-password" className="link">
+                reset your password
+              </Link>
+              .
+            </p>
+          </DoneText>
+        </FrameBody>
+      </>
     );
   }
 
   const first = firstInvalid(state, ['email', 'password', ...CONSENT_ORDER]);
   return (
-    <form id={FORM} action={action} noValidate className="grid gap-6">
-      <FormMessage form={FORM} state={state} />
-      <TextField
-        form={FORM}
-        name="email"
-        type="email"
-        label="E-mail address"
-        autoComplete="email"
-        inputMode="email"
-        autoCapitalize="none"
-        spellCheck={false}
-        maxLength={254}
-        state={state}
-        autoFocus={first === 'email'}
+    <>
+      <FrameHeader
+        eyebrow={EYEBROW}
+        title="Create your account"
+        lede="An account lets you record who taught you and whom you teach. Every link is confirmed by the other person or by evidence before it is shown as fact."
       />
-      <TextField
-        form={FORM}
-        name="password"
-        type="password"
-        label="Password"
-        autoComplete="new-password"
-        minLength={MIN_PASSWORD_LENGTH}
-        maxLength={MAX_PASSWORD_LENGTH}
-        hint={`At least ${MIN_PASSWORD_LENGTH} characters. A password manager or a long phrase works best; pasting is fine.`}
-        state={state}
-        autoFocus={first === 'password'}
-      />
-      <fieldset className="grid gap-1">
-        <legend className="mb-1 font-display text-xl">Before you join</legend>
-        <p className="mb-2 text-sm text-fg-muted">
-          Read the <Link href="/legal/terms" className="link">terms of use</Link> and the{' '}
-          <Link href="/legal/privacy" className="link">privacy notice</Link>. Both are drafts pending legal review. We never ask for
-          your birth date.
-        </p>
-        {CONSENT_ORDER.map((name) => (
-          <CheckboxField
-            key={name}
+      <FrameBody>
+        <form id={FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6">
+          <FormMessage form={FORM} state={state} labels={LABELS} />
+          <TextField
             form={FORM}
-            name={name}
-            label={
-              <>
-                {CONSENT_LABELS[name]}
-                {required.includes(name) ? null : <span className="text-fg-muted"> (optional)</span>}
-              </>
-            }
-            required={required.includes(name)}
+            name="email"
+            type="email"
+            label="E-mail address"
+            autoComplete="email"
+            inputMode="email"
+            enterKeyHint="next"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={EMAIL_MAX_LENGTH}
             state={state}
-            autoFocus={first === name}
+            autoFocus={first === 'email'}
           />
-        ))}
-      </fieldset>
-      <div>
-        <SubmitButton pending={pending} pendingLabel="Creating your account…">
-          Create account
-        </SubmitButton>
-      </div>
-    </form>
+          <TextField
+            form={FORM}
+            name="password"
+            type="password"
+            label="Password"
+            autoComplete="new-password"
+            enterKeyHint="next"
+            minLength={MIN_PASSWORD_LENGTH}
+            maxLength={MAX_PASSWORD_LENGTH}
+            hint={`At least ${MIN_PASSWORD_LENGTH} characters. A password manager or a long phrase works best; pasting is fine.`}
+            state={state}
+            autoFocus={first === 'password'}
+          />
+          <fieldset className="grid gap-1">
+            <legend className="mb-1 font-display text-xl">Before you join</legend>
+            <p className="mb-2 text-sm text-fg-muted">
+              Read the{' '}
+              <Link href={terms.path} className="link">
+                {terms.title.toLowerCase()}
+              </Link>{' '}
+              (draft of {terms.date}) and the{' '}
+              <Link href={privacy.path} className="link">
+                {privacy.title.toLowerCase()}
+              </Link>{' '}
+              (draft of {privacy.date}). Both wait for a legal review. We never ask for your birth date.
+            </p>
+            {CONSENT_ORDER.map((name) => (
+              <CheckboxField
+                key={name}
+                form={FORM}
+                name={name}
+                label={
+                  <>
+                    {CONSENT_LABELS[name]}
+                    {required.includes(name) ? null : <span className="text-fg-muted"> (optional)</span>}
+                  </>
+                }
+                hint={required.includes(name) ? undefined : 'You can join without this tick. The privacy notice applies either way; the tick records that you read this version.'}
+                required={required.includes(name)}
+                state={state}
+                autoFocus={first === name}
+              />
+            ))}
+          </fieldset>
+          <div>
+            <SubmitButton pending={pending} pendingLabel="Creating your account…">
+              Create account
+            </SubmitButton>
+          </div>
+        </form>
+        {footer}
+      </FrameBody>
+    </>
   );
 }

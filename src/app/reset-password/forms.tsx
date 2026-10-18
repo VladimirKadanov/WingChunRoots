@@ -1,91 +1,142 @@
 'use client';
 
+// The forms of /reset-password (milestone M02). Each renders the page's heading, so the heading
+// always says what the page shows now: "Check your inbox" once a link is sent, "This link no
+// longer works" (with a form for a new link) once a link is refused. `initial` is the outcome of a
+// submit without JavaScript (src/server/forms/flash.ts).
+
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { type ReactNode, useActionState } from 'react';
 
-import { DoneNotice, FormMessage, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { IDLE } from '@/lib/form-state';
+import { FrameBody, FrameHeader, type FrameHeading } from '@/components/account/auth-frame';
+import {
+  DoneText,
+  FormMessage,
+  SubmitButton,
+  TextField,
+  doneId,
+  messageId,
+  useFocusOnError,
+  useFormId,
+} from '@/components/account/fields';
+import { EMAIL_MAX_LENGTH, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
+import { IDLE, isRefusedLink, type FormState } from '@/lib/form-state';
 import { requestResetAction, resetPasswordAction } from './actions';
+import { linkRefused } from './headings';
 
-export function RequestResetForm() {
-  const [state, action, pending] = useActionState(requestResetAction, IDLE);
+export function RequestResetForm({
+  heading,
+  headingId,
+  initial,
+  footer,
+}: {
+  heading: FrameHeading;
+  /** Set when the heading is itself an outcome (a refused link): it then takes the focus. */
+  headingId?: string;
+  initial?: FormState | null;
+  footer?: ReactNode;
+}) {
+  const [state, action, pending] = useActionState(requestResetAction, initial ?? IDLE);
   const form = useFormId('request-reset');
   useFocusOnError(form, state);
   if (state.status === 'done') {
     return (
-      <DoneNotice form={form} title="Check your inbox">
-        <p>
-          If <strong className="font-semibold text-fg">{state.values?.email}</strong> belongs to an account, we have sent it a link to
-          choose a new password. The link works for one hour and only once.
-        </p>
-        <p>
-          Remembered it? <Link href="/sign-in" className="link">Sign in</Link>.
-        </p>
-      </DoneNotice>
+      <>
+        <FrameHeader eyebrow={heading.eyebrow} title="Check your inbox" id={doneId(form)} focus />
+        <FrameBody>
+          <DoneText>
+            <p>
+              We sent an e-mail to{' '}
+              <strong className="font-semibold break-all text-fg" translate="no">
+                {state.values?.email}
+              </strong>
+              , if it belongs to an account. Its link lets you choose a new password once, within one hour.
+            </p>
+            <p>
+              Remembered it? <Link href="/sign-in" className="link">Sign in</Link>.
+            </p>
+          </DoneText>
+        </FrameBody>
+      </>
     );
   }
   return (
-    <form id={form} action={action} noValidate className="grid gap-6">
-      <FormMessage form={form} state={state} />
-      <TextField
-        form={form}
-        name="email"
-        type="email"
-        label="E-mail address"
-        autoComplete="email"
-        inputMode="email"
-        autoCapitalize="none"
-        spellCheck={false}
-        maxLength={254}
-        state={state}
-        autoFocus={state.status === 'error' && Boolean(state.fields?.email)}
-      />
-      <div>
-        <SubmitButton pending={pending} pendingLabel="Sending…">
-          Send the reset link
-        </SubmitButton>
-      </div>
-    </form>
+    <>
+      <FrameHeader {...heading} id={headingId} focus={Boolean(headingId) && state.status === 'idle'} />
+      <FrameBody>
+        <form id={form} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6">
+          <FormMessage form={form} state={state} single />
+          <TextField
+            form={form}
+            name="email"
+            type="email"
+            label="E-mail address"
+            autoComplete="email"
+            inputMode="email"
+            enterKeyHint="send"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={EMAIL_MAX_LENGTH}
+            state={state}
+            autoFocus={state.status === 'error' && Boolean(state.fields?.email)}
+          />
+          <div>
+            <SubmitButton pending={pending} pendingLabel="Sending…">
+              {headingId ? 'Send a new link' : 'Send the reset link'}
+            </SubmitButton>
+          </div>
+        </form>
+        {footer}
+      </FrameBody>
+    </>
   );
 }
 
-export function NewPasswordForm({ token }: { token: string }) {
-  const [state, action, pending] = useActionState(resetPasswordAction, IDLE);
+export function NewPasswordForm({
+  token,
+  finish,
+  heading,
+  initial,
+}: {
+  token: string;
+  /** The link of a sign-up that finishes by choosing the password (src/server/auth/accounts.ts). */
+  finish: boolean;
+  heading: FrameHeading;
+  initial?: FormState | null;
+}) {
+  const [state, action, pending] = useActionState(resetPasswordAction, initial ?? IDLE);
   const form = useFormId('new-password');
   useFocusOnError(form, state);
-  const expired = state.status === 'error' && !state.fields;
+  // The link has expired or was used: ask for a new one in place.
+  if (isRefusedLink(state)) return <RequestResetForm heading={linkRefused(state)} headingId={messageId(form)} />;
   return (
-    <form id={form} action={action} noValidate className="grid gap-6">
-      <input type="hidden" name="token" value={token} />
-      <FormMessage form={form} state={state} />
-      {expired ? (
-        <p className="text-ui">
-          <Link href="/reset-password" className="link inline-flex min-h-11 items-center">
-            Ask for a new link
-          </Link>
-        </p>
-      ) : (
-        <>
+    <>
+      <FrameHeader {...heading} />
+      <FrameBody>
+        <form id={form} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6">
+          <input type="hidden" name="token" value={token} />
+          {finish ? <input type="hidden" name="finish" value="1" /> : null}
+          <FormMessage form={form} state={state} single />
           <TextField
             form={form}
             name="password"
             type="password"
-            label="New password"
+            label={finish ? 'Password' : 'New password'}
             autoComplete="new-password"
+            enterKeyHint="done"
             minLength={MIN_PASSWORD_LENGTH}
             maxLength={MAX_PASSWORD_LENGTH}
-            hint={`At least ${MIN_PASSWORD_LENGTH} characters. Saving it changes the password and signs you out everywhere.`}
+            hint={`At least ${MIN_PASSWORD_LENGTH} characters. A password manager or a long phrase works best; pasting is fine.`}
             state={state}
             autoFocus={state.status === 'error' && Boolean(state.fields?.password)}
           />
           <div>
             <SubmitButton pending={pending} pendingLabel="Saving…">
-              Save the new password
+              {finish ? 'Save the password' : 'Save the new password'}
             </SubmitButton>
           </div>
-        </>
-      )}
-    </form>
+        </form>
+      </FrameBody>
+    </>
   );
 }

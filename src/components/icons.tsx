@@ -98,3 +98,33 @@ export const PinIcon = icon(
     <circle cx="12" cy="10" r="2.3" />
   </>,
 );
+/** A circle with an exclamation mark: next to an error message (the words say what is wrong). */
+export const AlertIcon = icon(
+  'Alert',
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7.5v5.5" />
+    <path d="M12 16.4v.1" strokeWidth={2.4} />
+  </>,
+);
+export const CopyIcon = icon(
+  'Copy',
+  <>
+    <rect x="8.5" y="8.5" width="11" height="11" rx="1.5" />
+    <path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" />
+  </>,
+);
+export const DownloadIcon = icon(
+  'Download',
+  <>
+    <path d="M12 4.5v10.5M7.5 10.5L12 15l4.5-4.5" />
+    <path d="M5 19.5h14" />
+  </>,
+);
+export const ExternalAppIcon = icon(
+  'ExternalApp',
+  <>
+    <path d="M13.5 4.5h6v6M19.5 4.5l-8 8" />
+    <path d="M17.5 13.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V8A1.5 1.5 0 0 1 6 6.5h4.5" />
+  </>,
+);

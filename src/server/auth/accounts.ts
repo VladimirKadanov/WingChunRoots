@@ -29,6 +29,7 @@ import { getDb } from '../db';
 import { authAccount, authUser } from '../db/schema';
 import { sendAccountExistsEmail, sendFinishSignUpEmail } from './emails';
 import { clear, signInKey } from './throttle';
+import { confirmationClaims } from './tokens';
 
 const CLOCK_SKEW_S = 5;
 
@@ -60,18 +61,6 @@ export async function onPasswordReset({ user }: { user: { id: string; email: str
   await clear(signInKey(user.email));
 }
 
-/** The claims of a confirmation token, read without checking it (the endpoint checks it next). */
-function claims(token: string): { email?: unknown; iat?: unknown } | null {
-  const payload = token.split('.')[1];
-  if (!payload) return null;
-  try {
-    const value: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return value && typeof value === 'object' ? (value as { email?: unknown; iat?: unknown }) : null;
-  } catch {
-    return null;
-  }
-}
-
 const linkGone = () =>
   new APIError('UNAUTHORIZED', { code: 'INVALID_TOKEN', message: 'This link no longer works. Ask for a new one.' });
 
@@ -82,7 +71,7 @@ const linkGone = () =>
  */
 export async function assertConfirmationLinkCurrent(token: unknown): Promise<void> {
   if (typeof token !== 'string') return;
-  const claim = claims(token);
+  const claim = confirmationClaims(token);
   if (!claim || typeof claim.email !== 'string' || typeof claim.iat !== 'number') return;
   const [row] = await getDb()
     .select({ emailVerified: authUser.emailVerified, password: authAccount.password, changedAt: authAccount.updatedAt })

@@ -1,5 +1,6 @@
 // The names of the account's own person (milestone M02; plan §5.3): every name with its own
-// `lang` and translate="no", Chinese in the system CJK fonts. Server component.
+// `lang` and translate="no", Chinese in the system CJK fonts. No hooks: the onboarding form (a
+// client component) uses them too.
 
 import { cx } from '@/lib/cx';
 
@@ -18,6 +19,38 @@ export function NameText({ name, className }: { name: Pick<NameView, 'value' | '
   return (
     <span lang={name.lang} translate="no" className={cx(isChinese(name.lang) && !name.lang.includes('Latn') && 'cjk', className)}>
       {name.value}
+    </span>
+  );
+}
+
+/**
+ * A person's names as the register shows them (the home page's lineage rows): the Latin-script
+ * name in the display face, the original script beside it, smaller, and the readings beneath.
+ */
+export function NameLine({
+  primary,
+  original,
+  readings = [],
+  className,
+}: {
+  primary: string;
+  original?: Pick<NameView, 'value' | 'lang'> | null;
+  readings?: readonly Pick<NameView, 'value' | 'lang'>[];
+  className?: string;
+}) {
+  return (
+    <span className={cx('grid gap-1', className)}>
+      <span className="inline-flex flex-wrap items-baseline gap-x-[0.42em] font-display">
+        <NameText name={{ value: primary, lang: 'und-Latn' }} />
+        {original?.value ? <NameText name={original} className="text-[0.74em] text-fg-muted" /> : null}
+      </span>
+      {readings.length > 0 ? (
+        <span className="flex flex-wrap gap-x-3 font-sans text-sm text-fg-muted">
+          {readings.map((reading) => (
+            <NameText key={reading.lang} name={reading} />
+          ))}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -42,7 +75,7 @@ export function NameList({ names }: { names: readonly NameView[] }) {
         <div key={`${label}-${name.lang}`} className="contents">
           <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">{label}</dt>
           <dd className="border-b border-border-subtle pb-3 text-lg sm:border-t sm:border-b-0 sm:pt-3">
-            <NameText name={name} />
+            <NameText name={name} className="font-display" />
           </dd>
         </div>
       ))}

@@ -14,23 +14,27 @@
 import { useEffect } from 'react';
 
 function labels(to: string): { title: string; link: string } {
-  if (to.startsWith('/sign-in')) return { title: 'Sign in to continue', link: 'Go to sign-in' };
-  if (to.startsWith('/account/security')) return { title: 'Verify this session to continue', link: 'Go to the security page' };
-  return { title: 'Taking you on', link: 'Continue' };
+  if (to.startsWith('/sign-in')) return { title: 'Taking you to sign-in…', link: 'Go to sign-in' };
+  if (to.startsWith('/account/security')) return { title: 'Taking you to the security page…', link: 'Go to the security page' };
+  return { title: 'Taking you on…', link: 'Continue' };
 }
 
+/**
+ * A short, quiet interstitial (it is usually gone before it is seen): small type, no feature-size
+ * heading, so a slow webview does not flash something that looks like a page of its own.
+ */
 export function PageRedirect({ to, title: heading }: { to: string; title?: string }) {
   const { title, link } = labels(to);
   useEffect(() => {
     window.location.replace(to);
   }, [to]);
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11">
+    <div aria-busy="true" className="mx-auto max-w-content px-page pt-8 pb-10 md:pt-12">
       <noscript>
         <meta httpEquiv="refresh" content={`0;url=${to}`} />
       </noscript>
-      <h1 className="font-display text-feature">{heading ?? title}</h1>
-      <p className="mt-3 text-ui">
+      <h1 className="text-ui font-semibold">{heading ?? title}</h1>
+      <p className="mt-1 text-sm text-fg-muted">
         <a href={to} className="link inline-flex min-h-11 items-center">
           {link}
         </a>

@@ -12,8 +12,11 @@ import { AuthFrame } from '@/components/account/auth-frame';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { safeNextPath } from '@/server/auth/guards';
 import { guardRoute } from '@/server/auth/web';
+import { readFormResult } from '@/server/forms/flash';
+import { documentsFor } from '@/server/legal/documents';
 import { serverClient } from '@/server/rpc/server';
 import { ConfirmConsentsForm } from './confirm-consents-form';
+import { consentsToAsk } from './missing-consents';
 import { OnboardingForm } from './onboarding-form';
 
 export const instant = false;
@@ -48,20 +51,26 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const next = safeNextPath(query.next, '/account');
   const client = serverClient(await headers(), guard.principal);
   const me = await client.account.me();
+  const documents = documentsFor(consentsToAsk(me.missingConsents));
   if (me.person) {
     const after = next === '/onboarding' ? '/account' : next;
     if (me.missingConsents.length === 0) return <PageRedirect to={after} title="Your profile is already set up" />;
     return (
       <AuthFrame
         eyebrow="Your account · documents"
-        title="Confirm the updated documents"
-        lede="Your profile is set up. Before you continue, confirm the documents that changed since you last agreed to them."
+        title={documents.length === 1 ? `Confirm the ${documents[0]!.title.toLowerCase()}` : 'Confirm the documents'}
+        lede="Your profile is set up. Before you continue, confirm the current version of the documents below."
       >
-        <ConfirmConsentsForm missingConsents={me.missingConsents} next={after} />
+        <ConfirmConsentsForm
+          missingConsents={me.missingConsents}
+          documents={documents}
+          next={after}
+          initial={await readFormResult('confirm-consents', query.outcome)}
+        />
       </AuthFrame>
     );
   }
-  const options = await client.account.onboardingOptions();
+  const [options, initial] = await Promise.all([client.account.onboardingOptions(), readFormResult('onboarding', query.outcome)]);
   return (
     <AuthFrame
       eyebrow="Welcome · your profile"
@@ -70,7 +79,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
       notes={NOTES}
       notesLabel="How profiles work"
     >
-      <OnboardingForm options={options} missingConsents={me.missingConsents} next={next} />
+      <OnboardingForm options={options} missingConsents={me.missingConsents} documents={documents} next={next} initial={initial} />
     </AuthFrame>
   );
 }
