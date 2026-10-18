@@ -283,10 +283,11 @@ export function TextField({
         />
         {/* Show / Hide needs JavaScript; without it the field stays a plain password field. */}
         {password && hydrated ? (
+          // The label says what a press does ("Show password", "Hide password"), so no aria-pressed:
+          // a changing label and a pressed state would say it twice (fix round 3, screens-12).
           <button
             type="button"
             aria-controls={id}
-            aria-pressed={shown}
             onClick={() => setShown(!shown)}
             className="absolute top-0 right-0 inline-flex min-h-12 min-w-16 items-center justify-center rounded-r-sm px-3 text-sm font-semibold text-fg-muted underline-offset-4 hover:text-fg hover:underline"
           >
@@ -493,9 +494,10 @@ export function CheckboxField({
         </span>
         <span className="min-w-0 pt-px">{label}</span>
       </label>
-      {/* Outside the label, so it describes the box without becoming part of its name. */}
+      {/* Outside the label, so it describes the box without becoming part of its name; below the
+          label's 44 px, never over it (fix round 3, screens-9). */}
       {hint ? (
-        <p id={hintId} className="-mt-1.5 pb-1 pl-9 text-sm text-fg-muted">
+        <p id={hintId} className="pb-1 pl-9 text-sm text-fg-muted">
           {hint}
         </p>
       ) : null}

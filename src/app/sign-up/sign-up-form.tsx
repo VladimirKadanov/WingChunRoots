@@ -131,17 +131,21 @@ export function SignUpForm({
           />
           <fieldset className="grid gap-1">
             <legend className="mb-1 font-display text-xl">Before you join</legend>
-            <p className="mb-2 text-sm text-fg-muted">
-              Read the{' '}
-              <Link href={terms.path} className="link">
-                {terms.title.toLowerCase()}
-              </Link>{' '}
-              (draft of {terms.date}) and the{' '}
-              <Link href={privacy.path} className="link">
-                {privacy.title.toLowerCase()}
-              </Link>{' '}
-              (draft of {privacy.date}). Both wait for a legal review. We never ask for your birth date.
-            </p>
+            <div className="mb-2 grid gap-1 text-sm text-fg-muted">
+              <p>Read these first. Both are drafts that wait for a legal review. We never ask for your birth date.</p>
+              {/* Each link on its own line: inside a sentence the padded links of two lines overlapped
+                  and each kept a 30 px target on a touch screen (fix round 3, screens-9). */}
+              <ul className="grid gap-1">
+                {[terms, privacy].map((document) => (
+                  <li key={document.path}>
+                    <Link href={document.path} className="link inline-flex items-center pointer-coarse:min-h-11">
+                      {document.title}
+                    </Link>
+                    , draft of {document.date}
+                  </li>
+                ))}
+              </ul>
+            </div>
             {CONSENT_ORDER.map((name) => (
               <CheckboxField
                 key={name}

@@ -599,11 +599,45 @@ test.describe('at 390x844', () => {
       );
       expect(small).toEqual([]);
     };
+    /**
+     * What a tap can hit, not only the box (fix round 3, screens-9): a hint drawn over the bottom
+     * of a checkbox row, or a padded link over the one on the line above, takes the taps there.
+     * Down three columns of each target, the height where elementFromPoint finds the target.
+     */
+    const tapsAtLeast44 = async () => {
+      const small = await page.evaluate(() => {
+        const found: string[] = [];
+        const targets = [...document.querySelectorAll<HTMLElement>('main a[href], main button, main label:has(input[type=checkbox])')];
+        for (const el of targets.filter((target) => target.getClientRects().length > 0)) {
+          el.scrollIntoView({ block: 'center' });
+          // A link that wraps needs one line that takes the tap: the best fragment counts.
+          let best = 0;
+          for (const rect of el.getClientRects()) {
+            let least = Infinity;
+            for (const share of [0.25, 0.5, 0.75]) {
+              const x = rect.left + rect.width * share;
+              let hits = 0;
+              for (let y = Math.floor(rect.top) + 0.5; y < rect.bottom; y += 1) {
+                const at = document.elementFromPoint(x, y);
+                if (at && el.contains(at)) hits += 1;
+              }
+              least = Math.min(least, hits);
+            }
+            best = Math.max(best, least);
+          }
+          if (best < 43) found.push(`${el.tagName.toLowerCase()} "${el.textContent?.trim().slice(0, 30)}" taps ${best}px`);
+        }
+        window.scrollTo(0, 0);
+        return found;
+      });
+      expect(small).toEqual([]);
+    };
 
     const email = uniqueEmail('phone');
     await page.goto('/sign-up');
     await noHorizontalScroll();
     await targetsAtLeast44();
+    await tapsAtLeast44();
     await field(page, 'E-mail address').fill(email);
     await field(page, 'Password', true).fill(NEW_ACCOUNT_PASSWORD);
     for (const label of [CONSENT_LABELS.age_18_plus, CONSENT_LABELS.terms, CONSENT_LABELS.authenticity_declaration]) {
@@ -669,6 +703,21 @@ test.describe('at 390x844', () => {
     // A box with the focus is not a text field: the bar is back.
     await expect(bar).toBeVisible();
   });
+});
+
+test('@M02 the password field shows and hides the password; the button says what a press does', async ({ page }) => {
+  await page.goto('/sign-up');
+  const password = field(page, 'Password', true);
+  await password.fill(NEW_ACCOUNT_PASSWORD);
+  // A changing label without aria-pressed: "Hide password, toggle button, pressed" said it twice (screens-12).
+  const show = page.getByRole('button', { name: 'Show password' }).filter({ visible: true });
+  await expect(show).not.toHaveAttribute('aria-pressed');
+  await show.click();
+  await expect(password).toHaveAttribute('type', 'text');
+  const hide = page.getByRole('button', { name: 'Hide password' }).filter({ visible: true });
+  await expect(hide).not.toHaveAttribute('aria-pressed');
+  await hide.click();
+  await expect(password).toHaveAttribute('type', 'password');
 });
 
 test('@M02 no axe violations on sign-up, sign-in and onboarding', async ({ page }) => {
