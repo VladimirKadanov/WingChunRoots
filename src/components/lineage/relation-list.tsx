@@ -59,7 +59,7 @@ export function RelationList({
                 <dt className="text-fg-muted">Lineage</dt>
                 <dd>{lineageOf(lineages, edge.lineageId)}</dd>
                 <dt className="text-fg-muted">Training</dt>
-                <dd className="tabular">
+                <dd>
                   {periodText(edge.periods)}
                   <span className="text-fg-muted">{isHistoricalRelation(edge.periods) ? ' · historical (training ended)' : ' · current'}</span>
                 </dd>
@@ -71,7 +71,7 @@ export function RelationList({
             ) : (
               <div key={edge.id} className="grid gap-1">
                 <p className="text-sm text-fg-muted">
-                  {lineageOf(lineages, edge.lineageId)} <span aria-hidden="true">·</span> <span className="tabular">{periodText(edge.periods)}</span>
+                  {lineageOf(lineages, edge.lineageId)} <span aria-hidden="true">·</span> <span>{periodText(edge.periods)}</span>
                 </p>
                 <RelationBadges edge={edge} />
               </div>
