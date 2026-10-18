@@ -137,7 +137,7 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
 
 // --- Reads ---------------------------------------------------------------------------------------
 
-export async function ownPerson(userId: string): Promise<OwnPerson | null> {
+async function ownPerson(userId: string): Promise<OwnPerson | null> {
   const db = getDb();
   const [row] = await db
     .select({ id: person.id, slug: person.slug, visibility: person.visibility })
@@ -193,7 +193,7 @@ export interface PlaceOption {
 }
 
 /** The cities of the GeoNames excerpt (plan §6.2), for the onboarding form. */
-export async function placeOptions(): Promise<PlaceOption[]> {
+async function placeOptions(): Promise<PlaceOption[]> {
   return getDb()
     .select({ id: place.id, name: place.name, countryCode: place.countryCode })
     .from(place)
@@ -223,12 +223,15 @@ export async function onboardingOptions(principal: Principal | null): Promise<On
  * Where a signed-in account goes next: onboarding until it has its own person and has confirmed
  * the current versions of the required documents, then the page it asked for (`next`, a local
  * path) or its account page. Two-factor setup and the admin area are never held back, so staff
- * can finish signing in.
+ * can finish signing in. Refused without a session (401), like every service.
  */
-export async function landingPath(userId: string, next: unknown): Promise<string> {
+export const landingInput = z.object({ next: z.string().max(2048).optional() });
+
+export async function landingPath(principal: Principal | null, next: unknown): Promise<string> {
+  const { user } = requireUser(principal);
   const requested = safeNextPath(next, '/account');
   const target = requested === '/onboarding' ? '/account' : requested;
-  const settled = Boolean(await ownPerson(userId)) && (await missingRequiredConsents(getDb(), userId)).length === 0;
+  const settled = Boolean(await ownPerson(user.id)) && (await missingRequiredConsents(getDb(), user.id)).length === 0;
   if (settled || target.startsWith('/account/security') || target.startsWith('/admin')) return target;
   return `/onboarding${target === '/account' ? '' : `?next=${encodeURIComponent(target)}`}`;
 }

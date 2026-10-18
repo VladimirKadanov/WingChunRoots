@@ -8,7 +8,7 @@
 import { redirect } from 'next/navigation';
 
 import { authMessage } from '@/components/account/messages';
-import { keepValues, looksLikeEmail, textValue } from '@/lib/form-data';
+import { emailValue, keepValues, looksLikeEmail, textValue } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { authAction } from '@/server/auth/web';
 
@@ -21,7 +21,7 @@ export async function confirmEmailAction(_previous: FormState, form: FormData): 
 }
 
 export async function resendConfirmationAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const email = textValue(form, 'email', 254).toLowerCase();
+  const email = emailValue(form);
   const values = keepValues(form, ['email']);
   if (!email || !looksLikeEmail(email)) {
     return {

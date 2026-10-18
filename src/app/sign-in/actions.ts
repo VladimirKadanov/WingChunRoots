@@ -4,23 +4,34 @@
 // POST /api/auth/sign-in/email, /two-factor/verify-totp and /two-factor/verify-backup-code
 // (src/server/rpc/parity.ts). The session cookie Better Auth sets is passed on to the browser.
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { authMessage } from '@/components/account/messages';
 import { MAX_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { keepValues, looksLikeEmail, secretValue, textValue } from '@/lib/form-data';
+import { emailValue, keepValues, looksLikeEmail, secretValue, textValue } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { safeNextPath } from '@/server/auth/guards';
-import { authAction } from '@/server/auth/web';
-import { landingPath } from '@/server/services/account';
+import { authAction, principalFromSetCookies } from '@/server/auth/web';
+import { serverClient } from '@/server/rpc/server';
 
 interface SignedIn {
   twoFactorRedirect?: boolean;
   user?: { id: string };
 }
 
+/**
+ * Where the new session goes next (account.landing): read with the session Better Auth has just
+ * created, whose cookie the browser sends only with its next request.
+ */
+async function landingAfter(setCookies: readonly string[], next: string): Promise<string> {
+  const principal = await principalFromSetCookies(setCookies);
+  const { path } = await serverClient(await headers(), principal).account.landing({ next: next || undefined });
+  return path;
+}
+
 export async function signInAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const email = textValue(form, 'email', 254).toLowerCase();
+  const email = emailValue(form);
   const password = secretValue(form, 'password', MAX_PASSWORD_LENGTH + 1);
   const next = safeNextPath(textValue(form, 'next'), '');
   const values = keepValues(form, ['email', 'next']);
@@ -37,7 +48,7 @@ export async function signInAction(_previous: FormState, form: FormData): Promis
   if (result.data.twoFactorRedirect) {
     redirect(`/sign-in/two-factor${next ? `?next=${encodeURIComponent(next)}` : ''}`);
   }
-  redirect(await landingPath(result.data.user!.id, next || undefined));
+  redirect(await landingAfter(result.setCookies, next));
 }
 
 export async function verifySecondFactorAction(_previous: FormState, form: FormData): Promise<FormState> {
@@ -67,5 +78,5 @@ export async function verifySecondFactorAction(_previous: FormState, form: FormD
       values,
     };
   }
-  redirect(await landingPath(result.data.user.id, next || undefined));
+  redirect(await landingAfter(result.setCookies, next));
 }

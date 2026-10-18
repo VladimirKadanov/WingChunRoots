@@ -17,8 +17,10 @@ import { getDb } from '../db';
 import { auditLog, consentRecord, person, personName } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { LEGAL_DOCUMENTS } from '../legal/documents';
+import { AuthError } from '../auth/guards';
+import { principalFromHeaders } from '../auth/session';
 import { handleApiRequest } from '../rpc/handler';
-import { landingPath } from './account';
+import { landingPath as landingPathOf } from './account';
 
 let testDb: TestDatabase | undefined;
 let hongKong: string;
@@ -225,8 +227,15 @@ describe('account.onboard', () => {
 });
 
 describe('landingPath', () => {
+  it('is refused without a session, like every service', async () => {
+    await expect(landingPathOf(null, '/account')).rejects.toBeInstanceOf(AuthError);
+  });
+
   it('holds an account on /onboarding until it has a profile and the current documents are confirmed', async () => {
     const { account, token } = await readyAccount('landing');
+    const principal = await principalFromHeaders(new Headers({ authorization: `Bearer ${token}` }));
+    expect(principal?.user.id).toBe(account.id);
+    const landingPath = (_id: string, next: unknown) => landingPathOf(principal, next);
     expect(await landingPath(account.id, undefined)).toBe('/onboarding');
     expect(await landingPath(account.id, '/schools')).toBe('/onboarding?next=%2Fschools');
     expect(await landingPath(account.id, '/account/security')).toBe('/account/security');
@@ -254,5 +263,14 @@ describe('landingPath', () => {
 
     expect((await call(token, 'POST', '/consent/record', { kinds: ['terms'] })).data!.recorded).toEqual(['terms']);
     expect(await landingPath(account.id, '/schools')).toBe('/schools');
+  });
+
+  it('is the account.landing procedure under /api/v1, which needs a session', async () => {
+    const { token } = await readyAccount('landing-api');
+    expect(await call(token, 'GET', '/account/landing?next=%2Fschools')).toEqual({
+      status: 200,
+      data: { path: '/onboarding?next=%2Fschools' },
+    });
+    expect((await call(null, 'GET', '/account/landing?next=%2Fschools')).status).toBe(401);
   });
 });

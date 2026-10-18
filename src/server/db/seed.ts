@@ -19,7 +19,7 @@ import type { Client } from 'pg';
 import { FIXTURE_SEED, generateFixtures, type Fixtures } from '../../fixtures/generate';
 import { encryptTotpSecret, generateBackupCodes, hashAccountPassword } from '../auth/credentials';
 import { contentHash, withClient } from './admin';
-import { assertNotProduction, redactUrl } from './env';
+import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
 import {
   auditLog,
   authAccount,
@@ -197,6 +197,8 @@ export async function seedDatabase(
   credentials: DemoCredentials = demoCredentialsFromEnv(),
 ): Promise<SeedResult> {
   assertNotProduction('db:seed');
+  // It empties every application table first: like db:reset, only a local or the test database.
+  assertSafeToReset(url, process.env, 'db:seed');
   const fixtures = generateFixtures(seed);
   const creds = await credentialRows(fixtures, credentials);
   return withClient(

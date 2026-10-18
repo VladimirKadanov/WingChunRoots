@@ -102,3 +102,17 @@ export async function authAction<T = unknown>(
   }
   return result;
 }
+
+/**
+ * The principal of the session that a Better Auth call has just created (sign-in, the second
+ * factor), read from the cookies it set: the browser sends them only with its next request, but
+ * the action decides where to send it now.
+ */
+export async function principalFromSetCookies(setCookies: readonly string[]): Promise<Principal | null> {
+  const pairs = setCookies
+    .filter((raw) => !/;\s*max-age=0(;|$)/i.test(raw))
+    .map((raw) => raw.split(';')[0]!.trim())
+    .filter((pair) => pair.indexOf('=') > 0);
+  if (pairs.length === 0) return null;
+  return principalFromHeaders(new Headers({ cookie: pairs.join('; ') }));
+}

@@ -2,6 +2,8 @@
 // strings or files; these helpers return plain strings, so an action never trusts a File where it
 // expects text, and keep the values the form shows again after an error.
 
+import { EMAIL_MAX_LENGTH } from './account-limits';
+
 /** A text field, trimmed; '' when missing or not text. */
 export function textValue(form: FormData, name: string, maxLength = 1000): string {
   const value = form.get(name);
@@ -30,7 +32,15 @@ export function keepValues(form: FormData, text: readonly string[], checkboxes: 
   return values;
 }
 
+/**
+ * The e-mail field, trimmed and in lower case. One character more than the limit is read, so an
+ * over-long address is refused by looksLikeEmail() instead of being cut into a different one.
+ */
+export function emailValue(form: FormData): string {
+  return textValue(form, 'email', EMAIL_MAX_LENGTH + 1).toLowerCase();
+}
+
 /** A simple e-mail check for the form's own message; Better Auth validates the address again. */
 export function looksLikeEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= EMAIL_MAX_LENGTH;
 }

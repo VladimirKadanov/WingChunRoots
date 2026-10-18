@@ -4,7 +4,7 @@
 
 import { encode } from 'uqr';
 
-import type { QrModules } from '../../components/account/qr-code';
+import type { QrModules } from '../../lib/qr';
 
 export interface TotpSetupView {
   /** otpauth://totp/... for a tap on a phone that has an authenticator app. */

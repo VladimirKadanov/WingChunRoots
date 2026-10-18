@@ -4,3 +4,5 @@
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 export const TOTP_DIGITS = 6;
+/** The longest e-mail address (RFC 5321 path limit). */
+export const EMAIL_MAX_LENGTH = 254;

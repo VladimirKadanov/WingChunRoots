@@ -128,6 +128,20 @@ check "ESLint keeps better-auth inside src/server/auth and @orpc/* inside src/se
       | node_modules/.bin/eslint --stdin --stdin-filename "$target" 2>&1)"
     [ "$(printf "%s" "$out" | grep -c "no-restricted-imports")" -eq 2 ] || exit 1
   done'
+# Fix round 1: the later blocks for src/components/ui, shell, home, ink and account replaced the
+# rule of the src/app + src/components block and dropped its database, jobs and mail bans.
+check "ESLint keeps every folder of src/app and src/components away from the database, jobs, mail and @better-auth/*" bash -c '
+  for target in src/app/m02-probe.ts src/components/ui/m02-probe.tsx src/components/shell/m02-probe.tsx \
+      src/components/home/m02-probe.tsx src/components/ink/m02-probe.tsx src/components/account/m02-probe.tsx; do
+    out="$(printf "import { getDb } from \"@/server/db\";\nimport { queueEmail } from \"@/server/jobs/outbox\";\nimport { createMailer } from \"@/server/mail/mailer\";\nimport { createOTP } from \"@better-auth/utils/otp\";\nexport const x = [getDb, queueEmail, createMailer, createOTP];\n" \
+      | node_modules/.bin/eslint --stdin --stdin-filename "$target" 2>&1)"
+    [ "$(printf "%s" "$out" | grep -c "no-restricted-imports")" -eq 4 ] || exit 1
+  done'
+check "ESLint lets only tests import src/server/auth/test-support.ts" bash -c '
+  probe="import { setTestAuthEnv } from \"./test-support\";\nexport const x = setTestAuthEnv;\n"
+  out="$(printf "$probe" | node_modules/.bin/eslint --stdin --stdin-filename src/server/auth/m02-probe.ts 2>&1)"
+  printf "%s" "$out" | grep -q "import/no-restricted-paths" || exit 1
+  printf "$probe" | node_modules/.bin/eslint --stdin --stdin-filename src/server/auth/m02-probe.int.test.ts'
 
 # 4. Staff and the second factor (In scope 2; plan §3.2) ------------------------------------------
 check "guards.ts exports requireUser, requireRole and requireStaff2FA" bash -c '

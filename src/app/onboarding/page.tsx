@@ -46,7 +46,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const next = safeNextPath(query.next, '/account');
-  const client = serverClient(await headers());
+  const client = serverClient(await headers(), guard.principal);
   const me = await client.account.me();
   if (me.person) {
     const after = next === '/onboarding' ? '/account' : next;

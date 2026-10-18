@@ -102,14 +102,14 @@ export function assertNotProduction(command: string, env: Env = process.env): vo
 }
 
 /**
- * db:reset only runs against a local database or TEST_DATABASE_URL, and never with
- * NODE_ENV=production (milestone M01, In scope 1).
+ * db:reset and db:seed (which empties every application table first) only run against a local
+ * database or TEST_DATABASE_URL, and never with NODE_ENV=production (milestone M01, In scope 1).
  */
-export function assertSafeToReset(url: string, env: Env = process.env): void {
-  assertNotProduction('db:reset', env);
+export function assertSafeToReset(url: string, env: Env = process.env, command = 'db:reset'): void {
+  assertNotProduction(command, env);
   const isTestDatabase = !!env.TEST_DATABASE_URL && sameDatabase(url, env.TEST_DATABASE_URL);
   if (!isLocalHost(url) && !isTestDatabase) {
-    throw new Error(`db:reset refuses a database that is neither local nor TEST_DATABASE_URL: ${redactUrl(url)}`);
+    throw new Error(`${command} refuses a database that is neither local nor TEST_DATABASE_URL: ${redactUrl(url)}`);
   }
 }
 

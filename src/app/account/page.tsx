@@ -41,7 +41,7 @@ export default async function AccountPage() {
   const guard = await guardRoute('/account');
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
-  const me = await serverClient(await headers()).account.me();
+  const me = await serverClient(await headers(), guard.principal).account.me();
   const primary = me.person?.names.find((name) => name.isPrimary);
 
   return (

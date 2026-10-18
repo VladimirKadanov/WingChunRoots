@@ -11,7 +11,7 @@ import { ORPCError, os, ValidationError } from '@orpc/server';
 
 import { requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
-import { accountOverview, onboard, onboardingOptions, onboardInput } from '../services/account';
+import { accountOverview, landingInput, landingPath, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
 import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
@@ -64,6 +64,10 @@ export const router = {
     me: base
       .route({ method: 'GET', path: '/account/me', summary: 'The signed-in account, its own person and missing consents' })
       .handler(({ context }) => accountOverview(context.principal)),
+    landing: signedIn
+      .route({ method: 'GET', path: '/account/landing', summary: 'Where the signed-in account goes next (onboarding or the page it asked for)' })
+      .input(landingInput)
+      .handler(async ({ context, input }) => ({ path: await landingPath(context.principal, input.next) })),
     onboardingOptions: base
       .route({ method: 'GET', path: '/account/onboarding-options', summary: 'Countries, cities and scripts for onboarding' })
       .handler(({ context }) => onboardingOptions(context.principal)),

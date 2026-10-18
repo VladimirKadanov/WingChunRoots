@@ -35,7 +35,7 @@ export default async function AdminPage() {
       </div>
     );
   }
-  const overview = await serverClient(await headers()).admin.overview();
+  const overview = await serverClient(await headers(), guard.principal).admin.overview();
   const failed = overview.failedEmailDeliveries;
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">

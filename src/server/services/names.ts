@@ -65,14 +65,14 @@ export function matchesScript(value: string, lang: string): boolean {
 
 const JYUTPING = /^[a-z]+[1-6]?(?:[ -][a-z]+[1-6]?)*$/;
 
-/** Jyutping in lower case with optional tone numbers: `jip6 man4`. */
+/** Jyutping in lower case with optional tone numbers: `sou1 zuk1 cing4`. */
 export function isJyutping(value: string): boolean {
   return JYUTPING.test(cleanName(value).toLowerCase());
 }
 
 const PINYIN = /^[\p{Script=Latin}\p{M}0-9 '’-]+$/u;
 
-/** Pinyin with tone marks or tone numbers: `Yè Wèn`, `ye4 wen4`. */
+/** Pinyin with tone marks or tone numbers: `Sū Zhúqíng`, `su1 zhu2 qing2`. */
 export function isPinyin(value: string): boolean {
   const name = cleanName(value);
   return PINYIN.test(name) && LATIN_LETTER.test(name);

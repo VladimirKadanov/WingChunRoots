@@ -46,7 +46,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const next = safeNextPath(query.next, '');
-  const me = await serverClient(await headers()).account.me();
+  const me = await serverClient(await headers(), guard.principal).account.me();
   const staff = isStaffRole(me.user.role);
   const justEnabled = query.enabled === '1';
   const justVerified = query.verified === '1';

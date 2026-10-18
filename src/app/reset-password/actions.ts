@@ -8,12 +8,12 @@ import { redirect } from 'next/navigation';
 
 import { authMessage } from '@/components/account/messages';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { keepValues, looksLikeEmail, secretValue, textValue } from '@/lib/form-data';
+import { emailValue, keepValues, looksLikeEmail, secretValue, textValue } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { authAction } from '@/server/auth/web';
 
 export async function requestResetAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const email = textValue(form, 'email', 254).toLowerCase();
+  const email = emailValue(form);
   const values = keepValues(form, ['email']);
   if (!email || !looksLikeEmail(email)) {
     return {

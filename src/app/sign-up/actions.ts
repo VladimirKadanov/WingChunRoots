@@ -7,13 +7,13 @@
 import { CONSENT_REQUIRED_MESSAGES, type ConsentName } from '@/components/account/consents';
 import { authMessage } from '@/components/account/messages';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { keepValues, looksLikeEmail, secretValue, textValue, ticked } from '@/lib/form-data';
+import { emailValue, keepValues, looksLikeEmail, secretValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { authAction } from '@/server/auth/web';
 import { REQUIRED_SIGN_UP_CONSENTS, SIGN_UP_CONSENTS } from '@/server/legal/documents';
 
 export async function signUpAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const email = textValue(form, 'email', 254).toLowerCase();
+  const email = emailValue(form);
   const password = secretValue(form, 'password', MAX_PASSWORD_LENGTH + 1);
   const consents = Object.fromEntries(SIGN_UP_CONSENTS.map((kind) => [kind, ticked(form, kind)]));
   const values = keepValues(form, ['email'], SIGN_UP_CONSENTS);

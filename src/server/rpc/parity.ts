@@ -1,17 +1,22 @@
 // Server Action ↔ API mapping (plan §6.8; milestone M02, In scope 3). Every Server Action of the
 // app is a thin wrapper over either oRPC procedures (the account data: /api/rpc and /api/v1) or
 // Better Auth endpoints (signing up and in, e-mail confirmation, password reset, two-factor
-// authentication: /api/auth, cookie or bearer). A native client therefore reaches everything a
-// web form does. api-parity.test.ts checks this table against the code: every exported Server
-// Action is listed, every target exists and is served, and the action's source calls it.
+// authentication: /api/auth, cookie or bearer), or both (sign-in, then account.landing for where
+// to go next). A native client therefore reaches everything a web form does. api-parity.test.ts
+// checks this table against the code: every exported Server Action is listed, every target exists
+// and is served, and the action itself (or a helper of its file that it calls) calls it.
 
-export type ActionTarget = { rpc: readonly string[] } | { auth: readonly string[] };
+/** The procedures (`rpc`) and Better Auth endpoints (`auth`) an action wraps; at least one. */
+export type ActionTarget = { rpc?: readonly string[]; auth?: readonly string[] };
 
 /** `<file>#<exported function>` → what it wraps. */
 export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/sign-up/actions.ts#signUpAction': { auth: ['/sign-up/email'] },
-  'src/app/sign-in/actions.ts#signInAction': { auth: ['/sign-in/email'] },
-  'src/app/sign-in/actions.ts#verifySecondFactorAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
+  'src/app/sign-in/actions.ts#signInAction': { auth: ['/sign-in/email'], rpc: ['account.landing'] },
+  'src/app/sign-in/actions.ts#verifySecondFactorAction': {
+    auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'],
+    rpc: ['account.landing'],
+  },
   'src/app/verify-email/actions.ts#confirmEmailAction': { auth: ['/verify-email'] },
   'src/app/verify-email/actions.ts#resendConfirmationAction': { auth: ['/send-verification-email'] },
   'src/app/reset-password/actions.ts#requestResetAction': { auth: ['/request-password-reset'] },

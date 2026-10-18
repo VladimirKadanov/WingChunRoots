@@ -11,6 +11,7 @@ import { CONSENT_ORDER, CONSENT_REQUIRED_MESSAGES } from '@/components/account/c
 import { keepValues, textValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { safeNextPath } from '@/server/auth/guards';
+import { getRequestPrincipal } from '@/server/auth/web';
 import { formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 
@@ -29,7 +30,7 @@ function missingTicks(form: FormData): Record<string, string> {
 export async function onboardAction(_previous: FormState, form: FormData): Promise<FormState> {
   const values = keepValues(form, TEXT_FIELDS, ['showPublicly', ...CONSENT_ORDER]);
   const next = safeNextPath(textValue(form, 'next'), '/account');
-  const client = serverClient(await headers());
+  const client = serverClient(await headers(), await getRequestPrincipal());
 
   // The ticks are on the form only when a required confirmation is missing for the current
   // version of the documents (an account created before a new version, or without the sign-up form).
@@ -89,7 +90,7 @@ export async function confirmConsentsAction(_previous: FormState, form: FormData
   const kinds = CONSENT_ORDER.filter((kind) => ticked(form, kind));
   if (kinds.length === 0) return { status: 'error', message: 'Tick the confirmations to continue.', values };
   try {
-    await serverClient(await headers()).consent.record({ kinds });
+    await serverClient(await headers(), await getRequestPrincipal()).consent.record({ kinds });
   } catch (error) {
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fonboarding');
     const state = formStateFromRpcError(error, values);

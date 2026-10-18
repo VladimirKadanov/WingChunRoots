@@ -3,13 +3,7 @@
 // both themes (.theme-light): authenticator apps do not all read a light code on a dark ground.
 
 import { cx } from '@/lib/cx';
-
-export interface QrModules {
-  /** SVG path of the dark modules, one unit per module. */
-  path: string;
-  /** Modules per side, border included. */
-  size: number;
-}
+import type { QrModules } from '@/lib/qr';
 
 export function QrCode({ qr, label, className }: { qr: QrModules; label: string; className?: string }) {
   return (
