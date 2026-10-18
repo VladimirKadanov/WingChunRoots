@@ -4,12 +4,11 @@
 // (src/server/forms/flash.ts).
 
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
-import { AuthFrame, FormFooter } from '@/components/account/auth-frame';
+import { AuthFrame } from '@/components/account/auth-frame';
 import { isRefusedLink } from '@/lib/form-state';
 import { readFormResult } from '@/server/forms/flash';
-import { ConfirmEmailForm, ResendConfirmationForm } from './forms';
+import { AlreadyConfirmedFooter, ConfirmEmailForm, ResendConfirmationForm } from './forms';
 import { RESEND, linkRefused } from './headings';
 
 export const instant = false;
@@ -48,16 +47,7 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
         heading={refused ?? RESEND}
         headingId={refused ? 'verify-link-refused' : undefined}
         initial={resent}
-        footer={
-          <FormFooter>
-            <p>
-              Already confirmed?{' '}
-              <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
-                Sign in
-              </Link>
-            </p>
-          </FormFooter>
-        }
+        footer={<AlreadyConfirmedFooter />}
       />
     </AuthFrame>
   );

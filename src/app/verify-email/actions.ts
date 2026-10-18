@@ -29,16 +29,22 @@ export async function confirmEmailAction(_previous: FormState, form: FormData): 
  */
 const REFUSED_LINK = new Set(['INVALID_TOKEN', 'TOKEN_EXPIRED', 'USER_NOT_FOUND', 'HTTP_401']);
 
+/**
+ * What a refused confirmation link says (fix round 3, screens-6). Not "already used": pressing a
+ * link that has confirmed the address confirms it again.
+ */
+const LINK_REFUSED = 'This link is not valid or has expired. Ask for a new one below.';
+
 async function confirmEmail(form: FormData): Promise<FormState> {
   const token = textValue(form, 'token', 4096);
   // `link: refused` swaps the page to "This link no longer works" with a form for a new link.
-  if (!token) return { status: 'error', message: authMessage('INVALID_TOKEN'), values: { link: 'refused' } };
+  if (!token) return { status: 'error', message: LINK_REFUSED, values: { link: 'refused' } };
   const result = await authAction('/verify-email', { method: 'GET', query: { token } });
   if (!result.ok) {
     const refused = REFUSED_LINK.has(result.code ?? '');
     return {
       status: 'error',
-      message: authMessage(refused && result.code !== 'TOKEN_EXPIRED' ? 'INVALID_TOKEN' : result.code),
+      message: refused && result.code !== 'TOKEN_EXPIRED' ? LINK_REFUSED : authMessage(result.code),
       ...(refused ? { values: { link: 'refused' } } : {}),
     };
   }

@@ -155,6 +155,8 @@ test('@M02 password reset through the emailed link', async ({ page }) => {
   await expect(page.getByText('expired or was already used')).toBeVisible();
   await expect(field(page, 'New password')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send a new link' })).toBeVisible();
+  // The same way back as without JavaScript (screens-6).
+  await expect(page.getByRole('link', { name: 'Back to sign-in' }).filter({ visible: true })).toBeVisible();
 
   // The old password no longer works; the new one does.
 
@@ -264,6 +266,17 @@ test.describe('the request scope on both paths', () => {
     }
     expect(await afterTaps(email)).toEqual({ templates: ['verify-email'], password: true });
   });
+});
+
+test('@M02 a refused confirmation link says it is not valid or has expired and keeps the way to sign in', async ({ page }) => {
+  // With JavaScript the refusal replaces the form in place (screens-6): the same text and footer
+  // as the page renders without JavaScript.
+  await page.goto('/verify-email?token=demo-not-a-token');
+  await page.getByRole('button', { name: 'Confirm my address' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'This link no longer works' })).toBeFocused();
+  await expect(page.getByText('This link is not valid or has expired.')).toBeVisible();
+  await expect(page.getByText('already used')).toHaveCount(0);
+  await expect(page.locator('p', { hasText: 'Already confirmed?' }).filter({ visible: true }).getByRole('link', { name: 'Sign in' })).toBeVisible();
 });
 
 test('@M02 a signed-in visitor asking for a new confirmation link gets the same neutral answer', async ({ page }) => {
@@ -994,7 +1007,9 @@ test.describe('without JavaScript', () => {
     await page.goto('/verify-email?token=demo-not-a-token');
     await page.getByRole('button', { name: 'Confirm my address' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'This link no longer works' })).toBeVisible();
+    await expect(page.getByText('This link is not valid or has expired.')).toBeVisible();
     await expect(field(page, 'E-mail address')).toBeVisible();
+    await expect(page.getByText('Already confirmed?')).toBeVisible();
   });
 
   test('@M02 onboarding keeps every answer after a server error', async ({ page }) => {

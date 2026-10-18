@@ -8,7 +8,7 @@
 import Link from 'next/link';
 import { type ReactNode, useActionState } from 'react';
 
-import { FrameBody, FrameHeader, type FrameHeading } from '@/components/account/auth-frame';
+import { FormFooter, FrameBody, FrameHeader, type FrameHeading } from '@/components/account/auth-frame';
 import {
   DoneText,
   FormMessage,
@@ -23,6 +23,22 @@ import { EMAIL_MAX_LENGTH, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/li
 import { IDLE, isRefusedLink, type FormState } from '@/lib/form-state';
 import { requestResetAction, resetPasswordAction } from './actions';
 import { linkRefused } from './headings';
+
+/**
+ * The line under the request form: the same with and without JavaScript, and on the page without
+ * a link (fix round 3, screens-6).
+ */
+export function BackToSignInFooter() {
+  return (
+    <FormFooter>
+      <p>
+        <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
+          Back to sign-in
+        </Link>
+      </p>
+    </FormFooter>
+  );
+}
 
 export function RequestResetForm({
   heading,
@@ -111,7 +127,7 @@ export function NewPasswordForm({
   const form = useFormId('new-password');
   useFocusOnError(form, state);
   // The link has expired or was used: ask for a new one in place.
-  if (isRefusedLink(state)) return <RequestResetForm heading={linkRefused(state)} headingId={messageId(form)} />;
+  if (isRefusedLink(state)) return <RequestResetForm heading={linkRefused(state)} headingId={messageId(form)} footer={<BackToSignInFooter />} />;
   return (
     <>
       <FrameHeader {...heading} />

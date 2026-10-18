@@ -4,12 +4,11 @@
 // result of a submit without JavaScript (src/server/forms/flash.ts).
 
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
-import { AuthFrame, FormFooter } from '@/components/account/auth-frame';
+import { AuthFrame } from '@/components/account/auth-frame';
 import { isRefusedLink } from '@/lib/form-state';
 import { readFormResult } from '@/server/forms/flash';
-import { NewPasswordForm, RequestResetForm } from './forms';
+import { BackToSignInFooter, NewPasswordForm, RequestResetForm } from './forms';
 import { FINISH, NEW_PASSWORD, REQUEST, linkRefused } from './headings';
 
 export const instant = false;
@@ -52,15 +51,7 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
         heading={refused ?? REQUEST}
         headingId={refused ? 'reset-link-refused' : undefined}
         initial={requested}
-        footer={
-          <FormFooter>
-            <p>
-              <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
-                Back to sign-in
-              </Link>
-            </p>
-          </FormFooter>
-        }
+        footer={<BackToSignInFooter />}
       />
     </AuthFrame>
   );

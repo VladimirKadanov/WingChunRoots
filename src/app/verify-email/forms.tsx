@@ -8,7 +8,7 @@
 import Link from 'next/link';
 import { type ReactNode, useActionState } from 'react';
 
-import { FrameBody, FrameHeader, type FrameHeading } from '@/components/account/auth-frame';
+import { FormFooter, FrameBody, FrameHeader, type FrameHeading } from '@/components/account/auth-frame';
 import {
   DoneText,
   FormMessage,
@@ -24,11 +24,30 @@ import { IDLE, isRefusedLink, type FormState } from '@/lib/form-state';
 import { confirmEmailAction, resendConfirmationAction } from './actions';
 import { CONFIRM, linkRefused } from './headings';
 
+/**
+ * The line under the new-link form: the same with and without JavaScript, and on the page without
+ * a link (fix round 3, screens-6).
+ */
+export function AlreadyConfirmedFooter() {
+  return (
+    <FormFooter>
+      <p>
+        Already confirmed?{' '}
+        <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
+          Sign in
+        </Link>
+      </p>
+    </FormFooter>
+  );
+}
+
 export function ConfirmEmailForm({ token, initial }: { token: string; initial?: FormState | null }) {
   const [state, action, pending] = useActionState(confirmEmailAction, initial ?? IDLE);
   const form = useFormId('confirm-email');
   useFocusOnError(form, state);
-  if (isRefusedLink(state)) return <ResendConfirmationForm heading={linkRefused(state)} headingId={messageId(form)} />;
+  if (isRefusedLink(state)) {
+    return <ResendConfirmationForm heading={linkRefused(state)} headingId={messageId(form)} footer={<AlreadyConfirmedFooter />} />;
+  }
   return (
     <>
       <FrameHeader {...CONFIRM} />
