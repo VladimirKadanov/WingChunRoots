@@ -7,7 +7,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { CONSENT_ORDER, CONSENT_REQUIRED_MESSAGES } from '@/components/account/consents';
+import { CONSENT_CONTINUE_MESSAGES, CONSENT_NEW_VERSION_MESSAGES, CONSENT_ORDER, type ConsentName } from '@/components/account/consents';
 import { keepValues, textValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { safeNextPath } from '@/server/auth/guards';
@@ -18,12 +18,15 @@ import { serverClient } from '@/server/rpc/server';
 
 const TEXT_FIELDS = ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'countryCode', 'placeId', 'trainingStartYear', 'next'];
 
-/** The required ticks named by the form that are not ticked, as field errors. */
-function missingTicks(form: FormData): Record<string, string> {
+/**
+ * The required ticks named by the form that are not ticked, as field errors, in the words of the
+ * form's flow: the account exists already (screens-3).
+ */
+function missingTicks(form: FormData, messages: Record<ConsentName, string>): Record<string, string> {
   const required = form.getAll('requiredConsent').filter((v): v is string => typeof v === 'string');
   const fields: Record<string, string> = {};
   for (const kind of CONSENT_ORDER) {
-    if (required.includes(kind) && !ticked(form, kind)) fields[kind] = CONSENT_REQUIRED_MESSAGES[kind];
+    if (required.includes(kind) && !ticked(form, kind)) fields[kind] = messages[kind];
   }
   return fields;
 }
@@ -45,7 +48,7 @@ async function onboard(form: FormData, next: string): Promise<FormState> {
   // The ticks are on the form only when a required confirmation is missing for the current
   // version of the documents (an account created before a new version, or without the sign-up form).
   if (form.getAll('requiredConsent').length > 0) {
-    const fields = missingTicks(form);
+    const fields = missingTicks(form, CONSENT_CONTINUE_MESSAGES);
     if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
     const kinds = CONSENT_ORDER.filter((kind) => ticked(form, kind));
     try {
@@ -99,7 +102,7 @@ export async function confirmConsentsAction(_previous: FormState, form: FormData
 
 async function confirmConsents(form: FormData, next: string): Promise<FormState> {
   const values = keepValues(form, ['next'], CONSENT_ORDER);
-  const fields = missingTicks(form);
+  const fields = missingTicks(form, CONSENT_NEW_VERSION_MESSAGES);
   if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
   const kinds = CONSENT_ORDER.filter((kind) => ticked(form, kind));
   if (kinds.length === 0) return { status: 'error', message: 'Tick the confirmations to continue.', values };

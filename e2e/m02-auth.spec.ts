@@ -492,6 +492,7 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await page.goto('/account');
   await expect(notice).toBeVisible();
   // The notice names the document, its date and what changed.
+  await expect(page.getByText('There is a new version of the terms of use')).toBeVisible();
   await expect(page.getByText(`Terms of use, draft of ${LEGAL_DOCUMENTS.terms.date}: ${LEGAL_DOCUMENTS.terms.changes}`)).toBeVisible();
 
   // Signing in again lands on the confirmations.
@@ -512,6 +513,9 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await page.getByRole('button', { name: 'Confirm and continue' }).click();
   await expect(formError(page)).toBeFocused();
   await expect(terms).toHaveAttribute('aria-invalid', 'true');
+  // The account exists: the message asks to accept the new version, not to create an account (screens-3).
+  await expect(page.getByText('Accept the updated terms of use to continue.', { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(page.getByText('to create an account').filter({ visible: true })).toHaveCount(0);
   await expectNoAxeViolations(page, '/onboarding, documents only, with errors');
   await terms.check();
   await page.getByRole('button', { name: 'Confirm and continue' }).click();

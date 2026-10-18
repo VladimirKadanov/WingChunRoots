@@ -77,7 +77,8 @@ export default async function AccountPage() {
           <div role="status" className="mb-8 grid gap-1 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-ui">
             <p className="flex items-start gap-2 font-semibold">
               <AlertIcon size={18} className="mt-0.5" />
-              {changed.length === 1 ? `The ${changed[0]!.title.toLowerCase()} has a new version` : 'The documents have new versions'}
+              {/* "There is", whatever the title's number ("terms of use" is plural; fix round 3, screens-7). */}
+              {changed.length === 1 ? `There is a new version of the ${changed[0]!.title.toLowerCase()}` : 'There are new versions of the documents'}
             </p>
             <ul className="grid gap-0.5 pl-6.5 text-sm text-fg-muted">
               {changed.map((document) => (

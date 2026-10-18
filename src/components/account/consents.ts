@@ -24,3 +24,21 @@ export const CONSENT_REQUIRED_MESSAGES: Record<ConsentName, string> = {
   authenticity_declaration: 'Agree to record only what you believe to be true to create an account.',
   privacy_ack: 'Tick this box to confirm that you have read the privacy notice.',
 };
+
+/**
+ * The same for an account that already exists (fix round 3, screens-3): /onboarding asks for a tick
+ * that is missing, and the tick does not create an account there.
+ */
+export const CONSENT_CONTINUE_MESSAGES: Record<ConsentName, string> = {
+  age_18_plus: CONSENT_REQUIRED_MESSAGES.age_18_plus,
+  terms: 'Accept the terms of use to continue.',
+  authenticity_declaration: 'Agree to record only what you believe to be true to continue.',
+  privacy_ack: CONSENT_REQUIRED_MESSAGES.privacy_ack,
+};
+
+/** The same for the confirmation of a new version of the documents (an account with a profile). */
+export const CONSENT_NEW_VERSION_MESSAGES: Record<ConsentName, string> = {
+  ...CONSENT_CONTINUE_MESSAGES,
+  terms: 'Accept the updated terms of use to continue.',
+  privacy_ack: 'Tick this box to confirm that you have read the updated privacy notice.',
+};
