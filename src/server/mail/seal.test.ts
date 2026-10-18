@@ -17,7 +17,10 @@ describe('seal', () => {
     const sealed = seal({ url: 'x' }, DELIVERY, KEY);
     expect(() => unseal(sealed, '0192a6f0-0000-7000-8000-000000000002', KEY)).toThrow(SealError);
     expect(() => unseal(sealed, DELIVERY, `${KEY}-other`)).toThrow(SealError);
-    const tampered = `${sealed.slice(0, -2)}${sealed.endsWith('A') ? 'B' : 'A'}${sealed.slice(-1)}`;
+    // The first character of the ciphertext carries 6 bits of data (unlike the final one, which can
+    // end in unused bits), so changing it always changes the bytes the tag authenticates.
+    const at = sealed.lastIndexOf('.') + 1;
+    const tampered = `${sealed.slice(0, at)}${sealed[at] === 'A' ? 'B' : 'A'}${sealed.slice(at + 1)}`;
     expect(() => unseal(tampered, DELIVERY, KEY)).toThrow(SealError);
     expect(() => unseal('v0.a.b', DELIVERY, KEY)).toThrow(SealError);
   });

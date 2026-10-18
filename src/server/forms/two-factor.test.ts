@@ -25,7 +25,10 @@ describe('the sealed backup codes', () => {
     const raw = sealBackupCodes('user-a', CODES, now);
     expect(openBackupCodes(raw, 'user-b', now)).toBeNull();
     expect(openBackupCodes(raw, 'user-a', now + 31 * 60_000)).toBeNull();
-    expect(openBackupCodes(`${raw.slice(0, -2)}AA`, 'user-a', now)).toBeNull();
+    // One character of the ciphertext changed: the first after the last separator carries 6 bits of
+    // data (unlike the final one, which can end in unused bits), so the bytes always change.
+    const at = raw.lastIndexOf('.') + 1;
+    expect(openBackupCodes(`${raw.slice(0, at)}${raw[at] === 'A' ? 'B' : 'A'}${raw.slice(at + 1)}`, 'user-a', now)).toBeNull();
     expect(openBackupCodes(undefined, 'user-a', now)).toBeNull();
   });
 });
