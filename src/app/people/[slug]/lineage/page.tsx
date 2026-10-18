@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { DescendantsOutline } from '@/components/lineage/descendants-outline';
 import { PersonCounts, PersonNames, PersonViews, PrivateRecordNotice } from '@/components/lineage/person-header';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
+import { LatinName } from '@/components/lineage/person-name';
 import { groupRelations, RelationList, type RelationRow } from '@/components/lineage/relation-list';
 import { RoutesOfDescent } from '@/components/lineage/routes-of-descent';
 import { EmptyState, SectionError } from '@/components/lineage/states';
@@ -99,12 +100,18 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
   const lineages = new Map<string, LineageRefDto>(data.lineages.map((l) => [l.id, l]));
   const total = data.activeTotal + data.historicalTotal;
   const groups = [
-    { key: 'own', title: 'Your pending requests', rows: studentRows(data.own), total: data.own.length },
+    { key: 'own', title: 'Visible only to you and them', rows: studentRows(data.own), total: data.own.length },
     { key: 'active', title: 'Active', rows: studentRows(data.active), total: data.activeTotal },
     { key: 'historical', title: 'Historical (training ended)', rows: studentRows(data.historical), total: data.historicalTotal },
   ].filter((g) => g.rows.length > 0);
 
-  if (total === 0 && data.own.length === 0) return <EmptyState>No students of {name} are on the record yet.</EmptyState>;
+  if (total === 0 && data.own.length === 0) {
+    return (
+      <EmptyState>
+        No students of <LatinName name={name} /> are on the record yet.
+      </EmptyState>
+    );
+  }
   return (
     <div className="grid gap-6">
       <p className="text-ui text-fg-muted">
@@ -115,7 +122,7 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
       {groups.length === 0 ? (
         <EmptyState>
           There are no students on this page.{' '}
-          <Link href={href(1)} prefetch={false} className="link">
+          <Link href={href(1)} prefetch={false} className="link inline-flex min-h-11 items-center">
             Go to the first page
           </Link>
         </EmptyState>
@@ -141,11 +148,11 @@ export default async function LineageListPage({ params, searchParams }: Props) {
   const page = pageFrom(single(query.page));
   const allRoutes = single(query.routes) === 'all';
   const base = `/people/${profile.slug}/lineage`;
-  /** This view at students page `n`, keeping "all routes" when it is on. */
-  const viewHref = (n: number) => {
+  /** This view at students page `n`, with or without "all routes" (kept as it is by default). */
+  const viewHref = (n: number, routesAll = allRoutes) => {
     const search = new URLSearchParams();
     if (n > 1) search.set('page', String(n));
-    if (allRoutes) search.set('routes', 'all');
+    if (routesAll) search.set('routes', 'all');
     return search.size > 0 ? `${base}?${search}` : base;
   };
   const here = viewHref(page);
@@ -226,7 +233,9 @@ export default async function LineageListPage({ params, searchParams }: Props) {
           ) : teachers.length > 0 ? (
             <RelationList rows={teachers} lineages={teacherLineages} detail="full" label={`Teachers of ${profile.displayName}`} />
           ) : (
-            <EmptyState>No teachers of {profile.displayName} are on the record yet.</EmptyState>
+            <EmptyState>
+              No teachers of <LatinName name={profile.displayName} /> are on the record yet.
+            </EmptyState>
           )}
         </Section>
 
@@ -235,7 +244,7 @@ export default async function LineageListPage({ params, searchParams }: Props) {
             <RoutesOfDescent
               paths={routesRead.value}
               focusName={profile.displayName}
-              moreHref={allRoutes ? null : `${base}?routes=all#routes-heading`}
+              moreHref={allRoutes ? null : `${viewHref(page, true)}#routes-heading`}
             />
           ) : (
             <SectionError what="routes of descent" retryHref={here} />
@@ -266,7 +275,9 @@ export default async function LineageListPage({ params, searchParams }: Props) {
                 ) : null}
               </div>
             ) : (
-              <EmptyState>No descendants of {profile.displayName} are on the record yet.</EmptyState>
+              <EmptyState>
+                No descendants of <LatinName name={profile.displayName} /> are on the record yet.
+              </EmptyState>
             )
           ) : (
             <SectionError what="descendants" retryHref={here} />

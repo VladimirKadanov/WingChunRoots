@@ -20,10 +20,9 @@ export function RelationsSkeleton({ what, rows = 3, noScriptHref }: { what: stri
         <noscript>
           <p className="text-ui">
             The {what} load with JavaScript, which is off in this browser.{' '}
-            <a href={noScriptHref} className="link">
-              The list view shows them without it
+            <a href={noScriptHref} className="link inline-flex min-h-11 items-center">
+              The list view shows them without it.
             </a>
-            .
           </p>
         </noscript>
       ) : null}

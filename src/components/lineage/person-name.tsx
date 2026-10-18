@@ -26,6 +26,11 @@ export function readings(altNames: readonly PublicNameDto[]): PublicNameDto[] {
 
 export const profileHref = (slug: string) => `/people/${slug}`;
 
+/** A Latin-script name inside a sentence: its own `lang` and translate="no", like every name. */
+export function LatinName({ name }: { name: string }) {
+  return <NameText name={{ value: name, lang: 'und-Latn' }} />;
+}
+
 /** The name with its original script, without a link. */
 export function PersonName({ person, className }: { person: Omit<PersonNameData, 'slug'>; className?: string }) {
   const original = originalName(person.altNames);

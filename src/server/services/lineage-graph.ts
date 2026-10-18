@@ -129,14 +129,18 @@ function extraCte(extras: ViewerExtras): SQL {
 
 /**
  * Ego network: `up` generations of teachers and `down` generations of students, at most
- * `fanout` students per person (own requests first, then by name). Breadth-first order.
+ * `fanout` students per person (own requests first, then by name). Breadth-first order: by
+ * generation, teachers before students of the same generation, then by id; at most
+ * NODE_CAP + 1 people. The students are read one generation per query and the walk stops once
+ * the cap is reached: a single recursive query explores every student to the full depth before
+ * it can cut, which grows with the width of the lineage (docs/perf/api.md).
  */
 export async function egoNodeIds(
   ex: Executor,
   input: { focusId: string; up: number; down: number; fanoutLimit: number },
   extras: ViewerExtras,
 ): Promise<string[]> {
-  const result = await rows<{ id: string }>(
+  const teachers = await rows<{ id: string; depth: number }>(
     ex,
     sql`
 WITH RECURSIVE ${extraCte(extras)},
@@ -151,36 +155,56 @@ up(id, depth) AS (
       SELECT x.teacher_id FROM extra x WHERE x.student_id = up.id
     ) e
    WHERE up.depth < ${input.up}::int
-),
-down(id, depth) AS (
-  SELECT ${input.focusId}::uuid, 0
-  UNION
-  SELECT c.student_id, down.depth + 1
-    FROM down
-    CROSS JOIN LATERAL (
-      SELECT s.student_id FROM (
-        -- The name per row through the primary key: a join let the planner hash all of
-        -- v_public_person (docs/perf/api.md).
-        SELECT pe.student_person_id AS student_id, 1 AS rank,
-               (SELECT vp.display_name FROM v_public_person vp WHERE vp.id = pe.student_person_id) AS name
-          FROM v_public_edge pe
-         WHERE pe.teacher_person_id = down.id
-        UNION ALL
-        SELECT x.student_id, 0, '' FROM extra x WHERE x.teacher_id = down.id
-      ) s
-      GROUP BY s.student_id
-      ORDER BY min(s.rank), min(s.name), s.student_id
-      LIMIT ${input.fanoutLimit}::int
-    ) c
-   WHERE down.depth < ${input.down}::int
 )
-SELECT n.id::text AS id
-  FROM (SELECT id, depth, 0 AS dir FROM up UNION ALL SELECT id, depth, 1 FROM down) n
- GROUP BY n.id
- ORDER BY min(n.depth), min(n.dir), n.id
- LIMIT ${NODE_CAP + 1}`,
+SELECT id::text AS id, min(depth)::int AS depth FROM up GROUP BY id ORDER BY min(depth), id LIMIT ${NODE_CAP + 1}`,
   );
-  return result.map((r) => r.id);
+  // Each person once, at their nearest generation; dir 0 = teacher side, 1 = student side.
+  const place = new Map<string, { depth: number; dir: number }>();
+  for (const t of teachers) place.set(t.id, { depth: t.depth, dir: 0 });
+  place.set(input.focusId, { depth: 0, dir: 0 });
+
+  const reached = [input.focusId];
+  let frontier = [input.focusId];
+  for (let generation = 1; generation <= input.down && frontier.length > 0; generation += 1) {
+    // Everyone who sorts before this generation's students: nearer people, and its teachers.
+    let before = 0;
+    for (const p of place.values()) if (p.depth < generation || (p.depth === generation && p.dir === 0)) before += 1;
+    if (before > NODE_CAP) break;
+    const next = await rows<{ id: string }>(
+      ex,
+      sql`
+WITH ${extraCte(extras)}
+SELECT c.student_id::text AS id
+  FROM unnest(${uuids(frontier)}) AS t(id)
+  CROSS JOIN LATERAL (
+    SELECT s.student_id FROM (
+      -- The name per row through the primary key: a join let the planner hash all of
+      -- v_public_person (docs/perf/api.md).
+      SELECT pe.student_person_id AS student_id, 1 AS rank,
+             (SELECT vp.display_name FROM v_public_person vp WHERE vp.id = pe.student_person_id) AS name
+        FROM v_public_edge pe
+       WHERE pe.teacher_person_id = t.id
+      UNION ALL
+      SELECT x.student_id, 0, '' FROM extra x WHERE x.teacher_id = t.id
+    ) s
+    GROUP BY s.student_id
+    ORDER BY min(s.rank), min(s.name), s.student_id
+    LIMIT ${input.fanoutLimit}::int
+  ) c
+ WHERE c.student_id <> ALL(${uuids(reached)})
+ GROUP BY c.student_id
+ ORDER BY c.student_id
+ LIMIT ${NODE_CAP + 1 - before}`,
+    );
+    frontier = next.map((r) => r.id);
+    reached.push(...frontier);
+    for (const id of frontier) if (!place.has(id)) place.set(id, { depth: generation, dir: 1 });
+  }
+
+  return [...place.entries()]
+    .sort(([a, pa], [b, pb]) => pa.depth - pb.depth || pa.dir - pb.dir || (a < b ? -1 : a > b ? 1 : 0))
+    .slice(0, NODE_CAP + 1)
+    .map(([id]) => id);
 }
 
 /** Every ancestor (each once), nearest first. */
@@ -471,7 +495,9 @@ export async function assembleGraph(
   const shownPublic = publicEdges.filter((e) => keep(e.id));
 
   const studentIds = [...new Set([...shownPublic.map((e) => e.student_id), ...ownEdges.map((e) => e.studentId)])];
-  const [counts, primary] = await Promise.all([publicCounts(ex, ids), primaryEdges(ex, studentIds, extras)]);
+  // In sequence: both run on the transaction's one connection, which takes one query at a time.
+  const counts = await publicCounts(ex, ids);
+  const primary = await primaryEdges(ex, studentIds, extras);
   const kindOf = (edgeId: string, studentId: string, lineageId: string): LineageEdgeDto['kind'] => {
     const p = primary.get(studentId);
     if (!p || p.id === edgeId) return 'primary';
@@ -599,7 +625,8 @@ export async function pathsGraph(
 
   // Sort keys: edges that are not the student's primary edge, length, then the names on the way.
   const everyone = [...new Set(routes.flatMap((r) => r.personIds))];
-  const [people, primary] = await Promise.all([publicPeople(ex, everyone), primaryEdges(ex, everyone, extras)]);
+  const people = await publicPeople(ex, everyone);
+  const primary = await primaryEdges(ex, everyone, extras);
   const nameOf = (id: string) => people.get(id)?.display_name ?? extras.nodes[id]?.displayName ?? '';
   const keyOf = (r: LineagePathDto) => ({
     secondary: r.edgeIds.filter((edgeId, i) => primary.get(r.personIds[i + 1]!)?.id !== edgeId).length,

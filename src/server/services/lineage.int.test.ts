@@ -264,17 +264,24 @@ describe('privacy for an anonymous visitor (DEFAULT D03)', () => {
   it('a pending request to demo-hub-a changes neither its counts nor its hiddenCounts', async () => {
     const before = await lineageEgo(null, { focusId: ids['demo-hub-a']!, up: 1, down: 1, fanoutLimit: 7 });
     const profileBefore = await personProfile(null, { slug: 'demo-hub-a' });
-    // demo-pending's request (pending_teacher, involved_only) exists in the seed; add another one.
-    await getDb().execute(sql`
+    // demo-pending's request (pending_teacher, involved_only) exists in the seed; add another one,
+    // removed again at the end so the later tests see the seeded data.
+    const added = await getDb().execute<{ id: string }>(sql`
       INSERT INTO teaching_relationship (id, teacher_person_id, student_person_id, lineage_id, status, visibility)
       SELECT gen_random_uuid(), ${ids['demo-hub-a']}::uuid, ${ids['demo-cjk-name']}::uuid, lineage_id, 'pending_teacher', 'involved_only'
-        FROM teaching_relationship WHERE student_person_id = ${ids['demo-hub-a']}::uuid LIMIT 1`);
-    const after = await lineageEgo(null, { focusId: ids['demo-hub-a']!, up: 1, down: 1, fanoutLimit: 7 });
-    const profileAfter = await personProfile(null, { slug: 'demo-hub-a' });
-    expect(after.hiddenCounts).toEqual(before.hiddenCounts);
-    expect(after.nodes.find((n) => n.id === ids['demo-hub-a'])).toEqual(before.nodes.find((n) => n.id === ids['demo-hub-a']));
-    expect(profileAfter.counts).toEqual(profileBefore.counts);
-    expect(after.dataVersion).toBe(before.dataVersion);
+        FROM teaching_relationship WHERE student_person_id = ${ids['demo-hub-a']}::uuid LIMIT 1
+      RETURNING id::text AS id`);
+    expect(added.rows).toHaveLength(1);
+    try {
+      const after = await lineageEgo(null, { focusId: ids['demo-hub-a']!, up: 1, down: 1, fanoutLimit: 7 });
+      const profileAfter = await personProfile(null, { slug: 'demo-hub-a' });
+      expect(after.hiddenCounts).toEqual(before.hiddenCounts);
+      expect(after.nodes.find((n) => n.id === ids['demo-hub-a'])).toEqual(before.nodes.find((n) => n.id === ids['demo-hub-a']));
+      expect(profileAfter.counts).toEqual(profileBefore.counts);
+      expect(after.dataVersion).toBe(before.dataVersion);
+    } finally {
+      await getDb().execute(sql`DELETE FROM teaching_relationship WHERE id = ${added.rows[0]!.id}::uuid`);
+    }
   });
 });
 

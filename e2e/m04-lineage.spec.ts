@@ -162,6 +162,17 @@ test('@M04 anonymous viewer never receives pending or under-review edges (HTML a
   expect(hidden.status()).toBe(404);
   expect(missing.status()).toBe(404);
   expect(await hidden.text()).toBe(await missing.text());
+  // The pages too: the same status and the same HTML once the scripts (which carry the requested
+  // address for the client router) are set aside.
+  const pageOf = async (path: string) => {
+    const response = await request.get(`${BASE_URL}${path}`);
+    return { status: response.status(), html: (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '') };
+  };
+  for (const suffix of ['', '/lineage']) {
+    const [hiddenPage, missingPage] = [await pageOf(`/people/demo-claim-only-teacher${suffix}`), await pageOf(`/people/demo-no-such-person${suffix}`)];
+    expect(hiddenPage.html).toContain('No public profile at this address');
+    expect(hiddenPage, `/people/demo-claim-only-teacher${suffix}`).toEqual(missingPage);
+  }
 
   // HTML: the hub's profile and list view name no hidden person and no unconfirmed state.
   for (const path of ['/people/demo-hub-a', '/people/demo-hub-a/lineage']) {
@@ -231,8 +242,26 @@ test('@M04 a pending request to demo-hub-a does not change its hiddenCounts or d
   expect(pending.rows[0]!.n).toBe(1);
   const publicStudents = await db.execute<{ n: number }>(sql`SELECT count(DISTINCT student_person_id)::int AS n FROM v_public_edge WHERE teacher_person_id = ${hub.id}`);
 
+  // Descendants along public relationships, and along every active one (the pending request too).
+  const descendants = await db.execute<{ visible: number; total: number }>(sql`
+    WITH RECURSIVE pub(id) AS (
+      SELECT ${hub.id}::uuid
+      UNION
+      SELECT pe.student_person_id FROM v_public_edge pe JOIN pub ON pe.teacher_person_id = pub.id
+    ), every(id) AS (
+      SELECT ${hub.id}::uuid
+      UNION
+      SELECT r.student_person_id FROM teaching_relationship r JOIN every ON r.teacher_person_id = every.id
+       WHERE r.status IN ('pending_teacher', 'awaiting_claim', 'under_review', 'verified', 'in_arbitration')
+    )
+    SELECT (SELECT count(*) - 1 FROM pub)::int AS visible, (SELECT count(*) - 1 FROM every)::int AS total`);
+  const { visible, total } = descendants.rows[0]!;
+  expect(total, 'the pending request would add a descendant if it were counted').toBeGreaterThan(visible);
+
   // ... and counts nowhere for an anonymous viewer: counts come from public relationships only.
   expect(hub.counts.students).toBe(publicStudents.rows[0]!.n);
+  expect(hub.counts.descendants).toBe(visible);
+  expect(hub.counts.descendantsCapped).toBe(false);
   const graph = await egoOf(request, { focusId: hub.id, up: 0, down: 1, fanoutLimit: 10 });
   expect(graph.hiddenCounts[hub.id]?.students).toBe(publicStudents.rows[0]!.n - 10);
 

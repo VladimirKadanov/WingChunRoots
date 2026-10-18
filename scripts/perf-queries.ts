@@ -473,6 +473,7 @@ async function main() {
     const cases: Case[] = [
       { procedure: 'lineage.ego', input: 'хъбът с най-много ученици; up 16, down 2, fanout 50', run: async (ex) => shape(await egoGraph(ex, { focusId: hub!, up: 16, down: 2, fanoutLimit: 50 }, NO_EXTRAS)) },
       { procedure: 'lineage.ego', input: 'хъбът; up 16, down 4, fanout 100 (горните граници)', run: async (ex) => shape(await egoGraph(ex, { focusId: hub!, up: 16, down: 4, fanoutLimit: 100 }, NO_EXTRAS)) },
+      { procedure: 'lineage.ego', input: 'коренът на линия 1 (най-широкото поддърво); up 16, down 4, fanout 100', run: async (ex) => shape(await egoGraph(ex, { focusId: root!, up: 16, down: 4, fanoutLimit: 100 }, NO_EXTRAS)) },
       { procedure: 'lineage.ego', input: 'личност от последното поколение с 3+ учители; up 16, down 2, fanout 50', run: async (ex) => shape(await egoGraph(ex, { focusId: leaf, up: 16, down: 2, fanoutLimit: 50 }, NO_EXTRAS)) },
       { procedure: 'lineage.ancestors', input: 'същата личност (всички предци)', run: async (ex) => shape(await ancestorsGraph(ex, leaf, NO_EXTRAS)) },
       { procedure: 'lineage.subtree', input: 'коренът на линия 1; depth 3', run: async (ex) => shape(await subtreeGraph(ex, { rootId: root!, lineageId: null, depth: 3 }, NO_EXTRAS)) },

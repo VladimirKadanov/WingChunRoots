@@ -26,6 +26,24 @@ export function RelationBadges({ edge }: { edge: RelationRow['edges'][number] })
   );
 }
 
+/**
+ * The note on a relationship only its two participants can see (DEFAULT D03): a request until
+ * it is confirmed, or a confirmed link that is not on the public record (for example because
+ * the other person's record is private).
+ */
+function privateNote(edges: RelationRow['edges']) {
+  const own = edges.filter((e) => e.visibility === 'involved_only');
+  if (own.length === 0) return null;
+  const request = own.some((e) => ['unconfirmed', 'under_review'].includes(relationStatus(e.status).kind));
+  return (
+    <p className="text-sm text-fg-muted">
+      {request
+        ? 'Visible only to the two people in this request until it is confirmed.'
+        : 'Visible only to the two people in this link: it is not on the public record.'}
+    </p>
+  );
+}
+
 function lineageOf(lineages: ReadonlyMap<string, LineageRefDto>, id: string): string {
   return lineages.get(id)?.name ?? 'Lineage not named';
 }
@@ -77,9 +95,7 @@ export function RelationList({
               </div>
             ),
           )}
-          {row.edges.some((e) => e.visibility === 'involved_only') ? (
-            <p className="text-sm text-fg-muted">Visible only to the two people in this request until it is confirmed.</p>
-          ) : null}
+          {privateNote(row.edges)}
         </li>
       ))}
     </ul>

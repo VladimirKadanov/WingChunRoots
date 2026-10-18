@@ -7,7 +7,7 @@
 import Link from 'next/link';
 
 import type { LineagePathsDto } from '@/server/dto/public';
-import { PersonLink, PersonName } from './person-name';
+import { LatinName, PersonLink, PersonName } from './person-name';
 import { RelationBadges } from './relation-list';
 import { EmptyState } from './states';
 
@@ -22,7 +22,11 @@ export function RoutesOfDescent({
   moreHref: string | null;
 }) {
   if (paths.paths.length === 0) {
-    return <EmptyState>No teachers are on the record for {focusName}, so there is no route to show yet.</EmptyState>;
+    return (
+      <EmptyState>
+        No teachers are on the record for <LatinName name={focusName} />, so there is no route to show yet.
+      </EmptyState>
+    );
   }
   const people = new Map(paths.nodes.map((n) => [n.id, n]));
   const edges = new Map(paths.edges.map((e) => [e.id, e]));
@@ -33,7 +37,7 @@ export function RoutesOfDescent({
   return (
     <div className="grid gap-5">
       <p className="text-ui text-fg-muted">
-        {paths.totalPaths === 1 ? 'One route' : `${total} routes`} from the earliest recorded teachers to {focusName}.
+        {paths.totalPaths === 1 ? 'One route' : `${total} routes`} from the earliest recorded teachers to <LatinName name={focusName} />.
       </p>
       <ol aria-label={`Routes of descent to ${focusName}`} className="grid gap-6">
         {paths.paths.map((route, index) => {
@@ -70,7 +74,7 @@ export function RoutesOfDescent({
                       ) : edge ? (
                         <span className="grid gap-1 text-sm text-fg-muted">
                           <span>
-                            Student of {people.get(route.personIds[step - 1]!)!.displayName}
+                            Student of <LatinName name={people.get(route.personIds[step - 1]!)!.displayName} />
                             {lineage ? ` · ${lineage.name}` : ''}
                           </span>
                           <RelationBadges edge={edge} />
@@ -89,7 +93,7 @@ export function RoutesOfDescent({
           {paths.totalPathsCapped ? 'More than ' : ''}
           {more.toLocaleString('en')} more {more === 1 ? 'route' : 'routes'}.{' '}
           {moreHref ? (
-            <Link href={moreHref} prefetch={false} className="link">
+            <Link href={moreHref} prefetch={false} className="link inline-flex min-h-11 items-center">
               Show up to 200 routes
             </Link>
           ) : null}

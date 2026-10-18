@@ -91,7 +91,7 @@ async function Relations({ profile }: { profile: PersonProfileDto }) {
         {hidden.teachers > 0 ? (
           <p className="text-sm text-fg-muted">
             {hidden.teachers} more {hidden.teachers === 1 ? 'teacher is' : 'teachers are'} on the record.{' '}
-            <Link href={listHref} prefetch={false} className="link">
+            <Link href={listHref} prefetch={false} className="link inline-flex min-h-11 items-center">
               See them in the list view
             </Link>
           </p>
