@@ -148,7 +148,9 @@ export interface AccountRetentionResult {
   kept: number;
 }
 
-const FOREIGN_KEY_VIOLATION = '23503';
+// A RESTRICT foreign key refuses the delete with 23503 (foreign_key_violation) up to PostgreSQL 17
+// and with 23001 (restrict_violation) from PostgreSQL 18; the app runs on both (plan §3.2).
+const REFERENCED_ROW_CODES: ReadonlySet<unknown> = new Set(['23503', '23001']);
 
 /**
  * Deletes accounts whose address was not confirmed within UNCONFIRMED_ACCOUNT_RETENTION_DAYS, with
@@ -182,7 +184,7 @@ export async function purgeUnconfirmedAccounts(
         accounts += deleted;
       } catch (error) {
         const code = (error as { code?: unknown; cause?: { code?: unknown } }).code ?? (error as { cause?: { code?: unknown } }).cause?.code;
-        if (code !== FOREIGN_KEY_VIOLATION) throw error;
+        if (!REFERENCED_ROW_CODES.has(code)) throw error;
         kept += 1;
       }
     }
