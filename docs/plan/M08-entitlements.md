@@ -75,3 +75,4 @@ Stripe и всякакви плащания. Налагане на медийн�
 ## Дневник на напредъка (Progress log)
 
 - 18.10.2026: матрицата на петте плана, `effectivePlan()`, `requireEntitlement()` и `withQuota()` с `pg_advisory_xact_lock`; миграция (`account_type`, `pilot_access_request`); тестови данни; `plans.test.ts`, `requireEntitlement.test.ts` и `quota.int.test.ts` минават.
+- 18.10.2026: услуги и oRPC процедури (`account.setType`, `plans.*`, `grants.*`, `notifications.*`, `dashboard.overview`) с тънки Server Actions; `downgrade.int.test.ts` и `plans.int.test.ts` минават; lint, typecheck, unit и integration са зелени.
