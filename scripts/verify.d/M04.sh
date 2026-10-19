@@ -59,7 +59,7 @@ grep_code() {
 PUBLIC_READS=(src/server/services/lineage-graph.ts src/server/services/lineage-public.ts src/server/services/lineage.ts)
 mapfile -t PEOPLE_UI < <(find "src/app/people" src/components/lineage -type f \( -name '*.ts' -o -name '*.tsx' \) | sort)
 mapfile -t LINEAGE_SERVER < <(ls src/server/services/lineage*.ts src/server/dto/public.ts | grep -v '\.test\.ts$')
-SCREENS=(person person-lineage person-error person-own-pending)
+SCREENS=(person person-lineage person-error person-own-pending person-profile-error person-not-on-record person-hub)
 SIZES=(390x844 1440x900)
 THEMES=(dark light)
 
@@ -70,10 +70,13 @@ required=(
   src/server/services/lineage-viewer.ts src/server/services/lineage.int.test.ts
   src/server/dto/public.ts src/server/cache.ts src/server/faults.ts src/server/faults.test.ts
   "src/app/people/[slug]/page.tsx" "src/app/people/[slug]/lineage/page.tsx" "src/app/people/[slug]/data.ts"
-  src/components/lineage/status-legend.tsx src/components/lineage/states.tsx src/components/lineage/lineage-boundary.tsx
+  src/components/lineage/key.tsx src/components/lineage/states.tsx src/components/lineage/lineage-boundary.tsx
   src/components/lineage/descendants-outline.tsx src/components/lineage/person-not-found.tsx
+  src/components/lineage/person-layout.tsx src/components/lineage/status.test.ts
+  src/proxy.ts src/proxy.test.ts src/lib/not-on-record.ts "src/app/people/[slug]/error.tsx" src/app/global-error.tsx
   e2e/m04-lineage.spec.ts scripts/perf-queries.ts
   docs/api/openapi.json docs/api/lineage.md docs/perf/api.md scripts/verify.d/M04.sh
+  docs/adr/0008-person-pages-404.md docs/plan/questions/M04.md
 )
 for f in "${required[@]}"; do
   check "file exists: $f" test -s "$f"
@@ -152,14 +155,17 @@ check "names render with lang and translate=\"no\"" grep -q 'lang={name.lang} tr
 check "the profile has a catchError boundary with Retry; the list view a server-rendered Retry link" bash -c '
   grep -q "catchError" src/components/lineage/lineage-boundary.tsx && grep -q "Retry" src/components/lineage/lineage-boundary.tsx &&
   grep -q "LineageBoundary" "src/app/people/[slug]/page.tsx" && grep -q "SectionError" "src/app/people/[slug]/lineage/page.tsx"'
-check "the status legend is shared and names each state in words (not by colour alone)" bash -c '
-  grep -q "StatusLegend" "src/app/people/[slug]/page.tsx" && grep -q "StatusLegend" "src/app/people/[slug]/lineage/page.tsx" &&
-  grep -q "words.label" src/components/lineage/status-legend.tsx'
+check "the key is the shared ink Legend and names each state in words (not by colour alone)" bash -c '
+  grep -q "LineageKey" "src/app/people/[slug]/page.tsx" && grep -q "LineageKey" "src/app/people/[slug]/lineage/page.tsx" &&
+  grep -q "<Legend " src/components/lineage/key.tsx && grep -q "words.label" src/components/ink/legend.tsx &&
+  [ ! -e src/components/lineage/status-legend.tsx ]'
 check "the not-on-record page is not indexed (noindex, nofollow)" grep -qE "robots: \{ index: false, follow: false \}" src/components/lineage/person-not-found.tsx
 for screen in person person-lineage; do
   check "/$screen is a key M04 route (visual regression, axe, screenshots)" grep -qE "name: '$screen'.*milestone: 'M04', key: true" e2e/routes.ts
 done
-check "the not-on-record page is an M04 route" grep -qE "path: '/people/demo-claim-only-teacher'.*milestone: 'M04'" e2e/routes.ts
+check "the not-on-record page is an M04 route with status 404 (src/proxy.ts, docs/adr/0008-person-pages-404.md)" bash -c '
+  grep -qE "path: '\''/people/demo-claim-only-teacher'\''.*status: 404, milestone: '\''M04'\''" e2e/routes.ts &&
+  grep -q "personPageVisible" src/proxy.ts && grep -q "NOT_ON_RECORD_HEADER" src/app/not-found.tsx && test -s docs/adr/0008-person-pages-404.md'
 for screen in "${SCREENS[@]}"; do
   for size in "${SIZES[@]}"; do
     for theme in "${THEMES[@]}"; do
