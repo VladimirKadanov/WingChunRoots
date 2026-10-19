@@ -139,7 +139,7 @@ export const router = {
       .route({ method: 'GET', path: '/people/{slug}', summary: 'Public profile of a person (404 when missing or not public)' })
       .input(personInput)
       .output(personProfileSchema)
-      .handler(({ context, input }) => personProfile(context.principal, input)),
+      .handler(({ context, input }) => personProfile(context.principal, input, context.meta)),
     students: base
       .route({ method: 'GET', path: '/people/{slug}/students', summary: "A page of a person's students, active then historical" })
       .input(studentsInput)

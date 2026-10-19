@@ -169,9 +169,18 @@ for screen in "${SCREENS[@]}"; do
 done
 
 # 7. The fault switch (In scope 6, Constraints) --------------------------------------------------------
-check "the switch is honoured only with a loopback APP_URL and checked at start-up" bash -c '
+check "the switch is compiled in only with WCR_E2E_BUILD=1, honoured only with a loopback APP_URL and checked at start-up" bash -c '
   grep -q "hasLoopbackAppUrl" src/server/faults.ts && grep -q "checkTestFaults(env)" src/server/auth/startup.ts &&
-  grep -qE "^WCR_TEST_FAULTS=$" .env.example && grep -q "WCR_TEST_FAULTS: '\''lineage-once'\''" playwright.config.ts'
+  grep -q "WCR_E2E_BUILD: process.env.WCR_E2E_BUILD" next.config.ts &&
+  node -e "process.exit(/WCR_E2E_BUILD=1 next build/.test(require(\"./package.json\").scripts[\"build:e2e\"] || \"\") ? 0 : 1)" &&
+  grep -q "step build pnpm build:e2e" scripts/verify.sh &&
+  grep -qE "^WCR_TEST_FAULTS=$" .env.example && grep -q "WCR_TEST_FAULTS: '\''lineage-once,person-once'\''" playwright.config.ts'
+# What only the switch puts in a server bundle: its cookie name, its store and its error message.
+# Source maps (*.map) are left out: they carry the original text of every module for stack traces,
+# not code that runs.
+FAULT_MARKERS='wcr-test-fault|__wcrUsedFaultTokens|Test fault: '
+check "the E2E build (.next, scripts/verify.sh step build) has the switch, so the check below can see it" \
+  bash -c "[ -f .next/BUILD_ID ] && grep -rqE --exclude='*.map' '$FAULT_MARKERS' .next/server"
 # The built server is started with the switch and a public https APP_URL (values in the environment
 # win over .env; https, so that the APP_URL check itself passes) and must exit with a non-zero status
 # within 30 s, naming the switch. 124 is `timeout` stopping a server that kept running.
@@ -186,6 +195,43 @@ fault_startup_probe() {
     grep -q "WingChunRoots cannot start: WCR_TEST_FAULTS is a test switch and is refused unless APP_URL is a loopback host" "$log"
 }
 check "a server with WCR_TEST_FAULTS and a public APP_URL exits at start with a non-zero status (log: .verify/M04-startup.log)" fault_startup_probe
+# A deployable build (`pnpm build`, without WCR_E2E_BUILD) in a directory of its own
+# (next.config.ts distDir), so the E2E build in .next stays: none of the markers may be in its
+# server bundle, and started with the switch on a loopback APP_URL it must refuse to start.
+# next build rewrites next-env.d.ts and the include list of tsconfig.json for its distDir, so both
+# files are put back afterwards.
+deployable_build_probe() {
+  local dir=.verify/next-deploy log=.verify/M04-deployable-build.log port=$((${E2E_PORT:-3100} + 42)) status saved
+  mkdir -p .verify
+  rm -rf "$dir"
+  saved="$(mktemp -d)"
+  cp tsconfig.json "$saved/tsconfig.json"
+  [ -f next-env.d.ts ] && cp next-env.d.ts "$saved/next-env.d.ts"
+  WCR_DIST_DIR="$dir" WCR_E2E_BUILD= pnpm --silent build > "$log" 2>&1
+  status=$?
+  cp "$saved/tsconfig.json" tsconfig.json
+  [ -f "$saved/next-env.d.ts" ] && cp "$saved/next-env.d.ts" next-env.d.ts
+  rm -rf "$saved"
+  if [ "$status" -ne 0 ] || [ ! -f "$dir/BUILD_ID" ]; then
+    echo "     the deployable build failed (log: $log)"
+    return 1
+  fi
+  if grep -rlE --exclude='*.map' "$FAULT_MARKERS" "$dir/server" >> "$log" 2>&1; then
+    echo "     the fault switch is in the deployable build: $(grep -rlE --exclude='*.map' "$FAULT_MARKERS" "$dir/server" | head -n 3 | tr '\n' ' ')"
+    return 1
+  fi
+  WCR_DIST_DIR="$dir" APP_URL="http://127.0.0.1:$port" WCR_TEST_FAULTS=lineage-once \
+    timeout 30 node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" >> "$log" 2>&1
+  status=$?
+  rm -rf "$dir"
+  [ "$status" -ne 0 ] && [ "$status" -ne 124 ] &&
+    grep -q "WingChunRoots cannot start: WCR_TEST_FAULTS is set, but this build has no test switch" "$log"
+}
+if deployable_build_probe; then
+  ok "a deployable build has no fault switch in its server bundle and refuses to start with WCR_TEST_FAULTS (log: .verify/M04-deployable-build.log)"
+else
+  bad "a deployable build has no fault switch in its server bundle and refuses to start with WCR_TEST_FAULTS (log: .verify/M04-deployable-build.log)"
+fi
 
 # 8. E2E and integration tests (Done when, items 2 and 3) ---------------------------------------------
 titles=(

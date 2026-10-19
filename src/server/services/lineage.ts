@@ -10,7 +10,7 @@
 //   - a person the views leave out is "not found" (404, the same answer as a missing slug or id)
 //     unless the viewer is that person or at the other end of one of their relationships.
 //
-// The test fault switch (src/server/faults.ts) can make one lineage read fail.
+// The test fault switch (src/server/faults.ts) can make one lineage read, or one profile read, fail.
 
 import * as z from 'zod';
 
@@ -119,7 +119,7 @@ async function resolveSlug(viewer: Viewer, value: string): Promise<string | null
 // --- lineage.* ---------------------------------------------------------------------------------
 
 export async function lineageEgo(principal: Principal | null, input: EgoInput, meta?: RequestMeta): Promise<LineageGraphDto> {
-  failOnce(meta?.testFault);
+  failOnce(meta?.testFault, 'lineage-once');
   const args = { focusId: input.focusId, up: input.up, down: input.down, fanoutLimit: input.fanoutLimit };
   const viewer = await loadViewer(principal);
   const graph = isPersonalised(viewer)
@@ -132,7 +132,7 @@ export async function lineageEgo(principal: Principal | null, input: EgoInput, m
 }
 
 export async function lineageAncestors(principal: Principal | null, input: AncestorsInput, meta?: RequestMeta): Promise<LineageGraphDto> {
-  failOnce(meta?.testFault);
+  failOnce(meta?.testFault, 'lineage-once');
   const viewer = await loadViewer(principal);
   const graph = isPersonalised(viewer)
     ? await readTransaction(getPublicDb(), async (tx) =>
@@ -144,7 +144,7 @@ export async function lineageAncestors(principal: Principal | null, input: Ances
 }
 
 export async function lineageSubtree(principal: Principal | null, input: SubtreeInput, meta?: RequestMeta): Promise<LineageGraphDto> {
-  failOnce(meta?.testFault);
+  failOnce(meta?.testFault, 'lineage-once');
   const args = { rootId: input.rootId, lineageId: input.lineageId ?? null, depth: input.depth };
   const viewer = await loadViewer(principal);
   const graph = isPersonalised(viewer)
@@ -157,7 +157,7 @@ export async function lineageSubtree(principal: Principal | null, input: Subtree
 }
 
 export async function lineagePaths(principal: Principal | null, input: PathsInput, meta?: RequestMeta): Promise<LineagePathsDto> {
-  failOnce(meta?.testFault);
+  failOnce(meta?.testFault, 'lineage-once');
   const args = { focusId: input.focusId, limit: input.limit };
   const viewer = await loadViewer(principal);
   const graph = isPersonalised(viewer)
@@ -172,7 +172,8 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
 // --- people.* ----------------------------------------------------------------------------------
 
 /** The profile header of /people/[slug]: names, life status, place (city level), counts, lineages. */
-export async function personProfile(principal: Principal | null, input: PersonInput): Promise<PersonProfileDto> {
+export async function personProfile(principal: Principal | null, input: PersonInput, meta?: RequestMeta): Promise<PersonProfileDto> {
+  failOnce(meta?.testFault, 'person-once');
   const viewer = await loadViewer(principal);
   const id = await resolveSlug(viewer, input.slug);
   if (!id) throw notFound();
@@ -213,7 +214,7 @@ export async function personProfile(principal: Principal | null, input: PersonIn
 
 /** A page of a person's students for the list view (plan §4.10). */
 export async function personStudents(principal: Principal | null, input: StudentsInput, meta?: RequestMeta): Promise<StudentsPageDto> {
-  failOnce(meta?.testFault);
+  failOnce(meta?.testFault, 'lineage-once');
   const viewer = await loadViewer(principal);
   const id = await resolveSlug(viewer, input.slug);
   if (!id) throw notFound();
