@@ -8,7 +8,7 @@
 
 ## Прочети първо (Read first)
 
-`docs/WingChunRoots_Technical_Plan.bg.md`: §5.6, §5.8, §6.2, §6.3, §6.4, §6.5, §6.6, §6.7, §6.8; `docs/design/direction.md`.
+`docs/WingChunRoots_Technical_Plan.bg.md`: §5.6, §5.8, §6.2, §6.3, §6.4, §6.5, §6.6, §6.7, §6.8; `docs/design/direction.md`; `docs/api/lineage.md` §6.1 (кои тагове на кеша изчиства всеки запис; добавено от M04).
 
 ## Зависимости (Dependencies)
 
