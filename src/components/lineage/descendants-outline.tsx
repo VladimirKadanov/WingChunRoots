@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { Fragment, type ReactNode } from 'react';
 
 import { ChevronDownIcon } from '@/components/icons';
+import { cx } from '@/lib/cx';
 import type { LineageEdgeDto, LineageGraphDto, LineageNodeDto } from '@/server/dto/public';
 import { LatinName, PersonLink, profileHref } from './person-name';
 import { RelationBadges } from './relation-list';
@@ -125,7 +126,14 @@ export function DescendantsOutline({
       }),
     );
     return (
-      <ul aria-label={label} className={level === 1 ? 'grid' : 'ml-4 grid border-l border-border-strong pl-2 pointer-coarse:ml-[1.375rem]'}>
+      <ul
+        aria-label={label}
+        className={cx(
+          'grid',
+          // Room between people, so a note that wraps under a name reads as that name's.
+          level === 1 ? 'gap-y-2' : 'ml-4 gap-y-0.5 border-l border-border-strong pl-2 pointer-coarse:ml-[1.375rem] pointer-coarse:gap-y-2',
+        )}
+      >
         {kids.map((kid) => item(kid, parentId, level, notes.get(kid.id)))}
       </ul>
     );
@@ -148,13 +156,14 @@ export function DescendantsOutline({
 
     return (
       <li key={`${parentId}-${person.id}`} id={expandedHere ? `outline-${person.slug}` : undefined} data-person={person.slug} className="relative pl-8 pointer-coarse:pl-11">
-        <div className="flex flex-wrap items-center gap-x-2">
+        <div className="flex flex-wrap items-baseline gap-x-2">
           <PersonLink person={person} compact className={level === 1 ? 'font-display text-lg' : 'font-display text-base'} />
           {year ? <span className="text-sm text-fg-muted tabular">{year}</span> : null}
           {note ? <span className="text-sm text-fg-muted">({note})</span> : null}
           {marked ? <RelationBadges edge={marked} role="student" /> : null}
           {others.length > 0 ? (
-            <span className="text-sm text-fg-muted" data-also>
+            // Pulled up to its name when it wraps under it (the name's touch target is 44 px tall).
+            <span className="text-sm text-fg-muted pointer-coarse:-mt-2.5" data-also>
               (also a student of{' '}
               {others.map((o, i) => (
                 <Fragment key={o.id}>

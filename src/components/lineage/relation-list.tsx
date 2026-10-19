@@ -31,12 +31,16 @@ export interface RelationRow {
   note?: string;
 }
 
-/** A visual middle dot that a screen reader hears as a pause. */
-export function Sep() {
+/**
+ * A visual middle dot that a screen reader hears as a pause. In a flex row (`inFlex`) it takes
+ * margins, because a flex row drops the spaces at the ends of its items; in running text it is
+ * spaced with spaces, so a line can break after it.
+ */
+export function Sep({ inFlex = false }: { inFlex?: boolean }) {
   return (
     <>
-      <span aria-hidden="true" className="text-fg-subtle">
-        {' · '}
+      <span aria-hidden="true" className={inFlex ? 'mx-1.5 text-fg-subtle' : 'text-fg-subtle'}>
+        {inFlex ? '·' : ' · '}
       </span>
       <span className="sr-only">, </span>
     </>
@@ -122,9 +126,8 @@ function EdgeLine({
 }) {
   const parts = [
     edge.lineageId !== groupLineageId ? <LineageName key="lineage" name={lineageOf(lineages, edge.lineageId)} /> : null,
-    <span key="period" className="tabular">
-      {periodText(edge.periods)}
-    </span>,
+    // Proportional figures: a tabular comma between two periods reads as a gap.
+    <span key="period">{periodText(edge.periods)}</span>,
     studentCount ? (
       <span key="students">
         has {studentCount.toLocaleString('en')} {studentCount === 1 ? 'student' : 'students'}
@@ -135,11 +138,11 @@ function EdgeLine({
     <p className="flex flex-wrap items-center gap-x-0 gap-y-1 text-sm text-fg-muted">
       {parts.map((part, i) => (
         <Fragment key={i}>
-          {i > 0 ? <Sep /> : null}
+          {i > 0 ? <Sep inFlex /> : null}
           {part}
         </Fragment>
       ))}
-      <Sep />
+      <Sep inFlex />
       <RelationBadges edge={edge} role={role} />
     </p>
   );
