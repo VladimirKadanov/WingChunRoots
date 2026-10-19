@@ -69,17 +69,43 @@ describe('procedure failure log (M08 review round 1, security-6)', () => {
     }
   });
 
-  it('the interceptor writes the line and rethrows the same error; the input never reaches the log', async () => {
+  it('the interceptor writes the line and throws a bare 500 in place of the error (final check, security-1); the input never reaches the log', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const context = { principal: null, meta: { requestId: 'req-3', ipHmac: null } };
-      await expect(logProcedureFailure({ next: () => Promise.reject(deadlock), path: ['grants', 'create'], context })).rejects.toBe(deadlock);
+      const thrown = await logProcedureFailure({ next: () => Promise.reject(deadlock), path: ['grants', 'create'], context }).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      // Not the original error: a page that awaits serverClient() without a catch hands Next.js
+      // this one, so Next.js's own log line has no SQL, no parameters and no address in it.
+      expect(thrown).not.toBe(deadlock);
+      expect(thrown).toBeInstanceOf(ORPCError);
+      const replaced = thrown as ORPCError<string, unknown>;
+      expect(replaced.status).toBe(500);
+      expect(replaced.code).toBe('INTERNAL_SERVER_ERROR');
+      expect(replaced.message).toBe('Internal server error');
+      expect(replaced.cause).toBeUndefined();
+      expect(replaced.data).toBeUndefined();
+      expect(`${replaced.message} ${String(replaced.cause)} ${replaced.stack ?? ''}`).not.toContain('@');
       expect(spy).toHaveBeenCalledTimes(1);
       const logged = String(spy.mock.calls[0]?.[0]);
       expect(logged).toBe('rpc grants.create failed: DatabaseError (postgres 40P01) request req-3');
       expect(logged).not.toContain('@');
       await expect(logProcedureFailure({ next: () => Promise.resolve(7), path: ['x'], context })).resolves.toBe(7);
       expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('lets an expected answer through unchanged and unlogged, with its message and fields', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const context = { principal: null, meta: { requestId: 'req-4', ipHmac: null } };
+      const refusal = new ORPCError('BAD_REQUEST', { status: 400, message: 'Check the highlighted fields.', data: { fields: { email: 'Enter it.' } } });
+      await expect(logProcedureFailure({ next: () => Promise.reject(refusal), path: ['grants', 'create'], context })).rejects.toBe(refusal);
+      expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }

@@ -5,9 +5,37 @@ import { ORPCError } from '@orpc/server';
 
 import type { FormState } from '../../lib/form-state';
 
-/** The form state for a refused procedure call, or null when `error` is not a procedure error. */
+/**
+ * A failure that is not the procedure's answer (M08 final check, security-1): anything but an
+ * ORPCError below 500. serverClient() has logged it in one safe line and throws a bare 500 in its
+ * place (./failure-log.ts).
+ */
+export function isUnexpectedFailure(error: unknown): boolean {
+  return !(error instanceof ORPCError) || error.status >= 500;
+}
+
+/**
+ * A page's read through serverClient(), or null when it failed unexpectedly (requirements-2): the
+ * page then shows its error state in the app shell (src/components/account/load-error.tsx), on the
+ * server, so it works without JavaScript and Next.js never sees the error. A refusal is rethrown
+ * for the segment's error.tsx.
+ */
+export async function pageRead<T>(read: Promise<T>): Promise<T | null> {
+  try {
+    return await read;
+  } catch (error) {
+    if (isUnexpectedFailure(error)) return null;
+    throw error;
+  }
+}
+
+/**
+ * The form state for a refused procedure call (an ORPCError below 500), or null for anything else.
+ * An unexpected failure reaches a caller as a bare 500 (./failure-log.ts) and is not a refusal: its
+ * "Internal server error" is no message for a form (M08 final check, security-1).
+ */
 export function formStateFromRpcError(error: unknown, values?: Record<string, string>): FormState | null {
-  if (!(error instanceof ORPCError)) return null;
+  if (!(error instanceof ORPCError) || isUnexpectedFailure(error)) return null;
   const data = error.data as { fields?: Record<string, string> } | undefined;
   return {
     status: 'error',
@@ -34,6 +62,5 @@ export const UNEXPECTED_FAILURE_MESSAGE = 'Something went wrong on our side; not
  * changed" holds because each M08 mutation writes in one transaction, its answer included.
  */
 export function formStateFromFailure(error: unknown, values?: Record<string, string>): FormState {
-  if (error instanceof ORPCError && error.status < 500) return formStateFromRpcError(error, values)!;
-  return { status: 'error', message: UNEXPECTED_FAILURE_MESSAGE, ...(values ? { values } : {}) };
+  return formStateFromRpcError(error, values) ?? { status: 'error', message: UNEXPECTED_FAILURE_MESSAGE, ...(values ? { values } : {}) };
 }
