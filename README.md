@@ -125,7 +125,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm screenshots` | Full-page screenshots of the key screens into `docs/screenshots/<milestone>/` (run `pnpm build` first) |
 | `scripts/visual-baselines.sh accept <artifact-dir\|job-log>` | Take the visual regression baselines from a CI run (see the admin guide) |
 | `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 and `pnpm worker` (run `pnpm build` first; server log in `test-results/server.log`). The visual regression (`@visual`) runs only in CI; Lighthouse for `/` runs in `scripts/verify.sh M00b` |
-| `scripts/db-env-check.sh` | Checks the test database: PostgreSQL ≥ 16, PostGIS ≥ 3.4, UTF-8 locale |
+| `scripts/db-env-check.sh` | Checks the test database: PostgreSQL ≥ 16, PostGIS ≥ 3.4, UTF-8 locale, the ICU collation `und-x-icu` (name order, M04) |
 | `scripts/verify.sh <Mxx\|all>` | The milestone check: one line per step, full log in `.verify/<Mxx>.log` |
 | `docker compose up -d --wait` / `docker compose down` | Start / stop the local services (data stays in named volumes) |
 
