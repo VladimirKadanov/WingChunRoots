@@ -328,7 +328,8 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
   const fields: Record<string, string> = {};
   if (!z.email().safeParse(input.email).success) fields.email = 'Enter the e-mail address of the account.';
   if (!input.reason) fields.reason = 'Give a reason; it is kept in the audit log.';
-  const startsAt = input.startsOn ? parseIsoDay(input.startsOn) : now;
+  // An empty start is today from 00:00 UTC, as the form and the guides say (review round 2, recheck-8).
+  const startsAt = input.startsOn ? parseIsoDay(input.startsOn) : startOfUtcDay(now);
   const endsAt = input.endsOn ? parseIsoDay(input.endsOn) : null;
   if (!startsAt) fields.startsOn = 'Enter the start as a date, for example 2026-11-01.';
   if (input.endsOn && !endsAt) fields.endsOn = 'Enter the end as a date, for example 2026-12-31.';
@@ -341,7 +342,7 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
   if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
   const plan = PLANS[input.planCode];
 
-  const id = await getDb().transaction(async (tx) => {
+  return getDb().transaction(async (tx) => {
     // The account's lock first (services/account-lock.ts): it also serializes two grants for it.
     const account = await lockAccount(tx, { email: input.email });
     if (!account) throw new ServiceError('NOT_FOUND', 'No account has this e-mail address.', { email: 'No account has this e-mail address.' });
@@ -409,9 +410,10 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
       // The start too: a grant that starts later must not read as a plan the account has now.
       payload: { planCode: input.planCode, startsAt: startsAt!.toISOString(), endsAt: endsAt?.toISOString() ?? null },
     });
-    return grantId;
+    // The answer is read in the same transaction (review round 2, recheck-2): a failure anywhere,
+    // this read included, changes nothing, so a form can say so.
+    return rowById(tx, grantId, now);
   });
-  return rowById(getDb(), id, now);
 }
 
 // --- Revoke ----------------------------------------------------------------------------------------
@@ -433,7 +435,7 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
   const { grantId, reason } = parsed.data;
   if (!reason) throw new ServiceError('BAD_REQUEST', 'Give a reason; it is kept in the audit log.', { reason: 'Give a reason; it is kept in the audit log.' });
 
-  await getDb().transaction(async (tx) => {
+  return getDb().transaction(async (tx) => {
     // The grant's account never changes: read it, take the account's lock first (as every write of
     // an account's plan does, services/account-lock.ts), then the grant's row.
     const [owner] = await tx.select({ userId: entitlementGrant.subjectUserId }).from(entitlementGrant).where(eq(entitlementGrant.id, grantId));
@@ -463,6 +465,66 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
     // The account hears of every revocation (active or scheduled, in effect or kept for the other
     // account type): it is the account's plan either way.
     await tx.insert(notification).values({ userId: grant.subjectUserId, template: 'plan.revoked', payload: { planCode: grant.planCode } });
+    // In the same transaction, as in createGrant (review round 2, recheck-2).
+    return rowById(tx, grantId, now);
   });
-  return rowById(getDb(), grantId, now);
+}
+
+// --- Close a pilot access request ------------------------------------------------------------------
+
+export const closePilotRequestInput = z.object({
+  requestId: z.uuid({ error: 'Choose a pilot access request.' }),
+  reason: z.string().trim().max(500),
+});
+
+export interface ClosedPilotRequest {
+  id: string;
+  email: string;
+  planCode: PlanCode;
+  planName: string;
+  closedAt: string;
+}
+
+/**
+ * Closes an open pilot access request without giving the plan (admin with a verified second factor;
+ * M08 review round 2, recheck-5): the other answer an administrator can give besides a grant, so
+ * no request waits for ever and the account can ask again. A reason is required and kept in the
+ * audit log (pilot_access.close), never shown to the account. The account gets a notification
+ * (pilot-access.closed); its plan does not change. Under the account's lock, like every write of
+ * its plan or requests (services/account-lock.ts).
+ */
+export async function closePilotRequest(principal: Principal | null, raw: unknown, meta: RequestMeta, now: Date = new Date()): Promise<ClosedPilotRequest> {
+  const actor = requireStaff2FA(principal, ['admin']);
+  const parsed = closePilotRequestInput.safeParse(raw);
+  if (!parsed.success) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { requestId: 'Choose a pilot access request.' });
+  const { requestId, reason } = parsed.data;
+  if (!reason) throw new ServiceError('BAD_REQUEST', 'Give a reason; it is kept in the audit log.', { reason: 'Give a reason; it is kept in the audit log.' });
+
+  return getDb().transaction(async (tx) => {
+    // The request's account never changes: read it, take the account's lock first, then the row.
+    const [owner] = await tx.select({ userId: pilotAccessRequest.userId }).from(pilotAccessRequest).where(eq(pilotAccessRequest.id, requestId));
+    if (!owner) throw new ServiceError('NOT_FOUND', 'No such pilot access request.');
+    const account = await lockAccount(tx, { id: owner.userId });
+    const [request] = await tx.select().from(pilotAccessRequest).where(eq(pilotAccessRequest.id, requestId)).for('update');
+    if (!request || !account) throw new ServiceError('NOT_FOUND', 'No such pilot access request.');
+    if (request.status !== 'open') throw new ServiceError('CONFLICT', 'This request has already been answered.');
+    await tx
+      .update(pilotAccessRequest)
+      .set({ status: 'closed', closedAt: now, closedByUserId: actor.user.id, updatedAt: now })
+      .where(and(eq(pilotAccessRequest.id, requestId), eq(pilotAccessRequest.status, 'open')));
+    await writeAudit(tx, {
+      action: 'pilot_access.close',
+      actorUserId: actor.user.id,
+      actorRole: actor.user.role,
+      subjectType: 'pilot_access_request',
+      subjectId: requestId,
+      before: { status: 'open', planCode: request.planCode, userId: request.userId },
+      after: { status: 'closed', closedAt: now.toISOString() },
+      reason,
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    await tx.insert(notification).values({ userId: request.userId, template: 'pilot-access.closed', payload: { planCode: request.planCode } });
+    return { id: requestId, email: account.email, planCode: request.planCode, planName: PLANS[request.planCode].name, closedAt: now.toISOString() };
+  });
 }

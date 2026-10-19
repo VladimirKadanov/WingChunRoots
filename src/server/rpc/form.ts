@@ -21,3 +21,19 @@ export function formStateFromRpcError(error: unknown, values?: Record<string, st
 export function rpcErrorCode(error: unknown): string | null {
   return error instanceof ORPCError ? error.code : null;
 }
+
+/** What a form says when a procedure fails unexpectedly (M08 review round 2, recheck-2). */
+export const UNEXPECTED_FAILURE_MESSAGE = 'Something went wrong on our side; nothing was changed. Try again.';
+
+/**
+ * The form state for any failure of a wrapped procedure: its answer when it refused (an ORPCError
+ * below 500, as formStateFromRpcError), or UNEXPECTED_FAILURE_MESSAGE for anything else (a database
+ * timeout, a bug). serverClient() has already logged that one in a safe line (./failure-log.ts);
+ * the action returns this instead of rethrowing, so Next.js neither logs the error whole (with
+ * the SQL parameters it may quote) nor replaces the page with its error page. "Nothing was
+ * changed" holds because each M08 mutation writes in one transaction, its answer included.
+ */
+export function formStateFromFailure(error: unknown, values?: Record<string, string>): FormState {
+  if (error instanceof ORPCError && error.status < 500) return formStateFromRpcError(error, values)!;
+  return { status: 'error', message: UNEXPECTED_FAILURE_MESSAGE, ...(values ? { values } : {}) };
+}

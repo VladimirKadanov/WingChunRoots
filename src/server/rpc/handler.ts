@@ -15,40 +15,22 @@
 //
 // A procedure that fails with anything but an expected answer (an ORPCError below 500: refused,
 // not found, a field error) is logged in one line: the procedure, the error's name, the PostgreSQL
-// code and the request id (M08 review round 1, security-6). Never the input, the principal, an
-// address or the error's message, which can quote SQL parameters (CLAUDE.md §6).
+// code and the request id (M08 review round 1, security-6; ./failure-log.ts, which serverClient()
+// uses too). Never the input, the principal, an address or the error's message, which can quote
+// SQL parameters (CLAUDE.md §6).
 
 import { OpenAPIHandler } from '@orpc/openapi/fetch';
-import { ORPCError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/fetch';
 
 import { appUrl } from '../auth/env';
-import { pgErrorOf } from '../services/errors';
 import { createContext } from './context';
-import { router, type RpcContext } from './router';
+import { logProcedureFailure } from './failure-log';
+import { router } from './router';
+
+export { logProcedureFailure, procedureFailureLine } from './failure-log';
 
 export const RPC_PREFIX = '/api/rpc';
 export const OPENAPI_PREFIX = '/api/v1';
-
-/** The one log line of a failed procedure call; null for an expected answer. */
-export function procedureFailureLine(error: unknown, path: readonly string[], requestId: string): string | null {
-  if (error instanceof ORPCError && error.status < 500) return null;
-  const name = error instanceof Error ? error.name : typeof error;
-  const code = pgErrorOf(error)?.code;
-  const safe = (value: string) => value.replace(/[^\w.:-]/g, '?').slice(0, 64);
-  return `rpc ${safe(path.join('.'))} failed: ${safe(name)}${code ? ` (postgres ${safe(code)})` : ''} request ${safe(requestId)}`;
-}
-
-/** Logs a failed procedure call (procedureFailureLine) and lets the error through unchanged. */
-export async function logProcedureFailure<T>(options: { next: () => Promise<T>; path: readonly string[]; context: RpcContext }): Promise<T> {
-  try {
-    return await options.next();
-  } catch (error) {
-    const line = procedureFailureLine(error, options.path, options.context.meta.requestId);
-    if (line) console.error(line);
-    throw error;
-  }
-}
 
 const rpcHandler = new RPCHandler(router, { clientInterceptors: [logProcedureFailure] });
 const openApiHandler = new OpenAPIHandler(router, { clientInterceptors: [logProcedureFailure] });

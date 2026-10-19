@@ -7,9 +7,10 @@
 // verification is shown as "Instructor (unverified)" (DEFAULT D04/D13) until an archivist approves
 // an instructor_verification case (M10b).
 
-import { and, count, eq, gt } from 'drizzle-orm';
+import { and, count, desc, eq, gt } from 'drizzle-orm';
 import * as z from 'zod';
 
+import { formatDay } from '../../lib/dates';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
@@ -184,6 +185,11 @@ async function closeStalePilotRequest(tx: Executor, userId: string, accountType:
 export interface MyPlan {
   accountType: AccountType;
   instructor: { status: InstructorStatus; label: string };
+  /**
+   * Whether an archivist has verified the account's person as an instructor, whatever the account
+   * type is now: what a Sifu account shows as, said before the switch (review round 2, recheck-9).
+   */
+  verifiedInstructor: boolean;
   plan: PlanSummary;
   /** The free plan of the account type (the floor). */
   floor: PlanSummary;
@@ -205,9 +211,11 @@ export async function myPlan(principal: Principal | null, now: Date = new Date()
     .map((g) => ({ g, state: grantState(g, now) }))
     .filter((x): x is { g: (typeof x)['g']; state: 'active' | 'scheduled' } => x.state === 'active' || x.state === 'scheduled')
     .sort((a, b) => b.g.startsAt.getTime() - a.g.startsAt.getTime());
+  const verifiedInstructor = status === 'verified' || (status === 'not_instructor' && (await instructorStatus(db, p.user.id, 'sifu')) === 'verified');
   return {
     accountType: effective.accountType,
     instructor: { status, label: INSTRUCTOR_LABELS[status] },
+    verifiedInstructor,
     plan: planSummary(effective.plan),
     floor: planSummary(effective.floor),
     until: effective.until?.toISOString() ?? null,
@@ -259,47 +267,52 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
   const next = parsed.data.accountType;
   const subject = { kind: 'user' as const, userId: p.user.id };
 
-  const changed = await getDb().transaction(async (tx) => {
+  return getDb().transaction(async (tx) => {
     // The account's lock first, as in every write of an account's plan (services/account-lock.ts).
     const account = await lockAccount(tx, { id: p.user.id });
     if (!account) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
-    if (account.accountType === next) return false;
-    const now = new Date();
-    const [recent] = await tx
-      .select({ n: count() })
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.subjectType, 'user'),
-          eq(auditLog.subjectId, p.user.id),
-          eq(auditLog.action, 'account.type_change'),
-          gt(auditLog.occurredAt, new Date(now.getTime() - ACCOUNT_TYPE_WINDOW_HOURS * 3_600_000)),
-        ),
-      );
-    if ((recent?.n ?? 0) >= ACCOUNT_TYPE_CHANGES_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', ACCOUNT_TYPE_LIMIT_MESSAGE);
-    const before = await effectivePlan(subject, { db: tx });
-    await tx.update(authUser).set({ accountType: next, updatedAt: now }).where(eq(authUser.id, p.user.id));
-    const after = await effectivePlan(subject, { db: tx });
-    // An open pilot request for a plan of the old account type can no longer be granted.
-    const closedPilotRequestId = await closeStalePilotRequest(tx, p.user.id, next, now);
-    await writeAudit(tx, {
-      action: 'account.type_change',
-      actorUserId: p.user.id,
-      actorRole: p.user.role,
-      subjectType: 'user',
-      subjectId: p.user.id,
-      before: { accountType: account.accountType, plan: before.plan },
-      after: { accountType: next, plan: after.plan, ...(closedPilotRequestId ? { closedPilotRequestId } : {}) },
-      requestId: meta.requestId,
-      ipHmac: meta.ipHmac,
-    });
-    return true;
+    const changed = account.accountType !== next && (await changeAccountType(tx, p, account.accountType, next, meta));
+    // The answer is read in the same transaction (review round 2, recheck-2): a failure anywhere,
+    // this read included, changes nothing, so the form can say so.
+    const effective = await effectivePlan(subject, { db: tx });
+    const status = await instructorStatus(tx, p.user.id, effective.accountType);
+    return { accountType: effective.accountType, plan: planSummary(effective.plan), instructor: { status, label: INSTRUCTOR_LABELS[status] }, changed };
   });
+}
 
-  const db = getDb();
-  const effective = await effectivePlan(subject, { db });
-  const status = await instructorStatus(db, p.user.id, effective.accountType);
-  return { accountType: effective.accountType, plan: planSummary(effective.plan), instructor: { status, label: INSTRUCTOR_LABELS[status] }, changed };
+/** The change itself, under the account's lock: rate limit, the type, the stale request, the audit. */
+async function changeAccountType(tx: Executor, p: Principal, from: AccountType, next: AccountType, meta: RequestMeta): Promise<true> {
+  const subject = { kind: 'user' as const, userId: p.user.id };
+  const now = new Date();
+  const [recent] = await tx
+    .select({ n: count() })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.subjectType, 'user'),
+        eq(auditLog.subjectId, p.user.id),
+        eq(auditLog.action, 'account.type_change'),
+        gt(auditLog.occurredAt, new Date(now.getTime() - ACCOUNT_TYPE_WINDOW_HOURS * 3_600_000)),
+      ),
+    );
+  if ((recent?.n ?? 0) >= ACCOUNT_TYPE_CHANGES_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', ACCOUNT_TYPE_LIMIT_MESSAGE);
+  const before = await effectivePlan(subject, { db: tx });
+  await tx.update(authUser).set({ accountType: next, updatedAt: now }).where(eq(authUser.id, p.user.id));
+  const after = await effectivePlan(subject, { db: tx });
+  // An open pilot request for a plan of the old account type can no longer be granted.
+  const closedPilotRequestId = await closeStalePilotRequest(tx, p.user.id, next, now);
+  await writeAudit(tx, {
+    action: 'account.type_change',
+    actorUserId: p.user.id,
+    actorRole: p.user.role,
+    subjectType: 'user',
+    subjectId: p.user.id,
+    before: { accountType: from, plan: before.plan },
+    after: { accountType: next, plan: after.plan, ...(closedPilotRequestId ? { closedPilotRequestId } : {}) },
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  return true;
 }
 
 // --- Pilot access ------------------------------------------------------------------------------------
@@ -307,6 +320,16 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
 /** At most this many requests per account in PILOT_REQUEST_WINDOW_DAYS (against admin spam). */
 export const PILOT_REQUESTS_PER_WINDOW = 3;
 export const PILOT_REQUEST_WINDOW_DAYS = 30;
+
+/**
+ * The refusal at the limit, with the first whole day (UTC) on which the account can ask again: the
+ * day after the one `again` falls in, unless `again` is its very start.
+ */
+export function pilotRequestLimitMessage(again: Date): string {
+  const day = new Date(Date.UTC(again.getUTCFullYear(), again.getUTCMonth(), again.getUTCDate()));
+  if (day.getTime() < again.getTime()) day.setUTCDate(day.getUTCDate() + 1);
+  return `You have asked for pilot access ${PILOT_REQUESTS_PER_WINDOW} times in ${PILOT_REQUEST_WINDOW_DAYS} days. You can ask again from ${formatDay(day)}; nothing is charged.`;
+}
 
 export const requestPilotAccessInput = z.object({
   planCode: z.enum(GRANTABLE_PLANS as readonly [PlanCode, ...PlanCode[]], { error: 'Choose a plan of the pilot.' }),
@@ -351,13 +374,17 @@ export async function requestPilotAccess(principal: Principal | null, raw: unkno
       }
       if (PLANS[effective.plan].rank >= wanted.rank) throw new ServiceError('CONFLICT', `Your account already has ${PLANS[effective.plan].name}.`);
 
-      const since = new Date(Date.now() - PILOT_REQUEST_WINDOW_DAYS * 86_400_000);
-      const [recent] = await tx
-        .select({ n: count() })
+      const windowMs = PILOT_REQUEST_WINDOW_DAYS * 86_400_000;
+      const recent = await tx
+        .select({ createdAt: pilotAccessRequest.createdAt })
         .from(pilotAccessRequest)
-        .where(and(eq(pilotAccessRequest.userId, p.user.id), gt(pilotAccessRequest.createdAt, since)));
-      if ((recent?.n ?? 0) >= PILOT_REQUESTS_PER_WINDOW) {
-        throw new ServiceError('TOO_MANY_REQUESTS', 'You have asked for pilot access several times this month. An administrator will reply to your earlier requests.');
+        .where(and(eq(pilotAccessRequest.userId, p.user.id), gt(pilotAccessRequest.createdAt, new Date(Date.now() - windowMs))))
+        .orderBy(desc(pilotAccessRequest.createdAt));
+      if (recent.length >= PILOT_REQUESTS_PER_WINDOW) {
+        // The day the oldest request that still counts leaves the window: a fact, not a promise of
+        // an answer (review round 2, recheck-5).
+        const again = new Date(recent[PILOT_REQUESTS_PER_WINDOW - 1]!.createdAt.getTime() + windowMs);
+        throw new ServiceError('TOO_MANY_REQUESTS', pilotRequestLimitMessage(again));
       }
 
       const [created] = await tx

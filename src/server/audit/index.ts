@@ -17,7 +17,8 @@ export type AuditAction =
   | 'grant.create'
   | 'grant.revoke'
   | 'account.type_change'
-  | 'pilot_access.request';
+  | 'pilot_access.request'
+  | 'pilot_access.close';
 
 export interface AuditEntry {
   action: AuditAction;

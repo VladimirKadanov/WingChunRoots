@@ -17,7 +17,16 @@ import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
 import { dashboardOverview } from '../services/dashboard';
 import { isServiceError } from '../services/errors';
-import { createGrant, createGrantInput, listGrants, listGrantsInput, revokeGrant, revokeGrantInput } from '../services/grants';
+import {
+  closePilotRequest,
+  closePilotRequestInput,
+  createGrant,
+  createGrantInput,
+  listGrants,
+  listGrantsInput,
+  revokeGrant,
+  revokeGrantInput,
+} from '../services/grants';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import { setRoleInput, setUserRole } from '../services/roles';
@@ -130,6 +139,11 @@ export const router = {
       .route({ method: 'POST', path: '/admin/grants/revoke', summary: 'Revoke a plan grant with a reason (admin, audited); confirmed links stay confirmed' })
       .input(revokeGrantInput)
       .handler(({ context, input }) => revokeGrant(context.principal, input, context.meta)),
+    // M08 review round 2: the other answer to a pilot access request.
+    closeRequest: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/grants/close-request', summary: 'Close a pilot access request without giving the plan, with a reason (admin, audited)' })
+      .input(closePilotRequestInput)
+      .handler(({ context, input }) => closePilotRequest(context.principal, input, context.meta)),
   },
   notifications: {
     list: base

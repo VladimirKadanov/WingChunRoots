@@ -19,10 +19,29 @@ import {
 } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, authSession, entitlementGrant, lineage, notification, person, personName, pilotAccessRequest, teachingRelationship } from '../db/schema';
+import {
+  auditLog,
+  authSession,
+  entitlementGrant,
+  lineage,
+  notification,
+  person,
+  personName,
+  pilotAccessRequest,
+  reviewCase,
+  teachingRelationship,
+} from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleApiRequest } from '../rpc/handler';
-import { ACCOUNT_TYPE_CHANGES_PER_WINDOW, ACCOUNT_TYPE_LIMIT_MESSAGE, PILOT_REQUESTS_PER_WINDOW, PLANS_BANNER, PROPOSED_PRICE_LABEL } from './plans';
+import {
+  ACCOUNT_TYPE_CHANGES_PER_WINDOW,
+  ACCOUNT_TYPE_LIMIT_MESSAGE,
+  PILOT_REQUEST_WINDOW_DAYS,
+  PILOT_REQUESTS_PER_WINDOW,
+  pilotRequestLimitMessage,
+  PLANS_BANNER,
+  PROPOSED_PRICE_LABEL,
+} from './plans';
 
 let testDb: TestDatabase | undefined;
 let admins: { account: TestAccount; token: string }[] = [];
@@ -112,7 +131,31 @@ describe('plans.catalog and plans.mine', () => {
     const { token } = await member('mine');
     const mine = await v1(token, 'GET', '/plans/mine');
     expect(mine.status).toBe(200);
-    expect(mine.data).toMatchObject({ accountType: 'student', plan: { code: 'free_student' }, instructor: { label: 'Student' }, grants: [], pilotRequest: null });
+    expect(mine.data).toMatchObject({
+      accountType: 'student',
+      plan: { code: 'free_student' },
+      instructor: { label: 'Student' },
+      verifiedInstructor: false,
+      grants: [],
+      pilotRequest: null,
+    });
+  });
+
+  it('plans.mine says whether the person is a verified instructor, also while the account is a Student (review round 2, recheck-9)', async () => {
+    const { account, token } = await member('mine-verified');
+    const personId = uuidv7();
+    await getDb()
+      .insert(person)
+      .values({ id: personId, slug: `demo-mine-verified-${randomBytes(4).toString('hex')}`, kind: 'living', stewardship: 'self', claimedByUserId: account.id });
+    await getDb().insert(personName).values({ personId, value: 'Demo Verified Teacher', script: 'Latn', lang: 'und-Latn', isPrimary: true });
+    await getDb().insert(reviewCase).values({ kind: 'instructor_verification', status: 'resolved', personId, resolution: 'approved', resolvedAt: new Date() });
+    expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({ accountType: 'student', instructor: { status: 'not_instructor' }, verifiedInstructor: true });
+    expect((await v1(token, 'POST', '/account/type', { accountType: 'sifu' })).status).toBe(200);
+    expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({
+      accountType: 'sifu',
+      instructor: { status: 'verified', label: 'Instructor' },
+      verifiedInstructor: true,
+    });
   });
 });
 
@@ -267,18 +310,61 @@ describe('plans.requestPilotAccess', () => {
     expect(JSON.stringify(items)).not.toContain('Demo Pilot');
   });
 
-  it(`allows ${PILOT_REQUESTS_PER_WINDOW} requests in the window, then answers 429`, async () => {
+  it('an admin session without the second factor sees neither the requester, the plan nor the open count (review round 2, recheck-1)', async () => {
+    const { account, token } = await member('pilot-hidden', 'sifu');
+    const personId = uuidv7();
+    await getDb()
+      .insert(person)
+      .values({ id: personId, slug: `demo-pilot-hidden-${randomBytes(4).toString('hex')}`, kind: 'living', stewardship: 'self', claimedByUserId: account.id });
+    await getDb().insert(personName).values({ personId, value: 'Demo Hidden Asker', script: 'Latn', lang: 'und-Latn', isPrimary: true });
+    const result = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+    const requestId = (result.data.request as { id: string }).id;
+    const href = `/admin/grants?request=${requestId}#give-plan`;
+    type Item = { title: string; body: ({ text: string } | { name: { value: string } })[]; action: { href: string } | null };
+    const find = async (bearer: string) => ((await v1(bearer, 'GET', '/notifications')).data.items as Item[]).find((item) => item.action?.href === href);
+
+    // The same admin account: once with a session that only knows the password, once verified.
+    const admin = admins[1]!;
+    const unverified = await unverifiedSession(admin.account.id);
+    const hidden = await find(unverified);
+    expect(hidden?.body).toEqual([
+      { text: 'An account asked for pilot access. Confirm this session with your authenticator app to see who asked and for which plan.' },
+    ]);
+    expect(JSON.stringify(hidden)).not.toContain('Demo Hidden Asker');
+    expect(JSON.stringify(hidden)).not.toContain('Professional Sifu');
+    const hiddenDash = await v1(unverified, 'GET', '/dashboard');
+    expect(hiddenDash.data.staff).toEqual({ role: 'admin', secondFactorVerified: false, openPilotRequests: null });
+    expect(JSON.stringify(hiddenDash.data)).not.toContain('Demo Hidden Asker');
+
+    const shown = await find(admin.token);
+    expect(shown?.body).toEqual([{ name: { value: 'Demo Hidden Asker', lang: 'und-Latn' } }, { text: ' asked for Professional Sifu.' }]);
+    const dash = await v1(admin.token, 'GET', '/dashboard');
+    expect(dash.data.staff).toMatchObject({ role: 'admin', secondFactorVerified: true });
+    expect((dash.data.staff as { openPilotRequests: number }).openPilotRequests).toBeGreaterThanOrEqual(1);
+
+    // A moderator whose session proved the second factor gets no count either: it is admin work.
+    const moderator = await createAccount({ role: 'moderator', label: 'pilot-hidden-moderator' });
+    const modDash = await v1((await signIn(moderator)).token, 'GET', '/dashboard');
+    expect(modDash.data.staff).toEqual({ role: 'moderator', secondFactorVerified: true, openPilotRequests: null });
+  });
+
+  it(`allows ${PILOT_REQUESTS_PER_WINDOW} requests in the window, then answers 429 with the day it can ask again`, async () => {
     const { account, token } = await member('pilot-rate', 'student');
+    let first: Date | null = null;
     for (let i = 0; i < PILOT_REQUESTS_PER_WINDOW; i += 1) {
-      expect((await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'premium_student' })).data).toMatchObject({ created: true });
-      // An admin closes it without a grant (left unanswered, it would only be returned again).
-      await getDb()
-        .update(pilotAccessRequest)
-        .set({ status: 'closed', closedAt: new Date(), closedByUserId: admins[0]!.account.id })
-        .where(and(eq(pilotAccessRequest.userId, account.id), eq(pilotAccessRequest.status, 'open')));
+      const asked = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'premium_student' });
+      expect(asked.data).toMatchObject({ created: true });
+      const request = asked.data.request as { id: string; createdAt: string };
+      first ??= new Date(request.createdAt);
+      // An admin closes it without a grant (review round 2, recheck-5: grants.closeRequest).
+      const closed = await v1(admins[0]!.token, 'POST', '/admin/grants/close-request', { requestId: request.id, reason: 'Demo pilot test of the limit' });
+      expect(closed.status, JSON.stringify(closed.data)).toBe(200);
     }
     const limited = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'premium_student' });
     expect(limited.status).toBe(429);
+    // No promise of an answer: the first whole day on which the oldest request has left the window.
+    expect(limited.data.message).toBe(pilotRequestLimitMessage(new Date(first!.getTime() + PILOT_REQUEST_WINDOW_DAYS * 86_400_000)));
+    expect(limited.data.message).toMatch(/^You have asked for pilot access 3 times in 30 days\. You can ask again from \d{1,2} \w+ \d{4}; nothing is charged\.$/);
     const [open] = await getDb()
       .select({ n: count() })
       .from(pilotAccessRequest)
@@ -344,6 +430,42 @@ describe('grants.* (admin with a verified second factor)', () => {
     expect((await v1(admin.token, 'POST', '/admin/grants/revoke', { grantId, reason: 'Again' })).status).toBe(409);
   });
 
+  it('closes a pilot request without a plan: reason required, audited, the account told, its plan unchanged (review round 2, recheck-5)', async () => {
+    const { account, token } = await member('pilot-close', 'sifu');
+    const asked = await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+    const requestId = (asked.data.request as { id: string }).id;
+    const admin = admins[0]!;
+    // Only an admin whose session proved the second factor; a reason is required.
+    expect((await v1(token, 'POST', '/admin/grants/close-request', { requestId, reason: 'x' })).status).toBe(403);
+    const unverified = await v1(await unverifiedSession(admin.account.id), 'POST', '/admin/grants/close-request', { requestId, reason: 'x' });
+    expect(unverified).toMatchObject({ status: 403, data: { code: 'SECOND_FACTOR_REQUIRED' } });
+    const noReason = await v1(admin.token, 'POST', '/admin/grants/close-request', { requestId, reason: '  ' });
+    expect(noReason.status).toBe(400);
+    expect(noReason.data.data?.fields).toHaveProperty('reason');
+    expect((await v1(admin.token, 'POST', '/admin/grants/close-request', { requestId: uuidv7(), reason: 'x' })).status).toBe(404);
+
+    const closed = await v1(admin.token, 'POST', '/admin/grants/close-request', { requestId, reason: 'Demo pilot: not this time' });
+    expect(closed.status).toBe(200);
+    expect(closed.data).toMatchObject({ id: requestId, email: account.email, planCode: 'pro_sifu', planName: 'Professional Sifu' });
+    const [row] = await getDb().select().from(pilotAccessRequest).where(eq(pilotAccessRequest.id, requestId));
+    expect(row).toMatchObject({ status: 'closed', closedByUserId: admin.account.id, grantId: null });
+    const audits = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'pilot_access.close'), eq(auditLog.subjectId, requestId)));
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ actorUserId: admin.account.id, reason: 'Demo pilot: not this time', before: { status: 'open', planCode: 'pro_sifu', userId: account.id } });
+    // The account hears of it, without the reason; its plan has not changed; it can ask again.
+    const items = (await v1(token, 'GET', '/notifications')).data.items as { template: string; title: string; body: { text: string }[] }[];
+    const told = items.find((item) => item.template === 'pilot-access.closed');
+    expect(told?.title).toBe('Pilot access request closed');
+    expect(told?.body[0]?.text).toBe(
+      'An administrator closed your request for pilot access to Professional Sifu without giving the plan. Your plan has not changed and nothing is charged.',
+    );
+    expect(JSON.stringify(items)).not.toContain('not this time');
+    expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({ plan: { code: 'free_sifu' }, pilotRequest: null });
+    expect((await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' })).data).toMatchObject({ created: true });
+    // A request already answered is not closed twice.
+    expect((await v1(admin.token, 'POST', '/admin/grants/close-request', { requestId, reason: 'again' })).status).toBe(409);
+  });
+
   it('a grant answers the request the form came from only when it is the account’s own', async () => {
     const admin = admins[0]!;
     const asking = await member('grant-request-a', 'sifu');
@@ -354,6 +476,8 @@ describe('grants.* (admin with a verified second factor)', () => {
     // The form came from A's request, but the admin gave the plan to B: A's request stays open.
     const created = await v1(admin.token, 'POST', '/admin/grants/create', { email: other.account.email, planCode: 'pro_sifu', reason: 'Demo: other account', requestId: a.id });
     expect(created.status).toBe(200);
+    // Without a start the plan starts today at 00:00 UTC, as the form and the guides say (review round 2, recheck-8).
+    expect(created.data.startsAt).toBe(`${today()}T00:00:00.000Z`);
     const rows = await getDb().select({ id: pilotAccessRequest.id, status: pilotAccessRequest.status }).from(pilotAccessRequest).where(eq(pilotAccessRequest.id, a.id));
     expect(rows).toEqual([{ id: a.id, status: 'open' }]);
     const [answered] = await getDb().select().from(pilotAccessRequest).where(eq(pilotAccessRequest.id, b.id));

@@ -35,4 +35,5 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/settings/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
   'src/app/admin/grants/actions.ts#createGrantAction': { rpc: ['grants.create'] },
   'src/app/admin/grants/actions.ts#revokeGrantAction': { rpc: ['grants.revoke'] },
+  'src/app/admin/grants/actions.ts#closeRequestAction': { rpc: ['grants.closeRequest'] },
 };

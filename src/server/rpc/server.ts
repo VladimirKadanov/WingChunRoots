@@ -1,11 +1,17 @@
 // The router called in-process (plan §6.8): Server Actions and pages call the procedures through
 // this client, with the context of the current request, so a form and an API call run the same
 // procedure, the same checks and the same services.
+//
+// It logs a procedure that fails unexpectedly in the same one safe line as the HTTP handlers
+// (./failure-log.ts; M08 review round 2, recheck-2), so a Server Action can answer with a calm
+// message (formStateFromFailure in ./form.ts) instead of rethrowing: a rethrown error reaches
+// Next.js, which logs it whole, with the SQL parameters a database error quotes (CLAUDE.md §6).
 
 import { createRouterClient } from '@orpc/server';
 
 import type { Principal } from '../auth/principal';
 import { createContext } from './context';
+import { logProcedureFailure } from './failure-log';
 import { type RpcContext, router } from './router';
 
 /**
@@ -15,7 +21,7 @@ import { type RpcContext, router } from './router';
  */
 export function serverClient(headers: Headers, principal?: Principal | null) {
   let context: Promise<RpcContext> | undefined;
-  return createRouterClient(router, { context: () => (context ??= createContext(headers, principal)) });
+  return createRouterClient(router, { context: () => (context ??= createContext(headers, principal)), interceptors: [logProcedureFailure] });
 }
 
 export { ORPCError } from '@orpc/server';
