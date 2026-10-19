@@ -359,7 +359,7 @@ export const ROUTE_ANCESTOR_CAP = 5_000;
 /** Steps the route enumeration may take; past it the count is reported as capped. */
 export const ROUTE_WORK_BUDGET = 200_000;
 
-interface UpEdge {
+export interface UpEdge {
   id: string;
   teacherId: string;
   studentId: string;
@@ -369,14 +369,22 @@ interface UpEdge {
  * The ancestors of `focusId` (one UNION walk, each person once per depth) and every edge from
  * each of them up to a teacher, ordered for the route search: the student's primary edge first
  * (DEFAULT D05: display-primary, else the earliest; an own edge only for a student without a
- * public teacher), then the earliest. `complete` is false when the walk passed ROUTE_ANCESTOR_CAP.
+ * public teacher), then the earliest. `read` holds every person whose teachers were read;
+ * `complete` is false when the walk passed ROUTE_ANCESTOR_CAP (people past it are not in `read`).
  */
 async function ancestorEdges(
   ex: Executor,
   focusId: string,
   extras: ViewerExtras,
-): Promise<{ up: Map<string, UpEdge[]>; primary: Map<string, string>; complete: boolean }> {
-  const list = await rows<{ id: string; teacher_id: string; student_id: string; is_display_primary: boolean; over_cap: boolean }>(
+): Promise<{ up: Map<string, UpEdge[]>; primary: Map<string, string>; read: Set<string>; complete: boolean }> {
+  const list = await rows<{
+    person_id: string;
+    id: string | null;
+    teacher_id: string | null;
+    student_id: string | null;
+    is_display_primary: boolean | null;
+    over_cap: boolean;
+  }>(
     ex,
     sql`
 WITH RECURSIVE ${extraCte(extras)},
@@ -394,19 +402,24 @@ up(id, depth) AS (
 ),
 people AS (SELECT id FROM up GROUP BY id ORDER BY min(depth), id LIMIT ${ROUTE_ANCESTOR_CAP + 1}),
 capped AS (SELECT count(*) > ${ROUTE_ANCESTOR_CAP} AS over_cap FROM people)
-SELECT e.id::text AS id, e.teacher_person_id::text AS teacher_id, e.student_person_id::text AS student_id,
-       e.is_display_primary, capped.over_cap
+SELECT people.id::text AS person_id, e.id::text AS id, e.teacher_person_id::text AS teacher_id,
+       e.student_person_id::text AS student_id, e.is_display_primary, capped.over_cap
   FROM people
   CROSS JOIN capped
-  CROSS JOIN LATERAL (
+  LEFT JOIN LATERAL (
     SELECT pe.id, pe.teacher_person_id, pe.student_person_id, pe.is_display_primary, pe.created_at
-      FROM v_public_edge pe WHERE pe.student_person_id = people.id OFFSET 0) e
- ORDER BY e.student_person_id, e.created_at, e.id`,
+      FROM v_public_edge pe WHERE pe.student_person_id = people.id OFFSET 0) e ON true
+ ORDER BY people.id, e.created_at, e.id`,
   );
   const up = new Map<string, UpEdge[]>();
   const primary = new Map<string, string>();
-  const byStudent = new Map<string, typeof list>();
-  for (const e of list) byStudent.set(e.student_id, [...(byStudent.get(e.student_id) ?? []), e]);
+  const read = new Set(list.map((e) => e.person_id));
+  const byStudent = new Map<string, { id: string; teacher_id: string; student_id: string; is_display_primary: boolean }[]>();
+  for (const e of list) {
+    if (e.id === null || e.teacher_id === null || e.student_id === null) continue;
+    const edge = { id: e.id, teacher_id: e.teacher_id, student_id: e.student_id, is_display_primary: e.is_display_primary === true };
+    byStudent.set(e.student_id, [...(byStudent.get(e.student_id) ?? []), edge]);
+  }
   for (const [studentId, edges] of byStudent) {
     const chosen = edges.find((e) => e.is_display_primary) ?? edges[0]!;
     primary.set(studentId, chosen.id);
@@ -424,60 +437,99 @@ SELECT e.id::text AS id, e.teacher_person_id::text AS teacher_id, e.student_pers
     if (!primary.has(e.studentId) && !up.has(e.studentId)) primary.set(e.studentId, e.id);
     up.set(e.studentId, [...(up.get(e.studentId) ?? []), { id: e.id, teacherId: e.teacherId, studentId: e.studentId }]);
   }
-  return { up, primary, complete: !(list[0]?.over_cap ?? false) };
+  return { up, primary, read, complete: !(list[0]?.over_cap ?? false) };
+}
+
+export interface RouteSearchLimits {
+  /** Steps of the search in all. */
+  budget: number;
+  /** Routes kept: the search stops once it has one more (so "more" is known). */
+  cap: number;
+  /** Steps of one route. */
+  depth: number;
 }
 
 /**
  * Complete routes from `focusId` up to a person without recorded teachers, each focus → top, at
- * most PATHS_COUNT_CAP + 1 of them, at most ANCESTOR_DEPTH steps long, no person twice. A depth-
- * first search over the ancestor edges, primary edges first, so the route along display-primary
- * teachers is the first one found. The number of routes can double with every generation where a
- * student has two teachers (2^20 for 20 such generations), so the search stops at the cap or after
- * ROUTE_WORK_BUDGET steps: `capped` then says there may be more.
+ * most `cap` + 1 of them, at most `depth` steps long, no person twice. A depth-first search over
+ * the ancestor edges, primary edges first, so the route along display-primary teachers is the
+ * first one found. The number of routes can double with every generation where a student has two
+ * teachers (2^20 for 20 such generations), so the search stops at the cap or after `budget` steps:
+ * `capped` then says there may be more.
+ *
+ * So that one large branch cannot use the whole cap, a first pass finds one route through each
+ * teacher of the focus (primary edges first) and keeps it; the full search then adds the others.
+ * A person counts as a top only when their teachers were read (`read`): past ROUTE_ANCESTOR_CAP
+ * nobody's were, and such a person ends no route (`complete` false already sets `capped`).
  */
+export function searchRoutes(
+  focusId: string,
+  up: ReadonlyMap<string, readonly UpEdge[]>,
+  read: ReadonlySet<string>,
+  complete: boolean,
+  limits: RouteSearchLimits = { budget: ROUTE_WORK_BUDGET, cap: PATHS_COUNT_CAP, depth: ANCESTOR_DEPTH },
+): { routes: { nodes: string[]; edges: string[] }[]; capped: boolean } {
+  const routes: { nodes: string[]; edges: string[] }[] = [];
+  const found = new Set<string>();
+  let steps = 0;
+  let capped = !complete;
+
+  /** Depth-first from the focus, through `first` only when given; stops after `want` new routes. */
+  const search = (first: UpEdge | null, want: number) => {
+    const nodes = [focusId];
+    const edges: string[] = [];
+    const onPath = new Set(nodes);
+    // One frame per person on the current route: the index of the next teacher edge to try.
+    const next: number[] = [0];
+    let added = 0;
+    while (nodes.length > 0) {
+      steps += 1;
+      if (steps > limits.budget || routes.length > limits.cap) {
+        capped = true;
+        return;
+      }
+      const top = nodes.length - 1;
+      const current = nodes[top]!;
+      const teachers = top === 0 && first ? [first] : (up.get(current) ?? []);
+      if (teachers.length === 0) {
+        const key = edges.join(' ');
+        if (top > 0 && read.has(current) && !found.has(key)) {
+          found.add(key);
+          routes.push({ nodes: [...nodes], edges: [...edges] });
+          added += 1;
+          if (added >= want) return;
+        }
+      } else if (next[top]! < teachers.length && edges.length < limits.depth) {
+        const edge = teachers[next[top]!]!;
+        next[top]! += 1;
+        if (!onPath.has(edge.teacherId)) {
+          nodes.push(edge.teacherId);
+          edges.push(edge.id);
+          onPath.add(edge.teacherId);
+          next.push(0);
+        }
+        continue;
+      }
+      // Every teacher of `current` tried (or a top reached): step back down.
+      onPath.delete(current);
+      nodes.pop();
+      next.pop();
+      edges.pop();
+    }
+  };
+
+  for (const edge of up.get(focusId) ?? []) search(edge, 1);
+  search(null, Number.POSITIVE_INFINITY);
+  return { routes, capped: capped || routes.length > limits.cap };
+}
+
 async function routesUp(
   ex: Executor,
   focusId: string,
   extras: ViewerExtras,
 ): Promise<{ routes: { nodes: string[]; edges: string[] }[]; capped: boolean; primary: Map<string, string> }> {
-  const { up, primary, complete } = await ancestorEdges(ex, focusId, extras);
-  const routes: { nodes: string[]; edges: string[] }[] = [];
-  const nodes = [focusId];
-  const edges: string[] = [];
-  const onPath = new Set(nodes);
-  // One frame per person on the current route: the index of the next teacher edge to try.
-  const next: number[] = [0];
-  let steps = 0;
-  let capped = !complete;
-  while (nodes.length > 0) {
-    steps += 1;
-    if (steps > ROUTE_WORK_BUDGET || routes.length > PATHS_COUNT_CAP) {
-      capped = true;
-      break;
-    }
-    const top = nodes.length - 1;
-    const current = nodes[top]!;
-    const teachers = up.get(current) ?? [];
-    if (teachers.length === 0) {
-      if (top > 0) routes.push({ nodes: [...nodes], edges: [...edges] });
-    } else if (next[top]! < teachers.length && edges.length < ANCESTOR_DEPTH) {
-      const edge = teachers[next[top]!]!;
-      next[top]! += 1;
-      if (!onPath.has(edge.teacherId)) {
-        nodes.push(edge.teacherId);
-        edges.push(edge.id);
-        onPath.add(edge.teacherId);
-        next.push(0);
-      }
-      continue;
-    }
-    // Every teacher of `current` tried (or a top reached): step back down.
-    onPath.delete(current);
-    nodes.pop();
-    next.pop();
-    edges.pop();
-  }
-  return { routes, capped: capped || routes.length > PATHS_COUNT_CAP, primary };
+  const { up, primary, read, complete } = await ancestorEdges(ex, focusId, extras);
+  return { ...searchRoutes(focusId, up, read, complete), primary };
 }
 
 // --- Assembly ---------------------------------------------------------------------------------

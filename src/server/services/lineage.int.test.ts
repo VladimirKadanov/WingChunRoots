@@ -706,6 +706,42 @@ describe('a crossed ladder of 20 generations: routes stay within budget', () => 
   });
 });
 
+describe('a second teacher is not lost behind a branch with more routes than the cap', () => {
+  // The primary teacher heads a crossed ladder of 11 generations (2^10 = 1024 routes up); the
+  // second teacher has no recorded teachers, so theirs is the shortest route.
+  const people: FixturePerson[] = [
+    { slug: 'demo-branch-focus', name: 'Branch Focus Notreal' },
+    { slug: 'demo-branch-founder', name: 'Branch Founder Notreal' },
+  ];
+  const edges: FixtureEdge[] = [];
+  for (let g = 0; g <= 10; g += 1) {
+    for (const side of ['l', 'r']) {
+      people.push({ slug: `demo-branch-${g}-${side}`, name: `Branch ${side.toUpperCase()}${g} Notreal` });
+      if (g > 0) {
+        edges.push({ teacher: `demo-branch-${g - 1}-l`, student: `demo-branch-${g}-${side}`, primary: side === 'l' });
+        edges.push({ teacher: `demo-branch-${g - 1}-r`, student: `demo-branch-${g}-${side}`, primary: side === 'r' });
+      }
+    }
+  }
+  edges.push({ teacher: 'demo-branch-10-l', student: 'demo-branch-focus', primary: true }, { teacher: 'demo-branch-founder', student: 'demo-branch-focus' });
+  let fixture: Awaited<ReturnType<typeof addFixture>>;
+  beforeAll(async () => {
+    fixture = await addFixture(people, edges);
+  });
+  afterAll(async () => {
+    await fixture.remove();
+  });
+
+  it('paths keeps the one-step route through the second teacher, right after the primary route', async () => {
+    const p = await lineagePaths(null, { focusId: fixture.id['demo-branch-focus']!, limit: 10 });
+    expect(p.totalPathsCapped).toBe(true);
+    expect(p.totalPaths).toBe(1000);
+    const slugOf = (id: string) => p.nodes.find((n) => n.id === id)!.slug;
+    expect(p.paths[0]!.personIds.map(slugOf)).toEqual([...Array.from({ length: 11 }, (_, g) => `demo-branch-${g}-l`), 'demo-branch-focus']);
+    expect(p.paths[1]!.personIds.map(slugOf)).toEqual(['demo-branch-founder', 'demo-branch-focus']);
+  });
+});
+
 describe('the cap on a wide ego network (more than 500 people within 4 generations)', () => {
   // 1 + 8 + 64 + 512 people: each person teaches 8.
   const people: FixturePerson[] = [];
