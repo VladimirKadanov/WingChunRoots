@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 
 import { defineConfig } from '@playwright/test';
 
+import { e2eBuildProblem } from './e2e/build-check';
 import { buildProjects } from './e2e/projects';
 
 const ci = process.env.CI === 'true';
@@ -12,6 +13,11 @@ const baseURL = `http://127.0.0.1:${port}`;
 // M04: the test fault switch, honoured only with this loopback APP_URL and only in the E2E build
 // (`pnpm build:e2e`; a deployable build refuses to start with it, src/server/faults.ts).
 const serverEnv = { APP_URL: baseURL, WCR_TEST_FAULTS: 'lineage-once,person-once' };
+// So the run stops at once with "run `pnpm build:e2e` first" when the build in .next is missing or
+// deployable (`pnpm build`), instead of at the web server with a bare exit code (e2e/build-check.ts).
+// Listing the tests starts no server and needs no build.
+const buildProblem = process.argv.includes('--list') ? null : e2eBuildProblem(process.env.WCR_DIST_DIR || '.next');
+if (buildProblem) throw new Error(buildProblem);
 // Created here rather than with `mkdir -p` in webServer.command, which must also run in cmd.exe.
 mkdirSync('test-results', { recursive: true });
 

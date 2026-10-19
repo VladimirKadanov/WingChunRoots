@@ -118,13 +118,14 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm db:generate` | A new migration from a change in `src/server/db/schema/` |
 | `pnpm fixtures:generate` | Rewrite `fixtures/lineage-600.json` from the fixture generator |
 | `pnpm build` / `pnpm start` | Production build and server |
+| `pnpm build:e2e` | The build for `pnpm e2e` and `pnpm screenshots`: a production build with the test fault switch (`WCR_E2E_BUILD=1`, M04). Never deploy it |
 | `node scripts/check-bundle-budget.mjs` | After `pnpm build`: initial JavaScript per route, gzip, against its budget (170 kB; `/styleguide` 250 kB) |
 | `pnpm tokens:build` | Regenerate `src/design/generated/tokens.css` and `tokens.json` from `src/design/tokens.ts` |
 | `pnpm notices` | Regenerate `THIRD_PARTY_NOTICES.md` and the `/legal/licenses` data from `pnpm licenses list --prod`, the shipped build output of `tailwindcss` and `licenses/addenda/` (optional packages such as `sharp`) |
 | `node scripts/lighthouse.mjs --url=<url> [--chrome-path=<chrome>]` | Lighthouse 13 in the mobile profile against a running server: three runs, median LCP and CLS against `lighthouserc.json` |
-| `pnpm screenshots` | Full-page screenshots of the key screens into `docs/screenshots/<milestone>/` (run `pnpm build` first) |
+| `pnpm screenshots` | Full-page screenshots of the key screens into `docs/screenshots/<milestone>/` (run `pnpm build:e2e` first) |
 | `scripts/visual-baselines.sh accept <artifact-dir\|job-log>` | Take the visual regression baselines from a CI run (see the admin guide) |
-| `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 and `pnpm worker` (run `pnpm build` first; server log in `test-results/server.log`). The visual regression (`@visual`) runs only in CI; Lighthouse for `/` runs in `scripts/verify.sh M00b` |
+| `pnpm e2e` | Playwright E2E tests against `next start` on port 3100 and `pnpm worker` (run `pnpm build:e2e` first; it stops at once after a plain `pnpm build`; server log in `test-results/server.log`). The visual regression (`@visual`) runs only in CI; Lighthouse for `/` runs in `scripts/verify.sh M00b` |
 | `scripts/db-env-check.sh` | Checks the test database: PostgreSQL ≥ 16, PostGIS ≥ 3.4, UTF-8 locale, the ICU collation `und-x-icu` (name order, M04) |
 | `scripts/verify.sh <Mxx\|all>` | The milestone check: one line per step, full log in `.verify/<Mxx>.log` |
 | `docker compose up -d --wait` / `docker compose down` | Start / stop the local services (data stays in named volumes) |

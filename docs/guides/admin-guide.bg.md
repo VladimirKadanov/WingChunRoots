@@ -254,8 +254,8 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 | `scripts/verify.sh M00b` | Целият етап: lint, типове, тестове, build, E2E, бюджети, Lighthouse, документите. Пълният лог е в `.verify/M00b.log` |
 | `scripts/verify.sh M02` | Акаунтите: интеграционните тестове на предпазните проверки, E2E `@M02` (регистрация, писма, вход, TOTP, първоначален профил, axe), документите. Пълният лог е в `.verify/M02.log` |
 | `pnpm build` и `node scripts/check-bundle-budget.mjs` | JavaScript, който всяка страница зарежда първоначално (gzip): до 170 kB, `/styleguide` до 250 kB |
-| `pnpm e2e` | Playwright срещу `next start` на порт 3100 и worker-а (първо `pnpm build`); axe на всяка страница в двете теми |
-| `pnpm screenshots` | Снимките в `docs/screenshots/<етап>/` при 390×844 и 1440×900 в двете теми (първо `pnpm build`) |
+| `pnpm e2e` | Playwright срещу `next start` на порт 3100 и worker-а (първо `pnpm build:e2e`; след обикновен `pnpm build` спира веднага със съобщение `run pnpm build:e2e first`); axe на всяка страница в двете теми |
+| `pnpm screenshots` | Снимките в `docs/screenshots/<етап>/` при 390×844 и 1440×900 в двете теми (първо `pnpm build:e2e`) |
 
 Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, медианата от три пускания) върви като част от `scripts/verify.sh M00b` и в CI чрез `scripts/lighthouse.mjs` (Lighthouse 13 и `chrome-launcher`); праговете са в `lighthouserc.json`. Ползва Chromium на Playwright: локално от `pnpm exec playwright install chromium`, а в облачната сесия от `PW_CHROMIUM_EXECUTABLE`. Отчетите са в `.lighthouseci/reports/`. Пускане на ръка срещу работещ сървър: `node scripts/lighthouse.mjs --url=http://127.0.0.1:3000/`.
 
@@ -300,7 +300,7 @@ Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, м
 
 ### Превключвателят за грешки `WCR_TEST_FAULTS`
 
-`WCR_TEST_FAULTS=lineage-once,person-once` е само за E2E тестовете на състоянията с грешка (Retry): Playwright го задава сам на сървъра, който пуска. Кодът му е **само в E2E сборката** (`pnpm build:e2e`, която `scripts/verify.sh` и CI правят); в обикновената `pnpm build` го няма. **Никога не го задавайте в `.env` на сървър, който ползват хора.** Ако е зададен, а `APP_URL` не е локален адрес (`localhost`, `127.0.0.1`, `[::1]`), сървърът отказва да тръгне със съобщение `WingChunRoots cannot start: WCR_TEST_FAULTS is a test switch and is refused unless APP_URL is a loopback host`. Махнете реда и пуснете отново. Дори зададен на локален адрес, той проваля само заявки, които носят специалната бисквитка на теста.
+`WCR_TEST_FAULTS=lineage-once,person-once` е само за E2E тестовете на състоянията с грешка (Retry): Playwright го задава сам на сървъра, който пуска. Кодът му е **само в E2E сборката** (`pnpm build:e2e`, която `scripts/verify.sh` и CI правят); в обикновената `pnpm build` го няма. **Никога не го задавайте в `.env` на сървър, който ползват хора.** Ако е зададен, а `APP_URL` не е локален адрес (`localhost`, `127.0.0.1`, `[::1]`), сървърът отказва да тръгне със съобщение `WingChunRoots cannot start: WCR_TEST_FAULTS is a test switch and is refused unless APP_URL is a loopback host`. Махнете реда и пуснете отново. Дори зададен на локален адрес, той проваля само заявки, които носят специалната бисквитка на теста. `pnpm e2e` и `pnpm screenshots` искат E2E сборката: след обикновен `pnpm build` спират веднага, преди да пуснат сървъра, със съобщение `` … run `pnpm build:e2e` first … `` (`e2e/build-check.ts`). Обикновена сборка, пусната със `WCR_TEST_FAULTS`, отказва да тръгне: `WingChunRoots cannot start: WCR_TEST_FAULTS is set, but this build has no test switch …`.
 
 ### Измерване на заявките
 
