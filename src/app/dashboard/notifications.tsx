@@ -74,9 +74,10 @@ export function NotificationsProvider({ list, children }: { list: NotificationLi
     const left = id === ALL ? 0 : Math.max(0, unread - (items.some((item) => item.id === id && !item.readAt) ? 1 : 0));
     // The button goes away with the "New" state: the focus moves on after the optimistic render.
     focusRef.current = { target: id === ALL ? null : nextUnread(items, id) };
+    // An urgent update, outside the transition: a state update inside it would wait for the server.
+    setStatus({ text: id === ALL ? 'All marked as read.' : `Marked as read. ${left === 0 ? 'None' : left} unread.`, failed: false });
     startTransition(async () => {
       markOptimistic(id);
-      setStatus({ text: id === ALL ? 'All marked as read.' : `Marked as read. ${left === 0 ? 'None' : left} unread.`, failed: false });
       try {
         await markReadAction(form);
       } catch {

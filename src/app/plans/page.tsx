@@ -107,7 +107,8 @@ const rowClass = 'border-b border-border-subtle align-top max-sm:grid max-sm:gri
 function GroupRows({ group, plans, plannedLabel }: { group: { id: string; title: string; features: Feature[] }; plans: PlanSummary[]; plannedLabel: string }) {
   const planned = group.id === 'planned';
   return (
-    <tbody role="rowgroup" data-group={group.id} className={cx('max-sm:grid', planned && 'max-md:hidden')}>
+    // Below md the planned rows are not displayed here (<PlannedFeatures> holds them instead).
+    <tbody role="rowgroup" data-group={group.id} className={planned ? 'max-md:hidden' : 'max-sm:grid'}>
       <tr role="row" className="max-sm:grid">
         <th role="rowheader" scope="rowgroup" colSpan={plans.length + 1} className="pt-6 pb-2 text-left">
           <span className="inline-flex items-center gap-2">

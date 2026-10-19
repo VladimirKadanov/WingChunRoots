@@ -28,7 +28,10 @@ export interface PlanPrice {
   monthlyUsd: number;
   /** Proposed yearly price in US dollars, where the proposal names one (Federation). */
   yearlyUsd: number | null;
-  /** Always shown with the label "Proposed price (not final)" (plan §5.6). */
+  /**
+   * Shown with the label "Proposed price (not final)" (plan §5.6); a plan without a price reads
+   * "Free", with no label (review round 1, design-10).
+   */
   status: 'working proposal';
 }
 
