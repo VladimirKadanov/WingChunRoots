@@ -10,9 +10,19 @@
 import { and, asc, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 
 import { requireUser } from '../auth/guards';
-import type { Principal } from '../auth/principal';
+import { isStaffRole, type Principal, type StaffRole } from '../auth/principal';
 import { getDb } from '../db';
-import { lineage, person, personName, place, PUBLIC_RELATIONSHIP_STATUSES, school, schoolInstructor, teachingRelationship } from '../db/schema';
+import {
+  lineage,
+  person,
+  personName,
+  pilotAccessRequest,
+  place,
+  PUBLIC_RELATIONSHIP_STATUSES,
+  school,
+  schoolInstructor,
+  teachingRelationship,
+} from '../db/schema';
 import { effectivePlan, requireEntitlement } from '../entitlements/access';
 import { feature, type Benefit, type FeatureKey, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from '../templates/email/types';
@@ -94,6 +104,11 @@ export interface DashboardOverview {
   plan: PlanSummary;
   until: string | null;
   hasProfile: boolean;
+  /**
+   * Staff accounts (review round 1, design-8): their role and, for an administrator, the number of
+   * open pilot access requests, which /admin/grants answers. Null for everyone else.
+   */
+  staff: { role: StaffRole; openPilotRequests: number | null } | null;
   student: { teachers: TeacherItem[]; requests: RequestItem[] } | null;
   sifu: {
     requests: StudentRequestItem[];
@@ -150,12 +165,22 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   const effective = await effectivePlan(subject, { db });
   const status = await instructorStatus(db, p.user.id, effective.accountType);
   const notifications = await listNotifications(principal);
+  let staff: DashboardOverview['staff'] = null;
+  if (isStaffRole(p.user.role)) {
+    let openPilotRequests: number | null = null;
+    if (p.user.role === 'admin') {
+      const [open] = await db.select({ n: count() }).from(pilotAccessRequest).where(eq(pilotAccessRequest.status, 'open'));
+      openPilotRequests = open?.n ?? 0;
+    }
+    staff = { role: p.user.role, openPilotRequests };
+  }
   const base = {
     accountType: effective.accountType,
     instructor: { status, label: INSTRUCTOR_LABELS[status] },
     plan: planSummary(effective.plan),
     until: effective.until?.toISOString() ?? null,
     hasProfile: Boolean(own),
+    staff,
     notifications,
   };
 

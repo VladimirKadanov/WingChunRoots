@@ -1,9 +1,13 @@
-// /dashboard (milestone M08, In scope 6; plan §5.6): what a signed-in account needs first.
+// /dashboard (milestone M08, In scope 6; plan §5.6): what a signed-in account needs first, and
+// where signing in lands (review round 1, design-7).
+//   Staff:   their work first: for an administrator, the open pilot access requests (design-8).
 //   Student: "My teachers" and "My requests".
 //   Sifu:    "Student requests" with the approval allowance, and "My schools"; at a real limit,
-//            where a request waits because of it, the upgrade prompt (<UpgradePrompt>).
-// Every list has an empty state that says why it is empty and names the next action. The
-// notifications sit beside the lists (below them on a phone) with the unread count, which the
+//            where a request waits because of it, the upgrade prompt (<UpgradePrompt>) at the top
+//            of "Student requests".
+// Every list has an empty state that says why it is empty and what comes next, honestly: a link
+// only where there is a real next step, and never the same label twice on one screen (design-9).
+// The notifications sit beside the lists (below them on a phone) with the unread count, which the
 // header repeats. The data comes from the dashboard.overview and account.me procedures (the same
 // ones /api/v1 serves). Reads the session, so the page renders per request.
 
@@ -25,7 +29,7 @@ import { readFormResult } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
 import type { DashboardOverview, PersonRef } from '@/server/services/dashboard';
 import { requestPilotAccessAction } from './actions';
-import { Notifications } from './notifications';
+import { Notifications, NotificationsProvider, UnreadLink } from './notifications';
 
 export const instant = false;
 
@@ -52,18 +56,23 @@ function Section({ id, title, aside, children }: { id: string; title: string; as
   );
 }
 
-/** Why the list is empty, and the next real action (plan §5.6). */
-function Empty({ testId, children, action }: { testId: string; children: ReactNode; action: { href: string; label: string } }) {
+/** Why the list is empty and what comes next; a link only where there is a real next step (plan §5.6). */
+function Empty({ testId, children, action }: { testId: string; children: ReactNode; action?: { href: string; label: string } }) {
   return (
     <div data-testid={testId} className="grid justify-items-start gap-3 rounded-sm bg-surface-2 px-4 py-4">
       <p className="max-w-[56ch] text-ui text-fg-muted">{children}</p>
-      <Link href={action.href} className={buttonVariants({ variant: 'secondary' })}>
-        {action.label}
-        <ArrowRightIcon />
-      </Link>
+      {action ? (
+        <Link href={action.href} className={buttonVariants({ variant: 'secondary' })}>
+          {action.label}
+          <ArrowRightIcon />
+        </Link>
+      ) : null}
     </div>
   );
 }
+
+/** The one real step for an account with a profile while requests are not open yet (M09). */
+const NAME_CHECK = { href: '/account', label: 'See how your name reads' };
 
 function Person({ person }: { person: PersonRef }) {
   return (
@@ -88,17 +97,15 @@ function Row({ person, meta, status }: { person: PersonRef; meta: ReactNode; sta
 
 function StudentLists({ overview }: { overview: DashboardOverview }) {
   const { teachers, requests } = overview.student!;
-  const next = overview.hasProfile
-    ? { href: '/', label: 'Explore the lineage' }
-    : { href: ONBOARDING, label: 'Set up your profile' };
+  // Without a profile the page has one call to action, "Set up your profile", above the lists.
   return (
     <>
       <Section id="teachers" title="My teachers">
         {teachers.length === 0 ? (
-          <Empty testId="empty-teachers" action={next}>
+          <Empty testId="empty-teachers" action={overview.hasProfile ? NAME_CHECK : undefined}>
             {overview.hasProfile
-              ? 'No confirmed teachers yet. When a teacher confirms that they taught you, they appear here with their seal.'
-              : 'No teachers yet: first set up your profile with your name, so your teachers can confirm you.'}
+              ? 'No confirmed teachers yet. Teachers find you by your name; when one confirms that they taught you, they appear here with their seal.'
+              : 'Your teachers appear here once your profile is set up, so they can find you by your name and confirm you.'}
           </Empty>
         ) : (
           <ul data-testid="teachers" className="grid">
@@ -110,10 +117,10 @@ function StudentLists({ overview }: { overview: DashboardOverview }) {
       </Section>
       <Section id="requests" title="My requests">
         {requests.length === 0 ? (
-          <Empty testId="empty-requests" action={next}>
+          <Empty testId="empty-requests">
             {overview.hasProfile
-              ? 'No open requests. A request you send to a teacher waits here until they answer it.'
-              : 'No requests yet. With a profile you can ask your teachers to confirm you.'}
+              ? 'No open requests. Requests to teachers open later in the pilot; a request you send then waits here until the teacher answers it.'
+              : 'No requests yet. With a profile, you will be able to ask your teachers to confirm you once requests open later in the pilot.'}
           </Empty>
         ) : (
           <ul data-testid="requests" className="grid">
@@ -136,7 +143,7 @@ function StudentLists({ overview }: { overview: DashboardOverview }) {
   );
 }
 
-function SifuLists({ overview }: { overview: DashboardOverview }) {
+function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade: ReactNode }) {
   const { requests, students, schools } = overview.sifu!;
   const allowance =
     students.limit === null
@@ -153,11 +160,12 @@ function SifuLists({ overview }: { overview: DashboardOverview }) {
           </span>
         }
       >
+        {upgrade}
         {requests.length === 0 ? (
-          <Empty testId="empty-student-requests" action={overview.hasProfile ? { href: '/account', label: 'Check your profile' } : { href: ONBOARDING, label: 'Set up your profile' }}>
+          <Empty testId="empty-student-requests" action={overview.hasProfile ? NAME_CHECK : undefined}>
             {overview.hasProfile
               ? 'No student requests waiting. Students find you by your name in the lineage and send you a request; it appears here.'
-              : 'No student requests yet. Set up your profile with your name, so your students can find you.'}
+              : 'Student requests appear here once your profile is set up, so your students can find you by your name.'}
           </Empty>
         ) : (
           <>
@@ -171,18 +179,18 @@ function SifuLists({ overview }: { overview: DashboardOverview }) {
                       {item.lineage} · sent {formatDay(item.createdAt)}
                     </>
                   }
-                  status={<StatusBadge state="unconfirmed" label="Waiting for you" />}
+                  status={<StatusBadge state="unconfirmed" label="Sent to you" />}
                 />
               ))}
             </ul>
-            <p className="text-sm text-fg-muted">Approving and declining requests opens with teacher requests, later in the pilot.</p>
+            <p className="text-sm text-fg-muted">Approving and declining requests opens with teacher requests, later in the pilot. Until then they stay here.</p>
           </>
         )}
       </Section>
       <Section id="schools" title="My schools">
         {schools.length === 0 ? (
-          <Empty testId="empty-schools" action={{ href: '/plans#instructors', label: 'How schools appear on the map' }}>
-            No school lists you as an instructor yet. Schools and the map open later in the pilot; a school then lists its instructors.
+          <Empty testId="empty-schools">
+            No school lists you as an instructor yet. Schools and the map open later in the pilot; a school that lists you then appears here.
           </Empty>
         ) : (
           <ul data-testid="schools" className="grid">
@@ -205,6 +213,41 @@ function SifuLists({ overview }: { overview: DashboardOverview }) {
   );
 }
 
+/** Staff work first (review round 1, design-8): for an administrator, the open pilot access requests. */
+function StaffWork({ staff }: { staff: NonNullable<DashboardOverview['staff']> }) {
+  const open = staff.openPilotRequests;
+  return (
+    <Section id="staff" title="Staff work">
+      {open === null ? (
+        <div data-testid="staff-work" className="grid justify-items-start gap-3">
+          <p className="max-w-[56ch] text-ui text-fg-muted">The review and moderation tools arrive in later milestones of the pilot.</p>
+          <Link href="/admin" className={buttonVariants({ variant: 'secondary' })}>
+            Administration
+            <ArrowRightIcon />
+          </Link>
+        </div>
+      ) : (
+        <div data-testid="staff-work" className="grid justify-items-start gap-3">
+          {open === 0 ? (
+            <p data-testid="open-pilot-requests" className="max-w-[56ch] text-ui text-fg-muted">
+              No pilot access request is waiting for an answer.
+            </p>
+          ) : (
+            <p data-testid="open-pilot-requests" className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-display text-3xl leading-none tabular">{open}</span>
+              <span className="text-ui">{open === 1 ? 'open pilot access request' : 'open pilot access requests'}</span>
+            </p>
+          )}
+          <Link href={open > 0 ? '/admin/grants#pilot-requests' : '/admin/grants'} className={buttonVariants({ variant: 'secondary' })}>
+            {open > 0 ? 'Answer them in Plan grants' : 'Plan grants'}
+            <ArrowRightIcon />
+          </Link>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export default async function DashboardPage({ searchParams }: { searchParams: Search }) {
   const guard = await guardRoute('/dashboard');
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
@@ -215,83 +258,101 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
-  const upgrade = overview.sifu?.upgrade ?? null;
-  const later = query.upgrade === 'later';
-  const unread = overview.notifications.unread;
+  const offer = overview.sifu?.upgrade ?? null;
+  const sifu = overview.accountType === 'sifu';
   const instructorBadge =
     overview.instructor.status === 'verified' ? 'verified' : overview.instructor.status === 'unverified' ? 'unconfirmed' : null;
+  // A staff account without a profile has no teachers or students: one quiet line, no lists.
+  const staffOnly = overview.staff !== null && !overview.hasProfile;
 
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <header className="max-w-[46rem]">
-        <p className="eyebrow">Dashboard</p>
-        <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
-          {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your dashboard</span>}
-        </h1>
-        <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
-          <div className="grid gap-0.5">
-            <dt className="text-sm text-fg-muted">Account type</dt>
-            <dd data-testid="account-type" className="text-ui font-semibold">
-              {instructorBadge ? <StatusBadge state={instructorBadge} label={overview.instructor.label} /> : overview.instructor.label}
-            </dd>
-          </div>
-          <div className="grid gap-0.5">
-            <dt className="text-sm text-fg-muted">Plan</dt>
-            <dd data-testid="plan-name" className="text-ui font-semibold">
-              {overview.plan.name}
-              {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
-            </dd>
-          </div>
-        </dl>
-        <p className="mt-4 flex flex-wrap gap-x-5 text-sm">
-          <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
-            Account type and plan
-          </Link>
-          <Link href="/plans" className="link inline-flex min-h-11 items-center">
-            Compare plans
-          </Link>
-          {unread > 0 ? (
-            <Link href="#notifications" className="link inline-flex min-h-11 items-center">
-              {unread === 1 ? '1 unread notification' : `${unread} unread notifications`}
-            </Link>
-          ) : null}
-        </p>
-      </header>
-
-      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
-        <div className="grid content-start gap-10">
-          {overview.hasProfile ? null : (
-            <div className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
-              <p className="text-ui">Your profile is not set up yet. Add your name so teachers and students can find and confirm you.</p>
-              <Link href={ONBOARDING} className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
-                Set up your profile
-                <ArrowRightIcon />
-              </Link>
+    <NotificationsProvider list={overview.notifications}>
+      <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
+        <header className="max-w-[46rem]">
+          <p className="eyebrow">Dashboard</p>
+          <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
+            {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your dashboard</span>}
+          </h1>
+          <dl className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
+            <div className="grid gap-0.5">
+              <dt className="text-sm text-fg-muted">Account type</dt>
+              <dd data-testid="account-type" className="text-ui font-semibold">
+                {sifu ? 'Sifu' : 'Student'}
+              </dd>
             </div>
-          )}
+            {sifu ? (
+              <div className="grid gap-0.5">
+                <dt className="text-sm text-fg-muted">Shown as</dt>
+                <dd data-testid="shown-as" className="text-ui font-semibold">
+                  {instructorBadge ? <StatusBadge state={instructorBadge} label={overview.instructor.label} /> : overview.instructor.label}
+                </dd>
+              </div>
+            ) : null}
+            <div className="grid gap-0.5">
+              <dt className="text-sm text-fg-muted">Plan</dt>
+              <dd data-testid="plan-name" className="text-ui font-semibold">
+                {overview.plan.name}
+                {overview.until ? <span className="font-normal text-fg-muted"> {untilPlanEnd(overview.until)}</span> : null}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-4 flex flex-wrap gap-x-5 text-sm">
+            <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
+              Account type and plan
+            </Link>
+            <Link href="/account" className="link inline-flex min-h-11 items-center">
+              Account and security
+            </Link>
+            <Link href="/plans" className="link inline-flex min-h-11 items-center">
+              Compare plans
+            </Link>
+            <UnreadLink />
+          </p>
+        </header>
 
-          {upgrade ? (
-            later ? (
-              <p data-testid="upgrade-later" className="flex flex-wrap items-center gap-x-4 rounded-sm bg-surface-2 px-4 py-2 text-sm">
-                <span>{upgrade.allowance.sentence}</span>
-                <Link href="/dashboard#upgrade" className="link inline-flex min-h-11 items-center">
-                  Show the options
-                </Link>
+        <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
+          <div className="grid content-start gap-10">
+            {overview.staff ? <StaffWork staff={overview.staff} /> : null}
+
+            {staffOnly ? (
+              <p data-testid="staff-no-profile" className="max-w-[56ch] text-ui text-fg-muted">
+                Staff accounts don&apos;t need a profile;{' '}
+                <Link href={ONBOARDING} className="link">
+                  add one in onboarding
+                </Link>{' '}
+                if you also train.
               </p>
-            ) : (
-              <UpgradePrompt
-                offer={upgrade}
-                requestAction={requestPilotAccessAction}
-                notNowHref="/dashboard?upgrade=later"
-                initial={await readFormResult('pilot-access', query.outcome)}
-              />
-            )
-          ) : null}
+            ) : overview.hasProfile ? null : (
+              <div className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
+                <p className="text-ui">Your profile is not set up yet. Add your name so teachers and students can find and confirm you.</p>
+                <Link href={ONBOARDING} className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
+                  Set up your profile
+                  <ArrowRightIcon />
+                </Link>
+              </div>
+            )}
 
-          {overview.accountType === 'student' ? <StudentLists overview={overview} /> : <SifuLists overview={overview} />}
+            {staffOnly ? null : sifu ? (
+              <SifuLists
+                overview={overview}
+                upgrade={
+                  offer ? (
+                    <UpgradePrompt
+                      offer={offer}
+                      requestAction={requestPilotAccessAction}
+                      notNowHref="/dashboard#student-requests"
+                      initial={await readFormResult('pilot-access', query.outcome)}
+                    />
+                  ) : null
+                }
+              />
+            ) : (
+              <StudentLists overview={overview} />
+            )}
+          </div>
+          <Notifications />
         </div>
-        <Notifications list={overview.notifications} />
       </div>
-    </div>
+    </NotificationsProvider>
   );
 }
