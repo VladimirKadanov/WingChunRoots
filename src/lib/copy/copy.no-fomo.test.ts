@@ -5,11 +5,15 @@
 // tests show that the matcher rejects known-bad copy and accepts the app's real copy, so the scan
 // can fail; the scan itself must find nothing.
 //
-// What the scan cannot see: the text of a value at run time. An expression it cannot read is a
-// VALUE mark (read as the number 1, or as a possible time or amount before "left", "remaining" or
-// "to go"), so a countdown built entirely from values and words the rules do not list ("{n}
-// {word} {verb}") is still out of its reach; e2e/m08-entitlements.spec.ts runs findFomo() over the
-// rendered prompt and /plans for that reason.
+// What the scan cannot see: the text of a value at run time. An expression it cannot read, and an
+// element without text of its own inside a sentence (`<Num n={n} />`, `<Unit />`, a component
+// with an empty body), is a VALUE mark (read as the number 1, or as a possible time or amount
+// before "left", "remaining" or "to go"); a <br /> or <hr /> reads as a space and a <wbr /> as
+// nothing or a space (M08 polish 2, note 2). So a countdown built entirely from values and words
+// the rules do not list ("{n} {word} {verb}") is still out of its reach, and so is one split across
+// sibling elements that a browser lays out as blocks: their text is joined as written
+// (`<p>2 days</p><p>left</p>` reads "2 daysleft"). e2e/m08-entitlements.spec.ts runs findFomo()
+// over the rendered prompt and /plans for that reason.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -114,7 +118,8 @@ function product(parts: string[][]): string[] {
  * An expression inside a sentence (a JSX expression, a template span, an operand of `+`) reads as
  * each text it can produce (final check, code-2): a string literal its text, a conditional either
  * branch, `??`, `||` and `&&` either operand, parentheses what they hold; anything else VALUE
- * ("1"). So `{n} {n === 1 ? 'day' : 'days'} left` is read as "1 day left" and "1 days left", and a
+ * ("1"); an element without text of its own reads as VALUE too, a <br /> as a space (emptyElement). So
+ * `{n} {n === 1 ? 'day' : 'days'} left` is read as "1 day left" and "1 days left", and a
  * countdown written with the usual plural cannot slip through as "1 1 left"; written with a helper
  * (`{n} {plural(n, 'day')} left`), its two values before "left" are the value-left rule's (polish,
  * note 3).
@@ -143,13 +148,31 @@ function copyOf(fileName: string, source: string): CopyText[] {
   };
   const template = (node: ts.TemplateExpression): string[] =>
     product([[node.head.text], ...node.templateSpans.flatMap((span) => [candidates(span.expression), [span.literal.text]])]);
+  /**
+   * What an element without text of its own reads as inside a sentence (M08 polish 2, note 2): a
+   * break what it shows (<br /> and <hr /> a space, <wbr /> nothing or a space), any other element a
+   * VALUE (`<Num n={n} />`, `<Unit />`, `<span className="dot" />`), since what it renders is known
+   * only at run time. Before, each read as nothing, so "<Num n={n} /> days left" read "days left".
+   */
+  const emptyElement = (tag: ts.JsxTagNameExpression): string[] => {
+    const name = ts.isIdentifier(tag) ? tag.text : '';
+    if (name === 'br' || name === 'hr') return [' '];
+    if (name === 'wbr') return ['', ' '];
+    return [PLACEHOLDER];
+  };
+  /** A component (`<Num>`, `<ui.Count>`), whose text the scan cannot read, as against an HTML element (`<b>`). */
+  const isComponent = (tag: ts.JsxTagNameExpression): boolean => !(ts.isIdentifier(tag) && /^[a-z]/.test(tag.text));
   const jsxText = (node: ts.JsxElement | ts.JsxFragment): string[] =>
     product(
       node.children.map((child) => {
         if (ts.isJsxText(child)) return [decodeEntities(child.text)];
+        if (ts.isJsxSelfClosingElement(child)) return emptyElement(child.tagName);
+        // A component written with an empty body (<Num n={n}></Num>) renders what <Num n={n} /> does.
+        if (ts.isJsxElement(child) && child.children.length === 0 && isComponent(child.openingElement.tagName)) return [PLACEHOLDER];
         if (ts.isJsxElement(child) || ts.isJsxFragment(child)) return jsxText(child);
         if (ts.isJsxExpression(child)) return child.expression ? candidates(child.expression) : [''];
-        return [''];
+        // TypeScript has no other kind of JSX child; one it adds later reads as a value, never as nothing.
+        return [PLACEHOLDER];
       }),
     );
   /** One operand of a `+` chain as its readings: a literal's own text, any other expression its candidates. */
@@ -389,6 +412,68 @@ describe('copyOf(): a value before "left", "remaining" or "to go" (M08 polish, n
     ].join('\n');
     const findings = copyOf('probe.tsx', source).flatMap((item) => findFomo(item.marked));
     expect(findings).toEqual([]);
+  });
+});
+
+describe('copyOf(): an element without text of its own inside a sentence (M08 polish 2, note 2)', () => {
+  /**
+   * The three sentences of the note: `old` is how the scan read each before (the element as
+   * nothing, with its VALUE marks), which no rule flags; `reads` is the sentence as it reads now.
+   */
+  const NOTE: { source: string; old: string; reads: string; rule: string }[] = [
+    { source: 'export const A = () => <p><Num n={n} /> days left</p>;', old: 'days left', reads: '1 days left', rule: 'countdown' },
+    { source: 'export const B = () => <p><Num n={n} /> <Unit /> left</p>;', old: 'left', reads: '1 1 left', rule: 'value-left' },
+    { source: 'export const C = () => <p>{n} {unit}<br />left</p>;', old: `${VALUE} ${VALUE}left`, reads: '1 1 left', rule: 'value-left' },
+  ];
+
+  it('reads a self-closing element as a VALUE and a <br /> as a space, so each sentence of the note is flagged', () => {
+    for (const { source, old, reads, rule } of NOTE) {
+      // The old reading passes every rule: the hole this closes.
+      expect(findFomo(old), `${source} as read before`).toEqual([]);
+      const items = copyOf('probe.tsx', source);
+      expect(
+        items.map((item) => item.text),
+        source,
+      ).toContain(reads);
+      expect(
+        items.flatMap((item) => findFomo(item.marked).map((finding) => finding.rule)),
+        source,
+      ).toContain(rule);
+      expect(scan('probe.tsx', source).length, source).toBeGreaterThan(0);
+    }
+  });
+
+  it('reads the same way in a fragment, a component without children, a member tag, <hr /> and <wbr />', () => {
+    const source = [
+      'export const A = () => <><Num n={n} /> hours remaining</>;',
+      'export const B = () => <p><Num n={n}></Num> days left</p>;',
+      'export const C = () => <p>Only <ui.Count n={n} /> to go</p>;',
+      'export const D = () => <p>{n} {unit}<hr />left</p>;',
+      'export const E = () => <p>{n} days<wbr />left</p>;',
+      'export const F = () => <p>count<wbr />down</p>;',
+    ].join('\n');
+    const items = copyOf('probe.tsx', source);
+    const rulesOf = (line: number) => items.filter((item) => item.line === line).flatMap((item) => findFomo(item.marked).map((finding) => finding.rule));
+    expect(rulesOf(1)).toContain('countdown');
+    expect(rulesOf(2)).toContain('countdown');
+    expect(rulesOf(3)).toContain('value-left');
+    expect(rulesOf(4)).toContain('value-left');
+    // <wbr /> shows nothing or a line break: both readings.
+    expect(items.filter((item) => item.line === 5).map((item) => item.text)).toEqual(expect.arrayContaining(['1 daysleft', '1 days left']));
+    expect(rulesOf(5)).toContain('countdown');
+    expect(rulesOf(6)).toContain('countdown');
+  });
+
+  it('keeps the text of an element with children, and flags nothing in fine copy around an icon or a line break', () => {
+    const source = [
+      'export const A = () => <p><CheckIcon /> Saved.<br />Nothing else changed.</p>;',
+      'export const B = () => <li><Badge /> {used} of {total} left</li>;',
+      'export const C = () => <p>Sent <Ago at={at} /></p>;',
+      'export const D = () => <p><span className="dot" /> 3 backup codes left</p>;',
+    ].join('\n');
+    const items = copyOf('probe.tsx', source);
+    expect(items.map((item) => item.text)).toEqual(expect.arrayContaining(['1 Saved. Nothing else changed.', '1 1 of 1 left', 'Sent 1']));
+    expect(items.flatMap((item) => findFomo(item.marked))).toEqual([]);
   });
 });
 

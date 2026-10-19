@@ -220,6 +220,11 @@ check "copy.no-fomo.test.ts proves its matcher on known-bad strings and scans th
   f=src/lib/copy/copy.no-fomo.test.ts
   grep -q "Only today" "$f" && grep -q "Hurry" "$f" && grep -q "Last chance" "$f" &&
   for d in src/app src/components src/server/templates; do grep -q "'\''$d'\''" "$f" || exit 1; done'
+check "the no-FOMO scan reads an element without text of its own as a value, a <br /> as a space (M08 polish 2, note 2)" bash -c '
+  f=src/lib/copy/copy.no-fomo.test.ts
+  grep -q "if (ts.isJsxSelfClosingElement(child)) return emptyElement(child.tagName);" "$f" &&
+  grep -qF "<p><Num n={n} /> days left</p>" "$f" && grep -qF "<p><Num n={n} /> <Unit /> left</p>" "$f" &&
+  grep -qF "<p>{n} {unit}<br />left</p>" "$f"'
 
 # 7. /plans (In scope 5) -------------------------------------------------------------------------
 check "/plans shows Federation feature by feature, every value planned (final check, requirements-4)" bash -c '
