@@ -60,6 +60,12 @@ function decodeEntities(text: string): string {
 /** A number, an identifier or any other expression inside a sentence reads as "1". */
 const PLACEHOLDER = '1';
 
+/**
+ * At most this many readings of one sentence: the product of what each expression in it can read
+ * as (final check, code-2). Enough for a sentence with a few conditional plurals.
+ */
+const MAX_READINGS = 16;
+
 interface CopyText {
   line: number;
   text: string;
@@ -69,37 +75,73 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** The texts of one source file: literals, template literals and JSX, with each JSX element's children joined into its sentence. */
+/** Every distinct value, in order. */
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+/** The readings of a sentence made of parts, each with its candidate texts: their product, capped. */
+function product(parts: string[][]): string[] {
+  let readings = [''];
+  for (const options of parts) {
+    const next: string[] = [];
+    for (const reading of readings) {
+      for (const option of options) {
+        if (next.length < MAX_READINGS) next.push(reading + option);
+      }
+    }
+    readings = unique(next);
+  }
+  return readings;
+}
+
+/**
+ * The texts of one source file: literals, template literals and JSX, with each JSX element's children joined into its sentence.
+ *
+ * An expression inside a sentence (a JSX expression, a template span, an operand of `+`) reads as
+ * each text it can produce (final check, code-2): a string literal its text, a conditional either
+ * branch, `??`, `||` and `&&` either operand, parentheses what they hold; anything else "1". So
+ * `{n} {n === 1 ? 'day' : 'days'} left` is read as "1 day left" and "1 days left", and a countdown
+ * written with the usual plural cannot slip through as "1 1 left".
+ */
 function copyOf(fileName: string, source: string): CopyText[] {
   const kind = fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
   const out: CopyText[] = [];
-  const push = (node: ts.Node, text: string) => {
-    const value = collapse(text);
-    if (value) out.push({ line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1, text: value });
+  const push = (node: ts.Node, texts: string[]) => {
+    for (const text of texts) {
+      const value = collapse(text);
+      if (value) out.push({ line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1, text: value });
+    }
   };
-  const jsxText = (node: ts.JsxElement | ts.JsxFragment): string =>
-    node.children
-      .map((child) => {
-        if (ts.isJsxText(child)) return decodeEntities(child.text);
-        if (ts.isJsxElement(child) || ts.isJsxFragment(child)) return jsxText(child);
-        if (ts.isJsxExpression(child)) {
-          const expression = child.expression;
-          if (!expression) return '';
-          if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
-          return PLACEHOLDER;
-        }
-        return '';
-      })
-      .join('');
   const isPlus = (node: ts.Node): node is ts.BinaryExpression => ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken;
-  /** One operand of a `+` chain as text: a literal's own text, any other expression a placeholder. */
-  const operand = (node: ts.Expression): string => {
+  const EITHER = new Set([ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken]);
+  /** What an expression inside a sentence can read as (see copyOf). */
+  const candidates = (node: ts.Expression): string[] => {
+    if (ts.isParenthesizedExpression(node)) return candidates(node.expression);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+    if (ts.isTemplateExpression(node)) return template(node);
+    if (ts.isConditionalExpression(node)) return unique([...candidates(node.whenTrue), ...candidates(node.whenFalse)]);
+    if (ts.isBinaryExpression(node) && EITHER.has(node.operatorToken.kind)) return unique([...candidates(node.left), ...candidates(node.right)]);
+    if (isPlus(node)) return operand(node);
+    return [PLACEHOLDER];
+  };
+  const template = (node: ts.TemplateExpression): string[] =>
+    product([[node.head.text], ...node.templateSpans.flatMap((span) => [candidates(span.expression), [span.literal.text]])]);
+  const jsxText = (node: ts.JsxElement | ts.JsxFragment): string[] =>
+    product(
+      node.children.map((child) => {
+        if (ts.isJsxText(child)) return [decodeEntities(child.text)];
+        if (ts.isJsxElement(child) || ts.isJsxFragment(child)) return jsxText(child);
+        if (ts.isJsxExpression(child)) return child.expression ? candidates(child.expression) : [''];
+        return [''];
+      }),
+    );
+  /** One operand of a `+` chain as its readings: a literal's own text, any other expression its candidates. */
+  const operand = (node: ts.Expression): string[] => {
     const inner = ts.isParenthesizedExpression(node) ? node.expression : node;
-    if (isPlus(inner)) return operand(inner.left) + operand(inner.right);
-    if (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner)) return inner.text;
-    if (ts.isTemplateExpression(inner)) return inner.head.text + inner.templateSpans.map((span) => PLACEHOLDER + span.literal.text).join('');
-    return PLACEHOLDER;
+    if (isPlus(inner)) return product([operand(inner.left), operand(inner.right)]);
+    return candidates(inner);
   };
   const hasLiteral = (node: ts.Expression): boolean => {
     const inner = ts.isParenthesizedExpression(node) ? node.expression : node;
@@ -111,11 +153,10 @@ function copyOf(fileName: string, source: string): CopyText[] {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
     // 'Last ' + 'chance' is one sentence: the whole chain, from its outermost `+`.
     if (isPlus(node) && !(node.parent && isPlus(node.parent)) && hasLiteral(node)) push(node, operand(node));
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) push(node, node.text);
-    else if (ts.isTemplateExpression(node)) {
-      push(node, node.head.text + node.templateSpans.map((span) => PLACEHOLDER + span.literal.text).join(''));
-    } else if (ts.isJsxElement(node) || ts.isJsxFragment(node)) push(node, jsxText(node));
-    else if (ts.isIdentifier(node) && /count-?down/i.test(node.text)) push(node, node.text);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) push(node, [node.text]);
+    else if (ts.isTemplateExpression(node)) push(node, template(node));
+    else if (ts.isJsxElement(node) || ts.isJsxFragment(node)) push(node, jsxText(node));
+    else if (ts.isIdentifier(node) && /count-?down/i.test(node.text)) push(node, [node.text]);
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -189,7 +230,7 @@ describe('findFomo()', () => {
       'There are no payments during the pilot. Request pilot access and an administrator can give you Professional Sifu as a test plan.',
       'The plan stops at 00:00 UTC that day. Leave empty for no end date.',
       'Confirmed links stay confirmed and public. New approvals above the remaining plan’s limit wait.',
-      'Your request for Professional Sifu was sent to the administrators. Nothing is charged.',
+      'Your request for Professional Sifu was sent to the administrators. An administrator either gives you the plan or closes the request, and you get a notification either way. Nothing is charged.',
       'Sent 3 days ago',
       'Mark all as read',
       'Students: 5 of 5 approved on Free Sifu',
@@ -239,6 +280,40 @@ describe('copyOf()', () => {
     const rules = texts.flatMap((text) => findFomo(text).map((finding) => finding.rule));
     expect(new Set(rules)).toEqual(new Set(['urgency', 'scarcity']));
     expect(texts.filter((text) => findFomo(text).length > 0).length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('copyOf(): conditional plurals and fallbacks (final check, code-2)', () => {
+  it('reads each branch of a conditional, so a countdown or scarcity written with a plural is caught', () => {
+    const source = [
+      "export const A = () => <p>{days} {days === 1 ? 'day' : 'days'} left</p>;",
+      "export const B = () => <p>Only {n} {n === 1 ? 'place' : 'places'} left in the pilot</p>;",
+      "const c = `${days} ${days === 1 ? 'hour' : 'hours'} remaining`;",
+      "const d = 'Only ' + n + (n === 1 ? ' spot' : ' spots') + ' left';",
+      "export const E = () => <p>{label ?? 'Hurry'}, {flag && 'act now'}</p>;",
+    ].join('\n');
+    const texts = copyOf('probe.tsx', source).map((item) => item.text);
+    expect(texts).toContain('1 day left');
+    expect(texts).toContain('1 days left');
+    expect(texts).toContain('Only 1 places left in the pilot');
+    expect(texts).toContain('1 hours remaining');
+    expect(texts).toContain('Only 1 spots left');
+    const flagged = (line: string) => texts.filter((text) => text.startsWith(line) && findFomo(text).length > 0);
+    // Each of the three sentences of the review, and the + chain, is flagged.
+    expect(flagged('1 day').map((text) => findFomo(text)[0]!.rule)).toContain('countdown');
+    expect(flagged('Only 1 place').map((text) => findFomo(text)[0]!.rule)).toContain('scarcity');
+    expect(flagged('1 hour').map((text) => findFomo(text)[0]!.rule)).toContain('countdown');
+    expect(flagged('Only 1 spot').map((text) => findFomo(text)[0]!.rule)).toContain('scarcity');
+    // ?? and && read either side.
+    expect(texts).toEqual(expect.arrayContaining(['Hurry, act now', '1, 1']));
+    expect(findFomo('Hurry, act now').map((finding) => finding.rule)).toContain('urgency');
+  });
+
+  it('caps the readings of one sentence', () => {
+    const many = Array.from({ length: 6 }, (_, i) => `{x${i} ? 'a' : 'b'}`).join(' ');
+    const texts = copyOf('probe.tsx', `export const A = () => <p>${many}</p>;`).filter((item) => item.line === 1 && item.text.length > 1);
+    expect(texts.length).toBeLessThanOrEqual(MAX_READINGS);
+    expect(texts.length).toBeGreaterThan(1);
   });
 });
 
