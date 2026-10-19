@@ -78,14 +78,14 @@
 | `organization` | Скелет за федерации и асоциации (DEFAULT D12): `slug`, `name`, `kind` (`federation`, `association`, `school_group`), `status` (`pending`, `active`, `suspended`), `country_code`, `website_url` |
 | `organization_membership` | Членство на личност в организация: `role` (`leader`, `admin`, `member`), `starts_on`, `ends_on`. Отделно е от историята на обучение и не я променя |
 | `entitlement_grant` | Право на план (M08): точно един получател (`subject_user_id` или `subject_organization_id`), `plan_code` (`free_student`, `premium_student`, `free_sifu`, `pro_sifu`, `federation`), `source` (`test_grant`, `complimentary`, `stripe`), `starts_at`, `ends_at`, задължителна `reason`, отмяна с `revoked_at`, `revoked_by_user_id` и `revoke_reason` |
-| `pilot_access_request` | Заявка „Request pilot access“ от подканата за по-висок план (M08, план §5.6): `user_id`, `plan_code`, `status` (`open`, `closed`), `closed_at`, `closed_by_user_id`, `grant_id` (правото, с което администраторът я е затворил). Най-много една отворена заявка на акаунт. Не води до плащане ([`docs/entitlements.md`](entitlements.md)) |
+| `pilot_access_request` | Заявка „Request pilot access“ от подканата за по-висок план (M08, план §5.6): `user_id`, `plan_code`, `status` (`open`, `closed`), `closed_at`, `closed_by_user_id`, `grant_id` (правото, с което администраторът я е затворил; празно, когато я е затворил без план, с причина в одита `pilot_access.close`, или когато смяната на вида акаунт я е затворила). Най-много една отворена заявка на акаунт. Не води до плащане ([`docs/entitlements.md`](entitlements.md)) |
 
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
 |---|---|
 | `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy_ack`, `authenticity_declaration`, `age_18_plus`, `publication`; M02), `document_version` (версията на документа от `content/legal/`, например `2026-10-17-draft`), `action` (`granted`, `withdrawn`), `occurred_at`. Редовете не се променят: нова версия или оттегляне е нов ред |
-| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `plan.granted` (`payload`: `planCode`, `startsAt`, `endsAt`) и `plan.revoked`; частичният индекс `notification_user_id_unread_idx` брои непрочетените |
+| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `pilot-access.closed` (до акаунта, когато администратор затвори заявката му без план), `plan.granted` (`payload`: `planCode`, `startsAt`, `endsAt`) и `plan.revoked`; частичният индекс `notification_user_id_unread_idx` брои непрочетените |
 | `email_delivery` | Един ред на имейл (M01b: `Mailer` и outbox-ът): `to_email` (`NULL`, след като срокът на пазене изтече; задължителен при `queued`), `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `attempts` (брой опити, ≥ 0), `last_attempt_at`, `provider_message_id`, `error` (без адреси, до 500 знака), `sent_at` |
 | `audit_log` | Одитен журнал само за добавяне (раздел 6) |
 
