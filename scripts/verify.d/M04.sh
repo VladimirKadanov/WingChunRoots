@@ -384,6 +384,28 @@ check "the admin guide covers the API contract, the fault switch and pnpm perf:q
   f=docs/guides/admin-guide.bg.md
   grep -q "pnpm api:openapi" "$f" && grep -q "WCR_TEST_FAULTS" "$f" && grep -q "pnpm perf:queries" "$f"'
 check "docs/plan/README.md has a status for M04" bash -c '! grep -qE "^\| M04 .*\| не е започнат \|$" docs/plan/README.md'
+# The final check's documentation findings, so a later edit cannot bring the old claims back.
+check "the docs state the real read bound: 2 s per procedure with the cached read (withinBudget), a page in two stages (final check, privacy-security-1)" bash -c '
+  grep -q "withinBudget" docs/api/lineage.md && grep -q "Страниците четат на два етапа" docs/api/lineage.md &&
+  grep -q "после разделите едновременно" docs/adr/0008-person-pages-404.md && grep -q "Колко чака страницата" docs/guides/admin-guide.bg.md'
+check "docs/api/lineage.md: hiddenCounts may be higher for the participant; counts never include a pending request (final check, privacy-security-2)" bash -c '
+  f=docs/api/lineage.md
+  ! grep -q "и за анонимен посетител, и за самия участник" "$f" && grep -q "„публични хора, които не са показани“" "$f"'
+check "docs/api/lineage.md: the content is in the same HTML response; the status and shell leave first (final check, requirements-3)" bash -c '
+  f=docs/api/lineage.md
+  ! grep -q "преди да изпратят първия байт" "$f" && grep -q "Съдържанието е в същия HTML отговор" "$f"'
+check "the admin guide diagnoses a failing person check with pg_isready and pg_stat_activity, never pnpm db:check (final check, requirements-4)" bash -c '
+  f=docs/guides/admin-guide.bg.md
+  ! grep -qF "проверете \`pnpm db:check" "$f" && grep -q "pg_isready" "$f" && grep -q "pg_stat_activity" "$f" &&
+  grep -qF "Не пускайте \`pnpm db:check\` срещу работна база" "$f"'
+check "docs/plan/questions/M04.md opens with the owner's answer, not with open defaults (final check, requirements-5)" bash -c '
+  f=docs/plan/questions/M04.md
+  ! grep -q "which the owner can still change" "$f" && grep -q "the branch ships the answer" "$f"'
+check "the proxy header, ADR 0008, the API doc and the admin guide say Next.js's /_next/data form passes through the proxy (final check, code-2)" bash -c '
+  ! grep -q "api, healthz and _next never reach" src/proxy.ts &&
+  for f in src/proxy.ts src/proxy.test.ts docs/adr/0008-person-pages-404.md docs/api/lineage.md docs/guides/admin-guide.bg.md; do
+    grep -q "_next/data" "$f" || { echo "no _next/data in $f"; exit 1; }
+  done'
 # docs/plan/RULES.md and Done when, item 4: the guides change in the milestone's branch. Checkable
 # while the branch is not merged and origin/main is known (not in a shallow CI checkout).
 if git rev-parse --verify -q origin/main >/dev/null 2>&1 && base="$(git merge-base HEAD origin/main 2>/dev/null)" \
