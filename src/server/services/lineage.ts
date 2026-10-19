@@ -29,6 +29,7 @@ import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import {
   ancestorsGraph,
+  claimStateOf,
   egoGraph,
   type Executor,
   isPublicPerson,
@@ -231,7 +232,7 @@ export async function personProfile(principal: Principal | null, input: PersonIn
     altNames: hidden.altNames,
     kind: hidden.kind,
     lifeStatus: hidden.lifeStatus,
-    claimState: hidden.stewardship === 'self' ? 'claimed' : hidden.stewardship === 'platform' ? 'platform' : 'unclaimed',
+    claimState: claimStateOf(hidden.stewardship),
     countryCode: hidden.countryCode,
     cityName: hidden.cityName,
     bio: hidden.bio,

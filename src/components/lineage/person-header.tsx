@@ -105,7 +105,7 @@ export function FactStrip({ profile, className }: { profile: PersonProfileDto; c
       ),
     });
   }
-  facts.push({ key: 'record', node: claimText(profile.claimState) });
+  if (profile.claimState !== 'unknown') facts.push({ key: 'record', node: claimText(profile.claimState) });
   return (
     <p className={cx('text-ui text-fg-muted', className)}>
       {facts.map((fact, i) => (

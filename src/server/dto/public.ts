@@ -24,8 +24,11 @@ export type PublicNameDto = z.infer<typeof nameSchema>;
 
 export const visibilitySchema = z.enum(['public', 'involved_only']);
 
-/** 'claimed' (the person's own account), 'platform' (kept by the archive) or 'unclaimed'. */
-export const claimStateSchema = z.enum(['claimed', 'platform', 'unclaimed']);
+/**
+ * 'claimed' (the person's own account), 'platform' (kept by the archive) or 'unclaimed'; 'unknown'
+ * for a record shown with its names only (`limited`, plan §6.4).
+ */
+export const claimStateSchema = z.enum(['claimed', 'platform', 'unclaimed', 'unknown']);
 export type ClaimState = z.infer<typeof claimStateSchema>;
 
 export const periodSchema = z.object({
@@ -147,8 +150,9 @@ export const personProfileSchema = z.object({
   /** The signed-in account's own person. */
   isOwn: z.boolean(),
   /**
-   * Only the names are given (no bio, place or life status): a record that is not public, shown to
-   * the viewer because of their own request, which its person has not answered yet (plan §6.4).
+   * Only the names are given (no bio, place, life status, kind or claim state): a record that is not
+   * public, shown to the viewer because of their own request, which its person has not answered yet
+   * (plan §6.4).
    */
   limited: z.boolean(),
   counts: personCountsSchema,

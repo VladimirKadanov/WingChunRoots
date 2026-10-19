@@ -538,7 +538,8 @@
                             "enum": [
                               "claimed",
                               "platform",
-                              "unclaimed"
+                              "unclaimed",
+                              "unknown"
                             ]
                           },
                           "lineageIds": {
@@ -894,7 +895,8 @@
                             "enum": [
                               "claimed",
                               "platform",
-                              "unclaimed"
+                              "unclaimed",
+                              "unknown"
                             ]
                           },
                           "lineageIds": {
@@ -1282,7 +1284,8 @@
                             "enum": [
                               "claimed",
                               "platform",
-                              "unclaimed"
+                              "unclaimed",
+                              "unknown"
                             ]
                           },
                           "lineageIds": {
@@ -1658,7 +1661,8 @@
                             "enum": [
                               "claimed",
                               "platform",
-                              "unclaimed"
+                              "unclaimed",
+                              "unknown"
                             ]
                           },
                           "lineageIds": {
@@ -2036,7 +2040,8 @@
                       "enum": [
                         "claimed",
                         "platform",
-                        "unclaimed"
+                        "unclaimed",
+                        "unknown"
                       ]
                     },
                     "countryCode": {
@@ -2359,7 +2364,8 @@
                                 "enum": [
                                   "claimed",
                                   "platform",
-                                  "unclaimed"
+                                  "unclaimed",
+                                  "unknown"
                                 ]
                               },
                               "visibility": {
@@ -2539,7 +2545,8 @@
                                       "enum": [
                                         "claimed",
                                         "platform",
-                                        "unclaimed"
+                                        "unclaimed",
+                                        "unknown"
                                       ]
                                     },
                                     "visibility": {
@@ -2652,7 +2659,8 @@
                                 "enum": [
                                   "claimed",
                                   "platform",
-                                  "unclaimed"
+                                  "unclaimed",
+                                  "unknown"
                                 ]
                               },
                               "visibility": {
@@ -2832,7 +2840,8 @@
                                       "enum": [
                                         "claimed",
                                         "platform",
-                                        "unclaimed"
+                                        "unclaimed",
+                                        "unknown"
                                       ]
                                     },
                                     "visibility": {
@@ -2945,7 +2954,8 @@
                                 "enum": [
                                   "claimed",
                                   "platform",
-                                  "unclaimed"
+                                  "unclaimed",
+                                  "unknown"
                                 ]
                               },
                               "visibility": {
@@ -3125,7 +3135,8 @@
                                       "enum": [
                                         "claimed",
                                         "platform",
-                                        "unclaimed"
+                                        "unclaimed",
+                                        "unknown"
                                       ]
                                     },
                                     "visibility": {

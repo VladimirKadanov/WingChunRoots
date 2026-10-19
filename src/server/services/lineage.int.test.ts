@@ -816,16 +816,21 @@ describe('the other end of an unanswered request shows only its names (plan §6.
     fixture = await addFixture(
       [
         { slug: 'demo-limited-teacher', name: 'Limited Teacher Notreal', visibility: 'involved_only' },
+        { slug: 'demo-review-teacher', name: 'Review Teacher Notreal', visibility: 'involved_only' },
         { slug: 'demo-answered-teacher', name: 'Answered Teacher Notreal', visibility: 'involved_only' },
       ],
       [
         // The viewer asked; nobody has answered.
         { teacher: 'demo-limited-teacher', student: 'demo-two-lineages', status: 'pending_teacher', visibility: 'involved_only', requestedBy: viewerUserId },
-        // Under review: the teacher has confirmed it.
-        { teacher: 'demo-answered-teacher', student: 'demo-two-lineages', status: 'under_review', visibility: 'involved_only', requestedBy: viewerUserId },
+        // The viewer asked the committee (plan §6.7: the teacher is historical or unreachable): the
+        // teacher has not answered either.
+        { teacher: 'demo-review-teacher', student: 'demo-two-lineages', status: 'under_review', visibility: 'involved_only', requestedBy: viewerUserId },
+        // Confirmed, and kept to the two people in it.
+        { teacher: 'demo-answered-teacher', student: 'demo-two-lineages', status: 'verified', visibility: 'involved_only', requestedBy: viewerUserId },
       ],
     );
-    for (const slug of ['demo-limited-teacher', 'demo-answered-teacher']) {
+    for (const slug of ['demo-limited-teacher', 'demo-review-teacher', 'demo-answered-teacher']) {
+      await getDb().execute(sql`UPDATE person SET kind = 'historical', stewardship = 'platform' WHERE id = ${fixture.id[slug]}::uuid`);
       await getDb().execute(sql`UPDATE person SET country_code = 'GB', life_status = 'deceased' WHERE id = ${fixture.id[slug]}::uuid`);
       await getDb().execute(sql`INSERT INTO person_bio (person_id, lang, body) VALUES (${fixture.id[slug]}::uuid, 'en', 'A fictional biography.')`);
     }
@@ -837,13 +842,25 @@ describe('the other end of an unanswered request shows only its names (plan §6.
 
   it('names only for the unanswered request; the full record once answered, or when the viewer wrote it', async () => {
     const me = principalOf(viewerUserId);
+    const namesOnly = { limited: true, bio: null, countryCode: null, cityName: null, lifeStatus: 'unknown', kind: 'unknown', claimState: 'unknown' };
     const limited = await personProfile(me, { slug: 'demo-limited-teacher' });
-    expect(limited).toMatchObject({ limited: true, displayName: 'Limited Teacher Notreal', bio: null, countryCode: null, cityName: null, lifeStatus: 'unknown' });
+    expect(limited).toMatchObject({ ...namesOnly, displayName: 'Limited Teacher Notreal' });
+    expect(await personProfile(me, { slug: 'demo-review-teacher' })).toMatchObject({ ...namesOnly, displayName: 'Review Teacher Notreal' });
     const answered = await personProfile(me, { slug: 'demo-answered-teacher' });
-    expect(answered).toMatchObject({ limited: false, bio: 'A fictional biography.', countryCode: 'GB', lifeStatus: 'deceased' });
-    // The graph shows the same: a name, no life status.
+    expect(answered).toMatchObject({
+      limited: false,
+      bio: 'A fictional biography.',
+      countryCode: 'GB',
+      lifeStatus: 'deceased',
+      kind: 'historical',
+      claimState: 'platform',
+    });
+    // The graph shows the same: a name, no life status and no claim state.
     const ego = await lineageEgo(me, { focusId: ids['demo-two-lineages']!, up: 1, down: 0, fanoutLimit: 50 });
-    expect(ego.nodes.find((n) => n.slug === 'demo-limited-teacher')).toMatchObject({ displayName: 'Limited Teacher Notreal', lifeStatus: 'unknown' });
+    for (const slug of ['demo-limited-teacher', 'demo-review-teacher']) {
+      expect(ego.nodes.find((n) => n.slug === slug)).toMatchObject({ lifeStatus: 'unknown', claimState: 'unknown' });
+    }
+    expect(ego.nodes.find((n) => n.slug === 'demo-answered-teacher')).toMatchObject({ lifeStatus: 'deceased', claimState: 'platform' });
 
     await getDb().execute(sql`UPDATE person SET created_by_user_id = ${viewerUserId}::uuid WHERE id = ${fixture.id['demo-limited-teacher']}::uuid`);
     try {

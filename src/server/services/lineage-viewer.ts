@@ -27,6 +27,8 @@ import {
 } from './lineage-graph';
 
 const ACTIVE = sql.raw(ACTIVE_RELATIONSHIP_STATUSES.map((s) => `'${s}'`).join(', '));
+/** A request in one of these states, filed by the viewer, has not been answered by its other person. */
+const UNANSWERED: ReadonlySet<string> = new Set(['pending_teacher', 'awaiting_claim', 'under_review']);
 
 async function rows<T>(ex: Executor, query: ReturnType<typeof sql>): Promise<T[]> {
   return (await ex.execute(query)).rows as T[];
@@ -138,12 +140,13 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
  WHERE p.id = ANY(${`{${involved.join(',')}}`}::uuid[]) AND p.deleted_at IS NULL`,
     );
     // The full hidden record of the other end only when its person has answered: plan §6.4 keeps a
-    // record that is not public to the people it concerns. A request the viewer filed and nobody
-    // has answered yet (pending_teacher, awaiting_claim) shows only the names that label the
-    // edge, unless the viewer wrote that record themselves.
+    // record that is not public to the people it concerns. A request the viewer filed and its
+    // other person has not answered (pending_teacher, awaiting_claim, or under_review: the
+    // committee path for a teacher who is historical or unreachable, plan §6.7) shows only the
+    // names that label the edge, unless the viewer wrote that record themselves.
     const answered = new Set<string>();
     for (const e of edgeRows) {
-      const unanswered = (e.status === 'pending_teacher' || e.status === 'awaiting_claim') && e.requested_by_viewer;
+      const unanswered = UNANSWERED.has(e.status) && e.requested_by_viewer;
       if (!unanswered) answered.add(e.teacher_id === own.id ? e.student_id : e.teacher_id);
     }
     const nodes: Record<string, OwnNode> = {};
@@ -155,9 +158,10 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
         slug: n.slug,
         displayName: n.display_name,
         altNames: namesOf(n.alt_names),
-        kind: n.kind,
+        // Names only: not even what kind of record it is or whether its person has an account.
+        kind: full ? n.kind : 'unknown',
         lifeStatus: full ? n.life_status : 'unknown',
-        stewardship: n.stewardship,
+        stewardship: full ? n.stewardship : null,
         countryCode: full ? n.country_code : null,
         cityName: full ? n.city_name : null,
         bio: full ? n.bio : null,

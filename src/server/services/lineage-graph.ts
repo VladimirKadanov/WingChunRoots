@@ -176,7 +176,8 @@ export interface OwnNode {
   altNames: PublicNameDto[];
   kind: string;
   lifeStatus: string;
-  stewardship: string;
+  /** null when `limited`: whether the person has an account is not shown. */
+  stewardship: string | null;
   countryCode: string | null;
   cityName: string | null;
   bio: string | null;
@@ -510,7 +511,9 @@ interface CountRow {
   lineage_ids: string[];
 }
 
-export function claimStateOf(stewardship: string): ClaimState {
+/** null (a record shown with its names only) is 'unknown'. */
+export function claimStateOf(stewardship: string | null): ClaimState {
+  if (stewardship === null) return 'unknown';
   return stewardship === 'self' ? 'claimed' : stewardship === 'platform' ? 'platform' : 'unclaimed';
 }
 
