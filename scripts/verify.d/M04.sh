@@ -250,8 +250,17 @@ titles=(
   '@M04 a pending request to demo-hub-a does not change its hiddenCounts or descendant count for an anonymous viewer'
   '@M04 a person with two teachers appears under both in the outline, marked "also a student of"'
   '@M04 when the lineage service fails once, the profile shows the catchError state with Retry, and Retry recovers'
-  '@M04 profile and list view at 390x844 have no horizontal scroll'
+  '@M04 profile and list view at 390x844 have no horizontal scroll, also with text at 200%'
   '@M04 no axe violations on the profile and list view in dark and light themes'
+  # Review round 1: pages without JavaScript, both faults, founders, rows, phones, axe in more states.
+  '@M04 with JavaScript disabled the profile shows its teachers and students'
+  '@M04 a founder is named only as recorded (DEFAULT D22), on the profile and on a route'
+  '@M04 a student row reads the same on the profile and in the list view, without a cross-lineage mark'
+  '@M04 with JavaScript disabled a failed lineage read shows the error with a Retry link that reloads'
+  '@M04 when the profile read fails once, the page shows its own error state, and Retry recovers'
+  '@M04 at 390x844 the first teacher is on the first screen of the profile'
+  '@M04 no axe violations on the profile and list view at 390x844'
+  '@M04 no axe violations on the private record and the own request, signed in'
 )
 for t in "${titles[@]}"; do
   check "E2E test: $t" grep -qF "test('$t'" e2e/m04-lineage.spec.ts
@@ -277,10 +286,11 @@ check "perf:queries uses only fictional demo- people" bash -c '
 for d in D03 D05 D22; do
   check "DEFAULT $d is marked in the M04 code" bash -c "grep -qE 'DEFAULT $d' ${LINEAGE_SERVER[*]} src/components/lineage/*.ts*"
 done
-check "docs/api/lineage.md links openapi.json and covers privacy, cache tags, staff, the fault switch and the 200 page" bash -c '
+check "docs/api/lineage.md links openapi.json and covers privacy, cache tags, staff, the fault switch and the 404 page" bash -c '
   f=docs/api/lineage.md
   grep -q "](openapi.json)" "$f" && grep -q "app_public_ro" "$f" && grep -q "person:<id>" "$f" && grep -q "lineage:<rootId>" "$f" &&
-  grep -q "Персоналът" "$f" && grep -q "WCR_TEST_FAULTS" "$f" && grep -q "статус 200" "$f" && grep -q "statement_timeout" "$f"'
+  grep -q "Персоналът" "$f" && grep -q "WCR_TEST_FAULTS" "$f" && grep -q "статус 404" "$f" && grep -q "0008-person-pages-404.md" "$f" &&
+  grep -q "statement_timeout" "$f"'
 check "docs/data-model.md describes the M04 view columns and migration" bash -c '
   f=docs/data-model.md
   grep -q "city_name" "$f" && grep -q "lineage_root_person_id" "$f" && grep -q "public_views_lineage_city" "$f"'
