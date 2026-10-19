@@ -21,13 +21,17 @@ function cookieFor(body: unknown, secret = SECRET): string {
 
 describe('outcomeUrl', () => {
   it('adds the outcome to the page and keeps its own query', () => {
-    expect(outcomeUrl('/sign-in?next=%2Fadmin', 'abc')).toBe('/sign-in?next=%2Fadmin&outcome=abc');
-    expect(outcomeUrl('/sign-up', 'abc')).toBe('/sign-up?outcome=abc');
+    expect(outcomeUrl('/sign-in?next=%2Fadmin', 'abc')).toBe('/sign-in?next=%2Fadmin&outcome=abc#');
+    expect(outcomeUrl('/sign-up', 'abc')).toBe('/sign-up?outcome=abc#');
   });
 
   it('never leaves the site', () => {
-    expect(outcomeUrl('//example.test/x', 'abc')).toBe('/?outcome=abc');
-    expect(outcomeUrl('https://example.test/x', 'abc')).toBe('/?outcome=abc');
+    expect(outcomeUrl('//example.test/x', 'abc')).toBe('/?outcome=abc#');
+    expect(outcomeUrl('https://example.test/x', 'abc')).toBe('/?outcome=abc#');
+  });
+
+  it('ends with an empty fragment, so the redirect drops the posting page\'s fragment and autofocus works', () => {
+    expect(outcomeUrl('/admin/grants#give-plan', 'abc')).toBe('/admin/grants?outcome=abc#');
   });
 });
 

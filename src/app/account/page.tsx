@@ -53,7 +53,8 @@ export default async function AccountPage() {
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const client = serverClient(await headers(), guard.principal);
-  const [me, tf] = await Promise.all([client.account.me(), client.account.twoFactor()]);
+  const [me, tf, notifications] = await Promise.all([client.account.me(), client.account.twoFactor(), client.notifications.list()]);
+  const unread = notifications.unread;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
@@ -101,10 +102,10 @@ export default async function AccountPage() {
           {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your account</span>}
         </h1>
 
-        {/* M08: teachers, requests, schools, notifications and the plan. */}
+        {/* M08: teachers, requests, schools, notifications and the plan; with the unread count (review round 1, design-7). */}
         <p className="mt-5">
-          <Link href="/dashboard" className={buttonVariants({ variant: 'secondary' })}>
-            Open your dashboard
+          <Link href="/dashboard" data-testid="open-dashboard" className={buttonVariants({ variant: 'secondary' })}>
+            Open your dashboard{unread > 0 ? ` (${unread} unread)` : ''}
             <ArrowRightIcon />
           </Link>
         </p>

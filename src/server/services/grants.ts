@@ -18,7 +18,7 @@ import { getDb } from '../db';
 import { authUser, entitlementGrant, notification, pilotAccessRequest } from '../db/schema';
 import { type Executor, grantsOf } from '../entitlements/access';
 import { type GrantState, grantState } from '../entitlements/effective';
-import { type AccountType, GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
+import { type AccountType, GRANTABLE_PLANS, type PlanCode, PLANS, PLANS_WITHOUT_PILOT_BENEFITS } from '../entitlements/plans';
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
@@ -71,7 +71,8 @@ export interface GrantList {
   requests: PilotRequestRow[];
   /** The account and plan of `?request=<id>`, to fill the form in. */
   prefill: { email: string; planCode: PlanCode; requestId: string } | null;
-  grantablePlans: { code: PlanCode; name: string; audience: string }[];
+  /** `pilotBenefits` false: the plan unlocks nothing yet in Phase 1 (Premium Student; requirements-2). */
+  grantablePlans: { code: PlanCode; name: string; audience: string; pilotBenefits: boolean }[];
 }
 
 const SOURCE_LABELS = { test_grant: 'Test plan', complimentary: 'Complimentary', stripe: 'Payment' } as const;
@@ -196,7 +197,12 @@ export async function listGrants(principal: Principal | null, raw: unknown = {},
     q,
     requests: requests.map((r) => ({ ...r, planName: PLANS[r.planCode].name, createdAt: r.createdAt.toISOString() })),
     prefill,
-    grantablePlans: GRANTABLE_PLANS.map((code) => ({ code, name: PLANS[code].name, audience: PLANS[code].audience })),
+    grantablePlans: GRANTABLE_PLANS.map((code) => ({
+      code,
+      name: PLANS[code].name,
+      audience: PLANS[code].audience,
+      pilotBenefits: !PLANS_WITHOUT_PILOT_BENEFITS.includes(code),
+    })),
   };
 }
 

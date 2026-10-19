@@ -34,14 +34,15 @@ export function AccountTypeForm({ current, initial }: { current: 'student' | 'si
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5">
       <FormMessage form={formId} state={state} single />
       <fieldset aria-describedby={error ? `${fieldId(formId, 'accountType')}-error` : undefined} className="grid gap-3">
-        <legend className="mb-3 text-sm font-semibold">Account type</legend>
+        {/* The section's heading already says "Account type" on screen (review round 1, design-13). */}
+        <legend className="sr-only">Account type</legend>
         {error ? (
           <p id={`${fieldId(formId, 'accountType')}-error`} className="text-sm text-danger">
             {error}
           </p>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
-          {OPTIONS.map((option) => (
+          {OPTIONS.map((option, index) => (
             <label
               key={option.value}
               className={cx(
@@ -56,7 +57,15 @@ export function AccountTypeForm({ current, initial }: { current: 'student' | 'si
                 value={option.value}
                 id={option.value === 'student' ? fieldId(formId, 'accountType') : undefined}
                 defaultChecked={chosen === option.value}
-                className="mt-1 size-5 shrink-0 cursor-pointer accent-fg focus-visible:outline-none"
+                // Without JavaScript a refused choice comes back with the focus on the first option
+                // (review round 1, a11y-webview-1); with it, useFocusOnError() does the same.
+                autoFocus={error ? index === 0 : undefined}
+                // Drawn in ink (design-13): a 1.5px ring, and a dot when chosen; the native disc
+                // renders as a filled grey circle in the dark theme.
+                className={cx(
+                  'mt-1 grid size-5 shrink-0 cursor-pointer appearance-none place-content-center rounded-full border-[1.5px] border-fg bg-surface-1 focus-visible:outline-none',
+                  'before:size-2.5 before:scale-0 before:rounded-full before:bg-fg before:transition-transform before:duration-(--duration-fast) checked:before:scale-100',
+                )}
               />
               <span className="grid gap-1">
                 <span className="flex flex-wrap items-baseline gap-x-2 font-display text-xl">

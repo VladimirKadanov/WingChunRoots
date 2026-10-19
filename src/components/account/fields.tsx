@@ -216,6 +216,8 @@ export function TextField({
   enterKeyHint,
   maxLength,
   minLength,
+  min,
+  max,
   lang,
   defaultValue,
   spellCheck,
@@ -233,6 +235,9 @@ export function TextField({
   enterKeyHint?: EnterKeyHint;
   maxLength?: number;
   minLength?: number;
+  /** For type 'date': the first and last day the picker offers, "YYYY-MM-DD" (M08). */
+  min?: string;
+  max?: string;
   lang?: string;
   defaultValue?: string;
   spellCheck?: boolean;
@@ -267,6 +272,8 @@ export function TextField({
           enterKeyHint={enterKeyHint}
           maxLength={maxLength}
           minLength={minLength}
+          min={min}
+          max={max}
           lang={lang}
           translate={translate}
           spellCheck={password ? false : spellCheck}

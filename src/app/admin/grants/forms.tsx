@@ -8,7 +8,6 @@ import { useActionState, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { buttonVariants } from '@/components/ui/button-variants';
-import { cx } from '@/lib/cx';
 import { IDLE, type FormState } from '@/lib/form-state';
 import { createGrantAction, revokeGrantAction } from './actions';
 
@@ -21,22 +20,32 @@ const LABELS = {
   endsOn: 'Ends',
 };
 
+/**
+ * Giving a test plan. No plan is chosen in advance (review round 1, a11y-webview-12): the admin
+ * picks one, or the pilot request being answered fills it in. The date pickers offer today up to
+ * the horizon grants.create accepts (two years); the server checks the same bounds.
+ */
 export function CreateGrantForm({
   plans,
   prefill,
   today,
+  horizon,
   initial,
 }: {
-  plans: readonly { code: string; name: string; audience: string }[];
+  plans: readonly { code: string; name: string; audience: string; pilotBenefits: boolean }[];
   prefill: { email: string; planCode: string; requestId: string } | null;
+  /** "YYYY-MM-DD" (UTC). */
   today: string;
+  /** The last day a grant may start or end on, "YYYY-MM-DD" (UTC). */
+  horizon: string;
   initial?: FormState | null;
 }) {
   const [state, action, pending] = useActionState(createGrantAction, initial ?? IDLE);
   const formId = useFormId('create-grant');
   useFocusOnError(formId, state);
   const values = state.status === 'done' ? {} : (state.values ?? {});
-  const [planCode, setPlanCode] = useState(values.planCode ?? prefill?.planCode ?? plans[0]?.code ?? '');
+  const [planCode, setPlanCode] = useState(values.planCode ?? prefill?.planCode ?? '');
+  const chosen = plans.find((plan) => plan.code === planCode);
   const [source, setSource] = useState(values.source ?? 'test_grant');
   const requestId = values.requestId ?? prefill?.requestId ?? '';
   return (
@@ -59,7 +68,23 @@ export function CreateGrantForm({
         state={state}
       />
       <div className="grid gap-5 sm:grid-cols-2">
-        <SelectField form={formId} name="planCode" label={LABELS.planCode} autoComplete="off" value={planCode} onValue={setPlanCode} state={state}>
+        <SelectField
+          form={formId}
+          name="planCode"
+          label={LABELS.planCode}
+          autoComplete="off"
+          value={planCode}
+          onValue={setPlanCode}
+          hint={
+            chosen && !chosen.pilotBenefits
+              ? `${chosen.name} unlocks nothing yet in the pilot: its features are planned. The account keeps it when they arrive.`
+              : 'A Sifu plan works only on a Sifu account, a Student plan only on a Student account.'
+          }
+          state={state}
+        >
+          <option value="" disabled>
+            Choose a plan
+          </option>
           {plans.map((plan) => (
             <option key={plan.code} value={plan.code}>
               {plan.name} ({plan.audience === 'sifu' ? 'Sifu accounts' : 'Student accounts'})
@@ -81,7 +106,18 @@ export function CreateGrantForm({
         state={state}
       />
       <div className="grid gap-5 sm:grid-cols-2">
-        <TextField form={formId} name="startsOn" type="date" label={LABELS.startsOn} autoComplete="off" defaultValue={today} hint="From 00:00 UTC that day." state={state} />
+        <TextField
+          form={formId}
+          name="startsOn"
+          type="date"
+          label={LABELS.startsOn}
+          autoComplete="off"
+          defaultValue={today}
+          min={today}
+          max={horizon}
+          hint="From 00:00 UTC that day: today or later."
+          state={state}
+        />
         <TextField
           form={formId}
           name="endsOn"
@@ -89,7 +125,9 @@ export function CreateGrantForm({
           label={LABELS.endsOn}
           optional
           autoComplete="off"
-          hint="The plan stops at 00:00 UTC that day. Leave empty for no end date."
+          min={today}
+          max={horizon}
+          hint="The plan stops at 00:00 UTC that day, so the day before is its last full day. Leave empty for no end date."
           state={state}
         />
       </div>
@@ -103,10 +141,13 @@ export function CreateGrantForm({
 }
 
 /**
- * Revoking a grant, behind a disclosure on its row: the reason, then the button. <details> opens
- * without JavaScript and by keyboard. The button names the plan and the account. The row keeps
- * this component once the grant is revoked (`revocable` false), so the outcome stays on screen
- * after the page refreshes; a row that was never revoked here says "None".
+ * Revoking a grant, behind a disclosure in the full-width row under its grant: the reason, then
+ * the button. <details> opens without JavaScript and by keyboard. Its summary is a quiet "Revoke…"
+ * link; only the button that revokes is in the danger tone (review round 1, design-14). The button
+ * names the plan and the account. The row keeps this component once the grant is revoked
+ * (`revocable` false), so the outcome stays on screen after the page refreshes; a grant that
+ * cannot be revoked renders nothing. A refused revoke (with or without JavaScript) reopens with
+ * the focus on the reason (a11y-webview-1).
  */
 export function RevokeGrantForm({
   grantId,
@@ -126,22 +167,17 @@ export function RevokeGrantForm({
   useFocusOnError(formId, state);
   const failed = state.status === 'error';
   if (state.status === 'done') return <FormMessage form={formId} state={state} single />;
-  if (!revocable) return <span className="text-sm text-fg-muted">None</span>;
+  if (!revocable) return null;
   return (
     <details open={failed || undefined} className="group">
-      <summary
-        className={cx(
-          buttonVariants({ variant: 'danger', size: 'sm' }),
-          'cursor-pointer list-none [&::-webkit-details-marker]:hidden',
-        )}
-      >
-        Revoke<span className="sr-only"> {planName} of {email}</span>
+      <summary className="link inline-flex min-h-11 cursor-pointer list-none items-center text-sm [&::-webkit-details-marker]:hidden">
+        Revoke…<span className="sr-only"> {planName} of {email}</span>
       </summary>
-      <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="mt-3 grid gap-3">
+      <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid max-w-[34rem] gap-3 pt-1 pb-2">
         <FormMessage form={formId} state={state} single />
         <input type="hidden" name="grantId" value={grantId} />
-        <TextField form={formId} name="reason" label="Reason for revoking" autoComplete="off" maxLength={500} state={state} />
-        <p className="text-sm text-fg-muted">Confirmed links stay confirmed and public; only new approvals above the plan left wait.</p>
+        <TextField form={formId} name="reason" label="Reason for revoking" autoComplete="off" maxLength={500} autoFocus={failed} state={state} />
+        <p className="text-sm text-fg-muted">Confirmed links stay confirmed and public. New approvals above the remaining plan&apos;s limit wait.</p>
         <div>
           <button
             type="submit"

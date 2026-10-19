@@ -1,6 +1,8 @@
 // /admin/grants (milestone M08, In scope 3; plan §6.5): administrators give and revoke test plans
 // of the pilot, each with a reason, a start and an end, audited as grant.create and grant.revoke.
-// Open "Request pilot access" requests are listed first; "Give …" fills the form in. Guarded by
+// Open "Request pilot access" requests are listed first; "Give …" opens the form, filled in. The
+// form waits behind a "Give a test plan…" disclosure, so the table of grants, the page's main
+// content, sits near the top (review round 1, design-6). Guarded by
 // requireStaff2FA(['admin']): an administrator whose session passed the second factor (others are
 // told plainly, or sent to verify the session). The data and both actions go through the
 // grants.list, grants.create and grants.revoke procedures (the same ones /api/v1 serves).
@@ -12,12 +14,14 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { PageRedirect } from '@/components/account/page-redirect';
+import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { cx } from '@/lib/cx';
 import { formatDay, isoDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
-import { listGrantsInput } from '@/server/services/grants';
+import { grantHorizon, listGrantsInput } from '@/server/services/grants';
 import { CreateGrantForm } from './forms';
 import { GrantsTable } from './grants-table';
 
@@ -76,6 +80,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
     request,
   });
   const [created, revoked] = await Promise.all([readFormResult('create-grant', query.outcome), readFormResult('revoke-grant', query.outcome)]);
+  const now = new Date();
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -112,19 +117,34 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           </Section>
         ) : null}
 
-        <Section id="give-plan" title="Give a test plan">
-          <div className="max-w-[46rem]">
-            {/* Keyed by the request in the address, not by the prefill: a grant closes the request and
-                the prefill goes away, but the form keeps its success message. */}
-            <CreateGrantForm
-              key={request ?? 'new'}
-              plans={list.grantablePlans}
-              prefill={list.prefill}
-              today={isoDay(new Date())}
-              initial={created}
-            />
-          </div>
-        </Section>
+        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid content-start gap-4 border-t border-border-subtle pt-6">
+          <h2 id="give-plan-heading" className="sr-only">
+            Give a test plan
+          </h2>
+          {/* Open when a pilot request is being answered, and to show the outcome of a post without
+              JavaScript; otherwise closed until the admin opens it. */}
+          <details open={Boolean(request) || created !== null || undefined} className="group max-w-[46rem]">
+            <summary
+              data-testid="give-plan-toggle"
+              className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
+            >
+              Give a test plan…
+              <ChevronDownIcon size={18} className="transition-transform duration-(--duration-fast) group-open:rotate-180" />
+            </summary>
+            <div className="pt-4">
+              {/* Keyed by the request in the address, not by the prefill: a grant closes the request and
+                  the prefill goes away, but the form keeps its success message. */}
+              <CreateGrantForm
+                key={request ?? 'new'}
+                plans={list.grantablePlans}
+                prefill={list.prefill}
+                today={isoDay(now)}
+                horizon={isoDay(grantHorizon(now))}
+                initial={created}
+              />
+            </div>
+          </details>
+        </section>
 
         <Section id="grants" title="Grants">
           <form role="search" action="/admin/grants" method="get" className="flex max-w-[34rem] flex-wrap items-end gap-3">

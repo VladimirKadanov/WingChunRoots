@@ -18,6 +18,8 @@ import { formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 
 const PAGE = '/admin/grants';
+/** A session that lost its second-factor check goes to prove it again, then comes back (security-8). */
+const VERIFY_SESSION = '/account/security?next=%2Fadmin%2Fgrants';
 const CREATE_FIELDS = ['email', 'planCode', 'source', 'reason', 'startsOn', 'endsOn', 'requestId'] as const;
 
 export async function createGrantAction(_previous: FormState, form: FormData): Promise<FormState> {
@@ -44,6 +46,7 @@ async function createGrant(form: FormData): Promise<FormState> {
     return { status: 'done', message: `${grant.planName} given to ${grant.email} ${period}.` };
   } catch (error) {
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fadmin%2Fgrants');
+    if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(VERIFY_SESSION);
     const state = formStateFromRpcError(error, values);
     if (state) return state;
     throw error;
@@ -65,6 +68,7 @@ async function revokeGrant(form: FormData): Promise<FormState> {
     return { status: 'done', message: `${grant.planName} of ${grant.email} revoked. Confirmed links stay confirmed.`, values: { grantId: grant.id } };
   } catch (error) {
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fadmin%2Fgrants');
+    if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(VERIFY_SESSION);
     const state = formStateFromRpcError(error, values);
     if (state) return state;
     throw error;

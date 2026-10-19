@@ -1,4 +1,5 @@
-// /dashboard/settings (milestone M08, In scope 2; plan §6.5): the account type, Student or Sifu,
+// /dashboard/settings, "Account type and plan" (milestone M08, In scope 2; plan §6.5): the account
+// type, Student or Sifu,
 // and the plan in effect with the account's test plans. Changing the type sets the free plan of
 // that type, is audited, and verifies nothing (DEFAULT D04): a Sifu without an approved instructor
 // verification shows as "Instructor (unverified)" (DEFAULT D04/D13). From Sifu to Student every
@@ -20,7 +21,7 @@ import { AccountTypeForm } from './forms';
 export const instant = false;
 
 export const metadata: Metadata = {
-  title: 'Dashboard settings',
+  title: 'Account type and plan',
   robots: { index: false },
 };
 
@@ -49,14 +50,15 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[46rem]">
         <p className="eyebrow">Dashboard</p>
-        <h1 className="mt-2 font-display text-feature">Settings</h1>
+        <h1 className="mt-2 font-display text-feature">Account type and plan</h1>
 
         <div className="mt-8 grid gap-10">
           <Section id="account-type-heading" title="Account type">
             <div className="grid gap-5">
               <p className="max-w-[60ch] text-ui text-fg-muted">
-                The type sets your free plan. It verifies nothing and deletes nothing: your confirmed links stay confirmed and public
-                whichever you choose. A Student account approves no new students.
+                The type sets your free plan. Choosing Sifu doesn&apos;t verify you as an instructor — an archivist does that separately.
+                Your confirmed links never change, whichever you choose; a Student account approves no new students. You can change the
+                type up to five times in 24 hours.
               </p>
               <AccountTypeForm current={mine.accountType} initial={await readFormResult('account-type', query.outcome)} />
             </div>
@@ -93,6 +95,9 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
                 )}
               </dd>
             </dl>
+            <p data-testid="plan-day-hint" className="mt-4 max-w-[60ch] text-sm text-fg-muted">
+              A plan starts and stops at 00:00 UTC, so &ldquo;until&rdquo; names its last full day.
+            </p>
             {mine.pilotRequest ? (
               <p className="mt-4 text-sm text-fg-muted">
                 You asked for pilot access to {mine.pilotRequest.planName} on {formatDay(mine.pilotRequest.createdAt)}. An administrator will

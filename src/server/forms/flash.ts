@@ -60,11 +60,16 @@ export async function postedByReact(): Promise<boolean> {
   return (await headers()).has('next-action');
 }
 
-/** The address of `page` with `?outcome=<id>`: always a path on this site. */
+/**
+ * The address of `page` with `?outcome=<id>`: always a path on this site. It ends with an empty
+ * fragment ("#"): a redirect without one keeps the fragment of the page that posted (#give-plan
+ * after a "Give …" link), and a document opened at a fragment skips `autofocus`, so the outcome
+ * would get no focus (M08 review round 1, a11y-webview-1).
+ */
 export function outcomeUrl(page: string, id: string): string {
   const url = new URL(page.startsWith('/') && !page.startsWith('//') ? page : '/', 'http://local.invalid');
   url.searchParams.set(OUTCOME_PARAM, id);
-  return `${url.pathname}${url.search}`;
+  return `${url.pathname}${url.search}#`;
 }
 
 /**
