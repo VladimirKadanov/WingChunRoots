@@ -81,6 +81,7 @@ required=(
   e2e/m08-entitlements.spec.ts e2e/helpers/plans.ts
   src/components/account/load-error.tsx src/app/dashboard/error.tsx src/app/dashboard/settings/error.tsx
   src/app/admin/grants/error.tsx e2e/m08-failures.exclusive.spec.ts src/server/rpc/form.test.ts
+  e2e/helpers/next-error.ts e2e/next-error.test.ts e2e/next-error.spec.ts
   docs/entitlements.md docs/adr/0007-entitlements.md scripts/verify.d/M08.sh
 )
 for f in "${required[@]}"; do
@@ -332,6 +333,14 @@ exclusive_titles=(
 for title in "${exclusive_titles[@]}"; do
   check "E2E test (exclusive run): $title" grep -qF "$title" e2e/m08-failures.exclusive.spec.ts
 done
+# Polish 2, note 1: Next.js writes the heading of its error page with a typographic apostrophe and,
+# without JavaScript, sends only its empty root; the /account test checks for both.
+check "the /account test checks for Next.js's error page by its root and its heading, with either apostrophe (polish 2, note 1)" bash -c '
+  grep -q "await expectNoNextErrorPage(p);" e2e/m08-failures.exclusive.spec.ts &&
+  grep -qF "export const NEXT_ERROR_ROOT = '\''html#__next_error__'\'';" e2e/helpers/next-error.ts &&
+  grep -qF "This page couldn['\''’]t load" e2e/helpers/next-error.ts'
+check "E2E test: @M08 the check for Next.js's error page fails on the error page of this build" \
+  grep -qF "@M08 the check for Next.js's error page fails on the error page of this build and passes on a page of the app" e2e/next-error.spec.ts
 
 # 13. Decisions by default and documentation (In scope 8; docs/plan/RULES.md) -----------------
 for d in D04 D06 D07 D08 D09 D13; do

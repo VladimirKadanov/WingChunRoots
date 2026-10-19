@@ -23,6 +23,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 import { getDb } from '../src/server/db';
 import { notification } from '../src/server/db/schema';
 import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
+import { expectNoNextErrorPage } from './helpers/next-error';
 import { freshAccount, signInSeededAdmin } from './helpers/plans';
 import { runPaths } from './projects';
 
@@ -177,7 +178,9 @@ test('@M08 /account renders in full when its unread count cannot be read: the ap
     await expect(p.getByTestId('open-dashboard')).toHaveText('Open your dashboard');
     await expect(p.getByTestId('open-dashboard')).toHaveAttribute('href', '/dashboard');
     // Neither Next.js's bare error page nor an error state: nothing on this page failed that it needs.
-    await expect(p.getByText("This page couldn't load")).toHaveCount(0);
+    // The check finds that page by its root as well as its heading, which is written with a
+    // typographic apostrophe and is not there at all without JavaScript (polish 2, note 1).
+    await expectNoNextErrorPage(p);
     await expect(p.getByTestId('load-error')).toHaveCount(0);
   };
 
