@@ -185,7 +185,7 @@ test('@M04 with JavaScript disabled the descendants outline uses details and sum
   });
 });
 
-test('@M04 anonymous viewer never receives pending or under-review edges (HTML and API)', async ({ page, request }) => {
+test('@M04 anonymous viewer never receives pending or under-review edges (HTML and API)', async ({ browser, page, request }) => {
   const hub = await profileOf(request, 'demo-hub-a');
   // API: the ego network of the hub two generations each way, up to 100 students per person
   // (the fixture's pending request to the hub sorts well inside the first 100).
@@ -223,21 +223,29 @@ test('@M04 anonymous viewer never receives pending or under-review edges (HTML a
       expect(await answer.text(), `${path} of ${slug}`).toBe(expected);
     }
   }
-  // The pages too: status 404 and the same HTML, scripts aside, for a hidden person, an address
-  // that was never used and one no person could have (src/proxy.ts).
+  // The pages too: the same status and the same HTML, scripts aside, for a hidden person, an
+  // address that was never used and one no person could have. Never indexed. The status is 200:
+  // only a request-time check in a proxy.ts could answer 404, and Phase 1 has none (CLAUDE.md §13,
+  // docs/adr/0008-person-pages-404.md, docs/plan/questions/M04.md).
   for (const suffix of ['', '/lineage']) {
     const [hiddenPage, missingPage, malformedPage] = [
       await pageOf(request, `/people/demo-claim-only-teacher${suffix}`),
       await pageOf(request, `/people/demo-no-such-person${suffix}`),
       await pageOf(request, `/people/BAD_slug${suffix}`),
     ];
-    expect(hiddenPage.status, `/people/demo-claim-only-teacher${suffix}`).toBe(404);
+    expect(hiddenPage.status, `/people/demo-claim-only-teacher${suffix}`).toBe(200);
     expect(hiddenPage.html).toContain('No public profile at this address');
     expect(hiddenPage.html).toMatch(/<meta name="robots" content="noindex, nofollow"\s*\/?>/);
     expect(hiddenPage, `/people/demo-claim-only-teacher${suffix}`).toEqual(missingPage);
     expect(malformedPage, `/people/BAD_slug${suffix}`).toEqual(missingPage);
   }
-  expect((await pageOf(request, '/people/demo-under-review/lineage')).status).toBe(404);
+  const underReview = await pageOf(request, '/people/demo-under-review/lineage');
+  expect(underReview).toEqual(await pageOf(request, '/people/demo-no-such-person/lineage'));
+  // The words are in the HTML itself, not drawn by a script.
+  await withoutJavaScript(browser, async (noScript) => {
+    await noScript.goto('/people/demo-claim-only-teacher');
+    await expect(noScript.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+  });
 
   // An under-review and a pending link between two public people (only possible as involved_only,
   // a database constraint) reach no anonymous answer: not the API, not the pages. Read with
@@ -538,7 +546,7 @@ test('@M04 no axe violations on the profile and list view in dark and light them
   for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-root-a/lineage', '/people/demo-claim-only-teacher']) {
     for (const theme of THEMES) {
       const response = await openInTheme(page, path, theme);
-      expect(response?.status()).toBe(path.endsWith('teacher') ? 404 : 200);
+      expect(response?.status()).toBe(200);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expectNoAxeViolations(page, `${path} (${theme})`);
     }

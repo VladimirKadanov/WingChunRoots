@@ -70,12 +70,12 @@ const STATES: readonly ScreenState[] = [
     },
   },
   {
-    // A hidden person's address: the 404 "Not on the record" (src/proxy.ts).
+    // A hidden person's address: "Not on the record", never indexed (docs/adr/0008-person-pages-404.md).
     name: 'person-not-on-record',
     milestone: 'M04',
     async reach(page) {
       const response = await page.goto('/people/demo-claim-only-teacher');
-      expect(response?.status()).toBe(404);
+      expect(response?.status()).toBe(200);
       await expect(page.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
     },
   },

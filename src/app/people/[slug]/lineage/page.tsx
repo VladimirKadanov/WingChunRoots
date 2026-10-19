@@ -5,7 +5,8 @@
 // read before the first byte is sent and rendered on the server, so the page works without
 // JavaScript (streamed Suspense content would need inline scripts). A section whose read fails
 // says so in place, under its own heading, with a Retry link that is a plain reload; the rest of
-// the page stands. A person the viewer may not see answers 404 (src/proxy.ts, plan §6.4).
+// the page stands. A person the viewer may not see gets "Not on the record", never indexed, the
+// same as a missing address (plan §6.4; status 200 until the owner decides, ADR 0008).
 
 import type { Metadata } from 'next';
 import Link from 'next/link';

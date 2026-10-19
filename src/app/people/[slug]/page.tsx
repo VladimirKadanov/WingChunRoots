@@ -2,8 +2,9 @@
 // in every script, readings, one line of facts) comes from people.get; the teachers from
 // lineage.ego and the students from people.students (the earliest first, as on a register). Both
 // are read before the page is rendered, so teachers and students are in the first HTML and work
-// without JavaScript. A person the viewer may not see gets the same "Not on the record" page, with
-// status 404, as a missing address (src/proxy.ts, plan §6.4). The page reads the session (a
+// without JavaScript. A person the viewer may not see gets the same "Not on the record" page, never
+// indexed, as a missing address (plan §6.4; status 200 until the owner decides, ADR 0008). The
+// page reads the session (a
 // participant also sees their own pending requests, DEFAULT D03), so it renders per request.
 //
 // Errors (plan §5.6, In scope 6): a failed profile read shows the page's own error state inside

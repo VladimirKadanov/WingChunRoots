@@ -1,10 +1,13 @@
 // "Not on the record" (milestone M04): what a person's pages show for an address that was never
 // used, a malformed one and a person the visitor may not see. The same words, markup and status
-// (404) for all three, so the page reveals nothing about hidden records (plan §6.4, DEFAULT D03).
-// src/proxy.ts answers such an address before the page renders: it rewrites it to an address no
-// route uses, marked with NOT_ON_RECORD_HEADER (src/lib/not-on-record.ts), and the app's
-// not-found page (src/app/not-found.tsx) renders this. A page that still finds no profile (the
-// record was hidden between the two reads) renders it inline, never indexed.
+// for all three, so the page reveals nothing about hidden records (plan §6.4, DEFAULT D03).
+//
+// Rendered by the page itself, with status 200 and never indexed (noindex, nofollow): with Cache
+// Components and Partial Prefetching the route's shell has already gone out with status 200 when
+// the page renders, and a notFound() thrown after that would leave the HTML body empty without
+// JavaScript. Only a request-time check in src/proxy.ts could answer 404, and Phase 1 has no
+// proxy.ts (CLAUDE.md §13): the owner decides (docs/plan/questions/M04.md, ADR 0008). The API
+// answers the same request with 404 (docs/api/lineage.md).
 //
 // The mark is a brush stroke that ends in an open node: the line stops, with no record beyond it.
 
