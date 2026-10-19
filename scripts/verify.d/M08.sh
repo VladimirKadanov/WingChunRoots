@@ -163,6 +163,10 @@ check "/dashboard, /dashboard/settings and /admin/grants catch their reads and s
   for f in src/app/dashboard/error.tsx src/app/dashboard/settings/error.tsx src/app/admin/grants/error.tsx; do
     grep -q "retry={retry}" "$f" || exit 1
   done'
+check "/account (M02) reads the unread count M08 added through pageRead() and renders without it when that read fails (polish, note 1)" bash -c '
+  f=src/app/account/page.tsx
+  grep -q "pageRead(client.notifications.list())" "$f" && grep -q "notifications?.unread ?? 0" "$f" &&
+  ! grep -qE "[^(]client\.notifications\.list\(\)[^)]" "$f"'
 check "scripts/verify.sh runs the specs that lock a table in a run of their own, after the others (PW_EXCLUSIVE)" bash -c '
   grep -q "PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests" scripts/verify.sh && grep -q "exclusive: process.env.PW_EXCLUSIVE\|PW_EXCLUSIVE === '\''1'\''" playwright.config.ts &&
   ! grep -q "dependencies:" e2e/projects.ts'
@@ -175,8 +179,19 @@ check "an answered pilot access request says so in the notification and on /admi
 check "a removed profile (deleted_at) is anonymous in the dashboards and waits for nobody (final check, security-2)" bash -c '
   f=src/server/services/dashboard.ts
   grep -q "REMOVED_PROFILE_NAME = '\''A removed profile'\''" "$f" && grep -q "isNull(person.deletedAt)" "$f"'
-refute "the Free Sifu limit is not written out in the UI copy: FREE_SIFU_STUDENT_LIMIT (final check, code-3)" \
-  grep_code "[Uu]p to (5|five) (approved )?students|5 approved students" src/app/plans/page.tsx src/app/dashboard/settings/forms.tsx src/app/dashboard/settings/page.tsx src/components/plans/upgrade-prompt.tsx
+# A number or a number word right next to "student(s)" ("up to five approved students", "the
+# five-student limit", "5 students") or after a student limit ("a student limit of 5"), in the copy
+# of the plan screens and in the plan matrix with its summaries (polish, note 2: plans.ts had
+# escaped the first version of this check). Not "one": that is how a count of one reads ("One student
+# request waits below"), never a limit.
+NUMBER_WORD="[0-9]+|[Tt]wo|[Tt]hree|[Ff]our|[Ff]ive|[Ss]ix|[Ss]even|[Ee]ight|[Nn]ine|[Tt]en"
+FREE_SIFU_LIMIT_WORDS="(^|[^0-9A-Za-z_\$])($NUMBER_WORD)(-| )((approved|verified|established|confirmed) )?[Ss]tudents?([^A-Za-z]|$)|[Ss]tudents? (limit|cap|quota) (of )?($NUMBER_WORD)([^0-9A-Za-z]|$)"
+refute "the Free Sifu limit is not written out in the UI copy or the plan matrix: FREE_SIFU_STUDENT_LIMIT (final check, code-3; polish, note 2)" \
+  grep_code "$FREE_SIFU_LIMIT_WORDS" "${PLAN_UI[@]}" src/server/entitlements/plans.ts src/server/services/plans.ts src/server/services/dashboard.ts src/server/templates/notifications.ts
+check "the plan summaries name the Free Sifu limit through FREE_SIFU_STUDENT_LIMIT, marked DEFAULT D06 (polish, note 2)" bash -c '
+  f=src/server/entitlements/plans.ts
+  [ "$(grep -c "summary: \`.*\${FREE_SIFU_STUDENT_LIMIT}" "$f")" -eq 2 ] &&
+  [ "$(grep -B1 "summary: \`.*\${FREE_SIFU_STUDENT_LIMIT}" "$f" | grep -c "// DEFAULT D06")" -eq 2 ]'
 refute "the M08 Server Actions never rethrow a procedure error (formStateFromFailure after unstable_rethrow)" \
   grep_code "^\s*throw error;" src/app/admin/grants/actions.ts src/app/dashboard/settings/actions.ts src/app/dashboard/actions.ts
 refute "revoking a plan never changes a relationship (no teaching_relationship write in grants.ts)" \
@@ -307,6 +322,7 @@ exclusive_titles=(
   '@M08 a failed read of /dashboard shows the error state in the app shell; "Try again" brings the dashboard back, with and without JavaScript'
   '@M08 a failed read of /admin/grants shows the error state and keeps the searched e-mail address out of the server log'
   '@M08 a page that awaits a failed read without a catch logs one safe line: no SQL parameters, no account id'
+  '@M08 /account renders in full when its unread count cannot be read: the app shell, its navigation and its own content, without the count'
 )
 for title in "${exclusive_titles[@]}"; do
   check "E2E test (exclusive run): $title" grep -qF "$title" e2e/m08-failures.exclusive.spec.ts

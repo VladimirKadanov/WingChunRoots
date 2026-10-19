@@ -185,7 +185,7 @@ WingChunRoots записва кой на кого е преподавал Wing C
 
 ### Страницата на акаунта (Me)
 
-**Me** → **Account and security** (`/account`) отваря **Your account**. Заглавието е името ви, с оригиналната писменост до него. Под него бутонът **Open your dashboard** води обратно към таблото; ако имате непрочетени известия, бутонът казва колко („Open your dashboard (2 unread)“).
+**Me** → **Account and security** (`/account`) отваря **Your account**. Заглавието е името ви, с оригиналната писменост до него. Под него бутонът **Open your dashboard** води обратно към таблото; ако имате непрочетени известия, бутонът казва колко („Open your dashboard (2 unread)“). Ако броят не може да се прочете в момента, бутонът е само „Open your dashboard“, а останалата страница се показва както обикновено.
 
 - **Profile** — другите изписвания на името ви и дали профилът е **Public** или **Private**. Ако профилът още не е създаден, тук е бутонът **Set up your profile**.
 - **Sign-in and security** — имейлът, ролята и състоянието на двуфакторното удостоверяване, със знак и с текст: **Off**, **Setup not finished**, **On** или **On, not yet verified in this session**. Оттук са **Security settings** (или **Finish the two-factor setup**, ако настройката е започната), **Administration** за персонала и **Sign out**.
