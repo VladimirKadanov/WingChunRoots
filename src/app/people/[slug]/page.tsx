@@ -32,7 +32,7 @@ import {
 import { PersonLayout } from '@/components/lineage/person-layout';
 import { LineageName } from '@/components/lineage/person-name';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
-import { groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
+import { bySeniority, groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
 import { EmptyState, FailedSections, ProfileError, Section, SectionError } from '@/components/lineage/states';
 import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -118,7 +118,7 @@ function Relations({ profile, teachers: graph, students: page }: { profile: Pers
   const lineageName = (id: string) => lineages.get(id)?.name;
   const teachers = withNotes(teacherRows(profile, graph), lineageName);
   // The viewer's own requests first (only the participants see them), then the earliest.
-  const students = withNotes(studentRows([...page.own, ...page.active, ...page.historical]), lineageName);
+  const students = withNotes(studentRows([...page.own, ...bySeniority([...page.active, ...page.historical])]), lineageName);
   const hiddenTeachers = graph.hiddenCounts[profile.id]?.teachers ?? 0;
   // The viewer's own requests are shown to them and never counted (DEFAULT D03): say so.
   const pendingTeachers = teachers.filter((t) => t.edges.every((e) => e.visibility === 'involved_only')).length;

@@ -600,8 +600,8 @@ interface FixtureEdge {
   visibility?: 'public' | 'involved_only';
   primary?: boolean;
   requestedBy?: string | null;
-  /** [starts_on, precision] of one training period. */
-  period?: [string | null, 'year' | 'month' | 'day' | 'unknown'];
+  /** [starts_on, precision, ends_on] of one training period; ongoing unless it has an end. */
+  period?: [string | null, 'year' | 'month' | 'day' | 'unknown', string?];
 }
 
 /** Adds people (with a primary Latin name) and relationships in lineage A; returns slug → id and a cleanup. */
@@ -639,11 +639,12 @@ async function addFixture(people: FixturePerson[], edges: FixtureEdge[]): Promis
       requested_by: e.requestedBy ?? null,
       starts_on: e.period?.[0] ?? null,
       precision: e.period?.[1] ?? null,
+      ends_on: e.period?.[2] ?? null,
     }));
     const inserted = await db.execute<{ id: string }>(sql`
       WITH input AS (
         SELECT * FROM jsonb_to_recordset(${JSON.stringify(chunk)}::jsonb)
-          AS x(teacher uuid, student uuid, status text, visibility text, "primary" boolean, requested_by uuid, starts_on date, precision text)
+          AS x(teacher uuid, student uuid, status text, visibility text, "primary" boolean, requested_by uuid, starts_on date, precision text, ends_on date)
       ),
       r AS (
         INSERT INTO teaching_relationship (teacher_person_id, student_person_id, lineage_id, status, visibility, is_display_primary, requested_by_user_id)
@@ -651,8 +652,8 @@ async function addFixture(people: FixturePerson[], edges: FixtureEdge[]): Promis
         RETURNING id, teacher_person_id, student_person_id
       ),
       t AS (
-        INSERT INTO training_period (relationship_id, starts_on, precision, ongoing)
-        SELECT r.id, input.starts_on, input.precision, true
+        INSERT INTO training_period (relationship_id, starts_on, precision, ends_on, ongoing)
+        SELECT r.id, input.starts_on, input.precision, input.ends_on, input.ends_on IS NULL
           FROM r JOIN input ON input.teacher = r.teacher_person_id AND input.student = r.student_person_id
          WHERE input.precision IS NOT NULL
       )
@@ -752,6 +753,7 @@ describe('order of students: one alphabet (ICU) and seniority, and the other tea
     { slug: 'demo-order-emile', name: 'Émile Notreal' },
     { slug: 'demo-order-adam', name: 'Adam Notreal' },
     { slug: 'demo-order-vega', name: 'Vega Notreal' },
+    { slug: 'demo-order-elder', name: 'Yara Elder Notreal' },
   ];
   const edges: FixtureEdge[] = [
     { teacher: 'demo-order-teacher', student: 'demo-order-zed', period: ['1990-01-01', 'year'] },
@@ -760,6 +762,8 @@ describe('order of students: one alphabet (ICU) and seniority, and the other tea
     { teacher: 'demo-order-teacher', student: 'demo-order-adam', period: ['2001-01-01', 'year'] },
     // A period of unknown date sorts with the undated.
     { teacher: 'demo-order-teacher', student: 'demo-order-vega', period: [null, 'unknown'] },
+    // The earliest of all, and their training has ended.
+    { teacher: 'demo-order-teacher', student: 'demo-order-elder', period: ['1975-01-01', 'year', '1980-12-31'] },
   ];
   let fixture: Awaited<ReturnType<typeof addFixture>>;
   beforeAll(async () => {
@@ -773,19 +777,23 @@ describe('order of students: one alphabet (ICU) and seniority, and the other tea
     const page = await personStudents(null, studentsOf('demo-order-teacher'));
     expect(page.order).toBe('name');
     expect(page.active.map((s) => s.person.displayName)).toEqual(['Adam Notreal', 'Émile Notreal', 'van Dam Notreal', 'Vega Notreal', 'Zed Notreal']);
+    // By name, those whose training has ended come after the current ones.
+    expect(page.historical.map((s) => s.person.displayName)).toEqual(['Yara Elder Notreal']);
     const ego = await lineageEgo(null, { focusId: fixture.id['demo-order-teacher']!, up: 0, down: 1, fanoutLimit: 2 });
     expect(slugsOf(ego)).toEqual(['demo-order-adam', 'demo-order-emile', 'demo-order-teacher']);
   });
 
-  it('by seniority: the earliest dated training first, undated last by name, paged', async () => {
+  it('by seniority: the earliest dated training first, whether or not it has ended, undated last by name, paged', async () => {
     const first = await personStudents(null, studentsOf('demo-order-teacher', { order: 'seniority', pageSize: 2 }));
-    expect(first).toMatchObject({ order: 'seniority', pageSize: 2, pageCount: 3, activeTotal: 5, historicalTotal: 0 });
-    expect(first.active.map((s) => s.person.slug)).toEqual(['demo-order-emile', 'demo-order-zed']);
+    expect(first).toMatchObject({ order: 'seniority', pageSize: 2, pageCount: 3, activeTotal: 5, historicalTotal: 1 });
+    // The profile's "earliest" students: the 1975 student whose training ended is among them.
+    expect(first.historical.map((s) => s.person.slug)).toEqual(['demo-order-elder']);
+    expect(first.active.map((s) => s.person.slug)).toEqual(['demo-order-emile']);
     const rest = await Promise.all([2, 3].map((page) => personStudents(null, studentsOf('demo-order-teacher', { order: 'seniority', pageSize: 2, page }))));
-    expect(rest.flatMap((p) => p.active.map((s) => s.person.slug))).toEqual(['demo-order-adam', 'demo-order-van', 'demo-order-vega']);
+    expect(rest.flatMap((p) => p.active.map((s) => s.person.slug))).toEqual(['demo-order-zed', 'demo-order-adam', 'demo-order-van', 'demo-order-vega']);
     // Past the last page: no rows, the same totals.
     const past = await personStudents(null, studentsOf('demo-order-teacher', { order: 'seniority', pageSize: 2, page: 9 }));
-    expect(past).toMatchObject({ active: [], historical: [], activeTotal: 5, historicalTotal: 0 });
+    expect(past).toMatchObject({ active: [], historical: [], activeTotal: 5, historicalTotal: 1 });
   });
 
   it("a student's other teachers are named on their row, the same on every teacher's page", async () => {

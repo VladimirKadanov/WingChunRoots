@@ -253,6 +253,24 @@ export function studentRows(entries: readonly StudentEntryDto[]): RelationRow[] 
   }));
 }
 
+/**
+ * A seniority page's active and historical students as one list, earliest dated start first
+ * (undated last), as people.students ordered them: each list is already in that order, and a tie
+ * keeps the order given. Only public relationships date a student, as in the API.
+ */
+export function bySeniority(entries: readonly StudentEntryDto[]): StudentEntryDto[] {
+  const start = (entry: StudentEntryDto) =>
+    entry.edges
+      .filter((e) => e.visibility === 'public')
+      .flatMap((e) => e.periods)
+      .map((p) => p.from)
+      .filter((from): from is string => from !== null)
+      .sort()[0] ?? null;
+  const keyed = entries.map((entry) => ({ entry, start: start(entry) }));
+  keyed.sort((a, b) => (a.start === b.start ? 0 : a.start === null ? 1 : b.start === null ? -1 : a.start < b.start ? -1 : 1));
+  return keyed.map((k) => k.entry);
+}
+
 /** The one lineage every row of a list shares, or null (the heading can then name it). */
 export function sharedLineage(rows: readonly RelationRow[]): string | null {
   const ids = new Set(rows.flatMap((r) => r.edges.map((e) => e.lineageId)));

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PeriodDto } from '@/server/dto/public';
+import type { PeriodDto, StudentEntryDto } from '@/server/dto/public';
 import { placeText } from './person-header';
+import { bySeniority } from './relation-list';
 import { asStudentEdges, isHistoricalRelation, kindsOf, periodText, relationStatus, sameNameNotes, startYear, strokeOf } from './status';
 
 const period = (from: string | null, to: string | null, ongoing = false): PeriodDto => ({
@@ -100,5 +101,22 @@ describe('placeText', () => {
     expect(placeText({ cityName: 'Demo City', countryCode: 'GB' })).toBe('Demo City, United Kingdom');
     expect(placeText({ cityName: null, countryCode: 'DE' })).toBe('Germany');
     expect(placeText({ cityName: null, countryCode: null })).toBeNull();
+  });
+});
+
+describe('bySeniority', () => {
+  const entry = (slug: string, from: string | null, visibility: 'public' | 'involved_only' = 'public', to: string | null = null): StudentEntryDto => ({
+    person: { id: slug, slug, displayName: slug, altNames: [], lifeStatus: 'living', claimState: 'unclaimed', visibility: 'public' },
+    edges: [{ id: `e-${slug}`, lineageId: 'l', status: 'verified', isDisplayPrimary: true, visibility, periods: [period(from, to, to === null)] }],
+    historical: to !== null,
+    studentCount: 0,
+    otherTeachers: [],
+    otherTeachersTotal: 0,
+  });
+
+  it('puts an ended training among the current ones by its start, undated last, and dates only by public links', () => {
+    const active = [entry('demo-b', '1990'), entry('demo-c', '1995-03'), entry('demo-own', '1970', 'involved_only'), entry('demo-d', null)];
+    const historical = [entry('demo-a', '1975', 'public', '1980'), entry('demo-e', '1992', 'public', '1994')];
+    expect(bySeniority([...active, ...historical]).map((s) => s.person.slug)).toEqual(['demo-a', 'demo-b', 'demo-e', 'demo-c', 'demo-own', 'demo-d']);
   });
 });

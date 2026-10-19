@@ -977,9 +977,10 @@ named AS (
 }
 
 /**
- * One page of a teacher's public students: those with a current relationship first, then those
- * whose training has ended (every period ended); within each group by name, or by the earliest
- * dated start (undated last) and then name. Names sort in ICU order, as in the ego network.
+ * One page of a teacher's public students. By name: those with a current relationship first, then
+ * those whose training has ended (every period ended), each group by name. By seniority (the
+ * profile's earliest students): the earliest dated start first, whether or not the training has
+ * ended, undated last, then name. Names sort in ICU order, as in the ego network.
  * The totals come from the same pass (window counts); only a page past the end counts apart.
  */
 export async function studentRows(
@@ -988,7 +989,7 @@ export async function studentRows(
   options: { page: number; pageSize: number; order: StudentOrder },
 ): Promise<{ rows: StudentRow[]; activeTotal: number; historicalTotal: number }> {
   const byName = sql`named.display_name COLLATE "und-x-icu", named.id`;
-  const order = options.order === 'seniority' ? sql`named.historical, named.first_start NULLS LAST, ${byName}` : sql`named.historical, ${byName}`;
+  const order = options.order === 'seniority' ? sql`named.first_start NULLS LAST, ${byName}` : sql`named.historical, ${byName}`;
   const list = await rows<StudentRow>(
     ex,
     sql`WITH ${studentsCte(teacherId)},
