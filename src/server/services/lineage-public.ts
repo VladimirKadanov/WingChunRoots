@@ -34,7 +34,9 @@ import {
   publicProfileRow,
   readTransaction,
   studentPage,
+  type StudentOrder,
   subtreeGraph,
+  withoutRouteIds,
 } from './lineage-graph';
 
 function graphTags(graph: { nodes: { id: string }[]; lineages: { id: string }[] } | null, ...extra: string[]): string[] {
@@ -77,8 +79,10 @@ export async function cachedPaths(input: { focusId: string; limit: number }): Pr
   const graph = await readTransaction(getPublicDb(), async (tx) =>
     (await isPublicPerson(tx, input.focusId)) ? pathsGraph(tx, input, NO_EXTRAS) : null,
   );
-  tagCacheEntry(graphTags(graph, personTag(input.focusId)));
-  return graph ? toPublicPaths(graph) : null;
+  // totalPaths counts every route found, so the entry carries everyone on every route, not only
+  // the people on the routes it returns: hiding an ancestor on a route not shown still drops it.
+  tagCacheEntry(graphTags(graph, personTag(input.focusId), ...(graph?.routePersonIds.map(personTag) ?? [])));
+  return graph ? toPublicPaths(withoutRouteIds(graph)) : null;
 }
 
 /** The public profile of a public person (isOwn is always false here; lineage.ts sets it). */
@@ -103,6 +107,7 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
       bio: row.bio,
       visibility: 'public' as const,
       isOwn: false,
+      limited: false,
       counts: {
         teachers: counts.teachers,
         students: counts.students,
@@ -118,15 +123,23 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
 }
 
 /** One page of a public person's public students. */
-export async function cachedStudents(input: { personId: string; page: number }): Promise<StudentsPageDto | null> {
+export async function cachedStudents(input: {
+  personId: string;
+  page: number;
+  pageSize: number;
+  order: StudentOrder;
+}): Promise<StudentsPageDto | null> {
   'use cache';
   cacheLife('hours');
+  const options = { page: input.page, pageSize: input.pageSize, order: input.order };
   const page = await readTransaction(getPublicDb(), async (tx) =>
-    (await isPublicPerson(tx, input.personId)) ? studentPage(tx, input.personId, input.page, NO_EXTRAS) : null,
+    (await isPublicPerson(tx, input.personId)) ? studentPage(tx, input.personId, options, NO_EXTRAS) : null,
   );
+  // Each student and each other teacher named: a change to any of them (or to one of their
+  // relationships, which changes studentCount or otherTeachers) drops the page.
   tagCacheEntry([
     personTag(input.personId),
-    ...(page ? [...page.active, ...page.historical].map((s) => personTag(s.person.id)) : []),
+    ...(page ? [...page.active, ...page.historical].flatMap((s) => [s.person.id, ...s.otherTeachers.map((t) => t.person.id)]).map(personTag) : []),
     ...(page?.lineages.map((l) => lineageTag(l.id)) ?? []),
   ]);
   return page ? toPublicStudents(page) : null;

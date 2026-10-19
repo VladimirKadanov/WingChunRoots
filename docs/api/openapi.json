@@ -65,6 +65,16 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -203,6 +213,16 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -252,6 +272,16 @@
                       "not": {}
                     }
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -335,6 +365,16 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -361,10 +401,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "default": 16,
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 16
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 16
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
             },
             "allowEmptyValue": true,
             "allowReserved": true
@@ -374,10 +421,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "default": 2,
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 4
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
             },
             "allowEmptyValue": true,
             "allowReserved": true
@@ -387,10 +441,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "default": 50,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
             },
             "allowEmptyValue": true,
             "allowReserved": true
@@ -707,6 +768,26 @@
                     "truncated"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -1046,6 +1127,26 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1084,10 +1185,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "default": 3,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 6
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
             },
             "allowEmptyValue": true,
             "allowReserved": true
@@ -1407,6 +1515,26 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1433,10 +1561,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "default": 50,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 200
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
             },
             "allowEmptyValue": true,
             "allowReserved": true
@@ -1796,6 +1931,26 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1912,6 +2067,9 @@
                     "isOwn": {
                       "type": "boolean"
                     },
+                    "limited": {
+                      "type": "boolean"
+                    },
                     "counts": {
                       "type": "object",
                       "properties": {
@@ -1994,10 +2152,31 @@
                     "bio",
                     "visibility",
                     "isOwn",
+                    "limited",
                     "counts",
                     "lineages"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2025,10 +2204,50 @@
             "name": "page",
             "in": "query",
             "schema": {
-              "default": 1,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1000
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d{1,4}$"
+                }
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "schema": {
+              "default": "name",
+              "type": "string",
+              "enum": [
+                "name",
+                "seniority"
+              ]
             },
             "allowEmptyValue": true,
             "allowReserved": true
@@ -2056,6 +2275,13 @@
                       "type": "integer",
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
+                    },
+                    "order": {
+                      "type": "string",
+                      "enum": [
+                        "name",
+                        "seniority"
+                      ]
                     },
                     "activeTotal": {
                       "type": "integer",
@@ -2246,12 +2472,121 @@
                           },
                           "historical": {
                             "type": "boolean"
+                          },
+                          "studentCount": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "otherTeachers": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "person": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    },
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "displayName": {
+                                      "type": "string"
+                                    },
+                                    "altNames": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "value": {
+                                            "type": "string"
+                                          },
+                                          "script": {
+                                            "type": "string"
+                                          },
+                                          "lang": {
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "type": "string"
+                                          },
+                                          "romanization": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "value",
+                                          "script",
+                                          "lang",
+                                          "kind",
+                                          "romanization"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "lifeStatus": {
+                                      "type": "string"
+                                    },
+                                    "claimState": {
+                                      "type": "string",
+                                      "enum": [
+                                        "claimed",
+                                        "platform",
+                                        "unclaimed"
+                                      ]
+                                    },
+                                    "visibility": {
+                                      "type": "string",
+                                      "enum": [
+                                        "public",
+                                        "involved_only"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "slug",
+                                    "displayName",
+                                    "altNames",
+                                    "lifeStatus",
+                                    "claimState",
+                                    "visibility"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "lineageId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "required": [
+                                "person",
+                                "lineageId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "otherTeachersTotal": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
                           "person",
                           "edges",
-                          "historical"
+                          "historical",
+                          "studentCount",
+                          "otherTeachers",
+                          "otherTeachersTotal"
                         ],
                         "additionalProperties": false
                       }
@@ -2430,12 +2765,121 @@
                           },
                           "historical": {
                             "type": "boolean"
+                          },
+                          "studentCount": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "otherTeachers": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "person": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    },
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "displayName": {
+                                      "type": "string"
+                                    },
+                                    "altNames": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "value": {
+                                            "type": "string"
+                                          },
+                                          "script": {
+                                            "type": "string"
+                                          },
+                                          "lang": {
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "type": "string"
+                                          },
+                                          "romanization": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "value",
+                                          "script",
+                                          "lang",
+                                          "kind",
+                                          "romanization"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "lifeStatus": {
+                                      "type": "string"
+                                    },
+                                    "claimState": {
+                                      "type": "string",
+                                      "enum": [
+                                        "claimed",
+                                        "platform",
+                                        "unclaimed"
+                                      ]
+                                    },
+                                    "visibility": {
+                                      "type": "string",
+                                      "enum": [
+                                        "public",
+                                        "involved_only"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "slug",
+                                    "displayName",
+                                    "altNames",
+                                    "lifeStatus",
+                                    "claimState",
+                                    "visibility"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "lineageId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "required": [
+                                "person",
+                                "lineageId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "otherTeachersTotal": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
                           "person",
                           "edges",
-                          "historical"
+                          "historical",
+                          "studentCount",
+                          "otherTeachers",
+                          "otherTeachersTotal"
                         ],
                         "additionalProperties": false
                       }
@@ -2614,12 +3058,121 @@
                           },
                           "historical": {
                             "type": "boolean"
+                          },
+                          "studentCount": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "otherTeachers": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "person": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    },
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "displayName": {
+                                      "type": "string"
+                                    },
+                                    "altNames": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "value": {
+                                            "type": "string"
+                                          },
+                                          "script": {
+                                            "type": "string"
+                                          },
+                                          "lang": {
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "type": "string"
+                                          },
+                                          "romanization": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "value",
+                                          "script",
+                                          "lang",
+                                          "kind",
+                                          "romanization"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "lifeStatus": {
+                                      "type": "string"
+                                    },
+                                    "claimState": {
+                                      "type": "string",
+                                      "enum": [
+                                        "claimed",
+                                        "platform",
+                                        "unclaimed"
+                                      ]
+                                    },
+                                    "visibility": {
+                                      "type": "string",
+                                      "enum": [
+                                        "public",
+                                        "involved_only"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "slug",
+                                    "displayName",
+                                    "altNames",
+                                    "lifeStatus",
+                                    "claimState",
+                                    "visibility"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "lineageId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "required": [
+                                "person",
+                                "lineageId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "otherTeachersTotal": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
                           "person",
                           "edges",
-                          "historical"
+                          "historical",
+                          "studentCount",
+                          "otherTeachers",
+                          "otherTeachersTotal"
                         ],
                         "additionalProperties": false
                       }
@@ -2667,6 +3220,7 @@
                     "personId",
                     "page",
                     "pageSize",
+                    "order",
                     "activeTotal",
                     "historicalTotal",
                     "pageCount",
@@ -2679,9 +3233,93 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     }
-  }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "defined",
+          "code",
+          "status",
+          "message"
+        ],
+        "properties": {
+          "defined": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string",
+            "examples": [
+              "BAD_REQUEST",
+              "NOT_FOUND"
+            ]
+          },
+          "status": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A session token from /api/auth (docs/adr/0004-auth.md)."
+      },
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "wcr.session_token",
+        "description": "The web session cookie (named __Secure-wcr.session_token over HTTPS)."
+      }
+    }
+  },
+  "security": [
+    {},
+    {
+      "bearer": []
+    },
+    {
+      "cookie": []
+    }
+  ]
 }

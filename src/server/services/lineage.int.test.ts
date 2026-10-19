@@ -93,9 +93,51 @@ function principalOf(userId: string): Principal {
 }
 
 const nodeIds = (g: { nodes: { id: string }[] }) => new Set(g.nodes.map((n) => n.id));
+const studentsOf = (slug: string, options: Partial<{ page: number; pageSize: number; order: 'name' | 'seniority' }> = {}) => ({
+  slug,
+  page: 1,
+  pageSize: 50,
+  order: 'name' as const,
+  ...options,
+});
 const slugsOf = (g: { nodes: { slug: string }[] }) => g.nodes.map((n) => n.slug).sort();
 const edgeBetween = (g: LineageGraphDto, teacher: string, student: string) =>
   g.edges.find((e) => e.teacherId === ids[teacher] && e.studentId === ids[student]);
+
+/** Descendants of `rootId` to `depth` generations (with the root), by an independent recursive query. */
+async function descendantsOf(rootId: string, depth: number, lineageId: string | null): Promise<Set<string>> {
+  const r = await getDb().execute<{ id: string }>(sql`
+    WITH RECURSIVE d(id, depth) AS (
+      SELECT ${rootId}::uuid, 0
+      UNION
+      SELECT pe.student_person_id, d.depth + 1 FROM d JOIN v_public_edge pe ON pe.teacher_person_id = d.id
+       WHERE d.depth < ${depth}::int AND (${lineageId}::uuid IS NULL OR pe.lineage_id = ${lineageId}::uuid)
+    )
+    SELECT DISTINCT id::text AS id FROM d`);
+  return new Set(r.rows.map((x) => x.id));
+}
+
+async function ancestorsOf(personId: string): Promise<Set<string>> {
+  const r = await getDb().execute<{ id: string }>(sql`
+    WITH RECURSIVE u(id) AS (
+      SELECT ${personId}::uuid
+      UNION
+      SELECT pe.teacher_person_id FROM u JOIN v_public_edge pe ON pe.student_person_id = u.id
+    )
+    SELECT id::text AS id FROM u`);
+  return new Set(r.rows.map((x) => x.id));
+}
+
+/** For every node: the students shown plus those counted in hiddenCounts are its childCount. */
+function expectCountsAddUp(g: LineageGraphDto) {
+  const shown = new Map<string, Set<string>>();
+  for (const e of g.edges) if (e.visibility === 'public') shown.set(e.teacherId, (shown.get(e.teacherId) ?? new Set()).add(e.studentId));
+  for (const n of g.nodes) {
+    const hidden = g.hiddenCounts[n.id]?.students ?? 0;
+    expect((shown.get(n.id)?.size ?? 0) + hidden, n.slug).toBe(n.childCount);
+    expect(n.hasMoreChildren, n.slug).toBe(hidden > 0);
+  }
+}
 
 async function api(kind: 'openapi' | 'rpc', path: string, query: Record<string, unknown>, token?: string) {
   const headers = new Headers();
@@ -130,7 +172,25 @@ describe('the four graph procedures on the anchor records', () => {
   });
 
   it('ego with the defaults walks every generation up and two down', async () => {
-    const g = await lineageEgo(null, { focusId: ids['demo-root-a']!, up: 16, down: 2, fanoutLimit: 50 });
+    const g = await lineageEgo(null, { focusId: ids['demo-root-a']!, up: 16, down: 2, fanoutLimit: 100 });
+    // Every ancestor, and every descendant to two generations (no one has more than 100 students
+    // here except demo-hub-a, whose first 100 by name are the ones shown).
+    const ancestors = await ancestorsOf(ids['demo-root-a']!);
+    const students = await getDb().execute<{ id: string }>(sql`
+      SELECT pe.student_person_id::text AS id FROM v_public_edge pe WHERE pe.teacher_person_id = ${ids['demo-root-a']}::uuid`);
+    expect(students.rows.length).toBeLessThanOrEqual(100);
+    const expected = new Set([...ancestors, ...students.rows.map((r) => r.id)]);
+    for (const child of students.rows) {
+      const grandchildren = await getDb().execute<{ id: string }>(sql`
+        SELECT x.id::text AS id FROM (
+          SELECT DISTINCT pe.student_person_id AS id, vp.display_name
+            FROM v_public_edge pe JOIN v_public_person vp ON vp.id = pe.student_person_id
+           WHERE pe.teacher_person_id = ${child.id}::uuid) x
+         ORDER BY x.display_name COLLATE "und-x-icu", x.id LIMIT 100`);
+      for (const r of grandchildren.rows) expected.add(r.id);
+    }
+    expect(expected.size).toBeLessThan(500);
+    expect(nodeIds(g)).toEqual(expected);
     const n = nodeIds(g);
     for (const slug of ['demo-shared-ancestor', 'demo-hub-a', 'demo-a-001', 'demo-converging', 'demo-two-lineages']) expect(n.has(ids[slug]!)).toBe(true);
     expect(g.nodes[0]!.id).toBe(ids['demo-root-a']);
@@ -146,6 +206,11 @@ describe('the four graph procedures on the anchor records', () => {
 
   it('subtree of demo-root-a to depth 2, and only along one lineage', async () => {
     const g = await lineageSubtree(null, { rootId: ids['demo-root-a']!, depth: 2 });
+    // Exactly the descendants an independent recursive query finds (under the cap here).
+    const expected = await descendantsOf(ids['demo-root-a']!, 2, null);
+    expect(expected.size).toBeLessThan(500);
+    expect(nodeIds(g)).toEqual(expected);
+    expect(g.truncated).toBe(false);
     const n = nodeIds(g);
     for (const slug of ['demo-hub-a', 'demo-a-001', 'demo-a-002', 'demo-converging', 'demo-two-lineages']) expect(n.has(ids[slug]!)).toBe(true);
     expect(n.has(ids['demo-shared-ancestor']!)).toBe(false);
@@ -153,7 +218,9 @@ describe('the four graph procedures on the anchor records', () => {
     expect(edgeBetween(g, 'demo-hub-a', 'demo-converging')).toBeDefined();
     expect(edgeBetween(g, 'demo-a-002', 'demo-converging')).toBeDefined();
 
-    const b = await lineageSubtree(null, { rootId: ids['demo-shared-ancestor']!, depth: 2, lineageId: g.lineages.find((l) => l.slug === 'demo-lineage-b')!.id });
+    const lineageB = g.lineages.find((l) => l.slug === 'demo-lineage-b')!.id;
+    const b = await lineageSubtree(null, { rootId: ids['demo-shared-ancestor']!, depth: 2, lineageId: lineageB });
+    expect(nodeIds(b)).toEqual(await descendantsOf(ids['demo-shared-ancestor']!, 2, lineageB));
     expect(nodeIds(b).has(ids['demo-root-b']!)).toBe(true);
     expect(nodeIds(b).has(ids['demo-root-a']!)).toBe(false);
     expect(new Set(b.edges.map((e) => e.lineageId)).size).toBe(1);
@@ -203,12 +270,18 @@ describe('caps', () => {
     expect(g.hiddenCounts[ids['demo-hub-a']!]).toEqual({ teachers: 1, students: total - 10 });
   });
 
-  it('no answer has more than about 500 people', async () => {
+  it('no answer has more than about 500 people: the subtree is cut at exactly 500, the rest counted', async () => {
+    const all = await descendantsOf(ids['demo-shared-ancestor']!, 6, null);
+    expect(all.size).toBeGreaterThan(500);
     const g = await lineageSubtree(null, { rootId: ids['demo-shared-ancestor']!, depth: 6 });
-    expect(g.nodes.length).toBeLessThanOrEqual(500);
+    expect(g.truncated).toBe(true);
+    expect(g.nodes).toHaveLength(500);
+    for (const id of nodeIds(g)) expect(all.has(id)).toBe(true);
+    expectCountsAddUp(g);
     const e = await lineageEgo(null, { focusId: ids['demo-shared-ancestor']!, up: 16, down: 4, fanoutLimit: 100 });
     expect(e.nodes.length).toBeLessThanOrEqual(500);
     expect(e.truncated).toBe(e.nodes.length === 500);
+    expectCountsAddUp(e);
   });
 
   it('every number is bounded: out-of-range input is a 400 with the field named', async () => {
@@ -230,6 +303,20 @@ describe('caps', () => {
     expect((await api('openapi', '/lineage/paths', { focusId, limit: 201 })).status).toBe(400);
     expect((await api('openapi', '/people/demo-hub-a/students', { page: 0 })).status).toBe(400);
     expect((await api('openapi', '/people/demo-hub-a/students', { page: 1001 })).status).toBe(400);
+    expect((await api('openapi', '/people/demo-hub-a/students', { pageSize: 51 })).status).toBe(400);
+    expect((await api('openapi', '/people/demo-hub-a/students', { order: 'age' })).status).toBe(400);
+  });
+
+  it('a number is digits only: empty, signed, exponent, hex or padded text is a 400, never a silent 0', async () => {
+    const focusId = ids['demo-hub-a']!;
+    for (const value of ['', '1e1', '0x10', '-1', '+1', ' 5', '5.0', 'NaN', 'Infinity', '00005']) {
+      const r = await api('openapi', '/lineage/ego', { focusId, up: value });
+      expect(r.status, JSON.stringify(value)).toBe(400);
+      expect((r.body.data as { fields: Record<string, string> }).fields.up).toBe('Must be a whole number from 0 to 16.');
+    }
+    // Digits are read as the number; JSON numbers (/api/rpc) as they are.
+    expect((await api('openapi', '/lineage/ego', { focusId, up: '0', down: '1', fanoutLimit: '0007' })).status).toBe(200);
+    expect((await api('rpc', '/lineage/ego', { focusId, up: 0, down: 1, fanoutLimit: 7 })).status).toBe(200);
   });
 });
 
@@ -310,11 +397,11 @@ describe('the signed-in participant sees their own involved_only relationships, 
   });
 
   it('the teacher of the request sees it among their students, on page 1, marked', async () => {
-    const page = await personStudents(principalOf(hubUserId), { slug: 'demo-hub-a', page: 1 });
+    const page = await personStudents(principalOf(hubUserId), studentsOf('demo-hub-a'));
     const own = page.own.find((s) => s.person.id === ids['demo-pending']);
     expect(own?.edges[0]?.status).toBe('pending_teacher');
     expect(own?.edges[0]?.visibility).toBe('involved_only');
-    const anonymous = await personStudents(null, { slug: 'demo-hub-a', page: 1 });
+    const anonymous = await personStudents(null, studentsOf('demo-hub-a'));
     expect(anonymous.own).toEqual([]);
     expect(page.activeTotal).toBe(anonymous.activeTotal);
     expect(JSON.stringify(anonymous)).not.toContain(ids['demo-pending']!);
@@ -349,7 +436,7 @@ describe('statement timeout and database role', () => {
       await lineageAncestors(null, { focusId: ids['demo-converging']! });
       await lineageSubtree(null, { rootId: ids['demo-root-a']!, depth: 3 });
       await lineagePaths(null, { focusId: ids['demo-converging']!, limit: 10 });
-      await personStudents(null, { slug: 'demo-hub-a', page: 2 });
+      await personStudents(null, studentsOf('demo-hub-a', { page: 2 }));
       await personProfile(null, { slug: 'demo-hub-a' });
     } finally {
       Client.prototype.query = realQuery;
@@ -419,7 +506,7 @@ describe('a failed read: a budget per procedure, and nothing of the query in the
         // Signed in: loadViewer reads the account's own person by its user id (app_rw).
         personProfile(principalOf(hubUserId), { slug: 'demo-two-lineages' }).catch((e: unknown) => e),
         // Anonymous: the slug is the parameter of the first query (app_public_ro), and a cached read.
-        personStudents(null, { slug: 'demo-hub-a', page: 1 }).catch((e: unknown) => e),
+        personStudents(null, studentsOf('demo-hub-a')).catch((e: unknown) => e),
         lineageEgo(null, { focusId: ids['demo-converging']!, up: 1, down: 1, fanoutLimit: 5 }).catch((e: unknown) => e),
       ]);
       for (const error of failures) {
@@ -494,5 +581,348 @@ describe('the same procedures over /api/v1 and /api/rpc', () => {
     for (const path of ['/lineage/ego', '/lineage/ancestors', '/lineage/subtree', '/lineage/paths', '/people/{slug}', '/account/me']) {
       expect(Object.keys(doc.paths)).toContain(path);
     }
+  });
+});
+
+// --- Fixtures of their own: fictional demo- people, added for one describe and removed after it --
+
+interface FixturePerson {
+  slug: string;
+  name: string;
+  visibility?: 'public' | 'involved_only';
+  createdBy?: string | null;
+}
+
+interface FixtureEdge {
+  teacher: string;
+  student: string;
+  status?: string;
+  visibility?: 'public' | 'involved_only';
+  primary?: boolean;
+  requestedBy?: string | null;
+  /** [starts_on, precision] of one training period. */
+  period?: [string | null, 'year' | 'month' | 'day' | 'unknown'];
+}
+
+/** Adds people (with a primary Latin name) and relationships in lineage A; returns slug → id and a cleanup. */
+async function addFixture(people: FixturePerson[], edges: FixtureEdge[]): Promise<{ id: Record<string, string>; remove: () => Promise<void> }> {
+  const db = getDb();
+  const rows = await db.execute<{ slug: string; id: string }>(sql`
+    WITH input AS (
+      SELECT * FROM jsonb_to_recordset(${JSON.stringify(
+        people.map((p) => ({ slug: p.slug, name: p.name, visibility: p.visibility ?? 'public', created_by: p.createdBy ?? null })),
+      )}::jsonb) AS x(slug text, name text, visibility text, created_by uuid)
+    ),
+    p AS (
+      INSERT INTO person (slug, kind, life_status, visibility, created_by_user_id)
+      SELECT slug, 'living', 'living', visibility, created_by FROM input
+      RETURNING id, slug
+    ),
+    n AS (
+      INSERT INTO person_name (person_id, value, script, lang, is_primary)
+      SELECT p.id, input.name, 'Latn', 'en', true FROM p JOIN input USING (slug)
+    )
+    SELECT slug, id::text AS id FROM p`);
+  const id: Record<string, string> = { ...ids };
+  for (const r of rows.rows) id[r.slug] = r.id;
+  const personIds = rows.rows.map((r) => r.id);
+  const lineage = await db.execute<{ id: string }>(sql`SELECT id::text AS id FROM lineage WHERE slug = 'demo-lineage-a'`);
+  const edgeIds: string[] = [];
+  // In chunks: one statement per 500 edges keeps the parameter small.
+  for (let i = 0; i < edges.length; i += 500) {
+    const chunk = edges.slice(i, i + 500).map((e) => ({
+      teacher: id[e.teacher],
+      student: id[e.student],
+      status: e.status ?? 'verified',
+      visibility: e.visibility ?? 'public',
+      primary: e.primary ?? false,
+      requested_by: e.requestedBy ?? null,
+      starts_on: e.period?.[0] ?? null,
+      precision: e.period?.[1] ?? null,
+    }));
+    const inserted = await db.execute<{ id: string }>(sql`
+      WITH input AS (
+        SELECT * FROM jsonb_to_recordset(${JSON.stringify(chunk)}::jsonb)
+          AS x(teacher uuid, student uuid, status text, visibility text, "primary" boolean, requested_by uuid, starts_on date, precision text)
+      ),
+      r AS (
+        INSERT INTO teaching_relationship (teacher_person_id, student_person_id, lineage_id, status, visibility, is_display_primary, requested_by_user_id)
+        SELECT teacher, student, ${lineage.rows[0]!.id}::uuid, status, visibility, "primary", requested_by FROM input
+        RETURNING id, teacher_person_id, student_person_id
+      ),
+      t AS (
+        INSERT INTO training_period (relationship_id, starts_on, precision, ongoing)
+        SELECT r.id, input.starts_on, input.precision, true
+          FROM r JOIN input ON input.teacher = r.teacher_person_id AND input.student = r.student_person_id
+         WHERE input.precision IS NOT NULL
+      )
+      SELECT id::text AS id FROM r`);
+    edgeIds.push(...inserted.rows.map((r) => r.id));
+  }
+  return {
+    id,
+    remove: async () => {
+      await db.execute(sql`DELETE FROM training_period WHERE relationship_id = ANY(${`{${edgeIds.join(',')}}`}::uuid[])`);
+      await db.execute(sql`DELETE FROM teaching_relationship WHERE id = ANY(${`{${edgeIds.join(',')}}`}::uuid[])`);
+      await db.execute(sql`DELETE FROM person WHERE id = ANY(${`{${personIds.join(',')}}`}::uuid[])`);
+    },
+  };
+}
+
+describe('a crossed ladder of 20 generations: routes stay within budget', () => {
+  // Every person of generation g has both people of generation g - 1 as teachers: 2^21 routes.
+  const people: FixturePerson[] = [{ slug: 'demo-ladder-focus', name: 'Ladder Focus Notreal' }];
+  const edges: FixtureEdge[] = [];
+  for (let g = 0; g <= 20; g += 1) {
+    for (const side of ['l', 'r']) {
+      people.push({ slug: `demo-ladder-${g}-${side}`, name: `Ladder ${side.toUpperCase()}${g} Notreal` });
+      if (g > 0) {
+        edges.push({ teacher: `demo-ladder-${g - 1}-l`, student: `demo-ladder-${g}-${side}`, primary: side === 'l' });
+        edges.push({ teacher: `demo-ladder-${g - 1}-r`, student: `demo-ladder-${g}-${side}`, primary: side === 'r' });
+      }
+    }
+  }
+  edges.push({ teacher: 'demo-ladder-20-l', student: 'demo-ladder-focus', primary: true }, { teacher: 'demo-ladder-20-r', student: 'demo-ladder-focus' });
+  let fixture: Awaited<ReturnType<typeof addFixture>>;
+  beforeAll(async () => {
+    fixture = await addFixture(people, edges);
+  });
+  afterAll(async () => {
+    await fixture.remove();
+  });
+
+  it('paths answers well inside 2 s, says there are more routes, and puts the primary route first', async () => {
+    const started = Date.now();
+    const p = await lineagePaths(null, { focusId: fixture.id['demo-ladder-focus']!, limit: 10 });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(p.totalPathsCapped).toBe(true);
+    expect(p.totalPaths).toBe(1000);
+    expect(p.paths).toHaveLength(10);
+    const slugOf = (id: string) => p.nodes.find((n) => n.id === id)!.slug;
+    // The route along display-primary teachers only: the left side all the way up.
+    expect(p.paths[0]!.personIds.map(slugOf)).toEqual([...Array.from({ length: 21 }, (_, g) => `demo-ladder-${g}-l`), 'demo-ladder-focus']);
+    for (const route of p.paths) expect(route.personIds).toHaveLength(22);
+  });
+});
+
+describe('the cap on a wide ego network (more than 500 people within 4 generations)', () => {
+  // 1 + 8 + 64 + 512 people: each person teaches 8.
+  const people: FixturePerson[] = [];
+  const edges: FixtureEdge[] = [];
+  const width = [1, 8, 64, 512];
+  for (let g = 0; g < width.length; g += 1) {
+    for (let i = 1; i <= width[g]!; i += 1) {
+      people.push({ slug: `demo-cap-${g}-${i}`, name: `Cap ${g}-${String(i).padStart(3, '0')} Notreal` });
+      if (g > 0) edges.push({ teacher: `demo-cap-${g - 1}-${Math.ceil(i / 8)}`, student: `demo-cap-${g}-${i}` });
+    }
+  }
+  let fixture: Awaited<ReturnType<typeof addFixture>>;
+  beforeAll(async () => {
+    fixture = await addFixture(people, edges);
+  });
+  afterAll(async () => {
+    await fixture.remove();
+  });
+
+  it('lineage.ego stops at exactly 500 people, generation by generation, and counts the rest', async () => {
+    const g = await lineageEgo(null, { focusId: fixture.id['demo-cap-0-1']!, up: 0, down: 4, fanoutLimit: 100 });
+    expect(g.truncated).toBe(true);
+    expect(g.nodes).toHaveLength(500);
+    const generation = (slug: string) => Number(slug.split('-')[2]);
+    const perGeneration = [0, 1, 2, 3].map((n) => g.nodes.filter((x) => generation(x.slug) === n).length);
+    // Nearer generations first: all of 0-2, and the cap's remainder of generation 3.
+    expect(perGeneration).toEqual([1, 8, 64, 500 - 73]);
+    expectCountsAddUp(g);
+    // The boundary generation's teachers report the students the cap left out.
+    const hiddenAtBoundary = g.nodes.filter((x) => generation(x.slug) === 2).reduce((sum, x) => sum + (g.hiddenCounts[x.id]?.students ?? 0), 0);
+    expect(hiddenAtBoundary).toBe(512 - (500 - 73));
+
+    const sub = await lineageSubtree(null, { rootId: fixture.id['demo-cap-0-1']!, depth: 3 });
+    expect(sub.truncated).toBe(true);
+    expect(sub.nodes).toHaveLength(500);
+    expectCountsAddUp(sub);
+  });
+});
+
+describe('order of students: one alphabet (ICU) and seniority, and the other teachers named', () => {
+  const people: FixturePerson[] = [
+    { slug: 'demo-order-teacher', name: 'Order Teacher Notreal' },
+    { slug: 'demo-order-zed', name: 'Zed Notreal' },
+    { slug: 'demo-order-van', name: 'van Dam Notreal' },
+    { slug: 'demo-order-emile', name: 'Émile Notreal' },
+    { slug: 'demo-order-adam', name: 'Adam Notreal' },
+    { slug: 'demo-order-vega', name: 'Vega Notreal' },
+  ];
+  const edges: FixtureEdge[] = [
+    { teacher: 'demo-order-teacher', student: 'demo-order-zed', period: ['1990-01-01', 'year'] },
+    { teacher: 'demo-order-teacher', student: 'demo-order-van' },
+    { teacher: 'demo-order-teacher', student: 'demo-order-emile', period: ['1985-03-04', 'day'] },
+    { teacher: 'demo-order-teacher', student: 'demo-order-adam', period: ['2001-01-01', 'year'] },
+    // A period of unknown date sorts with the undated.
+    { teacher: 'demo-order-teacher', student: 'demo-order-vega', period: [null, 'unknown'] },
+  ];
+  let fixture: Awaited<ReturnType<typeof addFixture>>;
+  beforeAll(async () => {
+    fixture = await addFixture(people, edges);
+  });
+  afterAll(async () => {
+    await fixture.remove();
+  });
+
+  it('by name: a particle and an accent sort where a reader expects them, in people.students and in ego', async () => {
+    const page = await personStudents(null, studentsOf('demo-order-teacher'));
+    expect(page.order).toBe('name');
+    expect(page.active.map((s) => s.person.displayName)).toEqual(['Adam Notreal', 'Émile Notreal', 'van Dam Notreal', 'Vega Notreal', 'Zed Notreal']);
+    const ego = await lineageEgo(null, { focusId: fixture.id['demo-order-teacher']!, up: 0, down: 1, fanoutLimit: 2 });
+    expect(slugsOf(ego)).toEqual(['demo-order-adam', 'demo-order-emile', 'demo-order-teacher']);
+  });
+
+  it('by seniority: the earliest dated training first, undated last by name, paged', async () => {
+    const first = await personStudents(null, studentsOf('demo-order-teacher', { order: 'seniority', pageSize: 2 }));
+    expect(first).toMatchObject({ order: 'seniority', pageSize: 2, pageCount: 3, activeTotal: 5, historicalTotal: 0 });
+    expect(first.active.map((s) => s.person.slug)).toEqual(['demo-order-emile', 'demo-order-zed']);
+    const rest = await Promise.all([2, 3].map((page) => personStudents(null, studentsOf('demo-order-teacher', { order: 'seniority', pageSize: 2, page }))));
+    expect(rest.flatMap((p) => p.active.map((s) => s.person.slug))).toEqual(['demo-order-adam', 'demo-order-van', 'demo-order-vega']);
+    // Past the last page: no rows, the same totals.
+    const past = await personStudents(null, studentsOf('demo-order-teacher', { order: 'seniority', pageSize: 2, page: 9 }));
+    expect(past).toMatchObject({ active: [], historical: [], activeTotal: 5, historicalTotal: 0 });
+  });
+
+  it("a student's other teachers are named on their row, the same on every teacher's page", async () => {
+    const page = await personStudents(null, studentsOf('demo-a-001'));
+    const entry = [...page.active, ...page.historical].find((s) => s.person.id === ids['demo-two-lineages'])!;
+    expect(entry.otherTeachersTotal).toBe(1);
+    expect(entry.otherTeachers.map((t) => t.person.slug)).toEqual(['demo-b-001']);
+    const lineageB = page.lineages.find((l) => l.slug === 'demo-lineage-b')!;
+    expect(entry.otherTeachers[0]!.lineageId).toBe(lineageB.id);
+    const fromB = await personStudents(null, studentsOf('demo-b-001'));
+    const sameStudent = [...fromB.active, ...fromB.historical].find((s) => s.person.id === ids['demo-two-lineages'])!;
+    expect(sameStudent.otherTeachers.map((t) => t.person.slug)).toEqual(['demo-a-001']);
+    // studentCount: the student's own public students.
+    const hub = (await personStudents(null, studentsOf('demo-root-a'))).active.find((s) => s.person.id === ids['demo-hub-a'])!;
+    const hubStudents = await getDb().execute<{ n: number }>(
+      sql`SELECT count(DISTINCT student_person_id)::int AS n FROM v_public_edge WHERE teacher_person_id = ${ids['demo-hub-a']}::uuid`,
+    );
+    expect(hub.studentCount).toBe(hubStudents.rows[0]!.n);
+  });
+});
+
+describe('the other end of an unanswered request shows only its names (plan §6.4)', () => {
+  let viewerUserId: string;
+  let fixture: Awaited<ReturnType<typeof addFixture>>;
+  beforeAll(async () => {
+    const viewer = await getDb().execute<{ id: string }>(sql`SELECT claimed_by_user_id::text AS id FROM person WHERE slug = 'demo-two-lineages'`);
+    viewerUserId = viewer.rows[0]!.id;
+    fixture = await addFixture(
+      [
+        { slug: 'demo-limited-teacher', name: 'Limited Teacher Notreal', visibility: 'involved_only' },
+        { slug: 'demo-answered-teacher', name: 'Answered Teacher Notreal', visibility: 'involved_only' },
+      ],
+      [
+        // The viewer asked; nobody has answered.
+        { teacher: 'demo-limited-teacher', student: 'demo-two-lineages', status: 'pending_teacher', visibility: 'involved_only', requestedBy: viewerUserId },
+        // Under review: the teacher has confirmed it.
+        { teacher: 'demo-answered-teacher', student: 'demo-two-lineages', status: 'under_review', visibility: 'involved_only', requestedBy: viewerUserId },
+      ],
+    );
+    for (const slug of ['demo-limited-teacher', 'demo-answered-teacher']) {
+      await getDb().execute(sql`UPDATE person SET country_code = 'GB', life_status = 'deceased' WHERE id = ${fixture.id[slug]}::uuid`);
+      await getDb().execute(sql`INSERT INTO person_bio (person_id, lang, body) VALUES (${fixture.id[slug]}::uuid, 'en', 'A fictional biography.')`);
+    }
+  });
+  afterAll(async () => {
+    await getDb().execute(sql`DELETE FROM person_bio WHERE body = 'A fictional biography.'`);
+    await fixture.remove();
+  });
+
+  it('names only for the unanswered request; the full record once answered, or when the viewer wrote it', async () => {
+    const me = principalOf(viewerUserId);
+    const limited = await personProfile(me, { slug: 'demo-limited-teacher' });
+    expect(limited).toMatchObject({ limited: true, displayName: 'Limited Teacher Notreal', bio: null, countryCode: null, cityName: null, lifeStatus: 'unknown' });
+    const answered = await personProfile(me, { slug: 'demo-answered-teacher' });
+    expect(answered).toMatchObject({ limited: false, bio: 'A fictional biography.', countryCode: 'GB', lifeStatus: 'deceased' });
+    // The graph shows the same: a name, no life status.
+    const ego = await lineageEgo(me, { focusId: ids['demo-two-lineages']!, up: 1, down: 0, fanoutLimit: 50 });
+    expect(ego.nodes.find((n) => n.slug === 'demo-limited-teacher')).toMatchObject({ displayName: 'Limited Teacher Notreal', lifeStatus: 'unknown' });
+
+    await getDb().execute(sql`UPDATE person SET created_by_user_id = ${viewerUserId}::uuid WHERE id = ${fixture.id['demo-limited-teacher']}::uuid`);
+    try {
+      expect(await personProfile(me, { slug: 'demo-limited-teacher' })).toMatchObject({ limited: false, bio: 'A fictional biography.' });
+    } finally {
+      await getDb().execute(sql`UPDATE person SET created_by_user_id = NULL WHERE id = ${fixture.id['demo-limited-teacher']}::uuid`);
+    }
+    // Anyone else: not found.
+    await expect(personProfile(null, { slug: 'demo-limited-teacher' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('small guarantees of the answers', () => {
+  it('an own edge that is also public (read in two snapshots) is in the answer once, as public', async () => {
+    const edge = await getDb().execute<{ id: string; lineage_id: string }>(sql`
+      SELECT id::text AS id, lineage_id::text AS lineage_id FROM v_public_edge
+       WHERE teacher_person_id = ${ids['demo-a-001']}::uuid AND student_person_id = ${ids['demo-two-lineages']}::uuid`);
+    const publicEdge = edge.rows[0]!;
+    const extras = {
+      personId: ids['demo-two-lineages']!,
+      nodes: {},
+      edges: [
+        {
+          id: publicEdge.id,
+          teacherId: ids['demo-a-001']!,
+          studentId: ids['demo-two-lineages']!,
+          lineage: { id: publicEdge.lineage_id, slug: 'demo-lineage-a', name: 'Demo Lineage A', rootPersonId: null },
+          status: 'verified' as const,
+          isDisplayPrimary: true,
+          periods: [],
+        },
+      ],
+    };
+    const { egoGraph, pathsGraph } = await import('./lineage-graph');
+    const { getPublicDb } = await import('../db');
+    const ego = await readTransaction(getPublicDb(), (tx) => egoGraph(tx, { focusId: ids['demo-two-lineages']!, up: 1, down: 0, fanoutLimit: 50 }, extras));
+    expect(ego.edges.filter((e) => e.id === publicEdge.id)).toEqual([expect.objectContaining({ visibility: 'public' })]);
+    const paths = await readTransaction(getPublicDb(), (tx) => pathsGraph(tx, { focusId: ids['demo-two-lineages']!, limit: 50 }, extras));
+    expect(paths.totalPaths).toBe(2);
+  });
+
+  it('a cached paths answer carries everyone on every route counted, not only the routes it returns', async () => {
+    const { cachedPaths } = await import('./lineage-public');
+    const p = (await cachedPaths({ focusId: ids['demo-converging']!, limit: 1 }))!;
+    expect(p.paths).toHaveLength(1);
+    expect(p.totalPaths).toBe(2);
+    expect(p.nodes.some((n) => n.id === ids['demo-a-002'])).toBe(false);
+    expect(cache.tags).toContain(`person:${ids['demo-a-002']}`);
+    expect(JSON.stringify(p)).not.toContain('routePersonIds');
+  });
+
+  it('people.get gives the city by name only, never a point', async () => {
+    const place = await getDb().execute<{ id: string; name: string }>(sql`SELECT id::text AS id, name FROM place ORDER BY name LIMIT 1`);
+    await getDb().execute(sql`UPDATE person SET place_id = ${place.rows[0]!.id}::uuid WHERE id = ${ids['demo-cjk-name']}::uuid`);
+    try {
+      const r = await api('openapi', '/people/demo-cjk-name', {});
+      expect(r.status).toBe(200);
+      expect(r.body.cityName).toBe(place.rows[0]!.name);
+      const text = JSON.stringify(r.body);
+      for (const key of ['centroid', 'latitude', 'longitude', 'lat', 'lng', 'geonames', 'POINT', 'coordinates']) expect(text).not.toContain(key);
+    } finally {
+      await getDb().execute(sql`UPDATE person SET place_id = NULL WHERE id = ${ids['demo-cjk-name']}::uuid`);
+    }
+  });
+
+  it('the contract documents the 400 and the 404, and the error body has the documented shape', async () => {
+    const doc = JSON.parse(await openApiJson()) as {
+      paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
+      components: { schemas: { Error: { required: string[] } }; securitySchemes: Record<string, unknown> };
+    };
+    for (const path of ['/lineage/ego', '/lineage/ancestors', '/lineage/subtree', '/lineage/paths', '/people/{slug}', '/people/{slug}/students']) {
+      expect(Object.keys(doc.paths[path]!.get!.responses).sort(), path).toEqual(['200', '400', '404']);
+    }
+    expect(Object.keys(doc.components.securitySchemes).sort()).toEqual(['bearer', 'cookie']);
+    const notFound = await api('openapi', '/people/demo-no-such-person', {});
+    const badRequest = await api('openapi', '/lineage/ego', { focusId: 'x' });
+    for (const body of [notFound.body, badRequest.body]) {
+      for (const key of doc.components.schemas.Error.required) expect(body).toHaveProperty(key);
+    }
+    expect(notFound.body).toMatchObject({ code: 'NOT_FOUND', status: 404 });
   });
 });

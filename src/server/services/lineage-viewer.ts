@@ -75,10 +75,12 @@ export async function loadViewer(principal: Principal | null, deadline: ReadDead
       status: RelationshipStatusDto;
       is_display_primary: boolean;
       periods: PublicPeriod[];
+      requested_by_viewer: boolean;
     }>(
       tx,
       sql`
 SELECT r.id::text AS id, r.teacher_person_id::text AS teacher_id, r.student_person_id::text AS student_id,
+       r.requested_by_user_id IS NOT DISTINCT FROM ${principal.user.id}::uuid AS requested_by_viewer,
        l.id::text AS lineage_id, l.slug AS lineage_slug, l.name AS lineage_name,
        (SELECT vp.id::text FROM v_public_person vp WHERE vp.id = l.root_person_id) AS lineage_root_person_id,
        r.status, r.is_display_primary,
@@ -114,10 +116,12 @@ SELECT r.id::text AS id, r.teacher_person_id::text AS teacher_id, r.student_pers
       alt_names: PublicName[];
       bio: string | null;
       is_public: boolean;
+      created_by_viewer: boolean;
     }>(
       tx,
       sql`
 SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country_code,
+       p.created_by_user_id IS NOT DISTINCT FROM ${principal.user.id}::uuid AS created_by_viewer,
        (SELECT pl.name FROM place pl WHERE pl.id = p.place_id) AS city_name,
        pn.value AS display_name,
        COALESCE(
@@ -133,20 +137,31 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
   JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
  WHERE p.id = ANY(${`{${involved.join(',')}}`}::uuid[]) AND p.deleted_at IS NULL`,
     );
+    // The full hidden record of the other end only when its person has answered: plan §6.4 keeps a
+    // record that is not public to the people it concerns. A request the viewer filed and nobody
+    // has answered yet (pending_teacher, awaiting_claim) shows only the names that label the
+    // edge, unless the viewer wrote that record themselves.
+    const answered = new Set<string>();
+    for (const e of edgeRows) {
+      const unanswered = (e.status === 'pending_teacher' || e.status === 'awaiting_claim') && e.requested_by_viewer;
+      if (!unanswered) answered.add(e.teacher_id === own.id ? e.student_id : e.teacher_id);
+    }
     const nodes: Record<string, OwnNode> = {};
     for (const n of nodeRows) {
       if (n.is_public) continue;
+      const full = n.id === own.id || n.created_by_viewer || answered.has(n.id);
       nodes[n.id] = {
         id: n.id,
         slug: n.slug,
         displayName: n.display_name,
         altNames: namesOf(n.alt_names),
         kind: n.kind,
-        lifeStatus: n.life_status,
+        lifeStatus: full ? n.life_status : 'unknown',
         stewardship: n.stewardship,
-        countryCode: n.country_code,
-        cityName: n.city_name,
-        bio: n.bio,
+        countryCode: full ? n.country_code : null,
+        cityName: full ? n.city_name : null,
+        bio: full ? n.bio : null,
+        limited: !full,
       };
     }
     // An edge whose other end has no primary name cannot be drawn (the public views require one).

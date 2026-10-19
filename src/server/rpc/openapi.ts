@@ -29,6 +29,69 @@ export class Zod4SchemaConverter implements ConditionalSchemaConverter {
   }
 }
 
+/** The error body of every procedure (oRPC's error JSON; the router's middleware sets code and message). */
+const ERROR_SCHEMA = {
+  type: 'object',
+  required: ['defined', 'code', 'status', 'message'],
+  properties: {
+    defined: { type: 'boolean' },
+    code: { type: 'string', examples: ['BAD_REQUEST', 'NOT_FOUND'] },
+    status: { type: 'integer' },
+    message: { type: 'string' },
+    data: {
+      type: 'object',
+      properties: {
+        /** Field name → message, for input that failed its schema. */
+        fields: { type: 'object', additionalProperties: { type: 'string' } },
+      },
+    },
+  },
+};
+
+const errorResponse = (description: string) => ({
+  description,
+  content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+});
+
+type Operation = { parameters?: unknown[]; requestBody?: unknown; responses?: Record<string, unknown> };
+
+/**
+ * The answers that are not 200, which the generator leaves out: 400 for input that fails its schema
+ * (every procedure with input; src/server/rpc/router.ts), and 404 for a lineage or people read
+ * about a person who is missing or not public (the same body for both, docs/api/lineage.md). And
+ * the two ways to send a session: optional, since lineage reads are public.
+ */
+export function documentErrors(document: Record<string, unknown>): Record<string, unknown> {
+  const paths = (document.paths ?? {}) as Record<string, Record<string, Operation>>;
+  for (const [path, operations] of Object.entries(paths)) {
+    for (const operation of Object.values(operations)) {
+      const responses = (operation.responses ??= {});
+      if ((operation.parameters?.length ?? 0) > 0 || operation.requestBody !== undefined) {
+        responses['400'] = errorResponse('The input failed its schema: `data.fields` names each field.');
+      }
+      if (path.startsWith('/lineage/') || path.startsWith('/people/')) {
+        responses['404'] = errorResponse('No such person: missing, or not public and not visible to this session (one answer for both).');
+      }
+    }
+  }
+  document.components = {
+    ...((document.components as Record<string, unknown> | undefined) ?? {}),
+    schemas: { Error: ERROR_SCHEMA },
+    securitySchemes: {
+      bearer: { type: 'http', scheme: 'bearer', description: 'A session token from /api/auth (docs/adr/0004-auth.md).' },
+      cookie: {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'wcr.session_token',
+        description: 'The web session cookie (named __Secure-wcr.session_token over HTTPS).',
+      },
+    },
+  };
+  // Anonymous, bearer or cookie: each procedure checks the session it needs itself.
+  document.security = [{}, { bearer: [] }, { cookie: [] }];
+  return document;
+}
+
 /** The OpenAPI 3.1 document of /api/v1. */
 export async function openApiDocument(): Promise<Record<string, unknown>> {
   const generator = new OpenAPIGenerator({ schemaConverters: [new Zod4SchemaConverter()] });
@@ -41,7 +104,7 @@ export async function openApiDocument(): Promise<Record<string, unknown>> {
     },
     servers: [{ url: '/api/v1' }],
   });
-  return document as unknown as Record<string, unknown>;
+  return documentErrors(document as unknown as Record<string, unknown>);
 }
 
 /** The file content: two-space JSON with a final newline. */

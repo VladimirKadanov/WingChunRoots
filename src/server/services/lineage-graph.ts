@@ -180,6 +180,8 @@ export interface OwnNode {
   countryCode: string | null;
   cityName: string | null;
   bio: string | null;
+  /** Only the names: the other end of the viewer's own request that nobody has answered yet. */
+  limited: boolean;
 }
 
 /**
@@ -209,7 +211,7 @@ function extraCte(extras: ViewerExtras): SQL {
 
 /**
  * Ego network: `up` generations of teachers and `down` generations of students, at most
- * `fanout` students per person (own requests first, then by name). Breadth-first order: by
+ * `fanout` students per person (own requests first, then by name in ICU order). Breadth-first order: by
  * generation, teachers before students of the same generation, then by id; at most
  * NODE_CAP + 1 people. The students are read one generation per query and the walk stops once
  * the cap is reached: a single recursive query explores every student to the full depth before
@@ -268,7 +270,9 @@ SELECT c.student_id::text AS id
       SELECT x.student_id, 0, '' FROM extra x WHERE x.teacher_id = t.id
     ) s
     GROUP BY s.student_id
-    ORDER BY min(s.rank), min(s.name), s.student_id
+    -- One alphabetical order everywhere: ICU's root collation, not the database's byte order
+    -- (C.UTF-8), so "van Dam" and "Émile" sort where a reader expects them.
+    ORDER BY min(s.rank), min(s.name COLLATE "und-x-icu"), s.student_id
     LIMIT ${input.fanoutLimit}::int
   ) c
  WHERE c.student_id <> ALL(${uuids(reached)})
@@ -349,36 +353,130 @@ SELECT c.student_id::text AS id
   return seen;
 }
 
+/** People an ancestor walk for routes may reach: far more than any recorded lineage has. */
+export const ROUTE_ANCESTOR_CAP = 5_000;
+/** Steps the route enumeration may take; past it the count is reported as capped. */
+export const ROUTE_WORK_BUDGET = 200_000;
+
+interface UpEdge {
+  id: string;
+  teacherId: string;
+  studentId: string;
+}
+
 /**
- * Complete routes from `focusId` up to a person without recorded teachers, as the CYCLE clause
- * walks them (shorter first), at most PATHS_COUNT_CAP + 1. Each route runs focus → top.
+ * The ancestors of `focusId` (one UNION walk, each person once per depth) and every edge from
+ * each of them up to a teacher, ordered for the route search: the student's primary edge first
+ * (DEFAULT D05: display-primary, else the earliest; an own edge only for a student without a
+ * public teacher), then the earliest. `complete` is false when the walk passed ROUTE_ANCESTOR_CAP.
  */
-async function routesUp(ex: Executor, focusId: string, extras: ViewerExtras): Promise<{ nodes: string[]; edges: string[] }[]> {
-  return rows<{ nodes: string[]; edges: string[] }>(
+async function ancestorEdges(
+  ex: Executor,
+  focusId: string,
+  extras: ViewerExtras,
+): Promise<{ up: Map<string, UpEdge[]>; primary: Map<string, string>; complete: boolean }> {
+  const list = await rows<{ id: string; teacher_id: string; student_id: string; is_display_primary: boolean; over_cap: boolean }>(
     ex,
     sql`
 WITH RECURSIVE ${extraCte(extras)},
-p(id, nodes, edges, depth) AS (
-  SELECT ${focusId}::uuid, ARRAY[${focusId}::uuid], ARRAY[]::uuid[], 0
-  UNION ALL
-  SELECT e.teacher_id, p.nodes || e.teacher_id, p.edges || e.edge_id, p.depth + 1
-    FROM p
+up(id, depth) AS (
+  SELECT ${focusId}::uuid, 0
+  UNION
+  SELECT e.teacher_id, up.depth + 1
+    FROM up
     CROSS JOIN LATERAL (
-      SELECT pe.teacher_person_id AS teacher_id, pe.id AS edge_id FROM v_public_edge pe WHERE pe.student_person_id = p.id
+      SELECT pe.teacher_person_id AS teacher_id FROM v_public_edge pe WHERE pe.student_person_id = up.id
       UNION ALL
-      SELECT x.teacher_id, x.id FROM extra x WHERE x.student_id = p.id
+      SELECT x.teacher_id FROM extra x WHERE x.student_id = up.id
     ) e
-   WHERE p.depth < ${ANCESTOR_DEPTH}::int
-) CYCLE id SET is_cycle USING cycle_path
-SELECT p.nodes::text[] AS nodes, p.edges::text[] AS edges
-  FROM p
- WHERE NOT p.is_cycle AND p.depth > 0
-   -- Scalar subqueries, not NOT EXISTS: the planner turned that into a hash anti-join over all
-   -- of v_public_edge (docs/perf/api.md); these stay index lookups per route end.
-   AND (SELECT pe.id FROM v_public_edge pe WHERE pe.student_person_id = p.id LIMIT 1) IS NULL
-   AND (SELECT x.id FROM extra x WHERE x.student_id = p.id LIMIT 1) IS NULL
- LIMIT ${PATHS_COUNT_CAP + 1}`,
+   WHERE up.depth < ${ANCESTOR_DEPTH}::int
+),
+people AS (SELECT id FROM up GROUP BY id ORDER BY min(depth), id LIMIT ${ROUTE_ANCESTOR_CAP + 1}),
+capped AS (SELECT count(*) > ${ROUTE_ANCESTOR_CAP} AS over_cap FROM people)
+SELECT e.id::text AS id, e.teacher_person_id::text AS teacher_id, e.student_person_id::text AS student_id,
+       e.is_display_primary, capped.over_cap
+  FROM people
+  CROSS JOIN capped
+  CROSS JOIN LATERAL (
+    SELECT pe.id, pe.teacher_person_id, pe.student_person_id, pe.is_display_primary, pe.created_at
+      FROM v_public_edge pe WHERE pe.student_person_id = people.id OFFSET 0) e
+ ORDER BY e.student_person_id, e.created_at, e.id`,
   );
+  const up = new Map<string, UpEdge[]>();
+  const primary = new Map<string, string>();
+  const byStudent = new Map<string, typeof list>();
+  for (const e of list) byStudent.set(e.student_id, [...(byStudent.get(e.student_id) ?? []), e]);
+  for (const [studentId, edges] of byStudent) {
+    const chosen = edges.find((e) => e.is_display_primary) ?? edges[0]!;
+    primary.set(studentId, chosen.id);
+    const ordered = [chosen, ...edges.filter((e) => e !== chosen)];
+    up.set(
+      studentId,
+      ordered.map((e) => ({ id: e.id, teacherId: e.teacher_id, studentId: e.student_id })),
+    );
+  }
+  // The viewer's own edges (involved_only), after the public ones; primary only without a public
+  // teacher. One that became public after loadViewer read it is already in the list.
+  const publicIds = new Set(list.map((e) => e.id));
+  for (const e of extras.edges) {
+    if (publicIds.has(e.id)) continue;
+    if (!primary.has(e.studentId) && !up.has(e.studentId)) primary.set(e.studentId, e.id);
+    up.set(e.studentId, [...(up.get(e.studentId) ?? []), { id: e.id, teacherId: e.teacherId, studentId: e.studentId }]);
+  }
+  return { up, primary, complete: !(list[0]?.over_cap ?? false) };
+}
+
+/**
+ * Complete routes from `focusId` up to a person without recorded teachers, each focus → top, at
+ * most PATHS_COUNT_CAP + 1 of them, at most ANCESTOR_DEPTH steps long, no person twice. A depth-
+ * first search over the ancestor edges, primary edges first, so the route along display-primary
+ * teachers is the first one found. The number of routes can double with every generation where a
+ * student has two teachers (2^20 for 20 such generations), so the search stops at the cap or after
+ * ROUTE_WORK_BUDGET steps: `capped` then says there may be more.
+ */
+async function routesUp(
+  ex: Executor,
+  focusId: string,
+  extras: ViewerExtras,
+): Promise<{ routes: { nodes: string[]; edges: string[] }[]; capped: boolean; primary: Map<string, string> }> {
+  const { up, primary, complete } = await ancestorEdges(ex, focusId, extras);
+  const routes: { nodes: string[]; edges: string[] }[] = [];
+  const nodes = [focusId];
+  const edges: string[] = [];
+  const onPath = new Set(nodes);
+  // One frame per person on the current route: the index of the next teacher edge to try.
+  const next: number[] = [0];
+  let steps = 0;
+  let capped = !complete;
+  while (nodes.length > 0) {
+    steps += 1;
+    if (steps > ROUTE_WORK_BUDGET || routes.length > PATHS_COUNT_CAP) {
+      capped = true;
+      break;
+    }
+    const top = nodes.length - 1;
+    const current = nodes[top]!;
+    const teachers = up.get(current) ?? [];
+    if (teachers.length === 0) {
+      if (top > 0) routes.push({ nodes: [...nodes], edges: [...edges] });
+    } else if (next[top]! < teachers.length && edges.length < ANCESTOR_DEPTH) {
+      const edge = teachers[next[top]!]!;
+      next[top]! += 1;
+      if (!onPath.has(edge.teacherId)) {
+        nodes.push(edge.teacherId);
+        edges.push(edge.id);
+        onPath.add(edge.teacherId);
+        next.push(0);
+      }
+      continue;
+    }
+    // Every teacher of `current` tried (or a top reached): step back down.
+    onPath.delete(current);
+    nodes.pop();
+    next.pop();
+    edges.pop();
+  }
+  return { routes, capped: capped || routes.length > PATHS_COUNT_CAP, primary };
 }
 
 // --- Assembly ---------------------------------------------------------------------------------
@@ -565,8 +663,11 @@ export async function assembleGraph(
                ORDER BY created_at, id`,
         );
   const keep = (id: string) => options.edgeIds === undefined || options.edgeIds.has(id);
+  // An own edge that became public between loadViewer's read and this one is shown once, as public.
+  const publicIds = new Set(publicEdges.map((e) => e.id));
   const ownEdges = extras.edges.filter(
     (e) =>
+      !publicIds.has(e.id) &&
       inView.has(e.teacherId) &&
       inView.has(e.studentId) &&
       (lineageFilter === null || e.lineage.id === lineageFilter) &&
@@ -696,20 +797,19 @@ export async function pathsGraph(
   ex: Executor,
   input: { focusId: string; limit: number },
   extras: ViewerExtras,
-): Promise<LineagePathsDto> {
+): Promise<LineagePathsDto & { routePersonIds: string[] }> {
   const found = await routesUp(ex, input.focusId, extras);
-  const totalPathsCapped = found.length > PATHS_COUNT_CAP;
-  const routes: LineagePathDto[] = found
+  const totalPathsCapped = found.capped;
+  const routes: LineagePathDto[] = found.routes
     .slice(0, PATHS_COUNT_CAP)
     .map((r) => ({ personIds: [...r.nodes].reverse(), edgeIds: [...r.edges].reverse() }));
 
   // Sort keys: edges that are not the student's primary edge, length, then the names on the way.
   const everyone = [...new Set(routes.flatMap((r) => r.personIds))];
   const people = await publicPeople(ex, everyone);
-  const primary = await primaryEdges(ex, everyone, extras);
   const nameOf = (id: string) => people.get(id)?.display_name ?? extras.nodes[id]?.displayName ?? '';
   const keyOf = (r: LineagePathDto) => ({
-    secondary: r.edgeIds.filter((edgeId, i) => primary.get(r.personIds[i + 1]!)?.id !== edgeId).length,
+    secondary: r.edgeIds.filter((edgeId, i) => found.primary.get(r.personIds[i + 1]!) !== edgeId).length,
     length: r.edgeIds.length,
     names: r.personIds.map(nameOf).join('\u0000'),
   });
@@ -745,7 +845,17 @@ export async function pathsGraph(
     paths,
     totalPaths: routes.length,
     totalPathsCapped,
+    // Not part of the answer (toPublicPaths drops it): everyone on every route counted, so the
+    // cached entry is dropped when any of them changes, not only the people on the routes shown.
+    routePersonIds: everyone,
   };
+}
+
+/** The answer of lineage.paths without the cache-tag helper field. */
+export function withoutRouteIds(value: LineagePathsDto & { routePersonIds: string[] }): LineagePathsDto {
+  const paths: LineagePathsDto & { routePersonIds?: string[] } = { ...value };
+  delete paths.routePersonIds;
+  return paths;
 }
 
 // --- People -----------------------------------------------------------------------------------
@@ -790,7 +900,12 @@ export async function personCounts(
 WITH RECURSIVE d(id) AS (
   SELECT ${personId}::uuid
   UNION
-  SELECT pe.student_person_id FROM d JOIN v_public_edge pe ON pe.teacher_person_id = d.id
+  -- One index lookup by teacher per person reached: with a join, the planner scanned and hashed
+  -- teaching_relationship at every level (0.6-0.8 s for a lineage root, docs/perf/api.md).
+  -- OFFSET 0 keeps the subquery from being flattened back into that join.
+  SELECT x.student_person_id
+    FROM d
+    CROSS JOIN LATERAL (SELECT pe.student_person_id FROM v_public_edge pe WHERE pe.teacher_person_id = d.id OFFSET 0) x
 )
 SELECT (count(*) - 1)::int AS n FROM (SELECT id FROM d LIMIT ${DESCENDANTS_CAP + 2}) x`,
   );
@@ -815,12 +930,24 @@ interface StudentRow {
   stewardship: string;
   edges: (Omit<EdgeRow, 'teacher_id' | 'student_id'> & { periods: PublicPeriod[] })[];
   historical: boolean;
+  student_count: number;
+  active_total: number;
+  historical_total: number;
 }
 
-/** A teacher's public students, one row per student with their edges to this teacher. */
+/** 'name': alphabetical (the list view). 'seniority': earliest recorded training first (the profile). */
+export type StudentOrder = 'name' | 'seniority';
+
+/**
+ * A teacher's public students, one row per student: their edges to this teacher, whether every
+ * period has ended, and the earliest dated start. Grouped from v_public_edge by its teacher index
+ * first; the name comes per student through the primary key (OFFSET 0 keeps the lookup from being
+ * flattened into a join, which let the planner build all of v_public_person: 1.3-1.9 s for a hub
+ * at 100,000 relationships, docs/perf/api.md).
+ */
 function studentsCte(teacherId: string): SQL {
   return sql`s AS (
-  SELECT vp.id, vp.slug, vp.display_name, vp.alt_names, vp.life_status, vp.stewardship,
+  SELECT pe.student_person_id AS id,
          jsonb_agg(jsonb_build_object(
            'id', pe.id, 'lineage_id', pe.lineage_id, 'status', pe.status,
            'is_display_primary', pe.is_display_primary, 'periods', pe.periods,
@@ -829,51 +956,166 @@ function studentsCte(teacherId: string): SQL {
          bool_and(
            jsonb_array_length(pe.periods) > 0
            AND NOT jsonb_path_exists(pe.periods, '$[*] ? (@.ongoing == true)')
-           AND jsonb_path_exists(pe.periods, '$[*] ? (@.endsOn != null)')) AS historical
+           AND jsonb_path_exists(pe.periods, '$[*] ? (@.endsOn != null)')) AS historical,
+         min(st.starts_on) AS first_start
     FROM v_public_edge pe
-    JOIN v_public_person vp ON vp.id = pe.student_person_id
+    CROSS JOIN LATERAL (
+      SELECT min((p ->> 'startsOn')::date) AS starts_on
+        FROM jsonb_array_elements(pe.periods) AS p
+       WHERE p ->> 'precision' <> 'unknown' AND p ->> 'startsOn' IS NOT NULL) st
    WHERE pe.teacher_person_id = ${teacherId}::uuid
-   GROUP BY vp.id, vp.slug, vp.display_name, vp.alt_names, vp.life_status, vp.stewardship
+   GROUP BY pe.student_person_id
+),
+named AS (
+  SELECT s.id, s.edges, s.historical, s.first_start, vp.display_name
+    FROM s
+    CROSS JOIN LATERAL (SELECT vp.display_name FROM v_public_person vp WHERE vp.id = s.id OFFSET 0) vp
 )`;
 }
 
 /**
  * One page of a teacher's public students: those with a current relationship first, then those
- * whose training has ended (every period ended), each group by name.
+ * whose training has ended (every period ended); within each group by name, or by the earliest
+ * dated start (undated last) and then name. Names sort in ICU order, as in the ego network.
+ * The totals come from the same pass (window counts); only a page past the end counts apart.
  */
 export async function studentRows(
   ex: Executor,
   teacherId: string,
-  page: number,
-  pageSize: number,
+  options: { page: number; pageSize: number; order: StudentOrder },
 ): Promise<{ rows: StudentRow[]; activeTotal: number; historicalTotal: number }> {
+  const byName = sql`named.display_name COLLATE "und-x-icu", named.id`;
+  const order = options.order === 'seniority' ? sql`named.historical, named.first_start NULLS LAST, ${byName}` : sql`named.historical, ${byName}`;
+  const list = await rows<StudentRow>(
+    ex,
+    sql`WITH ${studentsCte(teacherId)},
+        page AS (
+          SELECT named.id, named.display_name, named.edges, named.historical,
+                 row_number() OVER (ORDER BY ${order}) AS position,
+                 (count(*) FILTER (WHERE NOT named.historical) OVER ())::int AS active_total,
+                 (count(*) FILTER (WHERE named.historical) OVER ())::int AS historical_total
+            FROM named
+           ORDER BY position
+           LIMIT ${options.pageSize}::int OFFSET ${(options.page - 1) * options.pageSize}::int
+        )
+        SELECT page.id::text AS id, vp.slug, page.display_name, vp.alt_names, vp.life_status, vp.stewardship,
+               page.edges, page.historical, page.active_total, page.historical_total,
+               (SELECT count(DISTINCT pe.student_person_id)::int FROM v_public_edge pe WHERE pe.teacher_person_id = page.id) AS student_count
+          FROM page
+          CROSS JOIN LATERAL (
+            SELECT vp.slug, vp.alt_names, vp.life_status, vp.stewardship FROM v_public_person vp WHERE vp.id = page.id OFFSET 0) vp
+         ORDER BY page.position`,
+  );
+  if (list.length > 0) return { rows: list, activeTotal: list[0]!.active_total, historicalTotal: list[0]!.historical_total };
   const [totals] = await rows<{ active_total: number; historical_total: number }>(
     ex,
     sql`WITH ${studentsCte(teacherId)}
-        SELECT (count(*) FILTER (WHERE NOT s.historical))::int AS active_total,
-               (count(*) FILTER (WHERE s.historical))::int AS historical_total
-          FROM s`,
+        SELECT (count(*) FILTER (WHERE NOT named.historical))::int AS active_total,
+               (count(*) FILTER (WHERE named.historical))::int AS historical_total
+          FROM named`,
   );
-  const list = await rows<StudentRow>(
+  return { rows: [], activeTotal: totals?.active_total ?? 0, historicalTotal: totals?.historical_total ?? 0 };
+}
+
+/** Other teachers named on a student's row: the display-primary one first, then the earliest. */
+export const OTHER_TEACHERS_SHOWN = 3;
+
+interface OtherTeacherRow {
+  student_id: string;
+  teacher_id: string;
+  lineage_id: string;
+  lineage_slug: string;
+  lineage_name: string;
+  lineage_root_person_id: string | null;
+  total: number;
+  slug: string;
+  display_name: string;
+  alt_names: PublicName[];
+  life_status: string;
+  stewardship: string;
+}
+
+/**
+ * For each student, their other public teachers (not `teacherId`): at most OTHER_TEACHERS_SHOWN,
+ * each once with the lineage of its first edge, and how many there are. Public edges only.
+ */
+async function otherTeachers(ex: Executor, teacherId: string, studentIds: readonly string[]): Promise<Map<string, OtherTeacherRow[]>> {
+  const result = new Map<string, OtherTeacherRow[]>();
+  if (studentIds.length === 0) return result;
+  const list = await rows<OtherTeacherRow>(
     ex,
-    sql`WITH ${studentsCte(teacherId)}
-        SELECT s.id::text AS id, s.slug, s.display_name, s.alt_names, s.life_status, s.stewardship, s.edges, s.historical
-          FROM s
-         ORDER BY s.historical, s.display_name, s.id
-         LIMIT ${pageSize}::int OFFSET ${(page - 1) * pageSize}::int`,
+    sql`
+SELECT s.id::text AS student_id, t.teacher_id::text AS teacher_id, t.lineage_id::text AS lineage_id,
+       t.lineage_slug, t.lineage_name, t.lineage_root_person_id::text AS lineage_root_person_id, t.total,
+       vp.slug, vp.display_name, vp.alt_names, vp.life_status, vp.stewardship
+  FROM unnest(${uuids(studentIds)}) AS s(id)
+  CROSS JOIN LATERAL (
+    SELECT x.*, (count(*) OVER ())::int AS total
+      FROM (
+        SELECT DISTINCT ON (pe.teacher_person_id)
+               pe.teacher_person_id AS teacher_id, pe.lineage_id, pe.lineage_slug, pe.lineage_name,
+               pe.lineage_root_person_id, pe.is_display_primary, pe.created_at
+          FROM v_public_edge pe
+         WHERE pe.student_person_id = s.id AND pe.teacher_person_id <> ${teacherId}::uuid
+         ORDER BY pe.teacher_person_id, pe.is_display_primary DESC, pe.created_at, pe.id
+      ) x
+     ORDER BY x.is_display_primary DESC, x.created_at, x.teacher_id
+     LIMIT ${OTHER_TEACHERS_SHOWN}
+  ) t
+  CROSS JOIN LATERAL (
+    SELECT vp.slug, vp.display_name, vp.alt_names, vp.life_status, vp.stewardship FROM v_public_person vp WHERE vp.id = t.teacher_id OFFSET 0) vp
+ ORDER BY s.id, t.is_display_primary DESC, t.created_at, t.teacher_id`,
   );
-  return { rows: list, activeTotal: totals?.active_total ?? 0, historicalTotal: totals?.historical_total ?? 0 };
+  for (const r of list) result.set(r.student_id, [...(result.get(r.student_id) ?? []), r]);
+  return result;
 }
 
 export const STUDENTS_PAGE_SIZE = 50;
 
 /**
  * A page of a teacher's students (plan §4.10): public students, active then historical, and on
- * page 1 the signed-in teacher's own requests (`own`, involved_only, never counted).
+ * page 1 the signed-in teacher's own requests (`own`, involved_only, never counted). Each entry
+ * names the student's other public teachers, so a student who also trained elsewhere reads the
+ * same on the profile and in the list view.
  */
-export async function studentPage(ex: Executor, teacherId: string, page: number, extras: ViewerExtras): Promise<StudentsPageDto> {
-  const { rows: list, activeTotal, historicalTotal } = await studentRows(ex, teacherId, page, STUDENTS_PAGE_SIZE);
+export async function studentPage(
+  ex: Executor,
+  teacherId: string,
+  options: { page: number; pageSize: number; order: StudentOrder },
+  extras: ViewerExtras,
+): Promise<StudentsPageDto> {
+  const { page, pageSize, order } = options;
+  const { rows: list, activeTotal, historicalTotal } = await studentRows(ex, teacherId, options);
   const lineages = new Map<string, LineageRefDto>();
+  const publicEdgeIds = new Set(list.flatMap((s) => s.edges.map((e) => e.id)));
+  // A relationship that became public after the viewer's own edges were read is shown once, as public.
+  const ownStudents = page === 1 ? extras.edges.filter((e) => e.teacherId === teacherId && !publicEdgeIds.has(e.id)) : [];
+  const ownPeople = await publicPeople(ex, ownStudents.map((e) => e.studentId));
+  const ownCounts = await publicCounts(ex, [...ownPeople.keys()]);
+  const others = await otherTeachers(ex, teacherId, [...list.map((s) => s.id), ...ownPeople.keys()]);
+
+  const otherTeachersOf = (studentId: string): Pick<StudentEntryDto, 'otherTeachers' | 'otherTeachersTotal'> => {
+    const found = others.get(studentId) ?? [];
+    for (const t of found) {
+      lineages.set(t.lineage_id, { id: t.lineage_id, slug: t.lineage_slug, name: t.lineage_name, rootPersonId: t.lineage_root_person_id });
+    }
+    return {
+      otherTeachers: found.map((t) => ({
+        person: {
+          id: t.teacher_id,
+          slug: t.slug,
+          displayName: t.display_name,
+          altNames: namesOf(t.alt_names),
+          lifeStatus: t.life_status,
+          claimState: claimStateOf(t.stewardship),
+          visibility: 'public' as const,
+        },
+        lineageId: t.lineage_id,
+      })),
+      otherTeachersTotal: found[0]?.total ?? 0,
+    };
+  };
+
   const entries: StudentEntryDto[] = list.map((s) => {
     const edges = s.edges.map((e) => {
       lineages.set(e.lineage_id, { id: e.lineage_id, slug: e.lineage_slug, name: e.lineage_name, rootPersonId: e.lineage_root_person_id });
@@ -898,50 +1140,51 @@ export async function studentPage(ex: Executor, teacherId: string, page: number,
       },
       edges,
       historical: s.historical,
+      studentCount: s.student_count,
+      ...otherTeachersOf(s.id),
     };
   });
 
   const own: StudentEntryDto[] = [];
-  if (page === 1) {
-    const ownStudents = extras.edges.filter((e) => e.teacherId === teacherId);
-    const people = await publicPeople(ex, ownStudents.map((e) => e.studentId));
-    for (const e of ownStudents) {
-      const p = people.get(e.studentId);
-      const n = extras.nodes[e.studentId];
-      if (!p && !n) continue;
-      lineages.set(e.lineage.id, e.lineage);
-      own.push({
-        person: {
-          id: e.studentId,
-          slug: p ? p.slug : n!.slug,
-          displayName: p ? p.display_name : n!.displayName,
-          altNames: p ? namesOf(p.alt_names) : n!.altNames,
-          lifeStatus: p ? p.life_status : n!.lifeStatus,
-          claimState: claimStateOf(p ? p.stewardship : n!.stewardship),
-          visibility: p ? 'public' : 'involved_only',
+  for (const e of ownStudents) {
+    const p = ownPeople.get(e.studentId);
+    const n = extras.nodes[e.studentId];
+    if (!p && !n) continue;
+    lineages.set(e.lineage.id, e.lineage);
+    own.push({
+      person: {
+        id: e.studentId,
+        slug: p ? p.slug : n!.slug,
+        displayName: p ? p.display_name : n!.displayName,
+        altNames: p ? namesOf(p.alt_names) : n!.altNames,
+        lifeStatus: p ? p.life_status : n!.lifeStatus,
+        claimState: claimStateOf(p ? p.stewardship : n!.stewardship),
+        visibility: p ? 'public' : 'involved_only',
+      },
+      edges: [
+        {
+          id: e.id,
+          lineageId: e.lineage.id,
+          status: e.status,
+          isDisplayPrimary: e.isDisplayPrimary,
+          visibility: 'involved_only',
+          periods: periodsOf(e.periods),
         },
-        edges: [
-          {
-            id: e.id,
-            lineageId: e.lineage.id,
-            status: e.status,
-            isDisplayPrimary: e.isDisplayPrimary,
-            visibility: 'involved_only',
-            periods: periodsOf(e.periods),
-          },
-        ],
-        historical: false,
-      });
-    }
+      ],
+      historical: false,
+      studentCount: ownCounts.get(e.studentId)?.students ?? 0,
+      ...(p ? otherTeachersOf(e.studentId) : { otherTeachers: [], otherTeachersTotal: 0 }),
+    });
   }
 
   return {
     personId: teacherId,
     page,
-    pageSize: STUDENTS_PAGE_SIZE,
+    pageSize,
+    order,
     activeTotal,
     historicalTotal,
-    pageCount: Math.max(1, Math.ceil((activeTotal + historicalTotal) / STUDENTS_PAGE_SIZE)),
+    pageCount: Math.max(1, Math.ceil((activeTotal + historicalTotal) / pageSize)),
     active: entries.filter((e) => !e.historical),
     historical: entries.filter((e) => e.historical),
     own,

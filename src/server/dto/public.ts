@@ -146,16 +146,37 @@ export const personProfileSchema = z.object({
   visibility: visibilitySchema,
   /** The signed-in account's own person. */
   isOwn: z.boolean(),
+  /**
+   * Only the names are given (no bio, place or life status): a record that is not public, shown to
+   * the viewer because of their own request, which its person has not answered yet (plan §6.4).
+   */
+  limited: z.boolean(),
   counts: personCountsSchema,
   lineages: z.array(lineageRefSchema),
 });
 export type PersonProfileDto = z.infer<typeof personProfileSchema>;
 
+const personRefSchema = lineageNodeSchema.pick({
+  id: true,
+  slug: true,
+  displayName: true,
+  altNames: true,
+  lifeStatus: true,
+  claimState: true,
+  visibility: true,
+});
+
 export const studentEntrySchema = z.object({
-  person: lineageNodeSchema.pick({ id: true, slug: true, displayName: true, altNames: true, lifeStatus: true, claimState: true, visibility: true }),
+  person: personRefSchema,
   edges: z.array(lineageEdgeSchema.omit({ kind: true, teacherId: true, studentId: true })),
   /** Every period of every relationship has ended. */
   historical: z.boolean(),
+  /** This student's own public students (v_public_edge only). */
+  studentCount: z.number().int(),
+  /** The student's other public teachers, at most 3: the display-primary one first, then the earliest. */
+  otherTeachers: z.array(z.object({ person: personRefSchema, lineageId: z.uuid() })),
+  /** How many other public teachers the student has. */
+  otherTeachersTotal: z.number().int(),
 });
 export type StudentEntryDto = z.infer<typeof studentEntrySchema>;
 
@@ -163,6 +184,8 @@ export const studentsPageSchema = z.object({
   personId: z.uuid(),
   page: z.number().int(),
   pageSize: z.number().int(),
+  /** 'name' (alphabetical) or 'seniority' (earliest dated training first, undated last). */
+  order: z.enum(['name', 'seniority']),
   /** Public students with a current relationship, and those whose training has ended. */
   activeTotal: z.number().int(),
   historicalTotal: z.number().int(),

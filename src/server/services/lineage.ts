@@ -45,21 +45,26 @@ import {
   type ReadDeadline,
   readTransaction,
   studentPage,
+  STUDENTS_PAGE_SIZE,
   subtreeGraph,
+  withoutRouteIds,
 } from './lineage-graph';
 import { cachedAncestors, cachedEgo, cachedPaths, cachedProfile, cachedStudents, cachedSubtree } from './lineage-public';
 import { isPersonalised, loadViewer, mayViewHidden, type Viewer } from './lineage-viewer';
 
-// --- Input: every number bounded (query strings arrive as text, hence coerce) ---------------
+// --- Input: every number bounded and written as digits only ---------------------------------
 
 const personId = z.uuid({ error: 'Must be a person id (a UUID).' });
-const bounded = (min: number, max: number, fallback: number) =>
-  z.coerce
-    .number({ error: `Must be a whole number from ${min} to ${max}.` })
-    .int({ error: `Must be a whole number from ${min} to ${max}.` })
-    .min(min, { error: `Must be a whole number from ${min} to ${max}.` })
-    .max(max, { error: `Must be a whole number from ${min} to ${max}.` })
-    .default(fallback);
+/**
+ * A whole number from `min` to `max`: a JSON number, or (a query string arrives as text) up to
+ * four decimal digits. An empty value, a sign, an exponent or a hex string is an error, never a
+ * silent 0 or a number that only z.coerce would read.
+ */
+const bounded = (min: number, max: number, fallback: number) => {
+  const error = `Must be a whole number from ${min} to ${max}.`;
+  const number = z.number({ error }).int({ error }).min(min, { error }).max(max, { error });
+  return z.union([number, z.string().regex(/^\d{1,4}$/, { error }).transform(Number).pipe(number)], { error }).default(fallback);
+};
 
 export const egoInput = z.object({
   focusId: personId,
@@ -97,7 +102,14 @@ const slug = z
 export const personInput = z.object({ slug });
 export type PersonInput = z.infer<typeof personInput>;
 
-export const studentsInput = z.object({ slug, page: bounded(1, 1000, 1) });
+export const studentsInput = z.object({
+  slug,
+  page: bounded(1, 1000, 1),
+  /** Students per page; the profile asks for 12. */
+  pageSize: bounded(1, STUDENTS_PAGE_SIZE, STUDENTS_PAGE_SIZE),
+  /** 'name' (the list view) or 'seniority' (earliest dated training first, the profile). */
+  order: z.enum(['name', 'seniority'], { error: "Must be 'name' or 'seniority'." }).default('name'),
+});
 export type StudentsInput = z.infer<typeof studentsInput>;
 
 // --- Helpers -----------------------------------------------------------------------------------
@@ -176,7 +188,7 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
-        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? pathsGraph(tx, args, viewer.extras) : null),
+        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? withoutRouteIds(await pathsGraph(tx, args, viewer.extras)) : null),
         deadline,
       )
     : await cachedPaths(args);
@@ -225,6 +237,7 @@ export async function personProfile(principal: Principal | null, input: PersonIn
     bio: hidden.bio,
     visibility: 'involved_only',
     isOwn: viewer.extras.personId === id,
+    limited: hidden.limited,
     counts: {
       teachers: counts.teachers,
       students: counts.students,
@@ -242,9 +255,10 @@ export async function personStudents(principal: Principal | null, input: Student
   const viewer = await loadViewer(principal, deadline);
   const id = await resolveSlug(viewer, input.slug, deadline);
   if (!id) throw notFound();
+  const options = { page: input.page, pageSize: input.pageSize, order: input.order };
   const page = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), (tx) => studentPage(tx, id, input.page, viewer.extras), deadline)
-    : await cachedStudents({ personId: id, page: input.page });
+    ? await readTransaction(getPublicDb(), (tx) => studentPage(tx, id, options, viewer.extras), deadline)
+    : await cachedStudents({ personId: id, ...options });
   if (!page) throw notFound();
   return page;
 }
