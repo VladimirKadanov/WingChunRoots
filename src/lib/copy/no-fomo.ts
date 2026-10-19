@@ -26,7 +26,7 @@ export interface FomoRule {
  * left" is "Only 1 spots left" and "ends in {time}" is "ends in 1". The `value-left` rule reads the
  * mark itself (M08 polish, note 3): a value right before "left", "remaining" or "to go" may be a
  * time or an amount with its unit ("2 days", "04:59", "3 places"), so "{n} {unit} left",
- * "{days} days left" read with a helper, or "{timeLeft} remaining" is a countdown or scarcity. Not
+ * "{days} {plural(days, 'day')} left" or "{timeLeft} remaining" is a countdown or scarcity. Not
  * after "of": "{used} of {total} left" states a quota ("3 of 10 left", the backup codes of M02).
  */
 export const VALUE = '\uE000';
