@@ -62,7 +62,7 @@ mapfile -t M08_SQL < <(ls drizzle/*_m08_entitlements/migration.sql 2>/dev/null)
 mapfile -t PLAN_UI < <(find src/components/plans src/app/plans src/app/dashboard src/app/admin/grants -type f -name '*.tsx' | sort)
 
 KEY_SCREENS=(plans dashboard-sifu dashboard-student dashboard-settings)
-STATES=(admin-grants dashboard-sifu-empty upgrade-requested)
+STATES=(admin-grants dashboard-sifu-empty upgrade-requested upgrade-open dashboard-admin)
 SIZES=(390x844 1440x900)
 THEMES=(dark light)
 
@@ -75,7 +75,7 @@ required=(
   src/lib/copy/no-fomo.ts src/lib/copy/copy.no-fomo.test.ts
   src/server/services/plans.ts src/server/services/grants.ts src/server/services/dashboard.ts
   src/server/services/notifications.ts src/server/services/plans.int.test.ts
-  src/components/plans/upgrade-prompt.tsx src/components/plans/upgrade-actions.tsx
+  src/components/plans/upgrade-prompt.tsx src/server/services/account-lock.ts
   src/app/plans/page.tsx src/app/dashboard/page.tsx src/app/dashboard/notifications.tsx
   src/app/dashboard/settings/page.tsx src/app/admin/grants/page.tsx src/app/admin/grants/grants-table.tsx
   e2e/m08-entitlements.spec.ts e2e/helpers/plans.ts
@@ -149,9 +149,9 @@ refute "revoking a plan never changes a relationship (no teaching_relationship w
 # 6. The upgrade prompt (In scope 4; plan §5.6) --------------------------------------------------
 check "the prompt has \"Proposed price (not final)\", \"Request pilot access\" and \"Not now\"" bash -c '
   grep -q "Proposed price (not final)" src/server/services/plans.ts &&
-  grep -q "Request pilot access" src/components/plans/upgrade-actions.tsx && grep -q ">\s*Not now\s*<\|Not now$" src/components/plans/upgrade-actions.tsx'
+  grep -q "Request pilot access" src/components/plans/upgrade-prompt.tsx && grep -q ">\s*Not now\s*<\|Not now$" src/components/plans/upgrade-prompt.tsx'
 check "\"Request pilot access\" and \"Not now\" share one button style (equally prominent)" bash -c '
-  f=src/components/plans/upgrade-actions.tsx
+  f=src/components/plans/upgrade-prompt.tsx
   [ "$(grep -c "className={actionClass}" "$f")" -eq 2 ]'
 check "requestPilotAccess notifies the admins, is audited, is rate limited and never charges" bash -c '
   f=src/server/services/plans.ts
