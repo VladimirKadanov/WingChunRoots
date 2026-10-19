@@ -77,8 +77,30 @@ const STATES: readonly ScreenState[] = [
       const sifu = await freshAccount(page, { name: 'Demo Asking Sifu', sifu: true });
       await giveStudents(sifu.userId, 5, 1);
       await page.goto('/dashboard');
+      await page.getByTestId('upgrade-summary').click();
       await page.getByTestId('request-pilot-access').click();
       await expect(page.getByRole('status').filter({ hasText: 'Nothing is charged.' })).toBeVisible();
+    },
+  },
+  {
+    // M08 review round 1: the upgrade prompt opened from its one-line summary.
+    name: 'upgrade-open',
+    milestone: 'M08',
+    async reach(page) {
+      await signInAs(page, 'demo-free-sifu-5');
+      await page.goto('/dashboard');
+      await page.getByTestId('upgrade-summary').click();
+      await expect(page.getByTestId('upgrade-benefits')).toBeVisible();
+    },
+  },
+  {
+    // M08 review round 1: an administrator's dashboard, staff work first.
+    name: 'dashboard-admin',
+    milestone: 'M08',
+    async reach(page) {
+      await signInAs(page, 'admin');
+      await page.goto('/dashboard');
+      await expect(page.getByTestId('staff-work')).toBeVisible();
     },
   },
 ];
