@@ -128,7 +128,9 @@ function Step({
   const year = edge ? startYear(edge.periods) : null;
   return (
     <li className="relative grid grid-cols-[2.5rem_1.75rem_minmax(0,1fr)] gap-x-3 pb-3 [--node:1.375rem]">
-      <div className="col-start-3 row-start-1 grid min-w-0 content-start">
+      {/* The number and spine columns grow with the text, so at 200% text on a 320 px screen a
+          long name may break inside a word rather than widen the page. */}
+      <div className="col-start-3 row-start-1 grid min-w-0 content-start [overflow-wrap:anywhere]">
         {isLast ? (
           <span className="inline-flex min-h-11 items-center font-display text-lg">
             <PersonName person={person} />

@@ -45,7 +45,9 @@ export function Section({
 }) {
   return (
     <section aria-labelledby={id} className={cx('grid scroll-mt-24 content-start gap-4 border-t border-border-subtle pt-6', className)}>
-      <h2 id={id} tabIndex={focusable ? -1 : undefined} className="font-display text-2xl outline-none">
+      {/* A word wider than the column (one word at 200% text on a 320 px screen) breaks rather than
+          widening the page; at ordinary sizes every heading word fits and nothing changes. */}
+      <h2 id={id} tabIndex={focusable ? -1 : undefined} className="font-display text-2xl [overflow-wrap:anywhere] outline-none">
         {title}
         {count !== undefined ? (
           <span className="text-fg-subtle tabular">

@@ -512,6 +512,25 @@ test('@M04 when the profile read fails once, the page shows its own error state,
   });
 });
 
+test.describe('at 320x640', () => {
+  test.use({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
+
+  test('@M04 at 320x640 with text at 200% the profile and list view of two people have no horizontal scroll', async ({ page }) => {
+    // Review round 2 (recheck-10): a section heading ("Descendants") and a route's names were wider
+    // than the column and widened the page. demo-root-a's three-generation outline and the M00b
+    // shell on / still do (deferred, see the PR); these pages must stay within the screen.
+    for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-hub-a', '/people/demo-hub-a/lineage']) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = '200%';
+      });
+      const size = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+      expect(size.scrollWidth, `${path} at 320 px and 200% text`).toBeLessThanOrEqual(size.clientWidth);
+    }
+  });
+});
+
 test.describe('at 390x844', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
