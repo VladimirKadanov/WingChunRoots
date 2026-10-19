@@ -62,7 +62,7 @@ mapfile -t M08_SQL < <(ls drizzle/*_m08_entitlements/migration.sql 2>/dev/null)
 mapfile -t PLAN_UI < <(find src/components/plans src/app/plans src/app/dashboard src/app/admin/grants -type f -name '*.tsx' | sort)
 
 KEY_SCREENS=(plans dashboard-sifu dashboard-student dashboard-settings)
-STATES=(admin-grants dashboard-sifu-empty upgrade-requested upgrade-open dashboard-admin dashboard-admin-unverified pilot-request-close)
+STATES=(admin-grants dashboard-sifu-empty upgrade-requested upgrade-open dashboard-admin dashboard-admin-unverified pilot-request-close request-answered)
 SIZES=(390x844 1440x900)
 THEMES=(dark light)
 
@@ -79,6 +79,8 @@ required=(
   src/app/plans/page.tsx src/app/dashboard/page.tsx src/app/dashboard/notifications.tsx
   src/app/dashboard/settings/page.tsx src/app/admin/grants/page.tsx src/app/admin/grants/grants-table.tsx
   e2e/m08-entitlements.spec.ts e2e/helpers/plans.ts
+  src/components/account/load-error.tsx src/app/dashboard/error.tsx src/app/dashboard/settings/error.tsx
+  src/app/admin/grants/error.tsx e2e/m08-failures.exclusive.spec.ts src/server/rpc/form.test.ts
   docs/entitlements.md docs/adr/0007-entitlements.md scripts/verify.d/M08.sh
 )
 for f in "${required[@]}"; do
@@ -151,6 +153,30 @@ check "the requester of a pilot request and the open count need the second facto
   grep -q "hasStaff2FA(p, \[.admin.\])" src/server/services/notifications.ts && grep -q "hasStaff2FA(p, \[.admin.\])" src/server/services/dashboard.ts'
 check "the in-process oRPC client logs failures like the HTTP handlers (logProcedureFailure, review round 2)" \
   grep -q "interceptors: \[logProcedureFailure\]" src/server/rpc/server.ts
+check "after its safe line, the in-process client throws a bare 500 without the cause (final check, security-1)" bash -c '
+  f=src/server/rpc/failure-log.ts
+  grep -q "throw internalServerError();" "$f" && grep -q "new ORPCError(.INTERNAL_SERVER_ERROR., { message: .Internal server error. })" "$f"'
+check "/dashboard, /dashboard/settings and /admin/grants catch their reads and show the error state with a retry link (requirements-2)" bash -c '
+  for f in src/app/dashboard/page.tsx src/app/dashboard/settings/page.tsx src/app/admin/grants/page.tsx; do
+    grep -q "await pageRead(" "$f" && grep -q "<LoadError " "$f" && grep -q "retryHref=" "$f" || exit 1
+  done
+  for f in src/app/dashboard/error.tsx src/app/dashboard/settings/error.tsx src/app/admin/grants/error.tsx; do
+    grep -q "retry={retry}" "$f" || exit 1
+  done'
+check "scripts/verify.sh runs the specs that lock a table in a run of their own, after the others (PW_EXCLUSIVE)" bash -c '
+  grep -q "PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests" scripts/verify.sh && grep -q "exclusive: process.env.PW_EXCLUSIVE\|PW_EXCLUSIVE === '\''1'\''" playwright.config.ts &&
+  ! grep -q "dependencies:" e2e/projects.ts'
+check "every grant field is checked in the schema, so one parse reports every field (final check, screens-2)" bash -c '
+  f=src/server/services/grants.ts
+  grep -q "check(z.email({ error: GRANT_FIELD_ERRORS.email }))" "$f" && grep -q "min(1, { error: GRANT_FIELD_ERRORS.reason })" "$f" && grep -q "{ when: () => true }" "$f"'
+check "an answered pilot access request says so in the notification and on /admin/grants (final check, screens-4)" bash -c '
+  grep -q "The request has already been answered." src/server/templates/notifications.ts &&
+  grep -q "answered" src/server/services/notifications.ts && grep -q "REQUEST_ANSWERED_TEXT" src/app/admin/grants/forms.tsx'
+check "a removed profile (deleted_at) is anonymous in the dashboards and waits for nobody (final check, security-2)" bash -c '
+  f=src/server/services/dashboard.ts
+  grep -q "REMOVED_PROFILE_NAME = '\''A removed profile'\''" "$f" && grep -q "isNull(person.deletedAt)" "$f"'
+refute "the Free Sifu limit is not written out in the UI copy: FREE_SIFU_STUDENT_LIMIT (final check, code-3)" \
+  grep_code "[Uu]p to (5|five) (approved )?students|5 approved students" src/app/plans/page.tsx src/app/dashboard/settings/forms.tsx src/app/dashboard/settings/page.tsx src/components/plans/upgrade-prompt.tsx
 refute "the M08 Server Actions never rethrow a procedure error (formStateFromFailure after unstable_rethrow)" \
   grep_code "^\s*throw error;" src/app/admin/grants/actions.ts src/app/dashboard/settings/actions.ts src/app/dashboard/actions.ts
 refute "revoking a plan never changes a relationship (no teaching_relationship write in grants.ts)" \
@@ -160,6 +186,10 @@ refute "revoking a plan never changes a relationship (no teaching_relationship w
 check "the prompt has \"Proposed price (not final)\", \"Request pilot access\" and \"Not now\"" bash -c '
   grep -q "Proposed price (not final)" src/server/services/plans.ts &&
   grep -q "Request pilot access" src/components/plans/upgrade-prompt.tsx && grep -q ">\s*Not now\s*<\|Not now$" src/components/plans/upgrade-prompt.tsx'
+check "\"Not now\" is a GET form that closes the prompt without JavaScript (final check, screens-1)" bash -c '
+  f=src/components/plans/upgrade-prompt.tsx
+  grep -q "<form action={notNowAction} method=\"get\">" "$f" && grep -q "name={UPGRADE_CLOSED_PARAM.name}" "$f" &&
+  grep -q "notNowAction=\"/dashboard\"" src/app/dashboard/page.tsx'
 check "\"Request pilot access\" and \"Not now\" share one button style (equally prominent)" bash -c '
   f=src/components/plans/upgrade-prompt.tsx
   [ "$(grep -c "className={actionClass}" "$f")" -eq 2 ]'
@@ -177,6 +207,9 @@ check "copy.no-fomo.test.ts proves its matcher on known-bad strings and scans th
   for d in src/app src/components src/server/templates; do grep -q "'\''$d'\''" "$f" || exit 1; done'
 
 # 7. /plans (In scope 5) -------------------------------------------------------------------------
+check "/plans shows Federation feature by feature, every value planned (final check, requirements-4)" bash -c '
+  f=src/app/plans/page.tsx
+  grep -q "data-testid=\"federation-features\"" "$f" && grep -q "<FederationFeatures catalog={catalog} plan={federation} />" "$f"'
 check "/plans states the banner and marks planned features" bash -c '
   grep -q "Proposed prices — not final. Payments are not available during the pilot." src/server/services/plans.ts &&
   grep -q "Planned — not available yet" src/server/services/plans.ts && grep -q "plannedLabel" src/app/plans/page.tsx'
@@ -263,9 +296,20 @@ titles=(
   '@M08 "Request pilot access" on a prompt left open after the account became a Student says why, with and without JavaScript'
   '@M08 in forced colours the chosen account type stays visible; a verified Sifu is not told they show as unverified'
   '@M08 an admin closes a pilot access request with a reason; the account is told and can ask again, with and without JavaScript'
+  # Final check.
+  '@M08 without JavaScript, "Not now" closes the upgrade prompt and puts the focus on its line'
+  '@M08 an empty "Give a test plan" lists every missing answer at once, with and without JavaScript'
 )
 for title in "${titles[@]}"; do
   check "E2E test: $title" grep -qF "$title" e2e/m08-entitlements.spec.ts
+done
+exclusive_titles=(
+  '@M08 a failed read of /dashboard shows the error state in the app shell; "Try again" brings the dashboard back, with and without JavaScript'
+  '@M08 a failed read of /admin/grants shows the error state and keeps the searched e-mail address out of the server log'
+  '@M08 a page that awaits a failed read without a catch logs one safe line: no SQL parameters, no account id'
+)
+for title in "${exclusive_titles[@]}"; do
+  check "E2E test (exclusive run): $title" grep -qF "$title" e2e/m08-failures.exclusive.spec.ts
 done
 
 # 13. Decisions by default and documentation (In scope 8; docs/plan/RULES.md) -----------------
