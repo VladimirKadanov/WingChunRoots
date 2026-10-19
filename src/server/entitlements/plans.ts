@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-10-19.1';
+export const PLAN_MATRIX_VERSION = '2026-10-19.2';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -49,6 +49,14 @@ export interface PlanDefinition {
   price: PlanPrice;
   summary: string;
 }
+
+/**
+ * DEFAULT D06: how many approved students Free Sifu counts (the approve_students quota below). The
+ * plan summaries below and the screens that name the limit in a sentence read it from here (M08
+ * final check, code-3; polish, note 2), so a new value of D06 changes them with the matrix. Defined
+ * before PLANS, whose summaries use it.
+ */
+export const FREE_SIFU_STUDENT_LIMIT = 5;
 
 // DEFAULT D09: $4 / $19 / $99 a month and $990 a year for a federation, as working proposals only.
 const proposal = (monthlyUsd: number, yearlyUsd: number | null = null): PlanPrice => ({ monthlyUsd, yearlyUsd, status: 'working proposal' });
@@ -82,7 +90,8 @@ export const PLANS: Readonly<Record<PlanCode, PlanDefinition>> = {
     rank: 0,
     availability: 'now',
     price: proposal(0),
-    summary: 'Your identity and lineage as an instructor, with up to five approved students.',
+    // DEFAULT D06: the Free Sifu limit, from FREE_SIFU_STUDENT_LIMIT (polish, note 2).
+    summary: `Your identity and lineage as an instructor, with up to ${FREE_SIFU_STUDENT_LIMIT} approved students.`,
   },
   pro_sifu: {
     code: 'pro_sifu',
@@ -92,7 +101,8 @@ export const PLANS: Readonly<Record<PlanCode, PlanDefinition>> = {
     rank: 1,
     availability: 'now',
     price: proposal(19),
-    summary: 'Student administration without the five-student limit and a public pin for your school.',
+    // DEFAULT D06: the limit Professional Sifu lifts, from FREE_SIFU_STUDENT_LIMIT (polish, note 2).
+    summary: `Student administration without the ${FREE_SIFU_STUDENT_LIMIT}-student limit and a public pin for your school.`,
   },
   federation: {
     code: 'federation',
@@ -184,13 +194,6 @@ const yes = (label = 'Included'): FeatureValue => ({ source: 'Yes', label, inclu
 const no = (label = 'Not included'): FeatureValue => ({ source: 'No', label, included: false });
 const text = (source: string, label: string = source, included = true): FeatureValue => ({ source, label, included });
 const quota = (source: string, label: string, limit: number | null): FeatureValue => ({ source, label, included: limit !== 0, limit });
-
-/**
- * DEFAULT D06: how many approved students Free Sifu counts (the approve_students quota below). The
- * screens that name the limit in a sentence read it from here (M08 final check, code-3), so a new
- * value of D06 changes them with the matrix.
- */
-export const FREE_SIFU_STUDENT_LIMIT = 5;
 
 export const FEATURES: readonly FeatureDefinition[] = [
   {
