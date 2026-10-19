@@ -21,7 +21,7 @@ import { stopProducer } from '../jobs/boss';
 import { handleApiRequest } from '../rpc/handler';
 import { OPENAPI_FILE, openApiJson } from '../rpc/openapi';
 import { lineageAncestors, lineageEgo, lineagePaths, lineageSubtree, personProfile, personStudents } from './lineage';
-import { LineageReadError, readDeadline, readTransaction } from './lineage-graph';
+import { LineageReadError, readDeadline, readTransaction, type OwnEdge } from './lineage-graph';
 import { cachedEgo, cachedProfile, cachedSubtree } from './lineage-public';
 
 // 'use cache' is a plain string outside Next.js; cacheTag records what the entry would carry.
@@ -908,6 +908,53 @@ describe('small guarantees of the answers', () => {
     expect(ego.edges.filter((e) => e.id === publicEdge.id)).toEqual([expect.objectContaining({ visibility: 'public' })]);
     const paths = await readTransaction(getPublicDb(), (tx) => pathsGraph(tx, { focusId: ids['demo-two-lineages']!, limit: 50 }, extras));
     expect(paths.totalPaths).toBe(2);
+  });
+
+  it("one row per student in a teacher's list: own requests join the student's public row, on whichever page it is", async () => {
+    // demo-two-lineages teaches two people in public: one per page by name. The teacher's own
+    // requests: a second one to each of them, and two to demo-a-002, who has no public
+    // relationship with this teacher.
+    const { studentPage } = await import('./lineage-graph');
+    const { getPublicDb } = await import('../db');
+    const teacher = ids['demo-two-lineages']!;
+    const read = (n: number, pageSize: number, edges: OwnEdge[]) =>
+      readTransaction(getPublicDb(), (tx) => studentPage(tx, teacher, { page: n, pageSize, order: 'name' }, { personId: teacher, nodes: {}, edges }));
+    const plain = await read(1, 50, []);
+    const taught = [...plain.active, ...plain.historical].map((s) => s.person);
+    expect(taught).toHaveLength(2);
+    const [firstStudent, secondStudent] = taught as [(typeof taught)[number], (typeof taught)[number]];
+    expect(taught.some((p) => p.id === ids['demo-a-002'])).toBe(false);
+
+    const lineage = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM lineage WHERE slug = 'demo-lineage-a'`);
+    const ref = { id: lineage.rows[0]!.id, slug: 'demo-lineage-a', name: 'Demo Lineage A', rootPersonId: null };
+    const own = (n: number, studentId: string): OwnEdge => ({
+      id: `00000000-0000-7000-8000-00000000a00${n}`,
+      teacherId: teacher,
+      studentId,
+      lineage: ref,
+      status: 'pending_teacher',
+      isDisplayPrimary: false,
+      periods: [],
+    });
+    const edges = [own(1, firstStudent.id), own(2, secondStudent.id), own(3, ids['demo-a-002']!), own(4, ids['demo-a-002']!)];
+
+    const first = await read(1, 1, edges);
+    const everyone = [...first.active, ...first.historical, ...first.own];
+    expect(new Set(everyone.map((s) => s.person.id)).size).toBe(everyone.length);
+    expect([...first.active, ...first.historical].map((s) => s.person.id)).toEqual([firstStudent.id]);
+    expect([...first.active, ...first.historical][0]!.edges.map((e) => e.visibility).sort()).toEqual(['involved_only', 'public']);
+    // The second student's request waits for the page with their public row; demo-a-002 has one row with both requests.
+    expect(first.own.map((s) => s.person.id)).toEqual([ids['demo-a-002']]);
+    expect(first.own[0]!.edges.map((e) => e.id).sort()).toEqual([edges[2]!.id, edges[3]!.id]);
+    expect(first.activeTotal + first.historicalTotal).toBe(2);
+
+    const second = await read(2, 1, edges);
+    expect([...second.active, ...second.historical].map((s) => s.person.id)).toEqual([secondStudent.id]);
+    expect([...second.active, ...second.historical][0]!.edges.map((e) => e.visibility).sort()).toEqual(['involved_only', 'public']);
+    expect(second.own).toEqual([]);
+    for (const s of [...everyone, ...second.active, ...second.historical]) {
+      expect(new Set(s.otherTeachers.map((t) => t.person.id)).size).toBe(s.otherTeachers.length);
+    }
   });
 
   it('a cached paths answer carries everyone on every route counted, not only the routes it returns', async () => {

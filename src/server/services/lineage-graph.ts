@@ -1076,6 +1076,16 @@ SELECT s.id::text AS student_id, t.teacher_id::text AS teacher_id, t.lineage_id:
 
 export const STUDENTS_PAGE_SIZE = 50;
 
+/** Which of `studentIds` have a public relationship with `teacherId` (v_public_edge). */
+async function publicStudentsAmong(ex: Executor, teacherId: string, studentIds: readonly string[]): Promise<Set<string>> {
+  const list = await rows<{ id: string }>(
+    ex,
+    sql`SELECT DISTINCT pe.student_person_id::text AS id FROM v_public_edge pe
+         WHERE pe.teacher_person_id = ${teacherId}::uuid AND pe.student_person_id = ANY(${uuids(studentIds)})`,
+  );
+  return new Set(list.map((r) => r.id));
+}
+
 /**
  * A page of a teacher's students (plan §4.10): public students, active then historical, and on
  * page 1 the signed-in teacher's own requests (`own`, involved_only, never counted). Each entry
@@ -1093,10 +1103,34 @@ export async function studentPage(
   const lineages = new Map<string, LineageRefDto>();
   const publicEdgeIds = new Set(list.flatMap((s) => s.edges.map((e) => e.id)));
   // A relationship that became public after the viewer's own edges were read is shown once, as public.
-  const ownStudents = page === 1 ? extras.edges.filter((e) => e.teacherId === teacherId && !publicEdgeIds.has(e.id)) : [];
-  const ownPeople = await publicPeople(ex, ownStudents.map((e) => e.studentId));
+  const ownEdges = extras.edges.filter((e) => e.teacherId === teacherId && !publicEdgeIds.has(e.id));
+  // One row per student. A student on this page who also has a public relationship with this
+  // teacher carries the viewer's own request on that row; the others are the `own` rows of page 1,
+  // unless a public relationship puts them on another page (their request shows there).
+  const listed = new Set(list.map((s) => s.id));
+  const ownOnRow = new Map<string, OwnEdge[]>();
+  for (const e of ownEdges) if (listed.has(e.studentId)) ownOnRow.set(e.studentId, [...(ownOnRow.get(e.studentId) ?? []), e]);
+  let separate = page === 1 ? ownEdges.filter((e) => !listed.has(e.studentId)) : [];
+  if (separate.length > 0) {
+    const elsewhere = await publicStudentsAmong(ex, teacherId, separate.map((e) => e.studentId));
+    separate = separate.filter((e) => !elsewhere.has(e.studentId));
+  }
+  const ownStudents = new Map<string, OwnEdge[]>();
+  for (const e of separate) ownStudents.set(e.studentId, [...(ownStudents.get(e.studentId) ?? []), e]);
+  const ownPeople = await publicPeople(ex, [...ownStudents.keys()]);
   const ownCounts = await publicCounts(ex, [...ownPeople.keys()]);
   const others = await otherTeachers(ex, teacherId, [...list.map((s) => s.id), ...ownPeople.keys()]);
+  const ownEdgeDto = (e: OwnEdge) => {
+    lineages.set(e.lineage.id, e.lineage);
+    return {
+      id: e.id,
+      lineageId: e.lineage.id,
+      status: e.status,
+      isDisplayPrimary: e.isDisplayPrimary,
+      visibility: 'involved_only' as const,
+      periods: periodsOf(e.periods),
+    };
+  };
 
   const otherTeachersOf = (studentId: string): Pick<StudentEntryDto, 'otherTeachers' | 'otherTeachersTotal'> => {
     const found = others.get(studentId) ?? [];
@@ -1142,7 +1176,7 @@ export async function studentPage(
         claimState: claimStateOf(s.stewardship),
         visibility: 'public' as const,
       },
-      edges,
+      edges: [...edges, ...(ownOnRow.get(s.id) ?? []).map(ownEdgeDto)],
       historical: s.historical,
       studentCount: s.student_count,
       ...otherTeachersOf(s.id),
@@ -1150,14 +1184,13 @@ export async function studentPage(
   });
 
   const own: StudentEntryDto[] = [];
-  for (const e of ownStudents) {
-    const p = ownPeople.get(e.studentId);
-    const n = extras.nodes[e.studentId];
+  for (const [studentId, edges] of ownStudents) {
+    const p = ownPeople.get(studentId);
+    const n = extras.nodes[studentId];
     if (!p && !n) continue;
-    lineages.set(e.lineage.id, e.lineage);
     own.push({
       person: {
-        id: e.studentId,
+        id: studentId,
         slug: p ? p.slug : n!.slug,
         displayName: p ? p.display_name : n!.displayName,
         altNames: p ? namesOf(p.alt_names) : n!.altNames,
@@ -1165,19 +1198,10 @@ export async function studentPage(
         claimState: claimStateOf(p ? p.stewardship : n!.stewardship),
         visibility: p ? 'public' : 'involved_only',
       },
-      edges: [
-        {
-          id: e.id,
-          lineageId: e.lineage.id,
-          status: e.status,
-          isDisplayPrimary: e.isDisplayPrimary,
-          visibility: 'involved_only',
-          periods: periodsOf(e.periods),
-        },
-      ],
+      edges: edges.map(ownEdgeDto),
       historical: false,
-      studentCount: ownCounts.get(e.studentId)?.students ?? 0,
-      ...(p ? otherTeachersOf(e.studentId) : { otherTeachers: [], otherTeachersTotal: 0 }),
+      studentCount: ownCounts.get(studentId)?.students ?? 0,
+      ...(p ? otherTeachersOf(studentId) : { otherTeachers: [], otherTeachersTotal: 0 }),
     });
   }
 
