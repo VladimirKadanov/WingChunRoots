@@ -77,11 +77,6 @@ async function pageOf(request: APIRequestContext, path: string) {
   return { status: response.status(), html: (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '') };
 }
 
-/** The page with the tags of its <head> in sorted order (their content and the body unchanged). */
-function withSortedHead(page: { status: number; html: string }) {
-  return { ...page, html: page.html.replace(/<head>([\s\S]*?)<\/head>/, (_, head: string) => `<head>${head.split(/(?=<)/).sort().join('')}</head>`) };
-}
-
 /** A test fault for this request only: the first lineage read, or the first profile read, fails once. */
 function faultCookie(kind: 'lineage-once' | 'person-once') {
   return { name: 'wcr-test-fault', value: `${kind}:${randomUUID()}`, url: BASE_URL };
@@ -231,32 +226,37 @@ test('@M04 anonymous viewer never receives pending or under-review edges (HTML a
       expect(await answer.text(), `${path} of ${slug}`).toBe(expected);
     }
   }
-  // The pages too: the same status and the same HTML, scripts aside, for a hidden person, an
-  // address that was never used and one no person could have. Never indexed. The status is 200:
-  // only a request-time check in a proxy.ts could answer 404, and Phase 1 has none (CLAUDE.md §13,
-  // docs/adr/0008-person-pages-404.md, docs/plan/questions/M04.md).
+  // The pages too: status 404 and the same HTML, scripts aside, for a hidden person, an address
+  // that was never used and one no person could have. src/proxy.ts rewrites all three to the same
+  // not-found page before anything renders; it is never indexed all the same (defence in depth).
+  const notOnRecord = ['/people/demo-claim-only-teacher', '/people/demo-no-such-person', '/people/BAD_slug'];
   for (const suffix of ['', '/lineage']) {
     const [hiddenPage, missingPage, malformedPage] = [
       await pageOf(request, `/people/demo-claim-only-teacher${suffix}`),
       await pageOf(request, `/people/demo-no-such-person${suffix}`),
       await pageOf(request, `/people/BAD_slug${suffix}`),
     ];
-    expect(hiddenPage.status, `/people/demo-claim-only-teacher${suffix}`).toBe(200);
-    expect(hiddenPage.html).toContain('No public profile at this address');
-    expect(hiddenPage.html).toMatch(/<meta name="robots" content="noindex, nofollow"\s*\/?>/);
-    // A hidden person and an unused address: byte for byte the same (plan §6.4).
+    expect(missingPage.status, `/people/demo-no-such-person${suffix}`).toBe(404);
+    expect(missingPage.html).toContain('No public profile at this address');
+    expect(missingPage.html).toMatch(/<meta name="robots" content="noindex, nofollow"\s*\/?>/);
+    // Byte for byte the same, status included (plan §6.4).
     expect(hiddenPage, `/people/demo-claim-only-teacher${suffix}`).toEqual(missingPage);
-    // An address no person could have is refused before any database read, so the page's
-    // metadata is ready sooner and two <head> tags of the layout come in another order. The same
-    // tags, status and body; it says nothing about a record either way.
-    expect(withSortedHead(malformedPage), `/people/BAD_slug${suffix}`).toEqual(withSortedHead(missingPage));
+    expect(malformedPage, `/people/BAD_slug${suffix}`).toEqual(missingPage);
   }
   const underReview = await pageOf(request, '/people/demo-under-review/lineage');
+  expect(underReview.status).toBe(404);
   expect(underReview).toEqual(await pageOf(request, '/people/demo-no-such-person/lineage'));
-  // The words are in the HTML itself, not drawn by a script.
+  // Without JavaScript: the same status, and the same words and markup in the HTML itself, not
+  // drawn by a script.
   await withoutJavaScript(browser, async (noScript) => {
-    await noScript.goto('/people/demo-claim-only-teacher');
-    await expect(noScript.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+    const seen: string[] = [];
+    for (const path of notOnRecord) {
+      const response = await noScript.goto(path);
+      expect(response?.status(), path).toBe(404);
+      await expect(noScript.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+      seen.push(await noScript.locator('#main').innerHTML());
+    }
+    expect(new Set(seen).size).toBe(1);
   });
 
   // An under-review and a pending link between two public people (only possible as involved_only,
@@ -628,7 +628,7 @@ test('@M04 no axe violations on the profile and list view in dark and light them
   for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-root-a/lineage', '/people/demo-claim-only-teacher']) {
     for (const theme of THEMES) {
       const response = await openInTheme(page, path, theme);
-      expect(response?.status()).toBe(200);
+      expect(response?.status()).toBe(path.endsWith('teacher') ? 404 : 200);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expectNoAxeViolations(page, `${path} (${theme})`);
     }

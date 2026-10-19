@@ -73,7 +73,7 @@ required=(
   src/components/lineage/key.tsx src/components/lineage/states.tsx src/components/lineage/lineage-boundary.tsx
   src/components/lineage/descendants-outline.tsx src/components/lineage/person-not-found.tsx
   src/components/lineage/person-layout.tsx src/components/lineage/status.test.ts
-  "src/app/people/[slug]/error.tsx" src/app/global-error.tsx
+  src/proxy.ts src/proxy.test.ts src/lib/not-on-record.ts "src/app/people/[slug]/error.tsx" src/app/global-error.tsx
   e2e/m04-lineage.spec.ts scripts/perf-queries.ts
   docs/api/openapi.json docs/api/lineage.md docs/perf/api.md scripts/verify.d/M04.sh
   docs/adr/0008-person-pages-404.md docs/plan/questions/M04.md
@@ -163,11 +163,9 @@ check "the not-on-record page is not indexed (noindex, nofollow)" grep -qE "robo
 for screen in person person-lineage; do
   check "/$screen is a key M04 route (visual regression, axe, screenshots)" grep -qE "name: '$screen'.*milestone: 'M04', key: true" e2e/routes.ts
 done
-# The status of a hidden person's page waits for the owner (docs/plan/questions/M04.md): a 404 needs
-# a request-time check in src/proxy.ts, and Phase 1 has no proxy.ts (CLAUDE.md §13, the M02 check).
-check "the not-on-record page is an M04 route with status 200, without proxy.ts until the owner decides (docs/adr/0008-person-pages-404.md)" bash -c '
-  grep -qE "path: '\''/people/demo-claim-only-teacher'\''.*status: 200, milestone: '\''M04'\''" e2e/routes.ts &&
-  [ ! -e src/proxy.ts ] && [ ! -e proxy.ts ] && test -s docs/adr/0008-person-pages-404.md && grep -q "proxy.ts" docs/plan/questions/M04.md'
+check "the not-on-record page is an M04 route with status 404 (src/proxy.ts, docs/adr/0008-person-pages-404.md)" bash -c '
+  grep -qE "path: '\''/people/demo-claim-only-teacher'\''.*status: 404, milestone: '\''M04'\''" e2e/routes.ts &&
+  grep -q "personPageVisible" src/proxy.ts && grep -q "NOT_ON_RECORD_HEADER" src/app/not-found.tsx && test -s docs/adr/0008-person-pages-404.md'
 for screen in "${SCREENS[@]}"; do
   for size in "${SIZES[@]}"; do
     for theme in "${THEMES[@]}"; do
