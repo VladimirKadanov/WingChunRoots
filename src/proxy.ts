@@ -9,8 +9,11 @@
 // streamed shell it could not change the status). The same page and status for all three, so
 // nothing tells them apart (plan §6.4). The address bar keeps the URL.
 //
-// The matcher names only those two paths, so api, healthz and _next never reach this file
-// (CLAUDE.md §13, plan §6.1). The check has a short deadline of its own (PERSON_CHECK_BUDGET_MS;
+// The matcher names only those two paths, so /api, /healthz and the static /_next assets never
+// reach this file (CLAUDE.md §13, plan §6.1). Next.js's own data form of the two paths
+// (/_next/data/<build>/people/<slug>.json, and the .rsc forms) does: Next.js compiles every matcher
+// with it, and the proxy then sees the page's own pathname, so the same check applies (final check,
+// code-2). The check has a short deadline of its own (PERSON_CHECK_BUDGET_MS;
 // review round 2, recheck-7): its database reads stop there (statement_timeout), and the proxy
 // stops waiting for the whole check, the session read included, after the same time. A check that
 // fails or runs out of time never hides a page: the request goes on and the page answers for

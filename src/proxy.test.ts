@@ -1,6 +1,7 @@
 // The request-time check of a person's pages (src/proxy.ts; milestone M04, owner decision
-// 2026-10-19, ADR 0008): it runs only on /people/<slug> and /people/<slug>/lineage, never on api,
-// healthz or _next (plan §6.1, CLAUDE.md §13); a hidden, missing or malformed address is rewritten
+// 2026-10-19, ADR 0008): it runs only on /people/<slug> and /people/<slug>/lineage (and Next.js's
+// /_next/data form of them), never on api, healthz or the static _next assets (plan §6.1,
+// CLAUDE.md §13); a hidden, missing or malformed address is rewritten
 // to the 404 page; the session is read only when the slug is not public and a session may be
 // there; a check that fails or runs past its short deadline (recheck-7) never hides a page.
 
@@ -53,6 +54,14 @@ describe('matcher', () => {
     '/not-on-record',
   ])('never runs on %s', (url) => {
     expect(unstable_doesMiddlewareMatch({ config, url })).toBe(false);
+  });
+
+  it("runs on Next.js's own data form of the two paths, which is not a static _next asset (final check, code-2)", () => {
+    // Next.js compiles each matcher with an optional /_next/data/<build> prefix and a .json (or
+    // .rsc) suffix; the proxy then sees the page's own pathname, so the same check applies.
+    for (const url of ['/_next/data/x/people/demo-hub-a.json', '/_next/data/x/people/demo-hub-a/lineage.json']) {
+      expect(unstable_doesMiddlewareMatch({ config, url }), url).toBe(true);
+    }
   });
 
   it('names only the two person paths', () => {
