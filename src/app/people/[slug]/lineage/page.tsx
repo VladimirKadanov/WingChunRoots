@@ -25,8 +25,8 @@ import {
 import { PersonLayout } from '@/components/lineage/person-layout';
 import { LatinName, LineageName } from '@/components/lineage/person-name';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
-import { groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
-import { RoutesOfDescent } from '@/components/lineage/routes-of-descent';
+import { groupRelations, RelationList, type RelationRow, Sep, sharedLineage, studentRows } from '@/components/lineage/relation-list';
+import { routeMarks, RoutesOfDescent } from '@/components/lineage/routes-of-descent';
 import { EmptyState, ProfileError, Section, SectionError } from '@/components/lineage/states';
 import { asStudentEdges, kindsOf, sameNameNotes, startYear, studentTotalsText } from '@/components/lineage/status';
 import type { LineageRefDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
@@ -136,10 +136,12 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
         groups.map((group) => (
           <section key={group.key} aria-labelledby={`students-${group.key}`} className="grid gap-3">
             <h3 id={`students-${group.key}`} className="eyebrow">
-              {group.title} · {group.total.toLocaleString('en')}
+              {group.title}
+              <Sep />
+              {group.total.toLocaleString('en')}
               {group.lineage && lineages.get(group.lineage) ? (
                 <>
-                  {' · '}
+                  <Sep />
                   <LineageName name={lineages.get(group.lineage)!.name} />
                 </>
               ) : null}
@@ -280,7 +282,7 @@ export default async function LineageListPage({ params, searchParams }: Props) {
             pending={{ teachers: pendingTeachers, students: studentsRead.status === 'fulfilled' ? studentsRead.value.own.length : 0 }}
             className="hidden xl:grid"
           />
-          <LineageKey kinds={kindsOf(legendEdges)} />
+          <LineageKey kinds={kindsOf(legendEdges)} marks={routesRead.status === 'fulfilled' ? routeMarks(routesRead.value) : []} />
         </>
       }
     >

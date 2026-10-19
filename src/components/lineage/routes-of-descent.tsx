@@ -20,8 +20,10 @@ import { InkShapeSvg, type LinkKind } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { inkShapes, type Cubic } from '@/design/ink';
 import { linkStyles } from '@/design/tokens';
+import { cx } from '@/lib/cx';
 import type { LineageEdgeDto, LineageNodeDto, LineagePathsDto, LineageRefDto } from '@/server/dto/public';
 import { LatinName, LineageName, PersonLink, PersonName } from './person-name';
+import { Sep } from './relation-list';
 import { EmptyState } from './states';
 import { relationStatus, startYear, strokeOf } from './status';
 
@@ -75,19 +77,53 @@ function LinkSegment({ kind }: { kind: LinkKind }) {
   );
 }
 
-/** The person's node: a square for a recorded founder, a filled dot for the living, a ring otherwise. */
-function Node({ founder, living }: { founder: boolean; living: boolean }) {
+/**
+ * The mark of a person on a route: a square on its point for a recorded founder (DEFAULT D22), a
+ * filled dot for the living, a ring otherwise. The key explains them where routes are drawn
+ * (LineageKey `marks`), and a screen reader hears "Founder of …, as recorded" or "Living" in the
+ * step's text (final check, screens-4).
+ */
+export type RouteMarkKind = 'founder' | 'living' | 'other';
+
+export const ROUTE_MARK_LABELS: Record<RouteMarkKind, string> = {
+  founder: 'Founder, as recorded',
+  living: 'Living',
+  other: 'Not recorded as living',
+};
+
+const MARK_ORDER: RouteMarkKind[] = ['founder', 'living', 'other'];
+
+export function RouteMark({ mark, className }: { mark: RouteMarkKind; className?: string }) {
   return (
-    <span aria-hidden="true" className="absolute top-[calc(var(--node)-0.3125rem)] left-[calc(0.875rem-0.3125rem)] size-2.5">
-      {founder ? (
+    <span aria-hidden="true" data-mark={mark} className={cx('block size-2.5', className)}>
+      {mark === 'founder' ? (
         <span className="block size-full rotate-45 bg-fg" />
-      ) : living ? (
+      ) : mark === 'living' ? (
         <span className="block size-full rounded-full bg-fg" />
       ) : (
         <span className="block size-full rounded-full border-[1.5px] border-fg bg-bg" />
       )}
     </span>
   );
+}
+
+function markOf(founder: boolean, person: LineageNodeDto): RouteMarkKind {
+  return founder ? 'founder' : person.lifeStatus === 'living' ? 'living' : 'other';
+}
+
+/** The marks the routes of `paths` draw, in the key's order: a key lists only what is drawn. */
+export function routeMarks(paths: LineagePathsDto): RouteMarkKind[] {
+  const people = new Map(paths.nodes.map((n) => [n.id, n]));
+  const founders = new Set(paths.lineages.map((l) => l.rootPersonId));
+  const drawn = new Set(
+    paths.paths.flatMap((route) => route.personIds.map((id) => people.get(id)).filter((n) => n !== undefined).map((n) => markOf(founders.has(n.id), n))),
+  );
+  return MARK_ORDER.filter((mark) => drawn.has(mark));
+}
+
+/** The person's node on the spine. */
+function Node({ mark }: { mark: RouteMarkKind }) {
+  return <RouteMark mark={mark} className="absolute top-[calc(var(--node)-0.3125rem)] left-[calc(0.875rem-0.3125rem)]" />;
 }
 
 function StateWord({ edge }: { edge: LineageEdgeDto }) {
@@ -126,6 +162,7 @@ function Step({
   isLast: boolean;
 }) {
   const year = edge ? startYear(edge.periods) : null;
+  const mark = markOf(founderOf.length > 0, person);
   return (
     <li className="relative grid grid-cols-[2.5rem_1.75rem_minmax(0,1fr)] gap-x-3 pb-3 [--node:1.375rem]">
       {/* The number and spine columns grow with the text, so at 200% text on a 320 px screen a
@@ -139,6 +176,8 @@ function Step({
           <PersonLink person={person} className="font-display text-lg" />
         )}
         <p className="text-sm text-fg-muted">
+          {/* The filled dot in words (the founder's square is in the text below). */}
+          {mark === 'living' ? <span className="sr-only">Living. </span> : null}
           {teacher && edge ? (
             <>
               <span className="sr-only">
@@ -184,7 +223,7 @@ function Step({
       </p>
       <div className="relative col-start-2 row-start-1">
         {next ? <LinkSegment kind={strokeOf(next)} /> : null}
-        <Node founder={founderOf.length > 0} living={person.lifeStatus === 'living'} />
+        <Node mark={mark} />
       </div>
     </li>
   );
@@ -226,8 +265,17 @@ export function RoutesOfDescent({
           return (
             <li key={route.edgeIds.join('-')} className="grid content-start gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 pt-3 pb-1 [--seal-ground:var(--surface-1)]">
               <h3 className="eyebrow">
+                {/* Generations as the gutter counts them: every person on the route, the top one
+                    included (final check, screens-3); the separators are pauses, not read out. */}
                 Route {index + 1}
-                {primaryRoute ? ' · primary line' : ''} · {route.edgeIds.length} {route.edgeIds.length === 1 ? 'generation' : 'generations'}
+                {primaryRoute ? (
+                  <>
+                    <Sep />
+                    primary line
+                  </>
+                ) : null}
+                <Sep />
+                {route.personIds.length} {route.personIds.length === 1 ? 'generation' : 'generations'}
               </h3>
               <ol aria-label={`Route ${index + 1}, from ${top.displayName} to ${focusName}`} className="grid">
                 {route.personIds.map((id, step) => {
