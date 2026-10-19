@@ -49,7 +49,9 @@ function pilotRequestIdOf(payload: unknown): string | null {
 /**
  * Adds the requester to each "pilot-access.requested" notification when the list is read: the
  * current primary name of the requesting account's person, never a copy kept in the payload, so a
- * renamed account shows its new name and a deleted one no name at all (plan §6.4).
+ * renamed account shows its new name and a deleted one no name at all (plan §6.4). And whether the
+ * request is still open (final check, screens-4): one given or closed, by any administrator, is
+ * `answered`, and the notification no longer offers to review it.
  *
  * Who asked for which plan is staff data (plan §3.2): only an admin whose session proved the second
  * factor (`staff`, hasStaff2FA) reads it. Any other session gets `requesterHidden`, and the
@@ -64,24 +66,31 @@ async function withPilotRequesters(rows: NotificationRow[], staff: boolean): Pro
   if (!staff) {
     return rows.map((row) =>
       row.template === 'pilot-access.requested' && pilotRequestIdOf(row.payload) !== null
-        ? { ...row, payload: { ...(row.payload as Record<string, unknown>), requester: null, requesterDeleted: false, requesterHidden: true } }
+        ? { ...row, payload: { ...(row.payload as Record<string, unknown>), requester: null, requesterDeleted: false, requesterHidden: true, answered: false } }
         : row,
     );
   }
   const found = await getDb()
-    .select({ id: pilotAccessRequest.id, value: personName.value, lang: personName.lang })
+    .select({ id: pilotAccessRequest.id, status: pilotAccessRequest.status, value: personName.value, lang: personName.lang })
     .from(pilotAccessRequest)
     .leftJoin(person, and(eq(person.claimedByUserId, pilotAccessRequest.userId), isNull(person.deletedAt)))
     .leftJoin(personName, and(eq(personName.personId, person.id), eq(personName.isPrimary, true)))
     .where(inArray(pilotAccessRequest.id, ids));
   const names = new Map<string, NameData | null>(found.map((r) => [r.id, r.value !== null && r.lang !== null ? { value: r.value, lang: r.lang } : null]));
+  const answered = new Set(found.filter((r) => r.status !== 'open').map((r) => r.id));
   return rows.map((row) => {
     const id = row.template === 'pilot-access.requested' ? pilotRequestIdOf(row.payload) : null;
     if (id === null) return row;
     // The looked-up requester replaces anything stored under that key.
     return {
       ...row,
-      payload: { ...(row.payload as Record<string, unknown>), requester: names.get(id) ?? null, requesterDeleted: !names.has(id), requesterHidden: false },
+      payload: {
+        ...(row.payload as Record<string, unknown>),
+        requester: names.get(id) ?? null,
+        requesterDeleted: !names.has(id),
+        requesterHidden: false,
+        answered: answered.has(id),
+      },
     };
   });
 }

@@ -280,18 +280,11 @@ const optionalDay = z
   .optional()
   .transform((s) => (s ? s : undefined));
 
-export const createGrantInput = z.object({
-  email: z.string().trim().toLowerCase().max(320),
-  planCode: z.enum(GRANTABLE_PLANS as readonly [PlanCode, ...PlanCode[]], { error: 'Choose a plan.' }),
-  source: z.enum(['test_grant', 'complimentary']).default('test_grant'),
-  reason: z.string().trim().max(500),
-  /** "YYYY-MM-DD", the first day (00:00 UTC); today when empty. */
-  startsOn: optionalDay,
-  /** "YYYY-MM-DD", the day the plan stops (00:00 UTC); no end when empty. */
-  endsOn: optionalDay,
-  /** The pilot access request this grant answers, if any: closed with the grant when it is the account's. */
-  requestId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
-});
+/** The field errors of grants.create that are not about the dates. */
+const GRANT_FIELD_ERRORS = {
+  email: 'Enter the e-mail address of the account.',
+  reason: 'Give a reason; it is kept in the audit log.',
+} as const;
 
 /** How far ahead a grant may start or end (review round 1, security-3): two years. */
 export const GRANT_HORIZON_YEARS = 2;
@@ -308,6 +301,69 @@ export function grantHorizon(now: Date): Date {
   return day;
 }
 
+/** A day field as the form sends it: trimmed, and undefined when empty or not text. */
+function dayText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * A grant's start and end on `now`, with the error of each date field: not a date, a start before
+ * today (UTC), a start or an end more than GRANT_HORIZON_YEARS ahead, an end not after the start, an
+ * end that has passed. An empty start is today from 00:00 UTC, as the form and the guides say
+ * (review round 2, recheck-8). Reads its input leniently, so the schema can run it next to the
+ * other fields' errors.
+ */
+function grantDates(value: unknown, now: Date): { startsAt: Date | null; endsAt: Date | null; errors: Partial<Record<'startsOn' | 'endsOn', string>> } {
+  const raw = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  const startsOn = dayText(raw.startsOn);
+  const endsOn = dayText(raw.endsOn);
+  const startsAt = startsOn ? parseIsoDay(startsOn) : startOfUtcDay(now);
+  const endsAt = endsOn ? parseIsoDay(endsOn) : null;
+  const errors: Partial<Record<'startsOn' | 'endsOn', string>> = {};
+  const horizon = grantHorizon(now);
+  if (!startsAt) errors.startsOn = 'Enter the start as a date, for example 2026-11-01.';
+  else if (startsAt.getTime() < startOfUtcDay(now).getTime()) errors.startsOn = 'The start cannot be before today.';
+  else if (startsAt.getTime() > horizon.getTime()) errors.startsOn = 'Choose a date within the next two years.';
+  if (endsOn && !endsAt) errors.endsOn = 'Enter the end as a date, for example 2026-12-31.';
+  else if (endsAt && endsAt.getTime() > horizon.getTime()) errors.endsOn = 'Choose a date within the next two years.';
+  else if (startsAt && endsAt && endsAt.getTime() <= startsAt.getTime()) errors.endsOn = 'The end must be after the start.';
+  else if (endsAt && endsAt.getTime() <= now.getTime()) errors.endsOn = 'The end date has passed.';
+  return { startsAt, endsAt, errors };
+}
+
+/**
+ * The body of grants.create. Every field's check is in the schema, the dates' too (on the clock of
+ * the request), so one parse, the API's before the service, reports every field error at once: an
+ * empty form is told every missing answer in one reply, not one round trip per field (final check,
+ * screens-2). The date check runs even when another field failed (`when`), on the raw values.
+ */
+export const createGrantInput = z
+  .object({
+    email: z.string({ error: GRANT_FIELD_ERRORS.email }).trim().toLowerCase().max(320).check(z.email({ error: GRANT_FIELD_ERRORS.email })),
+    planCode: z.enum(GRANTABLE_PLANS as readonly [PlanCode, ...PlanCode[]], { error: 'Choose a plan.' }),
+    source: z.enum(['test_grant', 'complimentary']).default('test_grant'),
+    reason: z.string({ error: GRANT_FIELD_ERRORS.reason }).trim().min(1, { error: GRANT_FIELD_ERRORS.reason }).max(500),
+    /** "YYYY-MM-DD", the first day (00:00 UTC); today when empty. */
+    startsOn: optionalDay,
+    /** "YYYY-MM-DD", the day the plan stops (00:00 UTC); no end when empty. */
+    endsOn: optionalDay,
+    /** The pilot access request this grant answers, if any: closed with the grant when it is the account's. */
+    requestId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+  })
+  .superRefine(
+    (value, ctx) => {
+      for (const [key, message] of Object.entries(grantDates(value, new Date()).errors)) ctx.addIssue({ code: 'custom', path: [key], message });
+    },
+    { when: () => true },
+  );
+
+/** The first error of each field of a failed parse, keyed by the field. */
+function fieldErrors(error: z.ZodError): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const issue of error.issues) fields[String(issue.path[0] ?? 'form')] ??= issue.message;
+  return fields;
+}
+
 /**
  * Gives a plan of the pilot to an account (admin with a verified second factor). Refused for a
  * plan of the other account type (a Student account switches to Sifu first), for a start before
@@ -318,28 +374,13 @@ export function grantHorizon(now: Date): Date {
  */
 export async function createGrant(principal: Principal | null, raw: unknown, meta: RequestMeta, now: Date = new Date()): Promise<GrantRow> {
   const actor = requireStaff2FA(principal, ['admin']);
+  // Every field error at once (final check, screens-2): the schema checks every field, the dates too.
   const parsed = createGrantInput.safeParse(raw);
-  if (!parsed.success) {
-    const fields: Record<string, string> = {};
-    for (const issue of parsed.error.issues) fields[String(issue.path[0] ?? 'form')] ??= issue.message;
-    throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
-  }
+  if (!parsed.success) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fieldErrors(parsed.error));
   const input = parsed.data;
-  const fields: Record<string, string> = {};
-  if (!z.email().safeParse(input.email).success) fields.email = 'Enter the e-mail address of the account.';
-  if (!input.reason) fields.reason = 'Give a reason; it is kept in the audit log.';
-  // An empty start is today from 00:00 UTC, as the form and the guides say (review round 2, recheck-8).
-  const startsAt = input.startsOn ? parseIsoDay(input.startsOn) : startOfUtcDay(now);
-  const endsAt = input.endsOn ? parseIsoDay(input.endsOn) : null;
-  if (!startsAt) fields.startsOn = 'Enter the start as a date, for example 2026-11-01.';
-  if (input.endsOn && !endsAt) fields.endsOn = 'Enter the end as a date, for example 2026-12-31.';
-  const horizon = grantHorizon(now);
-  if (startsAt && startsAt.getTime() < startOfUtcDay(now).getTime()) fields.startsOn = 'The start cannot be before today.';
-  else if (startsAt && startsAt.getTime() > horizon.getTime()) fields.startsOn = 'Choose a date within the next two years.';
-  if (endsAt && endsAt.getTime() > horizon.getTime()) fields.endsOn = 'Choose a date within the next two years.';
-  else if (startsAt && endsAt && endsAt.getTime() <= startsAt.getTime()) fields.endsOn = 'The end must be after the start.';
-  else if (endsAt && endsAt.getTime() <= now.getTime()) fields.endsOn = 'The end date has passed.';
-  if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
+  // The dates once more on the service's own clock (`now`), which decides.
+  const { startsAt, endsAt, errors: dateErrors } = grantDates(input, now);
+  if (!startsAt || Object.keys(dateErrors).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', dateErrors);
   const plan = PLANS[input.planCode];
 
   return getDb().transaction(async (tx) => {

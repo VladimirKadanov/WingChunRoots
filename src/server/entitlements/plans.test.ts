@@ -16,6 +16,7 @@ import {
   FEATURES,
   FEDERATION_EXTRAS,
   formatPrice,
+  FREE_SIFU_STUDENT_LIMIT,
   freePlanFor,
   GRANTABLE_PLANS,
   PLAN_MATRIX_VERSION,
@@ -115,6 +116,8 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
   it('records the approval quota of D06 and the media quotas of D07', () => {
     const limits = (key: string) => PLAN_ORDER.map((code) => FEATURES.find((f) => f.key === key)!.values[code].limit);
     expect(limits('approve_students')).toEqual([0, 0, 5, null, null]);
+    // The screens name the limit through FREE_SIFU_STUDENT_LIMIT (final check, code-3): the same number.
+    expect(FREE_SIFU_STUDENT_LIMIT).toBe(FEATURES.find((f) => f.key === 'approve_students')!.values.free_sifu.limit);
     expect(limits('photos')).toEqual([1, 10, 2, 100, null]);
     expect(limits('videos')).toEqual([0, 2, 0, 20, null]);
     expect(DOWNGRADE_RULES.enforcedInPhase1).toBe(false);

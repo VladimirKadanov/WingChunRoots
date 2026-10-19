@@ -191,6 +191,16 @@ describe('notification templates', () => {
     expect(() => renderNotification('plan.revoked', null)).toThrow(NotificationDataError);
   });
 
+  it('an answered pilot access request says so and offers no review (final check, screens-4)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    const open = renderNotification('pilot-access.requested', sample);
+    expect(open.action).toEqual({ label: 'Review the request', href: `/admin/grants?request=${sample.requestId}#give-plan` });
+    const answered = renderNotification('pilot-access.requested', { ...sample, answered: true });
+    expect(answered.action).toBeUndefined();
+    expect(answered.body[0]).toEqual({ name: sample.requester });
+    expect(answered.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toBe(' asked for Professional Sifu. The request has already been answered.');
+  });
+
   it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
     const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
     expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('for the pilot, until 30 December 2026. No payment is involved.');

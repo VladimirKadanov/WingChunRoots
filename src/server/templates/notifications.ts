@@ -103,6 +103,11 @@ interface PilotAccessRequested {
    * (M08 review round 2, recheck-1). The text then names neither the account nor the plan.
    */
   requesterHidden: boolean;
+  /**
+   * Not stored either (M08 final check, screens-4): true once the request is no longer open, given
+   * or closed, by this admin or another. The notification then says so and offers no review.
+   */
+  answered: boolean;
 }
 
 /**
@@ -122,9 +127,10 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
       requester: optionalName('pilot-access.requested', data.requester),
       requesterDeleted: data.requesterDeleted === true,
       requesterHidden: data.requesterHidden === true,
+      answered: data.answered === true,
     };
   },
-  render: ({ requestId, planCode, requester, requesterDeleted, requesterHidden }) =>
+  render: ({ requestId, planCode, requester, requesterDeleted, requesterHidden, answered }) =>
     requesterHidden
       ? {
           title: 'Pilot access requested',
@@ -136,6 +142,15 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
       ? {
           title: 'Pilot access requested',
           body: [{ text: `A since deleted account asked for pilot access to ${PLANS[planCode].name}. The request was removed with the account.` }],
+        }
+      : answered
+      ? {
+          title: 'Pilot access requested',
+          // Given or closed, possibly by another administrator: nothing left to review (screens-4).
+          body: [
+            requester ? { name: requester } : { text: 'An account without a profile' },
+            { text: ` asked for ${PLANS[planCode].name}. The request has already been answered.` },
+          ],
         }
       : {
           title: 'Pilot access requested',
@@ -149,6 +164,7 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
     requester: { value: 'Demo Sifu Example', lang: 'und-Latn' },
     requesterDeleted: false,
     requesterHidden: false,
+    answered: false,
   },
 };
 

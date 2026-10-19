@@ -18,7 +18,7 @@ export type AccountType = 'student' | 'sifu';
 
 /**
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
- * docs/entitlements.md. The version is shown on /plans and returned by the API (plans.catalog).
+ * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
 export const PLAN_MATRIX_VERSION = '2026-10-19.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
@@ -185,6 +185,13 @@ const no = (label = 'Not included'): FeatureValue => ({ source: 'No', label, inc
 const text = (source: string, label: string = source, included = true): FeatureValue => ({ source, label, included });
 const quota = (source: string, label: string, limit: number | null): FeatureValue => ({ source, label, included: limit !== 0, limit });
 
+/**
+ * DEFAULT D06: how many approved students Free Sifu counts (the approve_students quota below). The
+ * screens that name the limit in a sentence read it from here (M08 final check, code-3), so a new
+ * value of D06 changes them with the matrix.
+ */
+export const FREE_SIFU_STUDENT_LIMIT = 5;
+
 export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: 'advertising',
@@ -298,7 +305,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     values: {
       free_student: quota('No', 'Not included', 0),
       premium_student: quota('No', 'Not included', 0),
-      free_sifu: quota('Up to 5', 'Up to 5 students', 5),
+      free_sifu: quota(`Up to ${FREE_SIFU_STUDENT_LIMIT}`, `Up to ${FREE_SIFU_STUDENT_LIMIT} students`, FREE_SIFU_STUDENT_LIMIT),
       pro_sifu: quota('Unlimited in source', 'No limit', null),
       federation: quota('Unlimited within authorized scope', 'No limit within the authorized scope', null),
     },
