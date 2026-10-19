@@ -197,17 +197,40 @@ function slugFor(target: Exclude<SignInTarget, 'new'>): DemoAccountSlug {
 
 /**
  * Types an unused staff TOTP code into the page's code field and presses `button`; picks another
- * code when another worker took this one first. Returns once the page shows no "just been used"
- * error.
+ * code when another worker took this one first. Returns once the form's answer to the last code is
+ * not "just been used" and the page has moved on (or after 10 s, for the test's own assertions).
+ *
+ * Each pick is judged by the form's own answer to it first: the message of a refused pick stays on
+ * screen until the next answer arrives, and the page it was on stays in the document, hidden, after
+ * the next pick moved on. Judged by the screen alone, a pick that worked looked refused, and the
+ * next pick waited for the hidden field of the old page until the test timed out (verify M02 in M08
+ * polish 2, when desktop and mobile took the same code at once). The answer of a Server Action that
+ * redirects carries `x-action-redirect`; a refusal does not. Its body is not read: Chromium does
+ * not always keep the body of a streamed answer.
  */
 export async function submitStaffCode(page: Page, button: string, email = 'demo-admin@example.test'): Promise<void> {
+  const codePage = (url: URL) => /\/(sign-in\/two-factor|account\/security)/.test(url.pathname);
   for (let attempt = 0; attempt <= STAFF_CODE_PICKS; attempt += 1) {
     await page.getByLabel('6-digit code', { exact: false }).fill(await staffTotpCode(email));
+    // The form posts to the page's own address (a Server Action).
+    const path = new URL(page.url()).pathname;
+    const answered = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === path, { timeout: 15_000 });
     await page.getByRole('button', { name: button }).click();
-    const used = page.getByText('This code has just been used', { exact: false });
-    const moved = page.waitForURL((url) => !/\/(sign-in\/two-factor|account\/security)/.test(url.pathname), { timeout: 10_000 }).then(() => 'moved' as const);
-    const outcome = await Promise.race([moved, used.waitFor({ timeout: 10_000 }).then(() => 'used' as const)]).catch(() => 'timeout' as const);
-    if (outcome !== 'used') return;
+    const answer = await answered.catch(() => null);
+    const redirected = answer !== null && (await answer.headerValue('x-action-redirect')) !== null;
+    if (answer !== null && !redirected) {
+      // Refused: pick again only when the refusal is "just been used" (a stale one is fine too, as
+      // this answer was a refusal as well); any other refusal is for the test to assert.
+      const used = await page
+        .getByText('This code has just been used', { exact: false })
+        .waitFor({ timeout: 5_000 })
+        .then(() => true, () => false);
+      if (used) continue;
+      return;
+    }
+    // Moved on, or no answer in time: the test's own assertions take it from here.
+    await page.waitForURL((url) => !codePage(url), { timeout: 10_000 }).catch(() => {});
+    return;
   }
   throw new Error('every TOTP code was taken');
 }
