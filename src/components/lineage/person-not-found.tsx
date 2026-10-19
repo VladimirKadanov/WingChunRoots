@@ -4,7 +4,8 @@
 // src/proxy.ts answers such an address before the page renders: it rewrites it to an address no
 // route uses, marked with NOT_ON_RECORD_HEADER (src/lib/not-on-record.ts), and the app's
 // not-found page (src/app/not-found.tsx) renders this. A page that still finds no profile (the
-// record was hidden between the two reads) renders it inline, never indexed.
+// record was hidden between the two reads, or the proxy's check failed or ran out of its short
+// deadline and let the request through) renders it inline, never indexed.
 //
 // The mark is a brush stroke that ends in an open node: the line stops, with no record beyond it.
 

@@ -250,15 +250,29 @@ export async function personProfile(principal: Principal | null, input: PersonIn
 }
 
 /**
+ * The budget of the person check in src/proxy.ts (review round 2, recheck-7): it runs before every
+ * person page, so a slow or stalled database must not hold the page for the 2 s of a lineage read
+ * and then again for the page's own reads. Its database reads share this budget (statement_timeout),
+ * and the proxy stops waiting for the whole check, session read included, after the same time.
+ */
+export const PERSON_CHECK_BUDGET_MS = 500;
+
+/**
  * Whether /people/<slug> (and its list view) shows a person to this viewer: a public person, or a
  * hidden one the viewer may see, the same rule as people.get. src/proxy.ts asks before the page
  * streams, so a missing, malformed or hidden address answers 404 (plan §6.4: one answer for all
  * three). The session is read only when the slug is not public (`principalOf` is called lazily).
+ * The reads share one budget of `budgetMs` (PERSON_CHECK_BUDGET_MS); a read that runs out of it
+ * fails as a cancelled statement (LineageReadError 57014), and the proxy then lets the page answer.
  */
-export async function personPageVisible(principalOf: () => Promise<Principal | null>, input: { slug: string }): Promise<boolean> {
+export async function personPageVisible(
+  principalOf: () => Promise<Principal | null>,
+  input: { slug: string },
+  budgetMs: number = PERSON_CHECK_BUDGET_MS,
+): Promise<boolean> {
   const parsed = personInput.safeParse(input);
   if (!parsed.success) return false;
-  const deadline = readDeadline();
+  const deadline = readDeadline(budgetMs);
   if (await readTransaction(getPublicDb(), (tx) => publicPersonIdBySlug(tx, parsed.data.slug), deadline)) return true;
   const principal = await principalOf();
   if (!principal) return false;

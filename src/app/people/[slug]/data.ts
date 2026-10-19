@@ -24,7 +24,8 @@ export const lineageClient = cache(async () => {
  *   - `found`: the profile;
  *   - `none`: a missing slug, a malformed one and a person this viewer may not see all end in the
  *     same "Not on the record" page (plan §6.4). src/proxy.ts answers those with 404 before the
- *     page renders; this is the fallback for a record hidden between the two reads;
+ *     page renders; this is the fallback, never indexed, for a record hidden between the two reads
+ *     and for a request the proxy let through because its check failed or ran out of time;
  *   - `failed`: the read itself failed (a statement timeout, the database restarting). The page
  *     shows its own error state inside the app shell, never Next.js's error screen.
  */

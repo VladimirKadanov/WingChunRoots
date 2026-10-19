@@ -20,7 +20,17 @@ import type { LineageGraphDto } from '../dto/public';
 import { stopProducer } from '../jobs/boss';
 import { handleApiRequest } from '../rpc/handler';
 import { OPENAPI_FILE, openApiJson } from '../rpc/openapi';
-import { lineageAncestors, lineageEgo, lineagePaths, lineageSubtree, personProfile, personStudents } from './lineage';
+import { ServiceError } from './errors';
+import {
+  lineageAncestors,
+  lineageEgo,
+  lineagePaths,
+  lineageSubtree,
+  PERSON_CHECK_BUDGET_MS,
+  personPageVisible,
+  personProfile,
+  personStudents,
+} from './lineage';
 import { LineageReadError, readDeadline, readTransaction, type OwnEdge } from './lineage-graph';
 import { cachedEgo, cachedProfile, cachedSubtree } from './lineage-public';
 
@@ -518,6 +528,71 @@ describe('a failed read: a budget per procedure, and nothing of the query in the
           expect(logged, secret).not.toContain(secret);
         }
         expect((error as { cause?: unknown }).cause).toBeUndefined();
+      }
+    } finally {
+      await locker.query('ROLLBACK').catch(() => undefined);
+      await locker.end();
+    }
+  });
+});
+
+describe('the person check of src/proxy.ts (owner decision 2026-10-19, ADR 0008)', () => {
+  it('sees a person exactly when people.get answers for that viewer, and reads the session only for an address that is not public', async () => {
+    const viewers: [string, Principal | null][] = [
+      ['anonymous', null],
+      ['demo-pending', principalOf(pendingUserId)],
+      ['demo-hub-a', principalOf(hubUserId)],
+    ];
+    let hiddenSeen = 0;
+    for (const [who, principal] of viewers) {
+      // An address no person could have is refused before any read, the session included.
+      for (const slug of ['BAD_slug', '', 'demo-'.padEnd(121, 'x')]) {
+        const sessionReads = vi.fn(async () => principal);
+        expect(await personPageVisible(sessionReads, { slug }), `${slug} for ${who}`).toBe(false);
+        expect(sessionReads).not.toHaveBeenCalled();
+      }
+      for (const slug of [...SLUGS, 'demo-no-such-person']) {
+        const sessionReads = vi.fn(async () => principal);
+        const visible = await personPageVisible(sessionReads, { slug });
+        const profile = await personProfile(principal, { slug }).then(
+          () => true,
+          (error: unknown) => {
+            if (error instanceof ServiceError && error.code === 'NOT_FOUND') return false;
+            throw error;
+          },
+        );
+        expect(visible, `${slug} for ${who}`).toBe(profile);
+        const isPublic = (await getDb().execute(sql`SELECT 1 FROM v_public_person WHERE slug = ${slug}`)).rows.length > 0;
+        // The session is asked for only when the address shows no public person.
+        expect(sessionReads.mock.calls.length, `${slug} for ${who}`).toBe(isPublic ? 0 : 1);
+        if (visible && !isPublic) hiddenSeen += 1;
+      }
+    }
+    // The signed-in participant sees their own hidden person (DEFAULT D03), as people.get does.
+    expect(hiddenSeen).toBeGreaterThan(0);
+  });
+
+  it(`a stalled database stops the check after its budget (${PERSON_CHECK_BUDGET_MS} ms, recheck-7), with only the SQLSTATE`, async () => {
+    expect(PERSON_CHECK_BUDGET_MS).toBeLessThanOrEqual(500);
+    const locker = new Client({ connectionString: testDb!.url });
+    await locker.connect();
+    try {
+      await locker.query('BEGIN');
+      await locker.query('LOCK TABLE person IN ACCESS EXCLUSIVE MODE');
+      for (const [slug, principal] of [
+        ['demo-two-lineages', null],
+        ['demo-pending', principalOf(pendingUserId)],
+      ] as const) {
+        const started = Date.now();
+        const error = await personPageVisible(async () => principal, { slug }).catch((e: unknown) => e);
+        const took = Date.now() - started;
+        expect(error, slug).toBeInstanceOf(LineageReadError);
+        expect((error as LineageReadError).code, slug).toBe('57014');
+        // The page's reads would each wait up to 2 s; this check gives up after its own budget.
+        expect(took, slug).toBeGreaterThanOrEqual(PERSON_CHECK_BUDGET_MS - 50);
+        expect(took, slug).toBeLessThan(PERSON_CHECK_BUDGET_MS + 700);
+        const logged = `${String(error)}\n${inspect(error, { depth: 10, showHidden: true })}`;
+        for (const secret of [slug, pendingUserId, 'SELECT', 'v_public_']) expect(logged, secret).not.toContain(secret);
       }
     } finally {
       await locker.query('ROLLBACK').catch(() => undefined);

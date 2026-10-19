@@ -1,18 +1,22 @@
-// The request-time check of a person's pages (src/proxy.ts; milestone M04 fix round 1): it runs
-// only on /people/<slug> and /people/<slug>/lineage, never on api, healthz or _next (plan §6.1,
-// CLAUDE.md §13); a hidden, missing or malformed address is rewritten to the 404 page; the
-// session is read only when the slug is not public and a session may be there; a failed check
-// never hides a page.
+// The request-time check of a person's pages (src/proxy.ts; milestone M04, owner decision
+// 2026-10-19, ADR 0008): it runs only on /people/<slug> and /people/<slug>/lineage, never on api,
+// healthz or _next (plan §6.1, CLAUDE.md §13); a hidden, missing or malformed address is rewritten
+// to the 404 page; the session is read only when the slug is not public and a session may be
+// there; a check that fails or runs past its short deadline (recheck-7) never hides a page.
 
-import { NextRequest } from 'next/server';
+import { NextRequest, type NextResponse } from 'next/server';
 // The docs name it unstable_doesProxyMatch; Next.js 16.4.1 still exports the middleware name.
 import { getRewrittenUrl, isRewrite, unstable_doesMiddlewareMatch } from 'next/experimental/testing/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const visible = vi.fn<(principalOf: () => Promise<unknown>, input: { slug: string }) => Promise<boolean>>();
 const principal = vi.fn<(headers: Headers) => Promise<unknown>>();
 
-vi.mock('@/server/services/lineage', () => ({ personPageVisible: (...args: Parameters<typeof visible>) => visible(...args) }));
+const BUDGET_MS = 500;
+vi.mock('@/server/services/lineage', () => ({
+  PERSON_CHECK_BUDGET_MS: BUDGET_MS,
+  personPageVisible: (...args: Parameters<typeof visible>) => visible(...args),
+}));
 vi.mock('@/server/auth/session', () => ({ principalFromHeaders: (headers: Headers) => principal(headers) }));
 vi.mock('@/server/auth/config', () => ({ COOKIE_PREFIX: 'wcr' }));
 
@@ -100,5 +104,69 @@ describe('proxy', () => {
     expect(String(log.mock.calls[0])).toContain('57014');
     expect(String(log.mock.calls[0])).not.toContain('demo-secret-slug');
     log.mockRestore();
+  });
+});
+
+describe('the deadline of the check (recheck-7)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** Whether the proxy has answered yet, and with what. */
+  function track(pending: Promise<NextResponse>) {
+    const state: { response?: NextResponse } = {};
+    void pending.then((response) => {
+      state.response = response;
+    });
+    return state;
+  }
+
+  it('a check that never answers (a stalled database) lets the page through after the budget, logging only "timeout"', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    visible.mockReturnValue(new Promise<boolean>(() => {}));
+    const state = track(proxy(request('/people/demo-secret-slug', { cookie: 'wcr.session_token=abc' })));
+
+    await vi.advanceTimersByTimeAsync(BUDGET_MS - 1);
+    expect(state.response).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.response).toBeDefined();
+    expect(isRewrite(state.response!)).toBe(false);
+    expect(state.response!.headers.get('x-middleware-next')).toBe('1');
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(String(log.mock.calls[0])).toBe('[proxy] the person check failed (timeout); the page answers for itself');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a hidden person whose check answers within the budget still gets the 404 page, and leaves no timer', async () => {
+    visible.mockReturnValue(new Promise<boolean>((resolve) => setTimeout(() => resolve(false), BUDGET_MS - 50)));
+    const state = track(proxy(request('/people/demo-claim-only-teacher')));
+    await vi.advanceTimersByTimeAsync(BUDGET_MS - 50);
+    expect(state.response).toBeDefined();
+    expect(isRewrite(state.response!)).toBe(true);
+    expect(new URL(getRewrittenUrl(state.response!)!).pathname).toBe('/not-on-record');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a check that fails after the deadline has passed is not an unhandled rejection', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      visible.mockReturnValue(new Promise<boolean>((_, reject) => setTimeout(() => reject(Object.assign(new Error('late'), { code: '57014' })), BUDGET_MS + 100)));
+      const state = track(proxy(request('/people/demo-hub-a')));
+      await vi.advanceTimersByTimeAsync(BUDGET_MS + 200);
+      expect(state.response!.headers.get('x-middleware-next')).toBe('1');
+      // One log line, for the timeout; the late failure is not logged again.
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(String(log.mock.calls[0])).toContain('(timeout)');
+      await vi.runAllTimersAsync();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });
