@@ -74,10 +74,13 @@ export function documentErrors(document: Record<string, unknown>): Record<string
       }
     }
   }
+  const components = (document.components as Record<string, Record<string, unknown> | undefined> | undefined) ?? {};
   document.components = {
-    ...((document.components as Record<string, unknown> | undefined) ?? {}),
-    schemas: { Error: ERROR_SCHEMA },
+    ...components,
+    // Added to what the generator put there (a schema registered with an id is $ref'd from it).
+    schemas: { ...(components.schemas ?? {}), Error: ERROR_SCHEMA },
     securitySchemes: {
+      ...(components.securitySchemes ?? {}),
       bearer: { type: 'http', scheme: 'bearer', description: 'A session token from /api/auth (docs/adr/0004-auth.md).' },
       cookie: {
         type: 'apiKey',

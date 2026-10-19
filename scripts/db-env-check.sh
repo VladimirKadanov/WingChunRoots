@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks the database environment (plan §7.5): PostgreSQL >= 16, PostGIS >= 3.4,
 # postgis_full_version(), the contrib extensions the app needs, UTF-8 encoding and
-# a UTF-8 aware locale (pg_trgm must produce trigrams for Cyrillic and Chinese).
+# a UTF-8 aware locale (pg_trgm must produce trigrams for Cyrillic and Chinese), and the ICU
+# collation und-x-icu that orders names (M04).
 #
 # Usage: scripts/db-env-check.sh [database-url]   (default: $TEST_DATABASE_URL)
 #
@@ -39,6 +40,8 @@ SELECT 'postgis_lib_version=' || postgis_lib_version();
 SELECT 'postgis_full_version=' || postgis_full_version();
 SELECT 'trgm_cyrillic=' || coalesce(array_length(show_trgm('Винг Чун'), 1), 0);
 SELECT 'trgm_han=' || coalesce(array_length(show_trgm('詠春'), 1), 0);
+-- The ICU root collation sorts names (M04: "van Dam" beside "Vega", "Émile" beside "Emma").
+SELECT 'icu_und=' || count(*) FROM pg_collation WHERE collname = 'und-x-icu';
 SELECT 'available=' || string_agg(name, ',' ORDER BY name)
   FROM pg_available_extensions
   WHERE name IN ('fuzzystrmatch', 'pg_trgm', 'postgis', 'unaccent');
@@ -84,6 +87,10 @@ case "${provider}:${ctype}" in
   *) r=no ;;
 esac
 check "$r" "database locale (provider ${provider}, LC_CTYPE ${ctype}) is UTF-8 aware"
+
+icu_und="$(value icu_und)"
+[ "${icu_und:-0}" -ge 1 ] && r=ok || r=no
+check "$r" "ICU collation und-x-icu for name order"
 
 trgm_cyr="$(value trgm_cyrillic)"
 trgm_han="$(value trgm_han)"
