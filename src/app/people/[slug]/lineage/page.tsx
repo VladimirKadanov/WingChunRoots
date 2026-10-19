@@ -29,7 +29,7 @@ import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person
 import { groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
 import { RoutesOfDescent } from '@/components/lineage/routes-of-descent';
 import { EmptyState, ProfileError, Section, SectionError } from '@/components/lineage/states';
-import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
+import { asStudentEdges, kindsOf, sameNameNotes, startYear, studentTotalsText } from '@/components/lineage/status';
 import type { LineageRefDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
 import { failure, lineageClient, profileFor } from '../data';
 
@@ -122,8 +122,7 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
   return (
     <div className="grid gap-6">
       <p className="text-ui text-fg-muted">
-        {data.activeTotal.toLocaleString('en')} active and {data.historicalTotal.toLocaleString('en')} historical{' '}
-        {total === 1 ? 'student' : 'students'}
+        {studentTotalsText(data.activeTotal, data.historicalTotal)}
         {data.pageCount > 1 ? `, ${data.pageSize} to a page, by name` : ''}.
         {data.own.length > 0 ? ` ${pendingText(data.own.length)}.` : ''}
       </p>
@@ -190,22 +189,26 @@ function OnThisPage() {
   );
 }
 
+/** The list view of `slug` at students page `n`, with or without "all routes". */
+function listHref(slug: string, n: number, routesAll: boolean): string {
+  const base = `/people/${encodeURIComponent(slug)}/lineage`;
+  const search = new URLSearchParams();
+  if (n > 1) search.set('page', String(n));
+  if (routesAll) search.set('routes', 'all');
+  return search.size > 0 ? `${base}?${search}` : base;
+}
+
 export default async function LineageListPage({ params, searchParams }: Props) {
   const read = await profileFor(params);
   if (read.state === 'none') return <PersonNotFound />;
-  if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}/lineage`} />;
-  const profile: PersonProfileDto = read.profile;
   const query = await searchParams;
   const page = pageFrom(single(query.page));
   const allRoutes = single(query.routes) === 'all';
-  const base = `/people/${profile.slug}/lineage`;
+  // Retry opens the same view again: the same students page and routes (validated, review round 2).
+  if (read.state === 'failed') return <ProfileError retryHref={listHref(read.slug, page, allRoutes)} />;
+  const profile: PersonProfileDto = read.profile;
   /** This view at students page `n`, with or without "all routes" (kept as it is by default). */
-  const viewHref = (n: number, routesAll = allRoutes) => {
-    const search = new URLSearchParams();
-    if (n > 1) search.set('page', String(n));
-    if (routesAll) search.set('routes', 'all');
-    return search.size > 0 ? `${base}?${search}` : base;
-  };
+  const viewHref = (n: number, routesAll = allRoutes) => listHref(profile.slug, n, routesAll);
   const here = viewHref(page);
   const pageHref = (n: number) => `${viewHref(n)}#students-heading`;
 

@@ -152,3 +152,17 @@ export function claimText(claimState: string): string {
   if (claimState === 'platform') return 'Kept by the archive';
   return 'Unclaimed record';
 }
+
+/**
+ * "129 active and 3 historical students": a part that would read "0 …" is left out (review
+ * round 2), so a hub with no ended training reads "129 active students".
+ */
+export function studentTotalsText(active: number, historical: number): string {
+  const total = active + historical;
+  if (total === 0) return 'No students on the public record';
+  const noun = total === 1 ? 'student' : 'students';
+  const n = (x: number) => x.toLocaleString('en');
+  if (historical === 0) return `${n(active)} active ${noun}`;
+  if (active === 0) return `${n(historical)} historical ${noun}`;
+  return `${n(active)} active and ${n(historical)} historical ${noun}`;
+}

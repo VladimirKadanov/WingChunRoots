@@ -119,38 +119,38 @@ export function FactStrip({ profile, className }: { profile: PersonProfileDto; c
 }
 
 /**
- * Profile, list and graph of one person. The graph is the explorer, which opens with M05: the
- * link is there (milestone M04, In scope 4) and says "soon", and until then the address explains
- * that the explorer is still being built.
+ * Profile, list and graph of one person. The graph is the explorer, which opens with M05: until
+ * then its place is there and says "soon", as a link that is switched off (role=link,
+ * aria-disabled, no address), never a link to a page that does not exist yet (review round 2).
+ * M05 gives it the address /explore?focus=<id>.
  */
-export function PersonViews({ profile, current }: { profile: Pick<PersonProfileDto, 'id' | 'slug'>; current: 'profile' | 'list' }) {
+export function PersonViews({ profile, current }: { profile: Pick<PersonProfileDto, 'slug'>; current: 'profile' | 'list' }) {
   const views = [
     { key: 'profile', label: 'Profile', href: `/people/${profile.slug}`, soon: false },
     { key: 'list', label: 'List', href: `/people/${profile.slug}/lineage`, soon: false },
-    { key: 'graph', label: 'Graph', href: `/explore?focus=${profile.id}`, soon: true },
+    { key: 'graph', label: 'Graph', href: null, soon: true },
   ] as const;
+  const item = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xs px-3.5 text-ui font-semibold';
   return (
     <nav aria-label="Views of this person">
       <ul className="inline-flex max-w-full flex-wrap rounded-sm border border-border-strong p-0.5">
         {views.map((view) => (
           <li key={view.key}>
-            <Link
-              href={view.href}
-              prefetch={false}
-              aria-current={view.key === current ? 'page' : undefined}
-              className={cx(
-                'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xs px-3.5 text-ui font-semibold text-fg-muted',
-                'hover:bg-surface-3 hover:text-fg aria-[current=page]:bg-fg aria-[current=page]:text-fg-inverse',
-              )}
-            >
-              {view.label}
-              {view.soon ? (
-                <>
-                  {' '}
-                  <span className="text-caption font-normal text-fg-subtle uppercase">soon</span>
-                </>
-              ) : null}
-            </Link>
+            {view.href === null ? (
+              <span role="link" aria-disabled="true" className={cx(item, 'cursor-default text-fg-subtle')}>
+                {view.label}{' '}
+                <span className="text-caption font-normal uppercase">soon</span>
+              </span>
+            ) : (
+              <Link
+                href={view.href}
+                prefetch={false}
+                aria-current={view.key === current ? 'page' : undefined}
+                className={cx(item, 'text-fg-muted hover:bg-surface-3 hover:text-fg aria-[current=page]:bg-fg aria-[current=page]:text-fg-inverse')}
+              >
+                {view.label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>

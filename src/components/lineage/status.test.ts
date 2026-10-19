@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { PeriodDto, StudentEntryDto } from '@/server/dto/public';
 import { placeText } from './person-header';
 import { bySeniority } from './relation-list';
-import { asStudentEdges, isHistoricalRelation, kindsOf, periodText, relationStatus, sameNameNotes, startYear, strokeOf } from './status';
+import { asStudentEdges, isHistoricalRelation, kindsOf, periodText, relationStatus, sameNameNotes, startYear, strokeOf, studentTotalsText } from './status';
 
 const period = (from: string | null, to: string | null, ongoing = false): PeriodDto => ({
   from,
@@ -118,5 +118,15 @@ describe('bySeniority', () => {
     const active = [entry('demo-b', '1990'), entry('demo-c', '1995-03'), entry('demo-own', '1970', 'involved_only'), entry('demo-d', null)];
     const historical = [entry('demo-a', '1975', 'public', '1980'), entry('demo-e', '1992', 'public', '1994')];
     expect(bySeniority([...active, ...historical]).map((s) => s.person.slug)).toEqual(['demo-a', 'demo-b', 'demo-e', 'demo-c', 'demo-own', 'demo-d']);
+  });
+});
+
+describe('studentTotalsText', () => {
+  it('leaves out a part that would be zero', () => {
+    expect(studentTotalsText(129, 0)).toBe('129 active students');
+    expect(studentTotalsText(0, 3)).toBe('3 historical students');
+    expect(studentTotalsText(1, 0)).toBe('1 active student');
+    expect(studentTotalsText(1200, 3)).toBe('1,200 active and 3 historical students');
+    expect(studentTotalsText(0, 0)).toBe('No students on the public record');
   });
 });

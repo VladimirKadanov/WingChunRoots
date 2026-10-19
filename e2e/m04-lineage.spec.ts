@@ -110,9 +110,12 @@ test('@M04 profile of demo-two-lineages lists two teachers from different lineag
   await expect(rows.nth(1).getByText('Primary teacher', { exact: true })).toHaveCount(0);
   // The teacher from the other lineage is marked as such, in words.
   await expect(rows.filter({ hasText: 'Demo Lineage B' }).getByText('Cross-lineage', { exact: true })).toBeVisible();
-  // Links to the explorer (which opens with M05, so it says "soon") and to the list view.
+  // The list view, and the explorer's place: it opens with M05, so until then it says "soon" and
+  // is a link that is switched off, never one to a page that does not exist yet.
   const views = page.getByRole('navigation', { name: 'Views of this person' });
-  await expect(views.getByRole('link', { name: 'Graph soon' })).toHaveAttribute('href', /^\/explore\?focus=[0-9a-f-]{36}$/);
+  const graph = views.getByRole('link', { name: 'Graph soon' });
+  await expect(graph).toHaveAttribute('aria-disabled', 'true');
+  await expect(graph).not.toHaveAttribute('href');
   await expect(views.getByRole('link', { name: 'List' })).toHaveAttribute('href', '/people/demo-two-lineages/lineage');
 });
 
@@ -498,10 +501,14 @@ test('@M04 when the profile read fails once, the page shows its own error state,
 
   await withoutJavaScript(browser, async (noScript) => {
     await noScript.context().addCookies([faultCookie('person-once')]);
-    await noScript.goto('/people/demo-two-lineages/lineage');
+    // Retry opens the same view again, with its query (here: every route of descent).
+    await noScript.goto('/people/demo-two-lineages/lineage?routes=all');
     await expect(noScript.getByRole('heading', { level: 1, name: 'This profile could not be loaded' })).toBeVisible();
-    await noScript.getByRole('alert').getByRole('link', { name: 'Retry' }).click();
+    const retry = noScript.getByRole('alert').getByRole('link', { name: 'Retry' });
+    await expect(retry).toHaveAttribute('href', '/people/demo-two-lineages/lineage?routes=all');
+    await retry.click();
     await expect(noScript.getByRole('heading', { level: 2, name: /^Routes of descent/ })).toBeVisible();
+    expect(new URL(noScript.url()).search).toBe('?routes=all');
   });
 });
 
