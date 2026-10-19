@@ -16,9 +16,16 @@ const ROOT = join(import.meta.dirname, '..');
 /** Next.js's built-in pages: the error page (global-error.js), the static 500 page (app-error.js), not found and the like. */
 const BUILTIN_DIRS = ['builtin', 'http-access-fallback'].map((dir) => join(ROOT, 'node_modules', 'next', 'dist', 'esm', 'client', 'components', dir));
 
-/** The texts of one built-in page: the string children of its JSX. */
+/**
+ * The texts of one built-in page: its string literals in double, single or back quotes (the
+ * children of its JSX, a message chosen in code), a template literal in its pieces between `${…}`
+ * (code review: not only `children: "…"`).
+ */
 function textsOf(file: string): string[] {
-  return [...readFileSync(file, 'utf8').matchAll(/children: "([^"\\]+)"/g)].map((match) => match[1]!);
+  const literals = /"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
+  return [...readFileSync(file, 'utf8').matchAll(literals)]
+    .flatMap((match) => (match[3] !== undefined ? match[3].split(/\$\{[^}]*\}/) : [match[1] ?? match[2]!]))
+    .filter((text) => text.trim() !== '');
 }
 
 /** Every text of Next.js's built-in pages, once. */

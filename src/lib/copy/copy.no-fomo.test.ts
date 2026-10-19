@@ -6,8 +6,8 @@
 // can fail; the scan itself must find nothing.
 //
 // What the scan cannot see: the text of a value at run time. An expression it cannot read, and an
-// element without text of its own inside a sentence (`<Num n={n} />`, `<Unit />`, a component
-// with an empty body), is a VALUE mark (read as the number 1, or as a possible time or amount
+// element without text of its own inside a sentence (`<Num n={n} />`, `<Unit />`, an element whose
+// body renders nothing), is a VALUE mark (read as the number 1, or as a possible time or amount
 // before "left", "remaining" or "to go"); a <br /> or <hr /> reads as a space and a <wbr /> as
 // nothing or a space (M08 polish 2, note 2). So a countdown built entirely from values and words
 // the rules do not list ("{n} {word} {verb}") is still out of its reach, and so is one split across
@@ -160,15 +160,19 @@ function copyOf(fileName: string, source: string): CopyText[] {
     if (name === 'wbr') return ['', ' '];
     return [PLACEHOLDER];
   };
-  /** A component (`<Num>`, `<ui.Count>`), whose text the scan cannot read, as against an HTML element (`<b>`). */
-  const isComponent = (tag: ts.JsxTagNameExpression): boolean => !(ts.isIdentifier(tag) && /^[a-z]/.test(tag.text));
+  /**
+   * An element written with a body that renders nothing (`<Num n={n}></Num>`, `<br></br>`, a body of
+   * line breaks or a comment only) is the element written without one: JSX drops whitespace that
+   * holds a line break, and an empty expression.
+   */
+  const hasEmptyBody = (node: ts.JsxElement): boolean =>
+    node.children.every((child) => (ts.isJsxText(child) && child.containsOnlyTriviaWhiteSpaces) || (ts.isJsxExpression(child) && !child.expression));
   const jsxText = (node: ts.JsxElement | ts.JsxFragment): string[] =>
     product(
       node.children.map((child) => {
         if (ts.isJsxText(child)) return [decodeEntities(child.text)];
         if (ts.isJsxSelfClosingElement(child)) return emptyElement(child.tagName);
-        // A component written with an empty body (<Num n={n}></Num>) renders what <Num n={n} /> does.
-        if (ts.isJsxElement(child) && child.children.length === 0 && isComponent(child.openingElement.tagName)) return [PLACEHOLDER];
+        if (ts.isJsxElement(child) && hasEmptyBody(child)) return emptyElement(child.openingElement.tagName);
         if (ts.isJsxElement(child) || ts.isJsxFragment(child)) return jsxText(child);
         if (ts.isJsxExpression(child)) return child.expression ? candidates(child.expression) : [''];
         // TypeScript has no other kind of JSX child; one it adds later reads as a value, never as nothing.
@@ -443,7 +447,7 @@ describe('copyOf(): an element without text of its own inside a sentence (M08 po
     }
   });
 
-  it('reads the same way in a fragment, a component without children, a member tag, <hr /> and <wbr />', () => {
+  it('reads the same way in a fragment, an element with a body that renders nothing, a member tag, <hr /> and <wbr />', () => {
     const source = [
       'export const A = () => <><Num n={n} /> hours remaining</>;',
       'export const B = () => <p><Num n={n}></Num> days left</p>;',
@@ -451,6 +455,12 @@ describe('copyOf(): an element without text of its own inside a sentence (M08 po
       'export const D = () => <p>{n} {unit}<hr />left</p>;',
       'export const E = () => <p>{n} days<wbr />left</p>;',
       'export const F = () => <p>count<wbr />down</p>;',
+      // A body of a comment or of line breaks only renders nothing; so does <br></br> (code review).
+      'export const G = () => <p><Num n={n}>{/* the count */}</Num> days left</p>;',
+      'export const H = () => <p>{n} days<br></br>left</p>;',
+      'export const I = () => <p><span className="n"></span> hours remaining</p>;',
+      'export const J = () => <p><Num n={n}>',
+      '</Num> days left</p>;',
     ].join('\n');
     const items = copyOf('probe.tsx', source);
     const rulesOf = (line: number) => items.filter((item) => item.line === line).flatMap((item) => findFomo(item.marked).map((finding) => finding.rule));
@@ -462,6 +472,7 @@ describe('copyOf(): an element without text of its own inside a sentence (M08 po
     expect(items.filter((item) => item.line === 5).map((item) => item.text)).toEqual(expect.arrayContaining(['1 daysleft', '1 days left']));
     expect(rulesOf(5)).toContain('countdown');
     expect(rulesOf(6)).toContain('countdown');
+    for (const line of [7, 8, 9, 10]) expect(rulesOf(line), `line ${line}`).toContain('countdown');
   });
 
   it('keeps the text of an element with children, and flags nothing in fine copy around an icon or a line break', () => {
