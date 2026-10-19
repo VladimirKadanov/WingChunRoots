@@ -196,7 +196,7 @@ export function RelationList({
             <span aria-hidden="true" className="pt-px">
               {first ? <LinkStroke kind={strokeOf(role === 'teacher' ? first : { ...first, kind: undefined })} width={28} /> : null}
             </span>
-            <div className={cx('grid min-w-0 gap-0.5', columns && 'md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-6')}>
+            <div className={cx('grid min-w-0 gap-0.5', columns && 'md:grid-cols-[minmax(0,1fr)_auto] md:items-baseline md:gap-x-6')}>
               <div className="grid min-w-0 gap-0.5">
                 <p className="flex flex-wrap items-baseline gap-x-2">
                   <PersonLink person={row.person} stretched className={cx('font-display', nameSize === 'xl' ? 'text-xl' : 'text-lg')} />
@@ -210,7 +210,7 @@ export function RelationList({
                 </p>
                 {role === 'student' ? <AlsoStudentOf row={row} lineages={lineages} /> : null}
               </div>
-              <div className={cx('grid min-w-0 gap-0.5', columns && 'md:justify-items-end md:pt-3 md:[&>p]:justify-end')}>
+              <div className={cx('grid min-w-0 gap-0.5', columns && 'md:justify-items-end md:[&>p]:justify-end')}>
                 {row.edges.map((edge) => (
                   <EdgeLine
                     key={edge.id}
