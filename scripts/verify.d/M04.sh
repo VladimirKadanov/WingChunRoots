@@ -163,9 +163,61 @@ check "the not-on-record page is not indexed (noindex, nofollow)" grep -qE "robo
 for screen in person person-lineage; do
   check "/$screen is a key M04 route (visual regression, axe, screenshots)" grep -qE "name: '$screen'.*milestone: 'M04', key: true" e2e/routes.ts
 done
-check "the not-on-record page is an M04 route with status 404 (src/proxy.ts, docs/adr/0008-person-pages-404.md)" bash -c '
-  grep -qE "path: '\''/people/demo-claim-only-teacher'\''.*status: 404, milestone: '\''M04'\''" e2e/routes.ts &&
-  grep -q "personPageVisible" src/proxy.ts && grep -q "NOT_ON_RECORD_HEADER" src/app/not-found.tsx && test -s docs/adr/0008-person-pages-404.md'
+# The owner's decision of 2026-10-19 (docs/plan/questions/M04.md, option 1; ADR 0008): a hidden,
+# missing or malformed person address answers 404 through src/proxy.ts, with the same status and
+# the same HTML for all three, with and without JavaScript. The M02 check allows no other proxy and
+# no middleware file.
+owner_proxy() {
+  [ -f src/proxy.ts ] || return 1
+  # One matcher, exactly the two person paths (whitespace aside).
+  [ "$(grep -oE 'matcher *:' src/proxy.ts | wc -l)" -eq 1 ] || return 1
+  [ "$(tr -d '\n' < src/proxy.ts | grep -oE 'matcher: *\[[^]]*\]' | tr -d ' ')" = "matcher:['/people/:slug','/people/:slug/lineage']" ] || return 1
+  grep -qF "expect(config.matcher).toEqual(['/people/:slug', '/people/:slug/lineage']);" src/proxy.test.ts || return 1
+  # It asks the lineage service and rewrites to the person 404; the not-found page renders it, never indexed.
+  grep -q 'personPageVisible' src/proxy.ts && grep -qF 'NextResponse.rewrite(new URL(NOT_ON_RECORD_PATH, request.url)' src/proxy.ts &&
+    grep -qF "if ((await headers()).get(NOT_ON_RECORD_HEADER) === 'person') return <PersonNotFound />;" src/app/not-found.tsx &&
+    grep -qE 'robots: \{ index: false, follow: false \}' src/app/not-found.tsx
+}
+check "src/proxy.ts has exactly the matchers ['/people/:slug', '/people/:slug/lineage'] and rewrites to the person 404, never indexed (ADR 0008)" owner_proxy
+# Review round 2, recheck-7: the check gives up after a short deadline and never hides a page then.
+check "the proxy's person check has a deadline of at most 500 ms, and passes the request through when it fails or runs out (recheck-7)" bash -c '
+  budget=$(grep -oE "^export const PERSON_CHECK_BUDGET_MS = [0-9_]+;" src/server/services/lineage.ts | grep -oE "[0-9_]+;" | tr -d "_;") &&
+  [ -n "$budget" ] && [ "$budget" -le 500 ] &&
+  grep -q "readDeadline(budgetMs)" src/server/services/lineage.ts &&
+  grep -q "withinDeadline(check, PERSON_CHECK_BUDGET_MS)" src/proxy.ts &&
+  [ "$(grep -c "return NextResponse.next();" src/proxy.ts)" -eq 2 ] &&
+  grep -q "a check that never answers (a stalled database) lets the page through after the budget" src/proxy.test.ts &&
+  grep -q "a stalled database stops the check after its budget" src/server/services/lineage.int.test.ts'
+# The routes table, the screenshot state and the E2E privacy test expect the 404.
+owner_404_tests() {
+  local e2e=e2e/m04-lineage.spec.ts line
+  grep -qE "path: '/people/demo-claim-only-teacher'.*status: 404, milestone: 'M04'" e2e/routes.ts || return 1
+  awk "/name: 'person-not-on-record'/,/^  \},/" e2e/screenshots.spec.ts | grep -qF 'expect(response?.status()).toBe(404);' || return 1
+  for line in \
+    'await pageOf(request, `/people/demo-claim-only-teacher${suffix}`),' \
+    'await pageOf(request, `/people/demo-no-such-person${suffix}`),' \
+    'await pageOf(request, `/people/BAD_slug${suffix}`),' \
+    'expect(missingPage.status, `/people/demo-no-such-person${suffix}`).toBe(404);' \
+    'expect(missingPage.html).toMatch(/<meta name="robots" content="noindex, nofollow"\s*\/?>/);' \
+    'expect(hiddenPage, `/people/demo-claim-only-teacher${suffix}`).toEqual(missingPage);' \
+    'expect(malformedPage, `/people/BAD_slug${suffix}`).toEqual(missingPage);' \
+    "const notOnRecord = ['/people/demo-claim-only-teacher', '/people/demo-no-such-person', '/people/BAD_slug'];" \
+    'expect(underReview).toEqual(await pageOf(request, '"'"'/people/demo-no-such-person/lineage'"'"'));' \
+    'await withoutJavaScript(browser, async (noScript) => {' \
+    'expect(response?.status(), path).toBe(404);' \
+    'expect(new Set(seen).size).toBe(1);' \
+    "expect(response?.status()).toBe(path.endsWith('teacher') ? 404 : 200);"; do
+    grep -qF -- "$line" "$e2e" || { echo "     missing in $e2e: $line"; return 1; }
+  done
+  # No person address is expected to answer 200 with "Not on the record" any more.
+  ! grep -qE "path: '/people/demo-claim-only-teacher'.*status: 200" e2e/routes.ts &&
+    ! grep -qE "withSortedHead|(hiddenPage|missingPage|malformedPage|underReview)\.status.*toBe\(200\)" "$e2e"
+}
+check "the routes table, the screenshot and the E2E test expect 404 and the same HTML for a hidden, missing and malformed address, with and without JavaScript" owner_404_tests
+check "docs/plan/questions/M04.md has the owner's answer (option 1, ch0k0, 2026-10-19)" bash -c '
+  f=docs/plan/questions/M04.md
+  grep -qF "**Answer:** Option 1, a proxy for the two person paths only (ch0k0, 2026-10-19, decision card in the project thread)." "$f" &&
+  ! grep -q "(filled in by the owner)" "$f" && grep -q "Статус | Прието" docs/adr/0008-person-pages-404.md'
 for screen in "${SCREENS[@]}"; do
   for size in "${SIZES[@]}"; do
     for theme in "${THEMES[@]}"; do
