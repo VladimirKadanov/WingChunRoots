@@ -9,11 +9,27 @@ export function formatDay(value: Date | string): string {
 }
 
 /**
- * The end of a plan, which stops at 00:00 UTC of its end day (milestone M08): "until the start of
- * 31 December 2026 (UTC)", so nobody reads the end day as included.
+ * The end of a plan, which stops at 00:00 UTC of its end day (milestone M08), as the last full day
+ * it covers: an end of 1 January 2027 reads "until 31 December 2026" (review round 1, design-11).
+ * The UTC boundary is explained once where a plan is shown in full (/dashboard/settings) and where
+ * an admin sets it (/admin/grants), not in every sentence.
  */
 export function untilPlanEnd(value: Date | string): string {
-  return `until the start of ${formatDay(value)} (UTC)`;
+  return `until ${formatDay(lastDayOf(value))}`;
+}
+
+/** The day of the last instant before `end` (an end at 00:00 UTC is the day before). */
+export function lastDayOf(end: Date | string): Date {
+  return new Date((typeof end === 'string' ? new Date(end) : end).getTime() - 1);
+}
+
+// Fixed abbreviations: ICU versions differ ("Sep" or "Sept"), and a table should not.
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** "19 Oct 2026" in UTC: for dense tables, with the full day in a title. */
+export function formatShortDay(value: Date | string): string {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  return `${date.getUTCDate()} ${SHORT_MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
 /** "2026-02-01": the value of an <input type="date">. */

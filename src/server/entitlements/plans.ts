@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. The version is shown on /plans and returned by the API (plans.catalog).
  */
-export const PLAN_MATRIX_VERSION = '2026-10-18.1';
+export const PLAN_MATRIX_VERSION = '2026-10-19.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -130,8 +130,17 @@ export interface FeatureValue {
   source: string;
   /** What the app shows. */
   label: string;
-  /** Whether the plan includes the feature at all. */
+  /**
+   * Whether the plan has what the row offers: the feature itself, or for Advertising, no ads.
+   * improves() and upgradeBenefits() compare it; /plans draws a check for it and a dash for its
+   * absence.
+   */
   included: boolean;
+  /**
+   * A plain fact rather than a benefit or a lack ("Browse only"): /plans draws neither a check nor
+   * a dash for it (review round 1, design-4). improves() still reads `included`.
+   */
+  neutral?: true;
   /**
    * A countable allowance: a number, or null for "unlimited". Only on the quota features. For
    * photos and videos (D07) it is recorded and not enforced in Phase 1.
@@ -152,8 +161,17 @@ export interface FeatureDefinition {
    * (D06) and the public school pin of Professional Sifu (from M11).
    */
   enforced: boolean;
+  /**
+   * For a feature of the pilot (availability 'now') whose screens are not built yet: when it opens,
+   * in the words the app shows beside it ("Opens with teacher requests"). An upgrade prompt and
+   * /plans show it, so nothing reads as usable before it is (review round 1, requirements-1,
+   * design-1). Removed by the milestone that builds the feature (M09, M11).
+   */
+  opens?: string;
   /** The unit of a quota, for "You have approved 5 of 5 students". */
   unit?: { one: string; many: string; verb: string };
+  /** The heading of an upgrade prompt at this feature's limit; `{plan}` is the higher plan's name. */
+  upgradeHeading?: string;
   /** A short note for /plans, where the plain values need one. */
   note?: string;
   values: Readonly<Record<PlanCode, FeatureValue>>;
@@ -173,12 +191,13 @@ export const FEATURES: readonly FeatureDefinition[] = [
     phase: 2,
     enforced: false,
     note: 'The pilot shows no advertising on any plan.',
+    // The row offers no ads: "Ads shown" is the lack (a dash), "No ads" the benefit (a check).
     values: {
-      free_student: yes('Ads shown'),
-      premium_student: no('No ads'),
-      free_sifu: yes('Ads shown'),
-      pro_sifu: no('No ads'),
-      federation: no('No ads'),
+      free_student: { source: 'Yes', label: 'Ads shown', included: false },
+      premium_student: { source: 'No', label: 'No ads', included: true },
+      free_sifu: { source: 'Yes', label: 'Ads shown', included: false },
+      pro_sifu: { source: 'No', label: 'No ads', included: true },
+      federation: { source: 'No', label: 'No ads', included: true },
     },
   },
   {
@@ -253,6 +272,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: false,
+    opens: 'Opens with teacher requests',
     values: {
       free_student: yes(),
       premium_student: yes(),
@@ -268,7 +288,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: true,
+    opens: 'Opens with teacher requests',
     unit: { one: 'student', many: 'students', verb: 'approved' },
+    upgradeHeading: 'More students with {plan}',
     // DEFAULT D06: up to 5 approved students on Free Sifu; "unlimited" means no limit in the pilot.
     values: {
       free_student: quota('No', 'Not included', 0),
@@ -285,10 +307,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: true,
-    note: 'Anyone can browse the map. A public pin for a school needs an instructor with Professional Sifu.',
+    opens: 'Opens with schools and the map',
+    note: 'When the map opens, anyone will be able to browse it. A public pin for a school will need an instructor with Professional Sifu.',
     values: {
-      free_student: text('Browse only', 'Browse only', false),
-      premium_student: text('Browse only', 'Browse only', false),
+      free_student: { source: 'Browse only', label: 'Browse only', included: false, neutral: true },
+      premium_student: { source: 'Browse only', label: 'Browse only', included: false, neutral: true },
       free_sifu: text('No school pin', 'No school pin', false),
       pro_sifu: text('Active school pin', 'Public pin for your school'),
       federation: text('Organization heatmap and school network'),
@@ -427,6 +450,14 @@ export const DOWNGRADE_RULES = {
   enforcedInPhase1: false,
 } as const;
 
+/** How /plans marks a value: a check for what the plan has, a dash for its lack, nothing for a plain fact. */
+export type ValueMark = 'included' | 'not_included' | 'neutral';
+
+export function valueMark(value: FeatureValue): ValueMark {
+  if (value.neutral) return 'neutral';
+  return value.included ? 'included' : 'not_included';
+}
+
 export function feature(key: FeatureKey): FeatureDefinition {
   const found = FEATURES.find((f) => f.key === key);
   if (!found) throw new Error(`unknown feature ${key}`);
@@ -443,13 +474,20 @@ export function plansFor(audience: PlanDefinition['audience']): PlanDefinition[]
   return PLAN_ORDER.map((code) => PLANS[code]).filter((p) => p.audience === audience).sort((a, b) => a.rank - b.rank);
 }
 
-/** Plans an admin may give as a test or complimentary plan in the pilot (Federation is Phase 3). */
+/**
+ * Plans an admin may give as a test or complimentary plan in the pilot (Federation is Phase 3).
+ * Premium Student unlocks nothing yet in Phase 1: every feature where it gives more than Free
+ * Student is planned (see PLANS_WITHOUT_PILOT_BENEFITS). It stays grantable so pilot testers keep
+ * it when its features arrive; the grant form and the admin guide say so (review round 1,
+ * requirements-2).
+ */
 export const GRANTABLE_PLANS: readonly PlanCode[] = ['premium_student', 'pro_sifu'];
 
-/** "$19 a month", "$990 a year", "$0". */
+/** "$19 a month", "$99 a month or $990 a year", and "Free" for a plan without a price. */
 export function formatPrice(price: PlanPrice): string {
-  if (price.monthlyUsd === 0) return '$0';
-  return `$${price.monthlyUsd} a month`;
+  if (price.monthlyUsd === 0) return 'Free';
+  const monthly = `$${price.monthlyUsd} a month`;
+  return price.yearlyUsd === null ? monthly : `${monthly} or $${price.yearlyUsd} a year`;
 }
 
 /**
@@ -476,11 +514,14 @@ export interface Benefit {
   label: string;
   from: string;
   to: string;
+  /** When a benefit of the pilot opens, while its screens are not built yet; null once it works. */
+  opens: string | null;
 }
 
 /**
  * The real benefits of moving from one plan to another (plan §5.6): only features with
- * availability 'now', where `to` gives more. Planned features never appear here.
+ * availability 'now', where `to` gives more. Planned features never appear here; a feature of the
+ * pilot that is not built yet carries `opens`, which the prompt shows beside it.
  */
 export function upgradeBenefits(from: PlanCode, to: PlanCode): Benefit[] {
   return FEATURES.filter((f) => f.availability === 'now' && improves(f, from, to)).map((f) => ({
@@ -488,5 +529,11 @@ export function upgradeBenefits(from: PlanCode, to: PlanCode): Benefit[] {
     label: f.label,
     from: f.values[from].label,
     to: f.values[to].label,
+    opens: f.opens ?? null,
   }));
 }
+
+/** Plans an admin can grant that give no benefit of the pilot over their free plan (Premium Student). */
+export const PLANS_WITHOUT_PILOT_BENEFITS: readonly PlanCode[] = GRANTABLE_PLANS.filter(
+  (code) => upgradeBenefits(freePlanFor(PLANS[code].audience === 'sifu' ? 'sifu' : 'student'), code).length === 0,
+);

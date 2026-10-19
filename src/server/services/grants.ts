@@ -19,6 +19,7 @@ import { authUser, entitlementGrant, notification, pilotAccessRequest } from '..
 import { type Executor, grantsOf } from '../entitlements/access';
 import { type GrantState, grantState } from '../entitlements/effective';
 import { type AccountType, GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
+import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 
@@ -275,7 +276,7 @@ const optionalDay = z
 
 export const createGrantInput = z.object({
   email: z.string().trim().toLowerCase().max(320),
-  planCode: z.enum(GRANTABLE_PLANS as readonly [PlanCode, ...PlanCode[]], { error: 'Choose Premium Student or Professional Sifu.' }),
+  planCode: z.enum(GRANTABLE_PLANS as readonly [PlanCode, ...PlanCode[]], { error: 'Choose a plan.' }),
   source: z.enum(['test_grant', 'complimentary']).default('test_grant'),
   reason: z.string().trim().max(500),
   /** "YYYY-MM-DD", the first day (00:00 UTC); today when empty. */
@@ -286,10 +287,26 @@ export const createGrantInput = z.object({
   requestId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
 });
 
+/** How far ahead a grant may start or end (review round 1, security-3): two years. */
+export const GRANT_HORIZON_YEARS = 2;
+
+/** The start (00:00 UTC) of the day of `now`. */
+function startOfUtcDay(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+/** The last day a grant may start or end on: today (UTC) plus GRANT_HORIZON_YEARS. */
+export function grantHorizon(now: Date): Date {
+  const day = startOfUtcDay(now);
+  day.setUTCFullYear(day.getUTCFullYear() + GRANT_HORIZON_YEARS);
+  return day;
+}
+
 /**
  * Gives a plan of the pilot to an account (admin with a verified second factor). Refused for a
- * plan of the other account type (a Student account switches to Sifu first), for an end that is
- * not after the start or has passed, and while the account already has the same plan for an
+ * plan of the other account type (a Student account switches to Sifu first), for a start before
+ * today (UTC), for a start or an end more than GRANT_HORIZON_YEARS ahead, for an end that is not
+ * after the start or has passed, and while the account already has the same plan for an
  * overlapping period (a second submit of the form, too). Closes the account's open pilot access
  * request for that plan.
  */
@@ -309,25 +326,26 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
   const endsAt = input.endsOn ? parseIsoDay(input.endsOn) : null;
   if (!startsAt) fields.startsOn = 'Enter the start as a date, for example 2026-11-01.';
   if (input.endsOn && !endsAt) fields.endsOn = 'Enter the end as a date, for example 2026-12-31.';
-  if (startsAt && endsAt && endsAt.getTime() <= startsAt.getTime()) fields.endsOn = 'The end must be after the start.';
+  const horizon = grantHorizon(now);
+  if (startsAt && startsAt.getTime() < startOfUtcDay(now).getTime()) fields.startsOn = 'The start cannot be before today.';
+  else if (startsAt && startsAt.getTime() > horizon.getTime()) fields.startsOn = 'Choose a date within the next two years.';
+  if (endsAt && endsAt.getTime() > horizon.getTime()) fields.endsOn = 'Choose a date within the next two years.';
+  else if (startsAt && endsAt && endsAt.getTime() <= startsAt.getTime()) fields.endsOn = 'The end must be after the start.';
   else if (endsAt && endsAt.getTime() <= now.getTime()) fields.endsOn = 'The end date has passed.';
   if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
   const plan = PLANS[input.planCode];
 
   const id = await getDb().transaction(async (tx) => {
-    const [account] = await tx
-      .select({ id: authUser.id, accountType: authUser.accountType })
-      .from(authUser)
-      .where(eq(authUser.email, input.email))
-      .for('update');
+    // The account's lock first (services/account-lock.ts): it also serializes two grants for it.
+    const account = await lockAccount(tx, { email: input.email });
     if (!account) throw new ServiceError('NOT_FOUND', 'No account has this e-mail address.', { email: 'No account has this e-mail address.' });
     if (plan.audience !== account.accountType) {
       const kind = account.accountType === 'sifu' ? 'a Sifu' : 'a Student';
       const message = `This is ${kind} account; ${plan.name} is for ${plan.audience === 'sifu' ? 'Sifu' : 'Student'} accounts. The account changes its type in its dashboard settings.`;
       throw new ServiceError('BAD_REQUEST', message, { planCode: message });
     }
-    // The row lock on the account serializes two grants for it; overlapping grants of the same
-    // plan would count once anyway (resolveEffectivePlan), but are refused to keep the list clear.
+    // Overlapping grants of the same plan would count once anyway (resolveEffectivePlan), but are
+    // refused to keep the list clear.
     const overlapping = (await grantsOf(tx, account.id)).filter((g) => {
       if (g.planCode !== input.planCode) return false;
       const state = grantState(g, now);
@@ -382,7 +400,8 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
     await tx.insert(notification).values({
       userId: account.id,
       template: 'plan.granted',
-      payload: { planCode: input.planCode, endsAt: endsAt?.toISOString() ?? null },
+      // The start too: a grant that starts later must not read as a plan the account has now.
+      payload: { planCode: input.planCode, startsAt: startsAt!.toISOString(), endsAt: endsAt?.toISOString() ?? null },
     });
     return grantId;
   });
@@ -409,6 +428,11 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
   if (!reason) throw new ServiceError('BAD_REQUEST', 'Give a reason; it is kept in the audit log.', { reason: 'Give a reason; it is kept in the audit log.' });
 
   await getDb().transaction(async (tx) => {
+    // The grant's account never changes: read it, take the account's lock first (as every write of
+    // an account's plan does, services/account-lock.ts), then the grant's row.
+    const [owner] = await tx.select({ userId: entitlementGrant.subjectUserId }).from(entitlementGrant).where(eq(entitlementGrant.id, grantId));
+    if (!owner?.userId) throw new ServiceError('NOT_FOUND', 'No such plan grant.');
+    await lockAccount(tx, { id: owner.userId });
     const [grant] = await tx.select().from(entitlementGrant).where(eq(entitlementGrant.id, grantId)).for('update');
     if (!grant || grant.subjectUserId === null) throw new ServiceError('NOT_FOUND', 'No such plan grant.');
     const state = grantState(grant, now);

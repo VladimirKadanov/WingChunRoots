@@ -24,10 +24,7 @@ export function UpgradePrompt({
   notNowHref: string;
   initial?: FormState | null;
 }) {
-  const waiting =
-    offer.waiting === 1
-      ? 'One student request waits below. It stays pending and visible until you can approve it.'
-      : `${offer.waiting} student requests wait below. They stay pending and visible until you can approve them.`;
+  const waiting = offer.waiting?.sentence ?? null;
   return (
     <section
       id="upgrade"
@@ -38,12 +35,12 @@ export function UpgradePrompt({
       <header className="grid gap-2">
         <p className="eyebrow">Your plan: {offer.from.name}</p>
         <h2 id="upgrade-heading" className="font-display text-2xl">
-          More students with {offer.to.name}
+          {offer.heading}
         </h2>
         <p data-testid="upgrade-allowance" className="text-ui font-semibold">
           {offer.allowance.sentence}
         </p>
-        <p className="max-w-[60ch] text-ui text-fg-muted">{waiting}</p>
+        {waiting ? <p className="max-w-[60ch] text-ui text-fg-muted">{waiting}</p> : null}
       </header>
 
       <div className="grid gap-2">

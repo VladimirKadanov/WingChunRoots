@@ -5,7 +5,7 @@
 // A body is a list of segments rather than one string, so that a person's name keeps its `lang`
 // attribute and translate="no" when the dashboard renders it (plan §5.3).
 
-import { untilPlanEnd } from '../../lib/dates';
+import { formatDay, untilPlanEnd } from '../../lib/dates';
 import { GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
 import type { NameData } from './email/types';
 
@@ -18,11 +18,16 @@ export interface RenderedNotification {
   action?: { label: string; href: string };
 }
 
+/** What the stored row adds to its payload: when the notification was created. */
+export interface NotificationContext {
+  createdAt?: Date;
+}
+
 export interface NotificationTemplate<Data> {
   readonly name: string;
   /** Checks untrusted data (the jsonb payload); throws NotificationDataError. */
   parse(payload: unknown): Data;
-  render(data: Data): RenderedNotification;
+  render(data: Data, context: NotificationContext): RenderedNotification;
   /** Fictional example data (D20) for the tests. */
   readonly sample: Data;
 }
@@ -78,9 +83,9 @@ function optionalName(template: string, value: unknown): NameData | null {
   return { value: text.trim(), lang };
 }
 
-function optionalDate(template: string, value: unknown): string | null {
+function optionalDate(template: string, key: string, value: unknown): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) throw new NotificationDataError(template, 'endsAt must be a date');
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) throw new NotificationDataError(template, `${key} must be a date`);
   return value;
 }
 
@@ -121,11 +126,9 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
         }
       : {
           title: 'Pilot access requested',
-          body: [
-            requester ? { name: requester } : { text: 'An account without a profile' },
-            { text: ` asked for pilot access to ${PLANS[planCode].name}. There are no payments in the pilot: you can give a test plan or leave the request open.` },
-          ],
-          action: { label: 'Review the request', href: `/admin/grants?request=${requestId}` },
+          body: [requester ? { name: requester } : { text: 'An account without a profile' }, { text: ` asked for ${PLANS[planCode].name}.` }],
+          // Straight to the form, filled in with the request (/admin/grants opens it for ?request=).
+          action: { label: 'Review the request', href: `/admin/grants?request=${requestId}#give-plan` },
         },
   sample: {
     requestId: '0190a5c0-0000-7000-8000-000000000001',
@@ -137,26 +140,43 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
 
 interface PlanGranted {
   planCode: PlanCode;
+  /** The grant's start; null in rows written before review round 1 (they started at once). */
+  startsAt: string | null;
   endsAt: string | null;
 }
 
-/** "plan.granted": to the account an admin gave a test or complimentary plan (M08). */
+/** The plan notifications lead to the account's plan, not to the dashboard they are shown on. */
+const SEE_YOUR_PLAN = { label: 'See your plan', href: '/dashboard/settings' } as const;
+
+/**
+ * "plan.granted": to the account an admin gave a test or complimentary plan (M08). A grant that
+ * starts after the notification says from when (review round 1, security-4): until then the
+ * account's plan has not changed.
+ */
 const planGranted: NotificationTemplate<PlanGranted> = {
   name: 'plan.granted',
   parse(payload) {
     const data = payloadObject('plan.granted', payload);
-    return { planCode: grantablePlan('plan.granted', data.planCode), endsAt: optionalDate('plan.granted', data.endsAt) };
+    return {
+      planCode: grantablePlan('plan.granted', data.planCode),
+      startsAt: optionalDate('plan.granted', 'startsAt', data.startsAt),
+      endsAt: optionalDate('plan.granted', 'endsAt', data.endsAt),
+    };
   },
-  render: ({ planCode, endsAt }) => ({
-    title: `Pilot plan added: ${PLANS[planCode].name}`,
-    body: [
-      {
-        text: `An administrator gave your account ${PLANS[planCode].name} for the pilot${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
-      },
-    ],
-    action: { label: 'Open your dashboard', href: '/dashboard' },
-  }),
-  sample: { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' },
+  render: ({ planCode, startsAt, endsAt }, { createdAt }) => {
+    const later = startsAt !== null && createdAt !== undefined && Date.parse(startsAt) > createdAt.getTime();
+    const from = later ? ` from ${formatDay(startsAt)}` : '';
+    return {
+      title: `Pilot plan added: ${PLANS[planCode].name}`,
+      body: [
+        {
+          text: `An administrator gave your account ${PLANS[planCode].name} for the pilot${from}${endsAt ? `, ${untilPlanEnd(endsAt)}` : ''}. No payment is involved.`,
+        },
+      ],
+      action: SEE_YOUR_PLAN,
+    };
+  },
+  sample: { planCode: 'pro_sifu', startsAt: '2026-12-01T00:00:00.000Z', endsAt: '2026-12-31T00:00:00.000Z' },
 };
 
 /** "plan.revoked": to the account whose test or complimentary plan an admin ended (M08). */
@@ -176,7 +196,7 @@ const planRevoked: NotificationTemplate<{ planCode: PlanCode }> = {
             : `An administrator ended your pilot plan ${PLANS[planCode].name}. Your profile and every confirmed link stay as they are.`,
       },
     ],
-    action: { label: 'Open your dashboard', href: '/dashboard' },
+    action: SEE_YOUR_PLAN,
   }),
   sample: { planCode: 'pro_sifu' },
 };
@@ -196,8 +216,8 @@ export function isNotificationTemplateName(name: string): name is NotificationTe
 }
 
 /** Renders a stored notification. Throws NotificationDataError for an unknown template or bad payload. */
-export function renderNotification(template: string, payload: unknown): RenderedNotification {
+export function renderNotification(template: string, payload: unknown, context: NotificationContext = {}): RenderedNotification {
   if (!isNotificationTemplateName(template)) throw new NotificationDataError(template, 'unknown template');
   const definition = NOTIFICATION_TEMPLATES[template] as NotificationTemplate<unknown>;
-  return definition.render(definition.parse(payload));
+  return definition.render(definition.parse(payload), context);
 }

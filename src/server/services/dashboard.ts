@@ -14,7 +14,7 @@ import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { lineage, person, personName, place, PUBLIC_RELATIONSHIP_STATUSES, school, schoolInstructor, teachingRelationship } from '../db/schema';
 import { effectivePlan, requireEntitlement } from '../entitlements/access';
-import { feature, type Benefit, upgradeBenefits } from '../entitlements/plans';
+import { feature, type Benefit, type FeatureKey, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from '../templates/email/types';
 import { listNotifications, type NotificationList } from './notifications';
 import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotRequestView, type PlanSummary, planSummary } from './plans';
@@ -58,17 +58,34 @@ export interface SchoolItem {
   roleLabel: string;
 }
 
+/**
+ * An upgrade prompt at the limit of one feature (plan §5.6). Generic over the refused feature
+ * (review round 1, requirements-4): the heading and the allowance come from the matrix, so M11 can
+ * build one for the public school pin with the same <UpgradePrompt>.
+ */
 export interface UpgradeOffer {
-  feature: 'approve_students';
+  feature: FeatureKey;
+  /** "More students with Professional Sifu" (the feature's upgradeHeading). */
+  heading: string;
   /** "You have approved 5 of 5 students on Free Sifu." (plan §5.6). */
   allowance: { current: number; limit: number; sentence: string };
   from: PlanSummary;
   to: PlanSummary;
-  /** Only features with availability 'now' (plan §6.5). */
+  /** Only features with availability 'now' (plan §6.5), each with its opening note while not built. */
   benefits: Benefit[];
-  /** Requests that wait because of the limit; they stay pending and visible. */
-  waiting: number;
+  /** What waits because of the limit (student requests); it stays pending and visible. */
+  waiting: { count: number; sentence: string } | null;
   pilotRequest: PilotRequestView | null;
+}
+
+/** The allowance sentence and the heading of an offer at the limit of `key` (from the matrix). */
+export function offerText(key: FeatureKey, current: number, limit: number, from: PlanSummary, to: PlanSummary): { heading: string; sentence: string } {
+  const f = feature(key);
+  const unit = f.unit ?? { one: 'use', many: 'uses', verb: 'used' };
+  return {
+    heading: (f.upgradeHeading ?? `More with {plan}`).replace('{plan}', to.name),
+    sentence: `You have ${unit.verb} ${current} of ${limit} ${limit === 1 ? unit.one : unit.many} on ${from.name}.`,
+  };
 }
 
 export interface DashboardOverview {
@@ -255,19 +272,18 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   let upgrade: UpgradeOffer | null = null;
   // Plan §5.6: only at a real limit, where a request waits because of it.
   if (!decision.ok && decision.code === 'quota' && decision.grantedBy && waiting > 0 && limit !== null) {
-    const unit = feature('approve_students').unit!;
     const from = planSummary(decision.plan);
+    const to = planSummary(decision.grantedBy);
+    const text = offerText('approve_students', decision.current, limit, from, to);
     upgrade = {
       feature: 'approve_students',
-      allowance: {
-        current: decision.current,
-        limit,
-        sentence: `You have ${unit.verb} ${decision.current} of ${limit} ${limit === 1 ? unit.one : unit.many} on ${from.name}.`,
-      },
+      heading: text.heading,
+      allowance: { current: decision.current, limit, sentence: text.sentence },
       from,
-      to: planSummary(decision.grantedBy),
+      to,
       benefits: upgradeBenefits(decision.plan, decision.grantedBy),
-      waiting,
+      // No promise of when they can be approved: approving opens later in the pilot (M09).
+      waiting: { count: waiting, sentence: waiting === 1 ? 'One student request waits below. It stays pending and visible.' : `${waiting} student requests wait below. They stay pending and visible.` },
       pilotRequest: await openPilotRequest(db, p.user.id),
     };
   }

@@ -3,6 +3,7 @@
 // shape and numbers of the Bulgarian table. A change of the specification fails here until the
 // matrix (and PLAN_MATRIX_VERSION) follows it.
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -20,8 +21,10 @@ import {
   PLAN_MATRIX_VERSION,
   PLAN_ORDER,
   PLANS,
+  PLANS_WITHOUT_PILOT_BENEFITS,
   plansFor,
   upgradeBenefits,
+  valueMark,
 } from './plans';
 
 /** The rows of the first Markdown table after `heading`, split into trimmed cells. */
@@ -132,13 +135,65 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     expect(GRANTABLE_PLANS).not.toContain('federation');
   });
 
-  it('formats a proposed price', () => {
+  it('formats a proposed price: monthly, the yearly proposal where there is one, and "Free" (review round 1, code-5, design-10)', () => {
     expect(formatPrice(PLANS.pro_sifu.price)).toBe('$19 a month');
-    expect(formatPrice(PLANS.free_sifu.price)).toBe('$0');
+    expect(formatPrice(PLANS.premium_student.price)).toBe('$4 a month');
+    expect(formatPrice(PLANS.federation.price)).toBe('$99 a month or $990 a year');
+    expect(formatPrice(PLANS.free_sifu.price)).toBe('Free');
+    expect(formatPrice(PLANS.free_student.price)).toBe('Free');
   });
 
   it('versions the matrix', () => {
     expect(PLAN_MATRIX_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.\d+$/);
+  });
+
+  // Review round 1, code-7: any change of a plan, a price, a label, a limit or an availability
+  // changes this digest. When it fails: bump PLAN_MATRIX_VERSION, say what changed in
+  // docs/entitlements.md ("Версии на матрицата"), then pin the new version and digest here.
+  it('pins the version to the content of the matrix', () => {
+    const digest = createHash('sha256')
+      .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
+      .digest('hex');
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-10-19.1', digest: '15ec4f54b05f90bc56dda43feff21813c4f376ec2e45de985104cf6a3ea4f534' });
+  });
+});
+
+describe('how /plans marks a value (review round 1, design-4)', () => {
+  it('"Ads shown" is a lack and "No ads" the benefit: a check never sits next to ads', () => {
+    const advertising = FEATURES.find((f) => f.key === 'advertising')!;
+    for (const code of PLAN_ORDER) {
+      const value = advertising.values[code];
+      expect(valueMark(value), `${code}: ${value.label}`).toBe(value.label === 'Ads shown' ? 'not_included' : 'included');
+    }
+  });
+
+  it('"Browse only" is a plain fact, neither a check nor a dash; a missing school pin is a lack', () => {
+    const map = FEATURES.find((f) => f.key === 'school_map')!;
+    expect(valueMark(map.values.free_student)).toBe('neutral');
+    expect(valueMark(map.values.premium_student)).toBe('neutral');
+    expect(valueMark(map.values.free_sifu)).toBe('not_included');
+    expect(valueMark(map.values.pro_sifu)).toBe('included');
+  });
+});
+
+describe('features of the pilot that are not built yet (review round 1, requirements-1, design-1)', () => {
+  it('say when they open, and only features of the pilot do', () => {
+    const opening = FEATURES.filter((f) => f.opens !== undefined);
+    expect(opening.map((f) => [f.key, f.opens])).toEqual([
+      ['claim_teachers', 'Opens with teacher requests'],
+      ['approve_students', 'Opens with teacher requests'],
+      ['school_map', 'Opens with schools and the map'],
+    ]);
+    for (const f of opening) expect(f.availability, f.key).toBe('now');
+  });
+
+  it('every benefit of an upgrade carries its opening note', () => {
+    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual(['Opens with teacher requests', 'Opens with schools and the map']);
+  });
+
+  it('Premium Student gives nothing of the pilot over Free Student; the grant form says so (requirements-2)', () => {
+    expect(upgradeBenefits('free_student', 'premium_student')).toEqual([]);
+    expect(PLANS_WITHOUT_PILOT_BENEFITS).toEqual(['premium_student']);
   });
 });
 
@@ -146,7 +201,7 @@ describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
   it('Free Sifu to Professional Sifu: no student limit and a school pin, nothing planned', () => {
     const benefits = upgradeBenefits('free_sifu', 'pro_sifu');
     expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map']);
-    expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit' });
+    expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: 'Opens with teacher requests' });
   });
 
   it('never lists a planned feature, for any pair of plans', () => {

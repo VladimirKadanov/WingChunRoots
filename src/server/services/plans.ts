@@ -7,14 +7,14 @@
 // verification is shown as "Instructor (unverified)" (DEFAULT D04/D13) until an archivist approves
 // an instructor_verification case (M10b).
 
-import { and, count, eq, gt, sql } from 'drizzle-orm';
+import { and, count, eq, gt } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { authUser, notification, person, pilotAccessRequest, reviewCase } from '../db/schema';
+import { auditLog, authUser, notification, person, pilotAccessRequest, reviewCase } from '../db/schema';
 import { ACCOUNT_TYPES } from '../db/schema/common';
 import { effectivePlan, type Executor, grantsOf } from '../entitlements/access';
 import { grantState } from '../entitlements/effective';
@@ -29,7 +29,10 @@ import {
   PLAN_ORDER,
   type PlanCode,
   PLANS,
+  valueMark,
+  type ValueMark,
 } from '../entitlements/plans';
+import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 
@@ -49,7 +52,8 @@ export interface PlanSummary {
   audience: 'student' | 'sifu' | 'organization';
   availability: 'now' | 'planned';
   summary: string;
-  price: { monthlyUsd: number; yearlyUsd: number | null; text: string; label: typeof PROPOSED_PRICE_LABEL };
+  /** `label` is "Proposed price (not final)" for a price, null for a free plan (review round 1, design-10). */
+  price: { monthlyUsd: number; yearlyUsd: number | null; text: string; label: typeof PROPOSED_PRICE_LABEL | null };
 }
 
 export function planSummary(code: PlanCode): PlanSummary {
@@ -61,7 +65,12 @@ export function planSummary(code: PlanCode): PlanSummary {
     audience: plan.audience,
     availability: plan.availability,
     summary: plan.summary,
-    price: { monthlyUsd: plan.price.monthlyUsd, yearlyUsd: plan.price.yearlyUsd, text: formatPrice(plan.price), label: PROPOSED_PRICE_LABEL },
+    price: {
+      monthlyUsd: plan.price.monthlyUsd,
+      yearlyUsd: plan.price.yearlyUsd,
+      text: formatPrice(plan.price),
+      label: plan.price.monthlyUsd === 0 ? null : PROPOSED_PRICE_LABEL,
+    },
   };
 }
 
@@ -77,8 +86,10 @@ export interface PlanCatalog {
     availability: 'now' | 'planned';
     phase: number | null;
     enforced: boolean;
+    /** When a feature of the pilot opens, while it is not built yet ("Opens with teacher requests"). */
+    opens: string | null;
     note: string | null;
-    values: Record<PlanCode, { label: string; included: boolean }>;
+    values: Record<PlanCode, { label: string; included: boolean; mark: ValueMark }>;
   }[];
   federationExtras: readonly string[];
 }
@@ -97,11 +108,11 @@ export function planCatalog(): PlanCatalog {
       availability: f.availability,
       phase: f.phase,
       enforced: f.enforced,
+      opens: f.opens ?? null,
       note: f.note ?? null,
-      values: Object.fromEntries(PLAN_ORDER.map((code) => [code, { label: f.values[code].label, included: f.values[code].included }])) as Record<
-        PlanCode,
-        { label: string; included: boolean }
-      >,
+      values: Object.fromEntries(
+        PLAN_ORDER.map((code) => [code, { label: f.values[code].label, included: f.values[code].included, mark: valueMark(f.values[code]) }]),
+      ) as Record<PlanCode, { label: string; included: boolean; mark: ValueMark }>,
     })),
     federationExtras: FEDERATION_EXTRAS,
   };
@@ -155,11 +166,6 @@ export async function openPilotRequest(db: Executor, userId: string): Promise<Pi
     .from(pilotAccessRequest)
     .where(and(eq(pilotAccessRequest.userId, userId), eq(pilotAccessRequest.status, 'open')));
   return row ? { ...row, planName: PLANS[row.planCode].name, createdAt: row.createdAt.toISOString() } : null;
-}
-
-/** Serializes the pilot requests of one account (requestPilotAccess and the account type switch). */
-async function lockPilotRequests(tx: Executor, userId: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`pilot_access_request:${userId}`}, 0))`);
 }
 
 /**
@@ -222,6 +228,15 @@ export async function myPlan(principal: Principal | null, now: Date = new Date()
 
 export const setAccountTypeInput = z.object({ accountType: z.enum(ACCOUNT_TYPES, { error: 'Choose Student or Sifu.' }) });
 
+/**
+ * At most this many account type changes per account in ACCOUNT_TYPE_WINDOW_HOURS (review round 1,
+ * security-2): every change writes a row to the append-only audit log, which nobody can clean up.
+ * Counted from those audit rows, under the account's lock.
+ */
+export const ACCOUNT_TYPE_CHANGES_PER_WINDOW = 5;
+export const ACCOUNT_TYPE_WINDOW_HOURS = 24;
+export const ACCOUNT_TYPE_LIMIT_MESSAGE = 'You have changed your account type several times today. Try again tomorrow.';
+
 export interface AccountTypeChange {
   accountType: AccountType;
   plan: PlanSummary;
@@ -233,7 +248,9 @@ export interface AccountTypeChange {
  * Student or Sifu (plan §6.5): sets the free plan (free_student or free_sifu), audited as
  * account.type_change. It verifies nothing (DEFAULT D04) and never touches a relationship: from
  * Sifu to Student every confirmed link stays confirmed and public (DEFAULT D06/D08); only new
- * approvals are refused, because a Student plan approves no students.
+ * approvals are refused, because a Student plan approves no students. At most
+ * ACCOUNT_TYPE_CHANGES_PER_WINDOW changes in ACCOUNT_TYPE_WINDOW_HOURS (429 after that); choosing
+ * the type the account already has changes and counts nothing.
  */
 export async function setAccountType(principal: Principal | null, raw: unknown, meta: RequestMeta): Promise<AccountTypeChange> {
   const p = requireUser(principal);
@@ -243,15 +260,27 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
   const subject = { kind: 'user' as const, userId: p.user.id };
 
   const changed = await getDb().transaction(async (tx) => {
-    const [account] = await tx.select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, p.user.id)).for('update');
+    // The account's lock first, as in every write of an account's plan (services/account-lock.ts).
+    const account = await lockAccount(tx, { id: p.user.id });
     if (!account) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
     if (account.accountType === next) return false;
     const now = new Date();
+    const [recent] = await tx
+      .select({ n: count() })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.subjectType, 'user'),
+          eq(auditLog.subjectId, p.user.id),
+          eq(auditLog.action, 'account.type_change'),
+          gt(auditLog.occurredAt, new Date(now.getTime() - ACCOUNT_TYPE_WINDOW_HOURS * 3_600_000)),
+        ),
+      );
+    if ((recent?.n ?? 0) >= ACCOUNT_TYPE_CHANGES_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', ACCOUNT_TYPE_LIMIT_MESSAGE);
     const before = await effectivePlan(subject, { db: tx });
     await tx.update(authUser).set({ accountType: next, updatedAt: now }).where(eq(authUser.id, p.user.id));
     const after = await effectivePlan(subject, { db: tx });
     // An open pilot request for a plan of the old account type can no longer be granted.
-    await lockPilotRequests(tx, p.user.id);
     const closedPilotRequestId = await closeStalePilotRequest(tx, p.user.id, next, now);
     await writeAudit(tx, {
       action: 'account.type_change',
@@ -295,7 +324,7 @@ export interface PilotAccessOutcome {
  * "Request pilot access" (plan §5.6): asks the admins for a test plan instead of a payment. Every
  * admin gets a notification; nothing is charged and the plan does not change until an admin
  * grants it. One open request per account (a second click returns the same request), and at most
- * PILOT_REQUESTS_PER_WINDOW in PILOT_REQUEST_WINDOW_DAYS days, under a per-account advisory lock.
+ * PILOT_REQUESTS_PER_WINDOW in PILOT_REQUEST_WINDOW_DAYS days, under the account's lock.
  */
 export async function requestPilotAccess(principal: Principal | null, raw: unknown, meta: RequestMeta): Promise<PilotAccessOutcome> {
   const p = requireUser(principal);
@@ -306,7 +335,9 @@ export async function requestPilotAccess(principal: Principal | null, raw: unkno
 
   return getDb()
     .transaction(async (tx) => {
-      await lockPilotRequests(tx, p.user.id);
+      // The account's lock first (services/account-lock.ts): a grant or a type switch for this
+      // account that is under way finishes before this request reads the plan.
+      if (!(await lockAccount(tx, { id: p.user.id }))) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
       const effective = await effectivePlan(subject, { db: tx });
       await closeStalePilotRequest(tx, p.user.id, effective.accountType, new Date());
       const existing = await openPilotRequest(tx, p.user.id);

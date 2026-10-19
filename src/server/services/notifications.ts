@@ -75,7 +75,7 @@ async function withPilotRequesters(rows: NotificationRow[], isAdmin: boolean): P
 function view(row: NotificationRow): NotificationView {
   let rendered: ReturnType<typeof renderNotification>;
   try {
-    rendered = renderNotification(row.template, row.payload);
+    rendered = renderNotification(row.template, row.payload, { createdAt: row.createdAt });
   } catch {
     rendered = { title: 'Notification', body: [{ text: 'This notification can no longer be shown.' }] };
   }

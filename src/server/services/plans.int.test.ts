@@ -22,7 +22,7 @@ import { uuidv7 } from '../db/ids';
 import { auditLog, authSession, entitlementGrant, lineage, notification, person, personName, pilotAccessRequest, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleApiRequest } from '../rpc/handler';
-import { PILOT_REQUESTS_PER_WINDOW, PLANS_BANNER, PROPOSED_PRICE_LABEL } from './plans';
+import { ACCOUNT_TYPE_CHANGES_PER_WINDOW, ACCOUNT_TYPE_LIMIT_MESSAGE, PILOT_REQUESTS_PER_WINDOW, PLANS_BANNER, PROPOSED_PRICE_LABEL } from './plans';
 
 let testDb: TestDatabase | undefined;
 let admins: { account: TestAccount; token: string }[] = [];
@@ -96,9 +96,12 @@ describe('plans.catalog and plans.mine', () => {
     const result = await v1(null, 'GET', '/plans');
     expect(result.status).toBe(200);
     expect(result.data.banner).toBe(PLANS_BANNER);
-    const plans = result.data.plans as { code: string; availability: string; price: { label: string } }[];
+    const plans = result.data.plans as { code: string; availability: string; price: { label: string | null; text: string; monthlyUsd: number } }[];
     expect(plans.map((p) => p.code)).toEqual(['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation']);
-    for (const plan of plans) expect(plan.price.label).toBe(PROPOSED_PRICE_LABEL);
+    // Every price is a proposal; a free plan is "Free", with no proposal label (review round 1, design-10).
+    for (const plan of plans) expect(plan.price.label, plan.code).toBe(plan.price.monthlyUsd === 0 ? null : PROPOSED_PRICE_LABEL);
+    for (const plan of plans) if (plan.price.monthlyUsd === 0) expect(plan.price.text).toBe('Free');
+    expect(plans.find((p) => p.code === 'federation')!.price.text).toBe('$99 a month or $990 a year');
     expect(plans.find((p) => p.code === 'federation')!.availability).toBe('planned');
     const features = result.data.features as { key: string; availability: string }[];
     expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'claim_teachers', 'approve_students', 'school_map']);
@@ -132,6 +135,30 @@ describe('account.setType', () => {
     expect(back.data).toMatchObject({ accountType: 'student', plan: { code: 'free_student' }, instructor: { label: 'Student' } });
   });
 
+  it(`allows ${ACCOUNT_TYPE_CHANGES_PER_WINDOW} changes a day, then answers 429 and writes nothing (review round 1, security-2)`, async () => {
+    const { account, token } = await member('type-limit');
+    const types = ['sifu', 'student'] as const;
+    for (let i = 0; i < ACCOUNT_TYPE_CHANGES_PER_WINDOW; i += 1) {
+      const result = await v1(token, 'POST', '/account/type', { accountType: types[i % 2] });
+      expect(result.status, `change ${i + 1}`).toBe(200);
+      expect(result.data.changed).toBe(true);
+    }
+    const audits = async () =>
+      (await getDb().select({ n: count() }).from(auditLog).where(and(eq(auditLog.action, 'account.type_change'), eq(auditLog.subjectId, account.id))))[0]!.n;
+    expect(await audits()).toBe(ACCOUNT_TYPE_CHANGES_PER_WINDOW);
+    const current = types[(ACCOUNT_TYPE_CHANGES_PER_WINDOW - 1) % 2];
+    const other = current === 'sifu' ? 'student' : 'sifu';
+    const refused = await v1(token, 'POST', '/account/type', { accountType: other });
+    expect(refused.status).toBe(429);
+    expect(refused.data.message).toBe(ACCOUNT_TYPE_LIMIT_MESSAGE);
+    expect(await audits()).toBe(ACCOUNT_TYPE_CHANGES_PER_WINDOW);
+    expect((await v1(token, 'GET', '/plans/mine')).data.accountType).toBe(current);
+    // Choosing the type it already has changes nothing and is not refused.
+    expect(await v1(token, 'POST', '/account/type', { accountType: current })).toMatchObject({ status: 200, data: { changed: false } });
+    // The web path is limited the same way.
+    expect((await rpcWithCookie(token, '/account/setType', { accountType: other })).status).toBe(429);
+  });
+
   it('refuses another value and a request without a session', async () => {
     const { token } = await member('type-invalid');
     const refused = await v1(token, 'POST', '/account/type', { accountType: 'master' });
@@ -159,7 +186,7 @@ describe('plans.requestPilotAccess', () => {
     // The admin's dashboard shows it with a link to the request.
     const list = await v1(admins[0]!.token, 'GET', '/notifications');
     const item = (list.data.items as { template: string; action: { href: string } | null }[]).find((n) => n.template === 'pilot-access.requested');
-    expect(item?.action?.href).toBe(`/admin/grants?request=${requestId}`);
+    expect(item?.action?.href).toBe(`/admin/grants?request=${requestId}#give-plan`);
 
     const [grants] = await getDb().select({ n: count() }).from(entitlementGrant).where(eq(entitlementGrant.subjectUserId, account.id));
     expect(grants!.n).toBe(0);
@@ -226,7 +253,7 @@ describe('plans.requestPilotAccess', () => {
     type Item = { body: ({ text: string } | { name: { value: string } })[]; action: { href: string } | null; template: string };
     const shown = async () => {
       const items = (await v1(admin.token, 'GET', '/notifications')).data.items as Item[];
-      return items.find((item) => item.action?.href === `/admin/grants?request=${requestId}`);
+      return items.find((item) => item.action?.href === `/admin/grants?request=${requestId}#give-plan`);
     };
     expect((await shown())?.body[0]).toEqual({ name: { value: 'Demo Pilot Asker', lang: 'und-Latn' } });
     await getDb().update(personName).set({ value: 'Demo Pilot Renamed' }).where(eq(personName.personId, personId));
@@ -353,8 +380,74 @@ describe('grants.* (admin with a verified second factor)', () => {
     expect(audience.status).toBe(400);
     expect(audience.data.data?.fields).toHaveProperty('planCode');
     expect((await v1(admin.token, 'POST', '/admin/grants/create', { email: student.account.email, planCode: 'federation', reason: 'Demo' })).status).toBe(400);
+    const noPlan = await v1(admin.token, 'POST', '/admin/grants/create', { email: student.account.email, planCode: '', reason: 'Demo' });
+    expect(noPlan.data.data?.fields).toMatchObject({ planCode: 'Choose a plan.' });
     const [grants] = await getDb().select({ n: count() }).from(entitlementGrant).where(eq(entitlementGrant.subjectUserId, student.account.id));
     expect(grants!.n).toBe(0);
+  });
+
+  it('refuses a start before today and a start or end more than two years ahead (review round 1, security-3)', async () => {
+    const admin = admins[0]!;
+    const student = await member('grant-dates');
+    const give = (dates: { startsOn?: string; endsOn?: string }) =>
+      v1(admin.token, 'POST', '/admin/grants/create', { email: student.account.email, planCode: 'premium_student', reason: 'Demo dates', ...dates });
+    const past = await give({ startsOn: '1970-01-01' });
+    expect(past.status).toBe(400);
+    expect(past.data.data?.fields).toMatchObject({ startsOn: 'The start cannot be before today.' });
+    expect((await give({ startsOn: inDays(-1) })).data.data?.fields).toMatchObject({ startsOn: 'The start cannot be before today.' });
+    const far = await give({ startsOn: '9999-12-31' });
+    expect(far.status).toBe(400);
+    expect(far.data.data?.fields).toMatchObject({ startsOn: 'Choose a date within the next two years.' });
+    expect((await give({ endsOn: '9999-12-31' })).data.data?.fields).toMatchObject({ endsOn: 'Choose a date within the next two years.' });
+    expect((await give({ startsOn: inDays(800) })).status).toBe(400);
+    const [none] = await getDb().select({ n: count() }).from(entitlementGrant).where(eq(entitlementGrant.subjectUserId, student.account.id));
+    expect(none!.n).toBe(0);
+    // Today and a day well inside the two years are fine.
+    expect((await give({ startsOn: today(), endsOn: inDays(700) })).status).toBe(200);
+  });
+
+  it('a grant that starts later is announced with its start; the plan does not change before it (review round 1, security-4)', async () => {
+    const admin = admins[0]!;
+    const sifu = await member('grant-later', 'sifu');
+    const created = await v1(admin.token, 'POST', '/admin/grants/create', {
+      email: sifu.account.email,
+      planCode: 'pro_sifu',
+      reason: 'Demo later start',
+      startsOn: inDays(30),
+      endsOn: inDays(60),
+    });
+    expect(created.status).toBe(200);
+    const [row] = await notificationsOf(sifu.account.id, 'plan.granted');
+    expect(row!.payload).toMatchObject({ planCode: 'pro_sifu', startsAt: `${inDays(30)}T00:00:00.000Z`, endsAt: `${inDays(60)}T00:00:00.000Z` });
+    const list = (await v1(sifu.token, 'GET', '/notifications')).data as { items: { template: string; body: { text?: string }[] }[] };
+    const text = list.items.find((item) => item.template === 'plan.granted')!.body.map((segment) => segment.text ?? '').join('');
+    expect(text).toContain(`for the pilot from ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${inDays(30)}T00:00:00Z`))}`);
+    expect((await v1(sifu.token, 'GET', '/plans/mine')).data).toMatchObject({ plan: { code: 'free_sifu' } });
+  });
+});
+
+describe('a bearer request is read without its cookie (review round 1, security-7)', () => {
+  it('an invalid bearer token next to a valid session cookie is no session: 401, and nothing changes', async () => {
+    const { account, token } = await member('bearer-cookie');
+    const response = await handleApiRequest(
+      new Request(`${TEST_APP_URL}/api/v1/account/type`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer x',
+          cookie: `wcr.session_token=${encodeURIComponent(token)}`,
+          origin: 'https://evil.example',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ accountType: 'sifu' }),
+      }),
+      'openapi',
+    );
+    expect(response.status).toBe(401);
+    const audits = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.type_change'), eq(auditLog.subjectId, account.id)));
+    expect(audits).toEqual([]);
+    // The cookie alone, from this site, still works; the token as a bearer too.
+    expect((await rpcWithCookie(token, '/account/setType', { accountType: 'sifu' })).status).toBe(200);
+    expect((await v1(token, 'POST', '/account/type', { accountType: 'student' })).status).toBe(200);
   });
 });
 
@@ -452,9 +545,52 @@ describe('dashboard.overview', () => {
     // One more request from a student who already counts: approving it would not grow the count.
     await getDb().insert(teachingRelationship).values({ id: uuidv7(), teacherPersonId: own!, studentPersonId: students[0]!, lineageId: otherLineageId, status: 'pending_teacher', visibility: 'involved_only' });
 
-    const overview = (await v1(sifu.token, 'GET', '/dashboard')).data as { sifu: { requests: unknown[]; students: { approved: number }; upgrade: { waiting: number; to: { code: string } } | null } };
+    const overview = (await v1(sifu.token, 'GET', '/dashboard')).data as {
+      sifu: { requests: unknown[]; students: { approved: number }; upgrade: { waiting: { count: number }; to: { code: string } } | null };
+    };
     expect(overview.sifu.students.approved).toBe(5);
     expect(overview.sifu.requests).toHaveLength(50);
-    expect(overview.sifu.upgrade).toMatchObject({ waiting: 52, to: { code: 'pro_sifu' } });
+    expect(overview.sifu.upgrade).toMatchObject({ feature: 'approve_students', heading: 'More students with Professional Sifu', waiting: { count: 52 }, to: { code: 'pro_sifu' } });
+  });
+});
+
+// Review round 1 (security-1, code-1, code-3): every account-scoped write takes the account's row
+// lock first (lockAccount, FOR NO KEY UPDATE), so two requests for one account wait in line instead
+// of deadlocking on the foreign-key check of an insert.
+describe('concurrent changes to one account', () => {
+  const ROUNDS = 20;
+
+  it(`the account type switch and "Request pilot access" at once never deadlock (${ROUNDS} rounds)`, async () => {
+    const statuses: number[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const { token } = await member(`race-type-${round}`, 'sifu');
+      const results = await Promise.all([
+        v1(token, 'POST', '/account/type', { accountType: 'student' }),
+        v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' }),
+      ]);
+      statuses.push(...results.map((result) => result.status));
+    }
+    // A request that came second may be refused (400: Pro Sifu is for Sifu accounts), never failed.
+    expect(statuses.filter((status) => status >= 500)).toEqual([]);
+  });
+
+  it(`a grant and "Request pilot access" at once never leave a request open for a plan the account has (${ROUNDS} rounds)`, async () => {
+    const admin = admins[0]!;
+    const statuses: number[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const { account, token } = await member(`race-grant-${round}`, 'sifu');
+      const results = await Promise.all([
+        v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' }),
+        v1(admin.token, 'POST', '/admin/grants/create', { email: account.email, planCode: 'pro_sifu', reason: 'Demo race probe' }),
+      ]);
+      statuses.push(...results.map((result) => result.status));
+      const [open] = await getDb()
+        .select({ n: count() })
+        .from(pilotAccessRequest)
+        .where(and(eq(pilotAccessRequest.userId, account.id), eq(pilotAccessRequest.status, 'open')));
+      expect(open?.n, `round ${round}: no open request beside the grant`).toBe(0);
+    }
+    // The request either came first (and the grant answered it) or saw the grant (409).
+    expect(statuses.filter((status) => status >= 500)).toEqual([]);
   });
 });
