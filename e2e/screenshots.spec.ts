@@ -60,6 +60,35 @@ const STATES: readonly ScreenState[] = [
     },
   },
   {
+    // The profile when its own read fails (the person-once test fault).
+    name: 'person-profile-error',
+    milestone: 'M04',
+    async reach(page) {
+      await page.context().addCookies([{ name: 'wcr-test-fault', value: `person-once:${randomUUID()}`, url: BASE_URL }]);
+      await page.goto('/people/demo-two-lineages');
+      await expect(page.getByRole('heading', { level: 1, name: 'This profile could not be loaded' })).toBeVisible();
+    },
+  },
+  {
+    // A hidden person's address: the 404 "Not on the record" (src/proxy.ts).
+    name: 'person-not-on-record',
+    milestone: 'M04',
+    async reach(page) {
+      const response = await page.goto('/people/demo-claim-only-teacher');
+      expect(response?.status()).toBe(404);
+      await expect(page.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+    },
+  },
+  {
+    // A hub's profile: the 12 earliest of its students, the rest in the list view.
+    name: 'person-hub',
+    milestone: 'M04',
+    async reach(page) {
+      await page.goto('/people/demo-hub-a');
+      await expect(page.getByRole('list', { name: /^Students of / })).toBeVisible();
+    },
+  },
+  {
     // A student's own pending request on the teacher's profile (DEFAULT D03).
     name: 'person-own-pending',
     milestone: 'M04',
