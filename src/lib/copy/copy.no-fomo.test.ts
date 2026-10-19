@@ -15,8 +15,47 @@ import { FOMO_RULES, findFomo } from './no-fomo';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 
-/** Where the app's English copy lives: pages, components, e-mail and notification templates, and the services and plan matrix that write UI messages. */
-const COPY_DIRS = ['src/app', 'src/components', 'src/server/templates', 'src/server/services', 'src/server/entitlements'];
+/**
+ * Where the app's English copy lives: pages, components, e-mail and notification templates, the
+ * services and plan matrix that write UI messages, and (review round 1, code-8) the auth, form and
+ * RPC layers that return messages to clients and the shared helpers that format text (src/lib).
+ */
+const COPY_DIRS = [
+  'src/app',
+  'src/components',
+  'src/server/templates',
+  'src/server/services',
+  'src/server/entitlements',
+  'src/server/auth',
+  'src/server/forms',
+  'src/server/rpc',
+  'src/lib',
+];
+
+/** Files that hold the banned phrases themselves, as data for the matcher. */
+const NOT_COPY = new Set(['src/lib/copy/no-fomo.ts']);
+
+/** The HTML entities JSX text may spell copy with, decoded before the check. */
+const ENTITIES: Record<string, string> = {
+  '&nbsp;': ' ',
+  '&#160;': ' ',
+  '&#xa0;': ' ',
+  '&apos;': "'",
+  '&#39;': "'",
+  '&#x27;': "'",
+  '&rsquo;': '’',
+  '&lsquo;': '‘',
+  '&quot;': '"',
+  '&ldquo;': '“',
+  '&rdquo;': '”',
+  '&amp;': '&',
+  '&mdash;': '—',
+  '&ndash;': '–',
+};
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:[a-z]+|#\d+|#x[\da-f]+);/gi, (entity) => ENTITIES[entity.toLowerCase()] ?? entity);
+}
 
 /** A number, an identifier or any other expression inside a sentence reads as "1". */
 const PLACEHOLDER = '1';
@@ -42,7 +81,7 @@ function copyOf(fileName: string, source: string): CopyText[] {
   const jsxText = (node: ts.JsxElement | ts.JsxFragment): string =>
     node.children
       .map((child) => {
-        if (ts.isJsxText(child)) return child.text;
+        if (ts.isJsxText(child)) return decodeEntities(child.text);
         if (ts.isJsxElement(child) || ts.isJsxFragment(child)) return jsxText(child);
         if (ts.isJsxExpression(child)) {
           const expression = child.expression;
@@ -53,9 +92,25 @@ function copyOf(fileName: string, source: string): CopyText[] {
         return '';
       })
       .join('');
+  const isPlus = (node: ts.Node): node is ts.BinaryExpression => ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken;
+  /** One operand of a `+` chain as text: a literal's own text, any other expression a placeholder. */
+  const operand = (node: ts.Expression): string => {
+    const inner = ts.isParenthesizedExpression(node) ? node.expression : node;
+    if (isPlus(inner)) return operand(inner.left) + operand(inner.right);
+    if (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner)) return inner.text;
+    if (ts.isTemplateExpression(inner)) return inner.head.text + inner.templateSpans.map((span) => PLACEHOLDER + span.literal.text).join('');
+    return PLACEHOLDER;
+  };
+  const hasLiteral = (node: ts.Expression): boolean => {
+    const inner = ts.isParenthesizedExpression(node) ? node.expression : node;
+    if (isPlus(inner)) return hasLiteral(inner.left) || hasLiteral(inner.right);
+    return ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner) || ts.isTemplateExpression(inner);
+  };
   const visit = (node: ts.Node): void => {
     // Module paths are not copy.
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
+    // 'Last ' + 'chance' is one sentence: the whole chain, from its outermost `+`.
+    if (isPlus(node) && !(node.parent && isPlus(node.parent)) && hasLiteral(node)) push(node, operand(node));
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) push(node, node.text);
     else if (ts.isTemplateExpression(node)) {
       push(node, node.head.text + node.templateSpans.map((span) => PLACEHOLDER + span.literal.text).join(''));
@@ -71,7 +126,8 @@ function copyFiles(): string[] {
   return COPY_DIRS.flatMap((dir) =>
     readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
       .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !name.includes('__boundary-probe-'))
-      .map((name) => join(ROOT, dir, name)),
+      .map((name) => join(ROOT, dir, name))
+      .filter((file) => !NOT_COPY.has(relative(ROOT, file))),
   ).sort();
 }
 
@@ -122,11 +178,17 @@ describe('findFomo()', () => {
       'Proposed prices — not final. Payments are not available during the pilot.',
       'Planned — not available yet',
       'You have approved 5 of 5 students on Free Sifu.',
-      'One student request waits below. It stays pending and visible until you can approve it.',
-      '3 student requests wait below. They stay pending and visible until you can approve them.',
+      'One student request waits below. It stays pending and visible.',
+      '3 student requests wait below. They stay pending and visible.',
+      'What Professional Sifu adds during the pilot',
+      'Opens with teacher requests',
+      'Opens with schools and the map',
+      'Requests to teachers open later in the pilot; a request you send then waits here until the teacher answers it.',
+      'You can change the type up to five times in 24 hours.',
+      'You have changed your account type several times today. Try again tomorrow.',
       'There are no payments during the pilot. Request pilot access and an administrator can give you Professional Sifu as a test plan.',
       'The plan stops at 00:00 UTC that day. Leave empty for no end date.',
-      'Confirmed links stay confirmed and public; only new approvals above the plan left wait.',
+      'Confirmed links stay confirmed and public. New approvals above the remaining plan’s limit wait.',
       'Your request for Professional Sifu was sent to the administrators. Nothing is charged.',
       'Sent 3 days ago',
       'Mark all as read',
@@ -158,6 +220,26 @@ describe('copyOf()', () => {
     const rules = texts.flatMap((text) => findFomo(text).map((finding) => finding.rule));
     expect(new Set(rules)).toEqual(new Set(['countdown', 'urgency', 'scarcity']));
   });
+
+  it('decodes entities in JSX text and reads a + chain as one sentence (review round 1, code-8)', () => {
+    const source = [
+      'export const A = () => <p>Last&nbsp;chance</p>;',
+      'export const B = () => <p>Don&apos;t miss out</p>;',
+      'export const C = () => <p>Act&#160;now</p>;',
+      "const d = 'Last ' + 'chance';",
+      "const e = 'Only ' + n + ' spots left';",
+      "const f = ('Hurry' + ',') + ' please';",
+    ].join('\n');
+    const texts = copyOf('probe.tsx', source).map((item) => item.text);
+    expect(texts).toContain('Last chance');
+    expect(texts).toContain("Don't miss out");
+    expect(texts).toContain('Act now');
+    expect(texts).toContain('Only 1 spots left');
+    expect(texts).toContain('Hurry, please');
+    const rules = texts.flatMap((text) => findFomo(text).map((finding) => finding.rule));
+    expect(new Set(rules)).toEqual(new Set(['urgency', 'scarcity']));
+    expect(texts.filter((text) => findFomo(text).length > 0).length).toBeGreaterThanOrEqual(5);
+  });
 });
 
 describe('the English copy of the app', () => {
@@ -165,7 +247,18 @@ describe('the English copy of the app', () => {
     const files = copyFiles();
     // The scan covers the screens of M08; an empty or wrong folder list cannot pass.
     const names = files.map((file) => relative(ROOT, file));
-    expect(names).toEqual(expect.arrayContaining(['src/components/plans/upgrade-prompt.tsx', 'src/app/plans/page.tsx', 'src/server/templates/notifications.ts']));
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'src/components/plans/upgrade-prompt.tsx',
+        'src/app/plans/page.tsx',
+        'src/server/templates/notifications.ts',
+        'src/server/auth/guards.ts',
+        'src/server/forms/flash.ts',
+        'src/server/rpc/form.ts',
+        'src/lib/dates.ts',
+      ]),
+    );
+    expect(names).not.toContain('src/lib/copy/no-fomo.ts');
     expect(files.length).toBeGreaterThan(50);
 
     const findings = files.flatMap((file) =>
