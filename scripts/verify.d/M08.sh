@@ -143,6 +143,16 @@ check "the Server Actions of /admin/grants wrap grants.create and grants.revoke 
 check "the grants table is built with TanStack Table 9 (table-core) on the server" bash -c '
   f=src/app/admin/grants/grants-table.tsx
   grep -q "from '\''@tanstack/table-core'\''" "$f" && grep -q "constructTable(" "$f" && ! grep -q "^'\''use client'\''" "$f"'
+check "grants.closeRequest runs behind adminWithSecondFactor, is audited and has its Server Action (review round 2)" bash -c '
+  grep -Eq "^    closeRequest: adminWithSecondFactor$" src/server/rpc/router.ts &&
+  grep -q "'\''pilot_access.close'\''" src/server/services/grants.ts &&
+  grep -q "closeRequestAction.*grants.closeRequest" src/server/rpc/parity.ts && grep -q "\.grants\.closeRequest(" src/app/admin/grants/actions.ts'
+check "the requester of a pilot request and the open count need the second factor (hasStaff2FA, review round 2)" bash -c '
+  grep -q "hasStaff2FA(p, \[.admin.\])" src/server/services/notifications.ts && grep -q "hasStaff2FA(p, \[.admin.\])" src/server/services/dashboard.ts'
+check "the in-process oRPC client logs failures like the HTTP handlers (logProcedureFailure, review round 2)" \
+  grep -q "interceptors: \[logProcedureFailure\]" src/server/rpc/server.ts
+refute "the M08 Server Actions never rethrow a procedure error (formStateFromFailure after unstable_rethrow)" \
+  grep_code "^\s*throw error;" src/app/admin/grants/actions.ts src/app/dashboard/settings/actions.ts src/app/dashboard/actions.ts
 refute "revoking a plan never changes a relationship (no teaching_relationship write in grants.ts)" \
   grep_code "update\(teachingRelationship\)|delete\(teachingRelationship\)|UPDATE teaching_relationship|DELETE FROM teaching_relationship" src/server/services/grants.ts
 
@@ -247,6 +257,12 @@ titles=(
   '@M08 switching the account type to Sifu sets the Free Sifu plan, shows "Instructor (unverified)" and is audited'
   '@M08 student and Sifu dashboards render empty states with a next action'
   '@M08 the dashboards and the upgrade prompt work at 390x844 with no horizontal scroll'
+  # Review round 2.
+  '@M08 an admin session without the second factor sees no requester and no open count; verifying it comes back to the request'
+  '@M08 a database failure under the grant form says so calmly, changes nothing and logs no e-mail address'
+  '@M08 "Request pilot access" on a prompt left open after the account became a Student says why, with and without JavaScript'
+  '@M08 in forced colours the chosen account type stays visible; a verified Sifu is not told they show as unverified'
+  '@M08 an admin closes a pilot access request with a reason; the account is told and can ask again, with and without JavaScript'
 )
 for title in "${titles[@]}"; do
   check "E2E test: $title" grep -qF "$title" e2e/m08-entitlements.spec.ts
