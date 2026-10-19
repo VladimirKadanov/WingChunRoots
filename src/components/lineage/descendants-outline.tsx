@@ -8,7 +8,7 @@
 // the other mention links there. One identity, several mentions, one profile.
 //
 // Each row is the person's own line (design review round 1): the disclosure control at its start
-// (a chevron in a ring, 32 px with a mouse and 44 px on a touch screen), the name in the display
+// (a chevron in a ring, 32 px with a mouse and 44 px on a touch screen, in px like the indents), the name in the display
 // face, the year training began, and the state as a seal and a word when it is not a public
 // verified link (a viewer's own request, DEFAULT D03). A row is as tall as its name's target (32 px
 // with a mouse, 44 px on a touch screen) and rows touch, so a hub's long lists stay short on a
@@ -167,8 +167,10 @@ export function DescendantsOutline({
         className={cx(
           'grid',
           // Room between the people of the first level, each with their students beneath. Deeper,
-          // rows touch: each is already its name's full target (44 px on a touch screen).
-          level === 1 ? 'gap-y-2' : 'ml-4 gap-y-0.5 border-l border-border-strong pl-2 pointer-coarse:ml-[1.375rem] pointer-coarse:gap-y-0',
+          // rows touch: each is already its name's full target (44 px on a touch screen). Indents
+          // and gutters are in px, matching the chevron's fixed size: with enlarged text they
+          // stay as they are, so a deep row keeps its width on a phone (final check, screens-2).
+          level === 1 ? 'gap-y-2' : 'ml-[16px] gap-y-0.5 border-l border-border-strong pl-[8px] pointer-coarse:ml-[22px] pointer-coarse:gap-y-0',
         )}
       >
         {kids.map((kid) => item(kid, parentId, level, notes.get(kid.id), gutter))}
@@ -194,15 +196,23 @@ export function DescendantsOutline({
     const nestedGutter = hasGutter(person.id, kids);
 
     return (
-      <li key={`${parentId}-${person.id}`} id={expandedHere ? `outline-${person.slug}` : undefined} data-person={person.slug} className={cx('relative', gutter ? 'pl-8 pointer-coarse:pl-11' : 'pl-3')}>
+      <li
+        key={`${parentId}-${person.id}`}
+        id={expandedHere ? `outline-${person.slug}` : undefined}
+        data-person={person.slug}
+        // min-w-0 and overflow-wrap: a long word wraps inside the row instead of widening the page.
+        className={cx('relative min-w-0 [overflow-wrap:anywhere]', gutter ? 'pl-[32px] pointer-coarse:pl-[44px]' : 'pl-[12px]')}
+      >
         <div className="flex flex-wrap items-baseline gap-x-2">
           <PersonLink person={person} compact className={level === 1 ? 'font-display text-lg' : 'font-display text-base'} />
           {year ? <span className="text-sm text-fg-muted tabular">{year}</span> : null}
           {note ? <span className="text-sm text-fg-muted">({note})</span> : null}
           {marked ? <RelationBadges edge={marked} role="student" /> : null}
           {others.length > 0 ? (
-            // Pulled up to its name when it wraps under it (the name's touch target is 44 px tall).
-            <span className="text-sm text-fg-muted pointer-coarse:-mt-2.5" data-also>
+            // Pulled up to its name when it wraps under it (the name's touch target is 44 px tall), so
+            // it reads as the name's note, not the next row's. It lets taps through to the name's
+            // target beneath (final check, screens-1: the overlapping strip was plain text).
+            <span className="text-sm text-fg-muted pointer-coarse:pointer-events-none pointer-coarse:-mt-2.5" data-also>
               (also a student of{' '}
               {others.map((o, i) => (
                 <Fragment key={o.id}>
@@ -225,9 +235,9 @@ export function DescendantsOutline({
           </p>
         ) : expandedHere && kids.length > 0 ? (
           <details open={level < OPEN_LEVELS} className="group/outline">
-            <summary className="absolute top-0 left-0 grid size-8 cursor-pointer list-none place-items-center rounded-xs pointer-coarse:size-11 [&::-webkit-details-marker]:hidden">
+            <summary className="absolute top-0 left-0 grid size-[32px] cursor-pointer list-none place-items-center rounded-xs pointer-coarse:size-[44px] [&::-webkit-details-marker]:hidden">
               {/* The disclosure mark: points right when closed, down when open (not by colour). */}
-              <span aria-hidden="true" className="grid size-6 place-items-center rounded-xs border border-border-strong bg-bg text-fg">
+              <span aria-hidden="true" className="grid size-[24px] place-items-center rounded-xs border border-border-strong bg-bg text-fg">
                 <ChevronDownIcon size={14} className="-rotate-90 transition-transform group-open/outline:rotate-0" />
               </span>
               <span className="sr-only">
@@ -238,8 +248,8 @@ export function DescendantsOutline({
             {hiddenStudents > 0 ? (
               <p
                 className={cx(
-                  'ml-4 border-l border-border-strong text-sm text-fg-muted pointer-coarse:ml-[1.375rem]',
-                  nestedGutter ? 'pl-10 pointer-coarse:pl-[3.25rem]' : 'pl-5',
+                  'ml-[16px] border-l border-border-strong text-sm text-fg-muted pointer-coarse:ml-[22px]',
+                  nestedGutter ? 'pl-[40px] pointer-coarse:pl-[52px]' : 'pl-[20px]',
                 )}
               >
                 <Link href={`${profileHref(person.slug)}/lineage`} prefetch={false} className="link inline-flex min-h-8 items-center pointer-coarse:min-h-11">
