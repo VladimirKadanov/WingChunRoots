@@ -85,7 +85,7 @@
 | Таблица | Предназначение и важни колони |
 |---|---|
 | `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy_ack`, `authenticity_declaration`, `age_18_plus`, `publication`; M02), `document_version` (версията на документа от `content/legal/`, например `2026-10-17-draft`), `action` (`granted`, `withdrawn`), `occurred_at`. Редовете не се променят: нова версия или оттегляне е нов ред |
-| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `plan.granted` и `plan.revoked`; частичният индекс `notification_user_id_unread_idx` брои непрочетените |
+| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `plan.granted` (`payload`: `planCode`, `startsAt`, `endsAt`) и `plan.revoked`; частичният индекс `notification_user_id_unread_idx` брои непрочетените |
 | `email_delivery` | Един ред на имейл (M01b: `Mailer` и outbox-ът): `to_email` (`NULL`, след като срокът на пазене изтече; задължителен при `queued`), `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `attempts` (брой опити, ≥ 0), `last_attempt_at`, `provider_message_id`, `error` (без адреси, до 500 знака), `sent_at` |
 | `audit_log` | Одитен журнал само за добавяне (раздел 6) |
 
