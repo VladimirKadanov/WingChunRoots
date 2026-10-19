@@ -41,6 +41,8 @@ import {
   pathsGraph,
   personCounts,
   publicPersonIdBySlug,
+  readDeadline,
+  type ReadDeadline,
   readTransaction,
   studentPage,
   subtreeGraph,
@@ -110,8 +112,8 @@ async function visibleTo(viewer: Viewer, tx: Executor, id: string): Promise<bool
 }
 
 /** The id behind a slug for this viewer: a public person, or a hidden one they may see. */
-async function resolveSlug(viewer: Viewer, value: string): Promise<string | null> {
-  const id = await readTransaction(getPublicDb(), (tx) => publicPersonIdBySlug(tx, value));
+async function resolveSlug(viewer: Viewer, value: string, deadline: ReadDeadline): Promise<string | null> {
+  const id = await readTransaction(getPublicDb(), (tx) => publicPersonIdBySlug(tx, value), deadline);
   if (id) return id;
   return Object.values(viewer.extras.nodes).find((n) => n.slug === value)?.id ?? null;
 }
@@ -121,10 +123,14 @@ async function resolveSlug(viewer: Viewer, value: string): Promise<string | null
 export async function lineageEgo(principal: Principal | null, input: EgoInput, meta?: RequestMeta): Promise<LineageGraphDto> {
   failOnce(meta?.testFault, 'lineage-once');
   const args = { focusId: input.focusId, up: input.up, down: input.down, fanoutLimit: input.fanoutLimit };
-  const viewer = await loadViewer(principal);
+  // One budget for the procedure's own reads (a cached read has its own, lineage-graph.ts).
+  const deadline = readDeadline();
+  const viewer = await loadViewer(principal, deadline);
   const graph = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), async (tx) =>
-        (await visibleTo(viewer, tx, args.focusId)) ? egoGraph(tx, args, viewer.extras) : null,
+    ? await readTransaction(
+        getPublicDb(),
+        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? egoGraph(tx, args, viewer.extras) : null),
+        deadline,
       )
     : await cachedEgo(args);
   if (!graph) throw notFound();
@@ -133,10 +139,13 @@ export async function lineageEgo(principal: Principal | null, input: EgoInput, m
 
 export async function lineageAncestors(principal: Principal | null, input: AncestorsInput, meta?: RequestMeta): Promise<LineageGraphDto> {
   failOnce(meta?.testFault, 'lineage-once');
-  const viewer = await loadViewer(principal);
+  const deadline = readDeadline();
+  const viewer = await loadViewer(principal, deadline);
   const graph = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), async (tx) =>
-        (await visibleTo(viewer, tx, input.focusId)) ? ancestorsGraph(tx, input.focusId, viewer.extras) : null,
+    ? await readTransaction(
+        getPublicDb(),
+        async (tx) => ((await visibleTo(viewer, tx, input.focusId)) ? ancestorsGraph(tx, input.focusId, viewer.extras) : null),
+        deadline,
       )
     : await cachedAncestors({ focusId: input.focusId });
   if (!graph) throw notFound();
@@ -146,10 +155,13 @@ export async function lineageAncestors(principal: Principal | null, input: Ances
 export async function lineageSubtree(principal: Principal | null, input: SubtreeInput, meta?: RequestMeta): Promise<LineageGraphDto> {
   failOnce(meta?.testFault, 'lineage-once');
   const args = { rootId: input.rootId, lineageId: input.lineageId ?? null, depth: input.depth };
-  const viewer = await loadViewer(principal);
+  const deadline = readDeadline();
+  const viewer = await loadViewer(principal, deadline);
   const graph = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), async (tx) =>
-        (await visibleTo(viewer, tx, args.rootId)) ? subtreeGraph(tx, args, viewer.extras) : null,
+    ? await readTransaction(
+        getPublicDb(),
+        async (tx) => ((await visibleTo(viewer, tx, args.rootId)) ? subtreeGraph(tx, args, viewer.extras) : null),
+        deadline,
       )
     : await cachedSubtree(args);
   if (!graph) throw notFound();
@@ -159,10 +171,13 @@ export async function lineageSubtree(principal: Principal | null, input: Subtree
 export async function lineagePaths(principal: Principal | null, input: PathsInput, meta?: RequestMeta): Promise<LineagePathsDto> {
   failOnce(meta?.testFault, 'lineage-once');
   const args = { focusId: input.focusId, limit: input.limit };
-  const viewer = await loadViewer(principal);
+  const deadline = readDeadline();
+  const viewer = await loadViewer(principal, deadline);
   const graph = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), async (tx) =>
-        (await visibleTo(viewer, tx, args.focusId)) ? pathsGraph(tx, args, viewer.extras) : null,
+    ? await readTransaction(
+        getPublicDb(),
+        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? pathsGraph(tx, args, viewer.extras) : null),
+        deadline,
       )
     : await cachedPaths(args);
   if (!graph) throw notFound();
@@ -174,8 +189,9 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
 /** The profile header of /people/[slug]: names, life status, place (city level), counts, lineages. */
 export async function personProfile(principal: Principal | null, input: PersonInput, meta?: RequestMeta): Promise<PersonProfileDto> {
   failOnce(meta?.testFault, 'person-once');
-  const viewer = await loadViewer(principal);
-  const id = await resolveSlug(viewer, input.slug);
+  const deadline = readDeadline();
+  const viewer = await loadViewer(principal, deadline);
+  const id = await resolveSlug(viewer, input.slug, deadline);
   if (!id) throw notFound();
   const hidden = viewer.extras.nodes[id];
   if (!hidden) {
@@ -185,10 +201,17 @@ export async function personProfile(principal: Principal | null, input: PersonIn
   }
   // A hidden person the viewer may see (their own, or the other end of their request): built
   // for this viewer only. Counts stay public-only, so they are 0 until a relationship is public.
-  const counts = await readTransaction(getPublicDb(), (tx) => personCounts(tx, id));
+  const { counts, refs } = await readTransaction(
+    getPublicDb(),
+    async (tx) => {
+      const c = await personCounts(tx, id);
+      return { counts: c, refs: await lineageRefs(tx, c.lineageIds) };
+    },
+    deadline,
+  );
   const own = viewer.extras.edges.filter((e) => e.teacherId === id || e.studentId === id);
   const lineages = new Map(own.map((e) => [e.lineage.id, e.lineage]));
-  for (const l of await readTransaction(getPublicDb(), (tx) => lineageRefs(tx, counts.lineageIds))) lineages.set(l.id, l);
+  for (const l of refs) lineages.set(l.id, l);
   return toPublicProfile({
     id,
     slug: hidden.slug,
@@ -215,11 +238,12 @@ export async function personProfile(principal: Principal | null, input: PersonIn
 /** A page of a person's students for the list view (plan §4.10). */
 export async function personStudents(principal: Principal | null, input: StudentsInput, meta?: RequestMeta): Promise<StudentsPageDto> {
   failOnce(meta?.testFault, 'lineage-once');
-  const viewer = await loadViewer(principal);
-  const id = await resolveSlug(viewer, input.slug);
+  const deadline = readDeadline();
+  const viewer = await loadViewer(principal, deadline);
+  const id = await resolveSlug(viewer, input.slug, deadline);
   if (!id) throw notFound();
   const page = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), (tx) => studentPage(tx, id, input.page, viewer.extras))
+    ? await readTransaction(getPublicDb(), (tx) => studentPage(tx, id, input.page, viewer.extras), deadline)
     : await cachedStudents({ personId: id, page: input.page });
   if (!page) throw notFound();
   return page;

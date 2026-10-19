@@ -5,6 +5,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { inspect } from 'node:util';
 
 import { sql } from 'drizzle-orm';
 import { Client } from 'pg';
@@ -20,7 +21,7 @@ import { stopProducer } from '../jobs/boss';
 import { handleApiRequest } from '../rpc/handler';
 import { OPENAPI_FILE, openApiJson } from '../rpc/openapi';
 import { lineageAncestors, lineageEgo, lineagePaths, lineageSubtree, personProfile, personStudents } from './lineage';
-import { readTransaction } from './lineage-graph';
+import { LineageReadError, readDeadline, readTransaction } from './lineage-graph';
 import { cachedEgo, cachedProfile, cachedSubtree } from './lineage-public';
 
 // 'use cache' is a plain string outside Next.js; cacheTag records what the entry would carry.
@@ -385,6 +386,55 @@ describe('statement timeout and database role', () => {
       expect(after.rows[0]!.t).toBe('0');
     } finally {
       await db.$client.end();
+    }
+  });
+});
+
+describe('a failed read: a budget per procedure, and nothing of the query in the error', () => {
+  it('the statements of one read share one 2 s budget, so three 0.8 s statements fail as cancelled (57014)', async () => {
+    const started = Date.now();
+    const error = await readTransaction(getDb(), async (tx) => {
+      for (let i = 0; i < 3; i += 1) await tx.execute(sql`SELECT pg_sleep(0.8)`);
+      return 'finished';
+    }).catch((e: unknown) => e);
+    const took = Date.now() - started;
+    expect(error).toBeInstanceOf(LineageReadError);
+    expect((error as LineageReadError).code).toBe('57014');
+    // Per statement, three 0.8 s sleeps would take 2.4 s; the budget stops the read at about 2 s.
+    expect(took).toBeLessThan(2_300);
+    expect(took).toBeGreaterThanOrEqual(1_900);
+
+    // Transactions given the same deadline share it: a spent budget fails before any statement.
+    const deadline = readDeadline(0);
+    await expect(readTransaction(getDb(), async () => 'never', deadline)).rejects.toMatchObject({ code: '57014' });
+  });
+
+  it('a read that times out behind a lock leaves only its SQLSTATE: no SQL, parameter, user id or slug', async () => {
+    const locker = new Client({ connectionString: testDb!.url });
+    await locker.connect();
+    try {
+      await locker.query('BEGIN');
+      await locker.query('LOCK TABLE person IN ACCESS EXCLUSIVE MODE');
+      const failures = await Promise.all([
+        // Signed in: loadViewer reads the account's own person by its user id (app_rw).
+        personProfile(principalOf(hubUserId), { slug: 'demo-two-lineages' }).catch((e: unknown) => e),
+        // Anonymous: the slug is the parameter of the first query (app_public_ro), and a cached read.
+        personStudents(null, { slug: 'demo-hub-a', page: 1 }).catch((e: unknown) => e),
+        lineageEgo(null, { focusId: ids['demo-converging']!, up: 1, down: 1, fanoutLimit: 5 }).catch((e: unknown) => e),
+      ]);
+      for (const error of failures) {
+        expect(error).toBeInstanceOf(LineageReadError);
+        expect((error as LineageReadError).code).toBe('57014');
+        // What Next.js would log for it: the whole error, its own properties and its causes.
+        const logged = `${String(error)}\n${inspect(error, { depth: 10, showHidden: true })}\n${JSON.stringify(error)}`;
+        for (const secret of [hubUserId, 'demo-two-lineages', 'demo-hub-a', ids['demo-converging']!, 'SELECT', 'params', 'v_public_']) {
+          expect(logged, secret).not.toContain(secret);
+        }
+        expect((error as { cause?: unknown }).cause).toBeUndefined();
+      }
+    } finally {
+      await locker.query('ROLLBACK').catch(() => undefined);
+      await locker.end();
     }
   });
 });

@@ -14,7 +14,17 @@ import { getDb } from '../db';
 import { ACTIVE_RELATIONSHIP_STATUSES } from '../db/schema/common';
 import type { PublicName, PublicPeriod } from '../db/schema/views';
 import type { RelationshipStatusDto } from '../dto/public';
-import { type Executor, namesOf, NO_EXTRAS, type OwnEdge, type OwnNode, readTransaction, type ViewerExtras } from './lineage-graph';
+import {
+  type Executor,
+  namesOf,
+  NO_EXTRAS,
+  type OwnEdge,
+  type OwnNode,
+  type ReadDeadline,
+  readDeadline,
+  readTransaction,
+  type ViewerExtras,
+} from './lineage-graph';
 
 const ACTIVE = sql.raw(ACTIVE_RELATIONSHIP_STATUSES.map((s) => `'${s}'`).join(', '));
 
@@ -44,7 +54,7 @@ export function mayViewHidden(viewer: Viewer, personId: string): boolean {
  * The viewer's own person, their active relationships that v_public_edge leaves out, and the
  * hidden people at the other end of those. Anonymous, or an account without a person: nothing.
  */
-export async function loadViewer(principal: Principal | null): Promise<Viewer> {
+export async function loadViewer(principal: Principal | null, deadline: ReadDeadline = readDeadline()): Promise<Viewer> {
   if (!principal) return ANONYMOUS_VIEWER;
   return readTransaction(getDb(), async (tx) => {
     const [own] = await rows<{ id: string; is_public: boolean }>(
@@ -153,5 +163,5 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
         periods: e.periods,
       }));
     return { extras: { personId: own.id, edges, nodes }, ownPersonHidden: !own.is_public };
-  });
+  }, deadline);
 }

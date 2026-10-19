@@ -58,18 +58,98 @@ async function rows<T>(ex: Executor, query: SQL): Promise<T[]> {
   return (await ex.execute(query)).rows as T[];
 }
 
+/** The time one lineage read may take, all its statements together (plan §6.3). */
+export const READ_BUDGET_MS = 2_000;
+/** Slack before the timeout is set again: a statement that took less does not cost a round trip. */
+const BUDGET_SLACK_MS = 50;
+
+/**
+ * A failed lineage read. Only the SQLSTATE (for example 57014, a cancelled statement) leaves the
+ * database layer: the driver's error carries the SQL and its parameters (a user id, a slug derived
+ * from a name), and Next.js logs whatever reaches it (CLAUDE.md §6, src/server/db/index.ts).
+ */
+export class LineageReadError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(`A lineage read failed (SQLSTATE ${code}).`);
+    this.name = 'LineageReadError';
+    this.code = code;
+  }
+}
+
+/** The SQLSTATE of a database error (DrizzleQueryError keeps the driver's error as `cause`). */
+function sqlStateOf(error: unknown): string | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth += 1) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+/** True for an error of the database or its driver: one that may carry SQL text or parameters. */
+function isDatabaseError(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth += 1) {
+    if ('query' in current || 'params' in current || (current as Error).name === 'DrizzleQueryError' || (current as Error).name === 'DatabaseError') {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return sqlStateOf(error) !== null;
+}
+
+/** When a procedure's reads must be done: its transactions share one READ_BUDGET_MS. */
+export interface ReadDeadline {
+  readonly at: number;
+}
+
+export function readDeadline(budgetMs: number = READ_BUDGET_MS): ReadDeadline {
+  return { at: Date.now() + budgetMs };
+}
+
 /**
  * Runs `fn` in a read-only, repeatable-read transaction (one snapshot for all of an answer's
- * queries) whose first statement is SET LOCAL statement_timeout = '2s' (plan §6.3).
+ * queries) whose first statement is SET LOCAL statement_timeout = '2s' (plan §6.3). The 2 s are a
+ * budget for the whole read, not for each statement: before a statement, the timeout is lowered to
+ * what is left of `deadline` (shared by the transactions of one procedure; a new one by default),
+ * and a read whose budget is spent fails as a cancelled statement (57014). A database error leaves
+ * as LineageReadError with its SQLSTATE only.
  */
-export async function readTransaction<T>(db: Database, fn: (tx: Executor) => Promise<T>): Promise<T> {
-  return db.transaction(
-    async (tx) => {
-      await tx.execute(sql`SET LOCAL statement_timeout = '2s'`);
-      return fn(tx);
-    },
-    { isolationLevel: 'repeatable read', accessMode: 'read only' },
-  );
+export async function readTransaction<T>(db: Database, fn: (tx: Executor) => Promise<T>, deadline: ReadDeadline = readDeadline()): Promise<T> {
+  const left = () => deadline.at - Date.now();
+  try {
+    return await db.transaction(
+      async (tx) => {
+        let armed = left();
+        if (armed <= 0) throw new LineageReadError('57014');
+        if (armed >= READ_BUDGET_MS - BUDGET_SLACK_MS) {
+          await tx.execute(sql`SET LOCAL statement_timeout = '2s'`);
+          armed = READ_BUDGET_MS;
+        } else {
+          await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${Math.ceil(armed)}`));
+        }
+        const budgeted: Executor = {
+          async execute(query) {
+            const remaining = left();
+            if (remaining <= 0) throw new LineageReadError('57014');
+            if (remaining < armed - BUDGET_SLACK_MS) {
+              await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${Math.ceil(remaining)}`));
+              armed = remaining;
+            }
+            return tx.execute(query);
+          },
+        };
+        return fn(budgeted);
+      },
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
+    );
+  } catch (error) {
+    if (error instanceof LineageReadError || !isDatabaseError(error)) throw error;
+    throw new LineageReadError(sqlStateOf(error) ?? 'unknown');
+  }
 }
 
 /** A uuid[] parameter. The ids are bound as one text value and cast by PostgreSQL. */
