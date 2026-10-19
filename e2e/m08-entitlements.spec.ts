@@ -7,6 +7,7 @@
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { sql } from 'drizzle-orm';
@@ -17,7 +18,8 @@ import { getDb } from '../src/server/db';
 import { uuidv7 } from '../src/server/db/ids';
 import { notification } from '../src/server/db/schema';
 import { FEATURES, formatPrice, PLANS, upgradeBenefits } from '../src/server/entitlements/plans';
-import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs, userIdOf, type SignInTarget } from './helpers/auth';
+import { UNEXPECTED_FAILURE_MESSAGE } from '../src/server/rpc/form';
+import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs, submitStaffCode, userIdOf, type SignInTarget } from './helpers/auth';
 import { apiPost, freshAccount, giveStudents } from './helpers/plans';
 
 test.beforeAll(loadTestEnv);
@@ -196,6 +198,16 @@ test('@M08 a non-admin and a staff session without a verified second factor cann
     await other.goto('/admin/grants');
     await expect(other).toHaveURL(/\/account\/security\?next=%2Fadmin%2Fgrants$/);
     await expect(other.getByRole('heading', { level: 1, name: 'Plan grants' })).toHaveCount(0);
+    // Nor does the dashboard show its staff work (review round 2, recheck-1): no count, a way to verify.
+    await other.goto('/dashboard');
+    await expect(other.getByTestId('staff-work')).toHaveAttribute('data-second-factor', 'unverified');
+    await expect(other.getByTestId('open-pilot-requests')).toHaveCount(0);
+    await expect(other.getByTestId('staff-work').getByRole('link', { name: 'Verify this session' })).toHaveAttribute(
+      'href',
+      '/account/security?next=%2Fdashboard',
+    );
+    const staff = ((await (await other.request.get('/api/v1/dashboard')).json()) as { staff: unknown }).staff;
+    expect(staff).toEqual({ role: 'admin', secondFactorVerified: false, openPilotRequests: null });
   } finally {
     await unverified.close();
   }
@@ -220,6 +232,56 @@ test('@M08 a non-admin and a staff session without a verified second factor cann
     expect(given.rows).toHaveLength(0);
   } finally {
     await lapsing.context.close();
+  }
+});
+
+test('@M08 an admin session without the second factor sees no requester and no open count; verifying it comes back to the request', async ({ browser }) => {
+  // Someone asks for pilot access, with a name that appears nowhere else.
+  // Letters only: a primary name is Latin letters (digits are refused).
+  const suffix = randomBytes(4).toString('hex').replace(/\d/g, (digit) => 'ghijklmnop'[Number(digit)]!);
+  const name = `Demo Hidden Asker ${suffix[0]!.toUpperCase()}${suffix.slice(1)}`;
+  const requesterContext = await browser.newContext({ baseURL: BASE_URL });
+  await giveOwnAddress(requesterContext);
+  const requester = await freshAccount(await requesterContext.newPage(), { name, sifu: true });
+  const asked = await apiPost(requesterContext.pages()[0]!, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+  expect(asked.status(), await asked.text()).toBe(200);
+  const requestId = ((await asked.json()) as { request: { id: string } }).request.id;
+  await requesterContext.close();
+  const review = `/admin/grants?request=${requestId}#give-plan`;
+
+  // The seeded admin, in a session that knows only the password (review round 2, recheck-1).
+  const { context } = await adminSession(browser);
+  try {
+    const page = await context.newPage();
+    type Item = { body: ({ text: string } | { name: { value: string } })[]; action: { href: string } | null };
+    const listed = async () =>
+      (((await (await page.request.get('/api/v1/notifications')).json()) as { items: Item[] }).items ?? []).find((item) => item.action?.href === review);
+    const hidden = await listed();
+    expect(hidden?.body).toEqual([
+      { text: 'An account asked for pilot access. Confirm this session with your authenticator app to see who asked and for which plan.' },
+    ]);
+    await page.goto('/dashboard');
+    await expect(page.getByTestId('staff-work')).toHaveAttribute('data-second-factor', 'unverified');
+    await expect(page.getByTestId('open-pilot-requests')).toHaveCount(0);
+    expect(await page.content()).not.toContain(name);
+    expect(await page.content()).not.toContain(requester.email);
+
+    // "Review the request" asks for the second factor first, then opens that request (recheck-7).
+    await page.goto(review);
+    await expect(page).toHaveURL(`/account/security?next=${encodeURIComponent(`/admin/grants?request=${requestId}`)}`);
+    await submitStaffCode(page, 'Verify this session');
+    await expect(page).toHaveURL(`/admin/grants?request=${requestId}`);
+    const form = page.locator('#give-plan');
+    await expect(field(form, 'Account e-mail')).toHaveValue(requester.email);
+    await expect(field(form, 'Plan', true)).toHaveValue('pro_sifu');
+
+    // Now the same session sees who asked, and the count.
+    expect((await listed())?.body[0]).toEqual({ name: { value: name, lang: 'und-Latn' } });
+    await page.goto('/dashboard');
+    await expect(page.getByTestId('staff-work')).not.toHaveAttribute('data-second-factor', 'unverified');
+    await expect(page.getByTestId('open-pilot-requests')).toBeVisible();
+  } finally {
+    await context.close();
   }
 });
 
@@ -437,7 +499,9 @@ test('@M08 "Request pilot access" notifies admins and creates no charge', async 
   // The open request is shown from then on; nothing is charged.
   await page.reload();
   await expect(prompt.getByTestId('pilot-request-state')).toContainText('You asked for pilot access to Professional Sifu on');
-  await expect(prompt).toContainText('nothing is charged');
+  await expect(prompt).toContainText(
+    'An administrator either gives you the plan or closes the request, and you get a notification either way. Nothing is charged.',
+  );
   await expect(prompt.getByTestId('upgrade-price')).toHaveCount(0);
 
   // An administrator sees it among the notifications and opens it in /admin/grants, prefilled.
@@ -837,4 +901,182 @@ test.describe('at 390x844', () => {
       await admin.close();
     }
   });
+});
+
+test('@M08 a database failure under the grant form says so calmly, changes nothing and logs no e-mail address', async ({ page, browser }) => {
+  // Review round 2, recheck-2: the account's row is held by another transaction, so the grant's
+  // lock waits until the statement timeout (2 s) ends it with a DrizzleQueryError whose text quotes
+  // the e-mail address the form sent.
+  const sifu = await freshAccount(page, { name: 'Demo Locked Sifu', sifu: true });
+  const admin = await adminSession(browser, { verified: true });
+  const holder = await getDb().$client.connect();
+  try {
+    const a = await admin.context.newPage();
+    const errors: string[] = [];
+    a.on('pageerror', (error) => errors.push(error.message));
+    await a.goto('/admin/grants');
+    const form = a.locator('#give-plan');
+    await form.getByTestId('give-plan-toggle').click();
+    await field(form, 'Account e-mail').fill(sifu.email);
+    await field(form, 'Plan', true).selectOption('pro_sifu');
+    await field(form, 'Reason', true).fill('Demo pilot test under a held lock');
+    await holder.query('BEGIN');
+    await holder.query('SELECT 1 FROM auth_user WHERE id = $1 FOR UPDATE', [sifu.userId]);
+    await form.getByRole('button', { name: 'Give the plan' }).click();
+    // The form stays, with one calm message that takes the focus.
+    const alert = form.getByRole('alert').filter({ hasText: UNEXPECTED_FAILURE_MESSAGE });
+    await expect(alert).toBeVisible({ timeout: 15_000 });
+    await expect(alert).toBeFocused();
+    await expect(field(form, 'Account e-mail')).toHaveValue(sifu.email);
+    expect(errors, 'no uncaught error').toEqual([]);
+  } finally {
+    await holder.query('ROLLBACK').catch(() => {});
+    holder.release();
+    await admin.context.close();
+  }
+  // Nothing was given.
+  const grants = await getDb().execute(sql`SELECT 1 FROM entitlement_grant WHERE subject_user_id = ${sifu.userId}`);
+  expect(grants.rows).toHaveLength(0);
+  // The server log has the one safe line of serverClient() and never the address (CLAUDE.md §6).
+  const log = readFileSync('test-results/server.log', 'utf8');
+  expect(log).toMatch(/rpc grants\.create failed: DrizzleQueryError \(postgres 57014\) request /);
+  expect(log).not.toContain(sifu.email);
+});
+
+test('@M08 "Request pilot access" on a prompt left open after the account became a Student says why, with and without JavaScript', async ({ page, browser }) => {
+  // Review round 2, recheck-4: the plan is a hidden field, so its refusal is said as the form's message.
+  const sifu = await freshAccount(page, { name: 'Demo Two Tabs Sifu', sifu: true });
+  await giveStudents(sifu.userId, 5, 1);
+  const refusal = 'Professional Sifu is for Sifu accounts.';
+  const toStudent = async () => expect((await apiPost(page, '/account/type', { accountType: 'student' })).status()).toBe(200);
+
+  // With JavaScript: the prompt is open; another tab (or the app) makes the account a Student.
+  await page.goto('/dashboard');
+  await page.getByTestId('upgrade-summary').click();
+  await toStudent();
+  await page.getByTestId('request-pilot-access').click();
+  const alert = page.getByRole('alert').filter({ hasText: refusal }).filter({ visible: true });
+  await expect(alert).toBeVisible();
+  await expect(alert).toBeFocused();
+
+  // Without JavaScript: the post comes back to a dashboard that has no prompt any more, at the message.
+  expect((await apiPost(page, '/account/type', { accountType: 'sifu' })).status()).toBe(200);
+  const nojs = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, storageState: await page.context().storageState() });
+  try {
+    await giveOwnAddress(nojs);
+    const b = await nojs.newPage();
+    await b.goto('/dashboard');
+    await b.getByTestId('upgrade-summary').click();
+    await toStudent();
+    await b.getByTestId('request-pilot-access').click();
+    await expect(b).toHaveURL(/\/dashboard\?outcome=[\w-]+#pilot-access-message$/);
+    await expect(b.getByTestId('upgrade-prompt')).toHaveCount(0);
+    const message = b.getByRole('alert').filter({ hasText: refusal });
+    await expect(message).toBeVisible();
+    await expect(message).toBeFocused();
+  } finally {
+    await nojs.close();
+  }
+  const open = await getDb().execute(sql`SELECT 1 FROM pilot_access_request WHERE user_id = ${sifu.userId}`);
+  expect(open.rows).toHaveLength(0);
+});
+
+test('@M08 in forced colours the chosen account type stays visible; a verified Sifu is not told they show as unverified', async ({ page }) => {
+  // demo-free-sifu-5: a Sifu whose instructor status an archivist has verified (read only).
+  await signInAs(page, 'demo-free-sifu-5');
+  await page.goto('/dashboard/settings');
+  const option = (value: 'student' | 'sifu') => page.locator('label').filter({ has: page.locator(`input[value="${value}"]`) }).filter({ visible: true });
+  // Review round 2, recheck-9: the Sifu option says what the dashboard says.
+  await expect(option('sifu')).toContainText('Shown as “Instructor”: an archivist has checked your instructor status.');
+  await expect(option('sifu')).not.toContainText('unverified');
+
+  // Review round 2, recheck-3: Windows High Contrast replaces the ink dot's background with Canvas.
+  const radio = (value: 'student' | 'sifu') => option(value).locator('input');
+  const look = (value: 'student' | 'sifu') =>
+    radio(value).evaluate((input) => ({
+      appearance: getComputedStyle(input).appearance,
+      dot: getComputedStyle(input, '::before').display,
+      border: getComputedStyle(input.closest('label')!).borderTopWidth,
+    }));
+  await expect(radio('sifu')).toBeChecked();
+  await expect(radio('student')).not.toBeChecked();
+  expect(await look('sifu')).toMatchObject({ appearance: 'none' });
+
+  await page.emulateMedia({ forcedColors: 'active' });
+  // The system draws the radios itself, and the chosen card has the heavier border.
+  expect(await look('sifu')).toEqual({ appearance: 'auto', dot: 'none', border: '2px' });
+  expect(await look('student')).toEqual({ appearance: 'auto', dot: 'none', border: '1px' });
+  // What the screen shows differs between the chosen radio and the other one.
+  const [chosen, other] = [await radio('sifu').screenshot(), await radio('student').screenshot()];
+  expect(chosen.equals(other), 'the chosen radio looks different from the other one').toBe(false);
+  // Choosing the other card moves both: still told apart.
+  await option('student').click();
+  expect(await look('student')).toMatchObject({ border: '2px' });
+  expect(await look('sifu')).toMatchObject({ border: '1px' });
+  await page.emulateMedia({ forcedColors: 'none' });
+});
+
+test('@M08 an admin closes a pilot access request with a reason; the account is told and can ask again, with and without JavaScript', async ({ page, browser }) => {
+  // Review round 2, recheck-5: the answer besides a grant, so no request waits for ever.
+  const sifu = await freshAccount(page, { name: 'Demo Closed Request Sifu', sifu: true });
+  const ask = async () => {
+    const asked = await apiPost(page, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+    expect(asked.status(), await asked.text()).toBe(200);
+    return ((await asked.json()) as { request: { id: string } }).request.id;
+  };
+  const first = await ask();
+  const list = `/admin/grants?q=${encodeURIComponent(sifu.email)}`;
+  const admin = await signedInContext(browser, 'admin');
+  try {
+    const a = admin.page;
+    await a.goto(list);
+    const row = a.getByTestId('pilot-request').filter({ hasText: sifu.email });
+    await expect(row).toHaveAttribute('data-state', 'open');
+    await expect(row.getByRole('link', { name: `Give Professional Sifu to ${sifu.email}` })).toBeVisible();
+    await row.locator('summary').click();
+    // A reason is required.
+    await row.getByRole('button', { name: `Close the request of ${sifu.email}` }).click();
+    const reason = field(row, 'Reason for closing');
+    await expect(reason).toHaveAttribute('aria-invalid', 'true');
+    await expect(reason).toBeFocused();
+    await reason.fill('Demo pilot: the test plans of this month are given');
+    await row.getByRole('button', { name: `Close the request of ${sifu.email}` }).click();
+    const done = a.getByRole('status').filter({ hasText: `The request of ${sifu.email} for Professional Sifu is closed.` });
+    await expect(done).toBeVisible();
+    await expect(done).toBeFocused();
+    const closed = await getDb().execute<{ status: string }>(sql`SELECT status FROM pilot_access_request WHERE id = ${first}`);
+    expect(closed.rows).toEqual([{ status: 'closed' }]);
+    const audit = await auditRows('pilot_access.close', first);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ reason: 'Demo pilot: the test plans of this month are given' });
+
+    // The account is told, without the reason, and can ask again.
+    await page.goto('/dashboard');
+    await expect(page.getByTestId('notification').filter({ hasText: 'Pilot access request closed' })).toBeVisible();
+    await expect(page.getByText('the test plans of this month')).toHaveCount(0);
+    const second = await ask();
+
+    // Without JavaScript: the list comes back with the message above it, the request no longer listed.
+    const nojs = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, storageState: await admin.context.storageState() });
+    try {
+      await giveOwnAddress(nojs);
+      const b = await nojs.newPage();
+      await b.goto(list);
+      const open = b.getByTestId('pilot-request').filter({ hasText: sifu.email });
+      await open.locator('summary').click();
+      await field(open, 'Reason for closing').fill('Demo pilot: asked twice');
+      await open.getByRole('button', { name: `Close the request of ${sifu.email}` }).click();
+      await expect(b).toHaveURL(/\/admin\/grants\?q=[^#]+&outcome=[\w-]+#closed-request-message$/);
+      const message = b.getByRole('status').filter({ hasText: `The request of ${sifu.email} for Professional Sifu is closed.` });
+      await expect(message).toBeVisible();
+      await expect(message).toBeFocused();
+      await expect(b.getByTestId('no-pilot-requests')).toHaveText('No open pilot access request matches this search.');
+    } finally {
+      await nojs.close();
+    }
+    const rows = await getDb().execute<{ status: string }>(sql`SELECT status FROM pilot_access_request WHERE id = ${second}`);
+    expect(rows.rows).toEqual([{ status: 'closed' }]);
+  } finally {
+    await admin.context.close();
+  }
 });
