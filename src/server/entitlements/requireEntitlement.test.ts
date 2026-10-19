@@ -86,6 +86,25 @@ describe('resolveEffectivePlan()', () => {
   });
 });
 
+describe('resolveEffectivePlan(): until (review round 1, code-6)', () => {
+  it('back-to-back grants of the same plan carry `until` to the end of the last one', () => {
+    const a = grant('pro_sifu', -10, 5);
+    const b = grant('pro_sifu', 5, 40);
+    expect(resolveEffectivePlan('sifu', [a, b], NOW)).toMatchObject({ plan: 'pro_sifu', grantId: a.id, until: day(40) });
+    // A chain of three, in any order, and one without an end makes it open-ended.
+    const c = grant('pro_sifu', 40, 60);
+    expect(resolveEffectivePlan('sifu', [c, a, b], NOW).until).toEqual(day(60));
+    expect(resolveEffectivePlan('sifu', [a, grant('pro_sifu', 2, null)], NOW).until).toBeNull();
+  });
+
+  it('a gap, a revoked follower or another plan does not carry it on', () => {
+    const a = grant('pro_sifu', -10, 5);
+    expect(resolveEffectivePlan('sifu', [a, grant('pro_sifu', 6, 40)], NOW).until).toEqual(day(5));
+    expect(resolveEffectivePlan('sifu', [a, grant('pro_sifu', 5, 40, -1)], NOW).until).toEqual(day(5));
+    expect(resolveEffectivePlan('student', [grant('premium_student', -10, 5), grant('pro_sifu', 5, 40)], NOW).until).toEqual(day(5));
+  });
+});
+
 describe('decide(): the answer of requireEntitlement()', () => {
   it('Free Sifu approves up to 5 students (D06)', () => {
     expect(decide('approve_students', 'free_sifu', 4)).toEqual({ ok: true, plan: 'free_sifu', limit: 5, current: 4 });
@@ -130,6 +149,11 @@ describe('quotaLockKey()', () => {
     expect(a).not.toBe(quotaLockKey(subject('0190a5c0-0000-7000-8000-000000000001'), 'photos'));
     expect(a).toBeGreaterThanOrEqual(-(2n ** 63n));
     expect(a).toBeLessThan(2n ** 63n);
+  });
+
+  it('gives two spellings of one account id the same key: PostgreSQL compares UUIDs regardless of case (review round 1, security-5)', () => {
+    const id = '019c167f-cc12-7000-8935-54439fe96d81';
+    expect(quotaLockKey(subject(id.toUpperCase()), 'approve_students')).toBe(quotaLockKey(subject(id), 'approve_students'));
   });
 
   it('never falls in the key space of a 32-bit hash such as hashtext() (plan §6.3)', () => {

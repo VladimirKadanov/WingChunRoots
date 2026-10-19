@@ -9,6 +9,11 @@
 // `pg_advisory_xact_lock(hashtext('teaching_relationship.verify'))` of plan §6.3: those are
 // sign-extended int4 values (upper 32 bits all 0 or all 1), which quotaLockKey() never returns.
 // M09's approvals take that global lock first, then this one (one order everywhere, no deadlock).
+//
+// READ COMMITTED only (review round 1, code-4): the count after the lock must come from a new
+// snapshot. Under REPEATABLE READ or SERIALIZABLE the snapshot is taken at the transaction's first
+// statement, so approvals that waited on the lock would all count the old rows and all pass.
+// lockQuota() checks the isolation level and throws otherwise.
 
 import { createHash } from 'node:crypto';
 
@@ -22,17 +27,35 @@ import type { FeatureKey } from './plans';
 /** An open transaction: an advisory xact lock outside one would end with its own statement. */
 export type QuotaTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
-/** The 64-bit advisory lock key of (feature, subject). */
+/**
+ * The 64-bit advisory lock key of (feature, subject). The account id is a UUID, which PostgreSQL
+ * compares regardless of letter case, so it is lower-cased first (review round 1, security-5):
+ * two spellings of one id count the same rows and must take the same lock.
+ */
 export function quotaLockKey(subject: EntitlementSubject, key: FeatureKey): bigint {
-  const digest = createHash('sha256').update(`wingchunroots:quota:v1:${key}:${subject.kind}:${subject.userId}`).digest();
+  const id = subject.userId.toLowerCase();
+  const digest = createHash('sha256').update(`wingchunroots:quota:v1:${key}:${subject.kind}:${id}`).digest();
   let high = digest.readInt32BE(0);
   // Keep clear of the int4 key space: upper half neither 0x00000000 nor 0xFFFFFFFF.
   if (high === 0 || high === -1) high ^= 0x4000_0000;
   return (BigInt(high) << 32n) | BigInt(digest.readUInt32BE(4));
 }
 
-/** Takes the quota lock of (feature, subject) until the transaction ends. */
+export class QuotaIsolationError extends Error {
+  constructor(level: string) {
+    super(`withQuota needs a READ COMMITTED transaction, not ${level}: a count after the lock must see the rows committed while it waited`);
+    this.name = 'QuotaIsolationError';
+  }
+}
+
+/**
+ * Takes the quota lock of (feature, subject) until the transaction ends. Throws QuotaIsolationError
+ * in a transaction that is not READ COMMITTED (see the top of this file).
+ */
 export async function lockQuota(tx: QuotaTransaction, subject: EntitlementSubject, key: FeatureKey): Promise<void> {
+  const isolation = await tx.execute<{ level: string }>(sql`SELECT current_setting('transaction_isolation') AS level`);
+  const level = isolation.rows[0]?.level ?? 'unknown';
+  if (level !== 'read committed') throw new QuotaIsolationError(level);
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${quotaLockKey(subject, key).toString()}::bigint)`);
 }
 

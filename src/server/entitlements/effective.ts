@@ -45,7 +45,10 @@ export interface EffectivePlan {
   accountType: AccountType;
   /** The grant that gives `plan`, or null when it is the free floor. */
   grantId: string | null;
-  /** When `plan` stops being in effect if nothing changes: the end of its grant. */
+  /**
+   * When `plan` stops being in effect if nothing changes: the end of its grant, carried on through
+   * grants of the same plan that follow without a gap; null for no end or the free plan.
+   */
   until: Date | null;
   /**
    * Active grants of a plan for the other account type (a Pro Sifu grant on a Student account):
@@ -83,9 +86,33 @@ export function resolveEffectivePlan(accountType: AccountType, grants: readonly 
     floor,
     accountType,
     grantId: best.grant?.id ?? null,
-    until: best.grant?.endsAt ?? null,
+    until: best.grant ? continuedUntil(best.grant, grants, now) : null,
     dormantGrantIds: dormant,
   };
+}
+
+/**
+ * When the plan of `grant` stops if nothing changes (review round 1, code-6): its end, carried on
+ * through every grant of the same plan, active or scheduled, that starts by then. Back-to-back
+ * grants (the second starting the day the first ends) continue the plan without a gap.
+ */
+function continuedUntil(grant: GrantPeriod, grants: readonly GrantPeriod[], now: Date): Date | null {
+  let until = grant.endsAt;
+  for (let extended = true; extended && until !== null; ) {
+    extended = false;
+    for (const next of grants) {
+      if (next.planCode !== grant.planCode) continue;
+      const state = grantState(next, now);
+      if (state !== 'active' && state !== 'scheduled') continue;
+      if (next.startsAt.getTime() > until.getTime()) continue;
+      if (next.endsAt === null) return null;
+      if (next.endsAt.getTime() > until.getTime()) {
+        until = next.endsAt;
+        extended = true;
+      }
+    }
+  }
+  return until;
 }
 
 /** What requireEntitlement() answers (plan §6.5). */

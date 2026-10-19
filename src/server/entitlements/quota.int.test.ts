@@ -14,7 +14,7 @@ import { uuidv7 } from '../db/ids';
 import { authUser, entitlementGrant, lineage, person, personName, teachingRelationship } from '../db/schema';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { requireEntitlement } from './access';
-import { lockQuota, withQuota } from './quota';
+import { lockQuota, QuotaIsolationError, quotaLockKey, withQuota } from './quota';
 
 let testDb: TestDatabase | undefined;
 let lineageId: string;
@@ -226,5 +226,41 @@ describe('withQuota() under concurrent approvals', () => {
   it('requireEntitlement() alone reads the same decision without writing', async () => {
     const sifu = await sifuWith(5, 1);
     expect(await requireEntitlement({ kind: 'user', userId: sifu.userId }, 'approve_students')).toMatchObject({ ok: false, code: 'quota', current: 5 });
+  });
+
+  it('refuses a transaction that is not READ COMMITTED: its count would come from a stale snapshot (review round 1, code-4)', async () => {
+    const sifu = await sifuWith(4, 1);
+    const subject = { kind: 'user' as const, userId: sifu.userId };
+    for (const isolationLevel of ['repeatable read', 'serializable'] as const) {
+      const attempt = getDb().transaction(async (tx) => withQuota(tx, subject, 'approve_students', async () => 1), { isolationLevel });
+      await expect(attempt, isolationLevel).rejects.toBeInstanceOf(QuotaIsolationError);
+    }
+    // Nothing was written, and the default level still works.
+    expect(await verifiedCount(sifu.personId)).toBe(4);
+    expect(await approve(sifu, sifu.pending[0]!)).toMatchObject({ ok: true, value: 1 });
+  });
+
+  it('two spellings of one account id take the same lock (review round 1, security-5)', async () => {
+    const sifu = await sifuWith(0, 0);
+    const lower = { kind: 'user' as const, userId: sifu.userId.toLowerCase() };
+    const upper = { kind: 'user' as const, userId: sifu.userId.toUpperCase() };
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const holding = new Promise<void>((resolve) => (locked = resolve));
+    const first = getDb().transaction(async (tx) => {
+      await lockQuota(tx, lower, 'approve_students');
+      locked();
+      await held;
+    });
+    await holding;
+    // The upper-case spelling waits for the lower-case one: pg_try_advisory_xact_lock says no.
+    const tried = await getDb().transaction(async (tx) => {
+      const result = await tx.execute<{ ok: boolean }>(sql`SELECT pg_try_advisory_xact_lock(${quotaLockKey(upper, 'approve_students').toString()}::bigint) AS ok`);
+      return result.rows[0]!.ok;
+    });
+    release();
+    await first;
+    expect(tried).toBe(false);
   });
 });
