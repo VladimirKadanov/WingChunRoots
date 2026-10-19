@@ -102,7 +102,11 @@ function AlsoStudentOf({ row, lineages }: { row: RelationRow; lineages: Readonly
       {others.map((t, i) => (
         <Fragment key={t.person.id}>
           {i > 0 ? (i === others.length - 1 && more === 0 ? ' and ' : ', ') : null}
-          <LatinName name={t.person.displayName} /> (<LineageName name={lineageOf(lineages, t.lineageId)} />)
+          <LatinName name={t.person.displayName} />{' '}
+          {/* The brackets move with the lineage's name, never a lone "(" at a line's end. */}
+          <span className="inline-block max-w-full">
+            (<LineageName name={lineageOf(lineages, t.lineageId)} />)
+          </span>
         </Fragment>
       ))}
       {more > 0 ? ` and ${more.toLocaleString('en')} more` : null}
@@ -135,7 +139,7 @@ function EdgeLine({
     ) : null,
   ].filter(Boolean);
   return (
-    <p className="flex flex-wrap items-center gap-x-0 gap-y-1 text-sm text-fg-muted">
+    <p data-relationship className="flex flex-wrap items-center gap-x-0 gap-y-1 text-sm text-fg-muted">
       {parts.map((part, i) => (
         <Fragment key={i}>
           {i > 0 ? <Sep inFlex /> : null}
@@ -184,15 +188,18 @@ export function RelationList({
           <li
             key={row.person.id}
             data-person={row.person.slug}
-            className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 border-t border-border-subtle py-2 first:border-t-0 first:pt-0"
+            // The name's link covers the row (PersonLink `stretched`): one target per person,
+            // never under 44 px (a name and its relationship line), and rows stay short on a phone.
+            className="relative grid min-h-11 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 border-t border-border-subtle py-2 first:border-t-0 first:pt-0"
           >
-            <span aria-hidden="true" className="pt-[1.05rem]">
+            {/* The stroke sits level with the name (its line is the top of the row). */}
+            <span aria-hidden="true" className="pt-px">
               {first ? <LinkStroke kind={strokeOf(role === 'teacher' ? first : { ...first, kind: undefined })} width={28} /> : null}
             </span>
             <div className={cx('grid min-w-0 gap-0.5', columns && 'md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-6')}>
               <div className="grid min-w-0 gap-0.5">
                 <p className="flex flex-wrap items-baseline gap-x-2">
-                  <PersonLink person={row.person} className={cx('font-display', nameSize === 'xl' ? 'text-xl' : 'text-lg')} />
+                  <PersonLink person={row.person} stretched className={cx('font-display', nameSize === 'xl' ? 'text-xl' : 'text-lg')} />
                   {row.note ? <span className="text-sm text-fg-muted">({row.note})</span> : null}
                   {primaryFirst && index === 0 ? (
                     <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-fg-muted uppercase">

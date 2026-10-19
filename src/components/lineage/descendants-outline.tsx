@@ -10,7 +10,9 @@
 // Each row is the person's own line (design review round 1): the disclosure control at its start
 // (a chevron in a ring, 32 px with a mouse and 44 px on a touch screen), the name in the display
 // face, the year training began, and the state as a seal and a word when it is not a public
-// verified link (a viewer's own request, DEFAULT D03). Counts are of public links only: a request
+// verified link (a viewer's own request, DEFAULT D03). A row is as tall as its name's target (32 px
+// with a mouse, 44 px on a touch screen) and rows touch, so a hub's long lists stay short on a
+// phone; only a list with a disclosure control keeps the control's gutter (review round 2). Counts are of public links only: a request
 // is shown to its two participants and never counted. Two people with the same name under one
 // teacher are told apart in words. The list view already lists every student of the person, so
 // there the first level holds only the students who teach (`teachingOnly`).
@@ -139,6 +141,11 @@ export function DescendantsOutline({
     generation = next;
   }
 
+  /** Whether this mention of `person` (under `parentId`) opens their students: it has a chevron. */
+  const opensHere = (person: LineageNodeDto, parentId: string) => expandedUnder.get(person.id) === parentId && (children.get(person.id) ?? []).length > 0;
+  /** A list keeps the chevron's gutter on every row when one of its rows has a chevron (names align). */
+  const hasGutter = (parentId: string, kids: readonly LineageNodeDto[]) => kids.some((kid) => opensHere(kid, parentId));
+
   const list = (parentId: string, kids: readonly LineageNodeDto[], level: number, label?: string): ReactNode => {
     // Same names under one teacher: the year training began, else the lineage (the "also a
     // student of" note beside each mention already names any other teacher).
@@ -153,21 +160,23 @@ export function DescendantsOutline({
         };
       }),
     );
+    const gutter = hasGutter(parentId, kids);
     return (
       <ul
         aria-label={label}
         className={cx(
           'grid',
-          // Room between people, so a note that wraps under a name reads as that name's.
-          level === 1 ? 'gap-y-2' : 'ml-4 gap-y-0.5 border-l border-border-strong pl-2 pointer-coarse:ml-[1.375rem] pointer-coarse:gap-y-2',
+          // Room between the people of the first level, each with their students beneath. Deeper,
+          // rows touch: each is already its name's full target (44 px on a touch screen).
+          level === 1 ? 'gap-y-2' : 'ml-4 gap-y-0.5 border-l border-border-strong pl-2 pointer-coarse:ml-[1.375rem] pointer-coarse:gap-y-0',
         )}
       >
-        {kids.map((kid) => item(kid, parentId, level, notes.get(kid.id)))}
+        {kids.map((kid) => item(kid, parentId, level, notes.get(kid.id), gutter))}
       </ul>
     );
   };
 
-  const item = (person: LineageNodeDto, parentId: string, level: number, note: string | undefined): ReactNode => {
+  const item = (person: LineageNodeDto, parentId: string, level: number, note: string | undefined, gutter: boolean): ReactNode => {
     const others = (teachers.get(person.id) ?? []).filter((t) => t !== parentId).map((t) => people.get(t)!);
     const kids = children.get(person.id) ?? [];
     const publicKids = kids.filter((k) => isPublicLink(person.id, k.id));
@@ -181,9 +190,11 @@ export function DescendantsOutline({
     const marked = edges.find((e) => e.visibility !== 'public' || relationStatus(e.status).kind !== 'verified');
     const request = edges.length > 0 && edges.every((e) => e.visibility === 'involved_only');
     const count = `${students(publicKids.length)}${ownRequests > 0 ? ` and your ${ownRequests === 1 ? 'request' : 'requests'}` : ''}`;
+    // The "more in their list" line lines up with the names of the list above it.
+    const nestedGutter = hasGutter(person.id, kids);
 
     return (
-      <li key={`${parentId}-${person.id}`} id={expandedHere ? `outline-${person.slug}` : undefined} data-person={person.slug} className="relative pl-8 pointer-coarse:pl-11">
+      <li key={`${parentId}-${person.id}`} id={expandedHere ? `outline-${person.slug}` : undefined} data-person={person.slug} className={cx('relative', gutter ? 'pl-8 pointer-coarse:pl-11' : 'pl-3')}>
         <div className="flex flex-wrap items-baseline gap-x-2">
           <PersonLink person={person} compact className={level === 1 ? 'font-display text-lg' : 'font-display text-base'} />
           {year ? <span className="text-sm text-fg-muted tabular">{year}</span> : null}
@@ -225,7 +236,12 @@ export function DescendantsOutline({
             </summary>
             {list(person.id, kids, level + 1)}
             {hiddenStudents > 0 ? (
-              <p className="ml-4 border-l border-border-strong pl-10 text-sm text-fg-muted pointer-coarse:ml-[1.375rem] pointer-coarse:pl-[3.25rem]">
+              <p
+                className={cx(
+                  'ml-4 border-l border-border-strong text-sm text-fg-muted pointer-coarse:ml-[1.375rem]',
+                  nestedGutter ? 'pl-10 pointer-coarse:pl-[3.25rem]' : 'pl-5',
+                )}
+              >
                 <Link href={`${profileHref(person.slug)}/lineage`} prefetch={false} className="link inline-flex min-h-8 items-center pointer-coarse:min-h-11">
                   <span>
                     {students(hiddenStudents)} more in <LatinName name={person.displayName} />’s list

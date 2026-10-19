@@ -86,14 +86,30 @@ export function PersonName({ person, className }: { person: Omit<PersonNameData,
  * The name as a link to the profile. Only the Latin name is underlined, with a hairline that
  * goes full strength on hover and focus. Lists of people can be long, so nothing is prefetched:
  * the profile renders per request. `compact` rows (the outline) are 32 px tall with a mouse and
- * keep the 44 px target on a touch screen.
+ * keep the 44 px target on a touch screen. A `stretched` link covers its row instead (the nearest
+ * positioned ancestor, at least 44 px tall): the whole register row is the target, so the name
+ * itself needs no 44 px line of its own (review round 2: a hub's student list on a phone).
  */
-export function PersonLink({ person, compact = false, className }: { person: PersonNameData; compact?: boolean; className?: string }) {
+export function PersonLink({
+  person,
+  compact = false,
+  stretched = false,
+  className,
+}: {
+  person: PersonNameData;
+  compact?: boolean;
+  stretched?: boolean;
+  className?: string;
+}) {
   return (
     <Link
       href={profileHref(person.slug)}
       prefetch={false}
-      className={cx('name-link inline-flex items-center', compact ? 'min-h-8 pointer-coarse:min-h-11' : 'min-h-11', className)}
+      className={cx(
+        'name-link inline-flex items-center',
+        stretched ? "after:absolute after:inset-0 after:content-['']" : compact ? 'min-h-8 pointer-coarse:min-h-11' : 'min-h-11',
+        className,
+      )}
     >
       <PersonName person={person} />
     </Link>

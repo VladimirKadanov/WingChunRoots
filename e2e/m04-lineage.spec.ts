@@ -526,6 +526,53 @@ test.describe('at 390x844', () => {
     }
   });
 
+  test('@M04 at 390x844 the hub list view keeps to its height, with 44 px targets', async ({ page }) => {
+    // Review round 2 (recheck-3): the hub's list view was 12,190 px tall on a phone (52 px between
+    // outline rows, a chevron gutter on every row, register rows of 80 px or more); about 10,300 px
+    // since. The budget leaves room for another browser's text metrics, not for that layout.
+    await page.goto('/people/demo-hub-a/lineage');
+    await expect(page.getByRole('list', { name: 'Descendants' })).toBeVisible();
+    const m = await page.evaluate(() => {
+      const box = (el: Element) => el.getBoundingClientRect();
+      const outline = document.querySelector('ul[aria-label="Descendants"]')!;
+      const leaves = [...outline.querySelectorAll(':scope ul > li')].filter((li) => !li.querySelector('details'));
+      // From each row to the next row of the same list, when the first is a single line.
+      const pitches = leaves
+        .map((li) => [li, li.nextElementSibling] as const)
+        .filter(([, next]) => next !== null && leaves.includes(next))
+        .map(([li, next]) => [box(li).height, box(next!).top - box(li).top]);
+      const rows = [...document.querySelectorAll('ul[aria-label^="Active: students of"] > li')];
+      // A point on each row's relationship line: the row's own link answers there (the name's
+      // link covers the row). elementFromPoint sees only the viewport, so each row is scrolled in.
+      const rowTargets = rows.slice(0, 10).map((li) => {
+        li.scrollIntoView({ block: 'center' });
+        const line = box(li.querySelector('[data-relationship]')!);
+        const hit = document.elementFromPoint(line.left + 4, line.top + line.height / 2)?.closest('a');
+        return hit === li.querySelector('a.name-link');
+      });
+      return {
+        doc: document.documentElement.scrollHeight,
+        leafLinks: leaves.map((li) => box(li.querySelector('a.name-link')!).height),
+        leafX: Math.min(...leaves.map((li) => box(li.querySelector('a.name-link')!).left)),
+        singleRowPitches: pitches.filter(([height]) => height! <= 44.5).map(([, pitch]) => Math.round(pitch!)),
+        rowHeights: rows.map((li) => box(li).height).sort((a, b) => a - b),
+        rowTargets,
+      };
+    });
+    expect(m.doc).toBeLessThan(11_000);
+    expect(m.leafLinks.length).toBeGreaterThan(100);
+    expect(Math.min(...m.leafLinks)).toBeGreaterThanOrEqual(44);
+    // Single-line rows touch: 44 px apart, no gap between targets.
+    expect(new Set(m.singleRowPitches)).toEqual(new Set([44]));
+    // A list without a disclosure control keeps no chevron gutter.
+    expect(m.leafX).toBeLessThanOrEqual(110);
+    // Register rows: each row is its person's target (at least 44 px), a name and one line.
+    expect(m.rowHeights.length).toBe(50);
+    expect(m.rowHeights[0]).toBeGreaterThanOrEqual(44);
+    expect(m.rowHeights[Math.floor(m.rowHeights.length / 2)]).toBeLessThanOrEqual(66);
+    expect(m.rowTargets).toEqual(Array(10).fill(true));
+  });
+
   test('@M04 at 390x844 the first teacher is on the first screen of the profile', async ({ page }) => {
     for (const slug of ['demo-two-lineages', 'demo-hub-a']) {
       await page.goto(`/people/${slug}`);
