@@ -7,10 +7,12 @@
 // (src/server/forms/flash.ts).
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import { type ReactNode, useActionState, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
 import { IDLE, type FormState } from '@/lib/form-state';
 import { closeRequestAction, createGrantAction, revokeGrantAction } from './actions';
@@ -25,9 +27,47 @@ const LABELS = {
   endsOn: 'Ends',
 };
 
+/** What /admin/grants says for `?request=` of a request that is no longer open (final check, screens-4). */
+export const REQUEST_ANSWERED_TEXT = 'This pilot access request has already been answered. Nothing is waiting in it.';
+
+/**
+ * The "Give a test plan…" disclosure around the form (review round 1, design-6). Open when a pilot
+ * request is being answered, and to show the outcome of a post without JavaScript; otherwise closed
+ * until the admin opens it. For `?request=` of a request that is no longer open (given or closed,
+ * possibly by another admin) it stays closed and says so (final check, screens-4).
+ *
+ * Both are read once, when the page shows this request (the page keys it by `?request=`): after
+ * this admin's own grant the page refreshes, the request is closed and its prefill gone, but the
+ * form stays open with its success message, and nothing claims the request was answered before.
+ */
+export function GivePlanDisclosure({ openAtFirst, answeredAtFirst, children }: { openAtFirst: boolean; answeredAtFirst: boolean; children: ReactNode }) {
+  const [{ open, answered }] = useState({ open: openAtFirst, answered: answeredAtFirst });
+  return (
+    <>
+      {answered ? (
+        <p data-testid="request-answered" className="flex max-w-[46rem] items-start gap-2 rounded-sm bg-surface-2 px-4 py-3 text-ui">
+          <CheckIcon size={18} className="mt-1 shrink-0" />
+          <span>{REQUEST_ANSWERED_TEXT}</span>
+        </p>
+      ) : null}
+      <details open={open || undefined} className="group max-w-[46rem]">
+        <summary
+          data-testid="give-plan-toggle"
+          className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
+        >
+          Give a test plan…
+          <ChevronDownIcon size={18} className="transition-transform duration-(--duration-fast) group-open:rotate-180" />
+        </summary>
+        <div className="pt-4">{children}</div>
+      </details>
+    </>
+  );
+}
+
 /**
  * Giving a test plan. No plan is chosen in advance (review round 1, a11y-webview-12): the admin
- * picks one, or the pilot request being answered fills it in. The date pickers offer today up to
+ * picks one, or the pilot request being answered fills it in, and then the reason, the first field
+ * left empty, takes the focus (final check, screens-3; with JavaScript, see the reason's field). The date pickers offer today up to
  * the horizon grants.create accepts (two years); the server checks the same bounds.
  */
 export function CreateGrantForm({
@@ -109,6 +149,11 @@ export function CreateGrantForm({
         label={LABELS.reason}
         autoComplete="off"
         maxLength={500}
+        // Answering a pilot request (final check, screens-3): the form opens filled in, so the focus
+        // goes to the first field left to fill when "Give …" or "Review the request" opens it (a
+        // client navigation mounts the field). A page loaded at #give-plan without JavaScript opens
+        // at the form instead: the browser skips `autofocus` when the fragment names an element.
+        autoFocus={(Boolean(prefill) && !initial) || undefined}
         hint="Kept in the audit log with the grant."
         state={state}
       />

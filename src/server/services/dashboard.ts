@@ -31,10 +31,19 @@ import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotReques
 
 export interface PersonRef {
   id: string;
-  slug: string;
+  /** Null for a removed profile (person.deleted_at; final check, security-2). */
+  slug: string | null;
   name: NameData;
   original: NameData | null;
+  /** A removed profile: `name` is REMOVED_PROFILE_NAME, a UI text rather than a person's name. */
+  removed: boolean;
 }
+
+/**
+ * What a removed profile (person.deleted_at) shows as in the lists of the people it is linked to
+ * (M08 final check, security-2): docs/data-model.md keeps its links, but anonymous. No slug, no name.
+ */
+export const REMOVED_PROFILE_NAME = 'A removed profile';
 
 export type LinkBadge = 'verified' | 'arbitration' | 'under_review' | 'unconfirmed';
 
@@ -131,18 +140,27 @@ const REQUEST_LABELS = {
 const SCHOOL_STATUS_LABELS = { draft: 'Draft', published: 'Published', hidden: 'Hidden', archived: 'Archived' } as const;
 const SCHOOL_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'Instructor', assistant: 'Assistant' } as const;
 
-/** The display names of people: the Latin-script primary name and the first original-script name. */
+/**
+ * The display names of people: the Latin-script primary name and the first original-script name.
+ * A removed profile (deleted_at set) gets an anonymous ref: no slug, REMOVED_PROFILE_NAME and no
+ * original name (final check, security-2); its names are not even read.
+ */
 async function peopleRefs(ids: string[]): Promise<Map<string, PersonRef>> {
   const refs = new Map<string, PersonRef>();
   if (ids.length === 0) return refs;
   const db = getDb();
-  const people = await db.select({ id: person.id, slug: person.slug }).from(person).where(inArray(person.id, ids));
+  const people = await db.select({ id: person.id, slug: person.slug, deletedAt: person.deletedAt }).from(person).where(inArray(person.id, ids));
+  for (const p of people) {
+    if (p.deletedAt !== null) refs.set(p.id, { id: p.id, slug: null, name: { value: REMOVED_PROFILE_NAME, lang: 'en' }, original: null, removed: true });
+  }
+  const shown = people.filter((p) => p.deletedAt === null);
+  if (shown.length === 0) return refs;
   const names = await db
     .select({ personId: personName.personId, value: personName.value, lang: personName.lang, kind: personName.kind, isPrimary: personName.isPrimary })
     .from(personName)
-    .where(inArray(personName.personId, ids))
+    .where(inArray(personName.personId, shown.map((p) => p.id)))
     .orderBy(asc(personName.sortOrder), asc(personName.id));
-  for (const p of people) {
+  for (const p of shown) {
     const own = names.filter((n) => n.personId === p.id);
     const primary = own.find((n) => n.isPrimary);
     const original = own.find((n) => !n.isPrimary && n.kind === 'name');
@@ -152,6 +170,7 @@ async function peopleRefs(ids: string[]): Promise<Map<string, PersonRef>> {
       // Every person has a primary name (seed test, onboarding); the slug is only a last resort.
       name: primary ? { value: primary.value, lang: primary.lang } : { value: p.slug, lang: 'und-Latn' },
       original: original ? { value: original.value, lang: original.lang } : null,
+      removed: false,
     });
   }
   return refs;
@@ -256,9 +275,11 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       .select({ id: teachingRelationship.studentPersonId })
       .from(teachingRelationship)
       .where(and(eq(teachingRelationship.teacherPersonId, own.id), inArray(teachingRelationship.status, [...PUBLIC_RELATIONSHIP_STATUSES])));
+    // A removed profile's request waits for no one (final check, security-2): it is not counted.
     const [pending] = await db
       .select({ n: count() })
       .from(teachingRelationship)
+      .innerJoin(person, and(eq(person.id, teachingRelationship.studentPersonId), isNull(person.deletedAt)))
       .where(
         and(
           eq(teachingRelationship.teacherPersonId, own.id),

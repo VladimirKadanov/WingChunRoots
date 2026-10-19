@@ -14,17 +14,18 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { FormMessage } from '@/components/account/fields';
+import { LoadError } from '@/components/account/load-error';
+import { LOAD_ERRORS } from '@/components/account/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
-import { cx } from '@/lib/cx';
 import { isoDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
+import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { grantHorizon, listGrantsInput } from '@/server/services/grants';
 import { CLOSED_REQUEST_MESSAGE } from './form-ids';
-import { CreateGrantForm, PilotRequestItem } from './forms';
+import { CreateGrantForm, GivePlanDisclosure, PilotRequestItem } from './forms';
 import { GrantsTable, hrefWith } from './grants-table';
 
 export const instant = false;
@@ -88,13 +89,19 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
   // back to the default instead of an error page.
   const field = listGrantsInput.shape;
   const request = valid(field.request.safeParse(one(query.request)));
-  const list = await serverClient(await headers(), guard.principal).grants.list({
-    q: valid(field.q.safeParse(one(query.q)?.slice(0, 320) || undefined)),
-    sort: valid(field.sort.safeParse(one(query.sort))),
-    dir: valid(field.dir.safeParse(one(query.dir))),
-    page: valid(field.page.safeParse(one(query.page))),
-    request,
-  });
+  // A failed read shows the error state in the app shell, with "Try again" on the same address
+  // (final check, requirements-2). Its line in the server log names neither the search nor the
+  // account (security-1).
+  const list = await pageRead(
+    serverClient(await headers(), guard.principal).grants.list({
+      q: valid(field.q.safeParse(one(query.q)?.slice(0, 320) || undefined)),
+      sort: valid(field.sort.safeParse(one(query.sort))),
+      dir: valid(field.dir.safeParse(one(query.dir))),
+      page: valid(field.page.safeParse(one(query.page))),
+      request,
+    }),
+  );
+  if (!list) return <LoadError {...LOAD_ERRORS.grants} retryHref={returnPath(query)} />;
   const [created, revoked, closedRequest] = await Promise.all([
     readFormResult('create-grant', query.outcome),
     readFormResult('revoke-grant', query.outcome),
@@ -140,29 +147,24 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           <h2 id="give-plan-heading" className="sr-only">
             Give a test plan
           </h2>
-          {/* Open when a pilot request is being answered, and to show the outcome of a post without
-              JavaScript; otherwise closed until the admin opens it. */}
-          <details open={Boolean(request) || created !== null || undefined} className="group max-w-[46rem]">
-            <summary
-              data-testid="give-plan-toggle"
-              className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
-            >
-              Give a test plan…
-              <ChevronDownIcon size={18} className="transition-transform duration-(--duration-fast) group-open:rotate-180" />
-            </summary>
-            <div className="pt-4">
-              {/* Keyed by the request in the address, not by the prefill: a grant closes the request and
-                  the prefill goes away, but the form keeps its success message. */}
-              <CreateGrantForm
-                key={request ?? 'new'}
-                plans={list.grantablePlans}
-                prefill={list.prefill}
-                today={isoDay(now)}
-                horizon={isoDay(grantHorizon(now))}
-                initial={created}
-              />
-            </div>
-          </details>
+          {/* Open when an open pilot request is being answered, and to show the outcome of a post
+              without JavaScript; otherwise closed until the admin opens it. A request that is no
+              longer open is said to be answered (final check, screens-4). Keyed by the request in
+              the address, not by the prefill: a grant closes the request and the prefill goes away,
+              but the form keeps its success message. */}
+          <GivePlanDisclosure
+            key={request ?? 'new'}
+            openAtFirst={list.prefill !== null || created !== null}
+            answeredAtFirst={Boolean(request) && list.prefill === null && created === null}
+          >
+            <CreateGrantForm
+              plans={list.grantablePlans}
+              prefill={list.prefill}
+              today={isoDay(now)}
+              horizon={isoDay(grantHorizon(now))}
+              initial={created}
+            />
+          </GivePlanDisclosure>
         </section>
 
         <Section id="grants" title="Grants">

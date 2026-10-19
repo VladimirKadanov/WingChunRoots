@@ -18,10 +18,12 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { FormMessage } from '@/components/account/fields';
+import { LoadError } from '@/components/account/load-error';
+import { LOAD_ERRORS } from '@/components/account/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, PinIcon } from '@/components/icons';
-import { PILOT_ACCESS_FORM } from '@/components/plans/form-ids';
+import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -29,6 +31,7 @@ import { cx } from '@/lib/cx';
 import { formatDay, untilPlanEnd } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
+import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { DashboardOverview, PersonRef } from '@/server/services/dashboard';
 import { requestPilotAccessAction } from './actions';
@@ -78,6 +81,8 @@ function Empty({ testId, children, action }: { testId: string; children: ReactNo
 const NAME_CHECK = { href: '/account', label: 'See how your name reads' };
 
 function Person({ person }: { person: PersonRef }) {
+  // A removed profile keeps its row, anonymous (final check, security-2): a UI text, not a name.
+  if (person.removed) return <span className="font-display text-lg text-fg-muted">{person.name.value}</span>;
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-[0.42em] font-display text-lg [overflow-wrap:anywhere]">
       <NameText name={person.name} />
@@ -274,7 +279,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const client = serverClient(await headers(), guard.principal);
-  const [overview, me] = await Promise.all([client.dashboard.overview(), client.account.me()]);
+  // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
+  const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me()]));
+  if (!loaded) return <LoadError {...LOAD_ERRORS.dashboard} retryHref="/dashboard" />;
+  const [overview, me] = loaded;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
@@ -365,7 +373,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                     <UpgradePrompt
                       offer={offer}
                       requestAction={requestPilotAccessAction}
-                      notNowHref="/dashboard#student-requests"
+                      notNowAction="/dashboard"
+                      closedByChoice={query[UPGRADE_CLOSED_PARAM.name] === UPGRADE_CLOSED_PARAM.value}
                       initial={pilotOutcome}
                     />
                   ) : null

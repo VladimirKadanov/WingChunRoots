@@ -189,7 +189,11 @@ function SortBar({ list }: { list: GrantList }) {
             key={sort}
             href={hrefWith(list, { sort, dir: nextDir(list, sort), page: 1 })}
             aria-current={current ? 'true' : undefined}
-            className={cx('inline-flex min-h-11 items-center gap-1 underline-offset-4 hover:underline', current ? 'font-semibold text-fg underline' : 'text-fg-muted')}
+            // At least 44×44 CSS px on a phone, however short the word (final check, screens-7).
+            className={cx(
+              'inline-flex min-h-11 min-w-11 items-center justify-center gap-1 px-1 underline-offset-4 hover:underline',
+              current ? 'font-semibold text-fg underline' : 'text-fg-muted',
+            )}
           >
             {SORT_LABELS[sort].replace(/^./, (c) => c.toUpperCase())}
             {current ? (

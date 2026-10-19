@@ -9,7 +9,8 @@
 // vocabulary as the home page's "How a link earns its seal". A check means the plan has it, a dash
 // that it does not, and a neutral value has no mark ("Browse only"). On a phone each feature takes
 // the full width with the two plans' values under it, and the planned features sit behind a
-// closed disclosure; from md up they follow in the same table.
+// closed disclosure; from md up they follow in the same table. Federation, planned as a whole, has
+// its own one-plan table behind a closed disclosure at every width (final check, requirements-4).
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -17,7 +18,7 @@ import Link from 'next/link';
 import { CheckIcon, ChevronDownIcon, DashIcon, PlannedIcon } from '@/components/icons';
 import { LinkStroke } from '@/components/ink/link-stroke';
 import { cx } from '@/lib/cx';
-import type { PlanCode } from '@/server/entitlements/plans';
+import { FREE_SIFU_STUDENT_LIMIT, type PlanCode } from '@/server/entitlements/plans';
 import { type PlanCatalog, planCatalog, type PlanSummary } from '@/server/services/plans';
 
 export const metadata: Metadata = {
@@ -37,7 +38,8 @@ const GROUPS: readonly { id: string; title: string; lead: string; codes: readonl
   {
     id: 'instructors',
     title: 'For instructors (Sifu)',
-    lead: 'Free Sifu counts up to 5 approved students; Professional Sifu has no limit and a public pin for your school. Approvals open with teacher requests, and the pin with the map, later in the pilot.',
+    // DEFAULT D06: the Free Sifu limit comes from the plan matrix (final check, code-3).
+    lead: `Free Sifu counts up to ${FREE_SIFU_STUDENT_LIMIT} approved students; Professional Sifu has no limit and a public pin for your school. Approvals open with teacher requests, and the pin with the map, later in the pilot.`,
     codes: ['free_sifu', 'pro_sifu'],
   },
 ];
@@ -222,6 +224,61 @@ function PlannedFeatures({ catalog, plans, caption }: { catalog: PlanCatalog; pl
   );
 }
 
+/**
+ * Federation, feature by feature (final check, requirements-4): its value for every feature of the
+ * matrix, behind a closed disclosure at every width. The whole plan is planned, so every value is
+ * drawn as planned (muted, under the "Planned — not available yet" tag), and a feature of the pilot
+ * does not say when it opens: Federation is not part of the pilot.
+ */
+function FederationFeatures({ catalog, plan }: { catalog: PlanCatalog; plan: PlanSummary }) {
+  return (
+    <details data-testid="federation-features" className="group border-t border-border-subtle">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span className="inline-flex items-center gap-3">
+          <LinkStroke kind="unconfirmed" width={36} />
+          <span className="grid gap-0.5">
+            <span className="text-ui font-semibold">{`${plan.name}, feature by feature (${catalog.features.length})`}</span>
+            <PlannedTag label={catalog.plannedLabel} />
+          </span>
+        </span>
+        <ChevronDownIcon size={18} className="shrink-0 text-fg-muted transition-transform duration-(--duration-fast) group-open:rotate-180" />
+      </summary>
+      <table role="table" className="w-full table-fixed border-collapse text-left text-sm sm:text-ui">
+        <caption className="sr-only">{`What ${plan.name} would include (${catalog.plannedLabel})`}</caption>
+        <colgroup>
+          <col className="w-[52%] sm:w-[44%]" />
+          <col />
+        </colgroup>
+        <thead role="rowgroup">
+          <tr role="row" className="border-b border-border-strong">
+            <th role="columnheader" scope="col" className="py-3 pr-3 align-bottom text-sm font-semibold text-fg-muted">
+              Feature
+            </th>
+            <th role="columnheader" scope="col" className="px-2 py-3 align-bottom font-display text-base font-normal leading-tight sm:px-3 min-[360px]:text-lg">
+              {plan.name}
+            </th>
+          </tr>
+        </thead>
+        <tbody role="rowgroup" data-group="federation">
+          {catalog.features.map((feature) => (
+            <tr role="row" key={feature.key} data-feature={feature.key} className="border-b border-border-subtle align-top">
+              <th role="rowheader" scope="row" className="py-3 pr-3 font-normal break-words hyphens-auto">
+                <span className="grid gap-1">
+                  <span className="font-semibold">{feature.label}</span>
+                  {feature.note ? <span className="max-w-[60ch] text-sm font-normal text-fg-muted">{feature.note}</span> : null}
+                </span>
+              </th>
+              <td role="cell" className="px-2 py-3 sm:px-3">
+                <Value value={feature.values[plan.code]} planned />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
 export default function PlansPage() {
   const catalog = planCatalog();
   const federation = catalog.plans.find((plan) => plan.code === 'federation')!;
@@ -284,6 +341,7 @@ export default function PlansPage() {
                 </ul>
               </div>
             </div>
+            <FederationFeatures catalog={catalog} plan={federation} />
           </section>
         </div>
 

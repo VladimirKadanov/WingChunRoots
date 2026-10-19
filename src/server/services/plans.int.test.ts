@@ -293,7 +293,7 @@ describe('plans.requestPilotAccess', () => {
     const [stored] = (await notificationsOf(admin.account.id, 'pilot-access.requested')).filter((row) => (row.payload as { requestId: string }).requestId === requestId);
     expect(stored!.payload).toEqual({ requestId, planCode: 'pro_sifu' });
 
-    type Item = { body: ({ text: string } | { name: { value: string } })[]; action: { href: string } | null; template: string };
+    type Item = { id: string; body: ({ text: string } | { name: { value: string } })[]; action: { href: string } | null; template: string };
     const shown = async () => {
       const items = (await v1(admin.token, 'GET', '/notifications')).data.items as Item[];
       return items.find((item) => item.action?.href === `/admin/grants?request=${requestId}#give-plan`);
@@ -305,7 +305,8 @@ describe('plans.requestPilotAccess', () => {
     // The request goes with its account (ON DELETE CASCADE): the notification names nobody.
     await getDb().delete(pilotAccessRequest).where(eq(pilotAccessRequest.id, requestId));
     const items = (await v1(admin.token, 'GET', '/notifications')).data.items as Item[];
-    const gone = items.find((item) => item.template === 'pilot-access.requested' && item.action === null);
+    const gone = items.find((item) => item.id === stored!.id);
+    expect(gone?.action).toBeNull();
     expect(gone?.body).toEqual([{ text: 'A since deleted account asked for pilot access to Professional Sifu. The request was removed with the account.' }]);
     expect(JSON.stringify(items)).not.toContain('Demo Pilot');
   });
@@ -464,6 +465,17 @@ describe('grants.* (admin with a verified second factor)', () => {
     expect((await v1(token, 'POST', '/plans/request-pilot-access', { planCode: 'pro_sifu' })).data).toMatchObject({ created: true });
     // A request already answered is not closed twice.
     expect((await v1(admin.token, 'POST', '/admin/grants/close-request', { requestId, reason: 'again' })).status).toBe(409);
+    // Every admin's notification of it now says it was answered and offers no review (final check, screens-4).
+    for (const other of admins) {
+      const [stored] = (await notificationsOf(other.account.id, 'pilot-access.requested')).filter((n) => (n.payload as { requestId: string }).requestId === requestId);
+      const listed = ((await v1(other.token, 'GET', '/notifications')).data.items as { id: string; action: unknown; body: { text?: string }[] }[]).find(
+        (item) => item.id === stored!.id,
+      );
+      expect(listed?.action).toBeNull();
+      expect(listed?.body.map((segment) => segment.text ?? '').join('')).toContain('The request has already been answered.');
+    }
+    // The grants page has nothing to fill in for it.
+    expect((await v1(admin.token, 'GET', `/admin/grants?request=${requestId}`)).data).toMatchObject({ prefill: null });
   });
 
   it('a grant answers the request the form came from only when it is the account’s own', async () => {
@@ -506,6 +518,16 @@ describe('grants.* (admin with a verified second factor)', () => {
     expect((await v1(admin.token, 'POST', '/admin/grants/create', { email: student.account.email, planCode: 'federation', reason: 'Demo' })).status).toBe(400);
     const noPlan = await v1(admin.token, 'POST', '/admin/grants/create', { email: student.account.email, planCode: '', reason: 'Demo' });
     expect(noPlan.data.data?.fields).toMatchObject({ planCode: 'Choose a plan.' });
+    // An empty form gets every field error at once, not one round trip per field (final check, screens-2).
+    const empty = await v1(admin.token, 'POST', '/admin/grants/create', { email: '', reason: '' });
+    expect(empty.status).toBe(400);
+    expect(empty.data.data?.fields).toEqual({
+      planCode: 'Choose a plan.',
+      email: 'Enter the e-mail address of the account.',
+      reason: 'Give a reason; it is kept in the audit log.',
+    });
+    const badDates = await v1(admin.token, 'POST', '/admin/grants/create', { email: 'not-an-address', planCode: 'nope', reason: '', startsOn: 'soon', endsOn: 'later' });
+    expect(Object.keys(badDates.data.data?.fields ?? {}).sort()).toEqual(['email', 'endsOn', 'planCode', 'reason', 'startsOn']);
     const [grants] = await getDb().select({ n: count() }).from(entitlementGrant).where(eq(entitlementGrant.subjectUserId, student.account.id));
     expect(grants!.n).toBe(0);
   });
@@ -675,6 +697,52 @@ describe('dashboard.overview', () => {
     expect(overview.sifu.students.approved).toBe(5);
     expect(overview.sifu.requests).toHaveLength(50);
     expect(overview.sifu.upgrade).toMatchObject({ feature: 'approve_students', heading: 'More students with Professional Sifu', waiting: { count: 52 }, to: { code: 'pro_sifu' } });
+  });
+
+  it('a removed profile (deleted_at) shows in no list by name or slug and waits for nobody (final check, security-2)', async () => {
+    const sifu = await member('dash-removed', 'sifu');
+    const student = await member('dash-removed-student');
+    const lineageId = uuidv7();
+    await getDb().insert(lineage).values({ id: lineageId, slug: `demo-dash-${randomBytes(3).toString('hex')}`, name: 'Demo Removed Lineage' });
+    const own = uuidv7();
+    const asker = uuidv7();
+    const askerSlug = `demo-dash-removed-${randomBytes(4).toString('hex')}`;
+    await getDb()
+      .insert(person)
+      .values([
+        { id: own, slug: `demo-dash-${randomBytes(5).toString('hex')}`, kind: 'living', stewardship: 'self', claimedByUserId: sifu.account.id },
+        { id: asker, slug: askerSlug, kind: 'living', stewardship: 'self', claimedByUserId: student.account.id },
+      ]);
+    await getDb()
+      .insert(personName)
+      .values([
+        { personId: own, value: 'Demo Removed Teacher', script: 'Latn', lang: 'und-Latn', isPrimary: true },
+        { personId: asker, value: 'Demo Removed Asker', script: 'Latn', lang: 'und-Latn', isPrimary: true },
+        { personId: asker, value: '陳演示', script: 'Hant', lang: 'zh-Hant', isPrimary: false },
+      ]);
+    // Five established students reach the Free Sifu limit; the asker's request waits.
+    const established = Array.from({ length: 5 }, () => uuidv7());
+    await getDb().insert(person).values(established.map((id) => ({ id, slug: `demo-dash-${randomBytes(5).toString('hex')}`, kind: 'living' as const, stewardship: 'unclaimed' as const })));
+    await getDb()
+      .insert(teachingRelationship)
+      .values([
+        ...established.map((studentPersonId) => ({ id: uuidv7(), teacherPersonId: own, studentPersonId, lineageId, status: 'verified' as const, visibility: 'involved_only' as const })),
+        { id: uuidv7(), teacherPersonId: own, studentPersonId: asker, lineageId, status: 'pending_teacher', visibility: 'involved_only' },
+      ]);
+    type Ref = { slug: string | null; name: { value: string }; original: unknown; removed: boolean };
+    const before = (await v1(sifu.token, 'GET', '/dashboard')).data as { sifu: { requests: { student: Ref }[]; upgrade: { waiting: { count: number } } | null } };
+    expect(before.sifu.requests.map((r) => r.student)).toMatchObject([{ slug: askerSlug, name: { value: 'Demo Removed Asker' }, removed: false }]);
+    expect(before.sifu.upgrade?.waiting.count).toBe(1);
+
+    await getDb().update(person).set({ deletedAt: new Date() }).where(eq(person.id, asker));
+    const after = (await v1(sifu.token, 'GET', '/dashboard')).data as { sifu: { requests: { student: Ref }[]; upgrade: { waiting: { count: number } } | null } };
+    expect(after.sifu.requests.map((r) => r.student)).toEqual([{ id: asker, slug: null, name: { value: 'A removed profile', lang: 'en' }, original: null, removed: true }]);
+    // Nothing waits because of the limit any more: no upgrade offer.
+    expect(after.sifu.upgrade).toBeNull();
+    const text = JSON.stringify(after);
+    expect(text).not.toContain('Demo Removed Asker');
+    expect(text).not.toContain('陳演示');
+    expect(text).not.toContain(askerSlug);
   });
 });
 

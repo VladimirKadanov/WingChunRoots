@@ -10,11 +10,15 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { LoadError } from '@/components/account/load-error';
+import { LOAD_ERRORS } from '@/components/account/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDay, untilPlanEnd } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
+import { FREE_SIFU_STUDENT_LIMIT } from '@/server/entitlements/plans';
 import { readFormResult } from '@/server/forms/flash';
+import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { AccountTypeForm } from './forms';
 
@@ -43,7 +47,9 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
-  const mine = await serverClient(await headers(), guard.principal).plans.mine();
+  // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
+  const mine = await pageRead(serverClient(await headers(), guard.principal).plans.mine());
+  if (!mine) return <LoadError {...LOAD_ERRORS.settings} retryHref="/dashboard/settings" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
 
   return (
@@ -62,6 +68,8 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
               </p>
               <AccountTypeForm
                 current={mine.accountType}
+                // DEFAULT D06: the Free Sifu limit, from the plan matrix (final check, code-3).
+                studentLimit={FREE_SIFU_STUDENT_LIMIT}
                 instructorVerified={mine.verifiedInstructor}
                 initial={await readFormResult('account-type', query.outcome)}
               />

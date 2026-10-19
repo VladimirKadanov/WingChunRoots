@@ -48,6 +48,9 @@ export async function markReadAction(form: FormData): Promise<void> {
   redirect(`${PAGE}#notifications`);
 }
 
+/** What follows a pilot access request (review round 2; final check, requirements-5). */
+const PILOT_NEXT = 'An administrator either gives you the plan or closes the request, and you get a notification either way.';
+
 /**
  * "Request pilot access" of the upgrade prompt (plan §5.6): asks the admins for the plan, never
  * charges. The form shows what happened; the page shows the open request from then on.
@@ -67,9 +70,10 @@ async function requestPilotAccess(form: FormData): Promise<FormState> {
     refresh();
     return {
       status: 'done',
+      // What happens next, right away (final check, requirements-5), as the prompt says on a later visit.
       message: outcome.created
-        ? `Your request for ${outcome.request.planName} was sent to the administrators. Nothing is charged.`
-        : `Your request for ${outcome.request.planName} is already with the administrators. Nothing is charged.`,
+        ? `Your request for ${outcome.request.planName} was sent to the administrators. ${PILOT_NEXT} Nothing is charged.`
+        : `Your request for ${outcome.request.planName} is already with the administrators. ${PILOT_NEXT} Nothing is charged.`,
     };
   } catch (error) {
     unstable_rethrow(error);

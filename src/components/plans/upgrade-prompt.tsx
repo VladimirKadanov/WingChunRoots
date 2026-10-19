@@ -14,8 +14,13 @@
 //
 // Once the account has asked (now or earlier), only the allowance and the state of the request
 // remain: no price, no benefits, no buttons (design-2). Works without JavaScript: <details> opens
-// natively, the form posts and the page shows the outcome (src/server/forms/flash.ts); "Not now"
-// is then a link back to the closed prompt.
+// natively, the form posts and the page shows the outcome (src/server/forms/flash.ts). "Not now"
+// is then a GET form to the page with ?upgrade=closed (M08 final check, screens-1): a submit always
+// loads the page again, so the prompt comes back closed, and `autofocus` puts the focus on its line
+// and scrolls it into view. The address has no fragment on purpose: a link or a submit that
+// differs from the address only by its fragment does not reload (the prompt would stay open), and
+// a page opened at a fragment that names an element skips `autofocus`.
+// Both actions are buttons of one style, in forced colours too.
 
 import Link from 'next/link';
 import { useActionState, useRef } from 'react';
@@ -27,20 +32,26 @@ import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
 import { IDLE, type FormState } from '@/lib/form-state';
 import type { UpgradeOffer } from '@/server/services/dashboard';
-import { PILOT_ACCESS_FORM } from './form-ids';
+import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM } from './form-ids';
 
 const actionClass = cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'w-full');
 
 export function UpgradePrompt({
   offer,
   requestAction,
-  notNowHref,
+  notNowAction,
+  closedByChoice = false,
   initial,
 }: {
   offer: UpgradeOffer;
   requestAction: (previous: FormState, form: FormData) => Promise<FormState>;
-  /** Where "Not now" goes without JavaScript: the same page with the prompt closed. */
-  notNowHref: string;
+  /**
+   * The page "Not now" asks for again without JavaScript, as a GET form with UPGRADE_CLOSED_PARAM
+   * ("/dashboard"). No fragment: see the comment at the top.
+   */
+  notNowAction: string;
+  /** The page was loaded by "Not now" without JavaScript: the prompt is closed and its line takes the focus. */
+  closedByChoice?: boolean;
   /** The outcome of a post without JavaScript (src/server/forms/flash.ts). */
   initial?: FormState | null;
 }) {
@@ -89,6 +100,7 @@ export function UpgradePrompt({
     >
       <summary
         ref={summary}
+        autoFocus={(closedByChoice && !openAtFirst) || undefined}
         data-testid="upgrade-summary"
         className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-sm px-4 py-3 outline-offset-2 [&::-webkit-details-marker]:hidden"
       >
@@ -158,20 +170,23 @@ export function UpgradePrompt({
                 <span className="sr-only"> to {to.name}</span>
               </button>
             </form>
-            <a
-              href={notNowHref}
-              data-testid="upgrade-not-now"
-              onClick={(event) => {
-                // With JavaScript: close the prompt in place and give the focus back to its line.
-                if (!details.current) return;
-                event.preventDefault();
-                details.current.open = false;
-                summary.current?.focus();
-              }}
-              className={actionClass}
-            >
-              Not now
-            </a>
+            <form action={notNowAction} method="get">
+              <input type="hidden" name={UPGRADE_CLOSED_PARAM.name} value={UPGRADE_CLOSED_PARAM.value} />
+              <button
+                type="submit"
+                data-testid="upgrade-not-now"
+                onClick={(event) => {
+                  // With JavaScript: close the prompt in place and give the focus back to its line.
+                  if (!details.current) return;
+                  event.preventDefault();
+                  details.current.open = false;
+                  summary.current?.focus();
+                }}
+                className={actionClass}
+              >
+                Not now
+              </button>
+            </form>
           </div>
         </div>
         <p className="text-sm">

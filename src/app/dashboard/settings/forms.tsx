@@ -15,7 +15,7 @@ import { setAccountTypeAction } from './actions';
  * The two options. The Sifu text follows the instructor status of the account's own person
  * (review round 2, recheck-9): a Sifu an archivist has verified is not told they show as unverified.
  */
-function options(instructorVerified: boolean) {
+function options(instructorVerified: boolean, studentLimit: number) {
   return [
     {
       value: 'student',
@@ -25,9 +25,10 @@ function options(instructorVerified: boolean) {
     {
       value: 'sifu',
       title: 'Sifu',
+      // DEFAULT D06: the Free Sifu limit comes from the plan matrix (studentLimit; final check, code-3).
       text: instructorVerified
-        ? 'You teach. Plan: Free Sifu, with up to 5 approved students. Shown as “Instructor”: an archivist has checked your instructor status.'
-        : 'You teach. Plan: Free Sifu, with up to 5 approved students. Shown as “Instructor (unverified)” until an archivist checks your instructor status.',
+        ? `You teach. Plan: Free Sifu, with up to ${studentLimit} approved students. Shown as “Instructor”: an archivist has checked your instructor status.`
+        : `You teach. Plan: Free Sifu, with up to ${studentLimit} approved students. Shown as “Instructor (unverified)” until an archivist checks your instructor status.`,
     },
   ] as const;
 }
@@ -35,11 +36,14 @@ function options(instructorVerified: boolean) {
 export function AccountTypeForm({
   current,
   instructorVerified = false,
+  studentLimit,
   initial,
 }: {
   current: 'student' | 'sifu';
   /** Whether an archivist has verified the account's person as an instructor (only a Sifu shows it). */
   instructorVerified?: boolean;
+  /** DEFAULT D06: the approved students Free Sifu counts (FREE_SIFU_STUDENT_LIMIT, from the server page). */
+  studentLimit: number;
   initial?: FormState | null;
 }) {
   const [state, action, pending] = useActionState(setAccountTypeAction, initial ?? IDLE);
@@ -59,7 +63,7 @@ export function AccountTypeForm({
           </p>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
-          {options(instructorVerified).map((option, index) => (
+          {options(instructorVerified, studentLimit).map((option, index) => (
             <label
               key={option.value}
               className={cx(
