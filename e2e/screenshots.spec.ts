@@ -128,6 +128,22 @@ const STATES: readonly ScreenState[] = [
       await expect(request.getByLabel('Reason for closing')).toBeVisible();
     },
   },
+  {
+    // M08 final check (screens-4): the address of a pilot access request already answered.
+    name: 'request-answered',
+    milestone: 'M08',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Answered Sifu', sifu: true });
+      const asked = await apiPost(page, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+      expect(asked.status(), await asked.text()).toBe(200);
+      const requestId = ((await asked.json()) as { request: { id: string } }).request.id;
+      await signInAs(page, 'admin');
+      const closed = await apiPost(page, '/admin/grants/close-request', { requestId, reason: 'Demo pilot: answered for the screenshot' });
+      expect(closed.status(), await closed.text()).toBe(200);
+      await page.goto(`/admin/grants?request=${requestId}#give-plan`);
+      await expect(page.getByTestId('request-answered')).toBeVisible();
+    },
+  },
 ];
 const states = STATES.filter((state) => !only || state.milestone === only);
 

@@ -22,22 +22,64 @@ export interface ProjectOptions {
    * docs/screenshots/<milestone>/. On request only (`pnpm screenshots`), never in a test run.
    */
   screenshots?: boolean;
+  /**
+   * Builds only the `exclusive` project (M08 final check): the specs that lock a whole table, in a
+   * run of their own after the other one (PW_EXCLUSIVE=1; scripts/verify.sh does both). Within one
+   * run Playwright cannot hold them back until the others have finished without running every
+   * other project in full whatever the filter (`dependencies` ignore --grep).
+   */
+  exclusive?: boolean;
 }
 
 /** Spec files that only their own project runs. */
 export const VISUAL_SPEC = '**/visual.spec.ts';
 export const SCREENSHOTS_SPEC = '**/screenshots.spec.ts';
+/**
+ * Specs that hold a lock on a whole table to make the server's reads fail (M08 final check:
+ * error states and the server log under a database timeout). Every other test would wait on that
+ * lock too, so only the `exclusive` project runs them, in a Playwright run of its own
+ * (PW_EXCLUSIVE=1) after the others, one test at a time.
+ */
+export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
+
+/**
+ * Where a run's web server writes its log, and where its artifacts go: the exclusive run keeps
+ * its own, so it never empties or overwrites those of the run before it (the visual
+ * screenshots that scripts/visual-baselines.sh prints, the server log in the CI artifact).
+ */
+export function runPaths(exclusive: boolean) {
+  return exclusive
+    ? { serverLog: 'test-results/server-exclusive.log', outputDir: './test-results/exclusive', htmlReport: 'test-results/exclusive-report' }
+    : { serverLog: 'test-results/server.log', outputDir: './test-results/artifacts', htmlReport: 'playwright-report' };
+}
 
 /**
  * Playwright projects (plan §5.8 (d)): desktop-chromium (1440x900) and mobile-chromium
- * (Pixel class) everywhere, mobile-webkit (iPhone) only in CI, and on request the
- * Chromium-only `visual` and `screenshots` projects, which set their own viewports.
+ * (Pixel class) everywhere, mobile-webkit (iPhone) only in CI, on request the Chromium-only
+ * `visual` and `screenshots` projects, which set their own viewports. With `exclusive`, only the
+ * `exclusive` project (Chromium, 1440x900, one test at a time; EXCLUSIVE_SPEC).
  */
-export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false }: ProjectOptions): Project[] {
+export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false, exclusive = false }: ProjectOptions): Project[] {
   const chromiumLaunch = chromiumExecutable
     ? { launchOptions: { executablePath: chromiumExecutable } }
     : {};
-  const testIgnore = [VISUAL_SPEC, SCREENSHOTS_SPEC];
+
+  if (exclusive) {
+    return [
+      {
+        name: 'exclusive',
+        testMatch: EXCLUSIVE_SPEC,
+        fullyParallel: false,
+        workers: 1,
+        use: {
+          ...devices['Desktop Chrome'],
+          viewport: { width: 1440, height: 900 },
+          ...chromiumLaunch,
+        },
+      },
+    ];
+  }
+  const testIgnore = [VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC];
 
   const projects: Project[] = [
     {

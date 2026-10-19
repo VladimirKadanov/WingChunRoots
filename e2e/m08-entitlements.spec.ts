@@ -343,9 +343,11 @@ test('@M08 the upgrade prompt shows the current allowance, real benefits, a "Pro
   await expect(prompt.locator('[role="timer"], [role="progressbar"], meter, progress')).toHaveCount(0);
 
   // "Not now" closes it again and gives the focus back to its line; the requests stay. It never
-  // opens by itself, also on the next visit. Without JavaScript it is a link back to the closed prompt.
-  await expect(notNow).toHaveAttribute('href', '/dashboard#student-requests');
+  // opens by itself, also on the next visit. Without JavaScript it is a GET form that loads the page
+  // again with the prompt closed (final check, screens-1; the next test).
+  await expect(notNow).toHaveAttribute('type', 'submit');
   await notNow.click();
+  await expect(page).toHaveURL(/\/dashboard$/);
   await expect(prompt).not.toHaveAttribute('open');
   await expect(prompt.getByTestId('upgrade-summary')).toBeFocused();
   await expect(prompt.getByTestId('upgrade-allowance')).toBeVisible();
@@ -353,6 +355,41 @@ test('@M08 the upgrade prompt shows the current allowance, real benefits, a "Pro
   await page.reload();
   await expect(prompt).toBeVisible();
   await expect(prompt).not.toHaveAttribute('open');
+});
+
+test('@M08 without JavaScript, "Not now" closes the upgrade prompt and puts the focus on its line', async ({ browser }) => {
+  // Final check, screens-1: a link that differed from the address only by its fragment did not
+  // reload, so the prompt stayed open and the focus went to the page.
+  const context = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false });
+  await giveOwnAddress(context);
+  try {
+    const page = await context.newPage();
+    const sifu = await freshAccount(page, { name: 'Demo No Script Sifu', sifu: true });
+    await giveStudents(sifu.userId, 5, 1);
+    await page.goto('/dashboard');
+    const prompt = page.getByTestId('upgrade-prompt');
+    await expect(prompt).not.toHaveAttribute('open');
+    await prompt.getByTestId('upgrade-summary').click();
+    await expect(prompt).toHaveAttribute('open');
+    for (const press of ['click', 'keyboard'] as const) {
+      if (press === 'keyboard') {
+        await prompt.getByTestId('upgrade-summary').click();
+        await expect(prompt).toHaveAttribute('open');
+        await prompt.getByTestId('upgrade-not-now').focus();
+        await page.keyboard.press('Enter');
+      } else {
+        await prompt.getByTestId('upgrade-not-now').click();
+      }
+      // No fragment: the submit always reloads, and `autofocus` is not skipped.
+      await expect(page).toHaveURL(/\/dashboard\?upgrade=closed$/);
+      await expect(prompt, press).not.toHaveAttribute('open');
+      await expect(prompt.getByTestId('upgrade-summary'), press).toBeFocused();
+      await expect(prompt.getByTestId('upgrade-summary')).toBeInViewport();
+      await expect(page.getByTestId('student-requests').getByRole('listitem')).toHaveCount(1);
+    }
+  } finally {
+    await context.close();
+  }
 });
 
 test('@M08 the upgrade prompt lists only features available in the current release', async ({ page }) => {
@@ -418,6 +455,24 @@ test('@M08 /plans labels planned features as not yet available and states that p
   // The Federation plan is planned as a whole.
   const federation = page.getByRole('article', { name: 'Federation' });
   await expect(federation).toContainText(PLANNED);
+  // Final check, requirements-4: its value for every feature of the matrix, behind a closed
+  // disclosure that says it is planned; every value is drawn as planned (muted).
+  const federationFeatures = page.locator('section#organizations').getByTestId('federation-features');
+  await expect(federationFeatures).not.toHaveAttribute('open');
+  await expect(federationFeatures.locator('summary')).toContainText(PLANNED);
+  await expect(federationFeatures.locator('summary')).toContainText(`Federation, feature by feature (${FEATURES.length})`);
+  await federationFeatures.locator('summary').click();
+  const federationTable = federationFeatures.getByRole('table', { name: `What Federation would include (${PLANNED})` });
+  await expect(federationTable).toBeVisible();
+  await expect(federationTable.getByRole('columnheader')).toHaveText(['Feature', 'Federation']);
+  await expect(federationTable.locator('tbody tr[data-feature]')).toHaveCount(FEATURES.length);
+  for (const f of FEATURES) {
+    const row = federationTable.locator(`tr[data-feature="${f.key}"]`);
+    await expect(row.getByRole('rowheader'), f.key).toContainText(f.label);
+    await expect(row.getByRole('cell'), f.key).toHaveText(f.values.federation.label);
+    await expect(row.getByRole('cell').locator('[data-mark]'), f.key).toHaveClass(/text-fg-muted/);
+  }
+  await expect(page.getByRole('main').getByRole('table')).toHaveCount(3 + opened);
 
   // Every price is a proposal: one label per plan with a price. A free plan says "Free", with no
   // proposal label (review round 1, design-10); the yearly proposal is shown too (requirements-3).
@@ -448,7 +503,13 @@ test('@M08 "Request pilot access" notifies admins and creates no charge', async 
   await expect(prompt.getByTestId('upgrade-allowance')).toHaveText('You have approved 5 of 5 students on Free Sifu.');
   await prompt.getByTestId('upgrade-summary').click();
   await prompt.getByTestId('request-pilot-access').click();
-  await expect(doneText(page, 'Your request for Professional Sifu was sent to the administrators. Nothing is charged.')).toBeVisible();
+  // What happens next is said right away, not only on the next visit (final check, requirements-5).
+  await expect(
+    doneText(
+      page,
+      'Your request for Professional Sifu was sent to the administrators. An administrator either gives you the plan or closes the request, and you get a notification either way. Nothing is charged.',
+    ),
+  ).toBeVisible();
   // Once asked, only the allowance and the state remain: no price, benefits or buttons.
   await expect(prompt).toHaveAttribute('data-state', 'asked');
   await expect(prompt.getByTestId('request-pilot-access')).toHaveCount(0);
@@ -514,6 +575,19 @@ test('@M08 "Request pilot access" notifies admins and creates no charge', async 
     await expect(field(form, 'Account e-mail')).toBeInViewport();
     await expect(field(form, 'Account e-mail')).toHaveValue(sifu.email);
     await expect(field(form, 'Plan', true)).toHaveValue('pro_sifu');
+    // The first field left to fill, the reason, has the focus, in view (final check, screens-3).
+    await expect(field(form, 'Reason', true)).toBeFocused();
+    await expect(field(form, 'Reason', true)).toBeInViewport();
+
+    // The same from the request's own "Give …" in the list, by keyboard.
+    await admin.page.goto('/admin/grants');
+    const give = admin.page.getByTestId('pilot-requests').getByRole('link', { name: `Give Professional Sifu to ${sifu.email}` });
+    await give.focus();
+    await admin.page.keyboard.press('Enter');
+    await expect(admin.page).toHaveURL(new RegExp(`/admin/grants\\?request=${requestId}#give-plan$`));
+    await expect(field(form, 'Account e-mail')).toHaveValue(sifu.email);
+    await expect(field(form, 'Reason', true)).toBeFocused();
+    await expect(field(form, 'Reason', true)).toBeInViewport();
 
     // Without JavaScript the same form answers the request from that address: the outcome address
     // names the form's message, so the page opens there with the focus on it (a11y-webview-1).
@@ -522,9 +596,13 @@ test('@M08 "Request pilot access" notifies admins and creates no charge', async 
       await giveOwnAddress(nojs);
       const b = await nojs.newPage();
       await b.goto(`/admin/grants?request=${requestId}#give-plan`);
-      const give = b.locator('#give-plan');
-      await field(give, 'Reason', true).fill('Demo pilot request answered');
-      await give.getByRole('button', { name: 'Give the plan' }).click();
+      const giveForm = b.locator('#give-plan');
+      // The browser opens the page at the form, filled in. It moves no focus there: a page opened
+      // at a fragment that names an element skips `autofocus` (HTML), so that is the JavaScript path.
+      await expect(field(giveForm, 'Account e-mail')).toBeInViewport();
+      await expect(field(giveForm, 'Account e-mail')).toHaveValue(sifu.email);
+      await field(giveForm, 'Reason', true).fill('Demo pilot request answered');
+      await giveForm.getByRole('button', { name: 'Give the plan' }).click();
       await expect(b).toHaveURL(/\/admin\/grants\?outcome=[\w-]+#create-grant-message$/);
       const message = b.locator('#give-plan').getByRole('status');
       await expect(message).toContainText(`Professional Sifu given to ${sifu.email}`);
@@ -719,6 +797,31 @@ test('@M08 notifications: a failed "Mark as read" says so, puts the item back an
   expect(unread.rows).toHaveLength(1);
 });
 
+test('@M08 an empty "Give a test plan" lists every missing answer at once, with and without JavaScript', async ({ browser }) => {
+  // Final check, screens-2: the API's one parse reports every field, not one per round trip.
+  const admin = await signedInContext(browser, 'admin');
+  const nojs = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, storageState: await admin.context.storageState() });
+  try {
+    await giveOwnAddress(nojs);
+    for (const page of [admin.page, await nojs.newPage()]) {
+      const js = page === admin.page ? 'with JavaScript' : 'without JavaScript';
+      await page.goto('/admin/grants');
+      await page.getByTestId('give-plan-toggle').click();
+      await page.getByRole('button', { name: 'Give the plan' }).click();
+      const summary = page.getByRole('alert').filter({ hasText: 'answers need a look' });
+      await expect(summary.locator('p').first(), js).toHaveText('3 answers need a look');
+      await expect(summary.getByRole('listitem'), js).toHaveText([
+        /Account e-mail.*Enter the e-mail address of the account\./,
+        /Plan.*Choose a plan\./,
+        /Reason.*Give a reason; it is kept in the audit log\./,
+      ]);
+    }
+  } finally {
+    await nojs.close();
+    await admin.context.close();
+  }
+});
+
 test('@M08 without JavaScript, a refused revoke comes back open with the focus on its reason', async ({ page, browser }) => {
   const sifu = await freshAccount(page, { name: 'Demo Revoke Focus Sifu', sifu: true });
   const admin = await signedInContext(browser, 'admin');
@@ -821,6 +924,11 @@ test.describe('at 390x844', () => {
     await expect(page.getByTestId('planned-features').first()).not.toHaveAttribute('open');
     await page.getByTestId('planned-features').first().locator('summary').tap();
     await expectNoHorizontalScroll(page, '/plans, planned features open');
+    // Federation, feature by feature (final check, requirements-4): closed, and it reflows open.
+    await expect(page.getByTestId('federation-features')).not.toHaveAttribute('open');
+    await page.getByTestId('federation-features').locator('summary').tap();
+    await expect(page.getByTestId('federation-features')).toHaveAttribute('open');
+    await expectNoHorizontalScroll(page, '/plans, Federation features open');
     await page.setViewportSize({ width: 320, height: 568 });
     await page.reload();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -862,6 +970,14 @@ test.describe('at 390x844', () => {
       const sort = a.getByRole('navigation', { name: 'Sort grants' });
       await expect(sort).toBeVisible();
       await expect(sort.getByRole('link', { name: /^Date given/ })).toHaveAttribute('aria-current', 'true');
+      // Every sort link is a touch target of at least 44×44 CSS px, "Plan" and "State" too (final check, screens-7).
+      const sortLinks = sort.getByRole('link');
+      await expect(sortLinks).toHaveCount(6);
+      for (const link of await sortLinks.all()) {
+        const box = (await link.boundingBox())!;
+        expect(box.width, `${await link.innerText()}: width`).toBeGreaterThanOrEqual(44);
+        expect(box.height, `${await link.innerText()}: height`).toBeGreaterThanOrEqual(44);
+      }
       await sort.getByRole('link', { name: 'Account' }).tap();
       await expect(a).toHaveURL(/\/admin\/grants\?sort=email&dir=asc$/);
       await expect(sort.getByRole('link', { name: /^Account/ })).toHaveAttribute('aria-current', 'true');
@@ -1040,6 +1156,29 @@ test('@M08 an admin closes a pilot access request with a reason; the account is 
     const audit = await auditRows('pilot_access.close', first);
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ reason: 'Demo pilot: the test plans of this month are given' });
+
+    // The administrators' notification of it says it was answered and offers no review any more
+    // (final check, screens-4); its old address says so too, with the form closed.
+    const adminId = await userIdOf('demo-admin@example.test');
+    const [stored] = (
+      await getDb().execute<{ id: string }>(sql`
+        SELECT id FROM notification WHERE user_id = ${adminId} AND template = 'pilot-access.requested' AND payload ->> 'requestId' = ${first}`)
+    ).rows;
+    expect(stored, 'the admin was notified of the request').toBeDefined();
+    const listed = await a.request.get('/api/v1/notifications');
+    expect(listed.status(), await listed.text()).toBe(200);
+    const items = ((await listed.json()) as { items: { id: string; action: unknown; body: { text?: string }[] }[] }).items;
+    const answered = items.find((item) => item.id === stored!.id);
+    expect(answered, 'among the newest notifications').toBeDefined();
+    expect(answered!.action).toBeNull();
+    expect(answered!.body.map((segment) => segment.text ?? '').join('')).toContain('The request has already been answered.');
+    await a.goto('/dashboard');
+    await expect(a.getByTestId('notification').first()).toBeVisible();
+    await expect(a.locator(`a[href="/admin/grants?request=${first}#give-plan"]`)).toHaveCount(0);
+    await a.goto(`/admin/grants?request=${first}#give-plan`);
+    await expect(a.getByTestId('request-answered')).toHaveText('This pilot access request has already been answered. Nothing is waiting in it.');
+    await expect(a.locator('#give-plan details')).not.toHaveAttribute('open');
+    await a.goto(list);
 
     // The account is told, without the reason, and can ask again.
     await page.goto('/dashboard');
