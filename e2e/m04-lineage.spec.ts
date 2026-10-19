@@ -532,6 +532,9 @@ test.describe('at 390x844', () => {
 });
 
 test('@M04 no axe violations on the profile and list view in dark and light themes', async ({ page }) => {
+  // Eight pages and eight axe passes in one test, the root's list view among them (its outline is
+  // the longest page here): the default 30 s is for one page.
+  test.setTimeout(60_000);
   for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-root-a/lineage', '/people/demo-claim-only-teacher']) {
     for (const theme of THEMES) {
       const response = await openInTheme(page, path, theme);
@@ -543,6 +546,8 @@ test('@M04 no axe violations on the profile and list view in dark and light them
 });
 
 test('@M04 no axe violations on the private record and the own request, signed in', async ({ page }) => {
+  // A sign-in, then six pages and six axe passes (as above).
+  test.setTimeout(60_000);
   await signInAs(page, 'demo-pending');
   for (const path of ['/people/demo-pending', '/people/demo-hub-a', '/people/demo-root-a/lineage']) {
     for (const theme of THEMES) {
