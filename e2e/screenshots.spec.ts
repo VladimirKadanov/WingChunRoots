@@ -140,7 +140,9 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'admin');
       const closed = await apiPost(page, '/admin/grants/close-request', { requestId, reason: 'Demo pilot: answered for the screenshot' });
       expect(closed.status(), await closed.text()).toBe(200);
-      await page.goto(`/admin/grants?request=${requestId}#give-plan`);
+      // Without the link's #give-plan: a full-page capture of a page scrolled to a fragment draws
+      // the sticky sidebar where the scroll left it.
+      await page.goto(`/admin/grants?request=${requestId}`);
       await expect(page.getByTestId('request-answered')).toBeVisible();
     },
   },
