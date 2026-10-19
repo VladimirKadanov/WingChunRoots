@@ -42,22 +42,56 @@ function yearText(edges: readonly LineageEdgeDto[]): string | null {
   return year ? `since ${year}` : null;
 }
 
+/** Each teacher's students in the graph (both ends present), by name. */
+function studentsByTeacher(graph: LineageGraphDto, people: ReadonlyMap<string, LineageNodeDto>): Map<string, LineageNodeDto[]> {
+  const children = new Map<string, LineageNodeDto[]>();
+  for (const e of graph.edges) {
+    const student = people.get(e.studentId);
+    if (!student || !people.has(e.teacherId)) continue;
+    const list = children.get(e.teacherId) ?? [];
+    if (!list.some((s) => s.id === student.id)) list.push(student);
+    children.set(e.teacherId, list);
+  }
+  for (const list of children.values()) list.sort(byName);
+  return children;
+}
+
+/** The first level of the outline: with `teachingOnly`, only the students who have students. */
+function firstLevel(children: ReadonlyMap<string, LineageNodeDto[]>, rootId: string, teachingOnly: boolean): LineageNodeDto[] {
+  const first = children.get(rootId) ?? [];
+  return teachingOnly ? first.filter((p) => p.childCount > 0 || (children.get(p.id) ?? []).length > 0) : first;
+}
+
 export interface OutlineSummary {
-  /** First-level people shown, and how many first-level people there are in all. */
+  /** First-level rows the outline lists (the viewer's own requests included). */
+  listed: number;
+  /** Public first-level students who teach (all of them without `teachingOnly`), and all public first-level students. */
   shown: number;
   total: number;
 }
 
 export function outlineSummary(graph: LineageGraphDto, rootId: string, teachingOnly: boolean): OutlineSummary {
-  const first = new Map<string, LineageNodeDto>();
   const people = new Map(graph.nodes.map((n) => [n.id, n]));
+  const first = new Map<string, LineageNodeDto>();
   for (const e of graph.edges) {
     const student = people.get(e.studentId);
     if (e.teacherId === rootId && student && e.visibility === 'public') first.set(student.id, student);
   }
   const all = [...first.values()];
   const teaching = all.filter((p) => p.childCount > 0);
-  return { shown: teachingOnly ? teaching.length : all.length, total: all.length };
+  return {
+    listed: firstLevel(studentsByTeacher(graph, people), rootId, teachingOnly).length,
+    shown: teachingOnly ? teaching.length : all.length,
+    total: all.length,
+  };
+}
+
+/** The sentence above the list view's outline; without a count when no public student teaches. */
+export function outlineIntro({ shown, total }: OutlineSummary): string {
+  const rest = 'listed with their students, and the next generation opens beneath. Someone with two teachers here is listed under both.';
+  if (shown === 0) return `Each person is ${rest}`;
+  const count = shown === total ? 'Every student here has students of their own' : `${shown.toLocaleString('en')} of ${total.toLocaleString('en')} students teach`;
+  return `${count}; each is ${rest}`;
 }
 
 export function DescendantsOutline({
@@ -74,25 +108,19 @@ export function DescendantsOutline({
 }) {
   const people = new Map(graph.nodes.map((n) => [n.id, n]));
   const lineageNames = new Map(graph.lineages.map((l) => [l.id, l.name]));
-  const children = new Map<string, LineageNodeDto[]>();
+  const children = studentsByTeacher(graph, people);
   const teachers = new Map<string, string[]>();
   const links = new Map<string, LineageEdgeDto[]>();
   for (const e of graph.edges) {
-    const student = people.get(e.studentId);
-    if (!student || !people.has(e.teacherId)) continue;
+    if (!people.has(e.studentId) || !people.has(e.teacherId)) continue;
     const key = `${e.teacherId}>${e.studentId}`;
     links.set(key, [...(links.get(key) ?? []), e]);
-    const list = children.get(e.teacherId) ?? [];
-    if (!list.some((s) => s.id === student.id)) list.push(student);
-    children.set(e.teacherId, list);
     teachers.set(e.studentId, [...new Set([...(teachers.get(e.studentId) ?? []), e.teacherId])]);
   }
-  for (const list of children.values()) list.sort(byName);
   const edgesOf = (teacherId: string, studentId: string) => links.get(`${teacherId}>${studentId}`) ?? [];
   const isPublicLink = (teacherId: string, studentId: string) => edgesOf(teacherId, studentId).some((e) => e.visibility === 'public');
 
-  let first = children.get(rootId) ?? [];
-  if (teachingOnly) first = first.filter((p) => p.childCount > 0 || (children.get(p.id) ?? []).length > 0);
+  const first = firstLevel(children, rootId, teachingOnly);
 
   // Who is listed with their students: the shallowest mention, and among mentions at the same
   // generation the first in reading order. Breadth-first, so someone who is also a direct student

@@ -10,7 +10,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { DescendantsOutline, outlineSummary } from '@/components/lineage/descendants-outline';
+import { DescendantsOutline, outlineIntro, outlineSummary } from '@/components/lineage/descendants-outline';
 import { LineageKey } from '@/components/lineage/key';
 import {
   countText,
@@ -318,14 +318,9 @@ export default async function LineageListPage({ params, searchParams }: Props) {
 
       <Section id="descendants-heading" title="Descendants" count={countText(profile.counts.descendants, profile.counts.descendantsCapped)}>
         {outline && outlineCounts ? (
-          outlineCounts.shown > 0 ? (
+          outlineCounts.listed > 0 ? (
             <div className="grid gap-3">
-              <p className="text-ui text-fg-muted">
-                {outlineCounts.shown === outlineCounts.total
-                  ? `Every student here has students of their own; `
-                  : `${outlineCounts.shown.toLocaleString('en')} of ${outlineCounts.total.toLocaleString('en')} students teach; `}
-                each is listed with their students, and the next generation opens beneath. Someone with two teachers here is listed under both.
-              </p>
+              <p className="text-ui text-fg-muted">{outlineIntro(outlineCounts)}</p>
               <DescendantsOutline graph={outline} rootId={profile.id} depth={OUTLINE_DEPTH} teachingOnly />
               {outline.truncated ? (
                 <p className="text-sm text-fg-muted">

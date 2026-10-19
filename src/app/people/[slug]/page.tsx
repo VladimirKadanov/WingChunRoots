@@ -254,9 +254,11 @@ export default async function PersonPage({ params }: Props) {
         ...asStudentEdges([...relations.students.own, ...relations.students.active, ...relations.students.historical].flatMap((s) => s.edges)),
       ]
     : [];
+  // People beside the public counts, as in the sections: a teacher whose every relationship with
+  // this person is the viewer's own request, and the students of the own rows (one per student).
   const pending = relations.ok
     ? {
-        teachers: relations.teachers.edges.filter((e) => e.studentId === profile.id && e.visibility === 'involved_only').length,
+        teachers: teacherRows(profile, relations.teachers).filter((t) => t.edges.every((e) => e.visibility === 'involved_only')).length,
         students: relations.students.own.length,
       }
     : undefined;
