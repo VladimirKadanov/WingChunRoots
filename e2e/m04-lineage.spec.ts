@@ -12,7 +12,8 @@ import { expect, test, type APIRequestContext, type Browser, type Page } from '@
 import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
-import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
+import { demoAccountEmail } from '../src/fixtures/generate';
+import { authPost, BASE_URL, clientAddress, closeHelpers, demoPassword, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
 import { expectNoAxeViolations, openInTheme } from './helpers/ui';
 import { THEMES } from './routes';
 
@@ -72,8 +73,8 @@ async function withoutJavaScript(browser: Browser, run: (page: Page) => Promise<
 const NOT_PUBLIC = ['pending_teacher', 'awaiting_claim', 'under_review', 'rejected', 'withdrawn', 'revoked'];
 
 /** The HTML of a page and its status, without the scripts (they carry the requested address for the client router). */
-async function pageOf(request: APIRequestContext, path: string) {
-  const response = await request.get(`${BASE_URL}${path}`);
+async function pageOf(request: APIRequestContext, path: string, headers?: Record<string, string>) {
+  const response = await request.get(`${BASE_URL}${path}`, headers ? { headers } : undefined);
   return { status: response.status(), html: (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '') };
 }
 
@@ -162,6 +163,57 @@ test('@M04 list view shows the routes of descent with JavaScript disabled', asyn
     await expect(page.getByRole('heading', { level: 2, name: 'Students' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Descendants' })).toBeVisible();
   });
+});
+
+test('@M04 a route counts the generations its gutter numbers, reads without "·", and its marks are in the key', async ({ page }) => {
+  // Final check: screens-3 (the heading counted links and called them generations), screens-7 (a
+  // literal " · " in a heading's accessible name) and screens-4 (the filled dot of the living
+  // was explained nowhere and never reached a screen reader).
+  let living = 0;
+  for (const slug of ['demo-converging', 'demo-two-lineages']) {
+    await page.goto(`/people/${slug}/lineage`);
+    const routes = page.getByRole('list', { name: /^Routes of descent to / });
+    const each = routes.locator(':scope > li');
+    expect(await each.count(), slug).toBeGreaterThanOrEqual(2);
+    for (const route of await each.all()) {
+      const heading = route.getByRole('heading', { level: 3 });
+      const name = (await heading.evaluate((h) => h.textContent ?? '')).trim();
+      const generations = Number(/(\d+) generations?$/.exec(name.replace(/\s+/g, ' '))?.[1]);
+      const steps = route.locator(':scope > ol > li');
+      await expect(steps).toHaveCount(generations);
+      // The last gutter number is the heading's number.
+      await expect(steps.last().locator(':scope > p').first()).toHaveText(new RegExp(`^Generation ${generations}\\b`));
+      // Separators are pauses (a comma), never a "·" read out.
+      await expect(heading).toHaveAccessibleName(new RegExp(`^Route \\d+ ?(, primary line ?)?, ${generations} generations$`));
+      // Every mark on the route is said in words: "Living." for the filled dot, "Founder of …"
+      // for the square.
+      for (const step of await steps.all()) {
+        const mark = await step.locator('[data-mark]').getAttribute('data-mark');
+        const text = (await step.textContent()) ?? '';
+        if (mark === 'living') {
+          living += 1;
+          expect(text, `${slug}: a living person's step`).toContain('Living.');
+        } else {
+          expect(text, `${slug}: a step without the dot`).not.toContain('Living.');
+        }
+        if (mark === 'founder') expect(text).toContain(', as recorded');
+      }
+    }
+    // The key explains exactly the marks the routes draw.
+    const drawn = new Set(await routes.locator('[data-mark]').evaluateAll((marks) => marks.map((m) => m.getAttribute('data-mark'))));
+    const key = page.getByRole('list', { name: 'Marks on a route' });
+    const labels = { founder: 'Founder, as recorded', living: 'Living', other: 'Not recorded as living' } as const;
+    await expect(key.getByRole('listitem')).toHaveCount(drawn.size);
+    for (const mark of drawn) await expect(key).toContainText(labels[mark as keyof typeof labels]);
+    // No heading on the page reads its separators out.
+    await expect(page.getByRole('heading', { name: /·/ })).toHaveCount(0);
+  }
+  expect(living, 'the routes draw at least one living person').toBeGreaterThan(0);
+
+  // The students' group headings on a list view use the same pause.
+  await page.goto('/people/demo-hub-a/lineage');
+  await expect(page.getByRole('heading', { level: 3, name: /^Active ?, \d[\d,]*( ?, .+)?$/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /·/ })).toHaveCount(0);
 });
 
 test('@M04 with JavaScript disabled the descendants outline uses details and summary and contains no role=tree', async ({ browser }) => {
@@ -312,6 +364,52 @@ test('@M04 anonymous viewer never receives pending or under-review edges (HTML a
   for (const path of ['/people/demo-claim-only-teacher', '/people/demo-under-review/lineage']) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+  }
+});
+
+test('@M04 signed in, with a cookie or a bearer token, a hidden person still answers 404 like a missing one', async ({ page, request }) => {
+  // Final check, requirements-2: the proxy reads the session for an address that is not public.
+  // If that read failed in the proxy, it would let the request through and every signed-in
+  // visitor would get the page's own 200 instead of the 404. A webview with a bearer token is
+  // signed in, so both credentials are checked, each with the owner's own record as the control.
+  const tokenOf = async (slug: 'demo-two-lineages' | 'demo-pending') => {
+    // A native client's sign-in: the token from set-auth-token, from an address of its own
+    // (sign-in allows 3 requests in 10 s per address).
+    const account = { email: demoAccountEmail(slug), password: demoPassword() };
+    const signedIn = await authPost(page, '/sign-in/email', account, clientAddress());
+    expect(signedIn.status(), await signedIn.text()).toBe(200);
+    const token = signedIn.headers()['set-auth-token'];
+    expect(token, `set-auth-token for ${slug}`).toBeTruthy();
+    return token!;
+  };
+  const credentials = [
+    { how: 'cookie', as: async (slug: 'demo-two-lineages' | 'demo-pending') => (await signInAs(page, slug), (path: string) => pageOf(page.request, path)) },
+    {
+      how: 'bearer',
+      as: async (slug: 'demo-two-lineages' | 'demo-pending') => {
+        const token = await tokenOf(slug);
+        return (path: string) => pageOf(request, path, { authorization: `Bearer ${token}` });
+      },
+    },
+  ];
+  for (const { how, as } of credentials) {
+    const stranger = await as('demo-two-lineages');
+    for (const suffix of ['', '/lineage']) {
+      const missing = await stranger(`/people/demo-no-such-person${suffix}`);
+      expect(missing.status, `${how}: /people/demo-no-such-person${suffix}`).toBe(404);
+      expect(missing.html).toContain('No public profile at this address');
+      for (const hidden of ['demo-pending', 'demo-claim-only-teacher']) {
+        expect(await stranger(`/people/${hidden}${suffix}`), `${how}: /people/${hidden}${suffix}`).toEqual(missing);
+      }
+    }
+    // The session was read: its own record answers, in full, to the person it belongs to.
+    const owner = await as('demo-pending');
+    for (const suffix of ['', '/lineage']) {
+      const own = await owner(`/people/demo-pending${suffix}`);
+      expect(own.status, `${how}: own record${suffix}`).toBe(200);
+      expect(own.html, `${how}: own record${suffix}`).toContain('Private record.');
+      expect(own.html, `${how}: own record${suffix}`).not.toContain('No public profile at this address');
+    }
   }
 });
 
@@ -517,8 +615,8 @@ test.describe('at 320x640', () => {
 
   test('@M04 at 320x640 with text at 200% the profile and list view of two people have no horizontal scroll', async ({ page }) => {
     // Review round 2 (recheck-10): a section heading ("Descendants") and a route's names were wider
-    // than the column and widened the page. demo-root-a's three-generation outline and the M00b
-    // shell on / still do (deferred, see the PR); these pages must stay within the screen.
+    // than the column and widened the page. The M00b shell on / still does (deferred, see the PR);
+    // these pages must stay within the screen.
     for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-hub-a', '/people/demo-hub-a/lineage']) {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -529,6 +627,43 @@ test.describe('at 320x640', () => {
       expect(size.scrollWidth, `${path} at 320 px and 200% text`).toBeLessThanOrEqual(size.clientWidth);
     }
   });
+
+  test('@M04 at 320x640 with text at 200% the descendants outlines of the three roots have no horizontal scroll', async ({ page }) => {
+    // Final check, screens-2: the outline's indents were in rem, so with enlarged text a second
+    // generation started so far right that the page scrolled sideways. They are in px now.
+    for (const slug of ['demo-root-a', 'demo-root-b', 'demo-root-c']) {
+      await page.goto(`/people/${slug}/lineage`);
+      await expect(page.getByRole('list', { name: 'Descendants' })).toBeVisible();
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = '200%';
+      });
+      const size = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+      expect(size.scrollWidth, `${slug} at 320 px and 200% text`).toBeLessThanOrEqual(size.clientWidth);
+    }
+  });
+});
+
+test('@M04 signed in, the own request in the outline keeps to the screen at 320, 360 and 375 px with text at 200%', async ({ browser }) => {
+  // Final check, screens-2: demo-pending's own request sits at the second level of demo-root-a's
+  // outline with its "Visible only to …" line; with rem indents it widened the page up to 375 px.
+  const context = await browser.newContext({ baseURL: BASE_URL, isMobile: true, hasTouch: true, viewport: { width: 320, height: 640 } });
+  try {
+    await giveOwnAddress(context);
+    const page = await context.newPage();
+    await signInAs(page, 'demo-pending');
+    for (const width of [320, 360, 375]) {
+      await page.setViewportSize({ width, height: 740 });
+      await page.goto('/people/demo-root-a/lineage');
+      await expect(page.locator('ul[aria-label="Descendants"] li[data-person="demo-pending"]')).toBeVisible();
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = '200%';
+      });
+      const size = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+      expect(size.scrollWidth, `${width} px and 200% text`).toBeLessThanOrEqual(size.clientWidth);
+    }
+  } finally {
+    await context.close();
+  }
 });
 
 test.describe('at 390x844', () => {
@@ -537,18 +672,63 @@ test.describe('at 390x844', () => {
   const overflow = (page: Page) =>
     page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
 
-  test('@M04 profile and list view at 390x844 have no horizontal scroll, also with text at 200%', async ({ page }) => {
-    for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-root-a/lineage', '/people/demo-hub-a']) {
+  const PHONE_PATHS = ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage', '/people/demo-root-a/lineage', '/people/demo-hub-a'];
+
+  test('@M04 profile and list view at 390x844 have no horizontal scroll', async ({ page }) => {
+    for (const path of PHONE_PATHS) {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const normal = await overflow(page);
       expect(normal.scrollWidth, path).toBeLessThanOrEqual(normal.clientWidth);
+    }
+  });
+
+  test('@M04 profile and list view at 390x844 have no horizontal scroll with text at 200%', async ({ page }) => {
+    for (const path of PHONE_PATHS) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       // Text enlarged as a webview's text zoom does it (rem-based sizes grow with the root).
       await page.evaluate(() => {
         document.documentElement.style.fontSize = '200%';
       });
       const large = await overflow(page);
       expect(large.scrollWidth, `${path} at 200% text`).toBeLessThanOrEqual(large.clientWidth);
+    }
+  });
+
+  test('@M04 at 390x844 an "also a student of" note leaves the whole name target to the name', async ({ page }) => {
+    // Final check, screens-1: the note was pulled up 10 px over the name's 44 px target when it
+    // wrapped, so a tap on the bottom of the name landed on plain text.
+    for (const path of ['/people/demo-hub-a/lineage', '/people/demo-root-a/lineage']) {
+      await page.goto(path);
+      await expect(page.getByRole('list', { name: 'Descendants' })).toBeVisible();
+      const rows = await page.evaluate(() =>
+        // Rows on screen: a closed <details> keeps its rows out of rendering and hit testing.
+        [...document.querySelectorAll('ul[aria-label="Descendants"] li:has(> div > [data-also])')]
+          .filter((li) => li.querySelector(':scope > div > a')!.checkVisibility())
+          .map((li) => {
+          const link = li.querySelector(':scope > div > a')!;
+          link.scrollIntoView({ block: 'center' });
+          const box = link.getBoundingClientRect();
+          // The four corners of the target, 4 px inside: each must be the name's own link.
+          const corners = [
+            [box.left + 4, box.top + 4],
+            [box.right - 4, box.top + 4],
+            [box.left + 4, box.bottom - 4],
+            [box.right - 4, box.bottom - 4],
+          ];
+          return {
+            person: li.getAttribute('data-person'),
+            height: box.height,
+            hits: corners.map(([x, y]) => document.elementFromPoint(x!, y!)?.closest('a') === link),
+          };
+        }),
+      );
+      expect(rows.length, path).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.height, `${path} ${row.person}`).toBeGreaterThanOrEqual(44);
+        expect(row.hits, `${path} ${row.person}`).toEqual([true, true, true, true]);
+      }
     }
   });
 

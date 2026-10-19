@@ -310,7 +310,7 @@ titles=(
   '@M04 a pending request to demo-hub-a does not change its hiddenCounts or descendant count for an anonymous viewer'
   '@M04 a person with two teachers appears under both in the outline, marked "also a student of"'
   '@M04 when the lineage service fails once, the profile shows the catchError state with Retry, and Retry recovers'
-  '@M04 profile and list view at 390x844 have no horizontal scroll, also with text at 200%'
+  '@M04 profile and list view at 390x844 have no horizontal scroll'
   '@M04 no axe violations on the profile and list view in dark and light themes'
   # Review round 1: pages without JavaScript, both faults, founders, rows, phones, axe in more states.
   '@M04 with JavaScript disabled the profile shows its teachers and students'
@@ -321,11 +321,33 @@ titles=(
   '@M04 at 390x844 the first teacher is on the first screen of the profile'
   '@M04 no axe violations on the profile and list view at 390x844'
   '@M04 no axe violations on the private record and the own request, signed in'
+  # Review round 2 and the final check: text at 200%, the hub on a phone, routes, touch targets, the
+  # proxy with a session (cookie and bearer).
+  '@M04 profile and list view at 390x844 have no horizontal scroll with text at 200%'
+  '@M04 at 320x640 with text at 200% the profile and list view of two people have no horizontal scroll'
+  '@M04 at 320x640 with text at 200% the descendants outlines of the three roots have no horizontal scroll'
+  '@M04 signed in, the own request in the outline keeps to the screen at 320, 360 and 375 px with text at 200%'
+  '@M04 at 390x844 the hub list view keeps to its height, with 44 px targets'
+  '@M04 at 390x844 an "also a student of" note leaves the whole name target to the name'
+  '@M04 a route counts the generations its gutter numbers, reads without "·", and its marks are in the key'
+  '@M04 signed in, with a cookie or a bearer token, a hidden person still answers 404 like a missing one'
 )
 for t in "${titles[@]}"; do
   check "E2E test: $t" grep -qF "test('$t'" e2e/m04-lineage.spec.ts
 done
 refute "no skipped or focused M04 E2E test" grep -nE "test\.(skip|only|fixme)\(" e2e/m04-lineage.spec.ts
+# Final check, requirements-2: the E2E run above went through src/proxy.ts with and without a
+# session. A check that failed for any reason but running out of its 500 ms (the proxy's own
+# timeout, or the database's statement_timeout 57014 when it fires first) lets the page answer
+# with 200 instead of 404, so the run fails on it. The proxy logs only the code (CLAUDE.md §6).
+proxy_log_clean() {
+  local log=test-results/server.log
+  [ -s "$log" ] || { echo "no $log: run the E2E tests first (scripts/verify.sh runs them before these checks)"; return 1; }
+  # The line this check reads must still be the one the proxy writes.
+  grep -qF '[proxy] the person check failed (${code}); the page answers for itself' src/proxy.ts || return 1
+  ! grep -F '[proxy] the person check failed (' "$log" | grep -vE '\[proxy\] the person check failed \((timeout|57014)\);'
+}
+check "the E2E server log has no failed person check in src/proxy.ts other than its deadline (test-results/server.log)" proxy_log_clean
 check "integration tests cover statement_timeout, the caps, demo-claim-only-teacher, the cache tags and /api/v1 = /api/rpc" bash -c '
   f=src/server/services/lineage.int.test.ts
   grep -q "statement_timeout" "$f" && grep -q "demo-claim-only-teacher" "$f" && grep -q "hiddenCounts" "$f" &&
