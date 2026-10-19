@@ -1,27 +1,66 @@
-// Teachers and students of a person (plan §4.10; milestone M04): one row per person, with the
-// lineage, the training period, the state as a seal and a word, and whether the training has
-// ended (historical). A relationship only its participants can see says so (DEFAULT D03).
+// Teachers and students of a person (plan §4.10; milestone M04) as register rows: the link's own
+// stroke beside the name (Ink Register: every state is a stroke, a seal and a word), then the
+// lineage (left out when the group heading names it), the training period and the state as a
+// seal and a word. A relationship only its participants can see says so (DEFAULT D03).
+//
+// The cross-lineage mark belongs to a teacher's row only: it says the teacher came from another
+// lineage than the person's own line. A student with teachers elsewhere reads "also a student of
+// …" instead, the same words in the profile and the list view.
 
+import { Fragment } from 'react';
+
+import { LinkStroke } from '@/components/ink/link-stroke';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { cx } from '@/lib/cx';
-import type { LineageEdgeDto, LineageRefDto } from '@/server/dto/public';
-import { type PersonNameData, PersonLink } from './person-name';
-import { isHistoricalRelation, periodText, relationStatus } from './status';
+import type { LineageEdgeDto, LineageRefDto, StudentEntryDto } from '@/server/dto/public';
+import { LatinName, LineageName, type PersonNameData, PersonLink } from './person-name';
+import { isHistoricalRelation, periodText, relationStatus, strokeOf } from './status';
+
+export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 'visibility' | 'periods'> & { kind?: LineageEdgeDto['kind'] };
 
 export interface RelationRow {
   person: PersonNameData & { id: string; visibility: 'public' | 'involved_only' };
   /** The person's relationships with the focus (usually one; one per lineage otherwise). */
-  edges: (Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 'visibility' | 'periods'> & { kind?: LineageEdgeDto['kind'] })[];
+  edges: RelationEdge[];
+  /** A student's other public teachers (at most 3) and how many there are in all. */
+  otherTeachers?: readonly { person: PersonNameData & { id: string }; lineageId: string }[];
+  otherTeachersTotal?: number;
+  /** A student's own public students. */
+  studentCount?: number;
+  /** Tells apart two people with the same name in one list ("since 1994"). */
+  note?: string;
 }
 
-/** The seal-and-word badges of one relationship. */
-export function RelationBadges({ edge }: { edge: RelationRow['edges'][number] }) {
-  const status = relationStatus(edge.status);
+/** A visual middle dot that a screen reader hears as a pause. */
+export function Sep() {
   return (
-    <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      <StatusBadge state={status.kind} label={status.label} size="sm" />
-      {isHistoricalRelation(edge.periods) ? <StatusBadge state="historical" label="Historical" size="sm" /> : null}
-      {edge.kind === 'crossLineage' ? <StatusBadge state="cross_lineage" size="sm" /> : null}
+    <>
+      <span aria-hidden="true" className="text-fg-subtle">
+        {' · '}
+      </span>
+      <span className="sr-only">, </span>
+    </>
+  );
+}
+
+/**
+ * The seal-and-word badges of one relationship. A screen reader hears "Status: Verified,
+ * Historical"; the cross-lineage mark only on a teacher's row (see the file comment).
+ */
+export function RelationBadges({ edge, role }: { edge: RelationEdge; role: 'teacher' | 'student' }) {
+  const status = relationStatus(edge.status);
+  const badges = [<StatusBadge key="status" state={status.kind} label={status.label} size="sm" />];
+  if (isHistoricalRelation(edge.periods)) badges.push(<StatusBadge key="historical" state="historical" label="Historical" size="sm" />);
+  if (role === 'teacher' && edge.kind === 'crossLineage') badges.push(<StatusBadge key="cross" state="cross_lineage" size="sm" />);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="sr-only">Status: </span>
+      {badges.map((badge, i) => (
+        <Fragment key={badge.key}>
+          {i > 0 ? <span className="sr-only">, </span> : null}
+          {badge}
+        </Fragment>
+      ))}
     </span>
   );
 }
@@ -31,7 +70,7 @@ export function RelationBadges({ edge }: { edge: RelationRow['edges'][number] })
  * it is confirmed, or a confirmed link that is not on the public record (for example because
  * the other person's record is private).
  */
-function privateNote(edges: RelationRow['edges']) {
+function privateNote(edges: readonly RelationEdge[]) {
   const own = edges.filter((e) => e.visibility === 'involved_only');
   if (own.length === 0) return null;
   const request = own.some((e) => ['unconfirmed', 'under_review'].includes(relationStatus(e.status).kind));
@@ -48,62 +87,142 @@ function lineageOf(lineages: ReadonlyMap<string, LineageRefDto>, id: string): st
   return lineages.get(id)?.name ?? 'Lineage not named';
 }
 
+/** "also a student of Viktor Samplewood (Demo Lineage B) and 2 more". */
+function AlsoStudentOf({ row, lineages }: { row: RelationRow; lineages: ReadonlyMap<string, LineageRefDto> }) {
+  const others = row.otherTeachers ?? [];
+  if (others.length === 0) return null;
+  const more = (row.otherTeachersTotal ?? others.length) - others.length;
+  return (
+    <p data-also className="text-sm text-fg-muted">
+      also a student of{' '}
+      {others.map((t, i) => (
+        <Fragment key={t.person.id}>
+          {i > 0 ? (i === others.length - 1 && more === 0 ? ' and ' : ', ') : null}
+          <LatinName name={t.person.displayName} /> (<LineageName name={lineageOf(lineages, t.lineageId)} />)
+        </Fragment>
+      ))}
+      {more > 0 ? ` and ${more.toLocaleString('en')} more` : null}
+    </p>
+  );
+}
+
+/** One relationship: lineage (unless the heading names it), period, own students, state. */
+function EdgeLine({
+  edge,
+  role,
+  lineages,
+  groupLineageId,
+  studentCount,
+}: {
+  edge: RelationEdge;
+  role: 'teacher' | 'student';
+  lineages: ReadonlyMap<string, LineageRefDto>;
+  groupLineageId?: string | null;
+  studentCount?: number;
+}) {
+  const parts = [
+    edge.lineageId !== groupLineageId ? <LineageName key="lineage" name={lineageOf(lineages, edge.lineageId)} /> : null,
+    <span key="period" className="tabular">
+      {periodText(edge.periods)}
+    </span>,
+    studentCount ? (
+      <span key="students">
+        has {studentCount.toLocaleString('en')} {studentCount === 1 ? 'student' : 'students'}
+      </span>
+    ) : null,
+  ].filter(Boolean);
+  return (
+    <p className="flex flex-wrap items-center gap-x-0 gap-y-1 text-sm text-fg-muted">
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 ? <Sep /> : null}
+          {part}
+        </Fragment>
+      ))}
+      <Sep />
+      <RelationBadges edge={edge} role={role} />
+    </p>
+  );
+}
+
 /**
- * The rows of a teachers or students list. `detail` "full" (the list view) names every field;
- * "compact" (the profile) puts lineage and period on one line.
+ * The rows of a teachers or students list. `groupLineageId` is the lineage the heading names
+ * (left out of each row); `columns` puts the relationship beside the name from the md width (the
+ * list view's long student lists), so each student takes one line on a wide screen.
  */
 export function RelationList({
   rows,
   lineages,
-  detail = 'compact',
+  role,
   label,
+  groupLineageId,
+  columns = false,
+  nameSize = 'xl',
   className,
 }: {
   rows: readonly RelationRow[];
   lineages: ReadonlyMap<string, LineageRefDto>;
-  detail?: 'compact' | 'full';
+  role: 'teacher' | 'student';
   /** The accessible name of the list. */
   label: string;
+  groupLineageId?: string | null;
+  columns?: boolean;
+  /** The size of the names: the profile's few rows are larger than a long list's. */
+  nameSize?: 'xl' | 'lg';
   className?: string;
 }) {
+  // DEFAULT D05: the display-primary teacher comes first; say so when there is a choice.
+  const primaryFirst = role === 'teacher' && rows.length > 1 && rows[0]!.edges.some((e) => e.kind === 'primary');
   return (
     <ul aria-label={label} className={cx('grid', className)}>
-      {rows.map((row) => (
-        <li key={row.person.id} data-person={row.person.slug} className="grid gap-1 border-t border-border-subtle py-3 first:border-t-0 first:pt-0">
-          <PersonLink person={row.person} className="font-display text-xl" />
-          {row.edges.map((edge) =>
-            detail === 'full' ? (
-              <dl key={edge.id} className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
-                <dt className="text-fg-muted">Lineage</dt>
-                <dd>{lineageOf(lineages, edge.lineageId)}</dd>
-                <dt className="text-fg-muted">Training</dt>
-                <dd>
-                  {periodText(edge.periods)}
-                  <span className="text-fg-muted">{isHistoricalRelation(edge.periods) ? ' · historical (training ended)' : ' · current'}</span>
-                </dd>
-                <dt className="text-fg-muted">Status</dt>
-                <dd>
-                  <RelationBadges edge={edge} />
-                </dd>
-              </dl>
-            ) : (
-              <div key={edge.id} className="grid gap-1">
-                <p className="text-sm text-fg-muted">
-                  {lineageOf(lineages, edge.lineageId)} <span aria-hidden="true">·</span> <span>{periodText(edge.periods)}</span>
+      {rows.map((row, index) => {
+        const first = row.edges[0];
+        return (
+          <li
+            key={row.person.id}
+            data-person={row.person.slug}
+            className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 border-t border-border-subtle py-2 first:border-t-0 first:pt-0"
+          >
+            <span aria-hidden="true" className="pt-[1.05rem]">
+              {first ? <LinkStroke kind={strokeOf(role === 'teacher' ? first : { ...first, kind: undefined })} width={28} /> : null}
+            </span>
+            <div className={cx('grid min-w-0 gap-0.5', columns && 'md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-6')}>
+              <div className="grid min-w-0 gap-0.5">
+                <p className="flex flex-wrap items-baseline gap-x-2">
+                  <PersonLink person={row.person} className={cx('font-display', nameSize === 'xl' ? 'text-xl' : 'text-lg')} />
+                  {row.note ? <span className="text-sm text-fg-muted">({row.note})</span> : null}
+                  {primaryFirst && index === 0 ? (
+                    <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-fg-muted uppercase">
+                      <LinkStroke kind="verified" width={20} />
+                      Primary teacher
+                    </span>
+                  ) : null}
                 </p>
-                <RelationBadges edge={edge} />
+                {role === 'student' ? <AlsoStudentOf row={row} lineages={lineages} /> : null}
               </div>
-            ),
-          )}
-          {privateNote(row.edges)}
-        </li>
-      ))}
+              <div className={cx('grid min-w-0 gap-0.5', columns && 'md:justify-items-end md:pt-3 md:[&>p]:justify-end')}>
+                {row.edges.map((edge) => (
+                  <EdgeLine
+                    key={edge.id}
+                    edge={edge}
+                    role={role}
+                    lineages={lineages}
+                    groupLineageId={groupLineageId}
+                    studentCount={edge === first ? row.studentCount : undefined}
+                  />
+                ))}
+              </div>
+              {privateNote(row.edges)}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 /** Groups edges by the other person, in the order given. */
-export function groupRelations<E extends RelationRow['edges'][number]>(
+export function groupRelations<E extends RelationEdge>(
   edges: readonly E[],
   otherOf: (edge: E) => string,
   personOf: (id: string) => RelationRow['person'] | undefined,
@@ -118,4 +237,21 @@ export function groupRelations<E extends RelationRow['edges'][number]>(
     rows.set(id, row);
   }
   return [...rows.values()];
+}
+
+/** The rows of a page of students (people.students), in the order the API gives. */
+export function studentRows(entries: readonly StudentEntryDto[]): RelationRow[] {
+  return entries.map((entry) => ({
+    person: entry.person,
+    edges: entry.edges,
+    otherTeachers: entry.otherTeachers,
+    otherTeachersTotal: entry.otherTeachersTotal,
+    studentCount: entry.studentCount,
+  }));
+}
+
+/** The one lineage every row of a list shares, or null (the heading can then name it). */
+export function sharedLineage(rows: readonly RelationRow[]): string | null {
+  const ids = new Set(rows.flatMap((r) => r.edges.map((e) => e.lineageId)));
+  return ids.size === 1 ? [...ids][0]! : null;
 }

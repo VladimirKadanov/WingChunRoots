@@ -1,15 +1,18 @@
-// The top of a person's pages (milestone M04): names with their scripts and readings, what the
-// record says about the person (life, place at city level, who keeps the record, lineages), the
-// counts, and the switch between profile, list and graph.
+// The top of a person's pages (milestone M04): the name in every script inside the heading, the
+// readings and other names labelled beneath it, one line of what the record says (life, place at
+// city level, lineages, founder, who keeps the record), the switch between profile, list and
+// graph, and the counts for the side rail of a wide screen. On a phone the first screen goes to
+// the lineage itself (design direction, decision 10), so the counts sit in the section headings.
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
-import { NameLine } from '@/components/account/person-names';
+import { NameText } from '@/components/account/person-names';
 import { LockIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
-import type { PersonProfileDto } from '@/server/dto/public';
-import { originalName, readings } from './person-name';
+import type { LineageRefDto, PersonProfileDto } from '@/server/dto/public';
+import { aliases, LineageName, originalNames, readingLabel, readingLang, readings } from './person-name';
+import { Sep } from './relation-list';
 import { claimText, lifeText } from './status';
 
 const regionNames = new Intl.DisplayNames('en', { type: 'region', fallback: 'none' });
@@ -20,41 +23,133 @@ export function placeText(profile: Pick<PersonProfileDto, 'cityName' | 'countryC
   return [profile.cityName, country].filter(Boolean).join(', ') || null;
 }
 
-const count = (n: number, capped = false) => `${n.toLocaleString('en')}${capped ? '+' : ''}`;
+/** "1,234" or "1,000+" when the count stopped at its cap. */
+export const countText = (n: number, capped = false) => `${n.toLocaleString('en')}${capped ? '+' : ''}`;
 
-export function PersonNames({ profile, className }: { profile: PersonProfileDto; className?: string }) {
+/**
+ * The lineages whose recorded root is this person. DEFAULT D22: a founder is named only when the
+ * record says so ("as recorded"), never inferred from an empty list of teachers.
+ */
+export function foundedLineages(profile: Pick<PersonProfileDto, 'id' | 'lineages'>): LineageRefDto[] {
+  return profile.lineages.filter((l) => l.rootPersonId === profile.id);
+}
+
+/**
+ * The page heading: the Latin-script name and every original script, each with its own `lang`.
+ * The readings stay out of it (PersonReadings), so heading navigation hears the name only.
+ */
+export function PersonHeading({ profile, prefix }: { profile: Pick<PersonProfileDto, 'displayName' | 'altNames'>; prefix?: string }) {
   return (
-    <NameLine
-      primary={profile.displayName}
-      original={originalName(profile.altNames)}
-      readings={readings(profile.altNames)}
-      className={className}
-    />
+    <h1 className="flex flex-wrap items-baseline gap-x-[0.42em] font-display text-feature [overflow-wrap:anywhere]">
+      {prefix ? <span className="sr-only">{prefix}</span> : null}
+      <NameText name={{ value: profile.displayName, lang: 'und-Latn' }} />
+      {originalNames(profile.altNames).map((name) => (
+        <NameText key={`${name.lang}-${name.value}`} name={name} className="text-[0.74em] text-fg-muted" />
+      ))}
+    </h1>
   );
 }
 
-/** Profile, list and graph of one person. The graph is the explorer (M05). */
+/** "JYUTPING ho4 sek6 zuk1 · PINYIN Hé Shízhú · ALSO KNOWN AS Hugo Cheung", labelled. */
+export function PersonReadings({ profile }: { profile: Pick<PersonProfileDto, 'altNames'> }) {
+  const read = readings(profile.altNames);
+  const known = aliases(profile.altNames);
+  if (read.length === 0 && known.length === 0) return null;
+  const item = (key: string, label: string, value: ReactNode) => (
+    <div key={key} className="flex items-baseline gap-2">
+      <dt className="text-caption text-fg-subtle uppercase">{label}</dt>
+      <dd className="text-ui text-fg-muted">{value}</dd>
+    </div>
+  );
+  return (
+    <dl className="flex flex-wrap gap-x-6 gap-y-1">
+      {read.map((name) =>
+        item(
+          `${name.lang}-${name.romanization}-${name.value}`,
+          readingLabel(name),
+          <NameText name={{ value: name.value, lang: readingLang(name) }} />,
+        ),
+      )}
+      {known.length > 0
+        ? item(
+            'aliases',
+            'Also known as',
+            known.map((name, i) => (
+              <Fragment key={`${name.lang}-${name.value}`}>
+                {i > 0 ? ', ' : null}
+                <NameText name={name} />
+              </Fragment>
+            )),
+          )
+        : null}
+    </dl>
+  );
+}
+
+/** One line of what the record says: life, place, lineages, founder, record keeper. */
+export function FactStrip({ profile, className }: { profile: PersonProfileDto; className?: string }) {
+  const founded = foundedLineages(profile);
+  const facts: { key: string; node: ReactNode }[] = [];
+  if (!profile.limited && profile.lifeStatus !== 'unknown') facts.push({ key: 'life', node: lifeText(profile.lifeStatus, profile.kind) });
+  const place = placeText(profile);
+  if (place) facts.push({ key: 'place', node: place });
+  for (const lineage of profile.lineages) {
+    facts.push({
+      key: `lineage-${lineage.id}`,
+      node: founded.includes(lineage) ? (
+        <>
+          Founder of <LineageName name={lineage.name} /> (as recorded)
+        </>
+      ) : (
+        <LineageName name={lineage.name} />
+      ),
+    });
+  }
+  facts.push({ key: 'record', node: claimText(profile.claimState) });
+  return (
+    <p className={cx('text-ui text-fg-muted', className)}>
+      {facts.map((fact, i) => (
+        <Fragment key={fact.key}>
+          {i > 0 ? <Sep /> : null}
+          <span>{fact.node}</span>{' '}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * Profile, list and graph of one person. The graph is the explorer, which opens with M05: the
+ * link is there (milestone M04, In scope 4) and says "soon", and until then the address explains
+ * that the explorer is still being built.
+ */
 export function PersonViews({ profile, current }: { profile: Pick<PersonProfileDto, 'id' | 'slug'>; current: 'profile' | 'list' }) {
-  const items = [
-    { key: 'profile', label: 'Profile', href: `/people/${profile.slug}` },
-    { key: 'list', label: 'List', href: `/people/${profile.slug}/lineage` },
-    { key: 'graph', label: 'Graph', href: `/explore?focus=${profile.id}` },
+  const views = [
+    { key: 'profile', label: 'Profile', href: `/people/${profile.slug}`, soon: false },
+    { key: 'list', label: 'List', href: `/people/${profile.slug}/lineage`, soon: false },
+    { key: 'graph', label: 'Graph', href: `/explore?focus=${profile.id}`, soon: true },
   ] as const;
   return (
     <nav aria-label="Views of this person">
-      <ul className="inline-flex rounded-sm border border-border-strong p-0.5">
-        {items.map((item) => (
-          <li key={item.key}>
+      <ul className="inline-flex max-w-full flex-wrap rounded-sm border border-border-strong p-0.5">
+        {views.map((view) => (
+          <li key={view.key}>
             <Link
-              href={item.href}
+              href={view.href}
               prefetch={false}
-              aria-current={item.key === current ? 'page' : undefined}
+              aria-current={view.key === current ? 'page' : undefined}
               className={cx(
-                'inline-flex min-h-11 min-w-16 items-center justify-center rounded-xs px-3.5 text-ui font-semibold text-fg-muted',
+                'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xs px-3.5 text-ui font-semibold text-fg-muted',
                 'hover:bg-surface-3 hover:text-fg aria-[current=page]:bg-fg aria-[current=page]:text-fg-inverse',
               )}
             >
-              {item.label}
+              {view.label}
+              {view.soon ? (
+                <>
+                  {' '}
+                  <span className="text-caption font-normal text-fg-subtle uppercase">soon</span>
+                </>
+              ) : null}
             </Link>
           </li>
         ))}
@@ -63,44 +158,38 @@ export function PersonViews({ profile, current }: { profile: Pick<PersonProfileD
   );
 }
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid min-w-0 content-start gap-0.5">
-      <dt className="text-caption text-fg-subtle uppercase">{label}</dt>
-      <dd className="text-ui [overflow-wrap:anywhere]">{children}</dd>
-    </div>
-  );
+/** "+1 pending, visible to you": the viewer's own requests, beside a public count. */
+export function pendingText(n: number): string {
+  return `+${n.toLocaleString('en')} pending, visible to you`;
 }
 
-/** What the record says: life, place, record keeper, lineages. */
-export function PersonFacts({ profile }: { profile: PersonProfileDto }) {
-  return (
-    <dl className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-6 gap-y-4">
-      <Fact label="Life">{lifeText(profile.lifeStatus, profile.kind)}</Fact>
-      <Fact label="Place">{placeText(profile) ?? <span className="text-fg-muted">Not recorded</span>}</Fact>
-      <Fact label="Record">{claimText(profile.claimState)}</Fact>
-      <Fact label={profile.lineages.length === 1 ? 'Lineage' : 'Lineages'}>
-        {profile.lineages.length > 0 ? profile.lineages.map((l) => l.name).join(', ') : <span className="text-fg-muted">None on the record yet</span>}
-      </Fact>
-    </dl>
-  );
-}
-
-/** Teachers, students and descendants, counted from public relationships only. */
-export function PersonCounts({ profile }: { profile: PersonProfileDto }) {
+/**
+ * Teachers, students and descendants for the side rail, counted from public relationships only
+ * (DEFAULT D03). `pending` notes the viewer's own requests shown on the page, which never count.
+ */
+export function PersonCounts({
+  profile,
+  pending = { teachers: 0, students: 0 },
+  className,
+}: {
+  profile: PersonProfileDto;
+  pending?: { teachers: number; students: number };
+  className?: string;
+}) {
   const stats = [
-    { label: 'Teachers', value: count(profile.counts.teachers) },
-    { label: 'Students', value: count(profile.counts.students) },
-    { label: 'Descendants', value: count(profile.counts.descendants, profile.counts.descendantsCapped) },
+    { key: 'teachers', label: 'Teachers', value: countText(profile.counts.teachers), pending: pending.teachers },
+    { key: 'students', label: 'Students', value: countText(profile.counts.students), pending: pending.students },
+    { key: 'descendants', label: 'Descendants', value: countText(profile.counts.descendants, profile.counts.descendantsCapped), pending: 0 },
   ];
   return (
-    <dl className="grid grid-cols-3 gap-x-3 border-t border-border-subtle pt-4">
+    <dl className={cx('grid grid-cols-[repeat(auto-fit,minmax(min(100%,6.5rem),1fr))] gap-x-4 gap-y-3', className)}>
       {stats.map((s) => (
-        <div key={s.label} className="flex min-w-0 flex-col">
-          <dt className="text-caption text-fg-subtle uppercase [overflow-wrap:anywhere]">{s.label}</dt>
-          <dd className="mt-auto pt-1.5 font-display text-3xl tabular" data-count={s.label.toLowerCase()}>
+        <div key={s.key} className="grid min-w-0 content-start">
+          <dt className="text-caption text-fg-subtle uppercase">{s.label}</dt>
+          <dd className="font-display text-2xl tabular" data-count={s.key}>
             {s.value}
           </dd>
+          {s.pending > 0 ? <dd className="text-sm text-fg-muted">{pendingText(s.pending)}</dd> : null}
         </div>
       ))}
     </dl>
@@ -108,7 +197,7 @@ export function PersonCounts({ profile }: { profile: PersonProfileDto }) {
 }
 
 /** The notice on a record only the viewer (and the people in its requests) can see. */
-export function PrivateRecordNotice({ own }: { own: boolean }) {
+export function PrivateRecordNotice({ own, limited }: { own: boolean; limited: boolean }) {
   return (
     <p role="note" className="flex items-start gap-2 rounded-sm border-l-4 border-border-strong bg-surface-2 px-4 py-3 text-ui">
       <LockIcon size={18} className="mt-0.5 shrink-0" />
@@ -116,7 +205,9 @@ export function PrivateRecordNotice({ own }: { own: boolean }) {
         <strong className="font-semibold">Private record.</strong>{' '}
         {own
           ? 'Only you and the people in your pending links can see this page. It becomes public when a link is confirmed and you choose to show it.'
-          : 'You can see it because you are part of one of its pending links. Nobody else can until a link is confirmed.'}
+          : limited
+            ? 'You see only the names, because of your own request to this person. The rest of the record stays private until they answer.'
+            : 'You can see it because you are part of one of its pending links. Nobody else can until a link is confirmed.'}
       </span>
     </p>
   );

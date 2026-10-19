@@ -1,96 +1,159 @@
-// /people/[slug] (plan §4.10, §6.3; milestone M04): a person's public profile. The header (names,
-// life, place at city level, the record keeper, counts) comes from people.get; teachers and
-// students from lineage.ego, inside a catchError boundary with Retry, so a failed lineage read
-// leaves the rest of the page standing. A person the viewer may not see gets the same "Not on the
-// record" page as a missing address (plan §6.4). The page reads the session (a participant also
-// sees their own pending requests, DEFAULT D03), so it renders per request.
+// /people/[slug] (plan §4.10, §6.3; milestone M04): a person's public profile. The header (names
+// in every script, readings, one line of facts) comes from people.get; the teachers from
+// lineage.ego and the students from people.students (the earliest first, as on a register). Both
+// are read before the page is rendered, so teachers and students are in the first HTML and work
+// without JavaScript. A person the viewer may not see gets the same "Not on the record" page, with
+// status 404, as a missing address (src/proxy.ts, plan §6.4). The page reads the session (a
+// participant also sees their own pending requests, DEFAULT D03), so it renders per request.
+//
+// Errors (plan §5.6, In scope 6): a failed profile read shows the page's own error state inside
+// the app shell. A failed teachers-and-students read keeps the header and shows the error under
+// the sections' own headings: on the server as a Retry link (a reload, without JavaScript), and
+// in the browser as the catchError boundary's Retry button, which fetches the page again.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
 import { ArrowRightIcon } from '@/components/icons';
-import { LineageBoundary } from '@/components/lineage/lineage-boundary';
-import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
+import { LineageKey } from '@/components/lineage/key';
+import { FocusAfterRetry, LineageBoundary } from '@/components/lineage/lineage-boundary';
 import {
+  countText,
+  FactStrip,
+  foundedLineages,
+  pendingText,
   PersonCounts,
-  PersonFacts,
-  PersonNames,
+  PersonHeading,
+  PersonReadings,
   PersonViews,
   PrivateRecordNotice,
 } from '@/components/lineage/person-header';
-import { groupRelations, RelationList, type RelationRow } from '@/components/lineage/relation-list';
-import { EmptyState, RelationsSkeleton } from '@/components/lineage/states';
-import { StatusLegend } from '@/components/lineage/status-legend';
-import { kindsOf } from '@/components/lineage/status';
+import { PersonLayout } from '@/components/lineage/person-layout';
+import { LineageName } from '@/components/lineage/person-name';
+import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
+import { groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
+import { EmptyState, FailedSections, ProfileError, Section, SectionError } from '@/components/lineage/states';
+import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
 import { buttonVariants } from '@/components/ui/button-variants';
-import type { PersonProfileDto } from '@/server/dto/public';
-import { lineageClient, profileFor } from './data';
+import type { LineageGraphDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
+import { failure, lineageClient, profileFor } from './data';
 
 export const instant = false;
 
-/** Students listed on the profile; the list view has them all. */
+/** Students listed on the profile, the earliest first; the list view has them all. */
 const STUDENTS_ON_PROFILE = 12;
+/** A longer text than this is clamped to three lines on the profile, with "Read all". */
+const BIO_CLAMP = 240;
+
+const RELATION_HEADINGS = [
+  { id: 'teachers-heading', title: 'Teachers' },
+  { id: 'students-heading', title: 'Students' },
+] as const;
 
 type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const profile = await profileFor(params);
-  if (!profile) return notOnRecordMetadata;
-  return {
-    title: profile.displayName,
-    // A private record is never indexed; public profiles wait for hosting (plan §3.3).
-    robots: { index: false },
-  };
+  const read = await profileFor(params);
+  if (read.state === 'none') return notOnRecordMetadata;
+  if (read.state === 'failed') return { title: 'Profile not loaded', robots: { index: false, follow: false } };
+  // A private record is never indexed; public profiles wait for hosting (plan §3.3).
+  return { title: read.profile.displayName, robots: { index: false } };
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="grid gap-4 border-t border-border-subtle pt-6">
-      <h2 id={id} className="font-display text-2xl">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
+type RelationsRead = { ok: true; teachers: LineageGraphDto; students: StudentsPageDto } | { ok: false };
 
-/** Teachers and students from the ego network: one generation each way. */
-async function Relations({ profile }: { profile: PersonProfileDto }) {
+/** Teachers (one generation up) and the first students, read together before rendering. */
+async function readRelations(profile: PersonProfileDto): Promise<RelationsRead> {
   const client = await lineageClient();
-  const graph = await client.lineage.ego({ focusId: profile.id, up: 1, down: 1, fanoutLimit: STUDENTS_ON_PROFILE });
+  const [teachers, students] = await Promise.allSettled([
+    client.lineage.ego({ focusId: profile.id, up: 1, down: 0, fanoutLimit: 1 }),
+    client.people.students({ slug: profile.slug, page: 1, pageSize: STUDENTS_ON_PROFILE, order: 'seniority' }),
+  ]);
+  for (const [section, read] of [
+    ['teachers', teachers],
+    ['students', students],
+  ] as const) {
+    if (read.status === 'rejected') console.error(`[person-page] the ${section} could not be loaded: ${failure(read.reason)}`);
+  }
+  if (teachers.status === 'rejected' || students.status === 'rejected') return { ok: false };
+  return { ok: true, teachers: teachers.value, students: students.value };
+}
+
+/**
+ * Thrown inside a Suspense boundary when the read failed, so the server sends that boundary's
+ * fallback (the error with a Retry link) and the browser hands the error to the catchError
+ * boundary around it (the error with a Retry button). The message names no person and no query.
+ */
+function RelationsReadFailed(): never {
+  throw new Error('The teachers and students could not be loaded.');
+}
+
+/** The teachers, the display-primary one first (DEFAULT D05), then by name. */
+function teacherRows(profile: PersonProfileDto, graph: LineageGraphDto): RelationRow[] {
   const people = new Map(graph.nodes.map((n) => [n.id, n]));
-  const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
-  const byName = (a: RelationRow, b: RelationRow) => a.person.displayName.localeCompare(b.person.displayName, 'en');
-  // The display-primary teacher first (DEFAULT D05: a visual preference, never hiding the others).
-  const teacherRank = (row: RelationRow) => (row.edges.some((e) => e.kind === 'primary') ? 0 : 1);
-  const teachers = groupRelations(
+  const rank = (row: RelationRow) => (row.edges.some((e) => e.kind === 'primary') ? 0 : 1);
+  return groupRelations(
     graph.edges.filter((e) => e.studentId === profile.id),
     (e) => e.teacherId,
     (id) => people.get(id),
-  ).sort((a, b) => teacherRank(a) - teacherRank(b) || byName(a, b));
-  // Own requests first (only the participants see them), then by name.
-  const ownFirst = (row: RelationRow) => (row.edges.some((e) => e.visibility === 'involved_only') ? 0 : 1);
-  const students = groupRelations(
-    graph.edges.filter((e) => e.teacherId === profile.id),
-    (e) => e.studentId,
-    (id) => people.get(id),
-  ).sort((a, b) => ownFirst(a) - ownFirst(b) || byName(a, b));
-  const hidden = graph.hiddenCounts[profile.id] ?? { teachers: 0, students: 0 };
+  ).sort((a, b) => rank(a) - rank(b) || a.person.displayName.localeCompare(b.person.displayName, 'en'));
+}
+
+/** Same names in one list get a note in words (design review: "Anna Notreal" twice). */
+function withNotes(rows: RelationRow[], lineageName: (id: string) => string | undefined): RelationRow[] {
+  const notes = sameNameNotes(
+    rows.map((row) => ({
+      id: row.person.id,
+      displayName: row.person.displayName,
+      year: startYear(row.edges.flatMap((e) => e.periods)),
+      lineage: row.edges.map((e) => lineageName(e.lineageId)).find(Boolean) ?? null,
+    })),
+  );
+  return rows.map((row) => ({ ...row, note: notes.get(row.person.id) }));
+}
+
+function Relations({ profile, teachers: graph, students: page }: { profile: PersonProfileDto; teachers: LineageGraphDto; students: StudentsPageDto }) {
+  const lineages = new Map([...graph.lineages, ...page.lineages].map((l) => [l.id, l]));
+  const lineageName = (id: string) => lineages.get(id)?.name;
+  const teachers = withNotes(teacherRows(profile, graph), lineageName);
+  // The viewer's own requests first (only the participants see them), then the earliest.
+  const students = withNotes(studentRows([...page.own, ...page.active, ...page.historical]), lineageName);
+  const hiddenTeachers = graph.hiddenCounts[profile.id]?.teachers ?? 0;
+  // The viewer's own requests are shown to them and never counted (DEFAULT D03): say so.
+  const pendingTeachers = teachers.filter((t) => t.edges.every((e) => e.visibility === 'involved_only')).length;
+  const publicStudents = page.activeTotal + page.historicalTotal;
   const listHref = `/people/${profile.slug}/lineage`;
-  const shownEdges = graph.edges.filter((e) => e.studentId === profile.id || e.teacherId === profile.id);
+  const founded = foundedLineages(profile);
+  const shownPublic = students.length - page.own.length;
+  const studentLineage = sharedLineage(students);
+  const descendants = profile.counts.descendants;
 
   return (
     <div className="grid gap-10">
-      <Section id="teachers-heading" title="Teachers">
+      <FocusAfterRetry targetId="teachers-heading" statusId="relations-status" message="Teachers and students loaded." />
+      <Section id="teachers-heading" title="Teachers" count={countText(profile.counts.teachers)} focusable>
+        {pendingTeachers > 0 ? <p className="text-sm text-fg-muted">{pendingText(pendingTeachers)}</p> : null}
         {teachers.length > 0 ? (
-          <RelationList rows={teachers} lineages={lineages} label={`Teachers of ${profile.displayName}`} />
+          <RelationList rows={teachers} lineages={lineages} role="teacher" label={`Teachers of ${profile.displayName}`} />
+        ) : founded.length > 0 ? (
+          // DEFAULT D22: a founder is named only when the record says so.
+          <EmptyState>
+            Founder of{' '}
+            {founded.map((l, i) => (
+              <span key={l.id}>
+                {i > 0 ? ' and ' : null}
+                <LineageName name={l.name} />
+              </span>
+            ))}{' '}
+            as recorded. No earlier teacher is on the record.
+          </EmptyState>
         ) : (
-          <EmptyState>No teachers on the record yet.</EmptyState>
+          <EmptyState>No teachers are on the record.</EmptyState>
         )}
-        {hidden.teachers > 0 ? (
+        {hiddenTeachers > 0 ? (
           <p className="text-sm text-fg-muted">
-            {hidden.teachers} more {hidden.teachers === 1 ? 'teacher is' : 'teachers are'} on the record.{' '}
+            {hiddenTeachers} more {hiddenTeachers === 1 ? 'teacher is' : 'teachers are'} on the record.{' '}
             <Link href={listHref} prefetch={false} className="link inline-flex min-h-11 items-center">
               See them in the list view
             </Link>
@@ -98,65 +161,142 @@ async function Relations({ profile }: { profile: PersonProfileDto }) {
         ) : null}
       </Section>
 
-      <Section id="students-heading" title="Students">
+      <Section id="students-heading" title="Students" count={countText(profile.counts.students)}>
+        {page.own.length > 0 ? <p className="text-sm text-fg-muted">{pendingText(page.own.length)}</p> : null}
         {students.length > 0 ? (
-          <RelationList rows={students} lineages={lineages} label={`Students of ${profile.displayName}`} />
+          <>
+            {publicStudents > shownPublic ? (
+              <p className="text-sm text-fg-muted">
+                The {shownPublic.toLocaleString('en')} earliest of {publicStudents.toLocaleString('en')}, by the year their training began.
+                {studentLineage && lineages.get(studentLineage) ? (
+                  <>
+                    {' '}
+                    All in <LineageName name={lineages.get(studentLineage)!.name} />.
+                  </>
+                ) : null}
+              </p>
+            ) : studentLineage && lineages.get(studentLineage) ? (
+              <p className="text-sm text-fg-muted">
+                All in <LineageName name={lineages.get(studentLineage)!.name} />.
+              </p>
+            ) : null}
+            <RelationList
+              rows={students}
+              lineages={lineages}
+              role="student"
+              groupLineageId={studentLineage}
+              nameSize="lg"
+              label={`Students of ${profile.displayName}`}
+            />
+          </>
         ) : (
-          <EmptyState>No students on the record yet.</EmptyState>
+          <EmptyState>No students are on the record.</EmptyState>
         )}
-        {hidden.students > 0 ? (
+        {publicStudents > shownPublic || descendants > publicStudents ? (
           <p>
             <Link href={listHref} prefetch={false} className={buttonVariants({ variant: 'secondary' })}>
-              All {profile.counts.students.toLocaleString('en')} students in the list view
+              {publicStudents > shownPublic
+                ? `All ${publicStudents.toLocaleString('en')} students in the list view`
+                : `All ${countText(descendants, profile.counts.descendantsCapped)} descendants in the list view`}
               <ArrowRightIcon />
             </Link>
           </p>
         ) : null}
+        {publicStudents > shownPublic && descendants > publicStudents ? (
+          <p className="text-sm text-fg-muted">
+            {countText(descendants, profile.counts.descendantsCapped)} descendants in all, with the routes of descent, in the same view.
+          </p>
+        ) : null}
       </Section>
-
-      <StatusLegend kinds={kindsOf(shownEdges, ['verified'])} id="profile-key" />
     </div>
   );
 }
 
-export default async function PersonPage({ params }: Props) {
-  const profile = await profileFor(params);
-  if (!profile) return <PersonNotFound />;
-  const listHref = `/people/${profile.slug}/lineage`;
+function About({ bio }: { bio: string }) {
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <div className="grid max-w-[52rem] gap-10">
-        <header className="grid gap-5">
+    <section aria-labelledby="about-heading" className="grid gap-3 border-t border-border-subtle pt-6">
+      <h2 id="about-heading" className="font-display text-2xl">
+        About
+      </h2>
+      {bio.length > BIO_CLAMP ? (
+        // Clamped to three lines until "Read all" is opened (a <details>, no JavaScript needed).
+        <div className="group/bio grid gap-1">
+          <p aria-hidden="true" className="line-clamp-3 max-w-[62ch] text-base text-fg-muted group-has-[details[open]]/bio:hidden">
+            {bio}
+          </p>
+          <details>
+            <summary className="link inline-flex min-h-11 cursor-pointer list-none items-center text-ui [&::-webkit-details-marker]:hidden">
+              <span className="group-has-[details[open]]/bio:hidden">Read all</span>
+              <span className="hidden group-has-[details[open]]/bio:inline">Show less</span>
+            </summary>
+            <p className="max-w-[62ch] text-base text-fg-muted">{bio}</p>
+          </details>
+        </div>
+      ) : (
+        <p className="max-w-[62ch] text-base text-fg-muted">{bio}</p>
+      )}
+    </section>
+  );
+}
+
+export default async function PersonPage({ params }: Props) {
+  const read = await profileFor(params);
+  if (read.state === 'none') return <PersonNotFound />;
+  if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
+  const { profile } = read;
+  const relations = await readRelations(profile);
+  const here = `/people/${profile.slug}`;
+  // The key lists what the rows draw: the teachers' strokes, and the students' without the
+  // cross-lineage curve.
+  const shownEdges = relations.ok
+    ? [
+        ...relations.teachers.edges.filter((e) => e.studentId === profile.id),
+        ...asStudentEdges([...relations.students.own, ...relations.students.active, ...relations.students.historical].flatMap((s) => s.edges)),
+      ]
+    : [];
+  const pending = relations.ok
+    ? {
+        teachers: relations.teachers.edges.filter((e) => e.studentId === profile.id && e.visibility === 'involved_only').length,
+        students: relations.students.own.length,
+      }
+    : undefined;
+
+  return (
+    <PersonLayout
+      header={
+        <>
           <p className="eyebrow">Person on the record</p>
-          <h1 className="text-feature [overflow-wrap:anywhere]">
-            <PersonNames profile={profile} />
-          </h1>
-          {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} /> : null}
-          <PersonFacts profile={profile} />
-          <PersonCounts profile={profile} />
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-            <PersonViews profile={profile} current="profile" />
-            <Link href={listHref} prefetch={false} className="link inline-flex min-h-11 items-center text-ui">
-              Routes of descent and all descendants
-            </Link>
-          </div>
-        </header>
-
-        {profile.bio ? (
-          <section aria-labelledby="about-heading" className="grid gap-3 border-t border-border-subtle pt-6">
-            <h2 id="about-heading" className="font-display text-2xl">
-              About
-            </h2>
-            <p className="max-w-[62ch] text-base text-fg-muted">{profile.bio}</p>
-          </section>
-        ) : null}
-
-        <LineageBoundary what="teachers and students">
-          <Suspense fallback={<RelationsSkeleton what="teachers and students" noScriptHref={listHref} />}>
-            <Relations profile={profile} />
+          <PersonHeading profile={profile} />
+          <PersonReadings profile={profile} />
+          <FactStrip profile={profile} />
+          {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} limited={profile.limited} /> : null}
+        </>
+      }
+      rail={
+        <>
+          <PersonViews profile={profile} current="profile" />
+          <PersonCounts profile={profile} pending={pending} className="hidden xl:grid" />
+          <LineageKey kinds={kindsOf(shownEdges)} />
+        </>
+      }
+    >
+      <p id="relations-status" role="status" className="sr-only" />
+      <LineageBoundary what="teachers and students" headings={RELATION_HEADINGS}>
+        {relations.ok ? (
+          <Relations profile={profile} teachers={relations.teachers} students={relations.students} />
+        ) : (
+          <Suspense
+            fallback={
+              <FailedSections headings={RELATION_HEADINGS}>
+                <SectionError what="teachers and students" retryHref={here} />
+              </FailedSections>
+            }
+          >
+            <RelationsReadFailed />
           </Suspense>
-        </LineageBoundary>
-      </div>
-    </div>
+        )}
+      </LineageBoundary>
+      {profile.bio ? <About bio={profile.bio} /> : null}
+    </PersonLayout>
   );
 }

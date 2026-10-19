@@ -7,6 +7,7 @@ import { connection } from 'next/server';
 import { cache } from 'react';
 
 import { getRequestPrincipal } from '@/server/auth/web';
+import type { PersonProfileDto } from '@/server/dto/public';
 import { ORPCError, serverClient } from '@/server/rpc/server';
 
 /**
@@ -19,20 +20,35 @@ export const lineageClient = cache(async () => {
 });
 
 /**
- * The profile, or null: a missing slug, a malformed one and a person this viewer may not see all
- * end in the same "Not on the record" page (plan §6.4).
+ * What a person's page shows:
+ *   - `found`: the profile;
+ *   - `none`: a missing slug, a malformed one and a person this viewer may not see all end in the
+ *     same "Not on the record" page (plan §6.4). src/proxy.ts answers those with 404 before the
+ *     page renders; this is the fallback for a record hidden between the two reads;
+ *   - `failed`: the read itself failed (a statement timeout, the database restarting). The page
+ *     shows its own error state inside the app shell, never Next.js's error screen.
  */
-export const loadProfile = cache(async (slug: string) => {
+export type ProfileRead = { state: 'found'; profile: PersonProfileDto } | { state: 'none' } | { state: 'failed' };
+
+/** The reason a read failed, for the server log: a code or an error name, never the data. */
+export function failure(reason: unknown): string {
+  if (reason && typeof reason === 'object' && 'code' in reason && typeof reason.code === 'string') return reason.code;
+  return reason instanceof Error ? reason.name : 'unknown';
+}
+
+export const loadProfile = cache(async (slug: string): Promise<ProfileRead> => {
   const client = await lineageClient();
   try {
-    return await client.people.get({ slug });
+    return { state: 'found', profile: await client.people.get({ slug }) };
   } catch (error) {
-    if (error instanceof ORPCError && (error.code === 'NOT_FOUND' || error.code === 'BAD_REQUEST')) return null;
-    throw error;
+    if (error instanceof ORPCError && (error.code === 'NOT_FOUND' || error.code === 'BAD_REQUEST')) return { state: 'none' };
+    console.error(`[person-page] the profile could not be loaded: ${failure(error)}`);
+    return { state: 'failed' };
   }
 });
 
-/** The profile for a page's params, or null (see loadProfile). */
-export async function profileFor(params: Promise<{ slug: string }>) {
-  return loadProfile((await params).slug);
+/** The profile read for a page's params (see loadProfile), with the slug for a Retry link. */
+export async function profileFor(params: Promise<{ slug: string }>): Promise<ProfileRead & { slug: string }> {
+  const { slug } = await params;
+  return { ...(await loadProfile(slug)), slug };
 }

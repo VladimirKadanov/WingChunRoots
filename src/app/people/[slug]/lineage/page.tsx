@@ -1,26 +1,36 @@
 // /people/[slug]/lineage (plan §4.10; milestone M04): the list view of a person's lineage, a full
 // alternative to the graph. Teachers with lineage, period, status in words and whether the
-// training has ended; the routes of descent; the students, active and historical, in pages; and
-// the descendants as a nested outline. Everything is read before the first byte is sent and
-// rendered on the server, so the page works without JavaScript (streamed Suspense content would
-// need inline scripts). A section whose read fails says so in place, with a Retry link that is a
-// plain reload; the rest of the page stands.
+// training has ended; the routes of descent, drawn as an ink spine; the students, active and
+// historical, as register rows in pages; and the descendants as a nested outline. Everything is
+// read before the first byte is sent and rendered on the server, so the page works without
+// JavaScript (streamed Suspense content would need inline scripts). A section whose read fails
+// says so in place, under its own heading, with a Retry link that is a plain reload; the rest of
+// the page stands. A person the viewer may not see answers 404 (src/proxy.ts, plan §6.4).
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { DescendantsOutline } from '@/components/lineage/descendants-outline';
-import { PersonCounts, PersonNames, PersonViews, PrivateRecordNotice } from '@/components/lineage/person-header';
+import { DescendantsOutline, outlineSummary } from '@/components/lineage/descendants-outline';
+import { LineageKey } from '@/components/lineage/key';
+import {
+  countText,
+  FactStrip,
+  pendingText,
+  PersonCounts,
+  PersonHeading,
+  PersonReadings,
+  PersonViews,
+  PrivateRecordNotice,
+} from '@/components/lineage/person-header';
+import { PersonLayout } from '@/components/lineage/person-layout';
+import { LatinName, LineageName } from '@/components/lineage/person-name';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
-import { LatinName } from '@/components/lineage/person-name';
-import { groupRelations, RelationList, type RelationRow } from '@/components/lineage/relation-list';
+import { groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
 import { RoutesOfDescent } from '@/components/lineage/routes-of-descent';
-import { EmptyState, SectionError } from '@/components/lineage/states';
-import { StatusLegend } from '@/components/lineage/status-legend';
-import { kindsOf } from '@/components/lineage/status';
-import { cx } from '@/lib/cx';
-import type { LineageRefDto, StudentEntryDto, StudentsPageDto } from '@/server/dto/public';
-import { lineageClient, profileFor } from '../data';
+import { EmptyState, ProfileError, Section, SectionError } from '@/components/lineage/states';
+import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
+import type { LineageRefDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
+import { failure, lineageClient, profileFor } from '../data';
 
 export const instant = false;
 
@@ -38,9 +48,10 @@ type Props = {
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const profile = await profileFor(params);
-  if (!profile) return notOnRecordMetadata;
-  return { title: `${profile.displayName} · Lineage list`, robots: { index: false } };
+  const read = await profileFor(params);
+  if (read.state === 'none') return notOnRecordMetadata;
+  if (read.state === 'failed') return { title: 'Lineage list not loaded', robots: { index: false, follow: false } };
+  return { title: `${read.profile.displayName} · Lineage list`, robots: { index: false } };
 }
 
 function single(value: string | string[] | undefined): string | undefined {
@@ -53,25 +64,17 @@ function pageFrom(value: string | undefined): number {
   return page >= 1 && page <= MAX_PAGE ? page : 1;
 }
 
-/** The reason a section failed, for the server log: a code or an error name, never the data. */
-function failure(reason: unknown): string {
-  if (reason && typeof reason === 'object' && 'code' in reason && typeof reason.code === 'string') return reason.code;
-  return reason instanceof Error ? reason.name : 'unknown';
-}
-
-function Section({ id, title, children, className }: { id: string; title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <section aria-labelledby={id} className={cx('grid scroll-mt-24 content-start gap-4 border-t border-border-subtle pt-6', className)}>
-      <h2 id={id} className="font-display text-2xl">
-        {title}
-      </h2>
-      {children}
-    </section>
+/** Same names in one list get a note in words (design review: two "Oscar Stubbard"). */
+function withNotes(rows: RelationRow[], lineageName: (id: string) => string | undefined): RelationRow[] {
+  const notes = sameNameNotes(
+    rows.map((row) => ({
+      id: row.person.id,
+      displayName: row.person.displayName,
+      year: startYear(row.edges.flatMap((e) => e.periods)),
+      lineage: row.edges.map((e) => lineageName(e.lineageId)).find(Boolean) ?? null,
+    })),
   );
-}
-
-function studentRows(entries: readonly StudentEntryDto[]): RelationRow[] {
-  return entries.map((entry) => ({ person: entry.person, edges: entry.edges }));
+  return rows.map((row) => ({ ...row, note: notes.get(row.person.id) }));
 }
 
 function Pager({ page, pageCount, href }: { page: number; pageCount: number; href: (page: number) => string }) {
@@ -98,17 +101,20 @@ function Pager({ page, pageCount, href }: { page: number; pageCount: number; hre
 
 function Students({ data, name, href }: { data: StudentsPageDto; name: string; href: (page: number) => string }) {
   const lineages = new Map<string, LineageRefDto>(data.lineages.map((l) => [l.id, l]));
+  const lineageName = (id: string) => lineages.get(id)?.name;
   const total = data.activeTotal + data.historicalTotal;
   const groups = [
     { key: 'own', title: 'Visible only to you and them', rows: studentRows(data.own), total: data.own.length },
     { key: 'active', title: 'Active', rows: studentRows(data.active), total: data.activeTotal },
     { key: 'historical', title: 'Historical (training ended)', rows: studentRows(data.historical), total: data.historicalTotal },
-  ].filter((g) => g.rows.length > 0);
+  ]
+    .filter((g) => g.rows.length > 0)
+    .map((g) => ({ ...g, rows: withNotes(g.rows, lineageName), lineage: sharedLineage(g.rows) }));
 
   if (total === 0 && data.own.length === 0) {
     return (
       <EmptyState>
-        No students of <LatinName name={name} /> are on the record yet.
+        No students of <LatinName name={name} /> are on the record.
       </EmptyState>
     );
   }
@@ -117,7 +123,8 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
       <p className="text-ui text-fg-muted">
         {data.activeTotal.toLocaleString('en')} active and {data.historicalTotal.toLocaleString('en')} historical{' '}
         {total === 1 ? 'student' : 'students'}
-        {data.pageCount > 1 ? `, ${data.pageSize} to a page` : ''}.
+        {data.pageCount > 1 ? `, ${data.pageSize} to a page, by name` : ''}.
+        {data.own.length > 0 ? ` ${pendingText(data.own.length)}.` : ''}
       </p>
       {groups.length === 0 ? (
         <EmptyState>
@@ -131,8 +138,22 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
           <section key={group.key} aria-labelledby={`students-${group.key}`} className="grid gap-3">
             <h3 id={`students-${group.key}`} className="eyebrow">
               {group.title} · {group.total.toLocaleString('en')}
+              {group.lineage && lineages.get(group.lineage) ? (
+                <>
+                  {' · '}
+                  <LineageName name={lineages.get(group.lineage)!.name} />
+                </>
+              ) : null}
             </h3>
-            <RelationList rows={group.rows} lineages={lineages} detail="full" label={`${group.title}: students of ${name}`} />
+            <RelationList
+              rows={group.rows}
+              lineages={lineages}
+              role="student"
+              groupLineageId={group.lineage}
+              columns
+              nameSize="lg"
+              label={`${group.title}: students of ${name}`}
+            />
           </section>
         ))
       )}
@@ -141,9 +162,38 @@ function Students({ data, name, href }: { data: StudentsPageDto; name: string; h
   );
 }
 
+const CONTENTS = [
+  { id: 'teachers-heading', label: 'Teachers' },
+  { id: 'routes-heading', label: 'Routes' },
+  { id: 'students-heading', label: 'Students' },
+  { id: 'descendants-heading', label: 'Descendants' },
+] as const;
+
+/** The jump links: one row that scrolls sideways on a phone, a column in the side rail. */
+function OnThisPage() {
+  return (
+    <nav aria-label="On this page" className="-mx-1 overflow-x-auto px-1 xl:mx-0 xl:overflow-visible xl:px-0">
+      <ul className="flex snap-x gap-2 xl:grid xl:gap-0">
+        {CONTENTS.map((c) => (
+          <li key={c.id} className="shrink-0 snap-start">
+            <a
+              href={`#${c.id}`}
+              className="inline-flex min-h-11 items-center rounded-xs border border-border-subtle px-3 text-ui whitespace-nowrap hover:border-border-strong xl:w-full xl:rounded-none xl:border-0 xl:px-0 xl:underline xl:decoration-border-strong xl:underline-offset-[0.3em] xl:hover:decoration-current"
+            >
+              {c.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 export default async function LineageListPage({ params, searchParams }: Props) {
-  const profile = await profileFor(params);
-  if (!profile) return <PersonNotFound />;
+  const read = await profileFor(params);
+  if (read.state === 'none') return <PersonNotFound />;
+  if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}/lineage`} />;
+  const profile: PersonProfileDto = read.profile;
   const query = await searchParams;
   const page = pageFrom(single(query.page));
   const allRoutes = single(query.routes) === 'all';
@@ -165,127 +215,137 @@ export default async function LineageListPage({ params, searchParams }: Props) {
     client.people.students({ slug: profile.slug, page }),
     client.lineage.subtree({ rootId: profile.id, depth: OUTLINE_DEPTH }),
   ]);
-  for (const [section, read] of [
+  for (const [section, result] of [
     ['teachers', teachersRead],
     ['routes', routesRead],
     ['students', studentsRead],
     ['descendants', outlineRead],
   ] as const) {
-    if (read.status === 'rejected') console.error(`[lineage-list] the ${section} section could not be loaded: ${failure(read.reason)}`);
+    if (result.status === 'rejected') console.error(`[lineage-list] the ${section} section could not be loaded: ${failure(result.reason)}`);
   }
 
+  const teacherLineages = new Map(teachersRead.status === 'fulfilled' ? teachersRead.value.lineages.map((l) => [l.id, l]) : []);
   const teachers =
     teachersRead.status === 'fulfilled'
-      ? groupRelations(
-          teachersRead.value.edges.filter((e) => e.studentId === profile.id),
-          (e) => e.teacherId,
-          (id) => teachersRead.value.nodes.find((n) => n.id === id),
-        ).sort(
-          // The display-primary teacher first (DEFAULT D05), then by name.
-          (a, b) =>
-            Number(!a.edges.some((e) => e.kind === 'primary')) - Number(!b.edges.some((e) => e.kind === 'primary')) ||
-            a.person.displayName.localeCompare(b.person.displayName, 'en'),
+      ? withNotes(
+          groupRelations(
+            teachersRead.value.edges.filter((e) => e.studentId === profile.id),
+            (e) => e.teacherId,
+            (id) => teachersRead.value.nodes.find((n) => n.id === id),
+          ).sort(
+            // The display-primary teacher first (DEFAULT D05), then by name.
+            (a, b) =>
+              Number(!a.edges.some((e) => e.kind === 'primary')) - Number(!b.edges.some((e) => e.kind === 'primary')) ||
+              a.person.displayName.localeCompare(b.person.displayName, 'en'),
+          ),
+          (id) => teacherLineages.get(id)?.name,
         )
       : null;
-  const teacherLineages = new Map(teachersRead.status === 'fulfilled' ? teachersRead.value.lineages.map((l) => [l.id, l]) : []);
+  const pendingTeachers = teachers?.filter((t) => t.edges.every((e) => e.visibility === 'involved_only')).length ?? 0;
+  const outline = outlineRead.status === 'fulfilled' ? outlineRead.value : null;
+  // The key lists what the page draws: the teachers' and the routes' strokes, the students' rows
+  // (no cross-lineage curve), and the states the outline marks with a seal.
   const legendEdges = [
-    ...(teachersRead.status === 'fulfilled' ? teachersRead.value.edges : []),
+    ...(teachers ?? []).flatMap((t) => t.edges),
     ...(routesRead.status === 'fulfilled' ? routesRead.value.edges : []),
-    ...(studentsRead.status === 'fulfilled'
-      ? [...studentsRead.value.active, ...studentsRead.value.historical, ...studentsRead.value.own].flatMap((s) => s.edges)
-      : []),
+    ...asStudentEdges(
+      studentsRead.status === 'fulfilled'
+        ? [...studentsRead.value.active, ...studentsRead.value.historical, ...studentsRead.value.own].flatMap((s) => s.edges)
+        : [],
+    ),
+    ...(outline?.edges ?? []).filter((e) => e.visibility !== 'public' || e.status !== 'verified').map((e) => ({ status: e.status, periods: [] })),
   ];
-
-  const contents = [
-    { id: 'teachers-heading', label: 'Teachers' },
-    { id: 'routes-heading', label: 'Routes of descent' },
-    { id: 'students-heading', label: 'Students' },
-    { id: 'descendants-heading', label: 'Descendants' },
-  ];
+  const outlineCounts = outline ? outlineSummary(outline, profile.id, true) : null;
 
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <div className="grid max-w-[52rem] gap-10">
-        <header className="grid gap-5">
+    <PersonLayout
+      header={
+        <>
           <p className="eyebrow">Lineage list</p>
-          <h1 className="text-feature [overflow-wrap:anywhere]">
-            <PersonNames profile={profile} />
-          </h1>
-          {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} /> : null}
-          <PersonCounts profile={profile} />
+          <PersonHeading profile={profile} prefix="Lineage of " />
+          <PersonReadings profile={profile} />
+          <FactStrip profile={profile} />
+          {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} limited={profile.limited} /> : null}
+        </>
+      }
+      rail={
+        <>
           <PersonViews profile={profile} current="list" />
-          <nav aria-label="On this page">
-            <ul className="flex flex-wrap gap-x-5 text-ui">
-              {contents.map((c) => (
-                <li key={c.id}>
-                  <a href={`#${c.id}`} className="link inline-flex min-h-11 items-center">
-                    {c.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </header>
+          <OnThisPage />
+          <PersonCounts
+            profile={profile}
+            pending={{ teachers: pendingTeachers, students: studentsRead.status === 'fulfilled' ? studentsRead.value.own.length : 0 }}
+            className="hidden xl:grid"
+          />
+          <LineageKey kinds={kindsOf(legendEdges)} />
+        </>
+      }
+    >
+      <Section id="teachers-heading" title="Teachers" count={countText(profile.counts.teachers)}>
+        {teachers === null ? (
+          <SectionError what="teachers" retryHref={here} />
+        ) : teachers.length > 0 ? (
+          <>
+            {pendingTeachers > 0 ? <p className="text-sm text-fg-muted">{pendingText(pendingTeachers)}</p> : null}
+            <RelationList rows={teachers} lineages={teacherLineages} role="teacher" label={`Teachers of ${profile.displayName}`} />
+          </>
+        ) : (
+          <EmptyState>
+            No teachers of <LatinName name={profile.displayName} /> are on the record.
+          </EmptyState>
+        )}
+      </Section>
 
-        <Section id="teachers-heading" title="Teachers">
-          {teachers === null ? (
-            <SectionError what="teachers" retryHref={here} />
-          ) : teachers.length > 0 ? (
-            <RelationList rows={teachers} lineages={teacherLineages} detail="full" label={`Teachers of ${profile.displayName}`} />
+      <Section
+        id="routes-heading"
+        title="Routes of descent"
+        count={routesRead.status === 'fulfilled' && routesRead.value.totalPaths > 0 ? countText(routesRead.value.totalPaths, routesRead.value.totalPathsCapped) : undefined}
+      >
+        {routesRead.status === 'fulfilled' ? (
+          <RoutesOfDescent paths={routesRead.value} focusName={profile.displayName} moreHref={allRoutes ? null : `${viewHref(page, true)}#routes-heading`} />
+        ) : (
+          <SectionError what="routes of descent" retryHref={here} />
+        )}
+      </Section>
+
+      <Section id="students-heading" title="Students" count={countText(profile.counts.students)}>
+        {studentsRead.status === 'fulfilled' ? (
+          <Students data={studentsRead.value} name={profile.displayName} href={pageHref} />
+        ) : (
+          <SectionError what="students" retryHref={here} />
+        )}
+      </Section>
+
+      <Section id="descendants-heading" title="Descendants" count={countText(profile.counts.descendants, profile.counts.descendantsCapped)}>
+        {outline && outlineCounts ? (
+          outlineCounts.shown > 0 ? (
+            <div className="grid gap-3">
+              <p className="text-ui text-fg-muted">
+                {outlineCounts.shown === outlineCounts.total
+                  ? `Every student here has students of their own; `
+                  : `${outlineCounts.shown.toLocaleString('en')} of ${outlineCounts.total.toLocaleString('en')} students teach; `}
+                each is listed with their students, and the next generation opens beneath. Someone with two teachers here is listed under both.
+              </p>
+              <DescendantsOutline graph={outline} rootId={profile.id} depth={OUTLINE_DEPTH} teachingOnly />
+              {outline.truncated ? (
+                <p className="text-sm text-fg-muted">
+                  The outline stops at {outline.nodes.length.toLocaleString('en')} people; each person’s own list has the rest.
+                </p>
+              ) : null}
+            </div>
+          ) : outlineCounts.total > 0 ? (
+            <EmptyState>
+              None of the students of <LatinName name={profile.displayName} /> has students of their own on the record.
+            </EmptyState>
           ) : (
             <EmptyState>
-              No teachers of <LatinName name={profile.displayName} /> are on the record yet.
+              No descendants of <LatinName name={profile.displayName} /> are on the record.
             </EmptyState>
-          )}
-        </Section>
-
-        <Section id="routes-heading" title="Routes of descent">
-          {routesRead.status === 'fulfilled' ? (
-            <RoutesOfDescent
-              paths={routesRead.value}
-              focusName={profile.displayName}
-              moreHref={allRoutes ? null : `${viewHref(page, true)}#routes-heading`}
-            />
-          ) : (
-            <SectionError what="routes of descent" retryHref={here} />
-          )}
-        </Section>
-
-        <Section id="students-heading" title="Students">
-          {studentsRead.status === 'fulfilled' ? (
-            <Students data={studentsRead.value} name={profile.displayName} href={pageHref} />
-          ) : (
-            <SectionError what="students" retryHref={here} />
-          )}
-        </Section>
-
-        <Section id="descendants-heading" title="Descendants">
-          {outlineRead.status === 'fulfilled' ? (
-            outlineRead.value.edges.some((e) => e.teacherId === profile.id) ? (
-              <div className="grid gap-3">
-                <p className="text-ui text-fg-muted">
-                  Students and their students, {OUTLINE_DEPTH} generations deep; the first two are open. Someone with two teachers here is listed
-                  under both.
-                </p>
-                <DescendantsOutline graph={outlineRead.value} rootId={profile.id} depth={OUTLINE_DEPTH} />
-                {outlineRead.value.truncated ? (
-                  <p className="text-sm text-fg-muted">
-                    The outline stops at {outlineRead.value.nodes.length.toLocaleString('en')} people; each person’s own list has the rest.
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <EmptyState>
-                No descendants of <LatinName name={profile.displayName} /> are on the record yet.
-              </EmptyState>
-            )
-          ) : (
-            <SectionError what="descendants" retryHref={here} />
-          )}
-        </Section>
-
-        <StatusLegend kinds={kindsOf(legendEdges, ['verified'])} id="list-key" />
-      </div>
-    </div>
+          )
+        ) : (
+          <SectionError what="descendants" retryHref={here} />
+        )}
+      </Section>
+    </PersonLayout>
   );
 }

@@ -49,14 +49,19 @@ function dateText(prefix: string): string {
   return day ? `${Number(day)} ${name} ${year}` : `${name} ${year}`;
 }
 
-/** "1981–1983, 1985 – present", "since Feb 1992" or "Dates not recorded". */
+/** An en dash between two ends: closed up between years, spaced when an end has a space in it. */
+function range(from: string, to: string): string {
+  return from.includes(' ') || to.includes(' ') ? `${from} – ${to}` : `${from}–${to}`;
+}
+
+/** "1981–1983, 1985–present", "Feb 1992 – present", "from 1990" or "Dates not recorded". */
 export function periodText(periods: readonly PeriodDto[]): string {
   const parts = periods
     .map((p) => {
       const from = p.from ? dateText(p.from) : null;
       const to = p.to ? dateText(p.to) : null;
-      if (p.ongoing) return from ? `${from} – present` : 'Ongoing';
-      if (from && to) return from === to ? from : `${from}–${to}`;
+      if (p.ongoing) return from ? range(from, 'present') : 'Ongoing';
+      if (from && to) return from === to ? from : range(from, to);
       if (from) return `from ${from}`;
       if (to) return `until ${to}`;
       return null;
@@ -65,18 +70,74 @@ export function periodText(periods: readonly PeriodDto[]): string {
   return parts.length > 0 ? parts.join(', ') : 'Dates not recorded';
 }
 
-/** The kinds a list of edges uses, for its legend; historical and cross-lineage marks included. */
-export function kindsOf(
-  edges: readonly (Pick<LineageEdgeDto, 'status' | 'periods'> & { kind?: LineageEdgeDto['kind'] })[],
-  extra: readonly LinkKind[] = [],
-): LinkKind[] {
-  const kinds = new Set<LinkKind>(extra);
+type EdgeLike = Pick<LineageEdgeDto, 'status' | 'periods'> & { kind?: LineageEdgeDto['kind'] };
+
+/**
+ * The kinds a list of edges draws, for its legend: each edge's state, and the historical and
+ * cross-lineage marks. Only what is drawn (a legend lists nothing else).
+ */
+export function kindsOf(edges: readonly EdgeLike[]): LinkKind[] {
+  const kinds = new Set<LinkKind>();
   for (const e of edges) {
     kinds.add(relationStatus(e.status).kind);
     if (isHistoricalRelation(e.periods)) kinds.add('historical');
     if (e.kind === 'crossLineage') kinds.add('cross_lineage');
   }
   return [...kinds];
+}
+
+/**
+ * A student's row draws its state and whether training ended, never the cross-lineage curve
+ * (design review: that mark belongs to the student's own teachers). The edges as a student's row
+ * draws them, for the key.
+ */
+export function asStudentEdges(edges: readonly EdgeLike[]): EdgeLike[] {
+  return edges.map((e) => ({ status: e.status, periods: e.periods }));
+}
+
+/**
+ * The one stroke a row draws for its relationship: a state that is not verified first (it is what
+ * the reader must notice), then the cross-lineage curve (on a teacher's row only), then the thin
+ * historical line, then verified ink.
+ */
+export function strokeOf(edge: EdgeLike): LinkKind {
+  const status = relationStatus(edge.status).kind;
+  if (status !== 'verified') return status;
+  if (edge.kind === 'crossLineage') return 'cross_lineage';
+  if (isHistoricalRelation(edge.periods)) return 'historical';
+  return 'verified';
+}
+
+/** The year training began: the earliest dated start, or null. */
+export function startYear(periods: readonly PeriodDto[]): string | null {
+  const years = periods.map((p) => p.from?.slice(0, 4)).filter((y): y is string => Boolean(y));
+  return years.length > 0 ? years.sort()[0]! : null;
+}
+
+/**
+ * Short notes that tell apart people with the same name in one list (design review: two
+ * "Oscar Stubbard" read as a cycle). Only names that occur more than once get a note: the start
+ * year when theirs differ, else the lineage, else what the caller has (such as another teacher).
+ */
+export function sameNameNotes(
+  rows: readonly { id: string; displayName: string; year?: string | null; lineage?: string | null; other?: string | null }[],
+): Map<string, string> {
+  const notes = new Map<string, string>();
+  const byName = new Map<string, typeof rows>();
+  for (const row of rows) byName.set(row.displayName, [...(byName.get(row.displayName) ?? []), row]);
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    const distinct = (values: (string | null | undefined)[]) => new Set(values).size === values.length && values.every(Boolean);
+    const pick = distinct(group.map((r) => r.year))
+      ? (r: (typeof group)[number]) => `since ${r.year}`
+      : distinct(group.map((r) => r.lineage))
+        ? (r: (typeof group)[number]) => r.lineage!
+        : distinct(group.map((r) => r.other))
+          ? (r: (typeof group)[number]) => r.other!
+          : null;
+    group.forEach((r, i) => notes.set(r.id, pick ? pick(r) : `record ${i + 1} of ${group.length}`));
+  }
+  return notes;
 }
 
 /** Life status in words. */
