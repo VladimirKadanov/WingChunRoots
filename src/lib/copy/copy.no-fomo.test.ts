@@ -4,6 +4,12 @@
 // may state the rule itself) and checked with findFomo() (src/lib/copy/no-fomo.ts). The first two
 // tests show that the matcher rejects known-bad copy and accepts the app's real copy, so the scan
 // can fail; the scan itself must find nothing.
+//
+// What the scan cannot see: the text of a value at run time. An expression it cannot read is a
+// VALUE mark (read as the number 1, or as a possible time or amount before "left", "remaining" or
+// "to go"), so a countdown built entirely from values and words the rules do not list ("{n}
+// {word} {verb}") is still out of its reach; e2e/m08-entitlements.spec.ts runs findFomo() over the
+// rendered prompt and /plans for that reason.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -11,7 +17,7 @@ import { join, relative } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-import { FOMO_RULES, findFomo } from './no-fomo';
+import { FOMO_RULES, findFomo, VALUE } from './no-fomo';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 
@@ -57,8 +63,12 @@ function decodeEntities(text: string): string {
   return text.replace(/&(?:[a-z]+|#\d+|#x[\da-f]+);/gi, (entity) => ENTITIES[entity.toLowerCase()] ?? entity);
 }
 
-/** A number, an identifier or any other expression inside a sentence reads as "1". */
-const PLACEHOLDER = '1';
+/**
+ * A number, an identifier or any other expression inside a sentence reads as VALUE (no-fomo.ts): the
+ * rules read it as the number 1, and `value-left` as a possible time or amount before "left" (M08
+ * polish, note 3). CopyText.text shows it as "1".
+ */
+const PLACEHOLDER = VALUE;
 
 /**
  * At most this many readings of one sentence: the product of what each expression in it can read
@@ -68,7 +78,10 @@ const MAX_READINGS = 16;
 
 interface CopyText {
   line: number;
+  /** The sentence as it reads, each VALUE shown as "1". */
   text: string;
+  /** The sentence with its VALUE marks, for findFomo(). */
+  marked: string;
 }
 
 function collapse(text: string): string {
@@ -100,9 +113,11 @@ function product(parts: string[][]): string[] {
  *
  * An expression inside a sentence (a JSX expression, a template span, an operand of `+`) reads as
  * each text it can produce (final check, code-2): a string literal its text, a conditional either
- * branch, `??`, `||` and `&&` either operand, parentheses what they hold; anything else "1". So
- * `{n} {n === 1 ? 'day' : 'days'} left` is read as "1 day left" and "1 days left", and a countdown
- * written with the usual plural cannot slip through as "1 1 left".
+ * branch, `??`, `||` and `&&` either operand, parentheses what they hold; anything else VALUE
+ * ("1"). So `{n} {n === 1 ? 'day' : 'days'} left` is read as "1 day left" and "1 days left", and a
+ * countdown written with the usual plural cannot slip through as "1 1 left"; written with a helper
+ * (`{n} {plural(n, 'day')} left`), its two values before "left" are the value-left rule's (polish,
+ * note 3).
  */
 function copyOf(fileName: string, source: string): CopyText[] {
   const kind = fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
@@ -110,8 +125,8 @@ function copyOf(fileName: string, source: string): CopyText[] {
   const out: CopyText[] = [];
   const push = (node: ts.Node, texts: string[]) => {
     for (const text of texts) {
-      const value = collapse(text);
-      if (value) out.push({ line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1, text: value });
+      const marked = collapse(text);
+      if (marked) out.push({ line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1, text: marked.replaceAll(VALUE, '1'), marked });
     }
   };
   const isPlus = (node: ts.Node): node is ts.BinaryExpression => ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken;
@@ -163,6 +178,13 @@ function copyOf(fileName: string, source: string): CopyText[] {
   return out;
 }
 
+/** What the scan reports for one file: each finding of each sentence, read with its VALUE marks. */
+function scan(fileName: string, source: string): string[] {
+  return copyOf(fileName, source).flatMap(({ line, marked }) =>
+    findFomo(marked).map((finding) => `${fileName}:${line} ${finding.rule} ("${finding.match}"): ${finding.why}`),
+  );
+}
+
 function copyFiles(): string[] {
   return COPY_DIRS.flatMap((dir) =>
     readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
@@ -200,6 +222,11 @@ describe('findFomo()', () => {
       ['No thanks, I don’t want more students', 'shaming'],
       ['I’ll stay small', 'shaming'],
       ['Don’t be left behind', 'shaming'],
+      // A sentence read from the source, with the marks of its values (polish, note 3).
+      [`${VALUE} ${VALUE} left`, 'value-left'],
+      [`${VALUE} remaining`, 'value-left'],
+      [`Only ${VALUE} ${VALUE} to go`, 'value-left'],
+      [`3 ${VALUE} left in the pilot`, 'value-left'],
     ];
     for (const [text, rule] of bad) {
       expect(
@@ -235,6 +262,13 @@ describe('findFomo()', () => {
       'Mark all as read',
       'Students: 5 of 5 approved on Free Sifu',
       'An administrator ended your pilot plan Professional Sifu. Every confirmed link stays confirmed and public.',
+      // Values that are not a countdown: a quota as a fraction (the backup codes, M02), a count
+      // before another word, a value after "left" (polish, note 3).
+      `${VALUE} of ${VALUE} left`,
+      '1 left',
+      `${VALUE} backup codes left`,
+      `Marked as read. ${VALUE} unread.`,
+      `Sent ${VALUE}`,
     ];
     for (const text of good) expect(findFomo(text), text).toEqual([]);
   });
@@ -317,6 +351,47 @@ describe('copyOf(): conditional plurals and fallbacks (final check, code-2)', ()
   });
 });
 
+describe('copyOf(): a value before "left", "remaining" or "to go" (M08 polish, note 3)', () => {
+  it('reads an expression it cannot know as a VALUE mark, so a countdown built with a helper or a unit value is caught', () => {
+    const source = [
+      'export const A = () => <p>{n} {unit} left</p>;',
+      "const b = `${days} ${plural(days, 'day')} left`;",
+      'export const C = () => <p>{timeLeft} remaining</p>;',
+      "const d = 'Only ' + n + ' ' + noun + ' to go';",
+      'const e = `Ends in ${formatDuration(ms)}`;',
+      'export const F = () => <p>Only {n} {pluralize(n, "place")} left in the pilot</p>;',
+    ].join('\n');
+    const items = copyOf('probe.tsx', source);
+    // As it reads: each value is "1", as before.
+    expect(items.map((item) => item.text)).toEqual(expect.arrayContaining(['1 1 left', '1 remaining', 'Only 1 1 to go', 'Ends in 1']));
+    const rulesOf = (line: number) => items.filter((item) => item.line === line).flatMap((item) => findFomo(item.marked).map((finding) => finding.rule));
+    expect(rulesOf(1)).toContain('value-left');
+    expect(rulesOf(2)).toContain('value-left');
+    expect(rulesOf(3)).toContain('value-left');
+    expect(rulesOf(4)).toContain('value-left');
+    expect(rulesOf(5)).toContain('countdown');
+    expect(rulesOf(6)).toContain('value-left');
+    // The finding names the values, never the private mark.
+    expect(findFomo(items.find((item) => item.line === 1)!.marked)[0]!.match).toBe('{value} {value} left');
+    // Without the marks (the text as it reads), the first sentence passes: the hole this closes.
+    expect(findFomo(items.find((item) => item.line === 1)!.text)).toEqual([]);
+    // The scan of the app's copy reads the marks too.
+    expect(scan('probe.tsx', source).filter((finding) => finding.includes(' value-left '))).toHaveLength(5);
+  });
+
+  it('accepts values that are not a countdown: a quota as a fraction, a count before its noun, a value after "left"', () => {
+    const source = [
+      "export const A = () => <p>{tf.backupCodesLeft === 1 ? '1 left' : `${tf.backupCodesLeft ?? 0} of ${BACKUP_CODE_COUNT} left`}</p>;",
+      'const b = `${n} backup codes left`;',
+      'const c = `Marked as read. ${left === 0 ? "None" : left} unread.`;',
+      'export const D = () => <p>Sent {ago}</p>;',
+      "const e = `Left: ${n}`;",
+    ].join('\n');
+    const findings = copyOf('probe.tsx', source).flatMap((item) => findFomo(item.marked));
+    expect(findings).toEqual([]);
+  });
+});
+
 describe('the English copy of the app', () => {
   it('has no countdown, urgency, scarcity, social pressure or shaming', () => {
     const files = copyFiles();
@@ -336,11 +411,7 @@ describe('the English copy of the app', () => {
     expect(names).not.toContain('src/lib/copy/no-fomo.ts');
     expect(files.length).toBeGreaterThan(50);
 
-    const findings = files.flatMap((file) =>
-      copyOf(file, readFileSync(file, 'utf8')).flatMap(({ line, text }) =>
-        findFomo(text).map((finding) => `${relative(ROOT, file)}:${line} ${finding.rule} ("${finding.match}"): ${finding.why}`),
-      ),
-    );
+    const findings = files.flatMap((file) => scan(relative(ROOT, file), readFileSync(file, 'utf8')));
     expect([...new Set(findings)]).toEqual([]);
   });
 });

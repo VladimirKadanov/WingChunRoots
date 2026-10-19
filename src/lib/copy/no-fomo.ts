@@ -12,7 +12,24 @@ export interface FomoRule {
   /** What the rule rejects, for the failure message. */
   why: string;
   pattern: RegExp;
+  /**
+   * Whether the rule reads the VALUE marks of a sentence from the source (below). The other rules
+   * read each VALUE as the number 1.
+   */
+  values?: true;
 }
+
+/**
+ * Where the scan of the source (copy.no-fomo.test.ts, copyOf) meets an expression inside a sentence
+ * whose text it cannot know (`{n}`, `${plural(days, 'day')}`), it writes VALUE (a private-use
+ * character that rendered text never holds). The rules read it as the number 1, so "Only {n} spots
+ * left" is "Only 1 spots left" and "ends in {time}" is "ends in 1". The `value-left` rule reads the
+ * mark itself (M08 polish, note 3): a value right before "left", "remaining" or "to go" may be a
+ * time or an amount with its unit ("2 days", "04:59", "3 places"), so "{n} {unit} left",
+ * "{days} days left" read with a helper, or "{timeLeft} remaining" is a countdown or scarcity. Not
+ * after "of": "{used} of {total} left" states a quota ("3 of 10 left", the backup codes of M02).
+ */
+export const VALUE = '\uE000';
 
 const NUMBER = String.raw`(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a few|few)`;
 const UNIT = String.raw`(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)`;
@@ -53,6 +70,12 @@ export const FOMO_RULES: readonly FomoRule[] = [
       /\b\d+\s+(?:people|others|members|instructors|students)\s+(?:are\s+)?(?:viewing|looking|watching|upgrading|have\s+upgraded|joined\s+today)\b|\beveryone\s+(?:else\s+)?is\s+(?:upgrading|joining)\b|\b(?:others|everyone)\s+(?:are|is)\s+(?:already\s+)?(?:upgrading|ahead)\b/i,
   },
   {
+    id: 'value-left',
+    why: 'a countdown or scarcity: a value of the source (a time or an amount) followed by "left", "remaining" or "to go"',
+    pattern: new RegExp(String.raw`(?<!\bof\s+)${VALUE}(?:\s+${VALUE})*\s+(?:left|remaining|to\s+go)\b`, 'i'),
+    values: true,
+  },
+  {
     id: 'shaming',
     why: 'confirmshaming: a refusal worded to shame',
     pattern:
@@ -67,14 +90,20 @@ export interface FomoFinding {
   match: string;
 }
 
-/** Every phrase of `text` that a rule of FOMO_RULES rejects (empty when the copy is fine). */
+/**
+ * Every phrase of `text` that a rule of FOMO_RULES rejects (empty when the copy is fine). `text` may
+ * hold VALUE marks (a sentence read from the source); a match shows each one as "{value}".
+ */
 export function findFomo(text: string): FomoFinding[] {
   // Typographic apostrophes count like the plain one ("don’t hurry").
   const plain = text.replace(/[‘’ʼ]/g, "'");
+  const asNumber = plain.replaceAll(VALUE, '1');
   const findings: FomoFinding[] = [];
   for (const rule of FOMO_RULES) {
     const global = new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`);
-    for (const match of plain.matchAll(global)) findings.push({ rule: rule.id, why: rule.why, match: match[0] });
+    for (const match of (rule.values ? plain : asNumber).matchAll(global)) {
+      findings.push({ rule: rule.id, why: rule.why, match: match[0].replaceAll(VALUE, '{value}') });
+    }
   }
   return findings;
 }
