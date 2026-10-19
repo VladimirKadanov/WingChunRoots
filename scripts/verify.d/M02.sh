@@ -277,8 +277,18 @@ if [ "${#CACHED[@]}" -gt 0 ]; then
 else
   ok "no session, cookies, headers or auth inside 'use cache' files (no cached file)"
 fi
-check "no proxy.ts or middleware.ts in Phase 1 (CLAUDE.md §13)" bash -c '
-  [ ! -e src/proxy.ts ] && [ ! -e proxy.ts ] && [ ! -e src/middleware.ts ] && [ ! -e middleware.ts ]'
+# M04 fix round 1 added src/proxy.ts for the 404 of a hidden person (docs/adr/0008-person-pages-404.md).
+# The rule of plan §6.1 and CLAUDE.md §13 for a proxy that is added: route handlers (api, healthz)
+# and _next never pass through it. Here, stricter: no middleware.ts, no root proxy.ts, and the
+# only proxy's matcher names nothing but /people/ page paths (src/proxy.test.ts checks real URLs).
+check "no middleware.ts; a proxy.ts only for /people pages, never api, healthz or _next (plan §6.1, CLAUDE.md §13)" bash -c '
+  [ ! -e proxy.ts ] && [ ! -e src/middleware.ts ] && [ ! -e middleware.ts ] || exit 1
+  [ -e src/proxy.ts ] || exit 0
+  matcher=$(tr -d "\n" < src/proxy.ts | grep -oE "matcher: *\[[^]]*\]") || exit 1
+  ! grep -qE "api|healthz|_next" <<<"$matcher" || exit 1
+  paths=$(grep -oE "'"'"'[^'"'"']*'"'"'" <<<"$matcher" | tr -d "'"'"'")
+  [ -n "$paths" ] || exit 1
+  ! grep -vqE "^/people/:slug(/lineage)?$" <<<"$paths"'
 
 # 8. E2E and integration tests (Done when, items 2-4) ---------------------------------------------
 titles=(

@@ -248,6 +248,23 @@ export async function personProfile(principal: Principal | null, input: PersonIn
   });
 }
 
+/**
+ * Whether /people/<slug> (and its list view) shows a person to this viewer: a public person, or a
+ * hidden one the viewer may see, the same rule as people.get. src/proxy.ts asks before the page
+ * streams, so a missing, malformed or hidden address answers 404 (plan §6.4: one answer for all
+ * three). The session is read only when the slug is not public (`principalOf` is called lazily).
+ */
+export async function personPageVisible(principalOf: () => Promise<Principal | null>, input: { slug: string }): Promise<boolean> {
+  const parsed = personInput.safeParse(input);
+  if (!parsed.success) return false;
+  const deadline = readDeadline();
+  if (await readTransaction(getPublicDb(), (tx) => publicPersonIdBySlug(tx, parsed.data.slug), deadline)) return true;
+  const principal = await principalOf();
+  if (!principal) return false;
+  const viewer = await loadViewer(principal, deadline);
+  return Object.values(viewer.extras.nodes).some((n) => n.slug === parsed.data.slug);
+}
+
 /** A page of a person's students for the list view (plan §4.10). */
 export async function personStudents(principal: Principal | null, input: StudentsInput, meta?: RequestMeta): Promise<StudentsPageDto> {
   failOnce(meta?.testFault, 'lineage-once');

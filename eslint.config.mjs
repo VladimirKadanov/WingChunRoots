@@ -195,6 +195,13 @@ export default defineConfig([
     },
   },
   {
+    // M04: the request-time person check goes through the lineage service like a route.
+    files: ['src/proxy.ts'],
+    rules: {
+      'no-restricted-imports': restrictImports(routeBans),
+    },
+  },
+  {
     files: ['src/components/ui/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': restrictImports(routeBans),

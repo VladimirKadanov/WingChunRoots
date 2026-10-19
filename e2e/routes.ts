@@ -48,7 +48,7 @@ export const ROUTES: readonly AppRoute[] = [
   // person gets (the same for both, plan §6.4).
   { path: '/people/demo-two-lineages', name: 'person', status: 200, milestone: 'M04', key: true },
   { path: '/people/demo-two-lineages/lineage', name: 'person-lineage', status: 200, milestone: 'M04', key: true },
-  { path: '/people/demo-claim-only-teacher', name: 'person-not-on-record', status: 200, milestone: 'M04' },
+  { path: '/people/demo-claim-only-teacher', name: 'person-not-on-record', status: 404, milestone: 'M04' },
   // The not-found page, through a path that no route will ever use.
   { path: '/demo-no-such-page', name: 'not-found', status: 404, milestone: 'M00b' },
 ];
