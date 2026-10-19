@@ -60,7 +60,11 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
                 Your confirmed links never change, whichever you choose; a Student account approves no new students. You can change the
                 type up to five times in 24 hours.
               </p>
-              <AccountTypeForm current={mine.accountType} initial={await readFormResult('account-type', query.outcome)} />
+              <AccountTypeForm
+                current={mine.accountType}
+                instructorVerified={mine.verifiedInstructor}
+                initial={await readFormResult('account-type', query.outcome)}
+              />
             </div>
           </Section>
 
@@ -100,8 +104,8 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
             </p>
             {mine.pilotRequest ? (
               <p className="mt-4 text-sm text-fg-muted">
-                You asked for pilot access to {mine.pilotRequest.planName} on {formatDay(mine.pilotRequest.createdAt)}. An administrator will
-                answer; nothing is charged.
+                You asked for pilot access to {mine.pilotRequest.planName} on {formatDay(mine.pilotRequest.createdAt)}. An administrator
+                either gives you the plan or closes the request, and you get a notification either way. Nothing is charged.
               </p>
             ) : null}
             <p className="mt-5 flex flex-wrap gap-x-5 text-ui">

@@ -6,14 +6,14 @@
 
 import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 
 import { textValue } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
 import type { AccountType } from '@/server/entitlements/plans';
 import { formResult } from '@/server/forms/flash';
-import { formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
+import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 
 export async function setAccountTypeAction(_previous: FormState, form: FormData): Promise<FormState> {
@@ -37,9 +37,9 @@ async function setAccountType(form: FormData): Promise<FormState> {
       values: { accountType: change.accountType },
     };
   } catch (error) {
+    unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fdashboard%2Fsettings');
-    const state = formStateFromRpcError(error, accountType ? { accountType } : undefined);
-    if (state) return state;
-    throw error;
+    // A refusal, or one calm message for anything unexpected: never rethrown (review round 2, recheck-2).
+    return formStateFromFailure(error, accountType ? { accountType } : undefined);
   }
 }

@@ -6,8 +6,9 @@
 //
 // Each grant is its own row group: the data row, then a full-width row with its revoke form, so
 // opening a revoke never reflows the columns (review round 1, design-6). Dates are short and never
-// wrap; a long address is cut with an ellipsis (the full one in its title). The caption says the
-// order. Below a container width of 52rem (phones, and a desktop at 200 % zoom; a11y-webview-14)
+// wrap; an address is always shown whole, wrapping before its "@" when it must (review round 2,
+// recheck-6: a cut address with the rest only in a hover title hid it from keyboard and touch).
+// The caption says the order. Below a container width of 52rem (phones, and a desktop at 200 % zoom; a11y-webview-14)
 // the groups become cards instead of scrolling sideways: the header row is not displayed, so its
 // sort links leave the tab order, and a visible "Sort by" bar takes their place (design-5,
 // a11y-webview-4). The explicit table roles keep the semantics when the display changes.
@@ -64,18 +65,27 @@ function Day({ value }: { value: string }) {
   );
 }
 
+/** An address with a preferred line break before its "@": the whole address, never cut. */
+function EmailText({ email }: { email: string }) {
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return email;
+  return (
+    <>
+      {email.slice(0, at)}
+      <wbr />
+      {email.slice(at)}
+    </>
+  );
+}
+
 const columns = helper.columns([
   helper.accessor('email', {
     id: 'email',
     header: 'Account',
     cell: (info) => (
       <span className="grid gap-0.5">
-        <span
-          translate="no"
-          title={info.getValue()}
-          className="block max-w-[26ch] truncate font-semibold @max-[52rem]:max-w-none @max-[52rem]:whitespace-normal @max-[52rem]:[overflow-wrap:anywhere]"
-        >
-          {info.getValue()}
+        <span translate="no" className="block max-w-[30ch] font-semibold [overflow-wrap:anywhere] @max-[52rem]:max-w-none">
+          <EmailText email={info.getValue()} />
         </span>
         <span className="text-sm text-fg-muted">{info.row.original.accountType === 'sifu' ? 'Sifu account' : 'Student account'}</span>
       </span>
@@ -146,7 +156,7 @@ const columns = helper.columns([
 ]);
 
 /** The address of this page with the list's state and `changes` applied. */
-function hrefWith(list: GrantList, changes: Partial<{ sort: GrantSort; dir: 'asc' | 'desc'; page: number }>): string {
+export function hrefWith(list: GrantList, changes: Partial<{ sort: GrantSort; dir: 'asc' | 'desc'; page: number }>): string {
   const params = new URLSearchParams();
   if (list.q) params.set('q', list.q);
   const sort = changes.sort ?? list.sort;

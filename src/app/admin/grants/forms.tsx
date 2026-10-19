@@ -1,16 +1,20 @@
 'use client';
 
 // The forms of /admin/grants (milestone M08, In scope 3): give a test plan (account, plan, kind,
-// reason, start, end) and revoke one (with a reason). Both post to thin Server Actions over
-// grants.create and grants.revoke, and work without JavaScript (src/server/forms/flash.ts).
+// reason, start, end), revoke one (with a reason), and close a pilot access request without giving
+// the plan (with a reason; review round 2, recheck-5). They post to thin Server Actions over
+// grants.create, grants.revoke and grants.closeRequest, and work without JavaScript
+// (src/server/forms/flash.ts).
 
+import Link from 'next/link';
 import { useActionState, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { formatDay } from '@/lib/dates';
 import { IDLE, type FormState } from '@/lib/form-state';
-import { createGrantAction, revokeGrantAction } from './actions';
-import { CREATE_GRANT_FORM, revokeGrantForm } from './form-ids';
+import { closeRequestAction, createGrantAction, revokeGrantAction } from './actions';
+import { closeRequestForm, CREATE_GRANT_FORM, revokeGrantForm } from './form-ids';
 
 const LABELS = {
   email: 'Account e-mail',
@@ -202,5 +206,86 @@ export function RevokeGrantForm({
         </div>
       </form>
     </details>
+  );
+}
+
+/**
+ * One open pilot access request (review round 2, recheck-5): the account, the plan and the day, with
+ * its two answers: "Give …" opens the grant form filled in, and "Close request…" closes it without
+ * a plan, with a reason kept in the audit log. Once closed, the row says so in place of the request
+ * (the account was told; the list drops it the next time the page is read). A refused close
+ * reopens with the focus on the reason, with or without JavaScript.
+ */
+export function PilotRequestItem({
+  request,
+  back,
+  initial,
+}: {
+  request: { id: string; email: string; planName: string; createdAt: string };
+  /** The list's address (search, sort, page), where a post without JavaScript comes back to. */
+  back: string;
+  initial?: FormState | null;
+}) {
+  const [state, action, pending] = useActionState(closeRequestAction, initial ?? IDLE);
+  const generatedId = useFormId('close-request');
+  // The outcome of a post without JavaScript is opened at its reason or message (./form-ids.ts).
+  const formId = initial ? closeRequestForm(request.id) : generatedId;
+  useFocusOnError(formId, state);
+  const failed = state.status === 'error';
+  if (state.status === 'done') {
+    return (
+      <li data-testid="pilot-request" data-state="closed" className="border-b border-border-subtle py-3">
+        <FormMessage form={formId} state={state} single />
+      </li>
+    );
+  }
+  return (
+    <li data-testid="pilot-request" data-state="open" className="grid gap-1 border-b border-border-subtle py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-4">
+      <span className="grid gap-0.5">
+        <span translate="no" className="font-semibold [overflow-wrap:anywhere]">
+          {request.email}
+        </span>
+        <span className="text-sm text-fg-muted">
+          {request.planName} · asked on {formatDay(request.createdAt)}
+        </span>
+      </span>
+      <Link href={`/admin/grants?request=${request.id}#give-plan`} className="link inline-flex min-h-11 items-center text-ui">
+        Give {request.planName}
+        <span className="sr-only"> to {request.email}</span>
+      </Link>
+      <details open={failed || undefined} className="group sm:col-span-2">
+        <summary className="link inline-flex min-h-11 cursor-pointer list-none items-center text-sm [&::-webkit-details-marker]:hidden">
+          Close request…<span className="sr-only"> of {request.email}</span>
+        </summary>
+        <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid max-w-[34rem] gap-3 pt-1 pb-2">
+          <FormMessage form={formId} state={state} single />
+          <input type="hidden" name="requestId" value={request.id} />
+          <input type="hidden" name="back" value={back} />
+          <TextField
+            form={formId}
+            name="reason"
+            label="Reason for closing"
+            autoComplete="off"
+            maxLength={500}
+            autoFocus={failed}
+            hint="Kept in the audit log; the account is told that the request was closed, not why."
+            state={state}
+          />
+          <div>
+            <button
+              type="submit"
+              aria-disabled={pending || undefined}
+              onClick={(event) => {
+                if (pending) event.preventDefault();
+              }}
+              className={buttonVariants({ variant: 'secondary' })}
+            >
+              {pending ? 'Closing…' : 'Close the request'}
+              <span className="sr-only"> of {request.email}</span>
+            </button>
+          </div>
+        </form>
+      </details>
+    </li>
   );
 }

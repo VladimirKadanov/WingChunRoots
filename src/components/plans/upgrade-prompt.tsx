@@ -66,8 +66,8 @@ export function UpgradePrompt({
           <FormMessage form={formId} state={state} single />
         ) : (
           <p data-testid="pilot-request-state" className="max-w-[60ch] text-ui text-fg-muted">
-            You asked for pilot access to {offer.pilotRequest!.planName} on {formatDay(offer.pilotRequest!.createdAt)}. An administrator will
-            answer; nothing is charged.
+            You asked for pilot access to {offer.pilotRequest!.planName} on {formatDay(offer.pilotRequest!.createdAt)}. An administrator
+            either gives you the plan or closes the request, and you get a notification either way. Nothing is charged.
           </p>
         )}
         <p className="text-sm">

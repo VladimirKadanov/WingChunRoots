@@ -5,3 +5,6 @@
 
 export const CREATE_GRANT_FORM = 'create-grant';
 export const revokeGrantForm = (grantId: string) => `revoke-grant-${grantId}`;
+/** A pilot request's "Close request…" form (M08 review round 2, recheck-5), and the section's message after it closed. */
+export const closeRequestForm = (requestId: string) => `close-request-${requestId}`;
+export const CLOSED_REQUEST_MESSAGE = 'closed-request';

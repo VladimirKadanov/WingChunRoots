@@ -13,17 +13,19 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { FormMessage } from '@/components/account/fields';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { formatDay, isoDay } from '@/lib/dates';
+import { isoDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { serverClient } from '@/server/rpc/server';
 import { grantHorizon, listGrantsInput } from '@/server/services/grants';
-import { CreateGrantForm } from './forms';
-import { GrantsTable } from './grants-table';
+import { CLOSED_REQUEST_MESSAGE } from './form-ids';
+import { CreateGrantForm, PilotRequestItem } from './forms';
+import { GrantsTable, hrefWith } from './grants-table';
 
 export const instant = false;
 
@@ -48,8 +50,23 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
+/**
+ * This page's address for `?next=` (review round 2, recheck-7): an administrator sent to sign in or
+ * to verify the session comes back to the request being answered and the list as it was.
+ */
+function returnPath(query: Record<string, string | string[] | undefined>): string {
+  const params = new URLSearchParams();
+  for (const key of ['request', 'q', 'sort', 'dir', 'page'] as const) {
+    const value = one(query[key]);
+    if (value) params.set(key, value.slice(0, 320));
+  }
+  const search = params.toString();
+  return search ? `/admin/grants?${search}` : '/admin/grants';
+}
+
 export default async function AdminGrantsPage({ searchParams }: { searchParams: Search }) {
-  const guard = await guardRoute('/admin/grants');
+  const query = await searchParams;
+  const guard = await guardRoute('/admin/grants', returnPath(query));
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) {
     return (
@@ -67,7 +84,6 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
       </div>
     );
   }
-  const query = await searchParams;
   // Each parameter is checked against the field of grants.list: an unknown or malformed value falls
   // back to the default instead of an error page.
   const field = listGrantsInput.shape;
@@ -79,7 +95,11 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
     page: valid(field.page.safeParse(one(query.page))),
     request,
   });
-  const [created, revoked] = await Promise.all([readFormResult('create-grant', query.outcome), readFormResult('revoke-grant', query.outcome)]);
+  const [created, revoked, closedRequest] = await Promise.all([
+    readFormResult('create-grant', query.outcome),
+    readFormResult('revoke-grant', query.outcome),
+    readFormResult('close-request', query.outcome),
+  ]);
   const now = new Date();
 
   return (
@@ -94,28 +114,27 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
       </header>
 
       <div className="mt-8 grid gap-10">
-        {list.requests.length > 0 ? (
-          <Section id="pilot-requests" title="Pilot access requests">
+        {/* Each open request has two answers: give the plan, or close it with a reason (review
+            round 2, recheck-5). The section stays when none is open, to say so. */}
+        <Section id="pilot-requests" title="Pilot access requests">
+          {closedRequest?.status === 'done' ? <FormMessage form={CLOSED_REQUEST_MESSAGE} state={closedRequest} single /> : null}
+          {list.requests.length > 0 ? (
             <ul data-testid="pilot-requests" className="grid max-w-[46rem]">
               {list.requests.map((item) => (
-                <li key={item.id} className="grid gap-1 border-b border-border-subtle py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-4">
-                  <span className="grid gap-0.5">
-                    <span translate="no" className="font-semibold [overflow-wrap:anywhere]">
-                      {item.email}
-                    </span>
-                    <span className="text-sm text-fg-muted">
-                      {item.planName} · asked on {formatDay(item.createdAt)}
-                    </span>
-                  </span>
-                  <Link href={`/admin/grants?request=${item.id}#give-plan`} className="link inline-flex min-h-11 items-center text-ui">
-                    Give {item.planName}
-                    <span className="sr-only"> to {item.email}</span>
-                  </Link>
-                </li>
+                <PilotRequestItem
+                  key={item.id}
+                  request={item}
+                  back={hrefWith(list, {})}
+                  initial={closedRequest?.status === 'error' && closedRequest.values?.requestId === item.id ? closedRequest : null}
+                />
               ))}
             </ul>
-          </Section>
-        ) : null}
+          ) : (
+            <p data-testid="no-pilot-requests" className="max-w-[56ch] text-ui text-fg-muted">
+              {list.q ? 'No open pilot access request matches this search.' : 'No pilot access request is waiting for an answer.'}
+            </p>
+          )}
+        </Section>
 
         <section id="give-plan" aria-labelledby="give-plan-heading" className="grid content-start gap-4 border-t border-border-subtle pt-6">
           <h2 id="give-plan-heading" className="sr-only">
