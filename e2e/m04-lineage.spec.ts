@@ -77,6 +77,11 @@ async function pageOf(request: APIRequestContext, path: string) {
   return { status: response.status(), html: (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '') };
 }
 
+/** The page with the tags of its <head> in sorted order (their content and the body unchanged). */
+function withSortedHead(page: { status: number; html: string }) {
+  return { ...page, html: page.html.replace(/<head>([\s\S]*?)<\/head>/, (_, head: string) => `<head>${head.split(/(?=<)/).sort().join('')}</head>`) };
+}
+
 /** A test fault for this request only: the first lineage read, or the first profile read, fails once. */
 function faultCookie(kind: 'lineage-once' | 'person-once') {
   return { name: 'wcr-test-fault', value: `${kind}:${randomUUID()}`, url: BASE_URL };
@@ -236,8 +241,12 @@ test('@M04 anonymous viewer never receives pending or under-review edges (HTML a
     expect(hiddenPage.status, `/people/demo-claim-only-teacher${suffix}`).toBe(200);
     expect(hiddenPage.html).toContain('No public profile at this address');
     expect(hiddenPage.html).toMatch(/<meta name="robots" content="noindex, nofollow"\s*\/?>/);
+    // A hidden person and an unused address: byte for byte the same (plan §6.4).
     expect(hiddenPage, `/people/demo-claim-only-teacher${suffix}`).toEqual(missingPage);
-    expect(malformedPage, `/people/BAD_slug${suffix}`).toEqual(missingPage);
+    // An address no person could have is refused before any database read, so the page's
+    // metadata is ready sooner and two <head> tags of the layout come in another order. The same
+    // tags, status and body; it says nothing about a record either way.
+    expect(withSortedHead(malformedPage), `/people/BAD_slug${suffix}`).toEqual(withSortedHead(missingPage));
   }
   const underReview = await pageOf(request, '/people/demo-under-review/lineage');
   expect(underReview).toEqual(await pageOf(request, '/people/demo-no-such-person/lineage'));
