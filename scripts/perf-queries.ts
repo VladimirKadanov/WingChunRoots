@@ -3,7 +3,7 @@
 // cloud session, 18 locally and in CI). It creates its own throwaway database on the
 // TEST_DATABASE_URL server (src/server/db/testing.ts), fills it with a deterministic fictional
 // graph (`demo-perf-` slugs, uuid keys from the app's UUIDv7), runs lineage.ego, ancestors,
-// subtree and paths exactly as the service does (app_public_ro, the public views, a read-only
+// subtree and paths, people.get and people.students exactly as the service does (app_public_ro, the public views, a read-only
 // transaction with statement_timeout 2s), times each a few times, takes EXPLAIN (ANALYZE,
 // BUFFERS) of every statement, writes docs/perf/api.md and drops the database.
 //
@@ -24,12 +24,18 @@ import { uuidv7 } from '../src/server/db/ids';
 import { createTestDatabase } from '../src/server/db/testing';
 import {
   ancestorsGraph,
+  DESCENDANTS_CAP,
   egoGraph,
   type Executor,
+  lineageRefs,
   NO_EXTRAS,
   NODE_CAP,
   pathsGraph,
+  personCounts,
+  publicProfileRow,
   readTransaction,
+  studentPage,
+  STUDENTS_PAGE_SIZE,
   subtreeGraph,
 } from '../src/server/services/lineage-graph';
 
@@ -387,6 +393,8 @@ function report(env: { version: string; postgis: string; counts: Counts; generat
     '',
     '## Резултати',
     '',
+    `При \`people.get\` „Възли“ е 1 (профилът), „Ребра“ е учители + ученици, а „Таван“ е таванът на броя на потомците (${DESCENDANTS_CAP.toLocaleString('en')}). При \`people.students\` „Възли“ са учениците на страницата, а „Ребра“ са всички публични ученици на учителя.`,
+    '',
     `| Процедура | Вход | Възли | Ребра | Таван (${NODE_CAP}) | мин. | медиана | макс. |`,
     '|---|---|---|---|---|---|---|---|',
   );
@@ -469,6 +477,24 @@ async function main() {
     });
     const { hub, root } = env.anchors;
     const leaf = deepPerson(graph);
+    const hubStudents = await withClient(testDb.url, async (client) =>
+      Number(
+        (await client.query<{ n: number }>('SELECT count(DISTINCT student_person_id)::int AS n FROM v_public_edge WHERE teacher_person_id = $1', [hub]))
+          .rows[0]!.n,
+      ),
+    );
+    const lastPage = Math.max(1, Math.ceil(hubStudents / STUDENTS_PAGE_SIZE));
+    // people.get as cachedProfile reads it (src/server/services/lineage-public.ts).
+    const profile = async (ex: Executor, personId: string) => {
+      const row = await publicProfileRow(ex, personId);
+      const counts = await personCounts(ex, personId);
+      await lineageRefs(ex, counts.lineageIds);
+      return { nodes: row ? 1 : 0, edges: counts.teachers + counts.students, truncated: counts.descendantsCapped };
+    };
+    const students = async (ex: Executor, options: Parameters<typeof studentPage>[2]) => {
+      const page = await studentPage(ex, hub!, options, NO_EXTRAS);
+      return { nodes: page.active.length + page.historical.length, edges: page.activeTotal + page.historicalTotal };
+    };
     const shape = (g: { nodes: unknown[]; edges: unknown[]; truncated?: boolean }) => ({ nodes: g.nodes.length, edges: g.edges.length, truncated: g.truncated });
     const cases: Case[] = [
       { procedure: 'lineage.ego', input: 'хъбът с най-много ученици; up 16, down 2, fanout 50', run: async (ex) => shape(await egoGraph(ex, { focusId: hub!, up: 16, down: 2, fanoutLimit: 50 }, NO_EXTRAS)) },
@@ -479,6 +505,11 @@ async function main() {
       { procedure: 'lineage.subtree', input: 'коренът на линия 1; depth 3', run: async (ex) => shape(await subtreeGraph(ex, { rootId: root!, lineageId: null, depth: 3 }, NO_EXTRAS)) },
       { procedure: 'lineage.subtree', input: 'коренът на линия 1; depth 6 (горната граница)', run: async (ex) => shape(await subtreeGraph(ex, { rootId: root!, lineageId: null, depth: 6 }, NO_EXTRAS)) },
       { procedure: 'lineage.paths', input: 'личността от последното поколение; limit 50', run: async (ex) => shape(await pathsGraph(ex, { focusId: leaf, limit: 50 }, NO_EXTRAS)) },
+      { procedure: 'people.get', input: 'коренът на линия 1 (броят на потомците до тавана)', run: (ex) => profile(ex, root!) },
+      { procedure: 'people.get', input: 'хъбът', run: (ex) => profile(ex, hub!) },
+      { procedure: 'people.students', input: `хъбът (${hubStudents} ученици); страница 1 по име`, run: (ex) => students(ex, { page: 1, pageSize: STUDENTS_PAGE_SIZE, order: 'name' }) },
+      { procedure: 'people.students', input: `хъбът; последната страница (${lastPage}) по име`, run: (ex) => students(ex, { page: lastPage, pageSize: STUDENTS_PAGE_SIZE, order: 'name' }) },
+      { procedure: 'people.students', input: 'хъбът; 12 по старшинство (профилът)', run: (ex) => students(ex, { page: 1, pageSize: 12, order: 'seniority' }) },
     ];
     const results: Measured[] = [];
     for (const item of cases) {
