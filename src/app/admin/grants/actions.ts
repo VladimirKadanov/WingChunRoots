@@ -10,12 +10,14 @@ import { redirect } from 'next/navigation';
 
 import { formatDay } from '@/lib/dates';
 import { keepValues, textValue } from '@/lib/form-data';
-import type { FormState } from '@/lib/form-state';
+import { type FormState, outcomeTarget } from '@/lib/form-state';
+import { safeNextPath } from '@/server/auth/guards';
 import { getRequestPrincipal } from '@/server/auth/web';
 import type { PlanCode } from '@/server/entitlements/plans';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { CREATE_GRANT_FORM, revokeGrantForm } from './form-ids';
 
 const PAGE = '/admin/grants';
 /** A session that lost its second-factor check goes to prove it again, then comes back (security-8). */
@@ -23,7 +25,8 @@ const VERIFY_SESSION = '/account/security?next=%2Fadmin%2Fgrants';
 const CREATE_FIELDS = ['email', 'planCode', 'source', 'reason', 'startsOn', 'endsOn', 'requestId'] as const;
 
 export async function createGrantAction(_previous: FormState, form: FormData): Promise<FormState> {
-  return formResult({ form: 'create-grant', page: PAGE }, await createGrant(form));
+  const state = await createGrant(form);
+  return formResult({ form: 'create-grant', page: PAGE, anchor: outcomeTarget(CREATE_GRANT_FORM, state, false) }, state);
 }
 
 async function createGrant(form: FormData): Promise<FormState> {
@@ -53,8 +56,17 @@ async function createGrant(form: FormData): Promise<FormState> {
   }
 }
 
+/** The list the form was on (`back`: search, sort and page kept), or the plain page. */
+function listPage(value: string): string {
+  const path = safeNextPath(value, PAGE);
+  return path === PAGE || path.startsWith(`${PAGE}?`) ? path : PAGE;
+}
+
 export async function revokeGrantAction(_previous: FormState, form: FormData): Promise<FormState> {
-  return formResult({ form: 'revoke-grant', page: PAGE }, await revokeGrant(form));
+  // Without JavaScript the outcome comes back to the same list, opened at the row's reason or message.
+  const state = await revokeGrant(form);
+  const anchor = outcomeTarget(revokeGrantForm(textValue(form, 'grantId', 64)), state, true);
+  return formResult({ form: 'revoke-grant', page: listPage(textValue(form, 'back', 400)), anchor }, state);
 }
 
 async function revokeGrant(form: FormData): Promise<FormState> {

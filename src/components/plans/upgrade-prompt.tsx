@@ -27,6 +27,7 @@ import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
 import { IDLE, type FormState } from '@/lib/form-state';
 import type { UpgradeOffer } from '@/server/services/dashboard';
+import { PILOT_ACCESS_FORM } from './form-ids';
 
 const actionClass = cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'w-full');
 
@@ -44,7 +45,9 @@ export function UpgradePrompt({
   initial?: FormState | null;
 }) {
   const [state, action, pending] = useActionState(requestAction, initial ?? IDLE);
-  const formId = useFormId('pilot-access');
+  const generatedId = useFormId('pilot-access');
+  // The outcome of a post without JavaScript is opened at its message: a fixed id (./form-ids.ts).
+  const formId = initial ? PILOT_ACCESS_FORM : generatedId;
   useFocusOnError(formId, state);
   const details = useRef<HTMLDetailsElement>(null);
   const summary = useRef<HTMLElement>(null);

@@ -10,6 +10,7 @@ import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, use
 import { buttonVariants } from '@/components/ui/button-variants';
 import { IDLE, type FormState } from '@/lib/form-state';
 import { createGrantAction, revokeGrantAction } from './actions';
+import { CREATE_GRANT_FORM, revokeGrantForm } from './form-ids';
 
 const LABELS = {
   email: 'Account e-mail',
@@ -41,7 +42,9 @@ export function CreateGrantForm({
   initial?: FormState | null;
 }) {
   const [state, action, pending] = useActionState(createGrantAction, initial ?? IDLE);
-  const formId = useFormId('create-grant');
+  const generatedId = useFormId('create-grant');
+  // The outcome of a post without JavaScript is opened at its message: a fixed id (./form-ids.ts).
+  const formId = initial ? CREATE_GRANT_FORM : generatedId;
   useFocusOnError(formId, state);
   const values = state.status === 'done' ? {} : (state.values ?? {});
   const [planCode, setPlanCode] = useState(values.planCode ?? prefill?.planCode ?? '');
@@ -154,16 +157,21 @@ export function RevokeGrantForm({
   planName,
   email,
   revocable,
+  back,
   initial,
 }: {
   grantId: string;
   planName: string;
   email: string;
   revocable: boolean;
+  /** The list's address (search, sort, page), where a post without JavaScript comes back to. */
+  back: string;
   initial?: FormState | null;
 }) {
   const [state, action, pending] = useActionState(revokeGrantAction, initial ?? IDLE);
-  const formId = useFormId('revoke-grant');
+  const generatedId = useFormId('revoke-grant');
+  // The outcome of a post without JavaScript is opened at its reason or message (./form-ids.ts).
+  const formId = initial ? revokeGrantForm(grantId) : generatedId;
   useFocusOnError(formId, state);
   const failed = state.status === 'error';
   if (state.status === 'done') return <FormMessage form={formId} state={state} single />;
@@ -176,6 +184,7 @@ export function RevokeGrantForm({
       <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid max-w-[34rem] gap-3 pt-1 pb-2">
         <FormMessage form={formId} state={state} single />
         <input type="hidden" name="grantId" value={grantId} />
+        <input type="hidden" name="back" value={back} />
         <TextField form={formId} name="reason" label="Reason for revoking" autoComplete="off" maxLength={500} autoFocus={failed} state={state} />
         <p className="text-sm text-fg-muted">Confirmed links stay confirmed and public. New approvals above the remaining plan&apos;s limit wait.</p>
         <div>

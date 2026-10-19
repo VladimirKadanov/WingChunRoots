@@ -33,6 +33,15 @@ describe('outcomeUrl', () => {
   it('ends with an empty fragment, so the redirect drops the posting page\'s fragment and autofocus works', () => {
     expect(outcomeUrl('/admin/grants#give-plan', 'abc')).toBe('/admin/grants?outcome=abc#');
   });
+
+  it('opens the page at the anchor of the outcome, when it is a plain id', () => {
+    expect(outcomeUrl('/admin/grants?q=a%40b.test#give-plan', 'abc', 'revoke-grant-0192-reason')).toBe(
+      '/admin/grants?q=a%40b.test&outcome=abc#revoke-grant-0192-reason',
+    );
+    for (const anchor of ['', 'a b', 'x#y', '"><script>', 'é', 'x'.repeat(161)]) {
+      expect(outcomeUrl('/admin/grants', 'abc', anchor), JSON.stringify(anchor)).toBe('/admin/grants?outcome=abc#');
+    }
+  });
 });
 
 describe('decodeFormResult', () => {

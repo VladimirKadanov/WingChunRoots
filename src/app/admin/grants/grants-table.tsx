@@ -278,6 +278,7 @@ export function GrantsTable({ list, revoked }: { list: GrantList; revoked?: Form
                         planName={grant.planName}
                         email={grant.email}
                         revocable={grant.state === 'active' || grant.state === 'scheduled'}
+                        back={hrefWith(list, {})}
                         initial={initial}
                       />
                     </td>

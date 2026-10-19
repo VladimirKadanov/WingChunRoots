@@ -8,8 +8,9 @@ import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+import { PILOT_ACCESS_FORM } from '@/components/plans/form-ids';
 import { textValue } from '@/lib/form-data';
-import type { FormState } from '@/lib/form-state';
+import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
 import type { PlanCode } from '@/server/entitlements/plans';
 import { formResult, postedByReact } from '@/server/forms/flash';
@@ -45,7 +46,9 @@ export async function markReadAction(form: FormData): Promise<void> {
  * charges. The form shows what happened; the page shows the open request from then on.
  */
 export async function requestPilotAccessAction(_previous: FormState, form: FormData): Promise<FormState> {
-  return formResult({ form: 'pilot-access', page: PAGE }, await requestPilotAccess(form));
+  const state = await requestPilotAccess(form);
+  // Without JavaScript the dashboard opens at the prompt's message (PILOT_ACCESS_FORM).
+  return formResult({ form: 'pilot-access', page: PAGE, anchor: outcomeTarget(PILOT_ACCESS_FORM, state, true) }, state);
 }
 
 async function requestPilotAccess(form: FormData): Promise<FormState> {
