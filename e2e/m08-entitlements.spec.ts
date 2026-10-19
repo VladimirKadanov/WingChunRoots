@@ -13,14 +13,12 @@ import { expect, test, type Browser, type Locator, type Page } from '@playwright
 import { sql } from 'drizzle-orm';
 
 import { findFomo } from '../src/lib/copy/no-fomo';
-import { signedSessionToken } from '../src/server/auth/credentials';
 import { getDb } from '../src/server/db';
-import { uuidv7 } from '../src/server/db/ids';
 import { notification } from '../src/server/db/schema';
 import { FEATURES, formatPrice, PLANS, upgradeBenefits } from '../src/server/entitlements/plans';
 import { UNEXPECTED_FAILURE_MESSAGE } from '../src/server/rpc/form';
 import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs, submitStaffCode, userIdOf, type SignInTarget } from './helpers/auth';
-import { apiPost, freshAccount, giveStudents } from './helpers/plans';
+import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -77,16 +75,9 @@ async function expectNoHorizontalScroll(page: Page, label: string) {
  * factor, or with `verified`, one that did; `token` lets a test take the verification away.
  */
 async function adminSession(browser: Browser, { verified = false } = {}) {
-  const adminId = await userIdOf('demo-admin@example.test');
-  expect(adminId, 'the seeded demo-admin account (pnpm db:seed)').not.toBeNull();
-  const token = randomBytes(24).toString('base64url');
-  await getDb().execute(sql`
-    INSERT INTO auth_session (id, user_id, token, expires_at, two_factor_verified_at)
-    VALUES (${uuidv7()}, ${adminId}, ${token}, now() + interval '1 hour', ${verified ? sql`now()` : null})`);
-  const value = await signedSessionToken(token, process.env.BETTER_AUTH_SECRET!);
   const context = await browser.newContext({ baseURL: BASE_URL });
   await giveOwnAddress(context);
-  await context.addCookies([{ name: 'wcr.session_token', value: encodeURIComponent(value), url: BASE_URL, httpOnly: true, sameSite: 'Lax' }]);
+  const token = await signInSeededAdmin(context, { verified });
   return { context, token };
 }
 

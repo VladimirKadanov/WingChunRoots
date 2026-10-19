@@ -62,7 +62,7 @@ mapfile -t M08_SQL < <(ls drizzle/*_m08_entitlements/migration.sql 2>/dev/null)
 mapfile -t PLAN_UI < <(find src/components/plans src/app/plans src/app/dashboard src/app/admin/grants -type f -name '*.tsx' | sort)
 
 KEY_SCREENS=(plans dashboard-sifu dashboard-student dashboard-settings)
-STATES=(admin-grants dashboard-sifu-empty upgrade-requested upgrade-open dashboard-admin)
+STATES=(admin-grants dashboard-sifu-empty upgrade-requested upgrade-open dashboard-admin dashboard-admin-unverified pilot-request-close)
 SIZES=(390x844 1440x900)
 THEMES=(dark light)
 

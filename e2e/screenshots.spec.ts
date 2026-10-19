@@ -9,7 +9,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
-import { freshAccount, giveStudents } from './helpers/plans';
+import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -101,6 +101,31 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'admin');
       await page.goto('/dashboard');
       await expect(page.getByTestId('staff-work')).toBeVisible();
+    },
+  },
+  {
+    // M08 review round 2: the same dashboard in a session that knows only the password.
+    name: 'dashboard-admin-unverified',
+    milestone: 'M08',
+    async reach(page) {
+      await signInSeededAdmin(page.context());
+      await page.goto('/dashboard');
+      await expect(page.getByTestId('staff-work')).toHaveAttribute('data-second-factor', 'unverified');
+    },
+  },
+  {
+    // M08 review round 2: an open pilot access request with its "Close request…" form.
+    name: 'pilot-request-close',
+    milestone: 'M08',
+    async reach(page) {
+      const sifu = await freshAccount(page, { name: 'Demo Closing Sifu', sifu: true });
+      const asked = await apiPost(page, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+      expect(asked.status(), await asked.text()).toBe(200);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/grants?q=${encodeURIComponent(sifu.email)}`);
+      const request = page.getByTestId('pilot-request').first();
+      await request.getByText('Close request…').click();
+      await expect(request.getByLabel('Reason for closing')).toBeVisible();
     },
   },
 ];
