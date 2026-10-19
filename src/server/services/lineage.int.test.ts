@@ -3,6 +3,7 @@
 // the statement timeout, the caps, the cache tags, and the same answer over /api/v1 and /api/rpc.
 // Runs against a throwaway database, seeded with the demo data.
 
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { inspect } from 'node:util';
@@ -31,7 +32,7 @@ import {
   personProfile,
   personStudents,
 } from './lineage';
-import { LineageReadError, readDeadline, readTransaction, type OwnEdge } from './lineage-graph';
+import { LineageReadError, readDeadline, READ_BUDGET_MS, readTransaction, type OwnEdge } from './lineage-graph';
 import { cachedEgo, cachedProfile, cachedSubtree } from './lineage-public';
 
 // 'use cache' is a plain string outside Next.js; cacheTag records what the entry would carry.
@@ -534,6 +535,67 @@ describe('a failed read: a budget per procedure, and nothing of the query in the
       await locker.end();
     }
   });
+
+  it('2 s for the whole procedure, a cached read included: staggered locks fail it at its deadline, not 2 s later (final check, privacy-security-1)', async () => {
+    // person_name is locked until 1.2 s (the slug and the session reads wait on it), and
+    // teaching_relationship (every count and walk of the cached read) from 0.6 s until past the
+    // deadline. Before the fix, the cached read started a fresh 2 s of its own after the first
+    // reads, so the procedure failed only at ~3.2 s (or answered at ~3.5 s, as in the review).
+    const signedInWithoutPerson = principalOf(randomUUID());
+    const procedures: [string, () => Promise<unknown>][] = [
+      ['people.get', () => personProfile(null, { slug: 'demo-hub-a' })],
+      ['people.students', () => personStudents(null, studentsOf('demo-hub-a'))],
+      ['lineage.ego', () => lineageEgo(signedInWithoutPerson, { focusId: ids['demo-hub-a']!, up: 2, down: 2, fanoutLimit: 10 })],
+      ['lineage.ancestors', () => lineageAncestors(signedInWithoutPerson, { focusId: ids['demo-converging']! })],
+      ['lineage.subtree', () => lineageSubtree(signedInWithoutPerson, { rootId: ids['demo-root-a']!, depth: 2 })],
+      ['lineage.paths', () => lineagePaths(signedInWithoutPerson, { focusId: ids['demo-converging']!, limit: 5 })],
+    ];
+    // Warm both pools, so a new connection does not count against the budget being measured.
+    for (const [, call] of procedures) await call();
+    const names = new Client({ connectionString: testDb!.url });
+    const edges = new Client({ connectionString: testDb!.url });
+    await Promise.all([names.connect(), edges.connect()]);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    try {
+      await names.query('BEGIN');
+      await names.query('LOCK TABLE person_name IN ACCESS EXCLUSIVE MODE');
+      const started = Date.now();
+      const edgesLocked = new Promise<void>((resolve, reject) => {
+        timers.push(
+          setTimeout(() => {
+            edges
+              .query('BEGIN')
+              .then(() => edges.query('LOCK TABLE teaching_relationship IN ACCESS EXCLUSIVE MODE'))
+              .then(() => resolve(), reject);
+          }, 600),
+        );
+      });
+      timers.push(setTimeout(() => void names.query('ROLLBACK').catch(() => undefined), 1_200));
+      timers.push(setTimeout(() => void edges.query('ROLLBACK').catch(() => undefined), 3_600));
+      const outcomes = await Promise.all(
+        procedures.map(async ([name, call]) => {
+          const error = await call().then(
+            () => null,
+            (e: unknown) => e,
+          );
+          return { name, error, took: Date.now() - started };
+        }),
+      );
+      await edgesLocked;
+      for (const { name, error, took } of outcomes) {
+        expect(error, name).toBeInstanceOf(LineageReadError);
+        expect((error as LineageReadError).code, name).toBe('57014');
+        expect(took, name).toBeGreaterThanOrEqual(READ_BUDGET_MS - 100);
+        expect(took, name).toBeLessThan(READ_BUDGET_MS + 300);
+      }
+    } finally {
+      for (const timer of timers) clearTimeout(timer);
+      await Promise.all([names.query('ROLLBACK').catch(() => undefined), edges.query('ROLLBACK').catch(() => undefined)]);
+      await Promise.all([names.end(), edges.end()]);
+    }
+    // Once the locks are gone, the same procedure answers again.
+    await expect(personProfile(null, { slug: 'demo-hub-a' })).resolves.toMatchObject({ slug: 'demo-hub-a' });
+  });
 });
 
 describe('the person check of src/proxy.ts (owner decision 2026-10-19, ADR 0008)', () => {
@@ -594,6 +656,33 @@ describe('the person check of src/proxy.ts (owner decision 2026-10-19, ADR 0008)
         const logged = `${String(error)}\n${inspect(error, { depth: 10, showHidden: true })}`;
         for (const secret of [slug, pendingUserId, 'SELECT', 'v_public_']) expect(logged, secret).not.toContain(secret);
       }
+    } finally {
+      await locker.query('ROLLBACK').catch(() => undefined);
+      await locker.end();
+    }
+  });
+
+  it(`the signed-in leg (the session's own relationships) stops after the same ${PERSON_CHECK_BUDGET_MS} ms (final check, code-1)`, async () => {
+    // demo-pending is not public, so the check reads the viewer's own relationships (loadViewer).
+    // teaching_relationship is locked: v_public_person does not read it, so only that leg waits,
+    // and it must stop at the check's budget, not after a fresh 2 s.
+    const pending = principalOf(pendingUserId);
+    expect(await personPageVisible(async () => pending, { slug: 'demo-pending' })).toBe(true);
+    await personProfile(pending, { slug: 'demo-pending' });
+    const locker = new Client({ connectionString: testDb!.url });
+    await locker.connect();
+    try {
+      await locker.query('BEGIN');
+      await locker.query('LOCK TABLE teaching_relationship IN ACCESS EXCLUSIVE MODE');
+      const sessionReads = vi.fn(async () => pending);
+      const started = Date.now();
+      const error = await personPageVisible(sessionReads, { slug: 'demo-pending' }).catch((e: unknown) => e);
+      const took = Date.now() - started;
+      expect(sessionReads).toHaveBeenCalledTimes(1);
+      expect(error).toBeInstanceOf(LineageReadError);
+      expect((error as LineageReadError).code).toBe('57014');
+      expect(took).toBeGreaterThanOrEqual(PERSON_CHECK_BUDGET_MS - 50);
+      expect(took).toBeLessThan(PERSON_CHECK_BUDGET_MS + 700);
     } finally {
       await locker.query('ROLLBACK').catch(() => undefined);
       await locker.end();

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { searchRoutes, type UpEdge } from './lineage-graph';
+import { LineageReadError, readDeadline, searchRoutes, type UpEdge, withinBudget } from './lineage-graph';
 
 /** Teacher edges per student, in the order the search tries them (primary first). */
 function graph(edges: [student: string, teacher: string][]): Map<string, UpEdge[]> {
@@ -67,5 +67,51 @@ describe('searchRoutes', () => {
       ['y', 'z'],
     ]);
     expect(searchRoutes('x', loop, people(loop), true).routes.map((r) => r.nodes)).toEqual([['x', 'y', 'z']]);
+  });
+});
+
+describe('withinBudget: a cached read inside the procedure deadline (final check, privacy-security-1)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('answers with the read when it is done in time', async () => {
+    await expect(withinBudget(readDeadline(1_000), async () => 'answer')).resolves.toBe('answer');
+  });
+
+  it('fails as a cancelled statement (57014) when the deadline passes first, and the read keeps running', async () => {
+    vi.useFakeTimers();
+    let finish: (value: string) => void = () => undefined;
+    const read = new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+    const filled = vi.fn();
+    const answer = withinBudget(readDeadline(2_000), () => read.then((value) => (filled(value), value)));
+    const settled = answer.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const error = await settled;
+    expect(error).toBeInstanceOf(LineageReadError);
+    expect((error as LineageReadError).code).toBe('57014');
+    // The cached read was not cancelled: it still finishes (and fills the cache), with no timer left.
+    finish('late');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(filled).toHaveBeenCalledWith('late');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears its timer when the read settles first, also when the read fails', async () => {
+    vi.useFakeTimers();
+    await expect(withinBudget(readDeadline(2_000), async () => 'fast')).resolves.toBe('fast');
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(withinBudget(readDeadline(2_000), async () => Promise.reject(new LineageReadError('40001')))).rejects.toMatchObject({ code: '40001' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a spent deadline fails at once, without starting the read', async () => {
+    const read = vi.fn(async () => 'never');
+    await expect(withinBudget(readDeadline(0), read)).rejects.toMatchObject({ code: '57014' });
+    expect(read).not.toHaveBeenCalled();
   });
 });

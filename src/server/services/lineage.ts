@@ -48,6 +48,7 @@ import {
   studentPage,
   STUDENTS_PAGE_SIZE,
   subtreeGraph,
+  withinBudget,
   withoutRouteIds,
 } from './lineage-graph';
 import { cachedAncestors, cachedEgo, cachedPaths, cachedProfile, cachedStudents, cachedSubtree } from './lineage-public';
@@ -136,7 +137,8 @@ async function resolveSlug(viewer: Viewer, value: string, deadline: ReadDeadline
 export async function lineageEgo(principal: Principal | null, input: EgoInput, meta?: RequestMeta): Promise<LineageGraphDto> {
   failOnce(meta?.testFault, 'lineage-once');
   const args = { focusId: input.focusId, up: input.up, down: input.down, fanoutLimit: input.fanoutLimit };
-  // One budget for the procedure's own reads (a cached read has its own, lineage-graph.ts).
+  // One budget for the whole procedure: its own reads share it, and a cached read is raced
+  // against what is left of it (withinBudget, lineage-graph.ts).
   const deadline = readDeadline();
   const viewer = await loadViewer(principal, deadline);
   const graph = isPersonalised(viewer)
@@ -145,7 +147,7 @@ export async function lineageEgo(principal: Principal | null, input: EgoInput, m
         async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? egoGraph(tx, args, viewer.extras) : null),
         deadline,
       )
-    : await cachedEgo(args);
+    : await withinBudget(deadline, () => cachedEgo(args));
   if (!graph) throw notFound();
   return graph;
 }
@@ -160,7 +162,7 @@ export async function lineageAncestors(principal: Principal | null, input: Ances
         async (tx) => ((await visibleTo(viewer, tx, input.focusId)) ? ancestorsGraph(tx, input.focusId, viewer.extras) : null),
         deadline,
       )
-    : await cachedAncestors({ focusId: input.focusId });
+    : await withinBudget(deadline, () => cachedAncestors({ focusId: input.focusId }));
   if (!graph) throw notFound();
   return graph;
 }
@@ -176,7 +178,7 @@ export async function lineageSubtree(principal: Principal | null, input: Subtree
         async (tx) => ((await visibleTo(viewer, tx, args.rootId)) ? subtreeGraph(tx, args, viewer.extras) : null),
         deadline,
       )
-    : await cachedSubtree(args);
+    : await withinBudget(deadline, () => cachedSubtree(args));
   if (!graph) throw notFound();
   return graph;
 }
@@ -192,7 +194,7 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
         async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? withoutRouteIds(await pathsGraph(tx, args, viewer.extras)) : null),
         deadline,
       )
-    : await cachedPaths(args);
+    : await withinBudget(deadline, () => cachedPaths(args));
   if (!graph) throw notFound();
   return graph;
 }
@@ -208,7 +210,7 @@ export async function personProfile(principal: Principal | null, input: PersonIn
   if (!id) throw notFound();
   const hidden = viewer.extras.nodes[id];
   if (!hidden) {
-    const profile = await cachedProfile(id);
+    const profile = await withinBudget(deadline, () => cachedProfile(id));
     if (!profile) throw notFound();
     return { ...profile, isOwn: viewer.extras.personId === id };
   }
@@ -290,7 +292,7 @@ export async function personStudents(principal: Principal | null, input: Student
   const options = { page: input.page, pageSize: input.pageSize, order: input.order };
   const page = isPersonalised(viewer)
     ? await readTransaction(getPublicDb(), (tx) => studentPage(tx, id, options, viewer.extras), deadline)
-    : await cachedStudents({ personId: id, ...options });
+    : await withinBudget(deadline, () => cachedStudents({ personId: id, ...options }));
   if (!page) throw notFound();
   return page;
 }

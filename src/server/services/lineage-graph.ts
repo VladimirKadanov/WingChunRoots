@@ -152,6 +152,26 @@ export async function readTransaction<T>(db: Database, fn: (tx: Executor) => Pro
   }
 }
 
+/**
+ * A cached read (lineage-public.ts) within what is left of a procedure's deadline (final check,
+ * privacy-security-1). A 'use cache' function cannot take the deadline (it would be part of the
+ * cache key), so on a cache miss its transaction starts with a fresh 2 s of its own; the procedure
+ * stops waiting for it when its own deadline passes and fails as a cancelled statement (57014),
+ * so a procedure never takes more than its 2 s. The cached read itself keeps running (until its
+ * own statement_timeout at most), so a slow first read still fills the cache for the next request.
+ * A spent deadline fails at once, without starting the read.
+ */
+export function withinBudget<T>(deadline: ReadDeadline, read: () => Promise<T>): Promise<T> {
+  const left = deadline.at - Date.now();
+  if (left <= 0) return Promise.reject(new LineageReadError('57014'));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new LineageReadError('57014')), left);
+  });
+  // Promise.race subscribes to the read, so its later failure is handled, never unhandled.
+  return Promise.race([read(), timeout]).finally(() => clearTimeout(timer));
+}
+
 /** A uuid[] parameter. The ids are bound as one text value and cast by PostgreSQL. */
 function uuids(ids: readonly string[]): SQL {
   return sql`${`{${ids.join(',')}}`}::uuid[]`;

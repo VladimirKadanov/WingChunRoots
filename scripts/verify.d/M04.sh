@@ -184,10 +184,18 @@ check "the proxy's person check has a deadline of at most 500 ms, and passes the
   budget=$(grep -oE "^export const PERSON_CHECK_BUDGET_MS = [0-9_]+;" src/server/services/lineage.ts | grep -oE "[0-9_]+;" | tr -d "_;") &&
   [ -n "$budget" ] && [ "$budget" -le 500 ] &&
   grep -q "readDeadline(budgetMs)" src/server/services/lineage.ts &&
+  grep -q "loadViewer(principal, deadline)" <(awk "/^export async function personPageVisible/,/^}/" src/server/services/lineage.ts) &&
   grep -q "withinDeadline(check, PERSON_CHECK_BUDGET_MS)" src/proxy.ts &&
   [ "$(grep -c "return NextResponse.next();" src/proxy.ts)" -eq 2 ] &&
   grep -q "a check that never answers (a stalled database) lets the page through after the budget" src/proxy.test.ts &&
-  grep -q "a stalled database stops the check after its budget" src/server/services/lineage.int.test.ts'
+  grep -q "a stalled database stops the check after its budget" src/server/services/lineage.int.test.ts &&
+  grep -q "the signed-in leg (the session.s own relationships) stops after the same" src/server/services/lineage.int.test.ts'
+# Final check, privacy-security-1: 2 s for the whole procedure, a cached read on a miss included.
+check "every cached read of a procedure is raced against the procedure deadline (withinBudget), with an int test behind staggered locks" bash -c '
+  [ "$(grep -c "await withinBudget(deadline, () => cached" src/server/services/lineage.ts)" -eq 6 ] &&
+  ! grep -nE "await cached(Ego|Ancestors|Subtree|Paths|Profile|Students)\(" src/server/services/lineage.ts &&
+  grep -q "^export function withinBudget" src/server/services/lineage-graph.ts &&
+  grep -q "2 s for the whole procedure, a cached read included" src/server/services/lineage.int.test.ts'
 # The routes table, the screenshot state and the E2E privacy test expect the 404.
 owner_404_tests() {
   local e2e=e2e/m04-lineage.spec.ts line
