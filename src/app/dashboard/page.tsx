@@ -1,6 +1,7 @@
 // /dashboard (milestone M08, In scope 6; plan §5.6): what a signed-in account needs first, and
 // where signing in lands (review round 1, design-7).
-//   Staff:   their work first: for an administrator, the open pilot access requests (design-8).
+//   Staff:   their work first: for an administrator, the open pilot access requests (design-8),
+//            once the session has passed the second factor (review round 2, recheck-1).
 //   Student: "My teachers" and "My requests".
 //   Sifu:    "Student requests" with the approval allowance, and "My schools"; at a real limit,
 //            where a request waits because of it, the upgrade prompt (<UpgradePrompt>) at the top
@@ -16,9 +17,11 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { FormMessage } from '@/components/account/fields';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, PinIcon } from '@/components/icons';
+import { PILOT_ACCESS_FORM } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -213,12 +216,29 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
   );
 }
 
-/** Staff work first (review round 1, design-8): for an administrator, the open pilot access requests. */
+/** Where a staff session proves the second factor, then comes back here. */
+const VERIFY_FOR_DASHBOARD = '/account/security?next=%2Fdashboard';
+
+/**
+ * Staff work first (review round 1, design-8): for an administrator, the open pilot access requests.
+ * Only in a session that proved the second factor (review round 2, recheck-1): before that the
+ * section names no number and leads to /account/security, which comes back here.
+ */
 function StaffWork({ staff }: { staff: NonNullable<DashboardOverview['staff']> }) {
   const open = staff.openPilotRequests;
   return (
     <Section id="staff" title="Staff work">
-      {open === null ? (
+      {!staff.secondFactorVerified ? (
+        <div data-testid="staff-work" data-second-factor="unverified" className="grid justify-items-start gap-3">
+          <p className="max-w-[56ch] text-ui text-fg-muted">
+            Staff work opens once this session has passed the second factor. Enter the code from your authenticator app to see it.
+          </p>
+          <Link href={VERIFY_FOR_DASHBOARD} className={buttonVariants({ variant: 'secondary' })}>
+            Verify this session
+            <ArrowRightIcon />
+          </Link>
+        </div>
+      ) : open === null ? (
         <div data-testid="staff-work" className="grid justify-items-start gap-3">
           <p className="max-w-[56ch] text-ui text-fg-muted">The review and moderation tools arrive in later milestones of the pilot.</p>
           <Link href="/admin" className={buttonVariants({ variant: 'secondary' })}>
@@ -259,6 +279,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
   const offer = overview.sifu?.upgrade ?? null;
+  // The outcome of "Request pilot access" posted without JavaScript. The prompt shows it; when the
+  // page has no prompt any more (the account switched to Student in another tab or app, review
+  // round 2, recheck-4), the message stands on its own at the same anchor.
+  const pilotOutcome = await readFormResult('pilot-access', query.outcome);
   const sifu = overview.accountType === 'sifu';
   const instructorBadge =
     overview.instructor.status === 'verified' ? 'verified' : overview.instructor.status === 'unverified' ? 'unconfirmed' : null;
@@ -312,6 +336,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
 
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-x-14">
           <div className="grid content-start gap-10">
+            {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
 
             {staffOnly ? (
@@ -341,7 +366,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                       offer={offer}
                       requestAction={requestPilotAccessAction}
                       notNowHref="/dashboard#student-requests"
-                      initial={await readFormResult('pilot-access', query.outcome)}
+                      initial={pilotOutcome}
                     />
                   ) : null
                 }

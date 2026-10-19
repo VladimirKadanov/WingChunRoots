@@ -5,10 +5,11 @@
 import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
-import { requireUser } from '../auth/guards';
+import { hasStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { notification, person, personName, pilotAccessRequest } from '../db/schema';
+import type { Executor } from '../entitlements/access';
 import type { NameData } from '../templates/email/types';
 import { type NotificationSegment, renderNotification } from '../templates/notifications';
 import { ServiceError } from './errors';
@@ -48,26 +49,40 @@ function pilotRequestIdOf(payload: unknown): string | null {
 /**
  * Adds the requester to each "pilot-access.requested" notification when the list is read: the
  * current primary name of the requesting account's person, never a copy kept in the payload, so a
- * renamed account shows its new name and a deleted one no name at all (plan §6.4). Only an admin
- * reads names here; anyone else gets none.
+ * renamed account shows its new name and a deleted one no name at all (plan §6.4).
+ *
+ * Who asked for which plan is staff data (plan §3.2): only an admin whose session proved the second
+ * factor (`staff`, hasStaff2FA) reads it. Any other session gets `requesterHidden`, and the
+ * notification says neither who asked nor for which plan (M08 review round 2, recheck-1): a
+ * password alone must not reach it.
  */
-async function withPilotRequesters(rows: NotificationRow[], isAdmin: boolean): Promise<NotificationRow[]> {
+async function withPilotRequesters(rows: NotificationRow[], staff: boolean): Promise<NotificationRow[]> {
   const ids = [...new Set(rows.filter((row) => row.template === 'pilot-access.requested').map((row) => pilotRequestIdOf(row.payload)))].filter(
     (id): id is string => id !== null,
   );
   if (ids.length === 0) return rows;
+  if (!staff) {
+    return rows.map((row) =>
+      row.template === 'pilot-access.requested' && pilotRequestIdOf(row.payload) !== null
+        ? { ...row, payload: { ...(row.payload as Record<string, unknown>), requester: null, requesterDeleted: false, requesterHidden: true } }
+        : row,
+    );
+  }
   const found = await getDb()
     .select({ id: pilotAccessRequest.id, value: personName.value, lang: personName.lang })
     .from(pilotAccessRequest)
     .leftJoin(person, and(eq(person.claimedByUserId, pilotAccessRequest.userId), isNull(person.deletedAt)))
     .leftJoin(personName, and(eq(personName.personId, person.id), eq(personName.isPrimary, true)))
     .where(inArray(pilotAccessRequest.id, ids));
-  const names = new Map<string, NameData | null>(found.map((r) => [r.id, isAdmin && r.value !== null && r.lang !== null ? { value: r.value, lang: r.lang } : null]));
+  const names = new Map<string, NameData | null>(found.map((r) => [r.id, r.value !== null && r.lang !== null ? { value: r.value, lang: r.lang } : null]));
   return rows.map((row) => {
     const id = row.template === 'pilot-access.requested' ? pilotRequestIdOf(row.payload) : null;
     if (id === null) return row;
     // The looked-up requester replaces anything stored under that key.
-    return { ...row, payload: { ...(row.payload as Record<string, unknown>), requester: names.get(id) ?? null, requesterDeleted: !names.has(id) } };
+    return {
+      ...row,
+      payload: { ...(row.payload as Record<string, unknown>), requester: names.get(id) ?? null, requesterDeleted: !names.has(id), requesterHidden: false },
+    };
   });
 }
 
@@ -92,8 +107,8 @@ function view(row: NotificationRow): NotificationView {
   };
 }
 
-async function unreadCount(userId: string): Promise<number> {
-  const [row] = await getDb()
+async function unreadCount(userId: string, db: Executor = getDb()): Promise<number> {
+  const [row] = await db
     .select({ n: count() })
     .from(notification)
     .where(and(eq(notification.userId, userId), isNull(notification.readAt)));
@@ -109,7 +124,7 @@ export async function listNotifications(principal: Principal | null): Promise<No
     .where(eq(notification.userId, p.user.id))
     .orderBy(desc(notification.createdAt), desc(notification.id))
     .limit(NOTIFICATION_PAGE_SIZE);
-  return { unread: await unreadCount(p.user.id), items: (await withPilotRequesters(rows, p.user.role === 'admin')).map(view) };
+  return { unread: await unreadCount(p.user.id), items: (await withPilotRequesters(rows, hasStaff2FA(p, ['admin']))).map(view) };
 }
 
 export const markReadInput = z.union([
@@ -126,10 +141,13 @@ export async function markNotificationsRead(principal: Principal | null, raw: un
   const parsed = markReadInput.safeParse(raw);
   if (!parsed.success) throw new ServiceError('BAD_REQUEST', 'Choose the notifications to mark as read.');
   const input = parsed.data;
-  const updated = await getDb()
-    .update(notification)
-    .set({ readAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(notification.userId, p.user.id), isNull(notification.readAt), 'ids' in input ? inArray(notification.id, input.ids) : undefined))
-    .returning({ id: notification.id });
-  return { updated: updated.length, unread: await unreadCount(p.user.id) };
+  // One transaction, the answer included (review round 2, recheck-2): a failure changes nothing.
+  return getDb().transaction(async (tx) => {
+    const updated = await tx
+      .update(notification)
+      .set({ readAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(notification.userId, p.user.id), isNull(notification.readAt), 'ids' in input ? inArray(notification.id, input.ids) : undefined))
+      .returning({ id: notification.id });
+    return { updated: updated.length, unread: await unreadCount(p.user.id, tx) };
+  });
 }

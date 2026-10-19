@@ -9,7 +9,7 @@
 
 import { and, asc, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 
-import { requireUser } from '../auth/guards';
+import { hasStaff2FA, requireUser } from '../auth/guards';
 import { isStaffRole, type Principal, type StaffRole } from '../auth/principal';
 import { getDb } from '../db';
 import {
@@ -105,10 +105,13 @@ export interface DashboardOverview {
   until: string | null;
   hasProfile: boolean;
   /**
-   * Staff accounts (review round 1, design-8): their role and, for an administrator, the number of
-   * open pilot access requests, which /admin/grants answers. Null for everyone else.
+   * Staff accounts (review round 1, design-8): their role, whether this session proved the second
+   * factor, and, for an administrator whose session did, the number of open pilot access requests,
+   * which /admin/grants answers. Staff work is staff data (plan §3.2, review round 2, recheck-1):
+   * before the second factor the count is null and the page asks for it first (staff accounts
+   * always have two-factor authentication on: auth_user_staff_needs_2fa). Null for everyone else.
    */
-  staff: { role: StaffRole; openPilotRequests: number | null } | null;
+  staff: { role: StaffRole; secondFactorVerified: boolean; openPilotRequests: number | null } | null;
   student: { teachers: TeacherItem[]; requests: RequestItem[] } | null;
   sifu: {
     requests: StudentRequestItem[];
@@ -168,11 +171,12 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   let staff: DashboardOverview['staff'] = null;
   if (isStaffRole(p.user.role)) {
     let openPilotRequests: number | null = null;
-    if (p.user.role === 'admin') {
+    // The same check as /admin/grants and grants.list: an admin whose session proved the second factor.
+    if (hasStaff2FA(p, ['admin'])) {
       const [open] = await db.select({ n: count() }).from(pilotAccessRequest).where(eq(pilotAccessRequest.status, 'open'));
       openPilotRequests = open?.n ?? 0;
     }
-    staff = { role: p.user.role, openPilotRequests };
+    staff = { role: p.user.role, secondFactorVerified: hasStaff2FA(p), openPilotRequests };
   }
   const base = {
     accountType: effective.accountType,

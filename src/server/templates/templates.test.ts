@@ -234,6 +234,16 @@ describe('notification templates', () => {
     expect(gone.body).toEqual([{ text: 'A since deleted account asked for pilot access to Professional Sifu. The request was removed with the account.' }]);
     expect(gone.action).toBeUndefined();
   });
+
+  it('the pilot request notification names neither the account nor the plan for a session without the second factor (review round 2, recheck-1)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    const hidden = renderNotification('pilot-access.requested', { ...sample, requesterHidden: true });
+    const text = hidden.body.map((segment) => ('text' in segment ? segment.text : '')).join('');
+    expect(hidden.body.some((segment) => 'name' in segment)).toBe(false);
+    expect(text).toBe('An account asked for pilot access. Confirm this session with your authenticator app to see who asked and for which plan.');
+    expect(text).not.toContain('Professional Sifu');
+    expect(hidden.action).toEqual({ label: 'Review the request', href: `/admin/grants?request=${sample.requestId}#give-plan` });
+  });
 });
 
 describe('account-exists (M02)', () => {

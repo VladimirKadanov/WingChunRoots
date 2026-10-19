@@ -98,6 +98,11 @@ interface PilotAccessRequested {
    */
   requester: NameData | null;
   requesterDeleted: boolean;
+  /**
+   * Not stored either: true when the session reading the list has not proved the second factor
+   * (M08 review round 2, recheck-1). The text then names neither the account nor the plan.
+   */
+  requesterHidden: boolean;
 }
 
 /**
@@ -116,10 +121,18 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
       planCode: grantablePlan('pilot-access.requested', data.planCode),
       requester: optionalName('pilot-access.requested', data.requester),
       requesterDeleted: data.requesterDeleted === true,
+      requesterHidden: data.requesterHidden === true,
     };
   },
-  render: ({ requestId, planCode, requester, requesterDeleted }) =>
-    requesterDeleted
+  render: ({ requestId, planCode, requester, requesterDeleted, requesterHidden }) =>
+    requesterHidden
+      ? {
+          title: 'Pilot access requested',
+          body: [{ text: 'An account asked for pilot access. Confirm this session with your authenticator app to see who asked and for which plan.' }],
+          // /admin/grants asks for the second factor first and then opens the request (recheck-7).
+          action: { label: 'Review the request', href: `/admin/grants?request=${requestId}#give-plan` },
+        }
+      : requesterDeleted
       ? {
           title: 'Pilot access requested',
           body: [{ text: `A since deleted account asked for pilot access to ${PLANS[planCode].name}. The request was removed with the account.` }],
@@ -135,6 +148,7 @@ const pilotAccessRequested: NotificationTemplate<PilotAccessRequested> = {
     planCode: 'pro_sifu',
     requester: { value: 'Demo Sifu Example', lang: 'und-Latn' },
     requesterDeleted: false,
+    requesterHidden: false,
   },
 };
 
@@ -201,10 +215,32 @@ const planRevoked: NotificationTemplate<{ planCode: PlanCode }> = {
   sample: { planCode: 'pro_sifu' },
 };
 
+/**
+ * "pilot-access.closed": to the account whose pilot access request an admin closed without giving
+ * the plan (M08 review round 2, recheck-5). The admin's reason stays in the audit log.
+ */
+const pilotAccessClosed: NotificationTemplate<{ planCode: PlanCode }> = {
+  name: 'pilot-access.closed',
+  parse(payload) {
+    return { planCode: grantablePlan('pilot-access.closed', payloadObject('pilot-access.closed', payload).planCode) };
+  },
+  render: ({ planCode }) => ({
+    title: 'Pilot access request closed',
+    body: [
+      {
+        text: `An administrator closed your request for pilot access to ${PLANS[planCode].name} without giving the plan. Your plan has not changed and nothing is charged.`,
+      },
+    ],
+    action: SEE_YOUR_PLAN,
+  }),
+  sample: { planCode: 'pro_sifu' },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'pilot-access.requested': pilotAccessRequested,
+  'pilot-access.closed': pilotAccessClosed,
   'plan.granted': planGranted,
   'plan.revoked': planRevoked,
 } as const;
