@@ -209,9 +209,11 @@ else
 fi
 
 # 5. API-first (In scope 3; plan §6.8) ------------------------------------------------------------
+# Both handlers serve the whole router; they may take options (M08: an interceptor that logs failed
+# procedures in one line).
 check "oRPC: RPCHandler under /api/rpc and OpenAPIHandler under /api/v1, CSRF origin check, no-store" bash -c '
   f=src/server/rpc/handler.ts
-  grep -q "new RPCHandler(router)" "$f" && grep -q "new OpenAPIHandler(router)" "$f" &&
+  grep -Eq "new RPCHandler\(router[,)]" "$f" && grep -Eq "new OpenAPIHandler\(router[,)]" "$f" &&
   grep -q "export function csrfRefusal" "$f" && grep -q "private, no-store" "$f"'
 check "the procedures account.onboard and consent.record exist and take the cookie or bearer session" bash -c '
   f=src/server/rpc/router.ts
