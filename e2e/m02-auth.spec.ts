@@ -32,7 +32,7 @@ import {
   userIdOf,
 } from './helpers/auth';
 import { openMailbox } from './helpers/mailbox';
-import { expectNoAxeViolations } from './helpers/ui';
+import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -838,7 +838,8 @@ const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 /** No axe violations on the security page as it is now, in both themes (fix round 3, screens-2). */
 async function expectSecurityPageClean(page: Page, state: string) {
   for (const theme of ['dark', 'light'] as const) {
-    await page.emulateMedia({ colorScheme: theme });
+    // On the page as it is (a reload could leave the state under test), once the colours settle.
+    await switchColorScheme(page, theme);
     await expectNoAxeViolations(page, `/account/security, ${state} (${theme})`);
   }
   await page.emulateMedia({ colorScheme: null });

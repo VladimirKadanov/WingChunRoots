@@ -16,6 +16,26 @@ export async function openInTheme(page: Page, path: string, theme: Theme) {
   return response;
 }
 
+/**
+ * Switches the system colour scheme of a page that is already open and waits until its colours
+ * have settled: links and buttons fade their colours (150 ms), and axe would otherwise measure
+ * the contrast of a colour halfway between the two themes (CI run 39174336892: the tab labels at
+ * 4.32:1 on the light ground). getAnimations() applies the new styles first, so it lists the
+ * transitions the switch has just started. Their play state is read frame by frame rather than
+ * awaiting `finished` or polling getAnimations(): for a transition inside a closed <details>,
+ * Chromium never settles that promise, and getAnimations() polled on every frame never came back
+ * empty (the security page's "Start again" form).
+ */
+export async function switchColorScheme(page: Page, theme: Theme) {
+  await page.emulateMedia({ colorScheme: theme });
+  await page.evaluate(async () => {
+    const transitions = document.getAnimations().filter((animation) => animation instanceof CSSTransition);
+    while (transitions.some((transition) => transition.playState === 'running')) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  });
+}
+
 /** The theme the page shows: the computed color-scheme of <html>. */
 export function resolvedTheme(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
