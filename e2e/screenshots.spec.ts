@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -96,6 +97,104 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'demo-pending');
       await page.goto('/people/demo-hub-a');
       await expect(page.locator('li[data-person="demo-pending"]').getByText('Pending', { exact: true })).toBeVisible();
+    },
+  },
+  {
+    // M08: /admin/grants, with the grants and the pilot requests of the moment (not in the visual
+    // regression: the tests add rows to it while it runs).
+    name: 'admin-grants',
+    milestone: 'M08',
+    async reach(page) {
+      await signInAs(page, 'admin');
+      await page.goto('/admin/grants');
+      await expect(page.getByRole('heading', { level: 1, name: 'Plan grants' })).toBeVisible();
+    },
+  },
+  {
+    // M08: a new Sifu's dashboard, every list empty with its next action.
+    name: 'dashboard-sifu-empty',
+    milestone: 'M08',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo New Sifu', sifu: true });
+      await page.goto('/dashboard');
+      await expect(page.getByTestId('empty-schools')).toBeVisible();
+    },
+  },
+  {
+    // M08: the upgrade prompt once "Request pilot access" was pressed.
+    name: 'upgrade-requested',
+    milestone: 'M08',
+    async reach(page) {
+      const sifu = await freshAccount(page, { name: 'Demo Asking Sifu', sifu: true });
+      await giveStudents(sifu.userId, 5, 1);
+      await page.goto('/dashboard');
+      await page.getByTestId('upgrade-summary').click();
+      await page.getByTestId('request-pilot-access').click();
+      await expect(page.getByRole('status').filter({ hasText: 'Nothing is charged.' })).toBeVisible();
+    },
+  },
+  {
+    // M08 review round 1: the upgrade prompt opened from its one-line summary.
+    name: 'upgrade-open',
+    milestone: 'M08',
+    async reach(page) {
+      await signInAs(page, 'demo-free-sifu-5');
+      await page.goto('/dashboard');
+      await page.getByTestId('upgrade-summary').click();
+      await expect(page.getByTestId('upgrade-benefits')).toBeVisible();
+    },
+  },
+  {
+    // M08 review round 1: an administrator's dashboard, staff work first.
+    name: 'dashboard-admin',
+    milestone: 'M08',
+    async reach(page) {
+      await signInAs(page, 'admin');
+      await page.goto('/dashboard');
+      await expect(page.getByTestId('staff-work')).toBeVisible();
+    },
+  },
+  {
+    // M08 review round 2: the same dashboard in a session that knows only the password.
+    name: 'dashboard-admin-unverified',
+    milestone: 'M08',
+    async reach(page) {
+      await signInSeededAdmin(page.context());
+      await page.goto('/dashboard');
+      await expect(page.getByTestId('staff-work')).toHaveAttribute('data-second-factor', 'unverified');
+    },
+  },
+  {
+    // M08 review round 2: an open pilot access request with its "Close request…" form.
+    name: 'pilot-request-close',
+    milestone: 'M08',
+    async reach(page) {
+      const sifu = await freshAccount(page, { name: 'Demo Closing Sifu', sifu: true });
+      const asked = await apiPost(page, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+      expect(asked.status(), await asked.text()).toBe(200);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/grants?q=${encodeURIComponent(sifu.email)}`);
+      const request = page.getByTestId('pilot-request').first();
+      await request.getByText('Close request…').click();
+      await expect(request.getByLabel('Reason for closing')).toBeVisible();
+    },
+  },
+  {
+    // M08 final check (screens-4): the address of a pilot access request already answered.
+    name: 'request-answered',
+    milestone: 'M08',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Answered Sifu', sifu: true });
+      const asked = await apiPost(page, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
+      expect(asked.status(), await asked.text()).toBe(200);
+      const requestId = ((await asked.json()) as { request: { id: string } }).request.id;
+      await signInAs(page, 'admin');
+      const closed = await apiPost(page, '/admin/grants/close-request', { requestId, reason: 'Demo pilot: answered for the screenshot' });
+      expect(closed.status(), await closed.text()).toBe(200);
+      // Without the link's #give-plan: a full-page capture of a page scrolled to a fragment draws
+      // the sticky sidebar where the scroll left it.
+      await page.goto(`/admin/grants?request=${requestId}`);
+      await expect(page.getByTestId('request-answered')).toBeVisible();
     },
   },
 ];

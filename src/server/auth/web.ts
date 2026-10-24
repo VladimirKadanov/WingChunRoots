@@ -7,7 +7,7 @@ import { cache } from 'react';
 
 import { COOKIE_PREFIX } from './config';
 import { type AuthCallInit, type AuthCallResult, callAuthEndpoint } from './endpoint';
-import { checkRoute } from './guards';
+import { checkRoute, safeNextPath } from './guards';
 import type { Principal } from './principal';
 import { principalFromHeaders } from './session';
 
@@ -35,11 +35,13 @@ export type RouteGuard =
  * the visitor (sign-in without a session, /account/security for a staff session without a
  * verified second factor), which the page renders with <PageRedirect> rather than redirect()
  * (see page-redirect.tsx). Any other refusal returns `{ forbidden: true }` and the page says so.
+ * `returnTo` is where the visitor comes back to afterwards: `path`, or `path` with a query that
+ * matters (M08: /admin/grants?request=<id>); checkRoute keeps only a local path.
  */
-export async function guardRoute(path: string): Promise<RouteGuard> {
-  const decision = checkRoute(path, await getRequestPrincipal());
+export async function guardRoute(path: string, returnTo: string = path): Promise<RouteGuard> {
+  const decision = checkRoute(path, await getRequestPrincipal(), returnTo);
   if (decision.ok) {
-    if (!decision.principal) return { redirectTo: `/sign-in?next=${encodeURIComponent(path)}` };
+    if (!decision.principal) return { redirectTo: `/sign-in?next=${encodeURIComponent(safeNextPath(returnTo, path))}` };
     return { principal: decision.principal };
   }
   if (decision.redirectTo) return { redirectTo: decision.redirectTo };

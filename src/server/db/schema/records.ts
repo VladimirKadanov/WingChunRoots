@@ -40,7 +40,11 @@ export const notification = pgTable(
     readAt: timestamp('read_at', { withTimezone: true }),
     ...timestamps(),
   },
-  (t) => [index('notification_user_id_idx').on(t.userId, t.createdAt)],
+  (t) => [
+    index('notification_user_id_idx').on(t.userId, t.createdAt),
+    // The unread count of the dashboard (M08).
+    index('notification_user_id_unread_idx').on(t.userId).where(sql`${t.readAt} IS NULL`),
+  ],
 );
 
 /**

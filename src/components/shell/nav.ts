@@ -1,5 +1,6 @@
 // The four destinations of the app shell (Ink Lineage prototype): Explore is the home page; Me
-// is the account (M02: /account, which sends a visitor without a session to /sign-in); the others
+// is the dashboard (M08 review round 1, design-7: /dashboard, with requests and notifications; it
+// links to /account; a visitor without a session is sent to /sign-in); the others
 // open in later milestones (M05 /explore, M11 /schools) and show the "not drawn yet" page until then.
 
 export interface NavItem {
@@ -20,7 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/explore', label: 'Lineage', icon: 'lineage', match: (p) => p.startsWith('/explore') || p.startsWith('/people'), built: false },
   { href: '/schools', label: 'Schools', icon: 'schools', match: (p) => p.startsWith('/schools'), built: false },
   {
-    href: '/account',
+    href: '/dashboard',
     label: 'Me',
     icon: 'me',
     match: (p) => ME_PATHS.some((prefix) => p === prefix || p.startsWith(`${prefix}/`)),

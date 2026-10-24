@@ -128,3 +128,21 @@ export const ExternalAppIcon = icon(
     <path d="M17.5 13.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V8A1.5 1.5 0 0 1 6 6.5h4.5" />
   </>,
 );
+// M08: notifications, planned features and "not included" in the plan tables.
+export const BellIcon = icon(
+  'Bell',
+  <>
+    <path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14z" />
+    <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+  </>,
+);
+/** An open circle with a clock hand: a feature that is planned, not available yet (with its text). */
+export const PlannedIcon = icon(
+  'Planned',
+  <>
+    <circle cx="12" cy="12" r="8.5" strokeDasharray="2.6 2.4" />
+    <path d="M12 7.5V12l3 2" />
+  </>,
+);
+/** A short dash: not included (always beside the words "Not included"). */
+export const DashIcon = icon('Dash', <path d="M7 12h10" />, 1.9);

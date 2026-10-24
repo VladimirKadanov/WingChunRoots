@@ -120,6 +120,12 @@ const routeBans = [
   },
   elkOnlyInLayoutModule,
   noLayoutInRequestPath,
+  // M08: the plan matrix (pure data) is open to routes and components; deciding what a plan
+  // allows is not: requireEntitlement() and the quota lock run inside a service (plan §6.5).
+  {
+    group: ['@/server/entitlements/*', '!@/server/entitlements/plans', '**/server/entitlements/*', '!**/server/entitlements/plans'],
+    message: 'Routes and components read only the plan matrix (src/server/entitlements/plans.ts); services decide entitlements (plan §6.5).',
+  },
 ];
 
 // Browser and DOM globals that src/lib/lineage-layout must not use (plan §6.1). Only
@@ -214,6 +220,7 @@ export default defineConfig([
       'src/components/home/**/*.{ts,tsx}',
       'src/components/ink/**/*.{ts,tsx}',
       'src/components/account/**/*.{ts,tsx}',
+      'src/components/plans/**/*.{ts,tsx}',
     ],
     rules: {
       'no-restricted-imports': restrictImports([...routeBans, baseUiOnlyInUi, noTailwindMerge]),

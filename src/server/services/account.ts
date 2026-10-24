@@ -224,18 +224,23 @@ export async function onboardingOptions(principal: Principal | null): Promise<On
 /**
  * Where a signed-in account goes next: onboarding until it has its own person and has confirmed
  * the current versions of the required documents, then the page it asked for (`next`, a local
- * path) or its account page. Two-factor setup and the admin area are never held back, so staff
- * can finish signing in. Refused without a session (401), like every service.
+ * path) or its dashboard, where its requests and notifications wait (M08 review round 1,
+ * design-7; onboarding itself still ends on the account page, which shows the new profile). Two-
+ * factor setup and the admin area are never held back, so staff can finish signing in. Refused
+ * without a session (401), like every service.
  */
 export const landingInput = z.object({ next: z.string().max(2048).optional() });
 
+const LANDING = '/dashboard';
+
 export async function landingPath(principal: Principal | null, next: unknown): Promise<string> {
   const { user } = requireUser(principal);
-  const requested = safeNextPath(next, '/account');
-  const target = requested === '/onboarding' ? '/account' : requested;
+  const requested = safeNextPath(next, LANDING);
+  const target = requested === '/onboarding' ? LANDING : requested;
   const settled = Boolean(await ownPerson(user.id)) && (await missingRequiredConsents(getDb(), user.id)).length === 0;
   if (settled || target.startsWith('/account/security') || target.startsWith('/admin')) return target;
-  return `/onboarding${target === '/account' ? '' : `?next=${encodeURIComponent(target)}`}`;
+  // Onboarding without a `next` ends on the account page; any other target is kept for after it.
+  return `/onboarding${target === LANDING ? '' : `?next=${encodeURIComponent(target)}`}`;
 }
 
 // --- Onboarding ----------------------------------------------------------------------------------

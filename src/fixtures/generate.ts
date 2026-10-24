@@ -22,6 +22,7 @@ import type {
   authTwoFactor,
   authUser,
   consentRecord,
+  entitlementGrant,
   invitation,
   lineage,
   organization,
@@ -139,6 +140,7 @@ export type ReviewNoteRow = Row<typeof reviewNote>;
 export type InvitationRow = Row<typeof invitation>;
 export type AuthUserRow = Row<typeof authUser>;
 export type ConsentRecordRow = Row<typeof consentRecord>;
+export type EntitlementGrantRow = Row<typeof entitlementGrant>;
 /** A credential account without its password hash, which the seed adds (secret, env-dependent). */
 export type CredentialShell = Omit<Row<typeof authAccount>, 'password'>;
 /** A TOTP row without its encrypted secret and backup codes, which the seed adds. */
@@ -166,6 +168,8 @@ export interface Fixtures {
   anchors: Record<AnchorSlug, string>;
   /** Demo sign-in accounts (M02) and their consents of sign-up. */
   users: AuthUserRow[];
+  /** Plans of the demo accounts (M08): the Pro Sifu test plan of demo-pro-sifu-8. */
+  entitlementGrants: EntitlementGrantRow[];
   consentRecords: ConsentRecordRow[];
   credentials: CredentialShell[];
   twoFactors: TwoFactorShell[];
@@ -907,7 +911,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   for (const slug of ANCHOR_PERSON_SLUGS) anchors[slug] = b.bySlug.get(slug)!.row.id;
   for (const slug of ANCHOR_SCHOOL_SLUGS) anchors[slug] = schools.find((s) => s.slug === slug)!.id;
 
-  const accountData = demoAccounts(seed, b);
+  const { instructorCases, ...accountData } = demoAccounts(seed, b);
 
   return {
     seed,
@@ -924,7 +928,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     schoolInstructors,
     organizations,
     organizationMemberships,
-    reviewCases,
+    reviewCases: [...reviewCases, ...instructorCases],
     reviewNotes,
     invitations,
     anchors,
@@ -932,11 +936,20 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   };
 }
 
+/** The Sifu accounts of the demo data (M08): the others are Student accounts. */
+export const DEMO_SIFU_ACCOUNT_SLUGS: readonly DemoAccountSlug[] = ['demo-free-sifu-5', 'demo-pro-sifu-8'];
+
 /**
  * The demo sign-in accounts (M02). Their ids come from a random stream of their own, so adding
- * accounts never shifts the ids of the archival records above.
+ * accounts never shifts the ids of the archival records above. From M08: the account types, the
+ * Pro Sifu test plan of demo-pro-sifu-8 and the approved instructor verification of both Sifu
+ * accounts (plan §6.5: the pilot's test data uses verified Sifu), appended at the end of the
+ * stream so the ids of M02 stay the same.
  */
-function demoAccounts(seed: number, b: Builder): Pick<Fixtures, 'users' | 'consentRecords' | 'credentials' | 'twoFactors' | 'accounts'> {
+function demoAccounts(
+  seed: number,
+  b: Builder,
+): Pick<Fixtures, 'users' | 'consentRecords' | 'credentials' | 'twoFactors' | 'accounts' | 'entitlementGrants'> & { instructorCases: ReviewCaseRow[] } {
   const idRng = createRandom((seed ^ 0x0acc_0a75) >>> 0);
   let seq = 0;
   const id = () => uuidv7FromParts(ACCOUNT_BASE_MS + seq++, 0, idRng.bytes(8));
@@ -961,6 +974,7 @@ function demoAccounts(seed: number, b: Builder): Pick<Fixtures, 'users' | 'conse
       banExpires: null,
       twoFactorEnabled: staff,
       timezone: null,
+      accountType: DEMO_SIFU_ACCOUNT_SLUGS.includes(slug) ? 'sifu' : 'student',
       createdAt: at,
       updatedAt: at,
     });
@@ -1005,7 +1019,42 @@ function demoAccounts(seed: number, b: Builder): Pick<Fixtures, 'users' | 'conse
     p.row.claimedByUserId = userId;
   }
   for (const staff of DEMO_STAFF_ACCOUNTS) add(staff.slug, staff.name, staff.role);
-  return { users, consentRecords, credentials, twoFactors, accounts };
+
+  // M08: the Pro Sifu test plan (no end date) and the approved instructor verifications.
+  const entitlementGrants: EntitlementGrantRow[] = [
+    {
+      id: id(),
+      subjectUserId: accounts['demo-pro-sifu-8'],
+      subjectOrganizationId: null,
+      planCode: 'pro_sifu',
+      source: 'test_grant',
+      startsAt: at,
+      endsAt: null,
+      grantedByUserId: accounts['demo-admin'],
+      reason: `${FICTIONAL_MARK}: the Pro Sifu test plan of the demo data.`,
+      revokedAt: null,
+      revokedByUserId: null,
+      revokeReason: null,
+      createdAt: at,
+      updatedAt: at,
+    },
+  ];
+  const instructorCases: ReviewCaseRow[] = DEMO_SIFU_ACCOUNT_SLUGS.map((slug) => ({
+    id: id(),
+    kind: 'instructor_verification',
+    status: 'resolved',
+    relationshipId: null,
+    personId: b.bySlug.get(slug)!.row.id,
+    schoolId: null,
+    openedByUserId: accounts[slug],
+    assignedToUserId: accounts['demo-archivist'],
+    resolution: 'approved',
+    resolutionReason: 'Decided on fictional evidence.',
+    resolvedAt: at,
+    createdAt: at,
+    updatedAt: at,
+  }));
+  return { users, consentRecords, credentials, twoFactors, accounts, entitlementGrants, instructorCases };
 }
 
 function round5(x: number): number {

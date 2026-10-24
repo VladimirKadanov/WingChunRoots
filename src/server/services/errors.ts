@@ -11,7 +11,8 @@ export type ServiceErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'TWO_FACTOR_REQUIRED'
-  | 'CONSENT_REQUIRED';
+  | 'CONSENT_REQUIRED'
+  | 'TOO_MANY_REQUESTS';
 
 export const SERVICE_ERROR_STATUS: Record<ServiceErrorCode, number> = {
   BAD_REQUEST: 400,
@@ -22,6 +23,8 @@ export const SERVICE_ERROR_STATUS: Record<ServiceErrorCode, number> = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   TWO_FACTOR_REQUIRED: 409,
+  // M08: a limit against floods (pilot access requests to the admins).
+  TOO_MANY_REQUESTS: 429,
 };
 
 export class ServiceError extends Error {

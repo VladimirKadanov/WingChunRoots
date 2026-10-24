@@ -97,7 +97,8 @@ describe('sign-up', () => {
     expect(result.status).toBe(400);
     expect(await userByEmail(email)).toBeUndefined();
     // Neither do the other server-only fields pass.
-    for (const field of [{ twoFactorEnabled: true }, { emailVerified: true }, { banned: false }]) {
+    // M08: nor the account type; a new account is a Student and chooses Sifu in its settings.
+    for (const field of [{ twoFactorEnabled: true }, { emailVerified: true }, { banned: false }, { accountType: 'sifu' }]) {
       const other = address('field');
       const r = await signUp(other, ALL_TICKS, field);
       const user = await userByEmail(other);
@@ -105,6 +106,7 @@ describe('sign-up', () => {
         expect(user!.twoFactorEnabled).toBe(false);
         expect(user!.emailVerified).toBe(false);
         expect(user!.role).toBe('user');
+        expect(user!.accountType).toBe('student');
       } else {
         expect(user).toBeUndefined();
       }

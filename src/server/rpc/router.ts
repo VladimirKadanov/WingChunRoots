@@ -15,7 +15,20 @@ import { accountOverview, landingInput, landingPath, onboard, onboardingOptions,
 import { adminOverview } from '../services/admin';
 import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
+import { dashboardOverview } from '../services/dashboard';
 import { isServiceError } from '../services/errors';
+import {
+  closePilotRequest,
+  closePilotRequestInput,
+  createGrant,
+  createGrantInput,
+  listGrants,
+  listGrantsInput,
+  revokeGrant,
+  revokeGrantInput,
+} from '../services/grants';
+import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
+import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import { setRoleInput, setUserRole } from '../services/roles';
 import { twoFactorOverview } from '../services/two-factor';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
@@ -94,6 +107,11 @@ export const router = {
       .route({ method: 'POST', path: '/account/onboard', summary: "Create the account's own person (onboarding)" })
       .input(onboardInput)
       .handler(({ context, input }) => onboard(context.principal, input, context.meta)),
+    // M08: Student or Sifu; sets the free plan and verifies nothing (DEFAULT D04).
+    setType: signedIn
+      .route({ method: 'POST', path: '/account/type', summary: 'Choose Student or Sifu: sets the free plan, audited, verifies nothing' })
+      .input(setAccountTypeInput)
+      .handler(({ context, input }) => setAccountType(context.principal, input, context.meta)),
   },
   consent: {
     record: signedIn
@@ -145,6 +163,52 @@ export const router = {
       .input(studentsInput)
       .output(studentsPageSchema)
       .handler(({ context, input }) => personStudents(context.principal, input, context.meta)),
+  },
+  // M08: plans, test plans, notifications and the dashboard (plan §5.6, §6.5).
+  plans: {
+    catalog: base
+      .route({ method: 'GET', path: '/plans', summary: 'The plan matrix: plans, proposed prices (not final) and features with their availability' })
+      .handler(() => planCatalog()),
+    mine: base
+      .route({ method: 'GET', path: '/plans/mine', summary: "The signed-in account's type, plan in effect, grants and open pilot request" })
+      .handler(({ context }) => myPlan(context.principal)),
+    requestPilotAccess: signedIn
+      .route({ method: 'POST', path: '/plans/request-pilot-access', summary: 'Ask the admins for pilot access to a plan; notifies them and never charges' })
+      .input(requestPilotAccessInput)
+      .handler(({ context, input }) => requestPilotAccess(context.principal, input, context.meta)),
+  },
+  grants: {
+    list: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/grants', summary: 'Plan grants and open pilot requests (admin with a verified second factor)' })
+      .input(listGrantsInput)
+      .handler(({ context, input }) => listGrants(context.principal, input)),
+    create: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/grants/create', summary: 'Give a test or complimentary plan with a reason, start and end (admin, audited)' })
+      .input(createGrantInput)
+      .handler(({ context, input }) => createGrant(context.principal, input, context.meta)),
+    revoke: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/grants/revoke', summary: 'Revoke a plan grant with a reason (admin, audited); confirmed links stay confirmed' })
+      .input(revokeGrantInput)
+      .handler(({ context, input }) => revokeGrant(context.principal, input, context.meta)),
+    // M08 review round 2: the other answer to a pilot access request.
+    closeRequest: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/grants/close-request', summary: 'Close a pilot access request without giving the plan, with a reason (admin, audited)' })
+      .input(closePilotRequestInput)
+      .handler(({ context, input }) => closePilotRequest(context.principal, input, context.meta)),
+  },
+  notifications: {
+    list: base
+      .route({ method: 'GET', path: '/notifications', summary: "The signed-in account's newest notifications and its unread count" })
+      .handler(({ context }) => listNotifications(context.principal)),
+    markRead: signedIn
+      .route({ method: 'POST', path: '/notifications/mark-read', summary: 'Mark own notifications read: some by id, or all' })
+      .input(markReadInput)
+      .handler(({ context, input }) => markNotificationsRead(context.principal, input)),
+  },
+  dashboard: {
+    overview: base
+      .route({ method: 'GET', path: '/dashboard', summary: "The signed-in account's dashboard: teachers, requests, schools, allowance, notifications" })
+      .handler(({ context }) => dashboardOverview(context.principal)),
   },
 };
 

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { defineConfig } from '@playwright/test';
 
 import { e2eBuildProblem } from './e2e/build-check';
-import { buildProjects } from './e2e/projects';
+import { buildProjects, runPaths } from './e2e/projects';
 
 const ci = process.env.CI === 'true';
 // A dedicated port, so E2E always runs against a fresh `next start` and never reuses `pnpm dev`.
@@ -18,6 +18,10 @@ const serverEnv = { APP_URL: baseURL, WCR_TEST_FAULTS: 'lineage-once,person-once
 // Listing the tests starts no server and needs no build.
 const buildProblem = process.argv.includes('--list') ? null : e2eBuildProblem(process.env.WCR_DIST_DIR || '.next');
 if (buildProblem) throw new Error(buildProblem);
+// The specs that lock a whole table run alone, in a run of their own (e2e/projects.ts,
+// EXCLUSIVE_SPEC): PW_EXCLUSIVE=1, after the ordinary run (scripts/verify.sh does both).
+const exclusive = process.env.PW_EXCLUSIVE === '1';
+const paths = runPaths(exclusive);
 // Created here rather than with `mkdir -p` in webServer.command, which must also run in cmd.exe.
 mkdirSync('test-results', { recursive: true });
 
@@ -25,12 +29,12 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
   // Artifacts live below test-results/ so the server log (test-results/server.log) survives.
-  outputDir: './test-results/artifacts',
+  outputDir: paths.outputDir,
   fullyParallel: true,
   forbidOnly: ci,
   retries: 0,
   reporter: ci
-    ? [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
+    ? [['list'], ['html', { open: 'never', outputFolder: paths.htmlReport }]]
     : [['list']],
   use: {
     baseURL,
@@ -50,12 +54,14 @@ export default defineConfig({
     chromiumExecutable: process.env.PW_CHROMIUM_EXECUTABLE,
     visual: ci || process.env.PW_VISUAL === '1',
     screenshots: process.env.PW_SCREENSHOTS === '1',
+    exclusive,
   }),
   webServer: [
     {
       name: 'web',
       // `pnpm build:e2e` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
-      command: `pnpm start --hostname 127.0.0.1 --port ${port} > test-results/server.log 2>&1`,
+      // The log is test-results/server.log (test-results/server-exclusive.log in the exclusive run).
+      command: `pnpm start --hostname 127.0.0.1 --port ${port} > ${paths.serverLog} 2>&1`,
       url: `${baseURL}/`,
       env: serverEnv,
       reuseExistingServer: false,

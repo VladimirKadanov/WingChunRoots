@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects } from './projects';
+import { EXCLUSIVE_SPEC, SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects, runPaths } from './projects';
 
 describe('buildProjects', () => {
   it('runs desktop and mobile Chromium outside CI, without WebKit', () => {
@@ -71,9 +71,43 @@ describe('buildProjects: visual and screenshots (M00b)', () => {
     expect(projects.at(-1)?.use?.defaultBrowserType).toBe('chromium');
   });
 
-  it('keeps the visual and screenshot specs out of the other projects', () => {
+  it('keeps the visual, screenshot and exclusive specs out of the other projects', () => {
     for (const project of buildProjects({ ci: true })) {
-      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC]);
+      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC]);
     }
+  });
+});
+
+describe('buildProjects: exclusive (M08 final check)', () => {
+  it('builds only the exclusive project, one test at a time, in a run of its own', () => {
+    const executablePath = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+    for (const options of [{ ci: false }, { ci: true }, { ci: true, visual: true }, { ci: false, screenshots: true }]) {
+      const projects = buildProjects({ ...options, exclusive: true, chromiumExecutable: executablePath });
+      expect(projects.map((p) => p.name)).toEqual(['exclusive']);
+      const [exclusive] = projects;
+      expect(exclusive?.testMatch).toBe(EXCLUSIVE_SPEC);
+      expect(exclusive?.fullyParallel).toBe(false);
+      expect(exclusive?.workers).toBe(1);
+      // No dependencies: they would run every other project in full, whatever --grep says.
+      expect(exclusive?.dependencies).toBeUndefined();
+      expect(exclusive?.use?.viewport).toEqual({ width: 1440, height: 900 });
+      expect(exclusive?.use?.launchOptions?.executablePath).toBe(executablePath);
+    }
+  });
+
+  it('never runs in the ordinary run', () => {
+    for (const options of [{ ci: false }, { ci: true }, { ci: true, visual: true }, { ci: false, screenshots: true }]) {
+      expect(buildProjects(options).map((p) => p.name)).not.toContain('exclusive');
+    }
+  });
+
+  it('keeps its server log, artifacts and report apart from the ordinary run', () => {
+    const ordinary = runPaths(false);
+    const exclusive = runPaths(true);
+    expect(ordinary.serverLog).toBe('test-results/server.log');
+    for (const key of ['serverLog', 'outputDir', 'htmlReport'] as const) expect(exclusive[key]).not.toBe(ordinary[key]);
+    // Playwright empties outputDir at the start of a run: the exclusive one must not hold the other.
+    expect(ordinary.outputDir.startsWith(exclusive.outputDir)).toBe(false);
+    expect(exclusive.outputDir.startsWith(ordinary.outputDir)).toBe(false);
   });
 });

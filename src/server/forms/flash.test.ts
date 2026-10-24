@@ -21,13 +21,26 @@ function cookieFor(body: unknown, secret = SECRET): string {
 
 describe('outcomeUrl', () => {
   it('adds the outcome to the page and keeps its own query', () => {
-    expect(outcomeUrl('/sign-in?next=%2Fadmin', 'abc')).toBe('/sign-in?next=%2Fadmin&outcome=abc');
-    expect(outcomeUrl('/sign-up', 'abc')).toBe('/sign-up?outcome=abc');
+    expect(outcomeUrl('/sign-in?next=%2Fadmin', 'abc')).toBe('/sign-in?next=%2Fadmin&outcome=abc#');
+    expect(outcomeUrl('/sign-up', 'abc')).toBe('/sign-up?outcome=abc#');
   });
 
   it('never leaves the site', () => {
-    expect(outcomeUrl('//example.test/x', 'abc')).toBe('/?outcome=abc');
-    expect(outcomeUrl('https://example.test/x', 'abc')).toBe('/?outcome=abc');
+    expect(outcomeUrl('//example.test/x', 'abc')).toBe('/?outcome=abc#');
+    expect(outcomeUrl('https://example.test/x', 'abc')).toBe('/?outcome=abc#');
+  });
+
+  it('ends with an empty fragment, so the redirect drops the posting page\'s fragment and autofocus works', () => {
+    expect(outcomeUrl('/admin/grants#give-plan', 'abc')).toBe('/admin/grants?outcome=abc#');
+  });
+
+  it('opens the page at the anchor of the outcome, when it is a plain id', () => {
+    expect(outcomeUrl('/admin/grants?q=a%40b.test#give-plan', 'abc', 'revoke-grant-0192-reason')).toBe(
+      '/admin/grants?q=a%40b.test&outcome=abc#revoke-grant-0192-reason',
+    );
+    for (const anchor of ['', 'a b', 'x#y', '"><script>', 'é', 'x'.repeat(161)]) {
+      expect(outcomeUrl('/admin/grants', 'abc', anchor), JSON.stringify(anchor)).toBe('/admin/grants?outcome=abc#');
+    }
   });
 });
 

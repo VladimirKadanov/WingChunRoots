@@ -170,6 +170,90 @@ describe('notification templates', () => {
   it('refuses an unknown template', () => {
     expect(() => renderNotification('no-such-template', {})).toThrow(NotificationDataError);
   });
+
+  it('links only to a local path of the app (M08)', () => {
+    for (const [name, template] of entries) {
+      const { action } = renderNotification(name, template.sample);
+      if (!action) continue;
+      expect(action.label.trim().length, name).toBeGreaterThan(0);
+      expect(action.href, name).toMatch(/^\/(?!\/)[^\s\\]*$/);
+    }
+  });
+
+  it('the plan notifications refuse a plan an admin cannot grant, a request id that is not one and odd names (M08)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    expect(() => renderNotification('pilot-access.requested', { ...sample, planCode: 'federation' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('pilot-access.requested', { ...sample, requestId: '../users' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('pilot-access.requested', { ...sample, requester: { value: 'Demo', lang: '"><b>' } })).toThrow(NotificationDataError);
+    expect(renderNotification('pilot-access.requested', { ...sample, requester: null }).body[0]).toEqual({ text: 'An account without a profile' });
+    expect(() => renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: 'tomorrow' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('plan.granted', { planCode: 'pro_sifu', startsAt: 'soon', endsAt: null })).toThrow(NotificationDataError);
+    expect(() => renderNotification('plan.revoked', null)).toThrow(NotificationDataError);
+  });
+
+  it('an answered pilot access request says so and offers no review (final check, screens-4)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    const open = renderNotification('pilot-access.requested', sample);
+    expect(open.action).toEqual({ label: 'Review the request', href: `/admin/grants?request=${sample.requestId}#give-plan` });
+    const answered = renderNotification('pilot-access.requested', { ...sample, answered: true });
+    expect(answered.action).toBeUndefined();
+    expect(answered.body[0]).toEqual({ name: sample.requester });
+    expect(answered.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toBe(' asked for Professional Sifu. The request has already been answered.');
+  });
+
+  it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
+    const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
+    expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('for the pilot, until 30 December 2026. No payment is involved.');
+    expect(granted.action).toEqual({ label: 'See your plan', href: '/dashboard/settings' });
+    const revoked = renderNotification('plan.revoked', { planCode: 'pro_sifu' });
+    expect(revoked.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('Every confirmed link stays confirmed and public');
+    // A Student plan approves nobody: its text does not speak of approvals.
+    const student = renderNotification('plan.revoked', { planCode: 'premium_student' });
+    const studentText = student.body.map((segment) => ('text' in segment ? segment.text : '')).join('');
+    expect(studentText).toContain('Your profile and every confirmed link stay as they are.');
+    expect(studentText).not.toContain('approval');
+  });
+
+  it('a grant that starts later says from when; one that started at once does not (review round 1, security-4)', () => {
+    const text = (payload: unknown, createdAt: Date) =>
+      renderNotification('plan.granted', payload, { createdAt })
+        .body.map((segment) => ('text' in segment ? segment.text : ''))
+        .join('');
+    const later = { planCode: 'pro_sifu', startsAt: '2027-01-01T00:00:00.000Z', endsAt: '2027-02-01T00:00:00.000Z' };
+    expect(text(later, new Date('2026-10-19T10:00:00Z'))).toBe(
+      'An administrator gave your account Professional Sifu for the pilot from 1 January 2027, until 31 January 2027. No payment is involved.',
+    );
+    // Given today from 00:00 UTC: it is the account's plan already.
+    const now = { planCode: 'pro_sifu', startsAt: '2026-10-19T00:00:00.000Z', endsAt: null };
+    expect(text(now, new Date('2026-10-19T10:00:00Z'))).toBe('An administrator gave your account Professional Sifu for the pilot. No payment is involved.');
+    // A row from before the start was stored: no start, no "from".
+    expect(text({ planCode: 'pro_sifu', endsAt: null }, new Date('2026-10-19T10:00:00Z'))).not.toContain(' from ');
+  });
+
+  it('the pilot request notification is one short line and opens the filled-in form (review round 1, design-12)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    const rendered = renderNotification('pilot-access.requested', sample);
+    expect(rendered.body).toEqual([{ name: sample.requester }, { text: ' asked for Professional Sifu.' }]);
+    expect(rendered.action).toEqual({ label: 'Review the request', href: `/admin/grants?request=${sample.requestId}#give-plan` });
+  });
+
+  it('the pilot request notification names no deleted account and links nowhere for it (M08)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    expect(renderNotification('pilot-access.requested', sample).body[0]).toEqual({ name: sample.requester });
+    const gone = renderNotification('pilot-access.requested', { ...sample, requester: null, requesterDeleted: true });
+    expect(gone.body).toEqual([{ text: 'A since deleted account asked for pilot access to Professional Sifu. The request was removed with the account.' }]);
+    expect(gone.action).toBeUndefined();
+  });
+
+  it('the pilot request notification names neither the account nor the plan for a session without the second factor (review round 2, recheck-1)', () => {
+    const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
+    const hidden = renderNotification('pilot-access.requested', { ...sample, requesterHidden: true });
+    const text = hidden.body.map((segment) => ('text' in segment ? segment.text : '')).join('');
+    expect(hidden.body.some((segment) => 'name' in segment)).toBe(false);
+    expect(text).toBe('An account asked for pilot access. Confirm this session with your authenticator app to see who asked and for which plan.');
+    expect(text).not.toContain('Professional Sifu');
+    expect(hidden.action).toEqual({ label: 'Review the request', href: `/admin/grants?request=${sample.requestId}#give-plan` });
+  });
 });
 
 describe('account-exists (M02)', () => {

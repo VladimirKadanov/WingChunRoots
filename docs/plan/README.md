@@ -12,11 +12,11 @@
 | M01b | [M01b — Фонови задачи и поща](M01b-jobs-mail.md) | M01 | слят ([#7](https://github.com/VladimirKadanov/WingChunRoots/pull/7)) |
 | M02 | [M02 — Акаунти, роли и съгласия](M02-accounts.md) | M00b, M01b | слят ([#9](https://github.com/VladimirKadanov/WingChunRoots/pull/9)) |
 | M03 | [M03 — Модул за подредба на родословието](M03-lineage-layout.md) | M00 | слят ([#4](https://github.com/VladimirKadanov/WingChunRoots/pull/4)) |
-| M04 | [M04 — API за родословието, публичен профил и списъчен изглед](M04-lineage-api.md) | M02 | в работа (клон `m04-lineage-api`, [#10](https://github.com/VladimirKadanov/WingChunRoots/pull/10)) |
+| M04 | [M04 — API за родословието, публичен профил и списъчен изглед](M04-lineage-api.md) | M02 | слят ([#10](https://github.com/VladimirKadanov/WingChunRoots/pull/10), 24.10.2026) |
 | M05 | [M05 — Интерактивен изследовател: изгледи и връзки](M05-explorer-views.md) | M03, M04 | не е започнат |
 | M06 | [M06 — Изследовател: клавиатура, екранни четци, телефон и разгъване](M06-explorer-a11y.md) | M05 | не е започнат |
 | M07 | [M07 — Имена, профил, поверителност на акаунта и търсене](M07-names-search.md) | M04 | не е започнат |
-| M08 | [M08 — Права по план, тестови права и табла](M08-entitlements.md) | M02 | не е започнат |
+| M08 | [M08 — Права по план, тестови права и табла](M08-entitlements.md) | M02 | PR отворен ([#11](https://github.com/VladimirKadanov/WingChunRoots/pull/11), чернова, клон `m08-entitlements`) |
 | M09 | [M09 — Заявки към учител и независими одобрения](M09-teacher-requests.md) | M07, M08 | не е започнат |
 | M10a | [M10a — Доказателства, исторически учители и опашка за преглед](M10a-evidence-review.md) | M09 | не е започнат |
 | M10b | [M10b — Покани, поемане на профил, проверка на инструктор, сигнали и арбитраж](M10b-claims-reports.md) | M10a | не е започнат |

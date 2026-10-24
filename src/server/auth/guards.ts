@@ -50,9 +50,26 @@ export function requireStaff2FA(
   return p as Principal & { user: { role: StaffRole } };
 }
 
+/**
+ * Whether `principal` passes requireStaff2FA(principal, roles), without throwing: for staff data
+ * that a page shared with other accounts shows only to such a session (M08 review round 2,
+ * recheck-1: the requester of a pilot access request, the count of open requests). The same
+ * check as requireStaff2FA, so a password alone never reaches that data (plan §3.2).
+ */
+export function hasStaff2FA(principal: Principal | null | undefined, roles: readonly StaffRole[] = STAFF_ROLES): boolean {
+  try {
+    requireStaff2FA(principal, roles);
+    return true;
+  } catch (error) {
+    if (error instanceof AuthError) return false;
+    throw error;
+  }
+}
+
 // --- Pages -------------------------------------------------------------------------------------
 
-export type RoutePolicy = { kind: 'user' } | { kind: 'staff2fa' };
+/** `roles` narrows a staff page to some staff roles (M08: /admin/grants is for admins only). */
+export type RoutePolicy = { kind: 'user' } | { kind: 'staff2fa'; roles?: readonly StaffRole[] };
 
 /** What each protected page needs. Every other page is public. */
 export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
@@ -60,6 +77,9 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/account': { kind: 'user' },
   '/account/security': { kind: 'user' },
   '/admin': { kind: 'staff2fa' },
+  // M08: the dashboards and their settings; plan grants for admins only (plan §6.5).
+  '/dashboard': { kind: 'user' },
+  '/admin/grants': { kind: 'staff2fa', roles: ['admin'] },
 };
 
 export const SIGN_IN_PATH = '/sign-in';
@@ -99,21 +119,24 @@ export function safeNextPath(value: unknown, fallback = '/'): string {
 /**
  * The decision for opening `path` (which must be a pathname without a query) as `principal`:
  * a visitor without a session goes to sign-in (401), a staff session without a verified second
- * factor goes to /account/security (403), and any other refusal is a plain 403.
+ * factor goes to /account/security (403), and any other refusal is a plain 403. Both come back to
+ * `returnTo` afterwards (`?next=`): `path` itself, or `path` with the query the page was opened
+ * with (M08 review round 2, recheck-7: /admin/grants?request=<id> keeps the request it answers).
  */
-export function checkRoute(path: string, principal: Principal | null): RouteDecision {
+export function checkRoute(path: string, principal: Principal | null, returnTo: string = path): RouteDecision {
   const policy = policyFor(path);
+  const next = encodeURIComponent(safeNextPath(returnTo, path));
   if (!policy) return { ok: true, principal };
   try {
     if (policy.kind === 'user') return { ok: true, principal: requireUser(principal) };
-    return { ok: true, principal: requireStaff2FA(principal) };
+    return { ok: true, principal: requireStaff2FA(principal, policy.roles) };
   } catch (error) {
     if (!(error instanceof AuthError)) throw error;
     if (error.code === 'UNAUTHORIZED') {
-      return { ok: false, status: 401, code: error.code, redirectTo: `${SIGN_IN_PATH}?next=${encodeURIComponent(path)}` };
+      return { ok: false, status: 401, code: error.code, redirectTo: `${SIGN_IN_PATH}?next=${next}` };
     }
     if (error.code === 'SECOND_FACTOR_REQUIRED') {
-      return { ok: false, status: 403, code: error.code, redirectTo: `${SECURITY_PATH}?next=${encodeURIComponent(path)}` };
+      return { ok: false, status: 403, code: error.code, redirectTo: `${SECURITY_PATH}?next=${next}` };
     }
     return { ok: false, status: 403, code: error.code, redirectTo: null };
   }

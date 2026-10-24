@@ -306,7 +306,10 @@ run_e2e() {
   if introduced M01; then
     export DATABASE_URL="$TEST_DATABASE_URL"
   fi
-  pnpm e2e "$@"
+  pnpm e2e "$@" || return 1
+  # Then the specs that lock a whole table (M08 final check; e2e/projects.ts, EXCLUSIVE_SPEC), in
+  # a run of their own with the same filter: nothing else may run while a table is locked.
+  PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests "$@"
 }
 
 run_checks() {

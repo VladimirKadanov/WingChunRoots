@@ -60,6 +60,10 @@ function required(name: 'E2E_PASSWORD' | 'E2E_TOTP_SECRET' | 'BETTER_AUTH_SECRET
 export const demoPassword = () => required('E2E_PASSWORD');
 
 const STEP_MS = 30_000;
+/** Steps staffTotpCode() waits at most for a free code (the seeded staff share one per step). */
+const STAFF_CODE_ROUNDS = 10;
+/** How many more codes a sign-in picks after another worker took its code first. */
+const STAFF_CODE_PICKS = 12;
 
 /**
  * A TOTP code of the seeded staff accounts that `email` has not used yet (see the top of this
@@ -70,7 +74,7 @@ export async function staffTotpCode(email = 'demo-admin@example.test'): Promise<
   const secret = required('E2E_TOTP_SECRET');
   required('IP_HMAC_KEY');
   const userId = await userIdOf(email);
-  for (let round = 0; round < 4; round += 1) {
+  for (let round = 0; round < STAFF_CODE_ROUNDS; round += 1) {
     const steps = [0, 1, -1].sort(() => Math.random() - 0.5);
     for (const step of steps) {
       const code = totp(secret, Date.now() + step * STEP_MS);
@@ -78,11 +82,13 @@ export async function staffTotpCode(email = 'demo-admin@example.test'): Promise<
       const used = await getDb().execute(sql`SELECT 1 FROM auth_throttle WHERE key = ${totpKey(userId, code)} AND expires_at > now()`);
       if (used.rows.length === 0) return code;
     }
-    const wait = STEP_MS - (Date.now() % STEP_MS) + 250;
+    // Workers that wait for the same step would all wake at its start and post its one new code at
+    // once; a random delay lets the first one claim it, and the others see it used and wait on.
+    const wait = STEP_MS - (Date.now() % STEP_MS) + 250 + randomInt(2_000);
     extendTimeout(wait);
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
-  throw new Error(`no unused TOTP code for ${email} within two minutes`);
+  throw new Error(`no unused TOTP code for ${email} within ${STAFF_CODE_ROUNDS} steps`);
 }
 
 /**
@@ -191,47 +197,79 @@ function slugFor(target: Exclude<SignInTarget, 'new'>): DemoAccountSlug {
 
 /**
  * Types an unused staff TOTP code into the page's code field and presses `button`; picks another
- * code when another worker took this one first. Returns once the page shows no "just been used"
- * error.
+ * code when another worker took this one first. Returns once the form's answer to the last code is
+ * not "just been used" and the page has moved on (or after 10 s, for the test's own assertions).
+ *
+ * Each pick is judged by the form's own answer to it first: the message of a refused pick stays on
+ * screen until the next answer arrives, and the page it was on stays in the document, hidden, after
+ * the next pick moved on. Judged by the screen alone, a pick that worked looked refused, and the
+ * next pick waited for the hidden field of the old page until the test timed out (verify M02 in M08
+ * polish 2, when desktop and mobile took the same code at once). The answer of a Server Action that
+ * redirects carries `x-action-redirect`; a refusal does not. Its body is not read: Chromium does
+ * not always keep the body of a streamed answer.
  */
 export async function submitStaffCode(page: Page, button: string, email = 'demo-admin@example.test'): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  const codePage = (url: URL) => /\/(sign-in\/two-factor|account\/security)/.test(url.pathname);
+  for (let attempt = 0; attempt <= STAFF_CODE_PICKS; attempt += 1) {
     await page.getByLabel('6-digit code', { exact: false }).fill(await staffTotpCode(email));
+    // The form posts to the page's own address (a Server Action).
+    const path = new URL(page.url()).pathname;
+    const answered = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === path, { timeout: 15_000 });
     await page.getByRole('button', { name: button }).click();
-    const used = page.getByText('This code has just been used', { exact: false });
-    const moved = page.waitForURL((url) => !/\/(sign-in\/two-factor|account\/security)/.test(url.pathname), { timeout: 10_000 }).then(() => 'moved' as const);
-    const outcome = await Promise.race([moved, used.waitFor({ timeout: 10_000 }).then(() => 'used' as const)]).catch(() => 'timeout' as const);
-    if (outcome !== 'used') return;
+    const answer = await answered.catch(() => null);
+    const redirected = answer !== null && (await answer.headerValue('x-action-redirect')) !== null;
+    if (answer !== null && !redirected) {
+      // Refused: pick again only when the refusal is "just been used" (a stale one is fine too, as
+      // this answer was a refusal as well); any other refusal is for the test to assert.
+      const used = await page
+        .getByText('This code has just been used', { exact: false })
+        .waitFor({ timeout: 5_000 })
+        .then(() => true, () => false);
+      if (used) continue;
+      return;
+    }
+    // Moved on, or no answer in time: the test's own assertions take it from here.
+    await page.waitForURL((url) => !codePage(url), { timeout: 10_000 }).catch(() => {});
+    return;
   }
   throw new Error('every TOTP code was taken');
 }
 
-/** Signs in with a password and, when the account asks for it, the staff TOTP code. */
-export async function signInWithPassword(page: Page, email: string, password: string): Promise<void> {
-  const first = await authPost(page, '/sign-in/email', { email, password });
+/**
+ * Signs in with a password and, when the account asks for it, the staff TOTP code: from the
+ * context's address, or from `address` (see authPost).
+ */
+export async function signInWithPassword(page: Page, email: string, password: string, address?: string): Promise<void> {
+  const first = await authPost(page, '/sign-in/email', { email, password }, address);
   expect(first.status(), await first.text()).toBe(200);
   const body = (await first.json()) as { twoFactorRedirect?: boolean };
   if (body.twoFactorRedirect) {
-    // Another worker may take the same code between the pick and the request: pick again.
-    let second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) });
-    for (let retry = 0; retry < 3 && second.status() === 401; retry += 1) {
+    // Another worker may take the same code between the pick and the request: pick again. The
+    // server does not count a code refused as used as a failed attempt (src/server/auth/hooks.ts),
+    // and each pick waits for a step with a free code, so the bound is one of time: a worker can
+    // lose several races in a row to others that sign the same staff account in.
+    let second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) }, address);
+    for (let retry = 0; retry < STAFF_CODE_PICKS && second.status() === 401; retry += 1) {
       if (((await second.json()) as { code?: string }).code !== 'CODE_ALREADY_USED') break;
-      second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) });
+      second = await authPost(page, '/two-factor/verify-totp', { code: await staffTotpCode(email) }, address);
     }
     expect(second.status(), await second.text()).toBe(200);
   }
 }
 
-/** Signs the page's context in as a seeded demo account, a staff role, `user` or a new account. */
-export async function signInAs(page: Page, target: SignInTarget): Promise<SignedInAccount> {
+/**
+ * Signs the page's context in as a seeded demo account, a staff role, `user` or a new account;
+ * the sign-in comes from `options.address` when given (see authPost).
+ */
+export async function signInAs(page: Page, target: SignInTarget, options: { address?: string } = {}): Promise<SignedInAccount> {
   if (target === 'new') {
     const account = await createConfirmedAccount(page);
-    await signInWithPassword(page, account.email, account.password);
+    await signInWithPassword(page, account.email, account.password, options.address);
     return account;
   }
   const slug = slugFor(target);
   const account = { email: demoAccountEmail(slug), password: demoPassword(), slug };
-  await signInWithPassword(page, account.email, account.password);
+  await signInWithPassword(page, account.email, account.password, options.address);
   return account;
 }
 
@@ -240,10 +278,12 @@ const signedInFor = new WeakMap<Page, SignInTarget>();
 /**
  * Signs the page in as a route of e2e/routes.ts needs (`signInAs`), once per page and account
  * kind, so that a loop over the routes checks the guarded pages themselves, not the sign-in page
- * they send an anonymous visitor to.
+ * they send an anonymous visitor to. A loop signs in as several accounts within seconds (M08 adds
+ * four in a row), and sign-in allows 3 requests in 10 s per address: each sign-in comes from a
+ * client address of its own.
  */
 export async function signInForRoute(page: Page, route: { signInAs?: SignInTarget }): Promise<void> {
   if (!route.signInAs || signedInFor.get(page) === route.signInAs) return;
-  await signInAs(page, route.signInAs);
+  await signInAs(page, route.signInAs, { address: clientAddress() });
   signedInFor.set(page, route.signInAs);
 }

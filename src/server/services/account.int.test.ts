@@ -255,12 +255,14 @@ describe('landingPath', () => {
     expect(await landingPath(account.id, '/account/security')).toBe('/account/security');
 
     expect((await call(token, 'POST', '/account/onboard', { primaryName: 'Demo Lander' })).status).toBe(200);
-    expect(await landingPath(account.id, undefined)).toBe('/account');
-    expect(await landingPath(account.id, '/onboarding')).toBe('/account');
+    // M08: signing in lands on the dashboard.
+    expect(await landingPath(account.id, undefined)).toBe('/dashboard');
+    expect(await landingPath(account.id, '/onboarding')).toBe('/dashboard');
+    expect(await landingPath(account.id, '/account')).toBe('/account');
     expect(await landingPath(account.id, '/schools')).toBe('/schools');
     // Never another site, also when dot segments would make the path protocol-relative.
-    expect(await landingPath(account.id, '/.//example.test')).toBe('/account');
-    expect(await landingPath(account.id, 'https://example.test/')).toBe('/account');
+    expect(await landingPath(account.id, '/.//example.test')).toBe('/dashboard');
+    expect(await landingPath(account.id, 'https://example.test/')).toBe('/dashboard');
 
     // The terms get a new version: the grant the account gave is for the old one, so it is asked
     // again, even though it already has a profile.

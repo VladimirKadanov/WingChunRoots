@@ -17,7 +17,7 @@ import { useFormStatus } from 'react-dom';
 import { AlertIcon, CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { fieldId, type FormState } from '@/lib/form-state';
+import { doneId, fieldId, type FormState, messageId, summaryId } from '@/lib/form-state';
 
 export const fieldClassName = cx(
   'block min-h-12 w-full min-w-0 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg',
@@ -47,9 +47,7 @@ export function useHydrated(): boolean {
 }
 
 /** The ids focus moves to (see the top of this file). */
-export const summaryId = (form: string) => `${form}-summary`;
-export const messageId = (form: string) => `${form}-message`;
-export const doneId = (form: string) => `${form}-done`;
+export { doneId, messageId, summaryId } from '@/lib/form-state';
 
 /** Moves the focus after a submit: see the top of this file. */
 export function useFocusOnError(formId: string, state: FormState) {
@@ -216,6 +214,8 @@ export function TextField({
   enterKeyHint,
   maxLength,
   minLength,
+  min,
+  max,
   lang,
   defaultValue,
   spellCheck,
@@ -226,12 +226,16 @@ export function TextField({
   className,
   inputClassName,
 }: BaseFieldProps & {
-  type?: 'text' | 'email' | 'password';
+  /** 'date' (M08): the native date picker, value "YYYY-MM-DD". */
+  type?: 'text' | 'email' | 'password' | 'date';
   autoComplete: string;
   inputMode?: 'text' | 'email' | 'numeric';
   enterKeyHint?: EnterKeyHint;
   maxLength?: number;
   minLength?: number;
+  /** For type 'date': the first and last day the picker offers, "YYYY-MM-DD" (M08). */
+  min?: string;
+  max?: string;
   lang?: string;
   defaultValue?: string;
   spellCheck?: boolean;
@@ -266,6 +270,8 @@ export function TextField({
           enterKeyHint={enterKeyHint}
           maxLength={maxLength}
           minLength={minLength}
+          min={min}
+          max={max}
           lang={lang}
           translate={translate}
           spellCheck={password ? false : spellCheck}

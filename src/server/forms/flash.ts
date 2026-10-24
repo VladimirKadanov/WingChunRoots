@@ -33,6 +33,12 @@ const MAX_COOKIE_LENGTH = 3800;
 export interface FormPlace {
   form: string;
   page: string;
+  /**
+   * For a form far down a long page: the id of the element that shows the outcome there
+   * (outcomeTarget() in src/lib/form-state.ts). The browser opens the page at it, scrolls it into
+   * view and, when it takes the focus, focuses it (M08 review round 1, a11y-webview-1).
+   */
+  anchor?: string;
 }
 
 function signature(payload: string): Buffer {
@@ -56,15 +62,23 @@ function cleanState(value: unknown): FormState | null {
 }
 
 /** Whether React posted this Server Action with fetch (JavaScript), not the browser a plain form. */
-async function postedByReact(): Promise<boolean> {
+export async function postedByReact(): Promise<boolean> {
   return (await headers()).has('next-action');
 }
 
-/** The address of `page` with `?outcome=<id>`: always a path on this site. */
-export function outcomeUrl(page: string, id: string): string {
+/**
+ * The address of `page` with `?outcome=<id>`: always a path on this site. It always ends with a
+ * fragment (M08 review round 1, a11y-webview-1): a redirect without one keeps the fragment of the
+ * page that posted (#give-plan after a "Give …" link, #main after the skip link), and a document
+ * opened at a fragment that names an element skips `autofocus`. With `anchor` (letters, digits,
+ * "-" and "_" only) the page opens at that element; without, the fragment is empty: `autofocus`
+ * then focuses the outcome, though Chromium leaves a page opened at any fragment scrolled to the
+ * top, so a form far down a page passes its anchor.
+ */
+export function outcomeUrl(page: string, id: string, anchor = ''): string {
   const url = new URL(page.startsWith('/') && !page.startsWith('//') ? page : '/', 'http://local.invalid');
   url.searchParams.set(OUTCOME_PARAM, id);
-  return `${url.pathname}${url.search}`;
+  return `${url.pathname}${url.search}#${/^[\w-]{1,160}$/.test(anchor) ? anchor : ''}`;
 }
 
 /**
@@ -87,7 +101,7 @@ export async function formResult(place: FormPlace, state: FormState): Promise<Fo
       secure: appUrl().startsWith('https:'),
     });
   }
-  redirect(outcomeUrl(place.page, id));
+  redirect(outcomeUrl(place.page, id, place.anchor));
 }
 
 /** Reads a kept result without the request (the unit tests): the state, or null. */

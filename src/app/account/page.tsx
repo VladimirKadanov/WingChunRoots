@@ -1,6 +1,11 @@
 // /account (milestone M02): the signed-in account and its own person. The data comes from the
 // account.me and account.twoFactor procedures (the same ones /api/v1 serves). Reads the session,
 // so the page renders per request (instant = false, docs/adr/0004-auth.md).
+//
+// M08 adds the unread count of the notifications to the dashboard link. It is a convenience, not
+// what the page is for: it is read with pageRead(), and when that read fails (a lock on the
+// notification table past the statement timeout, say) the link simply leaves the count out and the
+// page renders as it did before M08 (M08 polish, note 1; plan §5.6).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -16,6 +21,7 @@ import { cx } from '@/lib/cx';
 import { isStaffRole } from '@/server/auth/principal';
 import { guardRoute } from '@/server/auth/web';
 import { documentsFor } from '@/server/legal/documents';
+import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { signOutAction } from './actions';
 
@@ -53,7 +59,9 @@ export default async function AccountPage() {
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const client = serverClient(await headers(), guard.principal);
-  const [me, tf] = await Promise.all([client.account.me(), client.account.twoFactor()]);
+  const [me, tf, notifications] = await Promise.all([client.account.me(), client.account.twoFactor(), pageRead(client.notifications.list())]);
+  // null when the read failed: serverClient() has logged it in one safe line; the link goes without the count.
+  const unread = notifications?.unread ?? 0;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
   const original = names.find((name) => !name.isPrimary && name.kind !== 'romanization');
@@ -100,6 +108,14 @@ export default async function AccountPage() {
         <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
           {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your account</span>}
         </h1>
+
+        {/* M08: teachers, requests, schools, notifications and the plan; with the unread count (review round 1, design-7). */}
+        <p className="mt-5">
+          <Link href="/dashboard" data-testid="open-dashboard" className={buttonVariants({ variant: 'secondary' })}>
+            Open your dashboard{unread > 0 ? ` (${unread} unread)` : ''}
+            <ArrowRightIcon />
+          </Link>
+        </p>
 
         <div className="mt-8 grid gap-10">
           <Section id="profile-heading" title="Profile">
