@@ -66,6 +66,7 @@ Rules:
 - **Cloud session (this sandbox):** no Docker daemon; apt.postgresql.org is blocked. The SessionStart hook (`.claude/settings.json` → `scripts/cloud-setup.sh`) installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive, creates `wingchunroots_test` (UTF8, `C.UTF-8`) and exports `TEST_DATABASE_URL`. If those variables are missing, run `eval "$(scripts/cloud-setup.sh --print-env)"`.
 - **Browsers:** never run `playwright install` in a cloud session. The preinstalled Chromium is used through `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects another build. `mobile-webkit` runs only in CI (`CI=true`).
 - **Local (owner):** Windows with Docker Desktop + WSL2, repository inside the WSL2 filesystem; `docker compose up -d --wait` (PostGIS 18-3.6, Mailpit, SeaweedFS). See `README.md`.
+- **Local, Windows without WSL2:** repository on a Windows drive, commands in Git Bash; Node 24 via nvm for Windows, pnpm via `npm install --global` (not Corepack), psql 15+ on `PATH`, `POSTGRES_PORT=5433` (and the port in `DATABASE_URL`/`TEST_DATABASE_URL`) when a native PostgreSQL holds 5432, `PW_WORKERS=1` in `.env` for E2E. Code and tests stay path-agnostic: compare paths with `/` separators and start CLIs through `process.execPath`, never `node_modules/.bin/*`. See `README.md`.
 - **CI:** GitHub Actions, required check `ci`; PostgreSQL 18 service container; Chromium and WebKit.
 
 ## 5. Module boundaries (plan §6.1)
