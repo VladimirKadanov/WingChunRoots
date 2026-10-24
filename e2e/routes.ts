@@ -47,6 +47,11 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/admin', name: 'admin', status: 200, milestone: 'M02', signInAs: 'admin' },
   { path: '/legal/terms', name: 'terms', status: 200, milestone: 'M02' },
   { path: '/legal/privacy', name: 'privacy', status: 200, milestone: 'M02' },
+  // People and their lineage (M04): a profile, its list view, and the page a hidden or missing
+  // person gets (the same for both, plan §6.4).
+  { path: '/people/demo-two-lineages', name: 'person', status: 200, milestone: 'M04', key: true },
+  { path: '/people/demo-two-lineages/lineage', name: 'person-lineage', status: 200, milestone: 'M04', key: true },
+  { path: '/people/demo-claim-only-teacher', name: 'person-not-on-record', status: 404, milestone: 'M04' },
   // The not-found page, through a path that no route will ever use.
   { path: '/demo-no-such-page', name: 'not-found', status: 404, milestone: 'M00b' },
   // Plans and dashboards (M08). The dashboards of demo accounts that no test changes: Free Sifu at

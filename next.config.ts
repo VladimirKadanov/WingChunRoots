@@ -20,6 +20,12 @@ function securityHeaders(appUrl: string | undefined = process.env.APP_URL): { ke
 }
 
 const nextConfig: NextConfig = {
+  // M04: inlined at build time. Only the E2E build (WCR_E2E_BUILD=1, `pnpm build:e2e`) compiles in
+  // the test fault switch; a deployable build drops it (src/server/faults.ts).
+  env: { WCR_E2E_BUILD: process.env.WCR_E2E_BUILD === '1' ? '1' : '' },
+  // M04: scripts/verify.d/M04.sh makes a deployable build in a directory of its own, beside the
+  // E2E build in .next. Unset everywhere else.
+  ...(process.env.WCR_DIST_DIR ? { distDir: process.env.WCR_DIST_DIR } : {}),
   // Explicit, opt-in caching with 'use cache' (plan §3.1, §6.4).
   cacheComponents: true,
   partialPrefetching: true,

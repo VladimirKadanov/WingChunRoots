@@ -6,9 +6,11 @@
  * `SCREENSHOTS_MILESTONE=M05 pnpm screenshots` (those of one milestone).
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { expect, test, type Page } from '@playwright/test';
 
-import { closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
@@ -46,6 +48,55 @@ const STATES: readonly ScreenState[] = [
       await page.getByLabel('E-mail address', { exact: true }).fill(uniqueEmail('screenshot'));
       await page.getByRole('button', { name: 'Send the reset link' }).click();
       await expect(page.getByRole('heading', { level: 1, name: 'Check your inbox' })).toBeVisible();
+    },
+  },
+  {
+    // The profile when its lineage read fails (the test fault switch, src/server/faults.ts).
+    name: 'person-error',
+    milestone: 'M04',
+    async reach(page) {
+      await page.context().addCookies([{ name: 'wcr-test-fault', value: `lineage-once:${randomUUID()}`, url: BASE_URL }]);
+      await page.goto('/people/demo-two-lineages');
+      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    },
+  },
+  {
+    // The profile when its own read fails (the person-once test fault).
+    name: 'person-profile-error',
+    milestone: 'M04',
+    async reach(page) {
+      await page.context().addCookies([{ name: 'wcr-test-fault', value: `person-once:${randomUUID()}`, url: BASE_URL }]);
+      await page.goto('/people/demo-two-lineages');
+      await expect(page.getByRole('heading', { level: 1, name: 'This profile could not be loaded' })).toBeVisible();
+    },
+  },
+  {
+    // A hidden person's address: the 404 "Not on the record" (src/proxy.ts).
+    name: 'person-not-on-record',
+    milestone: 'M04',
+    async reach(page) {
+      const response = await page.goto('/people/demo-claim-only-teacher');
+      expect(response?.status()).toBe(404);
+      await expect(page.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+    },
+  },
+  {
+    // A hub's profile: the 12 earliest of its students, the rest in the list view.
+    name: 'person-hub',
+    milestone: 'M04',
+    async reach(page) {
+      await page.goto('/people/demo-hub-a');
+      await expect(page.getByRole('list', { name: /^Students of / })).toBeVisible();
+    },
+  },
+  {
+    // A student's own pending request on the teacher's profile (DEFAULT D03).
+    name: 'person-own-pending',
+    milestone: 'M04',
+    async reach(page) {
+      await signInAs(page, 'demo-pending');
+      await page.goto('/people/demo-hub-a');
+      await expect(page.locator('li[data-person="demo-pending"]').getByText('Pending', { exact: true })).toBeVisible();
     },
   },
   {

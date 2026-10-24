@@ -175,6 +175,19 @@
   .link:hover {
     text-decoration-color: currentColor;
   }
+  /* A person's name as a link (the lineage screens, M04): only the Latin name is underlined, with
+     a hairline that goes full strength on hover and focus; the original script beside it is not. */
+  .name-link .name-latin {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 0.18em;
+    transition: text-decoration-color var(--duration-fast) var(--ease-out);
+  }
+  .name-link:hover .name-latin,
+  .name-link:focus-visible .name-latin {
+    text-decoration-color: currentColor;
+  }
   /* A link inside a sentence on a touch screen: a hit area about 44 px tall. Vertical padding of
      an inline box grows what a tap hits without moving a line (plan §5.8 (b), CLAUDE.md §10). */
   @media (pointer: coarse) {

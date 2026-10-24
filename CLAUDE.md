@@ -124,7 +124,7 @@ Never in the repository. `.env.example` lists names only; `.env` is local and gi
 
 ## 13. Next.js
 
-Read `AGENTS.md` and the version-matched docs in `node_modules/next/dist/docs/` before writing Next.js code. Telemetry is off (`NEXT_TELEMETRY_DISABLED=1` in the package scripts, CI and `.claude/settings.json`) and `experimental.agentFeedback` is `false` — a default decision (plan §10.2, row 10) recorded in `docs/adr/0001-stack.md`. There is no `proxy.ts` in Phase 1; if one is added, its matcher excludes `api`, `healthz` and `_next` (plan §6.1).
+Read `AGENTS.md` and the version-matched docs in `node_modules/next/dist/docs/` before writing Next.js code. Telemetry is off (`NEXT_TELEMETRY_DISABLED=1` in the package scripts, CI and `.claude/settings.json`) and `experimental.agentFeedback` is `false` — a default decision (plan §10.2, row 10) recorded in `docs/adr/0001-stack.md`. `src/proxy.ts` runs only for `/people/:slug` and `/people/:slug/lineage` (the 404 of a hidden person; owner decision 2026-10-19, M04, ADR 0008); its matcher never includes `api`, `healthz` or `_next` (plan §6.1).
 
 ## 14. Forbidden packages
 

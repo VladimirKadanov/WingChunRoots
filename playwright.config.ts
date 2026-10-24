@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 
 import { defineConfig } from '@playwright/test';
 
+import { e2eBuildProblem } from './e2e/build-check';
 import { buildProjects, runPaths } from './e2e/projects';
 
 const ci = process.env.CI === 'true';
@@ -9,7 +10,14 @@ const ci = process.env.CI === 'true';
 const port = Number(process.env.E2E_PORT || 3100);
 const baseURL = `http://127.0.0.1:${port}`;
 // The origin the app builds its e-mail links with and accepts requests from (M02): the test server.
-const serverEnv = { APP_URL: baseURL };
+// M04: the test fault switch, honoured only with this loopback APP_URL and only in the E2E build
+// (`pnpm build:e2e`; a deployable build refuses to start with it, src/server/faults.ts).
+const serverEnv = { APP_URL: baseURL, WCR_TEST_FAULTS: 'lineage-once,person-once' };
+// So the run stops at once with "run `pnpm build:e2e` first" when the build in .next is missing or
+// deployable (`pnpm build`), instead of at the web server with a bare exit code (e2e/build-check.ts).
+// Listing the tests starts no server and needs no build.
+const buildProblem = process.argv.includes('--list') ? null : e2eBuildProblem(process.env.WCR_DIST_DIR || '.next');
+if (buildProblem) throw new Error(buildProblem);
 // The specs that lock a whole table run alone, in a run of their own (e2e/projects.ts,
 // EXCLUSIVE_SPEC): PW_EXCLUSIVE=1, after the ordinary run (scripts/verify.sh does both).
 const exclusive = process.env.PW_EXCLUSIVE === '1';
@@ -51,7 +59,7 @@ export default defineConfig({
   webServer: [
     {
       name: 'web',
-      // `pnpm build` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
+      // `pnpm build:e2e` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
       // The log is test-results/server.log (test-results/server-exclusive.log in the exclusive run).
       command: `pnpm start --hostname 127.0.0.1 --port ${port} > ${paths.serverLog} 2>&1`,
       url: `${baseURL}/`,

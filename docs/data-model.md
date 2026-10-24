@@ -116,8 +116,8 @@
 
 | Изглед | Съдържа | Колони |
 |---|---|---|
-| `v_public_person` | Само `visibility = 'public'` и без изтритите | `id`, `slug`, `kind`, `life_status`, `stewardship`, `country_code`, `display_name` (основното име), `alt_names` (JSON масив с останалите имена: `value`, `script`, `lang`, `kind`, `romanization`), `bio` (на английски, иначе първата по език), `created_at`, `updated_at`. Без `birth_date`, без потребителски идентификатори |
-| `v_public_edge` | Само `status` `verified` или `in_arbitration` с `visibility = 'public'`, между двама публични и неизтрити души с основно име (същото условие като във `v_public_person`, така че всяко ребро сочи към възел, който публичният граф има), в неизтрита линия | `id`, `teacher_person_id`, `student_person_id`, `lineage_id`, `status`, `verification_path`, `is_display_primary`, `visibility`, `confirmed_at`, `periods` (JSON: `startsOn`, `endsOn`, `precision`, `ongoing`), `created_at`, `updated_at` |
+| `v_public_person` | Само `visibility = 'public'` и без изтритите | `id`, `slug`, `kind`, `life_status`, `stewardship`, `country_code`, `display_name` (основното име), `alt_names` (JSON масив с останалите имена: `value`, `script`, `lang`, `kind`, `romanization`), `bio` (на английски, иначе първата по език), `created_at`, `updated_at`, `city_name` (от M04: името на града от `place`, никога точка). Без `birth_date`, без потребителски идентификатори |
+| `v_public_edge` | Само `status` `verified` или `in_arbitration` с `visibility = 'public'`, между двама публични и неизтрити души с основно име (същото условие като във `v_public_person`, така че всяко ребро сочи към възел, който публичният граф има), в неизтрита линия | `id`, `teacher_person_id`, `student_person_id`, `lineage_id`, `status`, `verification_path`, `is_display_primary`, `visibility`, `confirmed_at`, `periods` (JSON: `startsOn`, `endsOn`, `precision`, `ongoing`), `created_at`, `updated_at`, `lineage_slug`, `lineage_name`, `lineage_root_person_id` (от M04; коренът само когато е публична личност, иначе `NULL`, DEFAULT D22) |
 | `v_public_school` | Само `status = 'published'` и без изтритите | `id`, `slug`, `name`, `location_privacy`, `precision` (`exact` или `city`), `public_point` (при `city_only` винаги центроидът на града от `place`, независимо какво пише в `school.public_point`: втора защита след тригера от §5), `place_id`, `city_name`, `country_code`, `description`, `website_url`, `last_activity_at`, `instructor_person_ids` (само публичните инструктори), `created_at`, `updated_at` |
 
 Чакащите заявки, отказаните, оттеглените и отменените връзки, хората без публична връзка (например `demo-claim-only-teacher`), точните координати, адресите, доказателствата и одитът не са достъпни за публичната роля по никакъв път.
@@ -224,6 +224,10 @@
 8. `*_auth_accounts`: таблиците `auth_*`, външните ключове от всяка колона `*_user_id` към `auth_user` (без `audit_log.actor_user_id`), `person.place_id` и `person.training_start_year`, новите видове съгласия.
 9. `*_auth_roles_sessions`: правата на `app_rw` върху `auth_*` (и изричен `REVOKE` за `app_public_ro`) и тригерът `auth_user_end_sessions`.
 10. `*_auth_hardening` (първи кръг на прегледа): таблицата `auth_throttle` с правата ѝ, индекс на всеки външен ключ към `auth_user`, който нямаше (изтриването на непотвърден акаунт и проверките `RESTRICT` не сканират цели таблици), и `CHECK`-овете `auth_user_name_length` и `auth_user_no_image`.
+
+Миграцията в M04:
+
+11. `*_public_views_lineage_city`: `v_public_person` получава `city_name`, а `v_public_edge` — `lineage_slug`, `lineage_name` и `lineage_root_person_id` (за профила и списъчния изглед, `docs/api/lineage.md`). `CREATE OR REPLACE VIEW` добавя колоните накрая; филтрите, редът на колоните и правата остават, така че `app_public_ro` чете същите три изгледа.
 
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 
