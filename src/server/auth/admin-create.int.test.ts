@@ -3,6 +3,7 @@
 // address and 2FA first), the ended sessions and the role.change audit row.
 
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -15,7 +16,11 @@ import type { TestDatabase } from '../db/testing';
 import { createAccount, sessionCount, signIn, startAuthTestDatabase, stopAuthTestDatabase, userRow } from './test-support';
 
 const run = promisify(execFile);
-const TSX = path.resolve('node_modules/.bin/tsx');
+// tsx's CLI entry run by this Node, not node_modules/.bin/tsx: that is a shell script, which
+// execFile cannot start on Windows.
+const require = createRequire(import.meta.url);
+const TSX_CLI = path.join(path.dirname(require.resolve('tsx/package.json')), (require('tsx/package.json') as { bin: string }).bin);
+const TSX_ARGS = [TSX_CLI, 'src/server/auth/cli.ts'];
 
 let testDb: TestDatabase;
 
@@ -31,7 +36,7 @@ afterAll(async () => {
 async function adminCreate(...args: string[]): Promise<{ code: number; out: string }> {
   const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: testDb.url, NODE_ENV: 'development' };
   try {
-    const { stdout, stderr } = await run(TSX, ['src/server/auth/cli.ts', ...args], { env });
+    const { stdout, stderr } = await run(process.execPath, [...TSX_ARGS, ...args], { env });
     return { code: 0, out: stdout + stderr };
   } catch (error) {
     const e = error as { code?: number; stdout?: string; stderr?: string };
@@ -101,7 +106,7 @@ describe('pnpm admin:create', () => {
   it('refuses with NODE_ENV=production', async () => {
     const account = await createAccount({ twoFactor: true, label: 'prod' });
     const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: testDb.url, NODE_ENV: 'production' };
-    const result = await run(TSX, ['src/server/auth/cli.ts', '--email', account.email], { env }).catch(
+    const result = await run(process.execPath, [...TSX_ARGS, '--email', account.email], { env }).catch(
       (error: { code?: number; stderr?: string }) => ({ code: error.code, stdout: '', stderr: error.stderr ?? '' }),
     );
     expect((result as { code?: number }).code).toBe(1);
