@@ -16,7 +16,7 @@
 // over the rendered prompt and /plans for that reason.
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -24,6 +24,11 @@ import { describe, expect, it } from 'vitest';
 import { FOMO_RULES, findFomo, VALUE } from './no-fomo';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
+
+/** A file's path from the repository root with `/` separators, on Windows as well. */
+function repoPath(file: string): string {
+  return relative(ROOT, file).split(sep).join('/');
+}
 
 /**
  * Where the app's English copy lives: pages, components, e-mail and notification templates, the
@@ -217,7 +222,7 @@ function copyFiles(): string[] {
     readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
       .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !name.includes('__boundary-probe-'))
       .map((name) => join(ROOT, dir, name))
-      .filter((file) => !NOT_COPY.has(relative(ROOT, file))),
+      .filter((file) => !NOT_COPY.has(repoPath(file))),
   ).sort();
 }
 
@@ -492,7 +497,7 @@ describe('the English copy of the app', () => {
   it('has no countdown, urgency, scarcity, social pressure or shaming', () => {
     const files = copyFiles();
     // The scan covers the screens of M08; an empty or wrong folder list cannot pass.
-    const names = files.map((file) => relative(ROOT, file));
+    const names = files.map(repoPath);
     expect(names).toEqual(
       expect.arrayContaining([
         'src/components/plans/upgrade-prompt.tsx',
@@ -507,7 +512,7 @@ describe('the English copy of the app', () => {
     expect(names).not.toContain('src/lib/copy/no-fomo.ts');
     expect(files.length).toBeGreaterThan(50);
 
-    const findings = files.flatMap((file) => scan(relative(ROOT, file), readFileSync(file, 'utf8')));
+    const findings = files.flatMap((file) => scan(repoPath(file), readFileSync(file, 'utf8')));
     expect([...new Set(findings)]).toEqual([]);
   });
 });
