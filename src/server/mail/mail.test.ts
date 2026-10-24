@@ -97,7 +97,8 @@ describe('mailConfig', () => {
   it('reads MAIL_TRANSPORT, SMTP_URL, MAIL_FILE_DIR and MAIL_FROM, and refuses anything else', () => {
     expect(mailConfig({ MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtp://mailpit:1025' })).toMatchObject({ transport: 'smtp', smtpUrl: 'smtp://mailpit:1025' });
     expect(mailConfig({ MAIL_FILE_DIR: '/tmp/x', MAIL_FROM: 'Demo <demo@wingchunroots.test>' })).toMatchObject({
-      fileDir: '/tmp/x',
+      // The absolute path of the platform: '/tmp/x' on Linux, '<drive>:\tmp\x' on Windows.
+      fileDir: path.resolve('/tmp/x'),
       from: 'Demo <demo@wingchunroots.test>',
     });
     // Without SMTP_URL, the Mailpit port of docker-compose.yml.
