@@ -22,6 +22,11 @@ if (buildProblem) throw new Error(buildProblem);
 // EXCLUSIVE_SPEC): PW_EXCLUSIVE=1, after the ordinary run (scripts/verify.sh does both).
 const exclusive = process.env.PW_EXCLUSIVE === '1';
 const paths = runPaths(exclusive);
+// Fewer parallel workers on a slower machine (PW_WORKERS=2): unset keeps Playwright's default.
+const workers = process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : undefined;
+if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) {
+  throw new Error(`PW_WORKERS must be a positive whole number, not "${process.env.PW_WORKERS}".`);
+}
 // Created here rather than with `mkdir -p` in webServer.command, which must also run in cmd.exe.
 mkdirSync('test-results', { recursive: true });
 
@@ -31,6 +36,7 @@ export default defineConfig({
   // Artifacts live below test-results/ so the server log (test-results/server.log) survives.
   outputDir: paths.outputDir,
   fullyParallel: true,
+  workers,
   forbidOnly: ci,
   retries: 0,
   reporter: ci
