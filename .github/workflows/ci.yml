@@ -27,7 +27,8 @@ jobs:
     # CI), against PostgreSQL 18 + PostGIS 3.6 and Mailpit.
     name: verify (Node 24, PostgreSQL 18, Playwright)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 30 minutes stopped the job in checks:M03 after the whole suite had passed (M04, run 39198539517).
+    timeout-minutes: 60
     services:
       postgres:
         image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
@@ -156,6 +157,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # M04: docs/api/openapi.json matches the router (plan §6.8).
+      - run: pnpm api:openapi --check
 
   security:
     name: security (gitleaks, pnpm audit)

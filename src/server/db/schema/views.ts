@@ -35,6 +35,8 @@ export const vPublicPerson = pgView('v_public_person', {
   bio: text('bio'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  // M04: the city of residence or activity, at city level only (never a point).
+  cityName: text('city_name'),
 }).existing();
 
 /**
@@ -55,6 +57,11 @@ export const vPublicEdge = pgView('v_public_edge', {
   periods: jsonb('periods').$type<PublicPeriod[]>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  // M04: the lineage of the edge. The root is set only when v_public_person shows that person
+  // (DEFAULT D22: a lineage's root may be unknown).
+  lineageSlug: text('lineage_slug').notNull(),
+  lineageName: text('lineage_name').notNull(),
+  lineageRootPersonId: uuid('lineage_root_person_id'),
 }).existing();
 
 /**

@@ -7,8 +7,8 @@
 //
 // "Initially loaded" = the root main files of the build manifest (the runtime and the router)
 // plus the chunks of every client entry in the route's client reference manifest (layouts,
-// templates, loading, error and not-found boundaries, the page). Only the global error page's
-// own chunks and the nomodule polyfills that modern browsers skip are not counted. For every prerendered
+// templates, loading, error and not-found boundaries, the page). Only the built-in global error
+// page's own chunks and the nomodule polyfills that modern browsers skip are not counted. For every prerendered
 // route the script also reads its HTML and fails when a <script src> there is missing from
 // that set, so a change in Next.js's manifests cannot shrink the count unnoticed.
 //
@@ -36,11 +36,12 @@ export const ROUTE_BUDGETS = {
 };
 
 /**
- * The client entry that loads only when its state renders: the global error page. The
- * not-found, forbidden and unauthorized boundaries are in the tree of every page and load with
- * it (the HTML check below found that).
+ * The client entry that loads only when its state renders: Next.js's built-in global error page.
+ * The not-found, forbidden and unauthorized boundaries are in the tree of every page and load with
+ * it (the HTML check below found that), and so does an app's own src/app/global-error.tsx (M04:
+ * the prerendered pages load its chunks), so those are counted.
  */
-const ON_DEMAND_ENTRY = /\/global-error$/;
+const ON_DEMAND_ENTRY = /\/builtin\/global-error$/;
 
 export function budgetFor(route) {
   return ROUTE_BUDGETS[route] ?? DEFAULT_BUDGET;

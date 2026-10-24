@@ -277,8 +277,23 @@ if [ "${#CACHED[@]}" -gt 0 ]; then
 else
   ok "no session, cookies, headers or auth inside 'use cache' files (no cached file)"
 fi
-check "no proxy.ts or middleware.ts in Phase 1 (CLAUDE.md §13)" bash -c '
-  [ ! -e src/proxy.ts ] && [ ! -e proxy.ts ] && [ ! -e src/middleware.ts ] && [ ! -e middleware.ts ]'
+# CLAUDE.md §13 (owner decision 2026-10-19, M04, docs/adr/0008-person-pages-404.md): Phase 1 has
+# one proxy, src/proxy.ts, for the 404 of a hidden person, and it runs only for /people/:slug and
+# /people/:slug/lineage, so route handlers (api, healthz) and _next never pass through it (plan
+# §6.1). Strict: no middleware file of any kind, no proxy anywhere else (the project root, another
+# extension), and the one proxy has exactly those two matchers (src/proxy.test.ts checks real URLs).
+proxy_rule() {
+  local f matcher
+  for f in {,src/}{middleware,proxy}.{ts,tsx,js,jsx,mjs,mts,cjs,cts}; do
+    [ "$f" = src/proxy.ts ] && continue
+    [ ! -e "$f" ] || return 1
+  done
+  [ -e src/proxy.ts ] || return 0
+  [ "$(grep -oE 'matcher *:' src/proxy.ts | wc -l)" -eq 1 ] || return 1
+  matcher="$(tr -d '\n' < src/proxy.ts | grep -oE 'matcher: *\[[^]]*\]' | tr -d ' ')"
+  [ "$matcher" = "matcher:['/people/:slug','/people/:slug/lineage']" ]
+}
+check "no middleware file; the only proxy is src/proxy.ts with exactly ['/people/:slug', '/people/:slug/lineage'], never api, healthz or _next (plan §6.1, CLAUDE.md §13)" proxy_rule
 
 # 8. E2E and integration tests (Done when, items 2-4) ---------------------------------------------
 titles=(

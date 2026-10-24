@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
     "build": "NEXT_TELEMETRY_DISABLED=1 next build",
+    "build:e2e": "NEXT_TELEMETRY_DISABLED=1 WCR_E2E_BUILD=1 next build",
     "start": "NEXT_TELEMETRY_DISABLED=1 next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "NEXT_TELEMETRY_DISABLED=1 next typegen && tsc --noEmit",
@@ -30,7 +31,9 @@
     "notices": "tsx scripts/generate-notices.ts",
     "worker": "tsx src/worker.ts",
     "worker:dev": "tsx watch src/worker.ts",
-    "mail:check": "tsx src/server/jobs/cli.ts mail-check"
+    "mail:check": "tsx src/server/jobs/cli.ts mail-check",
+    "api:openapi": "tsx src/server/rpc/openapi-cli.ts",
+    "perf:queries": "tsx scripts/perf-queries.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

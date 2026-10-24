@@ -6,6 +6,7 @@
 // production nothing is checked here: `next dev` keeps starting without .env, and each setting is
 // still checked where it is used.
 
+import { checkTestFaults } from '../faults';
 import { mailSealKey } from '../mail/seal';
 import { appUrl, authSecret, ipHmacKey, trustedProxies } from './env';
 import { proxyList } from './ip';
@@ -15,9 +16,13 @@ type Env = Record<string, string | undefined>;
 /**
  * Throws when a production environment lacks a setting the accounts module needs: APP_URL (https
  * except on a loopback host), TRUSTED_PROXIES behind a public origin, every entry of it a valid
- * address or CIDR range, and the secrets BETTER_AUTH_SECRET, IP_HMAC_KEY and MAIL_SEAL_KEY.
+ * address or CIDR range, and the secrets BETTER_AUTH_SECRET, IP_HMAC_KEY and MAIL_SEAL_KEY. In
+ * every environment, it also refuses WCR_TEST_FAULTS unless APP_URL is a loopback host (M04,
+ * src/server/faults.ts).
  */
 export function checkProductionSettings(env: Env = process.env): void {
+  // M04: the test fault switch only ever runs behind a loopback APP_URL, in every environment.
+  checkTestFaults(env);
   if (env.NODE_ENV !== 'production') return;
   appUrl(env);
   proxyList(trustedProxies(env));

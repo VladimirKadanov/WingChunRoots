@@ -111,6 +111,16 @@ describe('check-bundle-budget', () => {
     ).toEqual(['static/chunks/layout.js', 'static/chunks/not-found.js', 'static/chunks/page.js', 'static/chunks/runtime.js']);
   });
 
+  it("counts the app's own global error page, which every prerendered page loads (M04)", () => {
+    expect(
+      initialChunks(['static/chunks/runtime.js'], {
+        '[project]/src/app/layout': ['static/chunks/layout.js'],
+        '[project]/src/app/global-error': ['static/chunks/layout.js', 'static/chunks/app-global-error.js'],
+        '[project]/src/app/page': ['static/chunks/page.js'],
+      }),
+    ).toEqual(['static/chunks/app-global-error.js', 'static/chunks/layout.js', 'static/chunks/page.js', 'static/chunks/runtime.js']);
+  });
+
   it('reads module scripts from HTML and ignores nomodule and inline scripts', () => {
     expect(
       htmlScripts(

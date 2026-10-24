@@ -350,7 +350,13 @@ if introduced M01; then
   step db:check pnpm db:check
   step db:reset+migrate+seed reset_migrate_seed
 fi
-step build pnpm build
+# From M04 the build that E2E runs against is the E2E build: it has the test fault switch, which a
+# deployable `pnpm build` does not (src/server/faults.ts; scripts/verify.d/M04.sh checks both).
+if introduced M04; then
+  step build pnpm build:e2e
+else
+  step build pnpm build
+fi
 step e2e run_e2e ${e2e_args[@]+"${e2e_args[@]}"}
 for m in ${checks[@]+"${checks[@]}"}; do
   step "checks:$m" run_checks "$m"
