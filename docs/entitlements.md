@@ -185,7 +185,7 @@
 
 ## 9. API
 
-Всяко четене и всяка промяна имат oRPC процедура, на `/api/rpc` за уеба и на `/api/v1` за бъдещото приложение (план §6.8). Server Actions само обвиват същите процедури (`SERVER_ACTION_TARGETS` в `src/server/rpc/parity.ts`; `api-parity.test.ts`).
+Всяко четене и всяка промяна имат oRPC процедура, на `/api/rpc` за уеба и на `/api/v1` за бъдещото приложение (план §6.8). Server Actions само обвиват същите процедури (`SERVER_ACTION_TARGETS` в `src/server/rpc/parity.ts`; `api-parity.test.ts`). Процедурите по-долу са и в договора OpenAPI [`docs/api/openapi.json`](api/openapi.json) (от M04): той се генерира от рутера с `pnpm api:openapi`, а `pnpm api:openapi --check` в CI пада, ако файлът изостане.
 
 **Неочаквана грешка** (преглед 2). Клиентът в процеса (`serverClient`, `src/server/rpc/server.ts`) записва неуспеха със същия прехващач като `/api/rpc` и `/api/v1` (`logProcedureFailure`, `src/server/rpc/failure-log.ts`): един ред с процедурата, вида на грешката и SQLSTATE, без вход, имейли и имена. Server Actions не хвърлят грешката нагоре (тогава Next.js би записал съобщението ѝ, в което може да има имейл): отговорът е „Something went wrong on our side; nothing was changed. Try again.“ (`formStateFromFailure()`), а въведените стойности остават. „Nothing was changed“ е вярно, защото всяка промяна чете отговора си в същата транзакция (`createGrant`, `revokeGrant`, `setAccountType`, `markNotificationsRead`).
 
