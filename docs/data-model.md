@@ -229,6 +229,10 @@
 
 11. `*_public_views_lineage_city`: `v_public_person` получава `city_name`, а `v_public_edge` — `lineage_slug`, `lineage_name` и `lineage_root_person_id` (за профила и списъчния изглед, `docs/api/lineage.md`). `CREATE OR REPLACE VIEW` добавя колоните накрая; филтрите, редът на колоните и правата остават, така че `app_public_ro` чете същите три изгледа.
 
+Миграцията в M08 (след M04: при сливането с `main` е генерирана наново върху миграцията на M04, със същия SQL):
+
+12. `*_m08_entitlements`: генерираната от схемата `pilot_access_request` с ограниченията и индексите ѝ (и частичния уникален `pilot_access_request_one_open_key`), `auth_user.account_type` с `auth_user_account_type_check` и частичният индекс `notification_user_id_unread_idx`; накрая, на ръка, правата: `app_rw` чете и пише `pilot_access_request`, а `REVOKE ALL` я затваря за `app_public_ro`.
+
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 
 Базата трябва да е с UTF-8 и локал `C.UTF-8`: при `LC_CTYPE=C` `pg_trgm` не извлича триграми от кирилица и китайски (`scripts/db-env-check.sh` и интеграционните тестове го проверяват с `show_trgm('Тестов')`).
