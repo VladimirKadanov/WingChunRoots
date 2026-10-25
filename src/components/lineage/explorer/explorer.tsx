@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { createParser, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
-import { Activity, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
+import { Activity, createContext, type ReactNode, use, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { CloseIcon, MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds } from '@/components/ink/legend';
@@ -53,7 +53,16 @@ import {
   type ViewKind,
 } from './state';
 
-const ExplorerCanvas = dynamic(() => import('./canvas'), { ssr: false, loading: () => null });
+/** The shape of the coming drawing, for the skeleton that stands in while React Flow's chunk loads. */
+const SkeletonShape = createContext<{ graph: LineageGraphDto | null; showHistorical: boolean }>({ graph: null, showHistorical: false });
+
+function CanvasLoading() {
+  return <Skeleton {...use(SkeletonShape)} />;
+}
+
+// The chunk is also asked for when the explorer mounts (ExplorerBody), so it loads while the worker
+// lays out the first scene, not after it.
+const ExplorerCanvas = dynamic(() => import('./canvas'), { ssr: false, loading: CanvasLoading });
 
 const parseAsId = createParser({
   parse: (value: string) => (isUuid(value) ? value.toLowerCase() : null),
@@ -290,6 +299,11 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const answer = narrow !== null && !query.isPlaceholderData ? graph : null;
 
   const layout = useLayoutWorker();
+  // React Flow's chunk loads in parallel with the worker's first layout, not after it (the
+  // dynamic import is the same one next/dynamic makes; the skeleton stands in until both are done).
+  useEffect(() => {
+    import('./canvas').catch(() => undefined);
+  }, []);
   // `source` is the answer of the read; `graph` what is drawn of it (plan §4.8: large fan-outs counted).
   const [laidOut, setLaidOut] = useState<{ source: LineageGraphDto; graph: LineageGraphDto; more: Map<string, number>; scene: Scene } | null>(null);
   // The answer whose layout failed: the error belongs to that answer only, not to the next one.
@@ -436,68 +450,70 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
             ) : !flow || !laidOut ? (
               <Skeleton graph={graph} showHistorical={params.show === 'historical'} />
             ) : (
-              <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
-                {ready ? null : (
-                  <p
-                    role="status"
-                    data-testid="explorer-relayout"
-                    className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
+              <SkeletonShape value={{ graph: laidOut.source, showHistorical: params.show === 'historical' }}>
+                <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
+                  {ready ? null : (
+                    <p
+                      role="status"
+                      data-testid="explorer-relayout"
+                      className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
+                    >
+                      Laying out the lineage…
+                    </p>
+                  )}
+                  <div
+                    data-testid="explorer-legend"
+                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
                   >
-                    Laying out the lineage…
-                  </p>
-                )}
-                <div
-                  data-testid="explorer-legend"
-                  className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
-                >
-                  <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} layout="wrap" />
-                </div>
-                {selected ? (
-                  <section
-                    aria-label={`Selected: ${selected.displayName}`}
-                    data-testid="explorer-panel"
-                    // A sheet along the bottom on a phone, clear of the people above it; on the right from md (plan §4.7).
-                    className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] grid gap-3 rounded-sm border border-border-strong bg-surface-1 p-4 shadow-pop [--seal-ground:var(--surface-1)] md:top-3 md:bottom-auto md:left-auto md:w-[min(20rem,calc(100%-1.5rem))]"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
-                        <span lang="und-Latn" translate="no">
-                          {selected.displayName}
-                        </span>
-                      </h2>
-                      <button
-                        type="button"
-                        aria-label="Close"
-                        onClick={() => setSelectedId(null)}
-                        className="-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
-                      >
-                        <CloseIcon size={18} />
-                      </button>
-                    </div>
-                    {selectedGeneration ? (
-                      <p className="text-sm text-fg-muted">
-                        <GenerationText label={selectedGeneration} />
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2">
-                      <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
-                        Open profile
-                      </Link>
-                      {selected.id !== focus ? (
-                        <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => centerOn(selected.id)}>
-                          Center on this person
+                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} layout="wrap" />
+                  </div>
+                  {selected ? (
+                    <section
+                      aria-label={`Selected: ${selected.displayName}`}
+                      data-testid="explorer-panel"
+                      // A sheet along the bottom on a phone, clear of the people above it; on the right from md (plan §4.7).
+                      className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] grid gap-3 rounded-sm border border-border-strong bg-surface-1 p-4 shadow-pop [--seal-ground:var(--surface-1)] md:top-3 md:bottom-auto md:left-auto md:w-[min(20rem,calc(100%-1.5rem))]"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
+                          <span lang="und-Latn" translate="no">
+                            {selected.displayName}
+                          </span>
+                        </h2>
+                        <button
+                          type="button"
+                          aria-label="Close"
+                          onClick={() => setSelectedId(null)}
+                          className="-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
+                        >
+                          <CloseIcon size={18} />
                         </button>
+                      </div>
+                      {selectedGeneration ? (
+                        <p className="text-sm text-fg-muted">
+                          <GenerationText label={selectedGeneration} />
+                        </p>
                       ) : null}
-                    </div>
-                    {selectedMore > 0 ? (
-                      // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
-                      <Link href={`/people/${selected.slug}/lineage#students-heading`} className="link text-sm">
-                        All students in the list view (+{selectedMore} not drawn)
-                      </Link>
-                    ) : null}
-                  </section>
-                ) : null}
-              </ExplorerCanvas>
+                      <div className="flex flex-wrap gap-2">
+                        <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
+                          Open profile
+                        </Link>
+                        {selected.id !== focus ? (
+                          <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => centerOn(selected.id)}>
+                            Center on this person
+                          </button>
+                        ) : null}
+                      </div>
+                      {selectedMore > 0 ? (
+                        // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
+                        <Link href={`/people/${selected.slug}/lineage#students-heading`} className="link text-sm">
+                          All students in the list view (+{selectedMore} not drawn)
+                        </Link>
+                      ) : null}
+                    </section>
+                  ) : null}
+                </ExplorerCanvas>
+              </SkeletonShape>
             )}
           </div>
         </div>

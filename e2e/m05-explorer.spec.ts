@@ -750,7 +750,10 @@ test.describe('M05 fixes B', () => {
   /** Records every layout request the page posts to the layout worker, and every answer. */
   const recordLayouts = (page: import('@playwright/test').Page) =>
     page.addInitScript(() => {
-      const log: { sent: { requestId: number; warmup: boolean; nodes: number }[]; answers: { requestId: number; type: string }[] } = { sent: [], answers: [] };
+      const log: { sent: { requestId: number; warmup: boolean; nodes: number }[]; answers: { requestId: number; type: string }[]; firstResultAt?: number } = {
+        sent: [],
+        answers: [],
+      };
       (window as unknown as { __layouts: typeof log }).__layouts = log;
       const Native = window.Worker;
       const post = Native.prototype.postMessage as (this: Worker, ...args: unknown[]) => void;
@@ -762,12 +765,47 @@ test.describe('M05 fixes B', () => {
       window.Worker = class extends Native {
         constructor(url: string | URL, options?: WorkerOptions) {
           super(url, options);
-          this.addEventListener('message', (event: MessageEvent<{ requestId: number; type: string }>) => log.answers.push({ requestId: event.data.requestId, type: event.data.type }));
+          this.addEventListener('message', (event: MessageEvent<{ requestId: number; type: string }>) => {
+            log.answers.push({ requestId: event.data.requestId, type: event.data.type });
+            const warmup = log.sent.find((s) => s.requestId === event.data.requestId)?.warmup ?? true;
+            if (event.data.type === 'result' && !warmup) log.firstResultAt ??= Date.now();
+          });
         }
       };
     });
   const layouts = (page: import('@playwright/test').Page) =>
     page.evaluate(() => (window as unknown as { __layouts: { sent: { requestId: number; warmup: boolean; nodes: number }[]; answers: { requestId: number; type: string }[] } }).__layouts);
+
+  test('@M05 React Flow loads while the first layout runs, and the canvas is never empty in between', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await recordLayouts(page);
+    // Everything the page loads later than its HTML (React Flow's chunk, the worker) comes 1 s late.
+    const html = await (await page.request.get(`/explore?focus=${id}`)).text();
+    const late: { url: string; at: number }[] = [];
+    await page.route('**/_next/static/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (!html.includes(path)) {
+        late.push({ url: path, at: Date.now() });
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      await route.continue();
+    });
+    // Records whether the canvas area ever holds neither the skeleton nor the drawing once the skeleton is up.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __emptyCanvas?: boolean; __area?: Element | null };
+      new MutationObserver(() => {
+        w.__area ??= document.querySelector('[data-testid="explorer-skeleton"]')?.parentElement ?? null;
+        if (w.__area && !w.__area.querySelector('[data-testid="explorer-skeleton"], .react-flow')) w.__emptyCanvas = true;
+      }).observe(document, { childList: true, subtree: true });
+    });
+    await openExplorer(page, { focus: id });
+    expect(await page.evaluate(() => (window as unknown as { __emptyCanvas?: boolean }).__emptyCanvas ?? false)).toBe(false);
+    const firstResult = await page.evaluate(() => (window as unknown as { __layouts: { firstResultAt?: number } }).__layouts.firstResultAt);
+    expect(firstResult).toBeDefined();
+    // Every chunk the canvas needed was asked for before the worker's first real layout came back.
+    expect(late.length).toBeGreaterThan(0);
+    for (const chunk of late.filter((c) => c.url.endsWith('.js') || c.url.endsWith('.css'))) expect(chunk.at, chunk.url).toBeLessThan(firstResult!);
+  });
 
   test.describe('on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
