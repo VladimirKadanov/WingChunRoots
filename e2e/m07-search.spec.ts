@@ -326,7 +326,9 @@ test('@M07 when more people match than the list holds, the palette says so', asy
   await openPalette(page);
   await search(page, 'so');
   await expect(palette(page).getByRole('status')).toContainText('Only the first 20 people are shown: type more of the name to narrow the list.');
-  await search(page, 'So Ching Laam');
+  // A query with few matches (the fuzzy Latin "So Ching Laam" also finds 20 fixture namesakes).
+  await search(page, '蘇晴嵐');
+  await expect(option(page, 'So Ching Laam').first()).toBeVisible();
   await expect(palette(page).getByRole('status')).not.toContainText('Only the first');
 });
 
