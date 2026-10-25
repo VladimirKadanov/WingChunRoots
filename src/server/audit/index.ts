@@ -22,7 +22,10 @@ export type AuditAction =
   // M07: profiles, consents and account deletion (plan §6.6).
   | 'person.update'
   | 'consent.withdraw'
-  | 'account.deletion_request';
+  | 'account.deletion_request'
+  // pnpm account:delete (M07, until the review tool of M10a).
+  | 'account.delete'
+  | 'account.deletion_cancel';
 
 export interface AuditEntry {
   action: AuditAction;

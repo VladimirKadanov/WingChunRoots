@@ -17,12 +17,13 @@ export function emailArgument(args: readonly string[]): string | null {
 
 /**
  * Refuses anything but a local environment: NODE_ENV=production, or a database (DATABASE_URL, or
- * TEST_DATABASE_URL without it) that is not on this machine. The message names no URL.
+ * TEST_DATABASE_URL without it) that is not on this machine. The message names no URL. Also
+ * `pnpm account:delete` (src/server/auth/account-delete-cli.ts), with its own command name.
  */
-export function assertLocalEnvironment(env: Record<string, string | undefined> = process.env): void {
-  assertNotProduction('admin:create', env);
+export function assertLocalEnvironment(env: Record<string, string | undefined> = process.env, command = 'admin:create'): void {
+  assertNotProduction(command, env);
   if (!isLocalHost(targetDatabaseUrl(env))) {
-    throw new Error('admin:create works only with a database on this machine (DATABASE_URL on localhost)');
+    throw new Error(`${command} works only with a database on this machine (DATABASE_URL on localhost)`);
   }
 }
 

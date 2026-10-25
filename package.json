@@ -26,6 +26,7 @@
     "db:reset": "tsx src/server/db/cli.ts reset",
     "db:check": "tsx src/server/db/cli.ts check",
     "admin:create": "tsx src/server/auth/cli.ts",
+    "account:delete": "tsx src/server/auth/account-delete-cli.ts",
     "fixtures:generate": "tsx src/fixtures/cli.ts",
     "tokens:build": "tsx scripts/build-tokens.ts",
     "notices": "tsx scripts/generate-notices.ts",

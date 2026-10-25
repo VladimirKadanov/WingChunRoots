@@ -6,11 +6,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { setTestAuthEnv } from '../auth/test-support';
+import { createAccount, setTestAuthEnv } from '../auth/test-support';
 import type { Principal } from '../auth/principal';
 import { closeDb, getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, consentRecord, lineage, notification, person, personName, personNameKey, reviewCase, teachingRelationship } from '../db/schema';
+import { auditLog, authUser, consentRecord, lineage, notification, person, personBio, personName, personNameKey, reviewCase, teachingRelationship } from '../db/schema';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { personHitSchema, searchResultSchema } from '../dto/search';
 import { stopProducer } from '../jobs/boss';
@@ -18,7 +18,7 @@ import { searchKeysRebuildHandler } from '../jobs/worker';
 import { handleApiRequest } from '../rpc/handler';
 import { LIMITS } from '../search/query';
 import { writePersonKeys } from '../search/store';
-import { consentWithdraw, privacyOverview, requestAccountDeletion } from './privacy';
+import { cancelDeletionFromCommandLine, carryOutDeletionFromCommandLine, consentWithdraw, privacyOverview, requestAccountDeletion } from './privacy';
 import { MISSING_PRIMARY_MESSAGE, profileGet, profileUpdate } from './profile';
 import { checkSearchRate, SEARCH_WINDOW_MS, SEARCHES_PER_WINDOW, searchQuery } from './search';
 
@@ -491,5 +491,103 @@ describe('the public cache of every teacher above a person whose visibility chan
     expect((await profileUpdate(p, { names, showPublicly: false }, meta)).visibilityChanged).toBe(false);
     expect(cache.revalidated).toContain(`person:${ids['demo-pending']}`);
     expect(cache.revalidated).not.toContain(`lineage:${grand}`);
+  });
+});
+
+describe('pnpm account:delete carries out or cancels a deletion request', () => {
+  const namesOf = async (personId: string) =>
+    (await getDb().select({ value: personName.value, isPrimary: personName.isPrimary }).from(personName).where(eq(personName.personId, personId))).map((n) => n.value);
+  const caseOf = async (caseId: string) => (await getDb().select().from(reviewCase).where(eq(reviewCase.id, caseId)))[0]!;
+  const accountExists = async (userId: string) => (await getDb().select({ id: authUser.id }).from(authUser).where(eq(authUser.id, userId))).length === 1;
+
+  /** A fictional member with a public self-stewarded profile in two scripts and a biography. */
+  async function member(slug: string): Promise<{ userId: string; personId: string; caseId: string }> {
+    const account = await createAccount({ label: slug });
+    const personId = uuidv7();
+    await getDb().insert(person).values({ id: personId, slug, kind: 'living', stewardship: 'self', visibility: 'involved_only', claimedByUserId: account.id, createdByUserId: account.id });
+    await getDb().insert(personName).values({ personId, value: 'Demo Leaving Member', script: 'Latn', lang: 'und-Latn', isPrimary: true });
+    const p = principalOf(account.id);
+    const names = [
+      { kind: 'name' as const, value: 'Demo Leaving Member', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true },
+      { kind: 'name' as const, value: '離雲', script: 'Hant', lang: 'zh-Hant', romanization: null, isPrimary: false },
+    ];
+    await profileUpdate(p, { names, bio: { body: 'A fictional biography to delete.', lang: 'en' }, trainingStartYear: 2015, showPublicly: true }, meta);
+    const { request } = await requestAccountDeletion(p, { confirm: true }, meta);
+    return { userId: account.id, personId, caseId: request.id };
+  }
+
+  it('deletes the account and its consents, keeps a public record with verified links under its Latin name, and closes the case', async () => {
+    const userId = users['demo-root-a']!;
+    const personId = ids['demo-root-a']!;
+    const p = principalOf(userId);
+    const own = (await profileGet(p)).profile!;
+    const names = own.names.map(({ kind, value, script, lang, romanization, isPrimary }) => ({ kind, value, script, lang, romanization, isPrimary }));
+    await profileUpdate(p, { names, bio: { body: 'A fictional biography to delete.', lang: 'en' }, trainingStartYear: 2004, showPublicly: true }, meta);
+    expect((await namesOf(personId)).length).toBeGreaterThan(1);
+    const caseId = (await privacyOverview(p)).deletionRequest!.id;
+
+    const outcome = await carryOutDeletionFromCommandLine(caseId);
+    // demo-root-a has verified relationships: the record stays public, as others confirmed it.
+    expect(outcome).toEqual({ personId, visibility: 'public' });
+    expect(await accountExists(userId)).toBe(false);
+    expect(await getDb().select().from(consentRecord).where(eq(consentRecord.userId, userId))).toEqual([]);
+    const [kept] = await getDb().select().from(person).where(eq(person.id, personId));
+    expect(kept).toMatchObject({ claimedByUserId: null, createdByUserId: null, stewardship: 'unclaimed', visibility: 'public', placeId: null, trainingStartYear: null });
+    expect(await namesOf(personId)).toEqual([names.find((n) => n.isPrimary)!.value]);
+    expect(await getDb().select().from(personBio).where(eq(personBio.personId, personId))).toEqual([]);
+    // Only the Latin display name's keys are left.
+    const keys = await getDb().select({ nameId: personNameKey.personNameId }).from(personNameKey).where(eq(personNameKey.personId, personId));
+    const [primary] = await getDb().select({ id: personName.id }).from(personName).where(eq(personName.personId, personId));
+    expect(new Set(keys.map((k) => k.nameId))).toEqual(new Set([primary!.id]));
+    expect(await caseOf(caseId)).toMatchObject({ status: 'resolved', resolution: 'approved', openedByUserId: null, resolvedAt: expect.any(Date) });
+    const [audit] = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.delete'), eq(auditLog.subjectId, caseId)));
+    expect(audit).toMatchObject({ actorUserId: null, subjectType: 'review_case' });
+    expect(JSON.stringify(audit)).not.toMatch(/fictional biography|@example\.test/);
+    // The earlier audit rows stay (append-only).
+    expect(await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.deletion_request'), eq(auditLog.actorUserId, userId)))).toHaveLength(1);
+
+    await expect(carryOutDeletionFromCommandLine(caseId)).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('makes a record private when it was public by its owner\'s consent only', async () => {
+    const { userId, personId, caseId } = await member('demo-deletion-only-consent');
+    expect(await peopleSlugs('Demo Leaving Member')).toContain('demo-deletion-only-consent');
+    expect(await carryOutDeletionFromCommandLine(caseId)).toEqual({ personId, visibility: 'involved_only' });
+    expect(await accountExists(userId)).toBe(false);
+    expect(await namesOf(personId)).toEqual(['Demo Leaving Member']);
+    expect(await peopleSlugs('Demo Leaving Member')).not.toContain('demo-deletion-only-consent');
+  });
+
+  it('deletes nothing while another record still refers to the account', async () => {
+    const { userId, personId, caseId } = await member('demo-deletion-referenced');
+    const [edge] = await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).limit(1);
+    await getDb().update(teachingRelationship).set({ requestedByUserId: userId }).where(eq(teachingRelationship.id, edge!.id));
+    try {
+      await expect(carryOutDeletionFromCommandLine(caseId)).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('nothing was deleted') });
+      expect(await accountExists(userId)).toBe(true);
+      expect(await namesOf(personId)).toEqual(['Demo Leaving Member', '離雲']);
+      expect(await caseOf(caseId)).toMatchObject({ status: 'open', openedByUserId: userId });
+      expect(await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.delete'), eq(auditLog.subjectId, caseId)))).toEqual([]);
+    } finally {
+      await getDb().update(teachingRelationship).set({ requestedByUserId: null }).where(eq(teachingRelationship.id, edge!.id));
+    }
+  });
+
+  it('--cancel closes the request and keeps the account', async () => {
+    const { userId, personId, caseId } = await member('demo-deletion-cancelled');
+    await cancelDeletionFromCommandLine(caseId);
+    expect(await caseOf(caseId)).toMatchObject({ status: 'dismissed', resolvedAt: expect.any(Date), openedByUserId: userId });
+    expect(await accountExists(userId)).toBe(true);
+    expect(await namesOf(personId)).toEqual(['Demo Leaving Member', '離雲']);
+    expect(await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.deletion_cancel'), eq(auditLog.subjectId, caseId)))).toHaveLength(1);
+    expect((await privacyOverview(principalOf(userId))).deletionRequest).toBeNull();
+    await expect(cancelDeletionFromCommandLine(caseId)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(carryOutDeletionFromCommandLine(caseId)).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('refuses an id that is not a deletion request', async () => {
+    await expect(carryOutDeletionFromCommandLine('not-a-case')).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(carryOutDeletionFromCommandLine(uuidv7())).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(cancelDeletionFromCommandLine(uuidv7())).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
