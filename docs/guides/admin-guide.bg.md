@@ -275,7 +275,7 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 | `scripts/verify.sh M00b` | Целият етап: lint, типове, тестове, build, E2E, бюджети, Lighthouse, документите. Пълният лог е в `.verify/M00b.log` |
 | `scripts/verify.sh M02` | Акаунтите: интеграционните тестове на предпазните проверки, E2E `@M02` (регистрация, писма, вход, TOTP, първоначален профил, axe), документите. Пълният лог е в `.verify/M02.log` |
 | `scripts/verify.sh M08` | Плановете: матрицата, квотите, понижаването, текстовете без изкуствена спешност, E2E `@M08` (тестови планове, подканата, `/plans`, видът на акаунта, таблата), документите. Пълният лог е в `.verify/M08.log` |
-| `pnpm build` и `node scripts/check-bundle-budget.mjs` | JavaScript, който всяка страница зарежда първоначално (gzip): до 170 kB, `/styleguide` до 250 kB |
+| `pnpm build` и `node scripts/check-bundle-budget.mjs` | JavaScript, който всяка страница зарежда първоначално (gzip): до 170 kB, `/dashboard/profile` до 195 kB, `/styleguide` до 260 kB (собствените бюджети са решение на собственика от 25.10.2026) |
 | `pnpm e2e` | Playwright срещу `next start` на порт 3100 и worker-а (първо `pnpm build:e2e`; след обикновен `pnpm build` спира веднага със съобщение `run pnpm build:e2e first`); axe на всяка страница в двете теми |
 | `pnpm screenshots` | Снимките в `docs/screenshots/<етап>/` при 390×844 и 1440×900 в двете теми (първо `pnpm build:e2e`) |
 
