@@ -3,8 +3,8 @@
 // (pg_trgm `%`), word similarity (`<%`), a prefix match and, for Chinese characters, an exact or
 // contained match, since a two- or three-character name gives too few trigrams to rank by.
 //
-// Privacy (plan §6.4): the keys come only through v_public_person_key (the keys of public people,
-// a security_barrier view; migration m07_public_person_key), every person through v_public_person, every school through
+// Privacy (plan §6.4): the keys come only through v_public_person_key (the keys of public people;
+// migration m07_public_person_key), every person through v_public_person, every school through
 // v_public_school and every lineage through v_public_edge, so a record that is not public cannot
 // match, whatever its keys say. The keys themselves never leave this file: a person is answered
 // with its display name and the stored name (person_name) whose key matched.

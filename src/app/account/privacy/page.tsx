@@ -128,7 +128,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
               {privacy.consents.map((consent) => {
                 const text = CONSENT_TEXT[consent.kind]!;
                 const given = consent.state === 'granted';
-                const canWithdraw = !consent.required && (given || (consent.kind === 'publication' && isPublic));
+                const canWithdraw = !consent.required && (given || consent.state === 'outdated' || (consent.kind === 'publication' && isPublic));
                 return (
                   <li key={consent.kind} data-consent={consent.kind} className="grid gap-2 border-t border-border-subtle py-4">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-4">

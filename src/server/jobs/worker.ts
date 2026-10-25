@@ -145,15 +145,16 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
  */
 export function searchKeysRebuildHandler(db: Database, log: (line: string) => void) {
   return async (jobs: JobWithMetadata<JobData[typeof QUEUE.searchKeysRebuild]>[]): Promise<void> => {
-    for (const job of jobs) {
-      try {
-        const result = await rebuildAllKeys(db);
-        log(`${QUEUE.searchKeysRebuild}: wrote ${result.keys} key(s) for ${result.persons} person(s)`);
-      } catch (error) {
-        const code = failureCode(error);
-        log(`${QUEUE.searchKeysRebuild}: job ${job.id}: attempt ${job.retryCount + 1} of ${job.retryLimit + 1} failed (${code})`);
-        throw new Error(`${QUEUE.searchKeysRebuild} failed: ${code}`);
-      }
+    // The jobs carry nothing: one rebuild answers every job of the batch.
+    const job = jobs[0];
+    if (!job) return;
+    try {
+      const result = await rebuildAllKeys(db);
+      log(`${QUEUE.searchKeysRebuild}: wrote ${result.keys} key(s) for ${result.persons} person(s)`);
+    } catch (error) {
+      const code = failureCode(error);
+      log(`${QUEUE.searchKeysRebuild}: job ${job.id}: attempt ${job.retryCount + 1} of ${job.retryLimit + 1} failed (${code})`);
+      throw new Error(`${QUEUE.searchKeysRebuild} failed: ${code}`);
     }
   };
 }

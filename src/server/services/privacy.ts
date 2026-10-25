@@ -21,7 +21,7 @@ import { getDb } from '../db';
 import { authUser, consentRecord, notification, person, reviewCase } from '../db/schema';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
-import { currentConsents, withdrawConsents } from './consent';
+import { withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { neighbourTags, setOwnVisibility } from './profile';
@@ -127,8 +127,9 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
   const kinds = [...new Set(parsed.data.kinds)];
   const outcome = await getDb().transaction(async (tx) => {
     if (!(await lockAccount(tx, { id: p.user.id }))) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
-    const given = await currentConsents(tx, p.user.id);
-    const withdrawn = kinds.filter((k) => given.has(k));
+    // One withdrawal, one audit entry, for every kind still granted (of any document version);
+    // hiding the profile below then finds publication withdrawn and records nothing twice.
+    const withdrawn = (await withdrawConsents(tx, p.user.id, p.user.role, kinds, meta)) as OptionalConsent[];
     let profileHidden = false;
     let personId: string | null = null;
     if (kinds.includes('publication')) {
@@ -137,7 +138,7 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
         .from(person)
         .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)))
         .for('update');
-      // Hides the profile and records the withdrawal of `publication` (setOwnVisibility does both).
+      // Hides the profile (its consent is withdrawn above).
       if (own && own.stewardship === 'self') {
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
         personId = own.id;
@@ -157,8 +158,6 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
         }
       }
     }
-    // Whatever is still given (everything but a `publication` that setOwnVisibility recorded).
-    await withdrawConsents(tx, p.user.id, p.user.role, withdrawn, meta);
     return { withdrawn, profileHidden, tags: profileHidden && personId ? await neighbourTags(tx, personId) : [] };
   });
   // The person and the people and lineages next to it, as after a profile save.

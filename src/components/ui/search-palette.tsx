@@ -85,7 +85,7 @@ const PAGES: readonly { label: string; href: string }[] = [
 function pagesFor(query: string): Item[] {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
-  return PAGES.filter((page) => page.label.toLowerCase().split(/s+/).some((word) => word.startsWith(q)) || page.label.toLowerCase().startsWith(q)).map(
+  return PAGES.filter((page) => page.label.toLowerCase().split(/\s+/).some((word) => word.startsWith(q)) || page.label.toLowerCase().startsWith(q)).map(
     (page) => ({ kind: 'page' as const, key: `page:${page.href}`, label: page.label, href: page.href }),
   );
 }

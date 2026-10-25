@@ -36,19 +36,19 @@ export const SEARCH_WINDOW_MS = 10_000;
 const recentSearches = new Map<string, number[]>();
 
 function checkSearchRate(meta: RequestMeta | undefined, now = Date.now()): void {
-  // A request always has a client address (next start sets X-Forwarded-For to the socket's); a
-  // call without one (in-process, the tests) is not counted rather than sharing one bucket.
-  const client = meta?.ipHmac;
-  if (!client) return;
+  // An in-process call (no request: the tests) is not counted. A request whose client address
+  // cannot be read (a forged X-Forwarded-For chain without TRUSTED_PROXIES) shares one bucket, so
+  // forging the header never turns the limit off.
+  if (!meta) return;
+  const client = meta.ipHmac ?? 'no-address';
   const since = now - SEARCH_WINDOW_MS;
   const times = (recentSearches.get(client) ?? []).filter((t) => t > since);
   if (times.length >= SEARCHES_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', 'Too many searches at once. Wait a few seconds and try again.');
   times.push(now);
+  // A bounded map: past 10,000 clients it starts again (a flood of addresses cannot make each
+  // search scan it, and a reset only forgives searches for one window).
+  if (recentSearches.size >= 10_000 && !recentSearches.has(client)) recentSearches.clear();
   recentSearches.set(client, times);
-  // Forget idle clients, so the map stays small.
-  if (recentSearches.size > 10_000) {
-    for (const [key, list] of recentSearches) if (list.every((t) => t <= since)) recentSearches.delete(key);
-  }
 }
 
 /** search.query: grouped public results; an empty query answers with empty groups. */

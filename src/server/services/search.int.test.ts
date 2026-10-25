@@ -237,6 +237,21 @@ describe('profile.update', () => {
     await expect(profileUpdate(null, { names: names(), showPublicly: false }, meta)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
 
+  it('an API call that leaves out the biography, country, city or year keeps them, and showPublicly is required', async () => {
+    const p = principalOf(users['demo-pending']!);
+    await profileUpdate(p, { names: names(), bio: { body: 'A kept fictional biography.', lang: 'en' }, countryCode: 'BG', trainingStartYear: 2011, showPublicly: false }, meta);
+    const result = await profileUpdate(p, { names: names(), showPublicly: false }, meta);
+    expect(result.profile.bio).toEqual({ body: 'A kept fictional biography.', lang: 'en' });
+    expect(result.profile.countryCode).toBe('BG');
+    expect(result.profile.trainingStartYear).toBe(2011);
+    // null clears them.
+    const cleared = await profileUpdate(p, { names: names(), bio: null, countryCode: null, trainingStartYear: null, showPublicly: false }, meta);
+    expect(cleared.profile.bio).toBeNull();
+    expect(cleared.profile.countryCode).toBeNull();
+    expect(cleared.profile.trainingStartYear).toBeNull();
+    await expect(profileUpdate(p, { names: names() }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
+
   it('"Show my profile publicly" publishes the self-stewarded profile with the publication consent, and makes it searchable', async () => {
     const userId = users['demo-pending']!;
     const result = await profileUpdate(principalOf(userId), { names: names(), showPublicly: true }, meta);

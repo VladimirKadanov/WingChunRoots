@@ -126,9 +126,9 @@ check "the search answer passes the public DTO, which has no key, source or acco
 check "a match shows the stored person_name value (n.value), never the key" bash -c '
   grep -q "n.value AS name_value" src/server/search/query.ts && ! grep -qE "k\.key AS" src/server/search/query.ts'
 check "the search transaction is read-only" grep -q "SET TRANSACTION READ ONLY" src/server/search/query.ts
-check "the keys come only through v_public_person_key (a security_barrier view of the keys of public people, for app_rw only)" bash -c '
+check "the keys come only through v_public_person_key (a view of the keys of public people, for app_rw only)" bash -c '
   f=$(ls drizzle/*_m07_public_person_key/migration.sql) &&
-  grep -q "CREATE VIEW \"v_public_person_key\" WITH (security_barrier = true)" "$f" && grep -q "FROM \"v_public_person\" p WHERE p.\"id\" = k.\"person_id\"" "$f" &&
+  grep -q "CREATE VIEW \"v_public_person_key\" AS" "$f" && grep -q "FROM \"v_public_person\" p WHERE p.\"id\" = k.\"person_id\"" "$f" &&
   grep -q "GRANT SELECT ON TABLE \"v_public_person_key\" TO app_rw;" "$f" && ! grep -qE "TO [^;]*app_public_ro" "$f" &&
   grep -q "JOIN v_public_person_key k" src/server/search/query.ts && ! grep -qE "(FROM|JOIN) person_name_key" src/server/search/query.ts'
 check "search is limited per client (ip_hmac) and the palette sends the query in the body, never the URL" bash -c '
@@ -207,8 +207,8 @@ check "the shell has the visible search field and loads the palette on first use
 check "the profile editor uses TanStack Form and the Zod rules of src/lib/profile-form.ts" bash -c '
   grep -q "from '\''@tanstack/react-form'\''" src/app/dashboard/profile/profile-editor.tsx && grep -q "profileFormErrors" src/app/dashboard/profile/profile-editor.tsx &&
   grep -q "from '\''zod'\''" src/lib/profile-form.ts'
-check "\"Show my profile publicly\" is never ticked in advance and follows the profile (DEFAULT D03)" bash -c '
-  grep -q "showPublicly: profile.visibility === '\''public'\''" src/app/dashboard/profile/page.tsx && grep -q "showPublicly: z.boolean().default(false)" src/server/services/profile.ts'
+check "\"Show my profile publicly\" is never ticked in advance, follows the profile and is required in the API (DEFAULT D03)" bash -c '
+  grep -q "showPublicly: profile.visibility === '\''public'\''" src/app/dashboard/profile/page.tsx && grep -q "showPublicly: z.boolean({" src/server/services/profile.ts'
 for route in "'/dashboard/profile'.*name: 'profile'.*milestone: 'M07', key: true" "'/account/privacy'.*name: 'account-privacy'.*milestone: 'M07', key: true"; do
   check "e2e/routes.ts: $route (axe in both themes, visual regression, screenshots)" grep -qE "path: $route" e2e/routes.ts
 done

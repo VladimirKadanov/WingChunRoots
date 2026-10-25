@@ -110,9 +110,10 @@ export function toUpdateInput(values: ProfileFormValues) {
       };
     }),
     bio: values.bio.trim() ? { body: values.bio, lang: values.bioLang } : null,
-    countryCode: values.countryCode || undefined,
-    placeId: values.placeId || undefined,
-    trainingStartYear: values.trainingStartYear || undefined,
+    // The form sends every field: an empty one clears the saved value (null).
+    countryCode: values.countryCode || null,
+    placeId: values.placeId || null,
+    trainingStartYear: values.trainingStartYear || null,
     showPublicly: values.showPublicly,
   };
 }

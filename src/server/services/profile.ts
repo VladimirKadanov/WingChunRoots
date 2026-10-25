@@ -65,11 +65,17 @@ export const profileUpdateInput = z.object({
   names: z.array(nameInput).min(1, { error: MISSING_PRIMARY_MESSAGE }).max(MAX_NAMES, { error: `Add at most ${MAX_NAMES} names.` }),
   /** The biography; null removes it, and leaving it out keeps the one saved (an API client that sends only names). */
   bio: z.object({ body: z.string().max(BIO_MAX_LENGTH * 2), lang: z.string().max(35) }).nullable().optional(),
-  countryCode: z.string().max(2).optional().transform((s) => (s ? s.toUpperCase() : undefined)),
-  placeId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
-  // '' first: z.coerce.number() would read an empty field as 0.
+  // Country, city and year: left out keeps the saved value; null (or '') clears it.
+  countryCode: z
+    .string()
+    .max(2)
+    .nullable()
+    .optional()
+    .transform((s) => (s === undefined ? undefined : s ? s.toUpperCase() : null)),
+  placeId: z.union([z.uuid(), z.literal('').transform(() => null), z.null()]).optional(),
+  // '' and null first: z.coerce.number() would read them as 0.
   trainingStartYear: z
-    .union([z.literal('').transform(() => undefined), z.coerce.number().int()], { error: 'Enter the year as four digits, for example 2009.' })
+    .union([z.literal('').transform(() => null), z.null(), z.coerce.number().int()], { error: 'Enter the year as four digits, for example 2009.' })
     .optional(),
   // Required: an API client that leaves it out must not unpublish the profile by accident.
   showPublicly: z.boolean({ error: 'Say whether your profile is public.' }),
@@ -263,7 +269,8 @@ export async function setOwnVisibility(
   const visibility = showPublicly ? ('public' as const) : ('involved_only' as const);
   const consents = await currentConsents(tx, p.user.id);
   if (showPublicly && !consents.has('publication')) await grantConsents(tx, p.user.id, p.user.role, ['publication'], meta);
-  if (!showPublicly && consents.has('publication')) await withdrawConsents(tx, p.user.id, p.user.role, ['publication'], meta);
+  // Withdraws a grant of any version (withdrawConsents records only what is still granted).
+  if (!showPublicly) await withdrawConsents(tx, p.user.id, p.user.role, ['publication'], meta);
   if (own.visibility === visibility) return false;
   // DEFAULT D03: a self-stewarded record is public only while its owner keeps it so; unticking hides
   // it even when it has verified relationships (docs/plan/questions/M07.md, question 2).
@@ -299,7 +306,7 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
   if (bioBody && !BIO_LANGUAGES.some((l) => l.lang === bioLang)) fields['bio.lang'] = 'Choose the language of your biography.';
   if (input.countryCode && !isCountryCode(input.countryCode)) fields.countryCode = 'Choose a country from the list.';
   const thisYear = new Date().getUTCFullYear();
-  const year = input.trainingStartYear;
+  const year = input.trainingStartYear ?? undefined;
   if (year !== undefined && year < 1900) fields.trainingStartYear = `${year} is before 1900. Enter a year from 1900 to ${thisYear}.`;
   else if (year !== undefined && year > thisYear) fields.trainingStartYear = `${year} is after this year. Enter a year from 1900 to ${thisYear}.`;
   if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
@@ -322,9 +329,12 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
     if (input.personId && input.personId !== own?.id) throw new ServiceError('FORBIDDEN', NOT_YOURS_MESSAGE);
     if (!own) throw new ServiceError('NOT_FOUND', 'Create your profile first: finish setting up your account.');
 
-    let countryCode = input.countryCode ?? null;
-    if (input.placeId) {
-      const [city] = await tx.select({ countryCode: place.countryCode }).from(place).where(eq(place.id, input.placeId));
+    let countryCode = input.countryCode === undefined ? own.countryCode : input.countryCode;
+    const placeId = input.placeId === undefined ? own.placeId : input.placeId;
+    const trainingStartYear = input.trainingStartYear === undefined ? own.trainingStartYear : input.trainingStartYear;
+    // The city and the country must agree, whichever of them this save changes.
+    if (placeId) {
+      const [city] = await tx.select({ countryCode: place.countryCode }).from(place).where(eq(place.id, placeId));
       if (!city) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { placeId: 'Choose a city from the list.' });
       if (countryCode && city.countryCode !== countryCode) {
         throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { placeId: 'This city is not in the chosen country.' });
@@ -350,9 +360,9 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
 
     await tx
       .update(person)
-      .set({ countryCode, placeId: input.placeId ?? null, trainingStartYear: input.trainingStartYear ?? null })
+      .set({ countryCode, placeId, trainingStartYear })
       .where(eq(person.id, own.id));
-    const visibilityChanged = own.stewardship === 'self' ? await setOwnVisibility(tx, p, own, input.showPublicly, meta) : false;
+    const visibilityChanged = await setOwnVisibility(tx, p, own, input.showPublicly, meta);
 
     // Ids, kinds, scripts and choices only: never a name or the biography (plan §6.4).
     const shape = (list: readonly { kind: string; script: string; lang: string; romanization: string | null; isPrimary: boolean }[]) =>
@@ -376,8 +386,8 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
         searchKeys: keys,
         bio: input.bio === undefined ? (bioBefore ? { lang: bioBefore.lang, unchanged: true } : null) : bioBody ? { lang: bioLang, length: bioBody.length } : null,
         countryCode,
-        placeId: input.placeId ?? null,
-        trainingStartYear: input.trainingStartYear ?? null,
+        placeId,
+        trainingStartYear,
         visibility: visibilityChanged ? (input.showPublicly ? 'public' : 'involved_only') : own.visibility,
       },
       requestId: meta.requestId,

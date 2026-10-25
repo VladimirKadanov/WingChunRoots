@@ -169,10 +169,10 @@ export function keysForName(name: NameForKeys): GeneratedKey[] {
     } else {
       add(folded, 'latin', 'name', name.romanization === 'hk_gov' || name.romanization === 'yale');
     }
-  } else if (!HAN.test(value) && !CYRILLIC.test(value)) {
-    // Any other script (Greek, Thai, Hebrew, Arabic, ...): its usual Latin transliteration.
-    add(foldLatin(transliterate(value)), 'latin', 'transliteration');
   }
+  // Any other script (Greek, Thai, Hebrew, Arabic, the kana or Hangul of a name that also has
+  // Chinese characters, ...): its usual Latin transliteration, as queryForms() reads such a query.
+  if (OTHER_SCRIPT.test(value)) add(foldLatin(transliterate(value.replace(/[\p{Script=Han}\p{Script=Cyrillic}\p{Script=Latin}]/gu, ' '))), 'latin', 'transliteration');
   return out;
 }
 
