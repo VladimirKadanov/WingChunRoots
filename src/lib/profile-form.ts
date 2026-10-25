@@ -98,8 +98,8 @@ export function profileFormFromData(form: FormData): ProfileFormValues {
 
 /**
  * The values the editor's fields hold when it hydrates: what the person typed or chose before the
- * page's JavaScript ran (a slow phone connection, a webview) stays in the fields, and the editor
- * takes it over. As the page drew them: every saved row, even an emptied one (the editor shows it
+ * editor hydrated (before the page's JavaScript ran, or in the edit that made React hydrate the
+ * field) stays in the fields, and the editor takes it over. As the page drew them: every saved row, even an emptied one (the editor shows it
  * until Remove), then the spare rows that hold a name; a spare row left empty is dropped. A ticked
  * display name that can no longer be one (its "Written in" or Kind was changed) is dropped, as the
  * editor does when that change is made with JavaScript.

@@ -149,11 +149,15 @@ export function ProfileEditor({
   // stops being the display name), this count remounts them with the new value.
   const [redraw, setRedraw] = useState(0);
 
-  // What the person typed or chose before the page's JavaScript ran (a slow phone connection, a
-  // webview): hydration leaves it in the fields, but the form state still holds the values the page
-  // was drawn with, and the render that follows hydration wrote those back into the fields, so a
-  // name typed early was replaced by the old one and saved so (the iPhone run of PR #13). Once, on
-  // hydration and before anything renders again, the state takes over what the fields show.
+  // What the person typed or chose before the editor hydrated: before the page's JavaScript ran (a
+  // slow phone connection, a webview), or in the edit whose own `input` event made React hydrate the
+  // field (React then starts its value tracker with the edited value and skips onChange; WebKit
+  // sends no `textInput` before the edit, as Chromium does). Hydration leaves it in the fields, but
+  // the form state still holds the values the page was drawn with, and the render that follows
+  // hydration wrote those back into the fields, so a name typed early was replaced by the old one
+  // and saved so (the iPhone run of PR #13). Once, on hydration and before anything renders again,
+  // the state takes over what the fields show. A biography already saved is the exception: React
+  // puts the server's text back into the textarea while hydrating, so it is read as unchanged.
   useEffect(() => {
     const shown = shownFormValues(new FormData(formRef.current!));
     const current = form.state.values;
