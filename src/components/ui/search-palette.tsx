@@ -19,7 +19,8 @@
 //   /explore?focus=<id>.
 // - The last searches stay in this browser only (localStorage, with try/catch) and can be cleared.
 //   Every opening reads them again and starts with an empty field.
-// - On a phone it fills the screen (dvh, safe areas) and results are chosen by touch; Back closes it.
+// - On a phone it fills the screen (dvh, safe areas) and results are chosen by touch (a touch press on
+//   a result is never cancelled: WebKit's GTK and WPE ports send no click after one); Back closes it.
 //   The sheet and the keyboard hints need room in both directions (SHEET_QUERY): a phone in
 //   landscape keeps the full screen.
 
@@ -550,6 +551,13 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                           <Autocomplete.Item
                             key={item.key}
                             value={item}
+                            // Base UI cancels the pointerdown on a result so that the field keeps the focus. For a touch,
+                            // WebKit's GTK and WPE ports then count the whole tap as handled and send no click, so the
+                            // result never opened there (the iPhone WebKit of CI). A touch keeps its pointerdown; the field
+                            // keeps the focus all the same, as Base UI also cancels the mousedown that follows a tap.
+                            onPointerDownCapture={(event) => {
+                              if (event.pointerType === 'touch') event.preventBaseUIHandler();
+                            }}
                             onClick={() => choose(item)}
                             data-kind={item.kind}
                             // The highlighted result is the keyboard's place (aria-activedescendant): a gold bar and frame
