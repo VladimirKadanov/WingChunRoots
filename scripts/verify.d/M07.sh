@@ -133,7 +133,7 @@ check "the keys come only through v_public_person_key (a view of the keys of pub
   grep -q "JOIN v_public_person_key k" src/server/search/query.ts && ! grep -qE "(FROM|JOIN) person_name_key" src/server/search/query.ts'
 check "search is limited per client (ip_hmac) and the palette sends the query in the body, never the URL" bash -c '
   grep -q "SEARCHES_PER_WINDOW = 40" src/server/services/search.ts && grep -q "TOO_MANY_REQUESTS" src/server/services/search.ts &&
-  grep -q "method: '''POST'''" src/components/ui/search-palette.tsx && grep -q "body: JSON.stringify({ q: trimmed })" src/components/ui/search-palette.tsx'
+  grep -q "method: '\''POST'\''" src/components/ui/search-palette.tsx && grep -q "body: JSON.stringify({ q: trimmed })" src/components/ui/search-palette.tsx'
 check "the recent searches are cleared on sign-out" grep -qF "writeRecentSearches([])" src/components/account/sign-out-form.tsx
 refute "no name, key or query in a log line of the search, the store, the job or the profile" \
   grep_code "console\.(log|info|warn|error)\(" src/server/search/keys.ts src/server/search/store.ts src/server/search/query.ts src/server/services/search.ts src/server/services/profile.ts src/server/services/privacy.ts
