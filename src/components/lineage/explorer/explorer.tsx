@@ -354,6 +354,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const currentDown = read?.procedure === 'ego' ? read.input.down : read?.input.depth ?? 0;
 
   const notFound = query.isError && isFinal(query.error);
+  const canvasShown = focus !== null && !notFound && !(query.isError && !graph) && !layoutError && flow !== null && laidOut !== null;
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
   const centerOn = (id: string) => void setUrl(kind === 'lineage' ? { focus: id, lineage: null } : { focus: id });
   const lineageName = starts.find((l) => l.id === params.lineage)?.name ?? null;
@@ -428,99 +429,102 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
             </label>
           </div>
 
-          <div className="relative min-h-0 flex-1 [touch-action:none]">
-            {!focus ? null : notFound ? (
-              <div className="absolute inset-0 grid place-items-center p-6 text-center">
-                <p className="max-w-[40ch] text-ui text-fg-muted">There is no public profile with this address in the record.</p>
-              </div>
-            ) : query.isError && !graph ? (
-              <div role="alert" className="absolute inset-0 grid place-items-center p-6 text-center">
-                <div className="grid justify-items-center gap-3">
-                  <p className="max-w-[40ch] text-ui">The lineage could not be loaded. Nothing was changed.</p>
-                  <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => void query.refetch()}>
-                    Retry
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="relative min-h-0 flex-1 [touch-action:none]">
+              {!focus ? null : notFound ? (
+                <div className="absolute inset-0 grid place-items-center p-6 text-center">
+                  <p className="max-w-[40ch] text-ui text-fg-muted">There is no public profile with this address in the record.</p>
+                </div>
+              ) : query.isError && !graph ? (
+                <div role="alert" className="absolute inset-0 grid place-items-center p-6 text-center">
+                  <div className="grid justify-items-center gap-3">
+                    <p className="max-w-[40ch] text-ui">The lineage could not be loaded. Nothing was changed.</p>
+                    <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => void query.refetch()}>
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              ) : layoutError ? (
+                <div role="alert" className="absolute inset-0 grid place-items-center p-6 text-center">
+                  <p className="max-w-[44ch] text-ui">
+                    This lineage could not be drawn.{' '}
+                    {focusNode ? (
+                      <Link href={`/people/${focusNode.slug}/lineage`} className="link">
+                        Open the list view
+                      </Link>
+                    ) : null}
+                  </p>
+                </div>
+              ) : !flow || !laidOut ? (
+                <Skeleton graph={graph} showHistorical={params.show === 'historical'} />
+              ) : (
+                <SkeletonShape value={{ graph: laidOut.source, showHistorical: params.show === 'historical' }}>
+                  <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
+                    {ready ? null : (
+                      <p
+                        role="status"
+                        data-testid="explorer-relayout"
+                        className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
+                      >
+                        Laying out the lineage…
+                      </p>
+                    )}
+                    <div
+                      data-testid="explorer-legend"
+                      className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
+                    >
+                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} layout="wrap" />
+                    </div>
+                  </ExplorerCanvas>
+                </SkeletonShape>
+              )}
+            </div>
+            {selected && canvasShown ? (
+              <section
+                aria-label={`Selected: ${selected.displayName}`}
+                data-testid="explorer-panel"
+                // On a phone a panel below the graph, which leaves the legend, the zoom buttons and the
+                // people in view (plan §4.6); over the graph on the right from md (plan §4.7).
+                className="grid max-h-[50%] shrink-0 gap-3 overflow-y-auto border-t border-border-strong bg-surface-1 py-4 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] [--seal-ground:var(--surface-1)] md:absolute md:top-3 md:right-[max(0.75rem,env(safe-area-inset-right,0px))] md:z-20 md:max-h-[calc(100%-1.5rem)] md:w-[min(20rem,calc(100%-1.5rem))] md:rounded-sm md:border md:p-4 md:shadow-pop"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
+                    <span lang="und-Latn" translate="no">
+                      {selected.displayName}
+                    </span>
+                  </h2>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setSelectedId(null)}
+                    className="-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
+                  >
+                    <CloseIcon size={18} />
                   </button>
                 </div>
-              </div>
-            ) : layoutError ? (
-              <div role="alert" className="absolute inset-0 grid place-items-center p-6 text-center">
-                <p className="max-w-[44ch] text-ui">
-                  This lineage could not be drawn.{' '}
-                  {focusNode ? (
-                    <Link href={`/people/${focusNode.slug}/lineage`} className="link">
-                      Open the list view
-                    </Link>
+                {selectedGeneration ? (
+                  <p className="text-sm text-fg-muted">
+                    <GenerationText label={selectedGeneration} />
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
+                    Open profile
+                  </Link>
+                  {selected.id !== focus ? (
+                    <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => centerOn(selected.id)}>
+                      Center on this person
+                    </button>
                   ) : null}
-                </p>
-              </div>
-            ) : !flow || !laidOut ? (
-              <Skeleton graph={graph} showHistorical={params.show === 'historical'} />
-            ) : (
-              <SkeletonShape value={{ graph: laidOut.source, showHistorical: params.show === 'historical' }}>
-                <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
-                  {ready ? null : (
-                    <p
-                      role="status"
-                      data-testid="explorer-relayout"
-                      className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
-                    >
-                      Laying out the lineage…
-                    </p>
-                  )}
-                  <div
-                    data-testid="explorer-legend"
-                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
-                  >
-                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} layout="wrap" />
-                  </div>
-                  {selected ? (
-                    <section
-                      aria-label={`Selected: ${selected.displayName}`}
-                      data-testid="explorer-panel"
-                      // A sheet along the bottom on a phone, clear of the people above it; on the right from md (plan §4.7).
-                      className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] grid gap-3 rounded-sm border border-border-strong bg-surface-1 p-4 shadow-pop [--seal-ground:var(--surface-1)] md:top-3 md:bottom-auto md:left-auto md:w-[min(20rem,calc(100%-1.5rem))]"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
-                          <span lang="und-Latn" translate="no">
-                            {selected.displayName}
-                          </span>
-                        </h2>
-                        <button
-                          type="button"
-                          aria-label="Close"
-                          onClick={() => setSelectedId(null)}
-                          className="-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
-                        >
-                          <CloseIcon size={18} />
-                        </button>
-                      </div>
-                      {selectedGeneration ? (
-                        <p className="text-sm text-fg-muted">
-                          <GenerationText label={selectedGeneration} />
-                        </p>
-                      ) : null}
-                      <div className="flex flex-wrap gap-2">
-                        <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
-                          Open profile
-                        </Link>
-                        {selected.id !== focus ? (
-                          <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => centerOn(selected.id)}>
-                            Center on this person
-                          </button>
-                        ) : null}
-                      </div>
-                      {selectedMore > 0 ? (
-                        // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
-                        <Link href={`/people/${selected.slug}/lineage#students-heading`} className="link text-sm">
-                          All students in the list view (+{selectedMore} not drawn)
-                        </Link>
-                      ) : null}
-                    </section>
-                  ) : null}
-                </ExplorerCanvas>
-              </SkeletonShape>
-            )}
+                </div>
+                {selectedMore > 0 ? (
+                  // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
+                  <Link href={`/people/${selected.slug}/lineage#students-heading`} className="link inline-flex min-h-11 items-center text-sm">
+                    All students in the list view (+{selectedMore} not drawn)
+                  </Link>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         </div>
       </Activity>

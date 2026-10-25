@@ -877,5 +877,48 @@ test.describe('M05 fixes B', () => {
       expect((await layouts(page)).sent.filter((s) => !s.warmup)).toHaveLength(1);
       expect(await personNodes(page).count()).toBe(drawn);
     });
+
+    test('@M05 with a person selected on a phone, the legend and the zoom buttons stay in view and uncovered', async ({ page }) => {
+      const id = await personIdOf('demo-two-lineages');
+      await openExplorer(page, { focus: id });
+      await nodeOf(page, id).click();
+      const panel = page.getByTestId('explorer-panel');
+      await expect(panel).toBeVisible();
+      /** The element itself (or something inside it) is what a tap at its centre reaches. */
+      const uncovered = (locator: import('@playwright/test').Locator) =>
+        locator.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return hit !== null && el.contains(hit);
+        });
+      const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
+      for (const control of [
+        legend,
+        ...(await legend.getByRole('listitem').all()),
+        page.getByRole('button', { name: 'Zoom in' }),
+        page.getByRole('button', { name: 'Zoom out' }),
+        page.getByRole('button', { name: 'Fit the whole view' }),
+      ]) {
+        await expect(control).toBeVisible();
+        expect(await uncovered(control), await control.evaluate((el) => el.outerHTML.slice(0, 80))).toBe(true);
+      }
+      // The panel lies below the graph, above the tab bar: it covers nothing of the canvas.
+      const canvas = (await page.locator('.react-flow').boundingBox())!;
+      const sheet = (await panel.boundingBox())!;
+      const bar = (await page.locator('[data-tab-bar]').boundingBox())!;
+      expect(sheet.y).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+      expect(sheet.y + sheet.height).toBeLessThanOrEqual(bar.y + 1);
+      // Its standalone link and buttons are full touch targets.
+      for (const target of await panel.locator('a, button').all()) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    });
+
+    test('@M05 the panel link to the students not drawn is a full touch target', async ({ page }) => {
+      const hub = await personIdOf('demo-hub-a');
+      await openExplorer(page, { focus: hub, up: 0, down: 1 });
+      await nodeOf(page, hub).click();
+      const link = page.getByTestId('explorer-panel').getByRole('link', { name: /All students in the list view \(\+\d+ not drawn\)/ });
+      await expect(link).toBeVisible();
+      expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    });
   });
 });
