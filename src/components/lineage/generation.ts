@@ -3,7 +3,7 @@
 //
 // "Generation N from {root}" is shown only when the person's chain of teachers in the view (the
 // display-primary teacher first, DEFAULT D05) reaches the lineage's recorded root
-// (lineage.root_person_id) and every edge on that chain is verified; the root is generation 1,
+// (lineage.root_person_id), every edge on that chain is verified and in that lineage; the root is generation 1,
 // as the routes of descent count it. Otherwise the label is "N generations below {name} in this
 // view", counted to the top of the chain in this view, or nothing for the top itself. So the
 // number never changes with the depth of the view, and it never looks like a generation in the
@@ -27,7 +27,7 @@ export function generationText(label: GenerationLabel): string {
 }
 
 /** The teacher edge a chain follows from a student: display-primary first, then a primary kind, then by teacher id. */
-function chainEdge(incoming: readonly Edge[]): Edge | undefined {
+export function chainEdge<E extends Pick<Edge, 'isDisplayPrimary' | 'kind' | 'teacherId'>>(incoming: readonly E[]): E | undefined {
   return [...incoming].sort(
     (a, b) =>
       Number(b.isDisplayPrimary) - Number(a.isDisplayPrimary) ||
@@ -51,17 +51,20 @@ export function generationLabels(graph: Graph): Map<string, GenerationLabel> {
     let current = node.id;
     let steps = 0;
     let allVerified = true;
+    const chainLineages = new Set<string>();
     let lineageLabel: GenerationLabel | null = null;
     for (;;) {
       const edge = chainEdge(incoming.get(current) ?? []);
       if (!edge || seen.has(edge.teacherId)) break;
       allVerified &&= edge.status === 'verified';
+      chainLineages.add(edge.lineageId);
       steps += 1;
       current = edge.teacherId;
       seen.add(current);
       const lineage = lineages.get(edge.lineageId);
       if (lineage?.rootPersonId === current) {
-        if (allVerified) {
+        // A generation of that lineage only when every step of the chain is in it.
+        if (allVerified && chainLineages.size === 1) {
           lineageLabel = { kind: 'lineage', generation: steps + 1, rootId: current, rootName: names.get(current) ?? '', lineageName: lineage.name };
         }
         break;

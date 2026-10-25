@@ -100,7 +100,7 @@ check "nodes show the name with lang, the generation label, the status in words 
   grep -q "lang=\"und-Latn\" translate=\"no\"" "$f" && grep -q "data.generation" "$f" && grep -q "data.status.label" "$f" && grep -q "{data.teachers} teachers" "$f"'
 check "edges follow plan §4.6: orthogonal ELK routes, the cross-lineage Bézier curve labelled \"Teacher in {lineage}\", historical hidden by default, a double stroke for arbitration" bash -c '
   grep -q "path.type === '\''bezier'\''" src/components/lineage/explorer/canvas.tsx && grep -q "style.stroke === '\''double'\''" src/components/lineage/explorer/canvas.tsx &&
-  grep -q "Teacher in \${lineageName}" src/components/lineage/explorer/explorer.tsx && grep -q "hidden: historical && !showHistorical" src/components/lineage/explorer/explorer.tsx'
+  grep -q "Teacher in \${lineageName}" src/components/lineage/explorer/explorer.tsx && grep -q "isHistoricalRelation(e.periods) && !showHistorical" src/components/lineage/explorer/explorer.tsx && grep -q "hidden: hidden(edge)" src/components/lineage/explorer/explorer.tsx'
 refute "no edge or node is faded with opacity (plan §4.7: solid tones only)" grep -nE "opacity-[0-9]|opacity: 0\.|opacity=\"0\." src/components/lineage/explorer/canvas.tsx
 check "the legend is the shared one (icon, stroke sample, text) inside the explorer frame" bash -c '
   grep -q "<Legend kinds={drawnKinds" src/components/lineage/explorer/explorer.tsx && grep -q "LinkStroke" src/components/ink/legend.tsx && grep -q "<Seal" src/components/ink/legend.tsx'
@@ -166,12 +166,17 @@ check "the user guide describes the explorer, its three views, the legend and Gr
   f=docs/guides/user-guide.bg.md
   grep -q "/explore" "$f" && grep -q "Generations" "$f" && grep -q "Lineage" "$f" && grep -qi "легенда" "$f" && grep -q "Graph" "$f" && grep -q "List" "$f"'
 check "docs/plan/README.md has a status for M05" bash -c '! grep -qE "^\| M05 .*\| не е започнат \|$" docs/plan/README.md'
-if git rev-parse --verify -q origin/main >/dev/null 2>&1 && base="$(git merge-base HEAD origin/main 2>/dev/null)" \
-  && [ "$base" != "$(git rev-parse HEAD)" ] && ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
-  check "docs/guides/user-guide.bg.md changed in this branch (differs from the merge base with origin/main)" \
+# Against origin/main, or the local main of a checkout that is not fetched (the owner pushes).
+main_ref=""
+for ref in origin/main main; do
+  if git rev-parse --verify -q "$ref" >/dev/null 2>&1; then main_ref="$ref"; break; fi
+done
+if [ -n "$main_ref" ] && base="$(git merge-base HEAD "$main_ref" 2>/dev/null)" \
+  && [ "$base" != "$(git rev-parse HEAD)" ] && ! git merge-base --is-ancestor HEAD "$main_ref" 2>/dev/null; then
+  check "docs/guides/user-guide.bg.md changed in this branch (differs from the merge base with $main_ref)" \
     bash -c "! git diff --quiet $base -- docs/guides/user-guide.bg.md"
 else
-  ok "the user guide changed in this branch: not checkable here (merged, or no origin/main in this checkout)"
+  ok "the user guide changed in this branch: not checkable here (merged into main, or no main in this checkout)"
 fi
 
 if [ "$failures" -gt 0 ]; then

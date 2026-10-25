@@ -61,3 +61,15 @@ describe('generationLabels', () => {
     expect(generationText(labels.get(id(3))!)).toBe('1 generation below Demo Second Teacher in this view');
   });
 });
+
+describe('generationLabels across lineages', () => {
+  it('gives no generation of a lineage to a chain that leaves it on the way to its root', () => {
+    const OTHER = '00000000-0000-4000-8000-000000000902';
+    const nodes = [node(1, 'Demo Root'), node(2, 'Demo Teacher'), node(3, 'Demo Student')];
+    // Root -> Teacher in lineage A, Teacher -> Student in another lineage: the student is not a generation of A.
+    const edges = [edge(1, 2), { ...edge(2, 3), lineageId: OTHER }];
+    const lineages = [...lineage(id(1)), { id: OTHER, slug: 'demo-lineage-other', name: 'Demo Lineage Other', rootPersonId: null }];
+    expect(generationText(generationLabels({ nodes, edges, lineages }).get(id(3))!)).toBe('2 generations below Demo Root in this view');
+    expect(generationText(generationLabels({ nodes, edges, lineages }).get(id(2))!)).toBe('Generation 2 from Demo Root');
+  });
+});

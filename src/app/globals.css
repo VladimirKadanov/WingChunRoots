@@ -293,3 +293,12 @@
     transition: none;
   }
 }
+/* The React Flow attribution stays (plan §10.2 row 9), in the theme's own tones and legible. */
+.explorer-canvas .react-flow__attribution {
+  background: var(--bg);
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.explorer-canvas .react-flow__attribution a {
+  color: var(--fg-muted);
+}

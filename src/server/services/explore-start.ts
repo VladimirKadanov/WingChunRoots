@@ -1,13 +1,14 @@
 // Where the explorer starts (milestone M05; plan §4.3): every lineage with a public root, as a way
 // into /explore when no person is in focus yet, and the lineage view's root (plan §4.3: "one
 // lineage" starts at its root). A cached public read: app_public_ro, v_public_* only, tagged
-// lineage:<id> and person:<root id> (plan §6.4), so a renamed lineage or a hidden root drops it.
+// lineage:<id>, person:<root id> and explore-start (plan §6.4): a renamed lineage, a hidden root, and
+// any person or relationship that becomes public or stops being public (the counts) drop it.
 // DEFAULT D22: a lineage whose root is unknown or not public is not offered here.
 
 import { sql } from 'drizzle-orm';
 import { cacheLife } from 'next/cache';
 
-import { lineageTag, personTag, tagCacheEntry } from '../cache';
+import { EXPLORE_START_TAG, lineageTag, personTag, tagCacheEntry } from '../cache';
 import { getPublicDb } from '../db';
 import { type ExploreStartDto, toPublicExploreStart } from '../dto/explore';
 
@@ -41,7 +42,7 @@ async function cachedExploreStart(): Promise<ExploreStartDto> {
     people: r.people,
     root: { id: r.root_id, slug: r.root_slug, displayName: r.root_name },
   }));
-  tagCacheEntry([...lineages.map((l) => lineageTag(l.id)), ...lineages.map((l) => personTag(l.root.id))]);
+  tagCacheEntry([EXPLORE_START_TAG, ...lineages.map((l) => lineageTag(l.id)), ...lineages.map((l) => personTag(l.root.id))]);
   return toPublicExploreStart({ lineages });
 }
 

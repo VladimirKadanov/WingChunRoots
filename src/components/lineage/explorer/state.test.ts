@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LineageGraphDto } from '@/server/dto/public';
-import { capFanout, explorerRead, FANOUT_SHOWN, joinToBox, paramsFrom, viewKind } from './state';
+import { capFanout, drawnByDefault, explorerRead, FANOUT_SHOWN, joinToBox, paramsFrom, viewKind } from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const node = (n: number, childCount = 0) => ({
@@ -115,5 +115,31 @@ describe('joinToBox (an edge reaches the smaller box of a compact or dot level o
 
   it('adds nothing when the end is on the box already', () => {
     expect(joinToBox({ x: 100, y: 50 }, box)).toEqual([]);
+  });
+});
+
+describe('drawnByDefault (plan §4.6: ended training only with show=historical)', () => {
+  const ended = [{ from: '1980', to: '1990', ongoing: false, precision: 'year' as const }];
+  const graph: LineageGraphDto = {
+    focusId: id(2),
+    dataVersion: 'test',
+    // 1 taught 2 long ago; 3 teaches 2 now; 2 teaches 4 now.
+    nodes: [node(1), node(2), node(3), node(4)],
+    edges: [{ ...edge(1, 2), periods: ended }, edge(3, 2), edge(2, 4)],
+    hiddenCounts: {},
+    lineages: [{ id: id(900), slug: 'demo-lineage', name: 'Demo Lineage', rootPersonId: null }],
+    truncated: false,
+  };
+
+  it('leaves out ended training and the people linked only by it, never the focus', () => {
+    const drawn = drawnByDefault(graph, false);
+    expect(drawn.edges.map((e) => e.teacherId)).toEqual([id(3), id(2)]);
+    expect(drawn.nodes.map((n) => n.id)).toEqual([id(2), id(3), id(4)]);
+    const alone = drawnByDefault({ ...graph, focusId: id(1) }, false);
+    expect(alone.nodes.map((n) => n.id)).toContain(id(1));
+  });
+
+  it('keeps everything with show=historical', () => {
+    expect(drawnByDefault(graph, true)).toBe(graph);
   });
 });

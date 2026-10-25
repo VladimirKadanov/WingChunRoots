@@ -60,8 +60,17 @@ test('@M05 demo-converging shows two same-lineage incoming edges, routed orthogo
   const incoming = edgesInto(page, id);
   await expect(incoming).toHaveCount(2);
   const edges = await incoming.evaluateAll((paths) =>
-    paths.map((p) => ({ kind: p.getAttribute('data-kind'), routed: p.getAttribute('data-routed'), d: p.getAttribute('d') ?? '', teacher: p.getAttribute('data-teacher')! })),
+    paths.map((p) => ({
+      kind: p.getAttribute('data-kind'),
+      lineage: p.getAttribute('data-lineage'),
+      routed: p.getAttribute('data-routed'),
+      d: p.getAttribute('d') ?? '',
+      teacher: p.getAttribute('data-teacher')!,
+    })),
   );
+  // Same lineage: both edges name one lineage.
+  expect(edges[0]!.lineage).toBeTruthy();
+  expect(edges[1]!.lineage).toBe(edges[0]!.lineage);
   for (const e of edges) {
     expect(e.kind).not.toBe('crossLineage');
     expect(e.routed).toBe('elk');
@@ -225,13 +234,19 @@ test.describe('on a phone', () => {
     expect(Math.abs(frame!.y - (header!.y + header!.height))).toBeLessThanOrEqual(2);
     expect(Math.abs(frame!.y + frame!.height - bar!.y)).toBeLessThanOrEqual(2);
     // Every control of the explorer is on screen, above the tab bar, at least 44 px tall.
-    for (const control of [page.getByRole('button', { name: 'Zoom in' }), page.getByRole('button', { name: 'Fit the whole view' }), page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'List' })]) {
+    for (const control of [
+      page.getByRole('button', { name: 'Zoom in' }),
+      page.getByRole('button', { name: 'Fit the whole view' }),
+      page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'List' }),
+      page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Lineage' }),
+      page.locator('label').filter({ hasText: 'Show ended training' }),
+    ]) {
       const box = (await control.boundingBox())!;
       expect(box.y).toBeGreaterThanOrEqual(0);
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(390);
       expect(box.y + box.height).toBeLessThanOrEqual(bar!.y);
-      expect(box.height).toBeGreaterThanOrEqual(40);
+      expect(box.height).toBeGreaterThanOrEqual(44);
     }
     // No horizontal scroll of the page.
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -241,15 +256,25 @@ test.describe('on a phone', () => {
 test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
   const id = await personIdOf('demo-two-lineages');
   await openExplorer(page, { focus: id });
-  // Interaction latency from the Event Timing API (what INP is made of).
+  // Interaction latency from the Event Timing API (what INP is made of), which reports only
+  // interactions of 16 ms or more; and in every browser (WebKit has no Event Timing) the time from
+  // the pointer going down to the first frame after the click.
   await page.evaluate(() => {
-    const w = window as unknown as { __inp: number[] };
+    const w = window as unknown as { __inp: number[]; __frames: number[] };
     w.__inp = [];
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as (PerformanceEventTiming & { interactionId?: number })[]) {
-        if (entry.interactionId) w.__inp.push(entry.duration);
-      }
-    }).observe({ type: 'event', buffered: true, durationThreshold: 16 } as PerformanceObserverInit);
+    w.__frames = [];
+    if (PerformanceObserver.supportedEntryTypes.includes('event')) {
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as (PerformanceEventTiming & { interactionId?: number })[]) {
+          if (entry.interactionId) w.__inp.push(entry.duration);
+        }
+      }).observe({ type: 'event', buffered: true, durationThreshold: 16 } as PerformanceObserverInit);
+    }
+    let down = 0;
+    document.addEventListener('pointerdown', (e) => (down = e.timeStamp), { capture: true });
+    document.addEventListener('click', () => {
+      requestAnimationFrame(() => setTimeout(() => w.__frames.push(performance.now() - down)));
+    });
   });
   // 4x CPU slowdown where the browser offers it (Chromium, through the DevTools protocol).
   const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
@@ -261,8 +286,14 @@ test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling'
   }
   await page.waitForTimeout(500);
   await cdp?.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-  const durations = await page.evaluate(() => (window as unknown as { __inp: number[] }).__inp);
-  const worst = Math.max(0, ...durations);
+  const measured = await page.evaluate(() => {
+    const w = window as unknown as { __inp: number[]; __frames: number[] };
+    return { inp: w.__inp, frames: w.__frames };
+  });
+  expect(measured.frames.length, 'every selection was measured').toBeGreaterThanOrEqual(3);
+  // INP itself where the browser reports it; with no entry (WebKit, or every interaction under
+  // 16 ms) the frame measure, which also counts its own timer and so errs on the slow side.
+  const worst = Math.max(...(measured.inp.length > 0 ? measured.inp : measured.frames));
   test.info().annotations.push({ type: 'INP (ms, worst of 3 selections, 4x CPU)', description: String(worst) });
   expect(worst).toBeLessThan(200);
 });

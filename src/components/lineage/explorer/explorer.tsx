@@ -17,7 +17,7 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { createParser, parseAsInteger, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { createParser, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Activity, type ReactNode, useEffect, useState } from 'react';
 
@@ -32,7 +32,7 @@ import type { Scene } from '@/lib/lineage-layout/types';
 import { rpcClient } from '@/lib/rpc-client';
 import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageGraphDto } from '@/server/dto/public';
-import { generationLabels, generationText } from '../generation';
+import { chainEdge, generationLabels, generationText } from '../generation';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -45,6 +45,8 @@ import {
   MAX_UP,
   NARROW_QUERY,
   capFanout,
+  drawnByDefault,
+  parseCount,
   readKey,
   toLayoutGraph,
   viewKind,
@@ -57,10 +59,15 @@ const parseAsId = createParser({
   parse: (value: string) => (isUuid(value) ? value.toLowerCase() : null),
   serialize: (value: string) => value,
 });
+// The same rule as the server's paramsFrom, so both sides make the same first read.
+const parseAsCount = createParser({
+  parse: (value: string) => parseCount(value),
+  serialize: (value: number) => String(value),
+});
 const parsers = {
   focus: parseAsId,
-  up: parseAsInteger,
-  down: parseAsInteger,
+  up: parseAsCount,
+  down: parseAsCount,
   lineage: parseAsId,
   show: parseAsStringLiteral(['historical'] as const),
   view: parseAsStringLiteral(['graph', 'list'] as const).withDefault('graph'),
@@ -75,8 +82,16 @@ export interface ExplorerProps {
   list: ReactNode;
 }
 
+/** A person who is not on the record, or a malformed request: retrying cannot change the answer. */
+const isFinal = (error: unknown) => /NOT_FOUND|BAD_REQUEST/.test(String((error as { code?: string } | null)?.code ?? ''));
+
 export function Explorer(props: ExplorerProps) {
-  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false, retry: 1 } } }));
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false, retry: (failures, error) => failures < 1 && !isFinal(error) } },
+      }),
+  );
   return (
     <NuqsAdapter>
       <QueryClientProvider client={client}>
@@ -88,26 +103,28 @@ export function Explorer(props: ExplorerProps) {
 
 const VIEW_LABELS: Record<ViewKind, string> = { person: 'Person', generations: 'Generations', lineage: 'Lineage' };
 
-/** Status of a node: its relationship to the teacher the chain follows (display-primary first). */
-function nodeStatus(graph: LineageGraphDto, id: string): { kind: LinkKind; label: string } | null {
-  const incoming = graph.edges.filter((e) => e.studentId === id);
-  const edge = [...incoming].sort((a, b) => Number(b.isDisplayPrimary) - Number(a.isDisplayPrimary))[0];
-  return edge ? relationStatus(edge.status) : null;
-}
-
 function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, selectedId: string | null) {
   const persons = new Map(graph.nodes.map((n) => [n.id, n]));
   const edges = new Map(graph.edges.map((e) => [e.id, e]));
   const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
   const roots = new Set(graph.lineages.map((l) => l.rootPersonId).filter(Boolean));
   const labels = generationLabels(graph);
-  const teachers = new Map<string, number>();
-  for (const e of graph.edges) teachers.set(e.studentId, (teachers.get(e.studentId) ?? 0) + 1);
+  // Ended training is drawn only with show=historical or for the selected person (plan §4.6, §4.7).
+  const hidden = (e: (typeof graph.edges)[number]) =>
+    isHistoricalRelation(e.periods) && !showHistorical && !(selectedId !== null && (e.teacherId === selectedId || e.studentId === selectedId));
+  const drawn = graph.edges.filter((e) => !hidden(e));
+  // The chip and the status speak of the lines drawn, not of hidden ones.
+  const incoming = new Map<string, typeof drawn>();
+  for (const e of drawn) incoming.set(e.studentId, [...(incoming.get(e.studentId) ?? []), e]);
+  // A person whose every line is hidden would stand alone on the canvas, unexplained.
+  const linked = new Set(graph.edges.map((e) => [e.teacherId, e.studentId]).flat());
+  const shown = new Set(drawn.map((e) => [e.teacherId, e.studentId]).flat());
 
   const nodes: PersonNode[] = scene.nodes.map((sn) => {
     const person = persons.get(sn.id)!;
     const original = person.altNames.find((a) => a.kind === 'name' && a.script !== 'Latn') ?? null;
     const label = labels.get(sn.id);
+    const statusEdge = chainEdge(incoming.get(sn.id) ?? []);
     return {
       id: sn.id,
       type: 'person',
@@ -115,14 +132,15 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
       width: sn.width,
       height: sn.height,
       draggable: false,
+      hidden: linked.has(sn.id) && !shown.has(sn.id) && sn.id !== graph.focusId && sn.id !== selectedId,
       selected: sn.id === selectedId,
       ariaLabel: `${person.displayName}${label ? `, ${generationText(label)}` : ''}`,
       data: {
         name: person.displayName,
         original: original ? { value: original.value, lang: original.lang } : null,
         generation: label ? generationText(label) : null,
-        status: nodeStatus(graph, sn.id),
-        teachers: teachers.get(sn.id) ?? 0,
+        status: statusEdge ? relationStatus(statusEdge.status) : null,
+        teachers: incoming.get(sn.id)?.length ?? 0,
         more: more.get(sn.id) ?? 0,
         rank: sn.rank,
         focus: sn.id === graph.focusId,
@@ -140,17 +158,16 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
     const stroke = strokeOf(edge);
     const lineageName = lineages.get(edge.lineageId)?.name ?? 'another lineage';
     const label = se.kind === 'crossLineage' ? `Teacher in ${lineageName}` : historical ? periodText(edge.periods) : null;
-    const touchesSelected = selectedId !== null && (edge.teacherId === selectedId || edge.studentId === selectedId);
     return {
       id: se.id,
       type: 'lineage',
       source: se.teacherId,
       target: se.studentId,
-      hidden: historical && !showHistorical && !touchesSelected,
+      hidden: hidden(edge),
       selectable: false,
       focusable: false,
       ariaLabel: `${persons.get(edge.teacherId)?.displayName ?? ''} taught ${persons.get(edge.studentId)?.displayName ?? ''}: ${relationStatus(edge.status).label}${se.kind === 'crossLineage' ? `, teacher in ${lineageName}` : ''}${historical ? `, ${periodText(edge.periods)}` : ''}`,
-      data: { stroke, kind: se.kind, routedBy: se.routedBy, path: se.path, label, historical, ends: { teacher: boxes.get(se.teacherId)!, student: boxes.get(se.studentId)! } },
+      data: { stroke, kind: se.kind, lineageId: edge.lineageId, routedBy: se.routedBy, path: se.path, label, historical, ends: { teacher: boxes.get(se.teacherId)!, student: boxes.get(se.studentId)! } },
     };
   });
   return { nodes, edges: flowEdges };
@@ -170,11 +187,11 @@ function drawnKinds(graph: LineageGraphDto, edges: readonly LineageEdge[]): Link
 }
 
 /** A skeleton with the shape of the coming drawing: one row per generation, a slot per person (plan §5.6). */
-function Skeleton({ graph }: { graph: LineageGraphDto | null }) {
+function Skeleton({ graph, showHistorical }: { graph: LineageGraphDto | null; showHistorical: boolean }) {
   let rows: number[] = [1, 2, 4];
   if (graph && graph.nodes.length > 0) {
     try {
-      const { ranks, rankCount } = computeRanks(toLayoutGraph(graph));
+      const { ranks, rankCount } = computeRanks(toLayoutGraph(drawnByDefault(graph, showHistorical)));
       rows = Array.from({ length: rankCount }, () => 0);
       for (const rank of ranks.values()) rows[rank] = (rows[rank] ?? 0) + 1;
     } catch {
@@ -205,7 +222,7 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
       <button type="button" className={button} aria-label={`Fewer generations of ${label.toLowerCase()}`} disabled={value <= min} onClick={() => onChange(value - 1)}>
         <MinusIcon size={16} />
       </button>
-      <span className="min-w-[6.5rem] px-1 text-center text-sm tabular-nums" aria-live="off">
+      <span className="px-0.5 text-center text-sm whitespace-nowrap tabular-nums md:min-w-[6.5rem] md:px-1" aria-live="off">
         {label}: <span className="font-semibold">{value}</span>
       </span>
       <button type="button" className={button} aria-label={`More generations of ${label.toLowerCase()}`} disabled={value >= max} onClick={() => onChange(value + 1)}>
@@ -224,7 +241,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
           type="button"
           aria-pressed={option.value === value}
           onClick={() => onChange(option.value)}
-          className="inline-flex min-h-10 min-w-11 items-center justify-center rounded-xs px-3 text-sm font-semibold text-fg-muted hover:bg-surface-3 hover:text-fg aria-pressed:bg-fg aria-pressed:text-fg-inverse"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xs px-3 text-sm font-semibold text-fg-muted hover:bg-surface-3 hover:text-fg aria-pressed:bg-fg aria-pressed:text-fg-inverse"
         >
           {option.label}
         </button>
@@ -256,20 +273,18 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const layout = useLayoutWorker();
   // `source` is the answer of the read; `graph` what is drawn of it (plan §4.8: large fan-outs counted).
   const [laidOut, setLaidOut] = useState<{ source: LineageGraphDto; graph: LineageGraphDto; more: Map<string, number>; scene: Scene } | null>(null);
-  const [layoutError, setLayoutError] = useState(false);
+  // The answer whose layout failed: the error belongs to that answer only, not to the next one.
+  const [failed, setFailed] = useState<LineageGraphDto | null>(null);
   useEffect(() => {
     if (!graph) return;
     let current = true;
     const capped = capFanout(graph);
     layout(toLayoutGraph(capped.graph), { focusId: graph.focusId })
       .then((answer) => {
-        if (current && answer) {
-          setLaidOut({ source: graph, graph: capped.graph, more: capped.more, scene: answer.scene });
-          setLayoutError(false);
-        }
+        if (current && answer) setLaidOut({ source: graph, graph: capped.graph, more: capped.more, scene: answer.scene });
       })
       .catch(() => {
-        if (current) setLayoutError(true);
+        if (current) setFailed(graph);
       });
     return () => {
       current = false;
@@ -278,8 +293,12 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const ready = laidOut !== null && laidOut.source === graph;
-  const flow = ready ? buildFlow(laidOut.graph, laidOut.scene, laidOut.more, params.show === 'historical', selectedId) : null;
-  const selected = ready && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
+  const layoutError = graph !== null && failed === graph;
+  // While the next scene is laid out the last one stays on the canvas, so the people who stay move
+  // to their new places (plan §5.2) instead of the canvas starting over; the skeleton is for the first.
+  const flow = laidOut ? buildFlow(laidOut.graph, laidOut.scene, laidOut.more, params.show === 'historical', selectedId) : null;
+  const selected = laidOut && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
+  const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
   const focusNode = graph?.nodes.find((n) => n.id === focus) ?? null;
   const kind = viewKind(params);
   const focusLineages = (focusNode?.lineageIds ?? []).map((id) => graph?.lineages.find((l) => l.id === id)).filter((l) => l !== undefined);
@@ -293,7 +312,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const currentUp = read?.procedure === 'ego' ? read.input.up : 0;
   const currentDown = read?.procedure === 'ego' ? read.input.down : read?.input.depth ?? 0;
 
-  const notFound = query.isError && /NOT_FOUND|BAD_REQUEST/.test(String((query.error as { code?: string } | null)?.code ?? ''));
+  const notFound = query.isError && isFinal(query.error);
+  // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
+  const centerOn = (id: string) => void setUrl(kind === 'lineage' ? { focus: id, lineage: null } : { focus: id });
+  const lineageName = starts.find((l) => l.id === params.lineage)?.name ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -307,6 +329,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                 <span lang="und-Latn" translate="no">
                   {focusNode.displayName}
                 </span>
+              ) : kind === 'lineage' && lineageName ? (
+                lineageName
               ) : (
                 'Lineage graph'
               )}
@@ -326,7 +350,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
       <Activity mode={params.view === 'graph' ? 'visible' : 'hidden'}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 overflow-x-auto border-b border-border-subtle px-[max(1rem,env(safe-area-inset-left,0px))] py-2 md:flex-wrap md:px-6">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-[max(1rem,env(safe-area-inset-left,0px))] py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] md:px-6">
             <Segmented
               label="View"
               value={kind}
@@ -388,10 +412,19 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   ) : null}
                 </p>
               </div>
-            ) : !flow || !ready ? (
-              <Skeleton graph={graph} />
+            ) : !flow || !laidOut ? (
+              <Skeleton graph={graph} showHistorical={params.show === 'historical'} />
             ) : (
               <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
+                {ready ? null : (
+                  <p
+                    role="status"
+                    data-testid="explorer-relayout"
+                    className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
+                  >
+                    Laying out the lineage…
+                  </p>
+                )}
                 <div
                   data-testid="explorer-legend"
                   className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
@@ -402,7 +435,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   <section
                     aria-label={`Selected: ${selected.displayName}`}
                     data-testid="explorer-panel"
-                    className="pointer-events-auto absolute top-3 right-[max(0.75rem,env(safe-area-inset-right,0px))] grid w-[min(20rem,calc(100%-1.5rem))] gap-3 rounded-sm border border-border-strong bg-surface-1 p-4 shadow-pop [--seal-ground:var(--surface-1)]"
+                    // A sheet along the bottom on a phone, clear of the people above it; on the right from md (plan §4.7).
+                    className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] grid gap-3 rounded-sm border border-border-strong bg-surface-1 p-4 shadow-pop [--seal-ground:var(--surface-1)] md:top-3 md:bottom-auto md:left-auto md:w-[min(20rem,calc(100%-1.5rem))]"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
@@ -427,11 +461,17 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                         Open profile
                       </Link>
                       {selected.id !== focus ? (
-                        <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => void setUrl({ focus: selected.id })}>
+                        <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => centerOn(selected.id)}>
                           Center on this person
                         </button>
                       ) : null}
                     </div>
+                    {selectedMore > 0 ? (
+                      // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
+                      <Link href={`/people/${selected.slug}/lineage#students-heading`} className="link text-sm">
+                        All students in the list view (+{selectedMore} not drawn)
+                      </Link>
+                    ) : null}
                   </section>
                 ) : null}
               </ExplorerCanvas>

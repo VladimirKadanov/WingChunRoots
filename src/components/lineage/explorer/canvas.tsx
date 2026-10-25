@@ -64,6 +64,7 @@ export interface PersonNodeData extends Record<string, unknown> {
 export interface LineageEdgeData extends Record<string, unknown> {
   stroke: LinkKind;
   kind: SceneEdge['kind'];
+  lineageId: string;
   routedBy: SceneEdge['routedBy'];
   path: SceneEdge['path'];
   /** "Teacher in {lineage}" on a cross-lineage curve, the years on a historical line. */
@@ -78,51 +79,67 @@ export type LineageEdge = Edge<LineageEdgeData, 'lineage'>;
 
 const lodOf = (s: ReactFlowState): DetailLevel => (s.transform[2] >= 0.75 ? 'full' : s.transform[2] >= 0.4 ? 'compact' : 'dot');
 
+/** The monogram of a full card (plan §4.8): the first letters of the first and the last word of the Latin name. */
+export function monogram(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const first = words[0]?.[0] ?? '';
+  const last = words.length > 1 ? words[words.length - 1]![0]! : '';
+  return (first + last).toUpperCase();
+}
+
 function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
   const lod = useStore(lodOf);
   const box = data.boxes[lod];
   // The box of this level of detail, centred in the slot.
   const offset = { left: box.x - data.slot.x, top: box.y - data.slot.y };
   const ring = selected ? 'outline-2 outline-offset-2 outline-focus' : '';
-  const frame = data.focus ? 'border-2 border-fg' : 'border border-border-strong';
+  // The focus gets a heavier frame drawn inside its 1 px border, so its three lines keep their room.
+  const frame = data.focus ? 'border border-fg shadow-[inset_0_0_0_1px_var(--fg)]' : 'border border-border-strong';
   return (
     <div data-person-node="" data-rank={data.rank} data-lod={lod} className="relative size-full">
       <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
         {lod === 'full' ? (
-          <div className={cx('flex size-full flex-col justify-center gap-0.5 overflow-hidden rounded-sm bg-surface-1 px-2.5 py-1.5 text-left', frame, ring)}>
-            <span className="flex min-w-0 items-baseline gap-1.5">
-              <span lang="und-Latn" translate="no" className="truncate font-display text-[15px] leading-tight text-fg">
-                {data.name}
-              </span>
-              {data.original ? (
-                <span lang={data.original.lang} translate="no" className="cjk shrink-0 text-xs text-fg-muted">
-                  {data.original.value}
-                </span>
-              ) : null}
+          <div className={cx('flex size-full items-center gap-2 overflow-hidden rounded-sm bg-surface-1 px-2 py-1 text-left', frame, ring)}>
+            <span aria-hidden="true" className="inline-grid size-6 shrink-0 place-items-center rounded-xs border border-border-strong text-[11px] leading-none font-semibold text-fg-muted">
+              {monogram(data.name)}
             </span>
-            {data.generation ? <span className="truncate text-[11px] leading-tight text-fg-muted">{data.generation}</span> : null}
-            <span className="flex min-w-0 items-center gap-1 text-[11px] leading-tight">
-              {data.status ? (
-                <>
-                  <Seal kind={linkStyles[data.status.kind].seal} size={12} className="shrink-0" />
-                  <span className="truncate font-semibold" style={{ color: `var(--${linkStyles[data.status.kind].labelColor})` }}>
-                    {data.status.label}
+            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span lang="und-Latn" translate="no" className="truncate font-display text-[15px] leading-[18px] text-fg">
+                  {data.name}
+                </span>
+                {data.original ? (
+                  <span lang={data.original.lang} translate="no" className="cjk shrink-0 text-xs text-fg-muted">
+                    {data.original.value}
                   </span>
-                </>
-              ) : data.root ? (
-                <span className="truncate text-fg-muted">Root of this lineage</span>
-              ) : null}
-              {data.teachers >= 2 ? (
-                <span data-teachers-chip="" className="ml-auto shrink-0 rounded-xs border border-border-strong px-1 text-[11px] text-fg">
-                  {data.teachers} teachers
-                </span>
-              ) : null}
-              {data.more > 0 ? (
-                <span data-more-chip="" className={cx('shrink-0 text-[11px] text-fg-muted', data.teachers < 2 && 'ml-auto')}>
-                  +{data.more} students
-                </span>
-              ) : null}
+                ) : null}
+              </span>
+              {data.generation ? <span className="truncate text-[11px] leading-[14px] text-fg-muted">{data.generation}</span> : null}
+              <span className="flex min-w-0 items-center gap-1 text-[11px] leading-[14px]">
+                {data.status ? (
+                  <>
+                    <Seal kind={linkStyles[data.status.kind].seal} size={12} className="shrink-0" />
+                    <span className="truncate font-semibold" style={{ color: `var(--${linkStyles[data.status.kind].labelColor})` }}>
+                      {data.status.label}
+                    </span>
+                  </>
+                ) : data.root ? (
+                  <span className="truncate text-fg-muted">Root of this lineage</span>
+                ) : (
+                  <span className="truncate text-fg-muted">Top of this view</span>
+                )}
+                {data.teachers >= 2 ? (
+                  <span data-teachers-chip="" className="ml-auto shrink-0 rounded-xs border border-border-strong px-1 text-[11px] leading-[12px] text-fg">
+                    {data.teachers} teachers
+                  </span>
+                ) : null}
+                {data.more > 0 ? (
+                  <span data-more-chip="" className={cx('shrink-0 text-[11px] text-fg-muted', data.teachers < 2 && 'ml-auto')}>
+                    +{data.more} students
+                  </span>
+                ) : null}
+              </span>
             </span>
           </div>
         ) : lod === 'compact' ? (
@@ -188,7 +205,7 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
   const d = lod === 'full' ? pathD(data.path, [], []) : pathD(data.path, joinToBox(ends.start, data.ends.teacher[lod]), joinToBox(ends.end, data.ends.student[lod]));
   const color = `var(--${style.strokeColor})`;
   const at = labelPoint(data.path);
-  const common = { 'data-edge': id, 'data-teacher': source, 'data-student': target, 'data-kind': data.kind, 'data-stroke': data.stroke, 'data-routed': data.routedBy, fill: 'none' } as const;
+  const common = { 'data-edge': id, 'data-teacher': source, 'data-student': target, 'data-kind': data.kind, 'data-lineage': data.lineageId, 'data-stroke': data.stroke, 'data-routed': data.routedBy, fill: 'none' } as const;
   return (
     <>
       {style.stroke === 'double' ? (
@@ -240,8 +257,9 @@ function ZoomControls() {
 
 /** Up to this many people the first view shows them all; a larger view starts at the focus. */
 const FIT_ALL_UP_TO = 40;
-/** The zoom a large view starts at: full cards (plan §4.8), readable on a phone too. */
-const LARGE_VIEW_ZOOM = 0.75;
+/** The zoom a large view starts at: cards at their own size, on a phone the smallest zoom with full cards (plan §4.8). */
+const LARGE_VIEW_ZOOM = { wide: 1, narrow: 0.75 } as const;
+const NARROW_PANE = 640;
 const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
 
 /**
@@ -262,7 +280,7 @@ function FitOnScene({ scene }: { scene: Scene }) {
   // Centring needs the size of the pane, known after its first measurement.
   const sized = useStore((s) => s.width > 0 && s.height > 0);
   // Strings and numbers, so the view moves once per new scene, not on every render of the same one.
-  const key = `${scene.dataVersion}:${scene.focusId}:${scene.nodes.length}`;
+  const key = `${scene.dataVersion}:${scene.focusId}:${scene.nodes.map((n) => n.id).join(',')}`;
   const start = largeViewStart(scene);
   const x = start?.at.x ?? null;
   const y = start?.at.y ?? null;
@@ -275,8 +293,10 @@ function FitOnScene({ scene }: { scene: Scene }) {
       return;
     }
     // With nobody above, the person sits a quarter down the pane and the rows below fill the rest.
-    const below = top ? store.getState().height / 4 / LARGE_VIEW_ZOOM : 0;
-    void flow.setCenter(x, y + below, { zoom: LARGE_VIEW_ZOOM, duration });
+    const { width, height } = store.getState();
+    const zoom = width < NARROW_PANE ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
+    const below = top ? height / 4 / zoom : 0;
+    void flow.setCenter(x, y + below, { zoom, duration });
   }, [flow, store, key, sized, x, y, top]);
   return null;
 }
@@ -317,7 +337,7 @@ export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children
     >
       <FitOnScene scene={scene} />
       <div className="pointer-events-none absolute inset-0 z-10">
-        <div className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-3">
+        <div className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
           <ZoomControls />
         </div>
         {children}
