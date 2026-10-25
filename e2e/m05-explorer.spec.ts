@@ -892,6 +892,22 @@ test.describe('M05 fixes B', () => {
     }
   });
 
+  test('@M05 lineage names are not translated: the Lineage picker, and a new focus drops the list\'s page and routes', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id, lineage: await lineageIdOf('demo-lineage-a'), page: 2, routes: 'all' });
+    const picker = page.getByRole('group', { name: 'Lineage' });
+    await expect(picker.getByRole('button')).toHaveCount(2);
+    for (const option of await picker.getByRole('button').all()) await expect(option.locator('[translate="no"]')).toHaveText(/^Demo Lineage [A-C]$/);
+    // Centring on someone else (the lineage's root, where this view opens): the students page and
+    // "all routes" were the person before's.
+    const other = await personIdOf('demo-root-a');
+    await nodeOf(page, other).click();
+    await page.getByTestId('explorer-panel').getByRole('button', { name: 'Center on this person' }).click();
+    await expect(page).toHaveURL(new RegExp(`focus=${other}`));
+    const search = new URL(page.url()).searchParams;
+    expect(search.has('page') || search.has('routes'), search.toString()).toBe(false);
+  });
+
   test.describe('on a phone in landscape', () => {
     test.use({ viewport: { width: 852, height: 393 }, isMobile: true, hasTouch: true });
 
@@ -1024,13 +1040,18 @@ test.describe('M05 fixes B', () => {
       for (const target of await panel.locator('a, button').all()) expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     });
 
-    test('@M05 the panel link to the students not drawn is a full touch target', async ({ page }) => {
+    test('@M05 the panel link to the students not drawn is a full touch target and stays in the explorer', async ({ page }) => {
       const hub = await personIdOf('demo-hub-a');
       await openExplorer(page, { focus: hub, up: 0, down: 1 });
       await nodeOf(page, hub).click();
       const link = page.getByTestId('explorer-panel').getByRole('link', { name: /All students in the list view \(\+\d+ not drawn\)/ });
       await expect(link).toBeVisible();
       expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      // The explorer's own List of that person, at the students.
+      const href = new URL((await link.getAttribute('href'))!, 'http://localhost');
+      expect(href.pathname).toBe('/explore');
+      expect(Object.fromEntries(href.searchParams)).toEqual({ focus: hub, up: '0', down: '1', view: 'list' });
+      expect(href.hash).toBe('#students-heading');
     });
   });
 });

@@ -17,7 +17,7 @@
 import { QueryClient, QueryClientProvider, skipToken, useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { createParser, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { createParser, createSerializer, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Activity, createContext, type ReactNode, use, useEffect, useState, useSyncExternalStore } from 'react';
 
@@ -82,7 +82,13 @@ const parsers = {
   lineage: parseAsId,
   show: parseAsStringLiteral(['historical'] as const),
   view: parseAsStringLiteral(['graph', 'list'] as const).withDefault('graph'),
+  // The list view's own keys (M04): its students page and "all routes". They belong to the person
+  // in focus, so a new focus clears them.
+  page: parseAsString,
+  routes: parseAsString,
 };
+/** The explorer's address with these values, as the browser writes it. */
+const serialize = createSerializer(parsers);
 
 export interface ExplorerProps {
   /** The server's first read and the key of the request it answers. */
@@ -357,7 +363,7 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
   );
 }
 
-function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly { value: T; label: string }[]; onChange: (value: T) => void }) {
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly { value: T; label: ReactNode }[]; onChange: (value: T) => void }) {
   return (
     <div role="group" aria-label={label} className="inline-flex shrink-0 rounded-sm border border-border-strong p-0.5">
       {options.map((option) => (
@@ -492,7 +498,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const notFound = query.isError && isFinal(query.error);
   const canvasShown = focus !== null && !notFound && !(query.isError && !graph) && !layoutError && flow !== null && laidOut !== null;
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
-  const centerOn = (id: string) => void setUrl(kind === 'lineage' ? { focus: id, lineage: null } : { focus: id });
+  const centerOn = (id: string) => void setUrl(kind === 'lineage' ? { focus: id, lineage: null, page: null, routes: null } : { focus: id, page: null, routes: null });
   const lineageName = starts.find((l) => l.id === params.lineage)?.name ?? null;
 
   return (
@@ -509,7 +515,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   {focusNode.displayName}
                 </span>
               ) : kind === 'lineage' && lineageName ? (
-                lineageName
+                // A lineage's name is a proper name, never rewritten by page translation (as LineageName).
+                <span translate="no">{lineageName}</span>
               ) : (
                 'Lineage graph'
               )}
@@ -550,7 +557,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
               <Segmented
                 label="Lineage"
                 value={params.lineage ?? ''}
-                options={focusLineages.map((l) => ({ value: l.id, label: l.name }))}
+                options={focusLineages.map((l) => ({ value: l.id, label: <span translate="no">{l.name}</span> }))}
                 onChange={(lineage) => void setUrl({ lineage })}
               />
             ) : null}
@@ -659,7 +666,12 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                 </div>
                 {selectedMore > 0 ? (
                   // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
-                  <Link href={`/people/${selected.slug}/lineage#students-heading`} className="link inline-flex min-h-11 items-center text-sm">
+                  // The list view inside the explorer, with this person in focus (the lineage view centres
+                  // on a person as the person view, as centerOn does).
+                  <Link
+                    href={`/explore${serialize({ ...url, focus: selected.id, view: 'list', page: null, routes: null, ...(kind === 'lineage' ? { lineage: null } : {}) })}#students-heading`}
+                    className="link inline-flex min-h-11 items-center text-sm"
+                  >
                     All students in the list view (+{selectedMore} not drawn)
                   </Link>
                 ) : null}
