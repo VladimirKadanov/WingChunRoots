@@ -263,7 +263,8 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
           >
             {/* The small mark on a cross-lineage curve (plan §4.6), before "Teacher in {lineage}". */}
             {data.kind === 'crossLineage' ? <Seal kind={linkStyles.cross_lineage.seal} size={12} /> : null}
-            {data.label}
+            {/* "Teacher in {lineage}": the lineage's name is not translated, like every name. */}
+            <span translate="no">{data.label}</span>
           </span>
         </EdgeLabelRenderer>
       ) : null}
