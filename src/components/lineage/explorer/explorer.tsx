@@ -113,17 +113,18 @@ export function Explorer(props: ExplorerProps) {
 
 const VIEW_LABELS: Record<ViewKind, string> = { person: 'Person', generations: 'Generations', lineage: 'Lineage' };
 
-function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, selectedId: string | null) {
+export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, selectedId: string | null) {
   const persons = new Map(graph.nodes.map((n) => [n.id, n]));
   const edges = new Map(graph.edges.map((e) => [e.id, e]));
   const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
   const roots = new Set(graph.lineages.map((l) => l.rootPersonId).filter(Boolean));
   // Ended training is drawn only with show=historical or for the selected person (plan §4.6, §4.7).
-  const hidden = (e: (typeof graph.edges)[number]) =>
-    isHistoricalRelation(e.periods) && !showHistorical && !(selectedId !== null && (e.teacherId === selectedId || e.studentId === selectedId));
+  const byDefault = (e: (typeof graph.edges)[number]) => showHistorical || !isHistoricalRelation(e.periods);
+  const hidden = (e: (typeof graph.edges)[number]) => !byDefault(e) && !(selectedId !== null && (e.teacherId === selectedId || e.studentId === selectedId));
   const drawn = graph.edges.filter((e) => !hidden(e));
-  // A label speaks of the lines drawn: it never counts from, or names, someone who is not shown.
-  const labels = generationLabels({ ...graph, edges: drawn });
+  // A label speaks of the lines drawn before anyone is selected: it never counts from, or names,
+  // someone who is not shown, and the ended training a selection adds does not change it.
+  const labels = generationLabels({ ...graph, edges: graph.edges.filter(byDefault) });
   // The chip and the status speak of the lines drawn, not of hidden ones.
   const incoming = new Map<string, typeof drawn>();
   for (const e of drawn) incoming.set(e.studentId, [...(incoming.get(e.studentId) ?? []), e]);
