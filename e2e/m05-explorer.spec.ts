@@ -17,6 +17,7 @@ import {
   personNameOf,
   recordScripts,
   selectionInp,
+  uncoveredNode,
   workerScripts,
 } from './helpers/explorer-checks';
 import { expectNoAxeViolations, openInTheme, switchColorScheme } from './helpers/ui';
@@ -333,6 +334,16 @@ test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling'
   const small = await selectionInp(page, browserName, 3, async (selected) => targets[selected.length] ?? null);
   report('person view of demo-two-lineages', small);
   expect(small.inp).toBeLessThan(200);
+
+  // A large view (plan §4.8: the cost of a selection must not grow with the people laid out): the
+  // Lineage view of Demo Lineage A, over a hundred people. Its root, a person on screen that the
+  // panel does not cover, and the root again.
+  const root = await personIdOf('demo-root-a');
+  await openExplorer(page, { focus: root, lineage: await lineageIdOf('demo-lineage-a') });
+  expect(await personNodes(page).count(), 'drawn on screen').toBeGreaterThan(3);
+  const large = await selectionInp(page, browserName, 3, (selected) => (selected.length === 1 ? uncoveredNode(page, selected) : Promise.resolve(root)));
+  report('Lineage view of Demo Lineage A', large);
+  expect(large.inp).toBeLessThan(200);
 });
 
 test('@M05 no axe violations on /explore in dark and light themes', async ({ page }) => {
