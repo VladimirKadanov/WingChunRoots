@@ -184,6 +184,23 @@ export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph
   return { graph: { ...graph, nodes: graph.nodes.filter((n) => reachable.has(n.id)), edges }, more: left };
 }
 
+/**
+ * The address of a view, with the keys the browser writes (nuqs leaves out what is at its
+ * default), and `extra` keys after them: the server's links into the explorer (Retry, the list
+ * view's pages and "all routes").
+ */
+export function explorerHref(params: ExplorerParams, extra: Readonly<Record<string, string>> = {}): string {
+  const search = new URLSearchParams();
+  if (params.focus) search.set('focus', params.focus);
+  if (params.up !== null) search.set('up', String(params.up));
+  if (params.down !== null) search.set('down', String(params.down));
+  if (params.lineage) search.set('lineage', params.lineage);
+  if (params.show) search.set('show', params.show);
+  if (params.view === 'list') search.set('view', 'list');
+  for (const [key, value] of Object.entries(extra)) search.set(key, value);
+  return search.size > 0 ? `/explore?${search}` : '/explore';
+}
+
 /** A stable key for a read (the server's first read is reused by the client when the keys match). */
 export const readKey = (read: ExplorerRead) => JSON.stringify(read);
 

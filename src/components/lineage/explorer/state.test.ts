@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LineageGraphDto } from '@/server/dto/public';
-import { capFanout, drawnByDefault, explorerRead, FANOUT_SHOWN, joinToBox, paramsFrom, viewKind } from './state';
+import { capFanout, drawnByDefault, explorerHref, explorerRead, FANOUT_SHOWN, joinToBox, paramsFrom, viewKind } from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const node = (n: number, childCount = 0) => ({
@@ -57,6 +57,18 @@ describe('paramsFrom and viewKind', () => {
     });
     // DEFAULT D22: an unknown root starts the lineage at the focus.
     expect(explorerRead({ ...base, lineage: id(900) }, null, false).input).toMatchObject({ rootId: id(1) });
+  });
+
+  it('writes a view back as the address it was read from, with the server\'s extra keys (Retry, the list view\'s pages)', () => {
+    const query = { focus: id(1), up: '1', down: '3', lineage: id(900), show: 'historical', view: 'list' };
+    const href = explorerHref(paramsFrom(query), { page: '2', routes: 'all' });
+    expect(href.startsWith('/explore?')).toBe(true);
+    const back = new URL(href, 'http://localhost').searchParams;
+    expect(Object.fromEntries(back)).toEqual({ ...query, page: '2', routes: 'all' });
+    expect(paramsFrom(Object.fromEntries(back))).toEqual(paramsFrom(query));
+    // The defaults are left out, as the browser leaves them out.
+    expect(explorerHref(paramsFrom({ focus: id(1) }))).toBe(`/explore?focus=${id(1)}`);
+    expect(explorerHref(paramsFrom({}))).toBe('/explore');
   });
 });
 
