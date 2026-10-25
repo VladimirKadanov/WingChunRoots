@@ -211,19 +211,24 @@ check "on a phone the palette fills the screen with dvh and safe areas" bash -c 
 check "the shell has the visible search field and loads the palette on first use" bash -c '
   grep -q "<SearchField variant=\"bar\" />" src/components/shell/app-shell.tsx && grep -q "<SearchField variant=\"rail\" />" src/components/shell/app-shell.tsx &&
   grep -q "lazy(loadPalette)" src/components/shell/search-trigger.tsx'
-check "the profile editor uses TanStack Form and the Zod rules of src/lib/profile-form.ts" bash -c '
+check "the profile editor uses TanStack Form and the Zod rules of src/lib/profile-form-rules.ts" bash -c '
   grep -q "from '\''@tanstack/react-form'\''" src/app/dashboard/profile/profile-editor.tsx && grep -q "profileFormErrors" src/app/dashboard/profile/profile-editor.tsx &&
-  grep -q "from '\''zod/mini'\''" src/lib/profile-form.ts'
-check "the page loads the editor in a client bundle of its own (next/dynamic, rendered on the server; plan §5.8 (c))" bash -c '
-  grep -q "dynamic(() => import('\''./profile-editor'\'')" src/app/dashboard/profile/profile-editor-loader.tsx &&
-  grep -q "<ProfileEditorLoader" src/app/dashboard/profile/page.tsx && ! grep -q "ssr: false" src/app/dashboard/profile/profile-editor-loader.tsx'
+  grep -q "from '\''zod/mini'\''" src/lib/profile-form-rules.ts'
+check "the editor fetches the Zod rules on first use, not with the page (plan §5.8 (c))" bash -c '
+  grep -q "import('\''@/lib/profile-form-rules'\'')" src/app/dashboard/profile/profile-editor.tsx &&
+  ! grep -q "from '\''@/lib/profile-form-rules'\''" src/app/dashboard/profile/profile-editor.tsx && ! grep -q "from '\''zod" src/lib/profile-form.ts'
+refute "no next/dynamic around the profile editor: a preloaded chunk is initial JavaScript the budget must count" grep -rn "next/dynamic" src/app/dashboard/profile
 check "\"Show my profile publicly\" is never ticked in advance, follows the profile and is required in the API (DEFAULT D03)" bash -c '
   grep -q "showPublicly: profile.visibility === '\''public'\''" src/app/dashboard/profile/page.tsx && grep -q "showPublicly: z.boolean({" src/server/services/profile.ts'
 for route in "'/dashboard/profile'.*name: 'profile'.*milestone: 'M07', key: true" "'/account/privacy'.*name: 'account-privacy'.*milestone: 'M07', key: true"; do
   check "e2e/routes.ts: $route (axe in both themes, visual regression, screenshots)" grep -qE "path: $route" e2e/routes.ts
 done
 check "the palette is in the visual regression (@visual)" grep -q "palette-\${size.name}-\${theme}.png" e2e/visual.spec.ts
-for screen in profile account-privacy palette; do
+check "the palette's matched Chinese name, recent searches and failed search are screen states (screenshots and @visual)" bash -c '
+  f=e2e/helpers/search.ts
+  grep -q "name: '\''palette-cjk'\''" "$f" && grep -q "name: '\''palette-recent'\''" "$f" && grep -q "name: '\''palette-error'\''" "$f" &&
+  grep -q "PALETTE_STATES" e2e/screenshots.spec.ts && grep -q "\${state.name}-\${size.name}-\${theme}.png" e2e/visual.spec.ts'
+for screen in profile account-privacy palette palette-cjk palette-recent palette-error; do
   for size in "${SIZES[@]}"; do
     for theme in "${THEMES[@]}"; do
       check "screenshot: docs/screenshots/M07/$screen-$size-$theme.png" test -s "docs/screenshots/M07/$screen-$size-$theme.png"
@@ -273,6 +278,19 @@ check "the user guide covers names (Chinese characters, Jyutping, pinyin), searc
 check "the admin guide covers handling a deletion request and pnpm search:rebuild" bash -c '
   f=docs/guides/admin-guide.bg.md
   grep -q "deletion_request" "$f" && grep -q "pnpm search:rebuild" "$f" && grep -q "/admin#deletion-requests" "$f"'
+check "pnpm account:delete carries out and cancels a deletion request (service, script, int test)" bash -c '
+  grep -q "\"account:delete\": \"tsx src/server/auth/account-delete-cli.ts\"" package.json &&
+  grep -q "export async function carryOutDeletionFromCommandLine" src/server/services/privacy.ts &&
+  grep -q "export async function cancelDeletionFromCommandLine" src/server/services/privacy.ts &&
+  grep -q "assertLocalEnvironment(process.env, .account:delete.)" src/server/auth/account-delete-cli.ts &&
+  grep -q "pnpm account:delete carries out or cancels a deletion request" src/server/services/search.int.test.ts'
+check "the admin guide says how a deletion request is closed and that the web server is restarted to drop the public cache" bash -c '
+  f=docs/guides/admin-guide.bg.md
+  grep -q "pnpm account:delete --case <идентификатор> --cancel" "$f" && grep -q "pnpm account:delete --case <идентификатор>\`*\$" "$f" &&
+  grep -q "статус \`resolved\`" "$f" && grep -q "Рестартирайте уеб сървъра" "$f" && grep -q "публичния кеш" "$f" &&
+  grep -q "consent_record" "$f"'
+check "both guides say a deletion deletes the consents" bash -c '
+  grep -q "изтриват входът, съгласията" docs/guides/user-guide.bg.md && grep -q "изтрива записите за съгласията" docs/guides/admin-guide.bg.md'
 check "docs/plan/README.md has a status for M07" bash -c '! grep -qE "^\| M07 .*\| не е започнат \|$" docs/plan/README.md'
 if git rev-parse --verify -q origin/main >/dev/null 2>&1 && base="$(git merge-base HEAD origin/main 2>/dev/null)" \
   && [ "$base" != "$(git rev-parse HEAD)" ] && ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
