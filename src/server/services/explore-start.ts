@@ -4,6 +4,8 @@
 // lineage:<id>, person:<root id> and explore-start (plan §6.4): a renamed lineage, a hidden root, and
 // any person or relationship that becomes public or stops being public (the counts) drop it.
 // DEFAULT D22: a lineage whose root is unknown or not public is not offered here.
+// src/server/services/explore-start.int.test.ts holds it to that: hidden people and relationships
+// that are not public never change a public number.
 
 import { sql } from 'drizzle-orm';
 import { cacheLife } from 'next/cache';
@@ -11,6 +13,8 @@ import { cacheLife } from 'next/cache';
 import { EXPLORE_START_TAG, lineageTag, personTag, tagCacheEntry } from '../cache';
 import { getPublicDb } from '../db';
 import { type ExploreStartDto, toPublicExploreStart } from '../dto/explore';
+import { failOnce } from '../faults';
+import type { RequestMeta } from './context';
 
 interface Row extends Record<string, unknown> {
   id: string;
@@ -47,6 +51,8 @@ async function cachedExploreStart(): Promise<ExploreStartDto> {
 }
 
 /** lineage.start: the public lineages with their roots, the explorer's starting points. */
-export async function exploreStart(): Promise<ExploreStartDto> {
+export async function exploreStart(meta?: RequestMeta): Promise<ExploreStartDto> {
+  // M04's test fault (src/server/faults.ts): the E2E test of /explore's error state.
+  failOnce(meta?.testFault, 'lineage-once');
   return cachedExploreStart();
 }

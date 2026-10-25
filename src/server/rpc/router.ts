@@ -157,7 +157,7 @@ export const router = {
     start: base
       .route({ method: 'GET', path: '/lineage/start', summary: 'Public lineages with their public root: where the explorer starts' })
       .output(exploreStartSchema)
-      .handler(() => exploreStart()),
+      .handler(({ context }) => exploreStart(context.meta)),
   },
   people: {
     get: base
