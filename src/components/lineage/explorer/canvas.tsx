@@ -30,6 +30,7 @@ import {
   type ReactFlowState,
   useReactFlow,
   useStore,
+  useStoreApi,
 } from '@xyflow/react';
 import { type ReactNode, useEffect } from 'react';
 
@@ -39,6 +40,8 @@ import { Seal } from '@/components/ink/seal';
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import type { Box, DetailLevel, Point, Scene, SceneEdge } from '@/lib/lineage-layout/types';
+
+import { joinToBox } from './state';
 
 export interface PersonNodeData extends Record<string, unknown> {
   name: string;
@@ -66,6 +69,8 @@ export interface LineageEdgeData extends Record<string, unknown> {
   /** "Teacher in {lineage}" on a cross-lineage curve, the years on a historical line. */
   label: string | null;
   historical: boolean;
+  /** The boxes of the teacher and the student at each level of detail, to join the route to the box drawn. */
+  ends: { teacher: Record<DetailLevel, Box>; student: Record<DetailLevel, Box> };
 }
 
 export type PersonNode = Node<PersonNodeData, 'person'>;
@@ -143,12 +148,21 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
   );
 }
 
-function pathD(path: SceneEdge['path']): string {
+function pathD(path: SceneEdge['path'], from: Point[], to: Point[]): string {
+  const p = (q: Point) => `${q.x},${q.y}`;
+  // `from` runs from the teacher's box to the route's start; `to`, reversed, from its end to the student's box.
+  const head = from.map((q, i) => `${i === 0 ? 'M' : 'L'} ${p(q)} `).join('');
+  const tail = [...to].reverse().map((q) => ` L ${p(q)}`).join('');
+  const lead = head ? 'L' : 'M';
   if (path.type === 'bezier') {
-    const p = (q: Point) => `${q.x},${q.y}`;
-    return `M ${p(path.start)} C ${p(path.control1)} ${p(path.control2)} ${p(path.end)}`;
+    return `${head}${lead} ${p(path.start)} C ${p(path.control1)} ${p(path.control2)} ${p(path.end)}${tail}`;
   }
-  return path.points.map((q, i) => `${i === 0 ? 'M' : 'L'} ${q.x},${q.y}`).join(' ');
+  return `${head}${path.points.map((q, i) => `${i === 0 ? lead : 'L'} ${p(q)}`).join(' ')}${tail}`;
+}
+
+function routeEnds(path: SceneEdge['path']): { start: Point; end: Point } {
+  if (path.type === 'bezier') return { start: path.start, end: path.end };
+  return { start: path.points[0]!, end: path.points[path.points.length - 1]! };
 }
 
 /** Where an edge's label goes: the curve's midpoint, or the middle of an orthogonal route's longest segment. */
@@ -165,9 +179,13 @@ function labelPoint(path: SceneEdge['path']): Point {
 }
 
 function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
+  const lod = useStore(lodOf);
   if (!data) return null;
   const style = linkStyles[data.stroke];
-  const d = pathD(data.path);
+  // A compact or dot box is smaller than the slot the route was laid out for (plan §4.8): the
+  // route is joined to the box drawn, so no edge stops short of its person.
+  const ends = routeEnds(data.path);
+  const d = lod === 'full' ? pathD(data.path, [], []) : pathD(data.path, joinToBox(ends.start, data.ends.teacher[lod]), joinToBox(ends.end, data.ends.student[lod]));
   const color = `var(--${style.strokeColor})`;
   const at = labelPoint(data.path);
   const common = { 'data-edge': id, 'data-teacher': source, 'data-student': target, 'data-kind': data.kind, 'data-stroke': data.stroke, 'data-routed': data.routedBy, fill: 'none' } as const;
@@ -213,33 +231,53 @@ function ZoomControls() {
       <button type="button" className={button} aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: reduced() ? 0 : 200 })}>
         <MinusIcon size={18} />
       </button>
-      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => void flow.fitView({ padding: 0.15, duration: reduced() ? 0 : 200 })}>
+      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => void flow.fitView({ padding: FIT_OPTIONS.padding, duration: reduced() ? 0 : 200 })}>
         <FitIcon size={18} />
       </button>
     </div>
   );
 }
 
-/** Up to this many people the first view shows them all; a larger view starts at its top rows and the focus. */
+/** Up to this many people the first view shows them all; a larger view starts at the focus. */
 const FIT_ALL_UP_TO = 40;
+/** The zoom a large view starts at: full cards (plan §4.8), readable on a phone too. */
+const LARGE_VIEW_ZOOM = 0.75;
+const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
 
-/** Which nodes the first view fits: all of a small view; the top two rows and the focus of a large one (readable cards, not dots). */
-function fitTargets(scene: Scene): { id: string }[] | undefined {
-  if (scene.nodes.length <= FIT_ALL_UP_TO) return undefined;
-  return scene.nodes.filter((n) => n.rank <= 1 || n.id === scene.focusId).map((n) => ({ id: n.id }));
+/**
+ * Who the first view of a large scene starts at: the focus, or the first person of the top row
+ * when the focus is not drawn; `top` when nobody is drawn above them. Null for a small scene, which
+ * is fitted whole. Fitting a wide view whole would draw every person as a dot.
+ */
+export function largeViewStart(scene: Scene): { at: Point; top: boolean } | null {
+  if (scene.nodes.length <= FIT_ALL_UP_TO) return null;
+  const node = scene.nodes.find((n) => n.id === scene.focusId) ?? scene.nodes.find((n) => n.rank === 0) ?? scene.nodes[0];
+  return node ? { at: node.center, top: node.rank === 0 } : null;
 }
 
-/** Fits the view whenever a new scene arrives (a new focus, depth or view). */
+/** Fits or centres the view whenever a new scene arrives (a new focus, depth or view). */
 function FitOnScene({ scene }: { scene: Scene }) {
   const flow = useReactFlow();
-  // Strings, so the view is fitted once per new scene, not on every render of the same one.
+  const store = useStoreApi();
+  // Centring needs the size of the pane, known after its first measurement.
+  const sized = useStore((s) => s.width > 0 && s.height > 0);
+  // Strings and numbers, so the view moves once per new scene, not on every render of the same one.
   const key = `${scene.dataVersion}:${scene.focusId}:${scene.nodes.length}`;
-  const targets = fitTargets(scene)?.map((n) => n.id).join(' ') ?? '';
+  const start = largeViewStart(scene);
+  const x = start?.at.x ?? null;
+  const y = start?.at.y ?? null;
+  const top = start?.top ?? false;
   useEffect(() => {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const nodes = targets ? targets.split(' ').map((id) => ({ id })) : undefined;
-    void flow.fitView({ padding: 0.15, maxZoom: 1, nodes, duration: reduced ? 0 : 250 });
-  }, [flow, key, targets]);
+    if (!sized) return;
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250;
+    if (x === null || y === null) {
+      void flow.fitView({ ...FIT_OPTIONS, duration });
+      return;
+    }
+    // With nobody above, the person sits a quarter down the pane and the rows below fill the rest.
+    const below = top ? store.getState().height / 4 / LARGE_VIEW_ZOOM : 0;
+    void flow.setCenter(x, y + below, { zoom: LARGE_VIEW_ZOOM, duration });
+  }, [flow, store, key, sized, x, y, top]);
   return null;
 }
 
@@ -268,8 +306,10 @@ export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children
       selectNodesOnDrag={false}
       minZoom={0.1}
       maxZoom={2}
-      fitView
-      fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+      // A small scene is fitted whole as soon as its nodes are in the store; FitOnScene moves the view for each later scene
+      // and centres a large one.
+      fitView={largeViewStart(scene) === null}
+      fitViewOptions={FIT_OPTIONS}
       onNodeClick={(_, node) => onSelect(node.id)}
       onPaneClick={() => onSelect(null)}
       deleteKeyCode={null}

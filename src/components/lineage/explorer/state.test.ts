@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LineageGraphDto } from '@/server/dto/public';
-import { capFanout, explorerRead, FANOUT_SHOWN, paramsFrom, viewKind } from './state';
+import { capFanout, explorerRead, FANOUT_SHOWN, joinToBox, paramsFrom, viewKind } from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const node = (n: number, childCount = 0) => ({
@@ -90,5 +90,30 @@ describe('capFanout (plan §4.8)', () => {
   it('leaves a small graph as it is', () => {
     const small = { ...graph, nodes: graph.nodes.slice(0, 4), edges: graph.edges.slice(0, 3) };
     expect(capFanout(small)).toEqual({ graph: small, more: new Map() });
+  });
+});
+
+describe('joinToBox (an edge reaches the smaller box of a compact or dot level of detail)', () => {
+  // The compact box (120×36) centred in a 200×64 slot at (0, 0).
+  const box = { x: 40, y: 14, width: 120, height: 36 };
+
+  it('runs straight up from a bottom end below the box', () => {
+    expect(joinToBox({ x: 100, y: 64 }, box)).toEqual([{ x: 100, y: 50 }]);
+  });
+
+  it('turns along the slot edge when the end lies beyond the box', () => {
+    expect(joinToBox({ x: 10, y: 0 }, box)).toEqual([
+      { x: 44, y: 14 },
+      { x: 44, y: 0 },
+    ]);
+  });
+
+  it('runs across from a side end, as a cross-lineage curve has', () => {
+    expect(joinToBox({ x: 0, y: 32 }, box)).toEqual([{ x: 40, y: 32 }]);
+    expect(joinToBox({ x: 200, y: 32 }, box)).toEqual([{ x: 160, y: 32 }]);
+  });
+
+  it('adds nothing when the end is on the box already', () => {
+    expect(joinToBox({ x: 100, y: 50 }, box)).toEqual([]);
   });
 });

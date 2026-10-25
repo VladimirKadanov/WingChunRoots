@@ -133,6 +133,7 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
     };
   });
 
+  const boxes = new Map(scene.nodes.map((sn) => [sn.id, sn.boxes]));
   const flowEdges: LineageEdge[] = scene.edges.map((se) => {
     const edge = edges.get(se.id)!;
     const historical = isHistoricalRelation(edge.periods);
@@ -149,7 +150,7 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
       selectable: false,
       focusable: false,
       ariaLabel: `${persons.get(edge.teacherId)?.displayName ?? ''} taught ${persons.get(edge.studentId)?.displayName ?? ''}: ${relationStatus(edge.status).label}${se.kind === 'crossLineage' ? `, teacher in ${lineageName}` : ''}${historical ? `, ${periodText(edge.periods)}` : ''}`,
-      data: { stroke, kind: se.kind, routedBy: se.routedBy, path: se.path, label, historical },
+      data: { stroke, kind: se.kind, routedBy: se.routedBy, path: se.path, label, historical, ends: { teacher: boxes.get(se.teacherId)!, student: boxes.get(se.studentId)! } },
     };
   });
   return { nodes, edges: flowEdges };

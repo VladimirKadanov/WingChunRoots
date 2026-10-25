@@ -11,7 +11,7 @@
 //     and 3 generations below it.
 
 import type { LineageGraphDto } from '@/server/dto/public';
-import type { AltName, LineageGraph } from '@/lib/lineage-layout/types';
+import type { AltName, Box, LineageGraph, Point } from '@/lib/lineage-layout/types';
 
 /** The caps of the lineage API (src/server/services/lineage-graph.ts). */
 export const MAX_UP = 16;
@@ -209,4 +209,26 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
     })),
     hiddenCounts: graph.hiddenCounts,
   };
+}
+
+/**
+ * The way from the route's end `at` (on the border of the full-size slot) to the border of the
+ * smaller `box` drawn at a compact or dot level of detail: straight up or down from a top or bottom
+ * end, across from a side end, with a turn when the end lies beyond the box. Empty when the end is
+ * on the box already.
+ */
+export function joinToBox(at: Point, box: Box): Point[] {
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  const inset = Math.min(4, box.width / 2, box.height / 2);
+  if (at.y < box.y || at.y > box.y + box.height) {
+    const x = clamp(at.x, box.x + inset, box.x + box.width - inset);
+    const y = at.y < box.y ? box.y : box.y + box.height;
+    return x === at.x ? [{ x, y }] : [{ x, y }, { x, y: at.y }];
+  }
+  if (at.x < box.x || at.x > box.x + box.width) {
+    const x = at.x < box.x ? box.x : box.x + box.width;
+    const y = clamp(at.y, box.y + inset, box.y + box.height - inset);
+    return y === at.y ? [{ x, y }] : [{ x, y }, { x: at.x, y }];
+  }
+  return [];
 }
