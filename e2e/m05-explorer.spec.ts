@@ -745,3 +745,57 @@ test.describe('M05 fixes C', () => {
     if (!narrow) await expect(nodeOf(page, hub).locator('[data-more-chip]')).toHaveText(`+${more} students`);
   });
 });
+
+test.describe('M05 fixes B', () => {
+  /** Records every layout request the page posts to the layout worker, and every answer. */
+  const recordLayouts = (page: import('@playwright/test').Page) =>
+    page.addInitScript(() => {
+      const log: { sent: { requestId: number; warmup: boolean; nodes: number }[]; answers: { requestId: number; type: string }[] } = { sent: [], answers: [] };
+      (window as unknown as { __layouts: typeof log }).__layouts = log;
+      const Native = window.Worker;
+      const post = Native.prototype.postMessage as (this: Worker, ...args: unknown[]) => void;
+      Native.prototype.postMessage = function (this: Worker, ...args: unknown[]) {
+        const m = args[0] as { type?: string; requestId: number; graph?: { dataVersion: string; nodes: unknown[] } };
+        if (m.type === 'layout') log.sent.push({ requestId: m.requestId, warmup: m.graph?.dataVersion === 'warmup', nodes: m.graph?.nodes.length ?? 0 });
+        post.apply(this, args);
+      };
+      window.Worker = class extends Native {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.addEventListener('message', (event: MessageEvent<{ requestId: number; type: string }>) => log.answers.push({ requestId: event.data.requestId, type: event.data.type }));
+        }
+      };
+    });
+  const layouts = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => (window as unknown as { __layouts: { sent: { requestId: number; warmup: boolean; nodes: number }[]; answers: { requestId: number; type: string }[] } }).__layouts);
+
+  test.describe('on a phone', () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    test('@M05 a phone lays out only its own smaller person view, with the worker warmed meanwhile, and keeps it when turned', async ({ page }) => {
+      await recordLayouts(page);
+      // A slow network: the phone's own read (up=2, down=1) arrives well after the page.
+      const reads: string[] = [];
+      await page.route('**/api/rpc/lineage/**', async (route) => {
+        reads.push(route.request().url());
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      });
+      await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
+      const log = await layouts(page);
+      // The desktop read that came with the page (up=16, down=2) was never laid out or drawn.
+      expect(log.sent.filter((s) => !s.warmup), JSON.stringify(log.sent)).toHaveLength(1);
+      expect(reads).toHaveLength(1);
+      // The worker had time to warm up while the phone's view loaded: the warm-up was laid out.
+      const warmup = log.sent.find((s) => s.warmup)!;
+      expect(log.answers.find((a) => a.requestId === warmup.requestId)?.type).toBe('result');
+      // Turned to landscape: the view keeps the read it started with (plan §4.3: it *starts* small).
+      const drawn = await personNodes(page).count();
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.waitForTimeout(800);
+      expect(reads).toHaveLength(1);
+      expect((await layouts(page)).sent.filter((s) => !s.warmup)).toHaveLength(1);
+      expect(await personNodes(page).count()).toBe(drawn);
+    });
+  });
+});

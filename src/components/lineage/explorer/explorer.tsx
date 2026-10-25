@@ -19,13 +19,12 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { createParser, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
-import { Activity, type ReactNode, useEffect, useState } from 'react';
+import { Activity, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { CloseIcon, MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
-import { useMediaQuery } from '@/components/ui/use-media-query';
 import { cx } from '@/lib/cx';
 import { computeRanks } from '@/lib/lineage-layout/ranks';
 import type { Scene } from '@/lib/lineage-layout/types';
@@ -253,13 +252,27 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
   );
 }
 
+const noSubscription = () => () => undefined;
+
+/**
+ * Whether the screen was narrow when the explorer started: under 640 px the person view *starts*
+ * at up=2, down=1 (plan §4.3), and turning the phone later does not change what it reads. Null on
+ * the server and while hydrating, which cannot know the width.
+ */
+function useStartedNarrow(): boolean | null {
+  const [narrow] = useState(() => typeof window !== 'undefined' && window.matchMedia(NARROW_QUERY).matches);
+  const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
+  return hydrated ? narrow : null;
+}
+
 function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const [url, setUrl] = useQueryStates(parsers);
-  const narrow = useMediaQuery(NARROW_QUERY);
+  const narrow = useStartedNarrow();
   const params: ExplorerParams = { focus: url.focus, up: url.up, down: url.down, lineage: url.lineage, show: url.show, view: url.view };
   const focus = params.focus;
   const lineageRoot = starts.find((l) => l.id === params.lineage)?.root.id ?? null;
-  const read = focus ? explorerRead({ ...params, focus }, lineageRoot, narrow) : null;
+  // Until the width is known the read is the server's (desktop) one, so hydration reuses its answer.
+  const read = focus ? explorerRead({ ...params, focus }, lineageRoot, narrow === true) : null;
   const key = read ? readKey(read) : 'none';
   // The oRPC query options: a key per procedure and input, and a request TanStack Query can abort.
   const reuse = {
@@ -272,6 +285,9 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
       : orpc.lineage.ego.queryOptions({ input: read ? read.input : skipToken, ...reuse }),
   );
   const graph = query.data ?? null;
+  // Only the answer of this read is laid out: not the last answer, kept on screen while this one
+  // loads, and nothing before the width is known (a phone would lay out the desktop read first).
+  const answer = narrow !== null && !query.isPlaceholderData ? graph : null;
 
   const layout = useLayoutWorker();
   // `source` is the answer of the read; `graph` what is drawn of it (plan §4.8: large fan-outs counted).
@@ -279,20 +295,20 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // The answer whose layout failed: the error belongs to that answer only, not to the next one.
   const [failed, setFailed] = useState<LineageGraphDto | null>(null);
   useEffect(() => {
-    if (!graph) return;
+    if (!answer) return;
     let current = true;
-    const capped = capFanout(graph);
-    layout(toLayoutGraph(capped.graph), { focusId: graph.focusId })
-      .then((answer) => {
-        if (current && answer) setLaidOut({ source: graph, graph: capped.graph, more: capped.more, scene: answer.scene });
+    const capped = capFanout(answer);
+    layout(toLayoutGraph(capped.graph), { focusId: answer.focusId })
+      .then((result) => {
+        if (current && result) setLaidOut({ source: answer, graph: capped.graph, more: capped.more, scene: result.scene });
       })
       .catch(() => {
-        if (current) setFailed(graph);
+        if (current) setFailed(answer);
       });
     return () => {
       current = false;
     };
-  }, [graph, layout]);
+  }, [answer, layout]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const ready = laidOut !== null && laidOut.source === graph;
