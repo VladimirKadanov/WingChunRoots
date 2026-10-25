@@ -23,11 +23,11 @@ function inside(p: Point, n: SceneNode): boolean {
   return p.x > n.x && p.x < n.x + n.width && p.y > n.y && p.y < n.y + n.height;
 }
 
-/** The cards (other than the two people's) that the curve runs behind for t in [0.1, 0.9]. */
+/** The cards (other than the two people's) that the curve runs behind anywhere between its two ends. */
 function cardsBehind(path: BezierPath, cards: readonly SceneNode[]): string[] {
   const hit = new Set<string>();
-  for (let i = 0; i <= 160; i++) {
-    const p = pointAt(path, 0.1 + (0.8 * i) / 160);
+  for (let i = 1; i < 2000; i++) {
+    const p = pointAt(path, i / 2000);
     for (const card of cards) if (inside(p, card)) hit.add(card.id);
   }
   return [...hit];
@@ -40,9 +40,13 @@ function slot(id: string, rank: number, x: number, y: number): SceneNode {
   return { id, rank, cutOff: false, onSpine: false, x, y, width, height, center, boxes: { full: box, compact: box, dot: box } };
 }
 
-/** Two rows of cards 224 px apart (a card and the 24 px gap) with the 60 px gap between the rows. */
-function twoRows(count: number): SceneNode[][] {
-  return [0, 1].map((rank) => Array.from({ length: count }, (_, i) => slot(`demo-${rank}-${i}`, rank, i * 224, rank * 124)));
+/**
+ * Two rows of cards 224 px apart (a card and the 24 px gap between two cards), with a gap of
+ * `gap` px between the rows: 60 px is the least ELK leaves (`nodeNodeBetweenLayers`), and edges
+ * routed between the rows widen it.
+ */
+function twoRows(count: number, gap = 60): SceneNode[][] {
+  return [0, 1].map((rank) => Array.from({ length: count }, (_, i) => slot(`demo-${rank}-${i}`, rank, i * 224, rank * (64 + gap))));
 }
 
 /** The lineage views of the explorer (plan §4.3: a lineage root, three rows down, teachers from other lineages). */
@@ -67,11 +71,19 @@ async function lineageViews(): Promise<{ name: string; scene: Scene }[]> {
 }
 
 describe('bezierBetween: a curve to a teacher from another lineage (plan §4.6, screens-1)', () => {
-  it.each([3, 18, 160])('runs along the gap above the student, not behind the cards of either row (%i cards apart)', (apart) => {
-    const [above, below] = twoRows(apart + 2);
+  // The longest runs that a curve can drop out of the rows for: 12 cards in the lowest gap, 100 in a 200 px one.
+  it.each([
+    [2, 60],
+    [3, 60],
+    [12, 60],
+    [18, 100],
+    [100, 200],
+  ])('runs along the gap above the student, not behind the cards of either row (%i cards apart, %i px gap)', (apart, gap) => {
+    const [above, below] = twoRows(apart + 2, gap);
     const teacher = above![0]!;
     const student = below![apart]!;
-    const path = bezierBetween(teacher, student, { top: 64, bottom: 124 });
+    // Without the room of a scene: the gap between the two people's rows, cards a card gap away.
+    const path = bezierBetween(teacher, student);
     // Side attachment points, vertically centred on the boxes.
     expect(path.start).toEqual({ x: teacher.x + teacher.width, y: teacher.center.y });
     expect(path.end).toEqual({ x: student.x, y: student.center.y });
@@ -81,9 +93,35 @@ describe('bezierBetween: a curve to a teacher from another lineage (plan §4.6, 
     for (let i = 0; i <= 50; i++) {
       const p = pointAt(path, 0.25 + i / 100);
       expect(p.y).toBeGreaterThanOrEqual(64);
-      expect(p.y).toBeLessThanOrEqual(124);
+      expect(p.y).toBeLessThanOrEqual(64 + gap);
     }
-    expect(path.midpoint.y).toBeCloseTo(94, 0);
+    expect(path.midpoint.y).toBeCloseTo(64 + gap / 2, 0);
+  });
+
+  it.each([
+    [1, 60],
+    [2, 60],
+    [3, 200],
+  ])('between people close by, falls straight into the gap and out of it, without a loop (%i cards apart, %i px gap)', (apart, gap) => {
+    const [above, below] = twoRows(apart + 2, gap);
+    const path = bezierBetween(above![0]!, below![apart]!);
+    // Downwards all the way (to a pixel): a steeper drop than needed swung back up towards the teacher's row.
+    let lowest = path.start.y;
+    for (let i = 1; i <= 200; i++) {
+      const y = pointAt(path, i / 200).y;
+      expect(y).toBeGreaterThan(lowest - 1);
+      lowest = Math.max(lowest, y);
+    }
+  });
+
+  it('between people with no card of their rows between them, is an S with level ends (the Person view of demo-two-lineages)', async () => {
+    const scene = await layoutLineage(egoView(fixture, anchorId(fixture, 'demo-two-lineages')));
+    const curves = scene.edges.flatMap((e) => (e.path.type === 'bezier' ? [e.path] : []));
+    expect(curves.length).toBeGreaterThan(0);
+    for (const path of curves) {
+      expect(path.control1.y).toBe(path.start.y);
+      expect(path.control2.y).toBe(path.end.y);
+    }
   });
 
   it('a curve along the two rows centre lines (the old shape) runs behind them, which this test would catch', () => {
@@ -132,11 +170,11 @@ describe('bezierLabelPoint: where "Teacher in {lineage}" goes (plan §4.6, graph
     }
   });
 
-  it.each([3, 18, 160])('puts the label of a long curve on its run beside the student, clear of both rows (%i cards apart)', (apart) => {
+  it.each([3, 12, 160])('puts the label of a long curve on its run beside the student, clear of both rows (%i cards apart)', (apart) => {
     const [above, below] = twoRows(apart + 2);
     const teacher = above![0]!;
     const student = below![apart]!;
-    const path = bezierBetween(teacher, student, { top: 64, bottom: 124 });
+    const path = bezierBetween(teacher, student);
     const label = bezierLabelPoint(path);
     // Past the middle, towards the student, and at least half a card before the student's side.
     expect(label.x).toBeGreaterThan(path.midpoint.x);
