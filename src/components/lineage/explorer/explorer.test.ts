@@ -1,12 +1,13 @@
 // The explorer's nodes and edges for React Flow (buildFlow; milestone M05): selecting a person
-// shows their ended training, but the generation labels stay those of the view (graph-17). And
+// shows their ended training, but the generation labels stay those of the view (graph-17), and
+// it gives new objects only to the nodes and edges it changes (graph-8). And
 // egoPart, the phone's smaller person view cut from the desktop one for the skeleton (ci-webkit-2).
 
 import { describe, expect, it } from 'vitest';
 
 import type { Scene } from '@/lib/lineage-layout/types';
 import { generationText } from '../generation';
-import { buildFlow, egoPart } from './explorer';
+import { buildFlow, egoPart, flowBase, selectFlow } from './explorer';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const LINEAGE = id(900);
@@ -74,6 +75,37 @@ describe('buildFlow', () => {
 
   it('counts ended training in the labels with show=historical', () => {
     expect(labelOf(buildFlow(graph, scene, new Map(), true, null), 3)).toBe('Generation 3 from Demo Root');
+  });
+});
+
+describe('selectFlow', () => {
+  const base = flowBase(graph, scene, new Map(), false);
+
+  it('gives new objects only to what a selection changes, the rest keeps its identity', () => {
+    // The teacher: selected, with the ended line to the root, which shows the root too.
+    const teacher = selectFlow(base, id(2));
+    expect(teacher.nodes.filter((n, i) => n !== base.nodes[i]).map((n) => n.id)).toEqual([id(1), id(2)]);
+    expect(teacher.edges.filter((e, i) => e !== base.edges[i]).map((e) => e.id)).toEqual([graph.edges[0]!.id]);
+    // The student: selected, and nothing else changes.
+    const student = selectFlow(base, id(3));
+    expect(student.nodes.filter((n, i) => n !== base.nodes[i]).map((n) => n.id)).toEqual([id(3)]);
+    expect(student.edges).toBe(base.edges);
+    expect(selectFlow(base, null).nodes).toBe(base.nodes);
+  });
+
+  it('draws the same as building everything for the selection', () => {
+    for (const selected of [null, id(1), id(2), id(3)]) {
+      const overlay = selectFlow(base, selected);
+      // The nodes and edges as the explorer built them before (buildFlow with the selection in it).
+      const byDefault = new Set(graph.edges.filter((e) => e.periods.length === 0).map((e) => e.id));
+      const touches = (e: (typeof graph.edges)[number]) => selected !== null && (e.teacherId === selected || e.studentId === selected);
+      expect(overlay.edges.map((e) => [e.id, e.hidden])).toEqual(graph.edges.map((e) => [e.id, !byDefault.has(e.id) && !touches(e)]));
+      expect(overlay.nodes.map((n) => [n.id, n.selected, n.hidden])).toEqual([
+        [id(1), selected === id(1), selected !== id(1) && selected !== id(2)],
+        [id(2), selected === id(2), false],
+        [id(3), selected === id(3), false],
+      ]);
+    }
   });
 });
 

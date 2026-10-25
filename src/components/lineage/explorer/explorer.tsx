@@ -30,7 +30,7 @@ import { computeRanks } from '@/lib/lineage-layout/ranks';
 import type { Scene } from '@/lib/lineage-layout/types';
 import { orpc } from '@/lib/rpc-client';
 import type { ExploreStartDto } from '@/server/dto/explore';
-import type { LineageGraphDto } from '@/server/dto/public';
+import type { LineageEdgeDto, LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
 import { GenerationText } from '../generation-text';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
@@ -122,30 +122,57 @@ const VIEW_LABELS: Record<ViewKind, string> = { person: 'Person', generations: '
  */
 const LEGEND_WORDING: Partial<Record<LinkKind, LegendWording>> = { unconfirmed: { label: relationStatus('pending_teacher').label, description: '' } };
 
-export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, selectedId: string | null) {
+/**
+ * React Flow's nodes and edges as drawn with nobody selected, built from the scene alone (plan
+ * §4.8: a selection must not cost more as the view grows). selectFlow lays a selection over them
+ * and gives new objects only to the few nodes and edges it changes; the others keep their identity,
+ * so React Flow takes in only those again.
+ */
+export interface FlowBase {
+  nodes: PersonNode[];
+  edges: LineageEdge[];
+  /** Ended training hidden by default, by person: the lines selecting that person shows. */
+  endedOf: ReadonlyMap<string, readonly LineageEdgeDto[]>;
+  /** The person's node with these hidden lines drawn as well, and selected or not. */
+  nodeWith: (id: string, extra: readonly LineageEdgeDto[], selected: boolean) => PersonNode;
+}
+
+export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean): FlowBase {
   const persons = new Map(graph.nodes.map((n) => [n.id, n]));
   const edges = new Map(graph.edges.map((e) => [e.id, e]));
   const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
   const roots = new Set(graph.lineages.map((l) => l.rootPersonId).filter(Boolean));
   // Ended training is drawn only with show=historical or for the selected person (plan §4.6, §4.7).
-  const byDefault = (e: (typeof graph.edges)[number]) => showHistorical || !isHistoricalRelation(e.periods);
-  const hidden = (e: (typeof graph.edges)[number]) => !byDefault(e) && !(selectedId !== null && (e.teacherId === selectedId || e.studentId === selectedId));
-  const drawn = graph.edges.filter((e) => !hidden(e));
+  const byDefault = (e: LineageEdgeDto) => showHistorical || !isHistoricalRelation(e.periods);
+  const drawn = graph.edges.filter(byDefault);
   // A label speaks of the lines drawn before anyone is selected: it never counts from, or names,
   // someone who is not shown, and the ended training a selection adds does not change it.
-  const labels = generationLabels({ ...graph, edges: graph.edges.filter(byDefault) });
-  // The chip and the status speak of the lines drawn, not of hidden ones.
-  const incoming = new Map<string, typeof drawn>();
-  for (const e of drawn) incoming.set(e.studentId, [...(incoming.get(e.studentId) ?? []), e]);
+  const labels = generationLabels({ ...graph, edges: drawn });
+  // Every line into a person, in the answer's order; the chip and the status speak of the lines
+  // drawn, not of hidden ones.
+  const into = new Map<string, LineageEdgeDto[]>();
+  for (const e of graph.edges) into.set(e.studentId, [...(into.get(e.studentId) ?? []), e]);
+  const incomingByDefault = new Map([...into].map(([id, lines]) => [id, lines.filter(byDefault)]));
   // A person whose every line is hidden would stand alone on the canvas, unexplained.
   const linked = new Set(graph.edges.map((e) => [e.teacherId, e.studentId]).flat());
   const shown = new Set(drawn.map((e) => [e.teacherId, e.studentId]).flat());
+  const endedOf = new Map<string, LineageEdgeDto[]>();
+  for (const e of graph.edges) {
+    if (byDefault(e)) continue;
+    for (const id of [e.teacherId, e.studentId]) endedOf.set(id, [...(endedOf.get(id) ?? []), e]);
+  }
+  const sceneNodes = new Map(scene.nodes.map((sn) => [sn.id, sn]));
 
-  const nodes: PersonNode[] = scene.nodes.map((sn) => {
+  const nodeWith = (id: string, extra: readonly LineageEdgeDto[], selected: boolean): PersonNode => {
+    const sn = sceneNodes.get(id)!;
     const person = persons.get(sn.id)!;
     const original = person.altNames.find((a) => a.kind === 'name' && a.script !== 'Latn') ?? null;
     const label = labels.get(sn.id);
+    // The lines into this person that are drawn: by default, and those the selection shows.
+    const incoming =
+      extra.length === 0 ? incomingByDefault : new Map([[sn.id, (into.get(sn.id) ?? []).filter((e) => byDefault(e) || extra.includes(e))]]);
     const statusEdge = chainEdge(incoming.get(sn.id) ?? []);
+    const lit = selected || extra.some((e) => e.teacherId === sn.id || e.studentId === sn.id);
     return {
       id: sn.id,
       type: 'person',
@@ -153,8 +180,8 @@ export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string
       width: sn.width,
       height: sn.height,
       draggable: false,
-      hidden: linked.has(sn.id) && !shown.has(sn.id) && sn.id !== graph.focusId && sn.id !== selectedId,
-      selected: sn.id === selectedId,
+      hidden: linked.has(sn.id) && !shown.has(sn.id) && sn.id !== graph.focusId && !lit,
+      selected,
       ariaLabel: `${person.displayName}${label ? `, ${generationText(label)}` : ''}`,
       data: {
         name: person.displayName,
@@ -171,7 +198,8 @@ export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string
         boxes: sn.boxes,
       },
     };
-  });
+  };
+  const nodes = scene.nodes.map((sn) => nodeWith(sn.id, [], false));
 
   const boxes = new Map(scene.nodes.map((sn) => [sn.id, sn.boxes]));
   const flowEdges: LineageEdge[] = scene.edges.map((se) => {
@@ -185,14 +213,30 @@ export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string
       type: 'lineage',
       source: se.teacherId,
       target: se.studentId,
-      hidden: hidden(edge),
+      hidden: !byDefault(edge),
       selectable: false,
       focusable: false,
       ariaLabel: `${persons.get(edge.teacherId)?.displayName ?? ''} taught ${persons.get(edge.studentId)?.displayName ?? ''}: ${relationStatus(edge.status).label}${se.kind === 'crossLineage' ? `, teacher in ${lineageName}` : ''}${historical ? `, ${periodText(edge.periods)}` : ''}`,
       data: { stroke, kind: se.kind, lineageId: edge.lineageId, routedBy: se.routedBy, path: se.path, label, historical, ends: { teacher: boxes.get(se.teacherId)!, student: boxes.get(se.studentId)! } },
     };
   });
-  return { nodes, edges: flowEdges };
+  return { nodes, edges: flowEdges, endedOf, nodeWith };
+}
+
+/** The selection over a FlowBase: the selected person, and their ended training with whoever it reaches. */
+export function selectFlow(base: FlowBase, selectedId: string | null): { nodes: PersonNode[]; edges: LineageEdge[] } {
+  if (selectedId === null) return { nodes: base.nodes, edges: base.edges };
+  const shows = base.endedOf.get(selectedId) ?? [];
+  const changed = new Set([selectedId, ...shows.flatMap((e) => [e.teacherId, e.studentId])]);
+  const lines = new Set(shows.map((e) => e.id));
+  return {
+    nodes: base.nodes.map((n) => (changed.has(n.id) ? base.nodeWith(n.id, shows, n.id === selectedId) : n)),
+    edges: lines.size === 0 ? base.edges : base.edges.map((e) => (lines.has(e.id) ? { ...e, hidden: false } : e)),
+  };
+}
+
+export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, selectedId: string | null) {
+  return selectFlow(flowBase(graph, scene, more, showHistorical), selectedId);
 }
 
 /** The strokes the canvas draws, for the legend (a legend lists only what is drawn). */
@@ -344,6 +388,14 @@ function useStartedNarrow(): boolean | null {
   return hydrated ? narrow : null;
 }
 
+/** A laid-out answer: `source` is the answer of the read, `graph` what is drawn of it (plan §4.8: large fan-outs counted). */
+interface LaidOut {
+  source: LineageGraphDto;
+  graph: LineageGraphDto;
+  more: Map<string, number>;
+  scene: Scene;
+}
+
 function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const [url, setUrl] = useQueryStates(parsers);
   const narrow = useStartedNarrow();
@@ -382,8 +434,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   useEffect(() => {
     loadCanvas().catch(() => undefined);
   }, []);
-  // `source` is the answer of the read; `graph` what is drawn of it (plan §4.8: large fan-outs counted).
-  const [laidOut, setLaidOut] = useState<{ source: LineageGraphDto; graph: LineageGraphDto; more: Map<string, number>; scene: Scene } | null>(null);
+  const [laidOut, setLaidOut] = useState<LaidOut | null>(null);
   // The answer whose layout failed: the error belongs to that answer only, not to the next one.
   const [failed, setFailed] = useState<LineageGraphDto | null>(null);
   useEffect(() => {
@@ -403,23 +454,30 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   }, [answer, layout]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [flowOf, setFlowOf] = useState<{ laidOut: LaidOut; showHistorical: boolean; base: FlowBase } | null>(null);
+  // The list the server rendered, and for whom: a focus changed in the browser (a shallow update)
+  // keeps the last one, which belongs to the person before, until the server renders the new one.
+  const [listOf, setListOf] = useState({ list, focus });
+  if (listOf.list !== list) setListOf({ list, focus });
+  const focusList = listOf.focus === focus ? list : null;
   const ready = laidOut !== null && laidOut.source === graph;
   const layoutError = graph !== null && failed === graph;
   // While the next scene is laid out the last one stays on the canvas, so the people who stay move
   // to their new places (plan §5.2) instead of the canvas starting over; the skeleton is for the first.
-  const flow = laidOut ? buildFlow(laidOut.graph, laidOut.scene, laidOut.more, params.show === 'historical', selectedId) : null;
+  // The scene's nodes and edges, built once per layout and per `show`, and kept as state: a
+  // selection then changes only the few it touches (plan §4.8). (React Compiler cannot keep them
+  // apart from the selection: selectFlow takes them as an argument it might change.)
+  const showHistorical = params.show === 'historical';
+  const kept = laidOut && flowOf?.laidOut === laidOut && flowOf.showHistorical === showHistorical ? flowOf.base : null;
+  const base = kept ?? (laidOut ? flowBase(laidOut.graph, laidOut.scene, laidOut.more, showHistorical) : null);
+  if (laidOut && base && !kept) setFlowOf({ laidOut, showHistorical, base });
+  const flow = base ? selectFlow(base, selectedId) : null;
   const selected = laidOut && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
   const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
   const selectedGeneration = selected ? flow?.nodes.find((n) => n.id === selected.id)?.data.generation ?? null : null;
   const focusNode = graph?.nodes.find((n) => n.id === focus) ?? null;
   const kind = viewKind(params);
   const focusLineages = (focusNode?.lineageIds ?? []).map((id) => graph?.lineages.find((l) => l.id === id)).filter((l) => l !== undefined);
-
-  // The list the server rendered, and for whom: a focus changed in the browser (a shallow update)
-  // keeps the last one, which belongs to the person before, until the server renders the new one.
-  const [listOf, setListOf] = useState({ list, focus });
-  if (listOf.list !== list) setListOf({ list, focus });
-  const focusList = listOf.focus === focus ? list : null;
 
   // Only the list needs the server (it renders the M04 list view); the graph is all in the browser.
   const setView = (next: 'graph' | 'list') => void setUrl({ view: next === 'graph' ? null : next }, { shallow: next === 'graph', scroll: false });
