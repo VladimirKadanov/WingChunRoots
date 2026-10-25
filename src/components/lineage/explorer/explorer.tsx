@@ -142,6 +142,7 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
         original: original ? { value: original.value, lang: original.lang } : null,
         generation: label ?? null,
         status: statusEdge ? relationStatus(statusEdge.status) : null,
+        disputed: (incoming.get(sn.id) ?? []).some((e) => e !== statusEdge && e.status === 'in_arbitration'),
         teachers: incoming.get(sn.id)?.length ?? 0,
         more: more.get(sn.id) ?? 0,
         rank: sn.rank,

@@ -54,6 +54,11 @@ export interface PersonNodeData extends Record<string, unknown> {
   /** The generation label (plan §4.4), or null. */
   generation: GenerationLabel | null;
   status: { kind: LinkKind; label: string } | null;
+  /**
+   * A drawn link to one of their other teachers, not the one `status` speaks of, is in arbitration:
+   * plan §4.6 puts a banner on the node, so the card does not read only "Verified".
+   */
+  disputed: boolean;
   /** Teachers in this view (a chip from two). */
   teachers: number;
   /** Students not drawn (plan §4.8: large fan-outs are counted; M06 expands them). */
@@ -103,6 +108,17 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
     <div data-person-node="" data-rank={data.rank} data-lod={lod} className="relative size-full">
       <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
+        {lod === 'full' && data.disputed ? (
+          // On the card's top edge, at the right: the name starts at the left and its line keeps its room.
+          <span
+            data-arbitration-banner=""
+            className="absolute -top-2 right-2 z-10 inline-flex items-center gap-1 rounded-xs border border-current bg-surface-1 px-1 text-caption leading-3.5 font-semibold tracking-normal [--seal-ground:var(--surface-1)]"
+            style={{ color: `var(--${linkStyles.arbitration.labelColor})` }}
+          >
+            <Seal kind={linkStyles.arbitration.seal} size={11} className="shrink-0" />
+            {linkStyles.arbitration.label}
+          </span>
+        ) : null}
         {lod === 'full' ? (
           <div className={cx('flex size-full items-center gap-2 overflow-hidden rounded-sm bg-surface-1 px-2 py-1 text-left', frame, ring)}>
             <span aria-hidden="true" className="inline-grid size-6 shrink-0 place-items-center rounded-xs border border-border-strong text-caption leading-none font-semibold tracking-normal text-fg-muted">
@@ -153,6 +169,7 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
         ) : lod === 'compact' ? (
           <div className={cx('flex size-full items-center gap-1 overflow-hidden rounded-sm bg-surface-1 px-1.5', frame, ring)}>
             {data.status ? <Seal kind={linkStyles[data.status.kind].seal} size={11} className="shrink-0" /> : null}
+            {data.disputed ? <Seal kind={linkStyles.arbitration.seal} size={11} className="shrink-0" /> : null}
             <span lang="und-Latn" translate="no" className="truncate text-caption font-semibold tracking-normal text-fg">
               {data.name}
             </span>
