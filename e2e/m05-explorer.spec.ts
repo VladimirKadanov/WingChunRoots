@@ -241,7 +241,7 @@ test('@M05 legend shows an icon, a stroke sample and text for every status in vi
   await expect(legend).toBeVisible();
   const items = legend.getByRole('listitem');
   const strokes = new Set(await page.locator('[data-edge]').evaluateAll((paths) => paths.map((p) => p.getAttribute('data-stroke'))));
-  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Unconfirmed', arbitration: 'In arbitration' };
+  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'In arbitration' };
   expect(strokes.size).toBeGreaterThan(0);
   for (const stroke of strokes) {
     const item = items.filter({ hasText: words[stroke!]! });
@@ -525,7 +525,7 @@ test.describe('M05 fixes a1', () => {
 });
 
 test.describe('M05 fixes a2', () => {
-  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Unconfirmed', arbitration: 'In arbitration' };
+  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'In arbitration' };
 
   /** Opens the Lineage view of lineage B and fits the whole of it: about a hundred people, as dots. */
   async function wholeLineageB(page: Parameters<typeof openExplorer>[0]) {
