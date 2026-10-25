@@ -8,6 +8,7 @@ import { expect, test, type Worker } from '@playwright/test';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
 import {
+  captureScenes,
   elkScripts,
   emulateSafeAreaInsets,
   expectGenerationLabel,
@@ -16,6 +17,7 @@ import {
   nodeNames,
   personNameOf,
   recordScripts,
+  sceneOf,
   selectionInp,
   uncoveredNode,
   workerScripts,
@@ -112,6 +114,31 @@ test('@M05 demo-converging shows two same-lineage incoming edges, routed orthogo
   expect(student).toBeGreaterThanOrEqual(Math.min(a, b) - 1);
   expect(student).toBeLessThanOrEqual(Math.max(a, b) + 1);
   await expect(nodeOf(page, id).locator('[data-teachers-chip]')).toHaveText('2 teachers');
+});
+
+test('@M05 in the Lineage view of Demo Lineage A every student with two teachers in one lineage is placed horizontally between them', async ({ page }) => {
+  // Plan §4.6 in a view the size the explorer opens (over a hundred people), not only in the five
+  // of demo-converging: on the scene the layout worker answered with, as the canvas draws it (most
+  // of it is off screen, where React Flow renders nothing).
+  await captureScenes(page);
+  const root = await personIdOf('demo-root-a');
+  await openExplorer(page, { focus: root, lineage: await lineageIdOf('demo-lineage-a') });
+  const scene = await sceneOf(page, root);
+  const x = new Map(scene.nodes.map((n) => [n.id, n.center.x]));
+  const teachers = new Map<string, string[]>();
+  for (const e of scene.edges) {
+    if (e.kind === 'crossLineage') continue;
+    const key = `${e.studentId} in ${e.lineageId}`;
+    teachers.set(key, [...(teachers.get(key) ?? []), e.teacherId]);
+  }
+  const converging = [...teachers].filter(([, ids]) => ids.length >= 2);
+  expect(converging.length, 'students with two teachers in one lineage in the view').toBeGreaterThan(5);
+  const outside = converging.flatMap(([key, ids]) => {
+    const student = x.get(key.split(' ')[0]!)!;
+    const xs = ids.map((id) => x.get(id)!);
+    return student >= Math.min(...xs) - 1 && student <= Math.max(...xs) + 1 ? [] : [`${key}: x ${Math.round(student)}, teachers at ${xs.map(Math.round).join(' and ')}`];
+  });
+  expect(outside).toEqual([]);
 });
 
 test('@M05 historical relationships are hidden by default and shown with show=historical', async ({ page }) => {
