@@ -133,8 +133,14 @@ check "the keys come only through v_public_person_key (a view of the keys of pub
   grep -q "JOIN v_public_person_key k" src/server/search/query.ts && ! grep -qE "(FROM|JOIN) person_name_key" src/server/search/query.ts'
 check "search is limited per client (ip_hmac) and the palette sends the query in the body, never the URL" bash -c '
   grep -q "SEARCHES_PER_WINDOW = 40" src/server/services/search.ts && grep -q "TOO_MANY_REQUESTS" src/server/services/search.ts &&
-  grep -q "method: '\''POST'\''" src/components/ui/search-palette.tsx && grep -q "body: JSON.stringify({ q: trimmed })" src/components/ui/search-palette.tsx'
+  grep -q "method: '\''POST'\''" src/components/ui/search-palette.tsx && grep -q "body: JSON.stringify({ json: { q: trimmed } })" src/components/ui/search-palette.tsx'
+check "the web palette calls search.query through /api/rpc (plan §6.8; /api/v1 is the mobile contract)" grep -qF "fetch('/api/rpc/search/query'" src/components/ui/search-palette.tsx
+refute "no web component calls the mobile contract /api/v1" grep -rnF "/api/v1/" src/components src/app/dashboard src/app/account
 check "the recent searches are cleared on sign-out" grep -qF "writeRecentSearches([])" src/components/account/sign-out-form.tsx
+check "sign-out unmounts the palette (SEARCH_RESET_EVENT), and every opening starts with an empty field and re-reads the history" bash -c '
+  grep -q "window.dispatchEvent(new Event(SEARCH_RESET_EVENT))" src/components/account/sign-out-form.tsx &&
+  grep -q "window.addEventListener(SEARCH_RESET_EVENT, reset)" src/components/shell/search-trigger.tsx &&
+  grep -q "setRecent(readRecentSearches())" src/components/ui/search-palette.tsx'
 refute "no name, key or query in a log line of the search, the store, the job or the profile" \
   grep_code "console\.(log|info|warn|error)\(" src/server/search/keys.ts src/server/search/store.ts src/server/search/query.ts src/server/services/search.ts src/server/services/profile.ts src/server/services/privacy.ts
 check "the job logs counts only" grep -q 'wrote ${result.keys} key(s) for ${result.persons} person(s)' src/server/jobs/worker.ts
@@ -193,8 +199,9 @@ check "the palette is Base UI Autocomplete in a Dialog, searches after 200 ms, a
   grep -q "from '\''@base-ui/react/autocomplete'\''" "$f" && grep -q "from '\''@base-ui/react/dialog'\''" "$f" &&
   grep -q "SEARCH_DEBOUNCE_MS = 200" "$f" && grep -q "controller.current?.abort()" "$f" &&
   grep -q "onCompositionStart" "$f" && grep -q "onCompositionEnd" "$f" && grep -q "isComposing" "$f"'
-check "Ctrl/⌘+K opens it; Ctrl/⌘+Enter goes to /explore?focus=<id>; recent searches in localStorage with try/catch and Clear" bash -c '
-  grep -q "event.ctrlKey || event.metaKey" src/components/shell/search-trigger.tsx &&
+check "Ctrl/⌘+K opens it (also on a Cyrillic layout: KeyK); Ctrl/⌘+Enter goes to /explore?focus=<id>; recent searches in localStorage with try/catch and Clear" bash -c '
+  grep -q "event.ctrlKey || event.metaKey" src/lib/search-shortcut.ts && grep -q "event.code === '\''KeyK'\''" src/lib/search-shortcut.ts &&
+  grep -q "isSearchShortcut(event)" src/components/shell/search-trigger.tsx &&
   grep -q "/explore?focus=\${hit.id}" src/components/ui/search-palette.tsx &&
   grep -q "localStorage" src/components/ui/search-palette.tsx && grep -q "catch {" src/components/ui/search-palette.tsx &&
   grep -q "Clear<span className=\"sr-only\"> recent searches</span>" src/components/ui/search-palette.tsx'

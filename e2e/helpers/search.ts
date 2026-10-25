@@ -4,7 +4,7 @@
 // `pnpm db:seed`; src/server/search/store.ts), which Playwright starts next to the web server.
 // waitForSearchKeys() waits until it has written them, so a search test never runs before.
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Request } from '@playwright/test';
 import { sql } from 'drizzle-orm';
 
 import { getDb } from '../../src/server/db';
@@ -55,11 +55,17 @@ export async function openPalette(page: Page): Promise<void> {
   }).toPass({ timeout: 30_000 });
 }
 
+/** The palette's search request (search.query over the web's oRPC endpoint, { json: input }). */
+export const PALETTE_SEARCH_PATH = '/api/rpc/search/query';
+/** The query a palette search request sends, or null for any other request. */
+export function paletteQuery(request: Request): string | null {
+  if (new URL(request.url()).pathname !== PALETTE_SEARCH_PATH) return null;
+  return ((request.postDataJSON() ?? {}) as { json?: { q?: string } }).json?.q ?? '';
+}
+
 /** Types a query into the open palette and waits for the search to answer. */
 export async function search(page: Page, query: string): Promise<void> {
-  const answered = page.waitForResponse(
-    (r) => new URL(r.url()).pathname === '/api/v1/search' && ((r.request().postDataJSON() ?? {}) as { q?: string }).q === query.trim(),
-  );
+  const answered = page.waitForResponse((r) => paletteQuery(r.request()) === query.trim());
   await searchInput(page).fill(query);
   expect((await answered).status()).toBe(200);
 }

@@ -4,6 +4,11 @@
 
 export const RECENT_SEARCHES_KEY = 'wcr.recent-searches';
 export const RECENT_SEARCHES_MAX = 5;
+/**
+ * Sent on sign-out (src/components/account/sign-out-form.tsx): the shell's search host unmounts
+ * the palette, so its query, results and recent searches leave memory as well as storage.
+ */
+export const SEARCH_RESET_EVENT = 'wcr:search-reset';
 
 export function readRecentSearches(): string[] {
   try {

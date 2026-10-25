@@ -7,12 +7,16 @@
 //
 // One host per page (SearchHost) holds the open state and the shortcut; the fields ask it to open
 // with an event. The palette itself (Base UI Autocomplete in a Dialog) loads on first use, so it
-// adds nothing to a page's first JavaScript (plan §5.8 (c)).
+// adds nothing to a page's first JavaScript (plan §5.8 (c)). Sign-out sends SEARCH_RESET_EVENT:
+// the host unmounts the palette, so no query, result or recent search of the person who signed
+// out stays in memory for the next one (the shell outlives a soft navigation).
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 import { SearchIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
+import { SEARCH_RESET_EVENT } from '@/lib/recent-searches';
+import { isSearchShortcut } from '@/lib/search-shortcut';
 
 const OPEN_EVENT = 'wcr:open-search';
 
@@ -32,8 +36,13 @@ export function SearchHost() {
       setLoaded(true);
       setOpen(true);
     };
+    const reset = () => {
+      setOpen(false);
+      setLoaded(false);
+    };
     const onKey = (event: KeyboardEvent) => {
-      if ((event.key === 'k' || event.key === 'K') && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      // Ctrl/⌘+K, also on a Cyrillic layout (src/lib/search-shortcut.ts).
+      if (isSearchShortcut(event)) {
         // Ctrl/⌘+K is the palette's, never the browser's address bar search.
         event.preventDefault();
         show();
@@ -41,9 +50,11 @@ export function SearchHost() {
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener(OPEN_EVENT, show);
+    window.addEventListener(SEARCH_RESET_EVENT, reset);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener(OPEN_EVENT, show);
+      window.removeEventListener(SEARCH_RESET_EVENT, reset);
     };
   }, []);
   if (!loaded) return null;

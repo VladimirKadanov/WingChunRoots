@@ -7,14 +7,14 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { expect, test, type Page } from '@playwright/test';
+import { devices, expect, test, type Page } from '@playwright/test';
 import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
 import { MISSING_PRIMARY } from '../src/lib/profile-form';
 import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
 import { apiPost, freshAccount } from './helpers/plans';
-import { openPalette, option, palette, personIdOf, search, searchInput, waitForSearchKeys } from './helpers/search';
+import { openPalette, option, palette, paletteQuery, personIdOf, search, searchInput, waitForSearchKeys } from './helpers/search';
 import { expectNoAxeViolations, openInTheme, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
 
@@ -42,6 +42,7 @@ async function apiSearch(page: Page, query: Record<string, string>) {
   expect(response.status(), await response.text()).toBe(200);
   return (await response.json()) as {
     query: string;
+    morePeople: boolean;
     people: Record<string, unknown>[];
     schools: Record<string, unknown>[];
     lineages: Record<string, unknown>[];
@@ -151,26 +152,48 @@ test('@M07 a query filtered by country returns only people and schools in that c
   expect((await apiSearch(page, { q: 'So Ching Laam', country: other })).people.map((p) => p.slug)).not.toContain('demo-cjk-name');
 });
 
-test('@M07 no query is sent during IME composition and one is sent after compositionend', async ({ page }) => {
-  await page.goto('/');
-  await openPalette(page);
-  const sent: string[] = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname === '/api/v1/search') sent.push(((request.postDataJSON() ?? {}) as { q?: string }).q ?? '');
+test.describe('with a desktop or iOS input method', () => {
+  // The composition gate is off on Android (the next test), so this one names a browser that keeps it.
+  test.use({ userAgent: devices['Desktop Chrome'].userAgent });
+
+  test('@M07 no query is sent during IME composition and one is sent after compositionend', async ({ page }) => {
+    await page.goto('/');
+    await openPalette(page);
+    const sent: string[] = [];
+    page.on('request', (request) => {
+      const q = paletteQuery(request);
+      if (q !== null) sent.push(q);
+    });
+    const input = searchInput(page);
+    await input.dispatchEvent('compositionstart', { data: '' });
+    // What an input method shows while it composes: Latin letters, then the characters.
+    await input.fill('sou');
+    await input.fill('蘇');
+    await input.fill('蘇晴');
+    await page.waitForTimeout(800);
+    expect(sent).toEqual([]);
+    const answered = page.waitForResponse((r) => paletteQuery(r.request()) !== null);
+    await input.dispatchEvent('compositionend', { data: '蘇晴' });
+    expect((await answered).status()).toBe(200);
+    expect(sent).toEqual(['蘇晴']);
+    await expect(option(page, 'So Ching Laam').first()).toBeVisible();
   });
-  const input = searchInput(page);
-  await input.dispatchEvent('compositionstart', { data: '' });
-  // What an input method shows while it composes: Latin letters, then the characters.
-  await input.fill('sou');
-  await input.fill('蘇');
-  await input.fill('蘇晴');
-  await page.waitForTimeout(800);
-  expect(sent).toEqual([]);
-  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/search');
-  await input.dispatchEvent('compositionend', { data: '蘇晴' });
-  expect((await answered).status()).toBe(200);
-  expect(sent).toEqual(['蘇晴']);
-  await expect(option(page, 'So Ching Laam').first()).toBeVisible();
+});
+
+test.describe('on Android', () => {
+  test.use({ userAgent: devices['Pixel 7'].userAgent });
+
+  test('@M07 on Android a search runs while the keyboard composes a word (Gboard composes every Latin word)', async ({ page }) => {
+    await page.goto('/');
+    await openPalette(page);
+    const input = searchInput(page);
+    // Gboard holds each Latin or Cyrillic word as a composition until a space or a suggestion commits it.
+    await input.dispatchEvent('compositionstart', { data: '' });
+    const answered = page.waitForResponse((r) => paletteQuery(r.request()) === 'So Ching Laam');
+    await input.fill('So Ching Laam');
+    expect((await answered).status()).toBe(200);
+    await expect(option(page, 'So Ching Laam').first()).toBeVisible();
+  });
 });
 
 test('@M07 search results contain only public persons and no private fields', async ({ page }) => {
@@ -209,6 +232,102 @@ test('@M07 pressing "/" with focus outside the graph does not open the palette',
   // Ctrl/⌘+K still opens it.
   await openPalette(page);
   await expect(palette(page)).toBeVisible();
+});
+
+test('@M07 Ctrl+K opens the palette on a Cyrillic keyboard layout too (the physical K key)', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('[data-search-field]').filter({ visible: true })).toBeVisible();
+  // With a Bulgarian layout the key reports its own letter; Playwright's keyboard has no layouts.
+  await expect(async () => {
+    const prevented = await page.evaluate(
+      () => !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'л', code: 'KeyK', ctrlKey: true, cancelable: true })),
+    );
+    expect(prevented, 'the browser keeps no Ctrl+K of its own').toBe(true);
+    await expect(searchInput(page)).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+});
+
+test('@M07 Enter right after more typing opens the first result of the whole query, never a row of the earlier one', async ({ page }) => {
+  await page.goto('/');
+  await openPalette(page);
+  await search(page, 'So Ching');
+  // The rows of "So Ching" are on screen. Typing the rest of a name that is not the first of them and
+  // pressing Enter at once, within the 200 ms pause, must open that name's first result.
+  const first = await palette(page).getByRole('option').first().innerText();
+  const rest = first.includes('So Ching Laam') ? ' Long' : ' Laam';
+  const expected = (await apiSearch(page, { q: `So Ching${rest}` })).people[0]!;
+  expect(first).not.toContain((expected.displayName as { value: string }).value);
+  await searchInput(page).press('End');
+  await page.keyboard.type(rest);
+  await page.keyboard.press('Enter');
+  await page.waitForURL((url) => url.pathname === `/people/${expected.slug as string}`);
+
+  // Ctrl/⌘+Enter the same way: the explorer opens on the person of the whole query.
+  await openPalette(page);
+  await search(page, 'So Ching');
+  await searchInput(page).press('End');
+  await page.keyboard.type(rest);
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await page.waitForURL((url) => url.pathname === '/explore');
+  expect(new URL(page.url()).searchParams.get('focus')).toBe(expected.id);
+});
+
+test('@M07 every opening starts with an empty field, and sign-out leaves no query, result or recent search in the palette', async ({ page }) => {
+  await freshAccount(page);
+  await page.goto('/account');
+  await openPalette(page);
+  await search(page, 'So Ching Laam');
+  await option(page, 'So Ching Laam').first().click();
+  await page.waitForURL((url) => url.pathname === '/people/demo-cjk-name');
+  // Back to the account page without a page load (the palette's own Pages group), so the shell and
+  // the palette stay mounted as they do in use.
+  await openPalette(page);
+  await expect(searchInput(page)).toHaveValue('');
+  await expect(option(page, 'So Ching Laam')).toHaveCount(1);
+  await search(page, 'Your account');
+  await option(page, 'Your account').click();
+  await page.waitForURL((url) => url.pathname === '/account');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.waitForURL((url) => url.pathname === '/sign-in');
+  expect(await page.evaluate(() => window.localStorage.getItem('wcr.recent-searches'))).toBeNull();
+  // The next person on this device opens the palette: nothing of the last one.
+  await openPalette(page);
+  await expect(searchInput(page)).toHaveValue('');
+  await expect(palette(page).getByRole('option')).toHaveCount(0);
+  await expect(palette(page).getByText('Recent searches')).toHaveCount(0);
+  await expect(palette(page).getByText('Search by any spelling')).toBeVisible();
+});
+
+test('@M07 the recent searches have a Clear button outside the list, 44 px or more, and no axe violations', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.localStorage.setItem('wcr.recent-searches', JSON.stringify(['So Ching Laam', '蘇晴嵐', 'Тестов'])));
+  await openPalette(page);
+  await expect(option(page, 'Тестов')).toBeVisible();
+  const clear = palette(page).getByRole('button', { name: 'Clear recent searches' });
+  const box = await clear.boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  // No button inside the listbox, and the group is named by its label alone.
+  await expect(palette(page).getByRole('listbox').getByRole('button')).toHaveCount(0);
+  await expect(palette(page).getByRole('group', { name: 'Recent searches', exact: true })).toBeVisible();
+  for (const theme of THEMES) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `the recent searches, ${theme} theme`);
+  }
+  await clear.click();
+  await expect(palette(page).getByRole('option')).toHaveCount(0);
+  await expect(searchInput(page)).toBeFocused();
+  expect(await page.evaluate(() => window.localStorage.getItem('wcr.recent-searches'))).toBeNull();
+});
+
+test('@M07 when more people match than the list holds, the palette says so', async ({ page }) => {
+  expect((await apiSearch(page, { q: 'so' })).morePeople).toBe(true);
+  await page.goto('/');
+  await openPalette(page);
+  await search(page, 'so');
+  await expect(palette(page).getByRole('status')).toContainText('Only the first 20 people are shown: type more of the name to narrow the list.');
+  await search(page, 'So Ching Laam');
+  await expect(palette(page).getByRole('status')).not.toContainText('Only the first');
 });
 
 test("@M07 a user edits their own names in three scripts; editing another person's profile is refused", async ({ page }) => {
@@ -340,6 +459,24 @@ test.describe('on a phone', () => {
     await hit.tap();
     await page.waitForURL((url) => url.pathname === '/people/demo-cjk-name');
     await expect(palette(page)).toHaveCount(0);
+  });
+});
+
+test.describe('on a phone in landscape', () => {
+  test.use({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true });
+
+  test('@M07 at 844x390 the palette still fills the screen and shows no keyboard hints', async ({ page }) => {
+    await page.goto('/');
+    const field = page.locator('[data-search-field]').filter({ visible: true });
+    await expect(field).toBeVisible();
+    await expect(async () => {
+      await field.tap();
+      await expect(searchInput(page)).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    expect(await palette(page).boundingBox()).toEqual({ x: 0, y: 0, width: 844, height: 390 });
+    await expect(palette(page).getByText('to open a person in the explorer')).toBeHidden();
+    await search(page, 'So Ching Laam');
+    await expect(option(page, 'So Ching Laam').first()).toBeInViewport();
   });
 });
 
