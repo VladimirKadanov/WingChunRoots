@@ -22,7 +22,7 @@ import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Activity, createContext, type ReactNode, use, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { CloseIcon, MinusIcon, PlusIcon } from '@/components/icons';
-import { Legend, legendKinds } from '@/components/ink/legend';
+import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -33,7 +33,6 @@ import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
 import { GenerationText } from '../generation-text';
-import { LINEAGE_WORDING } from '../key';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -112,6 +111,14 @@ export function Explorer(props: ExplorerProps) {
 }
 
 const VIEW_LABELS: Record<ViewKind, string> = { person: 'Person', generations: 'Generations', lineage: 'Lineage' };
+
+/**
+ * The legend's word for the dotted state is the cards' word, as on the lineage screens (M04
+ * LINEAGE_WORDING, ADR 0006): here it is only ever a request, "Pending". Taken from relationStatus
+ * rather than from key.tsx, whose routes of descent would come into this island's first load
+ * (about 10 kB). This legend shows no descriptions.
+ */
+const LEGEND_WORDING: Partial<Record<LinkKind, LegendWording>> = { unconfirmed: { label: relationStatus('pending_teacher').label, description: '' } };
 
 export function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, selectedId: string | null) {
   const persons = new Map(graph.nodes.map((n) => [n.id, n]));
@@ -478,7 +485,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                       className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
                     >
                       {/* The words of the lineage screens (M04): the dotted state here is a request, "Pending" as on the cards. */}
-                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LINEAGE_WORDING} layout="wrap" />
+                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" />
                     </div>
                   </ExplorerCanvas>
                 </SkeletonShape>
