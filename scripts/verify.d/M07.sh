@@ -213,7 +213,10 @@ check "the shell has the visible search field and loads the palette on first use
   grep -q "lazy(loadPalette)" src/components/shell/search-trigger.tsx'
 check "the profile editor uses TanStack Form and the Zod rules of src/lib/profile-form.ts" bash -c '
   grep -q "from '\''@tanstack/react-form'\''" src/app/dashboard/profile/profile-editor.tsx && grep -q "profileFormErrors" src/app/dashboard/profile/profile-editor.tsx &&
-  grep -q "from '\''zod'\''" src/lib/profile-form.ts'
+  grep -q "from '\''zod/mini'\''" src/lib/profile-form.ts'
+check "the page loads the editor in a client bundle of its own (next/dynamic, rendered on the server; plan §5.8 (c))" bash -c '
+  grep -q "dynamic(() => import('\''./profile-editor'\'')" src/app/dashboard/profile/profile-editor-loader.tsx &&
+  grep -q "<ProfileEditorLoader" src/app/dashboard/profile/page.tsx && ! grep -q "ssr: false" src/app/dashboard/profile/profile-editor-loader.tsx'
 check "\"Show my profile publicly\" is never ticked in advance, follows the profile and is required in the API (DEFAULT D03)" bash -c '
   grep -q "showPublicly: profile.visibility === '\''public'\''" src/app/dashboard/profile/page.tsx && grep -q "showPublicly: z.boolean({" src/server/services/profile.ts'
 for route in "'/dashboard/profile'.*name: 'profile'.*milestone: 'M07', key: true" "'/account/privacy'.*name: 'account-privacy'.*milestone: 'M07', key: true"; do

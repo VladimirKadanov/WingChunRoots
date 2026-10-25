@@ -17,7 +17,7 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ProfileEditor } from './profile-editor';
+import { ProfileEditorLoader } from './profile-editor-loader';
 
 export const instant = false;
 
@@ -78,7 +78,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
           How you are recorded: your names, a few words about you, and whether anyone can find your profile.
         </p>
         <div className="mt-8">
-          <ProfileEditor
+          <ProfileEditorLoader
             initialValues={initialValues}
             options={options}
             publicSlug={profile.visibility === 'public' ? profile.slug : null}
