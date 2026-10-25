@@ -233,8 +233,8 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
       <button type="button" className={button} aria-label={`Fewer generations of ${label.toLowerCase()}`} disabled={value <= min} onClick={() => onChange(value - 1)}>
         <MinusIcon size={16} />
       </button>
-      <span className="px-0.5 text-center text-sm whitespace-nowrap tabular-nums md:min-w-[6.5rem] md:px-1" aria-live="off">
-        {label}: <span className="font-semibold">{value}</span>
+      <span className="px-0.5 text-center text-sm whitespace-nowrap md:min-w-[6.5rem] md:px-1" aria-live="off">
+        {label}: <span className="font-semibold tabular-nums">{value}</span>
       </span>
       <button type="button" className={button} aria-label={`More generations of ${label.toLowerCase()}`} disabled={value >= max} onClick={() => onChange(value + 1)}>
         <PlusIcon size={16} />
