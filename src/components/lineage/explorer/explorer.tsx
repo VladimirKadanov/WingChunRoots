@@ -564,8 +564,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                 aria-label={`Selected: ${selected.displayName}`}
                 data-testid="explorer-panel"
                 // On a phone a panel below the graph, which leaves the legend, the zoom buttons and the
-                // people in view (plan §4.6); over the graph on the right from md (plan §4.7).
-                className="grid max-h-[50%] shrink-0 gap-3 overflow-y-auto border-t border-border-strong bg-surface-1 py-4 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] [--seal-ground:var(--surface-1)] md:absolute md:top-3 md:right-[max(0.75rem,env(safe-area-inset-right,0px))] md:z-20 md:max-h-[calc(100%-1.5rem)] md:w-[min(20rem,calc(100%-1.5rem))] md:rounded-sm md:border md:p-4 md:shadow-pop"
+                // people in view (plan §4.6); over the graph on the right from md (plan §4.7), left of
+                // the zoom buttons' column (44 px and its border), so a short pane (a phone turned to
+                // landscape) does not cover them either.
+                className="grid max-h-[50%] shrink-0 gap-3 overflow-y-auto border-t border-border-strong bg-surface-1 py-4 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] [--seal-ground:var(--surface-1)] md:absolute md:top-3 md:right-[calc(max(0.75rem,env(safe-area-inset-right,0px))+3.5rem)] md:z-20 md:max-h-[calc(100%-1.5rem)] md:w-[min(20rem,calc(100%-5rem))] md:rounded-sm md:border md:p-4 md:shadow-pop"
               >
                 <div className="flex items-start justify-between gap-2">
                   <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">

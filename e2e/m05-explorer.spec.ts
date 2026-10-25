@@ -747,6 +747,26 @@ test.describe('M05 fixes C', () => {
 });
 
 test.describe('M05 fixes B', () => {
+  /** The legend, each of its items and the three zoom buttons are what a tap at their centre reaches. */
+  const expectLegendAndZoomUncovered = async (page: import('@playwright/test').Page) => {
+    const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
+    for (const control of [
+      legend,
+      ...(await legend.getByRole('listitem').all()),
+      page.getByRole('button', { name: 'Zoom in' }),
+      page.getByRole('button', { name: 'Zoom out' }),
+      page.getByRole('button', { name: 'Fit the whole view' }),
+    ]) {
+      await expect(control).toBeVisible();
+      const uncovered = await control.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return hit !== null && el.contains(hit);
+      });
+      expect(uncovered, await control.evaluate((el) => el.outerHTML.slice(0, 80))).toBe(true);
+    }
+  };
+
   /** Records every layout request the page posts to the layout worker, and every answer. */
   const recordLayouts = (page: import('@playwright/test').Page) =>
     page.addInitScript(() => {
@@ -902,6 +922,14 @@ test.describe('M05 fixes B', () => {
         expect(box.y + box.height, `${name}: bottom edge`).toBeLessThanOrEqual(bottom);
       }
     });
+
+    test('@M05 with a person selected in landscape, the panel leaves the legend and the zoom buttons uncovered', async ({ page }) => {
+      const id = await personIdOf('demo-two-lineages');
+      await openExplorer(page, { focus: id });
+      await nodeOf(page, id).click();
+      await expect(page.getByTestId('explorer-panel')).toBeVisible();
+      await expectLegendAndZoomUncovered(page);
+    });
   });
 
   test.describe('on a phone', () => {
@@ -985,24 +1013,7 @@ test.describe('M05 fixes B', () => {
       await nodeOf(page, id).click();
       const panel = page.getByTestId('explorer-panel');
       await expect(panel).toBeVisible();
-      /** The element itself (or something inside it) is what a tap at its centre reaches. */
-      const uncovered = (locator: import('@playwright/test').Locator) =>
-        locator.evaluate((el) => {
-          const r = el.getBoundingClientRect();
-          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-          return hit !== null && el.contains(hit);
-        });
-      const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
-      for (const control of [
-        legend,
-        ...(await legend.getByRole('listitem').all()),
-        page.getByRole('button', { name: 'Zoom in' }),
-        page.getByRole('button', { name: 'Zoom out' }),
-        page.getByRole('button', { name: 'Fit the whole view' }),
-      ]) {
-        await expect(control).toBeVisible();
-        expect(await uncovered(control), await control.evaluate((el) => el.outerHTML.slice(0, 80))).toBe(true);
-      }
+      await expectLegendAndZoomUncovered(page);
       // The panel lies below the graph, above the tab bar: it covers nothing of the canvas.
       const canvas = (await page.locator('.react-flow').boundingBox())!;
       const sheet = (await panel.boundingBox())!;
