@@ -91,6 +91,42 @@ describe('capFanout (plan §4.8)', () => {
     const small = { ...graph, nodes: graph.nodes.slice(0, 4), edges: graph.edges.slice(0, 3) };
     expect(capFanout(small)).toEqual({ graph: small, more: new Map() });
   });
+
+  it('draws the active students before those whose training ended, whatever their students (verified, active, most descendants)', () => {
+    const ended = [{ from: '1980', to: '1990', ongoing: false, precision: 'year' as const }];
+    // 15 ended students with 2 students each (2..16), 15 active ones with none (17..31).
+    const mixed: LineageGraphDto = {
+      ...graph,
+      nodes: [node(1), ...many.map((n) => node(n, n <= 16 ? 2 : 0))],
+      edges: many.map((n) => (n <= 16 ? { ...edge(1, n), periods: ended } : edge(1, n))),
+    };
+    const { graph: capped, more } = capFanout(mixed);
+    const drawn = drawnByDefault(capped, false).edges.filter((e) => e.teacherId === id(1));
+    expect(drawn).toHaveLength(FANOUT_SHOWN);
+    expect(drawn.every((e) => e.periods.length === 0)).toBe(true);
+    expect(more.get(id(1))).toBe(30 - FANOUT_SHOWN);
+  });
+
+  it('counts the students the read left out (hiddenCounts) in "+N students", only where the cap cut', () => {
+    // The server's fan-out limit returned 30 of 105 students of 1; 2 has one more student than the answer holds.
+    const read = { ...graph, hiddenCounts: { [id(1)]: { teachers: 0, students: 75 }, [id(2)]: { teachers: 0, students: 1 } } };
+    const { more } = capFanout(read);
+    expect(more.get(id(1))).toBe(30 - FANOUT_SHOWN + 75);
+    // No chip where the cap left nothing out: those students are not "more" of a large fan-out.
+    expect(more.has(id(2))).toBe(false);
+  });
+
+  it('counts students, not relationships: two relationships with one student are one student', () => {
+    // 13 students of 1 (2..14); 14 also learnt from 1 in a second lineage, and sorts last.
+    const twice: LineageGraphDto = {
+      ...graph,
+      nodes: [node(1), ...many.slice(0, 13).map((n) => node(n))],
+      edges: [...many.slice(0, 13).map((n) => edge(1, n)), { ...edge(1, 14), id: id(99_999), lineageId: id(901), kind: 'crossLineage' as const }],
+    };
+    const { graph: capped, more } = capFanout(twice);
+    expect(capped.nodes.map((n) => n.id)).not.toContain(id(14));
+    expect(more.get(id(1))).toBe(1);
+  });
 });
 
 describe('joinToBox (an edge reaches the smaller box of a compact or dot level of detail)', () => {

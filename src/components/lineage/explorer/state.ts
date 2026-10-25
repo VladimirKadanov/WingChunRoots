@@ -108,12 +108,14 @@ export function explorerRead(params: ExplorerParams & { focus: string }, lineage
 export const FANOUT_SHOWN = 12;
 
 /**
- * The graph with at most FANOUT_SHOWN students drawn under each teacher (plan §4.8): verified
- * relationships first, then the display-primary ones, then the students with the most students of
- * their own, then by name. A student left out is drawn anyway when another teacher in the view
+ * The graph with at most FANOUT_SHOWN students drawn under each teacher (plan §4.8: "verified,
+ * active, with the most descendants"): verified relationships first, then the active ones (the
+ * training has not ended), then the display-primary ones, then the students with the most students
+ * of their own, then by name. A student left out is drawn anyway when another teacher in the view
  * keeps it; everything only reachable through left-out students goes too. `more` counts, per
- * teacher, the students not drawn (the expand buttons that show them come with M06; the list view
- * has them all).
+ * teacher whose students the cap cut, every student not drawn: those of the answer left out here
+ * and the public ones the read itself left out (hiddenCounts: the server's fan-out limit). The
+ * expand buttons that show them come with M06; the list view has them all.
  */
 export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph: LineageGraphDto; more: Map<string, number> } {
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
@@ -121,10 +123,12 @@ export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph
   for (const e of graph.edges) byTeacher.set(e.teacherId, [...(byTeacher.get(e.teacherId) ?? []), e]);
   const kept = new Set<string>();
   const more = new Map<string, number>();
+  const active = (e: LineageGraphDto['edges'][number]) => Number(!isHistoricalRelation(e.periods));
   for (const [teacherId, edges] of byTeacher) {
     const sorted = [...edges].sort(
       (a, b) =>
         Number(b.status === 'verified') - Number(a.status === 'verified') ||
+        active(b) - active(a) ||
         Number(b.isDisplayPrimary) - Number(a.isDisplayPrimary) ||
         (nodes.get(b.studentId)?.childCount ?? 0) - (nodes.get(a.studentId)?.childCount ?? 0) ||
         (nodes.get(a.studentId)?.displayName ?? '').localeCompare(nodes.get(b.studentId)?.displayName ?? '', 'en'),
@@ -166,14 +170,16 @@ export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph
     }
   }
   // Every relationship between two people who are drawn is drawn (a second teacher is never
-  // hidden), so "more" counts what is really left out.
+  // hidden), so "more" counts what is really left out: students, not relationships (a student
+  // may have two with one teacher, in two lineages).
   const edges = graph.edges.filter((e) => reachable.has(e.teacherId) && reachable.has(e.studentId));
-  const drawn = new Map<string, number>();
-  for (const e of edges) drawn.set(e.teacherId, (drawn.get(e.teacherId) ?? 0) + 1);
+  const drawn = new Map<string, Set<string>>();
+  for (const e of edges) drawn.set(e.teacherId, (drawn.get(e.teacherId) ?? new Set()).add(e.studentId));
   const left = new Map<string, number>();
   for (const [teacherId, all] of byTeacher) {
-    const n = all.length - (drawn.get(teacherId) ?? 0);
-    if (n > 0) left.set(teacherId, n);
+    const n = new Set(all.map((e) => e.studentId)).size - (drawn.get(teacherId)?.size ?? 0);
+    // The students the read did not return are not drawn either (public counts only).
+    if (n > 0) left.set(teacherId, n + (graph.hiddenCounts[teacherId]?.students ?? 0));
   }
   return { graph: { ...graph, nodes: graph.nodes.filter((n) => reachable.has(n.id)), edges }, more: left };
 }
