@@ -73,3 +73,42 @@ describe('generationLabels across lineages', () => {
     expect(generationText(generationLabels({ nodes, edges, lineages }).get(id(2))!)).toBe('Generation 2 from Demo Root');
   });
 });
+
+describe('generationLabels for a teacher in two lineages (demo-two-lineages)', () => {
+  // Root A -> Teacher A -> Instructor (lineage A, display-primary); Root B -> Teacher B -> Instructor
+  // (lineage B); the instructor teaches one student in each lineage.
+  const B = '00000000-0000-4000-8000-000000000902';
+  const inB = <E extends { lineageId: string }>(e: E): E => ({ ...e, lineageId: B });
+  const nodes = [
+    node(1, 'Demo Root A'),
+    node(2, 'Demo Teacher A'),
+    node(3, 'Demo Instructor'),
+    node(4, 'Demo Student A'),
+    node(5, 'Demo Root B'),
+    node(6, 'Demo Teacher B'),
+    node(7, 'Demo Student B'),
+  ];
+  const lineages = [...lineage(id(1)), { id: B, slug: 'demo-lineage-b', name: 'Demo Lineage B', rootPersonId: id(5) }];
+  const edges = (teacherB: 'verified' | 'under_review' = 'verified') => [
+    edge(1, 2),
+    edge(2, 3),
+    inB(edge(5, 6)),
+    inB(edge(6, 3, teacherB, false)),
+    edge(3, 4),
+    inB(edge(3, 7)),
+  ];
+
+  it('counts a student of lineage B in lineage B, although the teacher\'s display-primary teacher is in lineage A', () => {
+    const labels = generationLabels({ nodes, edges: edges(), lineages });
+    expect(generationText(labels.get(id(3))!)).toBe('Generation 3 from Demo Root A');
+    expect(generationText(labels.get(id(4))!)).toBe('Generation 4 from Demo Root A');
+    expect(generationText(labels.get(id(7))!)).toBe('Generation 4 from Demo Root B');
+    expect(generationText(labels.get(id(6))!)).toBe('Generation 2 from Demo Root B');
+  });
+
+  it('falls back to the display-primary chain in this view when the chain in lineage B is not verified', () => {
+    const labels = generationLabels({ nodes, edges: edges('under_review'), lineages });
+    expect(generationText(labels.get(id(7))!)).toBe('3 generations below Demo Root A in this view');
+    expect(generationText(labels.get(id(4))!)).toBe('Generation 4 from Demo Root A');
+  });
+});

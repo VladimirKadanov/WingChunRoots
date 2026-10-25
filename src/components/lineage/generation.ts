@@ -4,10 +4,13 @@
 // "Generation N from {root}" is shown only when the person's chain of teachers in the view (the
 // display-primary teacher first, DEFAULT D05) reaches the lineage's recorded root
 // (lineage.root_person_id), every edge on that chain is verified and in that lineage; the root is generation 1,
-// as the routes of descent count it. Otherwise the label is "N generations below {name} in this
-// view", counted to the top of the chain in this view, or nothing for the top itself. So the
-// number never changes with the depth of the view, and it never looks like a generation in the
-// lineage when it is not one. DEFAULT D22: a root may be unknown (no lineage label then).
+// as the routes of descent count it. The chain stays in the lineage of the person's own link to
+// their teacher: where a teacher's display-primary teacher is in another lineage, it follows that
+// teacher's teacher in this one, so a student of a lineage is counted in it. Otherwise the label
+// is "N generations below {name} in this view", counted along the display-primary chain to the
+// top of the view, or nothing for the top itself. So the number never changes with the depth of
+// the view, and it never looks like a generation in the lineage when it is not one. DEFAULT D22:
+// a root may be unknown (no lineage label then).
 //
 // Pure: no React, so the unit tests and the canvas share it.
 
@@ -44,34 +47,48 @@ export function generationLabels(graph: Graph): Map<string, GenerationLabel> {
   const incoming = new Map<string, Edge[]>();
   for (const e of graph.edges) incoming.set(e.studentId, [...(incoming.get(e.studentId) ?? []), e]);
 
-  const labels = new Map<string, GenerationLabel>();
-  for (const node of graph.nodes) {
-    if (roots.has(node.id)) continue;
-    const seen = new Set([node.id]);
-    let current = node.id;
+  /** The generation of `start` in `lineageId`: its chain within that lineage, verified all the way to the lineage's root. */
+  const lineageGeneration = (start: string, lineageId: string): GenerationLabel | null => {
+    const lineage = lineages.get(lineageId);
+    if (!lineage?.rootPersonId) return null;
+    const seen = new Set([start]);
+    let current = start;
     let steps = 0;
-    let allVerified = true;
-    const chainLineages = new Set<string>();
-    let lineageLabel: GenerationLabel | null = null;
     for (;;) {
-      const edge = chainEdge(incoming.get(current) ?? []);
-      if (!edge || seen.has(edge.teacherId)) break;
-      allVerified &&= edge.status === 'verified';
-      chainLineages.add(edge.lineageId);
+      const edge = chainEdge((incoming.get(current) ?? []).filter((e) => e.lineageId === lineageId));
+      if (!edge || edge.status !== 'verified' || seen.has(edge.teacherId)) return null;
       steps += 1;
       current = edge.teacherId;
       seen.add(current);
-      const lineage = lineages.get(edge.lineageId);
-      if (lineage?.rootPersonId === current) {
-        // A generation of that lineage only when every step of the chain is in it.
-        if (allVerified && chainLineages.size === 1) {
-          lineageLabel = { kind: 'lineage', generation: steps + 1, rootId: current, rootName: names.get(current) ?? '', lineageName: lineage.name };
-        }
-        break;
+      if (current === lineage.rootPersonId) {
+        return { kind: 'lineage', generation: steps + 1, rootId: current, rootName: names.get(current) ?? '', lineageName: lineage.name };
       }
     }
-    if (lineageLabel) labels.set(node.id, lineageLabel);
-    else if (steps > 0) labels.set(node.id, { kind: 'view', below: steps, anchorId: current, anchorName: names.get(current) ?? '' });
+  };
+
+  /** How far below the top of its display-primary chain `start` is (stopping at a lineage root). */
+  const viewGeneration = (start: string): GenerationLabel | null => {
+    const seen = new Set([start]);
+    let current = start;
+    let steps = 0;
+    for (;;) {
+      const edge = chainEdge(incoming.get(current) ?? []);
+      if (!edge || seen.has(edge.teacherId)) break;
+      steps += 1;
+      current = edge.teacherId;
+      seen.add(current);
+      if (lineages.get(edge.lineageId)?.rootPersonId === current) break;
+    }
+    return steps > 0 ? { kind: 'view', below: steps, anchorId: current, anchorName: names.get(current) ?? '' } : null;
+  };
+
+  const labels = new Map<string, GenerationLabel>();
+  for (const node of graph.nodes) {
+    if (roots.has(node.id)) continue;
+    const own = chainEdge(incoming.get(node.id) ?? []);
+    if (!own) continue;
+    const label = lineageGeneration(node.id, own.lineageId) ?? viewGeneration(node.id);
+    if (label) labels.set(node.id, label);
   }
   return labels;
 }
