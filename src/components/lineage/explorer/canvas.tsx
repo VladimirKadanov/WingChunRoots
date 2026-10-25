@@ -103,12 +103,12 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
         {lod === 'full' ? (
           <div className={cx('flex size-full items-center gap-2 overflow-hidden rounded-sm bg-surface-1 px-2 py-1 text-left', frame, ring)}>
-            <span aria-hidden="true" className="inline-grid size-6 shrink-0 place-items-center rounded-xs border border-border-strong text-[11px] leading-none font-semibold text-fg-muted">
+            <span aria-hidden="true" className="inline-grid size-6 shrink-0 place-items-center rounded-xs border border-border-strong text-caption leading-none font-semibold tracking-normal text-fg-muted">
               {monogram(data.name)}
             </span>
             <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
               <span className="flex min-w-0 items-baseline gap-1.5">
-                <span lang="und-Latn" translate="no" className="truncate font-display text-[15px] leading-[18px] text-fg">
+                <span lang="und-Latn" translate="no" className="truncate font-display text-base leading-4.5 text-fg">
                   {data.name}
                 </span>
                 {data.original ? (
@@ -118,11 +118,11 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
                 ) : null}
               </span>
               {data.generation ? (
-                <span className="truncate text-[11px] leading-[14px] text-fg-muted">
+                <span className="truncate text-caption leading-3.5 font-normal tracking-normal text-fg-muted">
                   <GenerationText label={data.generation} />
                 </span>
               ) : null}
-              <span className="flex min-w-0 items-center gap-1 text-[11px] leading-[14px]">
+              <span className="flex min-w-0 items-center gap-1 text-caption leading-3.5 font-normal tracking-normal">
                 {data.status ? (
                   <>
                     <Seal kind={linkStyles[data.status.kind].seal} size={12} className="shrink-0" />
@@ -136,12 +136,12 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
                   <span className="truncate text-fg-muted">Top of this view</span>
                 )}
                 {data.teachers >= 2 ? (
-                  <span data-teachers-chip="" className="ml-auto shrink-0 rounded-xs border border-border-strong px-1 text-[11px] leading-[12px] text-fg">
+                  <span data-teachers-chip="" className="ml-auto shrink-0 rounded-xs border border-border-strong px-1 leading-3 text-fg">
                     {data.teachers} teachers
                   </span>
                 ) : null}
                 {data.more > 0 ? (
-                  <span data-more-chip="" className={cx('shrink-0 text-[11px] text-fg-muted', data.teachers < 2 && 'ml-auto')}>
+                  <span data-more-chip="" className={cx('shrink-0 text-fg-muted', data.teachers < 2 && 'ml-auto')}>
                     +{data.more} students
                   </span>
                 ) : null}
@@ -151,7 +151,7 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
         ) : lod === 'compact' ? (
           <div className={cx('flex size-full items-center gap-1 overflow-hidden rounded-sm bg-surface-1 px-1.5', frame, ring)}>
             {data.status ? <Seal kind={linkStyles[data.status.kind].seal} size={11} className="shrink-0" /> : null}
-            <span lang="und-Latn" translate="no" className="truncate text-[11px] font-semibold text-fg">
+            <span lang="und-Latn" translate="no" className="truncate text-caption font-semibold tracking-normal text-fg">
               {data.name}
             </span>
           </div>
@@ -159,7 +159,7 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
           <div className="relative size-full">
             <div className={cx('size-full rounded-full bg-surface-1', data.focus || data.root ? 'border-2 border-fg bg-fg' : frame, ring)} />
             {data.focus || data.root || selected ? (
-              <span lang="und-Latn" translate="no" className="absolute top-full left-1/2 mt-1 -translate-x-1/2 text-[11px] font-semibold whitespace-nowrap text-fg">
+              <span lang="und-Latn" translate="no" className="absolute top-full left-1/2 mt-1 -translate-x-1/2 text-caption font-semibold tracking-normal whitespace-nowrap text-fg">
                 {data.name}
               </span>
             ) : null}
@@ -227,7 +227,7 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
         <EdgeLabelRenderer>
           <span
             data-edge-label={id}
-            className="nodrag nopan pointer-events-none absolute rounded-xs bg-bg px-1 text-[11px] font-semibold whitespace-nowrap"
+            className="nodrag nopan pointer-events-none absolute rounded-xs bg-bg px-1 text-caption font-semibold tracking-normal whitespace-nowrap"
             style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)`, color: `var(--${style.labelColor})` }}
           >
             {data.label}
