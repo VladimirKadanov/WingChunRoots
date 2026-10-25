@@ -33,6 +33,7 @@ import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
 import { GenerationText } from '../generation-text';
+import { LINEAGE_WORDING } from '../key';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -473,7 +474,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                       data-testid="explorer-legend"
                       className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
                     >
-                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} layout="wrap" />
+                      {/* The words of the lineage screens (M04): the dotted state here is a request, "Pending" as on the cards. */}
+                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LINEAGE_WORDING} layout="wrap" />
                     </div>
                   </ExplorerCanvas>
                 </SkeletonShape>

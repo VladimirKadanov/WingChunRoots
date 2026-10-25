@@ -849,6 +849,29 @@ test.describe('M05 fixes B', () => {
     expect(await page.evaluate(() => (window as unknown as { __oldList?: boolean }).__oldList ?? false)).toBe(false);
   });
 
+  test('@M05 the legend names the dotted state as the cards do: "Pending" for the participant of a request', async ({ page }) => {
+    // Imported here, so this block leaves the file's header to the other M05 tests.
+    const { clientAddress, signInAs } = await import('./helpers/auth');
+    await signInAs(page, 'demo-pending', { address: clientAddress() });
+    const id = await personIdOf('demo-pending');
+    await openExplorer(page, { focus: id });
+    await expect(edgesInto(page, id).and(page.locator('[data-stroke="unconfirmed"]'))).toHaveCount(1);
+    await expect(nodeOf(page, id)).toContainText('Pending');
+    const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
+    await expect(legend.getByRole('listitem').filter({ hasText: 'Pending' })).toHaveCount(1);
+    await expect(legend).not.toContainText('Unconfirmed');
+  });
+
+  test('@M05 the steppers read "Teachers: 1", tabular figures on the number only', async ({ page }) => {
+    await openExplorer(page, { focus: await personIdOf('demo-two-lineages'), up: 1, down: 1 });
+    for (const name of ['Teachers', 'Students']) {
+      const label = page.getByRole('group', { name }).locator('span', { hasText: `${name}:` });
+      await expect(label).toHaveText(`${name}: 1`);
+      expect(await label.evaluate((el) => getComputedStyle(el).fontVariantNumeric)).toBe('normal');
+      expect(await label.locator('span').evaluate((el) => getComputedStyle(el).fontVariantNumeric)).toBe('tabular-nums');
+    }
+  });
+
   test.describe('on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
