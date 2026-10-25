@@ -37,7 +37,7 @@ import {
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 
 import { MinusIcon, PlusIcon, FitIcon } from '@/components/icons';
-import { type LinkKind } from '@/components/ink/link-stroke';
+import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
@@ -228,27 +228,35 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
   // route is joined to the box drawn, so no edge stops short of its person.
   const ends = routeEnds(data.path);
   const d = lod === 'full' ? pathD(data.path, [], []) : pathD(data.path, joinToBox(ends.start, data.ends.teacher[lod]), joinToBox(ends.end, data.ends.student[lod]));
-  const color = `var(--${style.strokeColor})`;
   const at = labelPoint(data.path);
-  const common = { 'data-edge': id, 'data-teacher': source, 'data-student': target, 'data-kind': data.kind, 'data-lineage': data.lineageId, 'data-stroke': data.stroke, 'data-routed': data.routedBy, fill: 'none' } as const;
   return (
     <>
-      {style.stroke === 'double' ? (
-        // Two strokes with the ground between them (plan §4.6: "double stroke").
-        <g {...common}>
-          <path d={d} stroke={color} strokeWidth={style.width * 3.5} fill="none" />
-          <path d={d} stroke="var(--bg)" strokeWidth={style.width * 1.4} fill="none" />
-        </g>
-      ) : (
-        <path {...common} d={d} stroke={color} strokeWidth={style.width} strokeDasharray={style.dash ?? undefined} strokeLinecap={style.stroke === 'dotted' ? 'round' : 'butt'} />
-      )}
+      {/* The stroke of the explorer legend's sample (Legend strokes="canvas"), so the key decodes
+          the drawing without colour; a double stroke adds its knocked-out ground ([data-edge-core]). */}
+      <StrokePaths
+        d={d}
+        kind={data.stroke}
+        ground="var(--bg)"
+        attributes={{
+          'data-edge': id,
+          'data-teacher': source,
+          'data-student': target,
+          'data-kind': data.kind,
+          'data-lineage': data.lineageId,
+          'data-stroke': data.stroke,
+          'data-routed': data.routedBy,
+        }}
+        coreAttributes={{ 'data-edge-core': id }}
+      />
       {data.label ? (
         <EdgeLabelRenderer>
           <span
             data-edge-label={id}
-            className="nodrag nopan pointer-events-none absolute rounded-xs bg-bg px-1 text-caption font-semibold tracking-normal whitespace-nowrap"
+            className="nodrag nopan pointer-events-none absolute flex items-center gap-1 rounded-xs bg-bg px-1 text-caption font-semibold tracking-normal whitespace-nowrap [--seal-ground:var(--bg)]"
             style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)`, color: `var(--${style.labelColor})` }}
           >
+            {/* The small mark on a cross-lineage curve (plan §4.6), before "Teacher in {lineage}". */}
+            {data.kind === 'crossLineage' ? <Seal kind={linkStyles.cross_lineage.seal} size={12} /> : null}
             {data.label}
           </span>
         </EdgeLabelRenderer>
