@@ -337,6 +337,12 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const kind = viewKind(params);
   const focusLineages = (focusNode?.lineageIds ?? []).map((id) => graph?.lineages.find((l) => l.id === id)).filter((l) => l !== undefined);
 
+  // The list the server rendered, and for whom: a focus changed in the browser (a shallow update)
+  // keeps the last one, which belongs to the person before, until the server renders the new one.
+  const [listOf, setListOf] = useState({ list, focus });
+  if (listOf.list !== list) setListOf({ list, focus });
+  const focusList = listOf.focus === focus ? list : null;
+
   // Only the list needs the server (it renders the M04 list view); the graph is all in the browser.
   const setView = (next: 'graph' | 'list') => void setUrl({ view: next === 'graph' ? null : next }, { shallow: next === 'graph', scroll: false });
   const setKind = (next: ViewKind) => {
@@ -521,7 +527,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
       <Activity mode={params.view === 'list' ? 'visible' : 'hidden'}>
         <div className={cx('min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
-          {list ?? (
+          {focusList ?? (
             <p role="status" className="p-6 text-ui text-fg-muted">
               Loading the list…
             </p>

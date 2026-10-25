@@ -807,6 +807,48 @@ test.describe('M05 fixes B', () => {
     for (const chunk of late.filter((c) => c.url.endsWith('.js') || c.url.endsWith('.css'))) expect(chunk.at, chunk.url).toBeLessThan(firstResult!);
   });
 
+  test('@M05 after the focus changes in the graph, List never shows the list of the person before', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await page.goto(`/explore?focus=${id}&view=list`);
+    const heading = page.getByRole('heading', { level: 1, name: /Lineage of/ });
+    await expect(heading).toBeVisible();
+    const before = (await heading.textContent())!.trim();
+    const toggle = page.getByRole('group', { name: 'Show as' });
+    await toggle.getByRole('button', { name: 'Graph' }).click();
+    await expect(personNodes(page).first()).toBeVisible({ timeout: 30_000 });
+    // Centre on a teacher (a change of focus in the browser, no server render).
+    const teacher = (await edgesInto(page, id).first().getAttribute('data-teacher'))!;
+    await nodeOf(page, teacher).click();
+    await page.getByTestId('explorer-panel').getByRole('button', { name: 'Center on this person' }).click();
+    await expect(page).toHaveURL(new RegExp(`focus=${teacher}`));
+    await expect(page.getByTestId('explorer-relayout')).toHaveCount(0);
+    // The server's list of the new person comes 1.5 s late; meanwhile the old one must never show.
+    await page.route(
+      (url) => url.pathname === '/explore',
+      async (route) => {
+        if (route.request().headers()['rsc']) await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      },
+    );
+    await page.evaluate((old) => {
+      const w = window as unknown as { __oldList?: boolean };
+      const check = () => {
+        for (const h of document.querySelectorAll('h1')) if (h.textContent?.trim() === old && h.checkVisibility()) w.__oldList = true;
+      };
+      new MutationObserver(check).observe(document, { childList: true, subtree: true, attributes: true });
+      const frame = () => {
+        check();
+        requestAnimationFrame(frame);
+      };
+      frame();
+    }, before);
+    await toggle.getByRole('button', { name: 'List' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Loading the list…' })).toBeVisible();
+    await expect(heading).toBeVisible({ timeout: 15_000 });
+    expect((await heading.textContent())!.trim()).not.toBe(before);
+    expect(await page.evaluate(() => (window as unknown as { __oldList?: boolean }).__oldList ?? false)).toBe(false);
+  });
+
   test.describe('on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
