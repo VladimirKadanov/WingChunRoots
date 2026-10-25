@@ -645,3 +645,103 @@ test.describe('M05 fixes a2', () => {
     expect(long, 'the view shows long cross-lineage curves').toBeGreaterThan(0);
   });
 });
+
+test.describe('M05 fixes C', () => {
+  /** M04's test fault (src/server/faults.ts): the first lineage read, or the first profile read, of this cookie fails once. */
+  const faultCookie = (kind: 'lineage-once' | 'person-once', baseURL: string | undefined) => ({
+    name: 'wcr-test-fault',
+    value: `${kind}:${crypto.randomUUID()}`,
+    url: baseURL!,
+  });
+  /** An address's path and query, without the hash. */
+  const addressOf = (href: string | null) => {
+    const url = new URL(href!, 'http://localhost');
+    return { path: url.pathname, query: Object.fromEntries(url.searchParams) };
+  };
+
+  test('@M05 a failed read of the starting points says so with Retry, never "no lineage on the record"', async ({ page, context, baseURL }) => {
+    await context.addCookies([faultCookie('lineage-once', baseURL)]);
+    await page.goto('/explore');
+    const error = page.getByRole('alert').filter({ hasText: 'The lineages could not be loaded.' });
+    await expect(error).toBeVisible();
+    await expect(page.getByText('No lineage with a public root is on the record yet.')).toHaveCount(0);
+    await expectNoAxeViolations(page, '/explore (the starting points failed)');
+    const retry = error.getByRole('link', { name: 'Retry' });
+    await expect(retry).toHaveAttribute('href', '/explore');
+    await retry.click();
+    await expect(page.getByRole('link', { name: /^Explore Demo Lineage [A-C]$/ })).toHaveCount(3);
+    await expect(error).toHaveCount(0);
+  });
+
+  test('@M05 lineage names on the start page are names: page translation leaves them alone', async ({ page }) => {
+    await page.goto('/explore');
+    const items = page.getByRole('main').getByRole('listitem');
+    await expect(items).toHaveCount(3);
+    for (const item of await items.all()) {
+      // The heading and the button of each lineage.
+      await expect(item.locator('[translate="no"]').filter({ hasText: /^Demo Lineage [A-C]$/ })).toHaveCount(2);
+    }
+  });
+
+  test('@M05 the list view inside the explorer has one view switch, and its pages stay in the explorer view', async ({ page }) => {
+    const hub = await personIdOf('demo-hub-a');
+    await page.goto(`/explore?focus=${hub}&up=1&down=2&view=list`);
+    await expect(page.getByRole('heading', { level: 1, name: /^Lineage of / })).toBeVisible();
+    // The explorer's own Graph / List, not a second Profile / List / Graph that leaves the view.
+    await expect(page.getByRole('group', { name: 'Show as' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Views of this person' })).toHaveCount(0);
+    const pages = page.getByRole('navigation', { name: 'Pages of students' });
+    const next = pages.getByRole('link', { name: 'Next page' });
+    expect(addressOf(await next.getAttribute('href'))).toEqual({ path: '/explore', query: { focus: hub, up: '1', down: '2', view: 'list', page: '2' } });
+    await next.click();
+    await expect(page).toHaveURL(/[?&]page=2(&|#|$)/);
+    await expect(pages.getByText(/^Page 2 of \d+$/)).toBeVisible();
+    const previous = pages.getByRole('link', { name: 'Previous page' });
+    expect(addressOf(await previous.getAttribute('href'))).toEqual({ path: '/explore', query: { focus: hub, up: '1', down: '2', view: 'list' } });
+    // Graph is the same view again: the generations view with its steps.
+    await page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'Graph' }).click();
+    await expect(page.getByRole('group', { name: 'Teachers', exact: true })).toContainText('Teachers: 1');
+    await expect(page.getByRole('group', { name: 'Students', exact: true })).toContainText('Students: 2');
+  });
+
+  test('@M05 when the profile read fails in the explorer\'s list view, Retry opens the same explorer view', async ({ page, context, baseURL }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await context.addCookies([faultCookie('person-once', baseURL)]);
+    await page.goto(`/explore?focus=${id}&up=1&down=1&view=list`);
+    await expect(page.getByRole('heading', { level: 1, name: 'This profile could not be loaded' })).toBeVisible();
+    await expect(page.getByText('There is no public profile with this address in the record.')).toHaveCount(0);
+    const retry = page.getByRole('alert').getByRole('link', { name: 'Retry' });
+    expect(addressOf(await retry.getAttribute('href'))).toEqual({ path: '/explore', query: { focus: id, up: '1', down: '1', view: 'list' } });
+    await retry.click();
+    await expect(page.getByRole('heading', { level: 1, name: /^Lineage of / })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Routes of descent' })).toBeVisible();
+  });
+
+  test('@M05 a wide teacher\'s "+N students" counts every public student not drawn, also those the read left out', async ({ page }) => {
+    const hub = await personIdOf('demo-hub-a');
+    const profile = (await (await page.request.get('/api/v1/people/demo-hub-a')).json()) as { counts: { students: number } };
+    // The person view's read (plan §4.3; under 640 px the smaller one), with its default fan-out limit of 50.
+    const narrow = (page.viewportSize()?.width ?? 1440) < 640;
+    const view = narrow ? { up: 2, down: 1 } : { up: 16, down: 2 };
+    const ego = (await (await page.request.get(`/api/v1/lineage/ego?focusId=${hub}&up=${view.up}&down=${view.down}`)).json()) as {
+      edges: { teacherId: string; studentId: string }[];
+    };
+    const read = new Set(ego.edges.filter((e) => e.teacherId === hub).map((e) => e.studentId)).size;
+    // The read returned only some of them (its fan-out limit).
+    expect(read).toBeGreaterThan(12);
+    expect(read).toBeLessThan(profile.counts.students);
+    await openExplorer(page, { focus: hub });
+    // The selection panel gives the count at every zoom; the card's chip only with full cards, and a
+    // phone opens this view with compact ones (below zoom 0.75), which leave the chip out.
+    await nodeOf(page, hub).click();
+    const all = page.getByTestId('explorer-panel').getByRole('link', { name: /^All students in the list view \(\+\d+ not drawn\)$/ });
+    await expect(all).toBeVisible();
+    const more = Number((await all.textContent())!.match(/\+(\d+)/)![1]);
+    // Drawn are at least the 12 of the large fan-out rule (FANOUT_SHOWN, state.ts) and at most what
+    // the read returned (a student kept by a second teacher in the view is drawn too), so every
+    // public student not drawn is between these; counting only the answer gives read - 12 at most.
+    expect(more).toBeGreaterThanOrEqual(profile.counts.students - read);
+    expect(more).toBeLessThanOrEqual(profile.counts.students - 12);
+    if (!narrow) await expect(nodeOf(page, hub).locator('[data-more-chip]')).toHaveText(`+${more} students`);
+  });
+});
