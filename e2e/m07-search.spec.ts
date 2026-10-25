@@ -15,7 +15,7 @@ import { MISSING_PRIMARY } from '../src/lib/profile-form';
 import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
 import { apiPost, freshAccount } from './helpers/plans';
 import { openPalette, option, palette, paletteQuery, personIdOf, search, searchInput, waitForSearchKeys } from './helpers/search';
-import { expectNoAxeViolations, openInTheme, switchColorScheme } from './helpers/ui';
+import { expectNoAxeViolations, noClickAfterCancelledTouchPress, openInTheme, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
 
 test.beforeAll(async () => {
@@ -503,6 +503,34 @@ test.describe('on a phone', () => {
     const target = await hit.boundingBox();
     expect(target!.height).toBeGreaterThanOrEqual(44);
     await hit.tap();
+    await page.waitForURL((url) => url.pathname === '/people/demo-cjk-name');
+    await expect(palette(page)).toHaveCount(0);
+  });
+
+  test('@M07 at 390x844 a tap chooses a recent search and a result, also where a cancelled touch press brings no click (WebKit GTK, WPE)', async ({
+    page,
+  }) => {
+    // Chromium sends the click after a cancelled touch pointerdown; WebKit's GTK and WPE ports, which the
+    // mobile-webkit project runs on, do not. Here every browser behaves like those ports.
+    await noClickAfterCancelledTouchPress(page);
+    await page.addInitScript(() => window.localStorage.setItem('wcr.recent-searches', JSON.stringify(['So Ching Laam'])));
+    await page.goto('/');
+    const field = page.locator('[data-search-field="bar"]');
+    await expect(field).toBeVisible();
+    await expect(async () => {
+      await field.tap();
+      await expect(searchInput(page)).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    await expect(searchInput(page)).toBeFocused();
+
+    // A recent search runs again, and the field keeps the focus (the phone keeps its keyboard).
+    const answered = page.waitForResponse((r) => paletteQuery(r.request()) === 'So Ching Laam');
+    await palette(page).locator('[data-kind="recent"]').filter({ hasText: 'So Ching Laam' }).tap();
+    expect((await answered).status()).toBe(200);
+    await expect(searchInput(page)).toHaveValue('So Ching Laam');
+    await expect(searchInput(page)).toBeFocused();
+
+    await palette(page).locator('[data-kind="person"]').filter({ hasText: 'So Ching Laam' }).first().tap();
     await page.waitForURL((url) => url.pathname === '/people/demo-cjk-name');
     await expect(palette(page)).toHaveCount(0);
   });
