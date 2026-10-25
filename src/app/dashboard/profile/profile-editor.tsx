@@ -33,6 +33,8 @@ import {
   PROFILE_BIO_MAX_LENGTH,
   PROFILE_MAX_NAMES,
   type ProfileFormValues,
+  sameNames,
+  shownFormValues,
   SPARE_ROWS,
   unflattenValues,
   writingValue,
@@ -146,6 +148,22 @@ export function ProfileEditor({
   // browser keeps a person's own choice. When the code changes them (a removed or rewritten name
   // stops being the display name), this count remounts them with the new value.
   const [redraw, setRedraw] = useState(0);
+
+  // What the person typed or chose before the page's JavaScript ran (a slow phone connection, a
+  // webview): hydration leaves it in the fields, but the form state still holds the values the page
+  // was drawn with, and the render that follows hydration wrote those back into the fields, so a
+  // name typed early was replaced by the old one and saved so (the iPhone run of PR #13). Once, on
+  // hydration and before anything renders again, the state takes over what the fields show.
+  useEffect(() => {
+    const shown = shownFormValues(new FormData(formRef.current!));
+    const current = form.state.values;
+    if (!sameNames(shown.names, current.names)) form.setFieldValue('names', shown.names);
+    for (const key of ['primary', 'bio', 'bioLang', 'countryCode', 'placeId', 'trainingStartYear', 'showPublicly'] as const) {
+      if (shown[key] !== current[key]) form.setFieldValue(key, shown[key]);
+    }
+    // Another display name, or one that can no longer be one: the radios are drawn again with it.
+    if (shown.primary !== current.primary) setRedraw((n) => n + 1);
+  }, [form]);
 
   // A save puts the saved profile back into the form (the server cleans and orders the names).
   const seen = useRef(state);

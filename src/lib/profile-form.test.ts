@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { canBePrimary, LATIN_WRITING, MISSING_PRIMARY, nameField, primaryRefusal, type ProfileFormValues } from './profile-form';
+import {
+  canBePrimary,
+  LATIN_WRITING,
+  MISSING_PRIMARY,
+  nameField,
+  primaryRefusal,
+  type ProfileFormValues,
+  sameNames,
+  shownFormValues,
+} from './profile-form';
 import { profileFormErrors } from './profile-form-rules';
 
 const YEAR = 2026;
@@ -79,5 +88,84 @@ describe('primaryRefusal and canBePrimary', () => {
     expect(primaryRefusal(LATIN_WRITING, 'alias')).toMatch(/Also known as/);
     expect(primaryRefusal(HANT, 'name')).toMatch(/under “Written in”/);
     expect(primaryRefusal('Cyrl|bg-Cyrl|', 'name')).toMatch(/under “Written in”/);
+  });
+});
+
+describe('shownFormValues (what the fields hold when the editor hydrates)', () => {
+  /** The fields as the server draws the editor: the saved rows, then spare rows, then the rest. */
+  const drawn = (rows: { value: string; writing?: string; kind?: string; spare?: boolean }[], fields: Record<string, string> = {}) => {
+    const form = new FormData();
+    rows.forEach((row, i) => {
+      if (row.spare) form.set(`names.${i}.spare`, '1');
+      form.set(nameField(i, 'value'), row.value);
+      form.set(nameField(i, 'writing'), row.writing ?? LATIN_WRITING);
+      form.set(nameField(i, 'kind'), row.kind ?? 'name');
+    });
+    for (const [name, value] of Object.entries({ primary: '0', bio: '', bioLang: 'en', countryCode: '', placeId: '', trainingStartYear: '', ...fields })) {
+      form.set(name, value);
+    }
+    return form;
+  };
+  const saved = [
+    { value: 'Demo Lantern Example', writing: LATIN_WRITING },
+    { value: '測試燈', writing: HANT },
+  ];
+
+  it('gives back the values the page was drawn with when nothing was changed (spare rows left empty are dropped)', () => {
+    const shown = shownFormValues(drawn([...saved, { value: '', spare: true }, { value: '', spare: true }]));
+    expect(shown).toEqual({
+      names: [
+        { value: 'Demo Lantern Example', writing: LATIN_WRITING, kind: 'name' },
+        { value: '測試燈', writing: HANT, kind: 'name' },
+      ],
+      primary: 0,
+      bio: '',
+      bioLang: 'en',
+      countryCode: '',
+      placeId: '',
+      trainingStartYear: '',
+      showPublicly: false,
+    });
+  });
+
+  it('takes over a display name typed over, a name typed in a spare row, and the other fields', () => {
+    const shown = shownFormValues(
+      drawn([{ ...saved[0]!, value: 'Demo Inkwell Example' }, saved[1]!, { value: '', spare: true }, { value: 'Тест Облак', writing: 'Cyrl|bg-Cyrl|', spare: true }], {
+        trainingStartYear: '2009',
+        bio: 'Demo biography.',
+        showPublicly: 'on',
+      }),
+    );
+    expect(shown.names).toEqual([
+      { value: 'Demo Inkwell Example', writing: LATIN_WRITING, kind: 'name' },
+      { value: '測試燈', writing: HANT, kind: 'name' },
+      { value: 'Тест Облак', writing: 'Cyrl|bg-Cyrl|', kind: 'name' },
+    ]);
+    expect(shown.primary).toBe(0);
+    expect(shown).toMatchObject({ trainingStartYear: '2009', bio: 'Demo biography.', showPublicly: true });
+  });
+
+  it('keeps an emptied saved row, and follows the ticked display name to its row', () => {
+    const shown = shownFormValues(drawn([saved[0]!, { value: '', writing: HANT }, { value: '', spare: true }, { value: 'Demo Second Name', spare: true }], { primary: '3' }));
+    expect(shown.names.map((n) => n.value)).toEqual(['Demo Lantern Example', '', 'Demo Second Name']);
+    expect(shown.primary).toBe(2);
+  });
+
+  it('drops a ticked display name that can no longer be one, and has none when no radio is ticked', () => {
+    expect(shownFormValues(drawn([{ ...saved[0]!, kind: 'alias' }, saved[1]!])).primary).toBe(-1);
+    expect(shownFormValues(drawn([{ ...saved[0]!, writing: HANT }, saved[1]!])).primary).toBe(-1);
+    const none = drawn(saved);
+    none.delete('primary');
+    expect(shownFormValues(none).primary).toBe(-1);
+  });
+});
+
+describe('sameNames', () => {
+  it('compares the value, the writing and the kind of each row, in order', () => {
+    const rows = values().names;
+    expect(sameNames(rows, rows.map((row) => ({ ...row, spare: true })))).toBe(true);
+    expect(sameNames(rows, [...rows].reverse())).toBe(false);
+    expect(sameNames(rows, rows.slice(1))).toBe(false);
+    expect(sameNames(rows, rows.map((row, i) => (i === 0 ? { ...row, kind: 'alias' as const } : row)))).toBe(false);
   });
 });

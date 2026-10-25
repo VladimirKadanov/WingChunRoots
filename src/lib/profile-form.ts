@@ -96,6 +96,50 @@ export function profileFormFromData(form: FormData): ProfileFormValues {
   };
 }
 
+/**
+ * The values the editor's fields hold when it hydrates: what the person typed or chose before the
+ * page's JavaScript ran (a slow phone connection, a webview) stays in the fields, and the editor
+ * takes it over. As the page drew them: every saved row, even an emptied one (the editor shows it
+ * until Remove), then the spare rows that hold a name; a spare row left empty is dropped. A ticked
+ * display name that can no longer be one (its "Written in" or Kind was changed) is dropped, as the
+ * editor does when that change is made with JavaScript.
+ */
+export function shownFormValues(form: FormData): ProfileFormValues {
+  const text = (name: string) => {
+    const v = form.get(name);
+    return typeof v === 'string' ? v : '';
+  };
+  const primaryAt = form.has('primary') ? Number.parseInt(text('primary'), 10) : -1;
+  const names: NameRow[] = [];
+  let primary = -1;
+  for (let i = 0; i < PROFILE_MAX_NAMES + SPARE_ROWS; i++) {
+    if (!form.has(nameField(i, 'value'))) continue;
+    const row: NameRow = {
+      value: text(nameField(i, 'value')),
+      writing: text(nameField(i, 'writing')) || LATIN_WRITING,
+      kind: text(nameField(i, 'kind')) === 'alias' ? 'alias' : 'name',
+    };
+    if (text(`names.${i}.spare`) === '1' && !row.value.trim()) continue;
+    if (i === primaryAt && canBePrimary(row.writing, row.kind)) primary = names.length;
+    names.push(row);
+  }
+  return {
+    names,
+    primary,
+    bio: text('bio'),
+    bioLang: text('bioLang') || 'en',
+    countryCode: text('countryCode'),
+    placeId: text('placeId'),
+    trainingStartYear: text('trainingStartYear'),
+    showPublicly: form.get('showPublicly') === 'on',
+  };
+}
+
+/** Whether two lists hold the same names, written the same way, in the same order. */
+export function sameNames(a: readonly NameRow[], b: readonly NameRow[]): boolean {
+  return a.length === b.length && a.every((row, i) => row.value === b[i]!.value && row.writing === b[i]!.writing && row.kind === b[i]!.kind);
+}
+
 /** The input of profile.update for these values. */
 export function toUpdateInput(values: ProfileFormValues) {
   return {
