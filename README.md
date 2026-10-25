@@ -86,7 +86,7 @@ Also supported: the repository on a Windows drive (for example `D:\work\wingchun
 - **psql 15 or newer on `PATH`**, for example the client of [PostgreSQL for Windows](https://www.postgresql.org/download/windows/): in `~/.bashrc`, `export PATH="/c/Program Files/PostgreSQL/17/bin:$PATH"`.
 - **Port 5432 taken** by a native PostgreSQL (`bind: An attempt was made to access a socket in a way forbidden by its access permissions` from `docker compose up`): after `scripts/init-env.sh`, set `POSTGRES_PORT=5433` in `.env` and change the port in `DATABASE_URL` and `TEST_DATABASE_URL` to `5433`, before the first `docker compose up -d --wait`.
 - **Browsers:** `pnpm exec playwright install chromium` (no `--with-deps` on Windows).
-- **E2E workers:** `PW_WORKERS=1` in `.env` (`.env.example`). With Playwright's default, half the CPU cores, the parallel tests overrun the 2 s `statement_timeout` and the proxy's 500 ms person check on Docker Desktop; `scripts/verify.sh` reads `PW_WORKERS` from `.env`.
+- **E2E workers:** `PW_WORKERS=2` in `.env` (`.env.example`); `scripts/verify.sh` reads it from `.env`. Measured on an 8-core PC with Docker Desktop, `scripts/verify.sh M04` (148 E2E tests): 1 worker passes in 7.4 min, 2 workers in 4.5–5.0 min (also right after a PostgreSQL restart), while Playwright's default of 4 fails the hidden-person 404 test: under that load the proxy's person check runs past its 500 ms deadline and the page answers for itself with 200 (`src/proxy.ts`, ADR 0008). With other heavy work running at the same time even 2 workers can miss that deadline or the 2 s `statement_timeout`; then use 1.
 
 Line endings stay LF (`.gitattributes`), whatever `core.autocrlf` says.
 
