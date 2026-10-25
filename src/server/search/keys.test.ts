@@ -40,10 +40,27 @@ describe('the Bulgarian Streamlined System', () => {
     expect(bgStreamlined('Мария Янева')).toBe('maria yaneva');
   });
 
+  it('reads ъ as a everywhere, so "България" gives balgaria (docs/search.md); the country\'s own "Bulgaria" is no name rule', () => {
+    expect(bgStreamlined('България')).toBe('balgaria');
+  });
+
   it('keys a Bulgarian Cyrillic name by its Streamlined form', () => {
     const keys = keysForName(name('Десислава Примерова', 'Cyrl', 'bg-Cyrl'));
     expect(keys).toContainEqual({ key: 'desislava primerova', keyKind: 'latin', source: 'bg_streamlined' });
     expect(keys).toContainEqual({ key: 'десислава примерова', keyKind: 'cyrillic', source: 'name' });
+  });
+});
+
+describe('Japanese and Korean names (docs/search.md, known limits)', () => {
+  it('kanji and hanja are keyed as folded characters only; kana and Hangul also by the Latin reading of `transliteration`', () => {
+    expect(keysForName(name('山田たろう', 'Jpan', 'ja'))).toEqual([
+      { key: '山田', keyKind: 'han', source: 'opencc-js' },
+      { key: 'tarou', keyKind: 'latin', source: 'transliteration' },
+    ]);
+    expect(keysForName(name('김민수', 'Kore', 'ko'))).toEqual([{ key: 'gimminsu', keyKind: 'latin', source: 'transliteration' }]);
+    expect(keysForName(name('金民洙', 'Kore', 'ko'))).toEqual([{ key: '金民洙', keyKind: 'han', source: 'opencc-js' }]);
+    // A Latin query meets the generated reading, not the usual Hepburn or Revised spelling.
+    expect(queryForms('gimminsu').map((f) => f.text)).toContain('gimminsu');
   });
 });
 

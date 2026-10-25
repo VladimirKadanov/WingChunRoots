@@ -1,5 +1,6 @@
 // The Bulgarian Streamlined System (Обтекаема система, the official transliteration since 2009):
-// "Тестов" → "testov", "Щерю" → "shteryu", "България" → "bulgaria". Hand-written rather than taken
+// "Тестов" → "testov", "Щерю" → "shteryu", "България" → "balgaria" (ъ is always a; the country's
+// own spelling "Bulgaria" is an exception for its name, not a rule for names). Hand-written rather than taken
 // from a library, because `transliteration` follows Russian rules for щ, ъ and ия (docs/search.md).
 // Search keys are lower case, so the result is too.
 
@@ -13,7 +14,7 @@ const LETTERS: Readonly<Record<string, string>> = {
 
 /** Lower-case Latin letters for Bulgarian Cyrillic; other characters stay as they are. */
 export function bgStreamlined(value: string): string {
-  // Word-final "ия" is "ia" (България → Bulgaria); everywhere else я is "ya".
+  // Word-final "ия" is "ia" (Мария → maria, България → balgaria); everywhere else я is "ya".
   const lower = value.normalize('NFC').toLowerCase().replace(/ия(?=$|[^\p{L}])/gu, 'ia');
   let out = '';
   for (const ch of lower) out += LETTERS[ch] ?? ch;
