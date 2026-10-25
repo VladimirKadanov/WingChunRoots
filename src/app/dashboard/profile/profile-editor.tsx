@@ -118,6 +118,10 @@ export function ProfileEditor({
     },
   });
   const values = useStore(form.store, (s) => s.values);
+  // The display-name radios and "Show my profile publicly" are uncontrolled (defaultChecked): the
+  // browser keeps a person's own choice. When the code changes them (a removed or rewritten name
+  // stops being the display name), this count remounts them with the new value.
+  const [redraw, setRedraw] = useState(0);
 
   // A save puts the saved profile back into the form (the server cleans and orders the names).
   const seen = useRef(state);
@@ -126,6 +130,7 @@ export function ProfileEditor({
     seen.current = state;
     if (state.status !== 'done') return;
     const saved = unflattenValues(state.values);
+    // The radios and the checkbox already show what was saved: it is what the browser sent.
     if (saved) form.reset(saved);
   }, [state, form]);
 
@@ -151,6 +156,7 @@ export function ProfileEditor({
     form.setFieldValue('names', (list) => list.map((row, j) => (j === i ? { ...row, ...patch } : row)));
     if (i === values.primary && !canBePrimary(patch.writing ?? values.names[i]!.writing, patch.kind ?? values.names[i]!.kind)) {
       form.setFieldValue('primary', -1);
+      setRedraw((n) => n + 1);
     }
   };
   const addName = () => {
@@ -161,6 +167,7 @@ export function ProfileEditor({
   const removeName = (i: number) => {
     form.setFieldValue('names', (list) => list.filter((_, j) => j !== i));
     form.setFieldValue('primary', (p) => (p === i ? -1 : p > i ? p - 1 : p));
+    setRedraw((n) => n + 1);
     // The focus goes to the row that took its place, or to "Add a name".
     requestAnimationFrame(() => {
       const next = document.getElementById(fieldId(FORM, nameField(Math.min(i, values.names.length - 2), 'value')));
@@ -280,11 +287,12 @@ export function ProfileEditor({
                     <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
                       <label htmlFor={primaryId} className={cx('flex min-h-11 items-center gap-3 text-ui', eligible || !hydrated ? 'cursor-pointer' : 'text-fg-subtle')}>
                         <input
+                          key={`primary-${redraw}`}
                           id={primaryId}
                           type="radio"
                           name="primary"
                           value={i}
-                          checked={isPrimary}
+                          defaultChecked={isPrimary}
                           disabled={hydrated && !eligible}
                           onChange={() => form.setFieldValue('primary', i)}
                           aria-describedby={describedBy(primaryError && `${primaryId}-error`, hydrated && !eligible && `${primaryId}-why`)}
@@ -510,11 +518,12 @@ export function ProfileEditor({
         <label htmlFor={publicId} className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 text-ui">
           <span className="relative grid size-6 shrink-0 place-items-center">
             <input
+              key={`public-${redraw}`}
               id={publicId}
               name="showPublicly"
               type="checkbox"
               value="on"
-              checked={values.showPublicly}
+              defaultChecked={values.showPublicly}
               onChange={(e) => form.setFieldValue('showPublicly', e.currentTarget.checked)}
               aria-describedby={`${publicId}-hint`}
               className="peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1 transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted"
