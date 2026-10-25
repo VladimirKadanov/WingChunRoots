@@ -380,3 +380,146 @@ test('@M05 no axe violations on /explore in dark and light themes', async ({ pag
     await expectNoAxeViolations(page, `/explore (start), ${theme} theme`);
   }
 });
+
+test.describe('M05 fixes a1', () => {
+  type Page = Parameters<typeof openExplorer>[0];
+  type Locator = ReturnType<typeof nodeOf>;
+  /** The view's pan and zoom, from React Flow's viewport transform. */
+  const viewOf = (page: Page) =>
+    page.locator('.react-flow__viewport').evaluate((el) => {
+      const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform);
+      return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) } : null;
+    });
+  /** The view once it has stopped moving: the same in two reads 150 ms apart (a zoom button moves it for 200 ms). */
+  async function settledView(page: Page) {
+    let last = await viewOf(page);
+    for (let i = 0; i < 40; i++) {
+      await page.waitForTimeout(150);
+      const now = await viewOf(page);
+      if (now && JSON.stringify(now) === JSON.stringify(last)) return now;
+      last = now;
+    }
+    throw new Error('The view never stopped moving.');
+  }
+  /** Whether a node lies wholly inside the canvas pane (a node off screen is not rendered at all). */
+  async function onCanvas(page: Page, node: Locator) {
+    if ((await node.count()) === 0) return false;
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const box = await node.boundingBox();
+    return !!box && box.x >= pane.x && box.y >= pane.y && box.x + box.width <= pane.x + pane.width && box.y + box.height <= pane.y + pane.height;
+  }
+  const generations = async () => ({ focus: await personIdOf('demo-converging'), up: 1, down: 1 });
+
+  test('@M05 List and back to Graph keeps the zoom and pan of the graph', async ({ page }) => {
+    await openExplorer(page, await generations());
+    await settledView(page);
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    const before = await settledView(page);
+    const toggle = page.getByRole('group', { name: 'Show as' });
+    await toggle.getByRole('button', { name: 'List' }).click();
+    await expect(page.getByRole('heading', { level: 2, name: 'Routes of descent' })).toBeVisible();
+    await toggle.getByRole('button', { name: 'Graph' }).click();
+    await expect(personNodes(page).first()).toBeVisible();
+    // A fit of the view would move it again over 250 ms.
+    await page.waitForTimeout(600);
+    expect(await settledView(page)).toEqual(before);
+  });
+
+  test('@M05 "Fit the whole view" never zooms past the cards\' own size, like the first view', async ({ page }) => {
+    await openExplorer(page, await generations());
+    expect((await settledView(page)).zoom).toBeLessThanOrEqual(1);
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    await settledView(page);
+    await page.getByRole('button', { name: 'Fit the whole view' }).click();
+    expect((await settledView(page)).zoom).toBeLessThanOrEqual(1);
+  });
+
+  test('@M05 a large view opens at once, in full cards, with the focus and its nearest student when one fits beside it', async ({ page }) => {
+    // Every value the viewport's transform takes from the moment the canvas exists.
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      (window as unknown as { __views: string[] }).__views = seen;
+      const watch = () => {
+        const el = document.querySelector<HTMLElement>('.react-flow__viewport');
+        if (!el) {
+          requestAnimationFrame(watch);
+          return;
+        }
+        seen.push(el.style.transform);
+        new MutationObserver(() => seen.push(el.style.transform)).observe(el, { attributes: true, attributeFilter: ['style'] });
+      };
+      requestAnimationFrame(watch);
+    });
+    const root = await personIdOf('demo-root-b');
+    await openExplorer(page, { focus: root, lineage: await lineageIdOf('demo-lineage-b') });
+    await page.waitForTimeout(600);
+    // Placed at once: React Flow's first (0, 0) and the view, not a 250 ms move across the drawing.
+    const views = await page.evaluate(() => [...new Set((window as unknown as { __views: string[] }).__views)]);
+    expect(views.length, views.join(' | ')).toBeLessThanOrEqual(2);
+    // Full cards (zoom 0.75 or more), with the lineage's root on screen.
+    await expect(nodeOf(page, root).locator('[data-person-node]')).toHaveAttribute('data-lod', 'full');
+    expect(await onCanvas(page, nodeOf(page, root))).toBe(true);
+    // From 640 px of canvas there is room for one of the root's own students beside it (demo-lineage-b's nearest is
+    // 776 px away); a phone has room for the root alone.
+    if ((await page.locator('.react-flow__pane').boundingBox())!.width >= 640) {
+      const students = await page.locator(`[data-edge][data-teacher="${root}"]`).evaluateAll((paths) => paths.map((p) => p.getAttribute('data-student')!));
+      const shown = [];
+      for (const id of students) if (await onCanvas(page, nodeOf(page, id))) shown.push(id);
+      expect(shown.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  test('@M05 edges are hidden while the people slide to a new scene\'s places, and not under reduced motion', async ({ page }) => {
+    for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+      await page.emulateMedia({ reducedMotion });
+      await openExplorer(page, await generations());
+      const canvas = page.locator('.explorer-canvas');
+      await canvas.evaluate((el) => {
+        const marks: boolean[] = [];
+        (window as unknown as { __moving: boolean[] }).__moving = marks;
+        new MutationObserver(() => marks.push(el.hasAttribute('data-moving'))).observe(el, { attributes: true, attributeFilter: ['data-moving'] });
+      });
+      const nodes = await personNodes(page).count();
+      // demo-converging has no students: one more generation of teachers brings new people.
+      await page.getByRole('button', { name: 'More generations of teachers' }).click();
+      await expect.poll(() => personNodes(page).count()).toBeGreaterThan(nodes);
+      await expect(canvas).not.toHaveAttribute('data-moving');
+      const marks = await page.evaluate(() => (window as unknown as { __moving: boolean[] }).__moving);
+      expect(marks).toEqual(reducedMotion === 'reduce' ? [] : [true, false]);
+      expect(await page.locator('.react-flow__edges').evaluate((el) => getComputedStyle(el).visibility)).toBe('visible');
+    }
+  });
+
+  test('@M05 a disputed link to a second teacher puts the arbitration banner on the student\'s card', async ({ page }) => {
+    const params = await generations();
+    const student = params.focus;
+    // The demo data has no such person: the next read gives one of demo-converging's two teachers a link in arbitration.
+    let disputed: string | null = null;
+    await page.route('**/api/rpc/lineage/ego**', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { json: { edges: { id: string; studentId: string; isDisplayPrimary: boolean; status: string }[] } };
+      const second = body.json.edges.find((e) => e.studentId === student && !e.isDisplayPrimary);
+      if (second) {
+        second.status = 'in_arbitration';
+        disputed = second.id;
+      }
+      await route.fulfill({ response, json: body });
+    });
+    await openExplorer(page, params);
+    await expect(nodeOf(page, student).locator('[data-arbitration-banner]')).toHaveCount(0);
+    // Fewer generations of students (demo-converging has none): the same people, read in the browser.
+    const read = page.waitForResponse('**/api/rpc/lineage/ego**');
+    await page.getByRole('button', { name: 'Fewer generations of students' }).click();
+    await read;
+    expect(disputed, 'the read has a second teacher of demo-converging').not.toBeNull();
+    await expect(page.locator(`[data-edge="${disputed}"]`)).toHaveAttribute('data-stroke', 'arbitration');
+    const card = nodeOf(page, student);
+    await expect(card.locator('[data-person-node]')).toHaveAttribute('data-lod', 'full');
+    // The status line still speaks of the display-primary teacher; the banner tells of the dispute.
+    await expect(card).toContainText('Verified');
+    await expect(card.locator('[data-arbitration-banner]')).toHaveText('In arbitration');
+    await expect(card.locator('[data-arbitration-banner] [data-seal="scales"]')).toHaveCount(1);
+    await expect(personNodes(page).locator('[data-arbitration-banner]')).toHaveCount(1);
+  });
+});
