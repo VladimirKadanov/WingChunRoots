@@ -3,10 +3,22 @@
  * against `next start` with the seeded fictional demo data (D20); nothing here changes data.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Worker } from '@playwright/test';
 
 import { closeHelpers, loadTestEnv } from './helpers/auth';
-import { edgesInto, lineageIdOf, nodeOf, openExplorer, personIdOf, personNodes } from './helpers/explorer';
+import { EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, personIdOf, personNodes } from './helpers/explorer';
+import {
+  elkScripts,
+  emulateSafeAreaInsets,
+  expectGenerationLabel,
+  installInpProbes,
+  loadedScripts,
+  nodeNames,
+  personNameOf,
+  recordScripts,
+  selectionInp,
+  workerScripts,
+} from './helpers/explorer-checks';
 import { expectNoAxeViolations, openInTheme, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
 
@@ -44,10 +56,17 @@ test('@M05 cross-lineage teacher edge is curved, long-dashed and labelled with t
   // A cubic Bézier curve, not an orthogonal route (plan §4.6).
   await expect(cross).toHaveAttribute('data-routed', 'scene');
   expect(await cross.getAttribute('d')).toMatch(/ C /);
-  // Long dashes: the cross-lineage pattern of the design tokens, with a dash longer than its gaps.
-  const dash = (await cross.getAttribute('stroke-dasharray'))!.split(/[\s,]+/).map(Number);
-  expect(dash.length).toBeGreaterThanOrEqual(2);
-  expect(Math.max(...dash)).toBeGreaterThanOrEqual(2 * Math.min(...dash));
+  // Drawn as the cross-lineage stroke (plan §4.6), not as one of the states.
+  await expect(cross).toHaveAttribute('data-stroke', 'cross_lineage');
+  // Long dashes: the longest dash is at least twice the longest gap, which a dotted line (a dot of
+  // 0.1 and gaps of 4) and the dashes of "Under review" (7 and 4) are not. As drawn, from the
+  // computed style; an odd-length list repeats (SVG), so dashes and gaps alternate from the start.
+  const listed = (await cross.evaluate((p) => getComputedStyle(p).strokeDasharray)).split(/[\s,]+/).map((v) => Number.parseFloat(v));
+  expect(listed.every(Number.isFinite) && listed.length > 0, `stroke-dasharray ${listed.join(' ')}`).toBe(true);
+  const pattern = listed.length % 2 === 0 ? listed : [...listed, ...listed];
+  const dashes = pattern.filter((_, i) => i % 2 === 0);
+  const gaps = pattern.filter((_, i) => i % 2 === 1);
+  expect(Math.max(...dashes), `stroke-dasharray ${listed.join(' ')}`).toBeGreaterThanOrEqual(2 * Math.max(...gaps));
   const edgeId = await cross.getAttribute('data-edge');
   await expect(page.locator(`[data-edge-label="${edgeId}"]`)).toHaveText(/^Teacher in Demo Lineage [A-C]$/);
 });
@@ -127,29 +146,45 @@ test('@M05 the label reads "Generation N from {root}" only when the view root is
 }) => {
   const id = await personIdOf('demo-two-lineages');
   // The person view reaches the lineage root over verified links: "Generation N from {root}".
+  // (On the card and in the node's accessible name: expectGenerationLabel.)
   await openExplorer(page, { focus: id });
-  await expect(nodeOf(page, id)).toContainText(/Generation \d+ from \S/);
+  await expectGenerationLabel(page, id, /Generation \d+ from \S/);
   // One generation up: the view's root is a teacher, not the lineage root.
   await openExplorer(page, { focus: id, up: 1, down: 0 });
-  await expect(nodeOf(page, id)).toContainText(/1 generation below \S.* in this view/);
+  await expectGenerationLabel(page, id, /1 generation below \S.* in this view/);
   await expect(personNodes(page).filter({ hasText: /Generation \d+ from/ })).toHaveCount(0);
+  expect((await nodeNames(page)).filter((name) => /, Generation \d+ from /.test(name))).toEqual([]);
+  // A path with an edge that is not verified: demo-arbitration's only teacher link is in
+  // arbitration, so its card counts in this view only, while its teacher, verified up to the
+  // root of Demo Lineage B, counts from that root.
+  const disputed = await personIdOf('demo-arbitration');
+  const root = await personNameOf('demo-root-b');
+  await openExplorer(page, { focus: disputed });
+  const link = edgesInto(page, disputed);
+  await expect(link).toHaveCount(1);
+  await expect(link).toHaveAttribute('data-stroke', 'arbitration');
+  await expectGenerationLabel(page, (await link.getAttribute('data-teacher'))!, `Generation 2 from ${root}`);
+  await expectGenerationLabel(page, disputed, `2 generations below ${root} in this view`);
+  await expect(nodeOf(page, disputed)).not.toContainText(/Generation \d+ from/);
+  await expect(nodeOf(page, disputed)).not.toHaveAttribute('aria-label', /, Generation \d+ from /);
 });
 
 test('@M05 reload keeps focus, depth and view from the URL', async ({ page }) => {
   const id = await personIdOf('demo-two-lineages');
   await openExplorer(page, { focus: id, up: 1, down: 1 });
-  const check = async () => {
+  const check = async (down: number) => {
     await expect(page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Generations' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('group', { name: 'Teachers' })).toContainText('Teachers: 1');
-    await expect(page.getByRole('group', { name: 'Students' })).toContainText('Students: 1');
+    await expect(page.getByRole('group', { name: 'Students' })).toContainText(`Students: ${down}`);
     await expect(nodeOf(page, id)).toBeVisible();
   };
-  await check();
+  await check(1);
   await page.getByRole('button', { name: 'More generations of students' }).click();
   await expect(page).toHaveURL(/down=2/);
   await page.reload();
   await expect(personNodes(page).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('group', { name: 'Students' })).toContainText('Students: 2');
+  // After the reload the explorer has only the URL: the same view, focus and both depths.
+  await check(2);
   const url = new URL(page.url());
   expect(url.searchParams.get('focus')).toBe(id);
   expect(url.searchParams.get('up')).toBe('1');
@@ -157,16 +192,29 @@ test('@M05 reload keeps focus, depth and view from the URL', async ({ page }) =>
 });
 
 test('@M05 profile page does not request the ELK worker; the explorer page does', async ({ page }) => {
-  const workers: string[] = [];
-  page.on('worker', (worker) => workers.push(worker.url()));
-  await page.goto('/people/demo-two-lineages');
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await page.goto('/people/demo-two-lineages/lineage');
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await page.waitForTimeout(500);
-  expect(workers).toEqual([]);
+  // Plan §4.11: ELK is not loaded outside the explorer, checked on the network requests. Every
+  // script fetched is read for ELK's code, so ELK is found however it would load: in a worker, or
+  // on the page itself (a client component that imports it).
+  const workers: Worker[] = [];
+  page.on('worker', (worker) => workers.push(worker));
+  const fetched = recordScripts(page);
+  for (const path of ['/people/demo-two-lineages', '/people/demo-two-lineages/lineage']) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(await elkScripts(page, [...fetched, ...(await loadedScripts(page))]), `ELK fetched on ${path}`).toEqual([]);
+  }
+  expect(workers.map((w) => w.url())).toEqual([]);
+
+  fetched.clear();
   await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
-  expect(workers.length).toBeGreaterThan(0);
+  // The explorer starts the layout worker, the one that loads ELK; the page itself does not load it.
+  const inWorkers: string[] = [];
+  for (const worker of workers) inWorkers.push(...(await elkScripts(page, await workerScripts(worker))));
+  expect(inWorkers.length, 'a worker of /explore loads ELK').toBeGreaterThan(0);
+  expect(await elkScripts(page, await loadedScripts(page)), 'ELK on the page itself').toEqual([]);
+  // Every fetch of ELK the browser reported came from that worker.
+  for (const url of await elkScripts(page, fetched)) expect(inWorkers, url).toContain(url);
 });
 
 test('@M05 the explorer shows a shape-matched loading skeleton while the layout runs', async ({ page }) => {
@@ -211,7 +259,7 @@ test('@M05 Graph/List toggle switches views and back without losing the focus pe
   await toggle.getByRole('button', { name: 'List' }).click();
   await expect(page).toHaveURL(/view=list/);
   // The list is the M04 list view of the same person.
-  await expect(page.getByRole('heading', { level: 1, name: /Lineage of/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /Lineage of/ })).toContainText(await personNameOf('demo-two-lineages'));
   await expect(page.getByRole('heading', { level: 2, name: 'Routes of descent' })).toBeVisible();
   await toggle.getByRole('button', { name: 'Graph' }).click();
   await expect(page).not.toHaveURL(/view=list/);
@@ -224,78 +272,67 @@ test('@M05 Graph/List toggle switches views and back without losing the focus pe
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('@M05 at 390x844 the explorer fills the dynamic viewport height and keeps its controls inside the safe areas', async ({ page }) => {
-    await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
-    const frame = await page.locator('main > div').first().boundingBox();
-    const header = await page.locator('header').first().boundingBox();
-    const bar = await page.locator('[data-tab-bar]').boundingBox();
-    expect(frame && header && bar).toBeTruthy();
-    // From the bottom of the top bar to the top of the tab bar, give or take a border.
-    expect(Math.abs(frame!.y - (header!.y + header!.height))).toBeLessThanOrEqual(2);
-    expect(Math.abs(frame!.y + frame!.height - bar!.y)).toBeLessThanOrEqual(2);
-    // Every control of the explorer is on screen, above the tab bar, at least 44 px tall.
-    for (const control of [
-      page.getByRole('button', { name: 'Zoom in' }),
-      page.getByRole('button', { name: 'Fit the whole view' }),
-      page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'List' }),
-      page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Lineage' }),
-      page.locator('label').filter({ hasText: 'Show ended training' }),
-    ]) {
-      const box = (await control.boundingBox())!;
-      expect(box.y).toBeGreaterThanOrEqual(0);
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(390);
-      expect(box.y + box.height).toBeLessThanOrEqual(bar!.y);
-      expect(box.height).toBeGreaterThanOrEqual(44);
+  test('@M05 at 390x844 the explorer fills the dynamic viewport height and keeps its controls inside the safe areas', async ({ page, browserName }) => {
+    // Safe-area insets are emulated in Chromium only (WebKit outside a device cannot); there the
+    // test checks the layout without insets. A notch and a home indicator, then side insets as well.
+    const cases = browserName === 'chromium' ? [{ top: 47, right: 0, bottom: 34, left: 0 }, { top: 47, right: 32, bottom: 34, left: 32 }] : [{ top: 0, right: 0, bottom: 0, left: 0 }];
+    for (const wanted of cases) {
+      const insets = await emulateSafeAreaInsets(page, browserName, wanted);
+      const where = `insets ${JSON.stringify(insets)}`;
+      await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
+      const frame = await page.locator('main > div').first().boundingBox();
+      const header = await page.locator('header').first().boundingBox();
+      const bar = await page.locator('[data-tab-bar]').boundingBox();
+      expect(frame && header && bar).toBeTruthy();
+      // The top bar keeps clear of the notch, the tab bar of the home indicator.
+      expect(header!.y + header!.height, where).toBeGreaterThan(insets.top);
+      expect(bar!.y + bar!.height, where).toBeLessThanOrEqual(844 + 0.5);
+      // From the bottom of the top bar to the top of the tab bar, give or take a border.
+      expect(Math.abs(frame!.y - (header!.y + header!.height)), where).toBeLessThanOrEqual(2);
+      expect(Math.abs(frame!.y + frame!.height - bar!.y), where).toBeLessThanOrEqual(2);
+      // Every control of the explorer, and the legend, is inside the safe areas, above the tab bar;
+      // every control is at least 44 px tall.
+      const controls = [
+        page.getByRole('button', { name: 'Zoom in' }),
+        page.getByRole('button', { name: 'Fit the whole view' }),
+        page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'List' }),
+        page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Lineage' }),
+        page.locator('label').filter({ hasText: 'Show ended training' }),
+      ];
+      for (const item of [...controls, page.getByTestId('explorer-legend')]) {
+        const box = (await item.boundingBox())!;
+        const what = `${where}: ${item.toString()}`;
+        expect(box.y, what).toBeGreaterThanOrEqual(insets.top);
+        expect(box.x, what).toBeGreaterThanOrEqual(insets.left);
+        expect(box.x + box.width, what).toBeLessThanOrEqual(390 - insets.right);
+        expect(box.y + box.height, what).toBeLessThanOrEqual(bar!.y);
+        if (controls.includes(item)) expect(box.height, what).toBeGreaterThanOrEqual(44);
+      }
+      // No horizontal scroll of the page.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth), where).toBeLessThanOrEqual(390);
     }
-    // No horizontal scroll of the page.
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   });
 });
 
 test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
+  // Plan §5.8 (c): INP with the web-vitals library where it is installed (onINP, see
+  // installInpProbes), otherwise from the Event Timing API it reads; the frame measure in a
+  // browser without Event Timing (WebKit). Each selection opens the panel.
+  await installInpProbes(page);
+  const report = (view: string, result: { inp: number; method: string; eventTiming: number | null; frame: number }) =>
+    test.info().annotations.push({
+      type: `INP (ms, worst of 3 selections, 4x CPU, ${view}, ${result.method})`,
+      description: `${result.inp} (Event Timing ${result.eventTiming ?? 'none'}, frame measure ${Math.round(result.frame)})`,
+    });
+
+  // A small view: the person and the two teachers of demo-two-lineages.
   const id = await personIdOf('demo-two-lineages');
   await openExplorer(page, { focus: id });
-  // Interaction latency from the Event Timing API (what INP is made of), which reports only
-  // interactions of 16 ms or more; and in every browser (WebKit has no Event Timing) the time from
-  // the pointer going down to the first frame after the click.
-  await page.evaluate(() => {
-    const w = window as unknown as { __inp: number[]; __frames: number[] };
-    w.__inp = [];
-    w.__frames = [];
-    if (PerformanceObserver.supportedEntryTypes.includes('event')) {
-      new PerformanceObserver((list) => {
-        for (const entry of list.getEntries() as (PerformanceEventTiming & { interactionId?: number })[]) {
-          if (entry.interactionId) w.__inp.push(entry.duration);
-        }
-      }).observe({ type: 'event', buffered: true, durationThreshold: 16 } as PerformanceObserverInit);
-    }
-    let down = 0;
-    document.addEventListener('pointerdown', (e) => (down = e.timeStamp), { capture: true });
-    document.addEventListener('click', () => {
-      requestAnimationFrame(() => setTimeout(() => w.__frames.push(performance.now() - down)));
-    });
-  });
-  // 4x CPU slowdown where the browser offers it (Chromium, through the DevTools protocol).
-  const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
-  await cdp?.send('Emulation.setCPUThrottlingRate', { rate: 4 });
   const teachers = await edgesInto(page, id).evaluateAll((paths) => paths.map((p) => p.getAttribute('data-teacher')!));
-  for (const target of [id, ...teachers]) {
-    await nodeOf(page, target).click();
-    await expect(page.getByTestId('explorer-panel')).toBeVisible();
-  }
-  await page.waitForTimeout(500);
-  await cdp?.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-  const measured = await page.evaluate(() => {
-    const w = window as unknown as { __inp: number[]; __frames: number[] };
-    return { inp: w.__inp, frames: w.__frames };
-  });
-  expect(measured.frames.length, 'every selection was measured').toBeGreaterThanOrEqual(3);
-  // INP itself where the browser reports it; with no entry (WebKit, or every interaction under
-  // 16 ms) the frame measure, which also counts its own timer and so errs on the slow side.
-  const worst = Math.max(...(measured.inp.length > 0 ? measured.inp : measured.frames));
-  test.info().annotations.push({ type: 'INP (ms, worst of 3 selections, 4x CPU)', description: String(worst) });
-  expect(worst).toBeLessThan(200);
+  const targets = [id, ...teachers];
+  const small = await selectionInp(page, browserName, 3, async (selected) => targets[selected.length] ?? null);
+  report('person view of demo-two-lineages', small);
+  expect(small.inp).toBeLessThan(200);
 });
 
 test('@M05 no axe violations on /explore in dark and light themes', async ({ page }) => {
@@ -308,11 +345,23 @@ test('@M05 no axe violations on /explore in dark and light themes', async ({ pag
     await switchColorScheme(page, theme);
     await expectNoAxeViolations(page, `/explore (person view, a node selected), ${theme} theme`);
   }
-  // The lineage view and the starting page too.
+  // The other two views, the list inside the explorer's frame and the starting page too.
   await openExplorer(page, { focus: id, lineage: await lineageIdOf('demo-lineage-a') });
   for (const theme of THEMES) {
     await switchColorScheme(page, theme);
     await expectNoAxeViolations(page, `/explore (lineage view), ${theme} theme`);
+  }
+  await openExplorer(page, await EXPLORER_VIEWS.find((v) => v.name === 'generations')!.params());
+  await expect(page.getByRole('group', { name: 'Students' })).toBeVisible();
+  for (const theme of THEMES) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `/explore (generations view), ${theme} theme`);
+  }
+  await page.goto(`/explore?focus=${id}&view=list`);
+  await expect(page.getByRole('heading', { level: 1, name: /Lineage of/ })).toBeVisible();
+  for (const theme of THEMES) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `/explore?view=list (the list in the explorer), ${theme} theme`);
   }
   await page.goto('/explore');
   for (const theme of THEMES) {
