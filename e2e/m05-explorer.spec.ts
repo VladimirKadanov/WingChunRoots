@@ -872,6 +872,38 @@ test.describe('M05 fixes B', () => {
     }
   });
 
+  test.describe('on a phone in landscape', () => {
+    test.use({ viewport: { width: 852, height: 393 }, isMobile: true, hasTouch: true });
+
+    test('@M05 at 852x393 (the rail layout) the bars, the legend and the zoom buttons stay inside the side and bottom safe areas', async ({ page, browserName }) => {
+      test.skip(browserName !== 'chromium', 'the safe-area insets are emulated through the Chrome DevTools protocol');
+      // An iPhone in landscape: the sensor housing on one side (59 px each side) and the home indicator (21 px).
+      const insets = { top: 0, left: 59, bottom: 21, right: 59 };
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets });
+      const id = await personIdOf('demo-two-lineages');
+      await openExplorer(page, { focus: id });
+      await nodeOf(page, id).click();
+      await expect(page.getByTestId('explorer-panel')).toBeVisible();
+      const right = 852 - insets.right;
+      const bottom = 393 - insets.bottom;
+      for (const control of [
+        page.getByRole('group', { name: 'Show as' }),
+        page.getByRole('group', { name: 'View' }),
+        page.locator('label').filter({ hasText: 'Show ended training' }),
+        page.getByTestId('explorer-legend'),
+        page.getByRole('button', { name: 'Zoom in' }),
+        page.getByRole('button', { name: 'Fit the whole view' }),
+        page.getByTestId('explorer-panel'),
+      ]) {
+        const box = (await control.boundingBox())!;
+        const name = await control.evaluate((el) => el.getAttribute('aria-label') ?? el.getAttribute('data-testid') ?? el.textContent?.trim().slice(0, 30));
+        expect(box.x + box.width, `${name}: right edge`).toBeLessThanOrEqual(right);
+        expect(box.y + box.height, `${name}: bottom edge`).toBeLessThanOrEqual(bottom);
+      }
+    });
+  });
+
   test.describe('on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 

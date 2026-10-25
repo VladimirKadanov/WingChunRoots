@@ -363,7 +363,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Always visible: what is in focus, and Graph / List. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle px-[max(1rem,env(safe-area-inset-left,0px))] py-2 md:px-6">
+      {/* Inside the side safe areas at every width: from md the rail has the left one, the explorer the right. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
         <div className="min-w-0">
           <p className="eyebrow">Explorer · {VIEW_LABELS[kind]}</p>
           {params.view === 'graph' ? (
@@ -393,7 +394,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
       <Activity mode={params.view === 'graph' ? 'visible' : 'hidden'}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-[max(1rem,env(safe-area-inset-left,0px))] py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] md:px-6">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
             <Segmented
               label="View"
               value={kind}
@@ -472,7 +473,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     )}
                     <div
                       data-testid="explorer-legend"
-                      className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-5.5rem)] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)]"
+                      // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
+                      className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
                     >
                       {/* The words of the lineage screens (M04): the dotted state here is a request, "Pending" as on the cards. */}
                       <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LINEAGE_WORDING} layout="wrap" />
