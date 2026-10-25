@@ -158,7 +158,7 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
         }
       }
     }
-    return { withdrawn, profileHidden, tags: profileHidden && personId ? await neighbourTags(tx, personId) : [] };
+    return { withdrawn, profileHidden, tags: profileHidden && personId ? await neighbourTags(tx, personId, { ancestors: true }) : [] };
   });
   // The person and the people and lineages next to it, as after a profile save.
   if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');

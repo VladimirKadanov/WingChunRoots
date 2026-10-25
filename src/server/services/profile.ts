@@ -10,7 +10,7 @@
 // grants or withdraws the `publication` consent. After the commit the public cache of the person
 // and of the people and lineages next to it is dropped (invalidatePublic, plan §6.4).
 
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -239,8 +239,22 @@ export interface ProfileUpdateResult {
   visibilityChanged: boolean;
 }
 
-/** The cache tags a change to this person can affect: the person, its direct teachers and students, and their lineages. */
-export async function neighbourTags(db: Executor, personId: string): Promise<string[]> {
+/**
+ * A bound on the teachers above one person that neighbourTags walks: far more generations than
+ * any lineage has, so it only stops a cycle the data should never hold from running on.
+ */
+export const ANCESTORS_CAP = 1_000;
+
+/**
+ * The cache tags a change to this person can affect: the person, its direct teachers and students,
+ * and their lineages. With `ancestors` (a change to whether the person is public) also
+ * lineage:<id> of every teacher above, in any lineage: their cached profiles and subtrees count
+ * the public descendants across lineages (personCounts) and are tagged lineage:<their id> for it
+ * (src/server/cache.ts). The walk takes every relationship, whatever its status, so the edges as
+ * they were before the change are among them. A name change needs none of this: every cached
+ * graph that shows the person is tagged person:<id>.
+ */
+export async function neighbourTags(db: Executor, personId: string, options: { ancestors?: boolean } = {}): Promise<string[]> {
   const rows = await db
     .select({ teacher: teachingRelationship.teacherPersonId, student: teachingRelationship.studentPersonId, lineageId: teachingRelationship.lineageId, rootId: lineage.rootPersonId })
     .from(teachingRelationship)
@@ -250,6 +264,19 @@ export async function neighbourTags(db: Executor, personId: string): Promise<str
   for (const r of rows) {
     tags.push(personTag(r.teacher), personTag(r.student), lineageTag(r.lineageId));
     if (r.rootId) tags.push(lineageTag(r.rootId));
+  }
+  if (options.ancestors) {
+    const up = await db.execute<{ id: string }>(sql`
+WITH RECURSIVE a(id) AS (
+  SELECT ${personId}::uuid
+  UNION
+  -- One index lookup by student per person reached (as personCounts walks down).
+  SELECT x.teacher_person_id
+    FROM a
+    CROSS JOIN LATERAL (SELECT tr.teacher_person_id FROM teaching_relationship tr WHERE tr.student_person_id = a.id OFFSET 0) x
+)
+SELECT id::text AS id FROM (SELECT id FROM a LIMIT ${ANCESTORS_CAP + 1}) x`);
+    for (const r of up.rows) tags.push(lineageTag(r.id));
   }
   return [...new Set(tags)];
 }
@@ -393,7 +420,7 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    return { personId: own.id, visibilityChanged, tags: await neighbourTags(tx, own.id) };
+    return { personId: own.id, visibilityChanged, tags: await neighbourTags(tx, own.id, { ancestors: visibilityChanged }) };
   });
 
   invalidatePublic(outcome.tags, 'procedure');

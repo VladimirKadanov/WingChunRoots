@@ -318,6 +318,21 @@ describe('search.query', () => {
     const body = searchResultSchema.parse(await response.json());
     expect(body.people.map((p) => p.slug)).toContain('demo-latin-name');
   });
+
+  it('is served to the web palette at POST /api/rpc/search/query, in the oRPC wire format', async () => {
+    // As src/components/ui/search-palette.tsx sends it: { json: input } in, { json: output } out.
+    const response = await handleApiRequest(
+      new Request('http://127.0.0.1:3100/api/rpc/search/query', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:3100' },
+        body: JSON.stringify({ json: { q: 'Тестов' } }),
+      }),
+      'rpc',
+    );
+    expect(response.status).toBe(200);
+    const body = searchResultSchema.parse(((await response.json()) as { json: unknown }).json);
+    expect(body.people.map((p) => p.slug)).toContain('demo-latin-name');
+  });
 });
 
 describe('profile.update', () => {
@@ -424,5 +439,41 @@ describe('consent.withdraw and account.requestDeletion', () => {
     expect(audits).toHaveLength(1);
     expect((await privacyOverview(principalOf(userId))).deletionRequest).toEqual(first.request);
     await expect(requestAccountDeletion(principalOf(userId), { confirm: false }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
+});
+
+describe('the public cache of every teacher above a person whose visibility changes', () => {
+  it('drops lineage:<id> of a grand-teacher in another lineage, and only on a visibility change', async () => {
+    // A fictional chain across two lineages: G teaches T in demo-lineage-a, T teaches demo-pending
+    // in demo-lineage-b. G's cached profile counts demo-pending among its public descendants and is
+    // tagged person:G, lineage:G and lineage:<demo-lineage-a> only.
+    const userId = users['demo-pending']!;
+    const lineages = await getDb().select({ id: lineage.id, slug: lineage.slug }).from(lineage).where(sql`${lineage.slug} IN ('demo-lineage-a', 'demo-lineage-b')`);
+    const lineageId = (slug: string) => lineages.find((l) => l.slug === slug)!.id;
+    const grand = await insertPublicPerson('demo-cache-grand-teacher', [latin('Demo Cache Grand Teacher')]);
+    const teacher = await insertPublicPerson('demo-cache-teacher', [latin('Demo Cache Teacher')]);
+    await getDb()
+      .insert(teachingRelationship)
+      .values([
+        { id: uuidv7(), teacherPersonId: grand, studentPersonId: teacher, lineageId: lineageId('demo-lineage-a'), status: 'verified', visibility: 'public' },
+        { id: uuidv7(), teacherPersonId: teacher, studentPersonId: ids['demo-pending']!, lineageId: lineageId('demo-lineage-b'), status: 'verified', visibility: 'public' },
+      ]);
+    const p = principalOf(userId);
+    const names = [{ kind: 'name' as const, value: 'Demo Pending Example', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true }];
+
+    cache.revalidated.length = 0;
+    expect((await profileUpdate(p, { names, showPublicly: true }, meta)).visibilityChanged).toBe(true);
+    expect(cache.revalidated).toEqual(expect.arrayContaining([`lineage:${grand}`, `lineage:${teacher}`, `person:${ids['demo-pending']}`]));
+
+    cache.revalidated.length = 0;
+    expect((await consentWithdraw(p, { kinds: ['publication'] }, meta)).profileHidden).toBe(true);
+    expect(cache.revalidated).toEqual(expect.arrayContaining([`lineage:${grand}`, `lineage:${teacher}`]));
+
+    // A save that changes only the names: every cached graph that shows the person is tagged
+    // person:<id>, and no count above changes.
+    cache.revalidated.length = 0;
+    expect((await profileUpdate(p, { names, showPublicly: false }, meta)).visibilityChanged).toBe(false);
+    expect(cache.revalidated).toContain(`person:${ids['demo-pending']}`);
+    expect(cache.revalidated).not.toContain(`lineage:${grand}`);
   });
 });
