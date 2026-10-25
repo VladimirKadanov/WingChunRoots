@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { canBePrimary, LATIN_WRITING, MISSING_PRIMARY, nameField, primaryRefusal, type ProfileFormValues, profileFormErrors } from './profile-form';
+import { canBePrimary, LATIN_WRITING, MISSING_PRIMARY, nameField, primaryRefusal, type ProfileFormValues } from './profile-form';
+import { profileFormErrors } from './profile-form-rules';
 
 const YEAR = 2026;
 const JYUTPING = 'Latn|yue-Latn|jyutping';

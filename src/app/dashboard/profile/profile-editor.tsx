@@ -5,8 +5,11 @@
 // started, and "Show my profile publicly" (never ticked in advance).
 //
 // TanStack Form holds the values (the rows of names can be added, removed and reordered by their
-// display-name choice) and checks them with the Zod rules of src/lib/profile-form.ts before
+// display-name choice) and checks them with the Zod rules of src/lib/profile-form-rules.ts before
 // anything is sent; the Server Action saves through profile.update, which checks everything again.
+// The rules are fetched when the person first focuses the form or saves it, not with the page
+// (Zod is about 40 kB of gzip JavaScript; plan §5.8 (c)); if they cannot be fetched, the form is
+// sent unchecked and the server's answer shows the same messages.
 // Every control keeps its `name`, so without JavaScript the same form posts as a plain form: the
 // saved names are there with two spare rows for new ones, and the server answers with the same
 // messages (src/server/forms/flash.ts).
@@ -30,7 +33,6 @@ import {
   PROFILE_BIO_MAX_LENGTH,
   PROFILE_MAX_NAMES,
   type ProfileFormValues,
-  profileFormErrors,
   SPARE_ROWS,
   unflattenValues,
   writingValue,
@@ -38,6 +40,17 @@ import {
 import { saveProfileAction } from './actions';
 
 const FORM_NAME = 'profile';
+
+type Rules = typeof import('@/lib/profile-form-rules');
+let rulesModule: Promise<Rules> | null = null;
+/** The editor's Zod rules, fetched once on first use; a failed fetch is tried again next time. */
+function loadRules(): Promise<Rules> {
+  rulesModule ??= import('@/lib/profile-form-rules').catch((error: unknown) => {
+    rulesModule = null;
+    throw error;
+  });
+  return rulesModule;
+}
 /** Scripts whose names the name field draws a step larger (text-lg): Han, Japanese and Korean. */
 const LARGER_SCRIPTS = new Set(['Hant', 'Hans', 'Hani', 'Jpan', 'Kore']);
 
@@ -101,12 +114,20 @@ export function ProfileEditor({
   const hydrated = useHydrated();
   const formRef = useRef<HTMLFormElement>(null);
   const FORM = useFormId(FORM_NAME);
+  const rules = useRef<Rules | null>(null);
+  const prepareRules = () =>
+    loadRules().then(
+      (loaded) => {
+        rules.current = loaded;
+      },
+      () => undefined,
+    );
 
   const form = useForm({
     defaultValues: unflattenValues(initial?.values) ?? initialValues,
     validators: {
       onSubmit: ({ value }) => {
-        const fields = profileFormErrors(value, options.latestStartYear);
+        const fields = rules.current?.profileFormErrors(value, options.latestStartYear) ?? {};
         return Object.keys(fields).length > 0 ? fields : undefined;
       },
     },
@@ -203,9 +224,10 @@ export function ProfileEditor({
       action={action}
       noValidate
       aria-busy={pending || undefined}
+      onFocus={() => void prepareRules()}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!pending) void form.handleSubmit();
+        if (!pending) void prepareRules().then(() => form.handleSubmit());
       }}
       className="grid gap-10"
     >
