@@ -34,7 +34,7 @@ export const ROUTE_BUDGETS = {
   // renders every overlay component (dialog, sheets, menu, toast, tabs) at once on one page.
   '/styleguide': 250 * KB,
   // M05, ADR 0009: the explorer's client island loads TanStack Query, the oRPC client and nuqs
-  // with the page (190.3 kB measured); React Flow (58 kB) loads after it with next/dynamic and
+  // with the page (191.4 kB measured); React Flow (58 kB) loads after it with next/dynamic and
   // ELK (434 kB) only in the layout worker, so neither is in this count.
   '/explore': 200 * KB,
 };
