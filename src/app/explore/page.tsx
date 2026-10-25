@@ -32,6 +32,16 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 /** The explorer's frame: the dynamic viewport between the shell's top bar and its tab bar (phones), the whole height beside the rail (desktop). */
 const FRAME = 'h-[calc(100dvh-var(--top-h)-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] md:h-dvh';
 
+/** The address of the person in focus, read on its own (no teachers, no students); null when not on the record. */
+async function focusSlug(client: Awaited<ReturnType<typeof lineageClient>>, focusId: string): Promise<string | null> {
+  try {
+    const alone = await client.lineage.ego({ focusId, up: 0, down: 0 });
+    return alone.nodes.find((n) => n.id === focusId)?.slug ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ExplorePage({ searchParams }: Props) {
   const params = paramsFrom(await searchParams);
   const client = await lineageClient();
@@ -90,9 +100,17 @@ export default async function ExplorePage({ searchParams }: Props) {
       console.error(`[explore] the lineage could not be loaded: ${failure(error)}`);
     }
   }
-  const slug = graph?.nodes.find((n) => n.id === params.focus)?.slug ?? null;
+  // The focus may be outside the graph (the lineage view starts at the root, three generations
+  // deep) or the graph read may have failed: the list view then asks for the person alone.
+  const slug = graph?.nodes.find((n) => n.id === params.focus)?.slug ?? (params.view === 'list' ? await focusSlug(client, params.focus) : null);
   const list =
-    params.view === 'list' && slug ? <LineageListPage params={Promise.resolve({ slug })} searchParams={Promise.resolve({})} /> : null;
+    params.view !== 'list' ? null : slug ? (
+      <LineageListPage params={Promise.resolve({ slug })} searchParams={Promise.resolve({})} />
+    ) : (
+      <p role="status" className="p-6 text-ui text-fg-muted">
+        There is no public profile with this address in the record.
+      </p>
+    );
 
   return (
     <div className={FRAME}>

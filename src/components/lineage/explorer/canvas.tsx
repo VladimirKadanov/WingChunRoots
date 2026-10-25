@@ -41,6 +41,8 @@ import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import type { Box, DetailLevel, Point, Scene, SceneEdge } from '@/lib/lineage-layout/types';
 
+import { type GenerationLabel } from '../generation';
+import { GenerationText } from '../generation-text';
 import { joinToBox } from './state';
 
 export interface PersonNodeData extends Record<string, unknown> {
@@ -48,7 +50,7 @@ export interface PersonNodeData extends Record<string, unknown> {
   /** The name in its original script, with its language. */
   original: { value: string; lang: string } | null;
   /** The generation label (plan §4.4), or null. */
-  generation: string | null;
+  generation: GenerationLabel | null;
   status: { kind: LinkKind; label: string } | null;
   /** Teachers in this view (a chip from two). */
   teachers: number;
@@ -115,7 +117,11 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
                   </span>
                 ) : null}
               </span>
-              {data.generation ? <span className="truncate text-[11px] leading-[14px] text-fg-muted">{data.generation}</span> : null}
+              {data.generation ? (
+                <span className="truncate text-[11px] leading-[14px] text-fg-muted">
+                  <GenerationText label={data.generation} />
+                </span>
+              ) : null}
               <span className="flex min-w-0 items-center gap-1 text-[11px] leading-[14px]">
                 {data.status ? (
                   <>

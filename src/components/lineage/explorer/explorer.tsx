@@ -33,6 +33,7 @@ import { rpcClient } from '@/lib/rpc-client';
 import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
+import { GenerationText } from '../generation-text';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -108,11 +109,12 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
   const edges = new Map(graph.edges.map((e) => [e.id, e]));
   const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
   const roots = new Set(graph.lineages.map((l) => l.rootPersonId).filter(Boolean));
-  const labels = generationLabels(graph);
   // Ended training is drawn only with show=historical or for the selected person (plan §4.6, §4.7).
   const hidden = (e: (typeof graph.edges)[number]) =>
     isHistoricalRelation(e.periods) && !showHistorical && !(selectedId !== null && (e.teacherId === selectedId || e.studentId === selectedId));
   const drawn = graph.edges.filter((e) => !hidden(e));
+  // A label speaks of the lines drawn: it never counts from, or names, someone who is not shown.
+  const labels = generationLabels({ ...graph, edges: drawn });
   // The chip and the status speak of the lines drawn, not of hidden ones.
   const incoming = new Map<string, typeof drawn>();
   for (const e of drawn) incoming.set(e.studentId, [...(incoming.get(e.studentId) ?? []), e]);
@@ -138,7 +140,7 @@ function buildFlow(graph: LineageGraphDto, scene: Scene, more: Map<string, numbe
       data: {
         name: person.displayName,
         original: original ? { value: original.value, lang: original.lang } : null,
-        generation: label ? generationText(label) : null,
+        generation: label ?? null,
         status: statusEdge ? relationStatus(statusEdge.status) : null,
         teachers: incoming.get(sn.id)?.length ?? 0,
         more: more.get(sn.id) ?? 0,
@@ -191,7 +193,7 @@ function Skeleton({ graph, showHistorical }: { graph: LineageGraphDto | null; sh
   let rows: number[] = [1, 2, 4];
   if (graph && graph.nodes.length > 0) {
     try {
-      const { ranks, rankCount } = computeRanks(toLayoutGraph(drawnByDefault(graph, showHistorical)));
+      const { ranks, rankCount } = computeRanks(toLayoutGraph(drawnByDefault(capFanout(graph).graph, showHistorical)));
       rows = Array.from({ length: rankCount }, () => 0);
       for (const rank of ranks.values()) rows[rank] = (rows[rank] ?? 0) + 1;
     } catch {
@@ -299,11 +301,13 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const flow = laidOut ? buildFlow(laidOut.graph, laidOut.scene, laidOut.more, params.show === 'historical', selectedId) : null;
   const selected = laidOut && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
   const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
+  const selectedGeneration = selected ? flow?.nodes.find((n) => n.id === selected.id)?.data.generation ?? null : null;
   const focusNode = graph?.nodes.find((n) => n.id === focus) ?? null;
   const kind = viewKind(params);
   const focusLineages = (focusNode?.lineageIds ?? []).map((id) => graph?.lineages.find((l) => l.id === id)).filter((l) => l !== undefined);
 
-  const setView = (next: 'graph' | 'list') => void setUrl({ view: next === 'graph' ? null : next }, { shallow: false, scroll: false });
+  // Only the list needs the server (it renders the M04 list view); the graph is all in the browser.
+  const setView = (next: 'graph' | 'list') => void setUrl({ view: next === 'graph' ? null : next }, { shallow: next === 'graph', scroll: false });
   const setKind = (next: ViewKind) => {
     if (next === 'person') void setUrl({ up: null, down: null, lineage: null });
     else if (next === 'generations') void setUrl({ up: GENERATIONS_DEFAULT, down: GENERATIONS_DEFAULT, lineage: null });
@@ -453,8 +457,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                         <CloseIcon size={18} />
                       </button>
                     </div>
-                    {flow.nodes.find((n) => n.id === selected.id)?.data.generation ? (
-                      <p className="text-sm text-fg-muted">{flow.nodes.find((n) => n.id === selected.id)!.data.generation}</p>
+                    {selectedGeneration ? (
+                      <p className="text-sm text-fg-muted">
+                        <GenerationText label={selectedGeneration} />
+                      </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2">
                       <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>

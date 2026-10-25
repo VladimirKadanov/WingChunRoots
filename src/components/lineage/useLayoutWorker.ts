@@ -37,7 +37,11 @@ interface WorkerState {
   worker: Worker;
   nextId: number;
   pending: Map<number, Pending>;
+  /** The worker failed to load or threw: it answers nothing more. */
+  broken: boolean;
 }
+
+const BROKEN = 'The layout worker failed to start.';
 
 const WARMUP_ID = '00000000-0000-4000-8000-0000000000';
 /** Two people and one verified relationship: enough to load ELK and run it once. */
@@ -75,11 +79,11 @@ export type LayoutFn = (graph: LineageGraph, options?: LayoutOptions) => Promise
 
 export function useLayoutWorker(): LayoutFn {
   const state = useRef<WorkerState | null>(null);
-  const queued = useRef<{ graph: LineageGraph; options?: LayoutOptions; pending: Pending; id: number }[]>([]);
+  const queued = useRef<{ graph: LineageGraph; options?: LayoutOptions; pending: Pending }[]>([]);
 
   useEffect(() => {
     const worker = new Worker(new URL('../../lib/lineage-layout/layout.worker.ts', import.meta.url), { type: 'module' });
-    const current: WorkerState = { worker, nextId: 1, pending: new Map() };
+    const current: WorkerState = { worker, nextId: 1, pending: new Map(), broken: false };
     worker.addEventListener('message', (event: MessageEvent<LayoutWorkerOutbound>) => {
       const message = event.data;
       const waiting = current.pending.get(message.requestId);
@@ -90,7 +94,9 @@ export function useLayoutWorker(): LayoutFn {
       else waiting.reject(new LayoutFailure(message.error));
     });
     worker.addEventListener('error', () => {
-      for (const waiting of current.pending.values()) waiting.reject(new Error('The layout worker failed to start.'));
+      current.broken = true;
+      worker.terminate();
+      for (const waiting of current.pending.values()) waiting.reject(new Error(BROKEN));
       current.pending.clear();
     });
     // Warm-up: ELK is read and run once before the first real layout (plan §4.11). Its answer is
@@ -119,7 +125,11 @@ export function useLayoutWorker(): LayoutFn {
       new Promise<LayoutAnswer>((resolve, reject) => {
         const current = state.current;
         if (!current) {
-          queued.current.push({ graph, options, pending: { resolve, reject }, id: 0 });
+          queued.current.push({ graph, options, pending: { resolve, reject } });
+          return;
+        }
+        if (current.broken) {
+          reject(new Error(BROKEN));
           return;
         }
         const requestId = current.nextId++;
