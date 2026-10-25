@@ -618,7 +618,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                       // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
                       className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
                     >
-                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" />
+                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
                     </div>
                   </ExplorerCanvas>
                 </SkeletonShape>
