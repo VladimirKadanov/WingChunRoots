@@ -23,6 +23,7 @@ import { guardRoute } from '@/server/auth/web';
 import { documentsFor } from '@/server/legal/documents';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { SignOutForm } from '@/components/account/sign-out-form';
 import { signOutAction } from './actions';
 
 export const instant = false;
@@ -186,11 +187,7 @@ export default async function AccountPage() {
                   Administration
                 </Link>
               ) : null}
-              <form action={signOutAction}>
-                <button type="submit" className={buttonVariants({ variant: 'ghost' })}>
-                  Sign out
-                </button>
-              </form>
+              <SignOutForm action={signOutAction} />
             </div>
           </Section>
         </div>

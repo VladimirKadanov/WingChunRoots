@@ -166,14 +166,32 @@ describe('search.query', () => {
     expect(text).not.toMatch(/claimed_by|claimedBy|birth|email|public_point|source/);
   });
 
+  it('limits the searches of one client in a short window (429), and counts each client apart', async () => {
+    const flood = { requestId: 'flood', ipHmac: 'demo-flood-client' };
+    for (let i = 0; i < 40; i++) await searchQuery(null, { q: 'so' }, flood);
+    await expect(searchQuery(null, { q: 'so' }, flood)).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS', status: 429 });
+    await expect(searchQuery(null, { q: 'so' }, { requestId: 'other', ipHmac: 'demo-other-client' })).resolves.toBeDefined();
+  });
+
+  it('reads the keys of public people only, through v_public_person_key', async () => {
+    const counts = await getDb().execute<{ hidden: number }>(sql`
+      SELECT count(*)::int AS hidden FROM v_public_person_key k JOIN person p ON p.id = k.person_id WHERE p.visibility <> 'public'`);
+    expect(counts.rows[0]!.hidden).toBe(0);
+    const pending = await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM v_public_person_key WHERE person_id = ${ids['demo-claim-only-teacher']}::uuid`);
+    expect(pending.rows[0]!.n).toBe(0);
+  });
+
   it('refuses a query that is too long or a country that is not one, and answers an empty query with nothing', async () => {
     await expect(searchQuery(null, { q: 'x'.repeat(101) })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(searchQuery(null, { q: 'so', country: 'XX' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], schools: [], lineages: [] });
   });
 
-  it('is served at /api/v1/search to anonymous callers', async () => {
-    const response = await handleApiRequest(new Request(`http://127.0.0.1:3100/api/v1/search?q=${encodeURIComponent('Тестов')}`), 'openapi');
+  it('is served at POST /api/v1/search to anonymous callers (the query never in a URL)', async () => {
+    const response = await handleApiRequest(
+      new Request('http://127.0.0.1:3100/api/v1/search', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:3100' }, body: JSON.stringify({ q: 'Тестов' }) }),
+      'openapi',
+    );
     expect(response.status).toBe(200);
     const body = searchResultSchema.parse(await response.json());
     expect(body.people.map((p) => p.slug)).toContain('demo-latin-name');

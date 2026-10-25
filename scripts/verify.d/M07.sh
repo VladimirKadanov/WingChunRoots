@@ -83,7 +83,7 @@ check "the transliteration libraries and TanStack Form are pinned exactly (trans
   const want = { transliteration: /^2\.6\.\d+$/, 'pinyin-pro': /^3\.29\.\d+$/, 'to-jyutping': /^3\.1\.\d+$/, 'opencc-js': /^1\.4\.\d+$/, '@tanstack/react-form': /^\d+\.\d+\.\d+$/ };
   process.exit(Object.entries(want).every(([name, re]) => re.test(d[name] || '')) ? 0 : 1)"
 check "the lockfile has them" bash -c '
-  for p in "transliteration@2.6" "pinyin-pro@3.29" "to-jyutping@3.1" "opencc-js@1.4" "@tanstack/react-form@"; do grep -q "^  $p" pnpm-lock.yaml || exit 1; done'
+  for p in "transliteration@2.6" "pinyin-pro@3.29" "to-jyutping@3.1" "opencc-js@1.4" "@tanstack/react-form@"; do grep -qE "^  '\''?$p" pnpm-lock.yaml || exit 1; done'
 check "none of them has an install script, so none needs an allowBuilds entry (CLAUDE.md §3)" node -e "
   const lock = require('fs').readFileSync('pnpm-lock.yaml', 'utf8');
   const names = ['transliteration', 'pinyin-pro', 'to-jyutping', 'opencc-js', '@tanstack/react-form', '@tanstack/form-core'];
@@ -99,13 +99,13 @@ refute "no other module imports them" bash -c '
 # 3. The procedures and their Server Actions (In scope 1, 3, 5, 7; plan §6.8) ---------------------------
 check "pnpm api:openapi --check: docs/api/openapi.json matches the router (log: .verify/M07-openapi.log)" bash -c '
   mkdir -p .verify && pnpm --silent api:openapi --check > .verify/M07-openapi.log 2>&1'
-check "the contract has /search (GET), /profile (GET), /profile/update, /consent/withdraw, /account/privacy (GET), /account/request-deletion" node -e "
+check "the contract has /search (POST: the query never in a URL), /profile (GET), /profile/update, /consent/withdraw, /account/privacy (GET), /account/request-deletion" node -e "
   const p = require('./docs/api/openapi.json').paths || {};
-  process.exit(p['/search']?.get && p['/profile']?.get && p['/profile/update']?.post && p['/consent/withdraw']?.post &&
+  process.exit(p['/search']?.post && !p['/search']?.get && p['/profile']?.get && p['/profile/update']?.post && p['/consent/withdraw']?.post &&
     p['/account/privacy']?.get && p['/account/request-deletion']?.post ? 0 : 1)"
 check "the router serves search.query, profile.update, consent.withdraw and account.requestDeletion through the services" bash -c '
   f=src/server/rpc/router.ts
-  grep -q "searchQuery(context.principal, input)" "$f" && grep -q "profileUpdate(context.principal, input, context.meta)" "$f" &&
+  grep -q "searchQuery(context.principal, input, context.meta)" "$f" && grep -q "profileUpdate(context.principal, input, context.meta)" "$f" &&
   grep -q "consentWithdraw(context.principal, input, context.meta)" "$f" && grep -q "requestAccountDeletion(context.principal, input, context.meta)" "$f"'
 check "the Server Actions wrap them (src/server/rpc/parity.ts)" bash -c '
   f=src/server/rpc/parity.ts
@@ -126,6 +126,15 @@ check "the search answer passes the public DTO, which has no key, source or acco
 check "a match shows the stored person_name value (n.value), never the key" bash -c '
   grep -q "n.value AS name_value" src/server/search/query.ts && ! grep -qE "k\.key AS" src/server/search/query.ts'
 check "the search transaction is read-only" grep -q "SET TRANSACTION READ ONLY" src/server/search/query.ts
+check "the keys come only through v_public_person_key (a security_barrier view of the keys of public people, for app_rw only)" bash -c '
+  f=$(ls drizzle/*_m07_public_person_key/migration.sql) &&
+  grep -q "CREATE VIEW \"v_public_person_key\" WITH (security_barrier = true)" "$f" && grep -q "FROM \"v_public_person\" p WHERE p.\"id\" = k.\"person_id\"" "$f" &&
+  grep -q "GRANT SELECT ON TABLE \"v_public_person_key\" TO app_rw;" "$f" && ! grep -qE "TO [^;]*app_public_ro" "$f" &&
+  grep -q "JOIN v_public_person_key k" src/server/search/query.ts && ! grep -qE "(FROM|JOIN) person_name_key" src/server/search/query.ts'
+check "search is limited per client (ip_hmac) and the palette sends the query in the body, never the URL" bash -c '
+  grep -q "SEARCHES_PER_WINDOW = 40" src/server/services/search.ts && grep -q "TOO_MANY_REQUESTS" src/server/services/search.ts &&
+  grep -q "method: '''POST'''" src/components/ui/search-palette.tsx && grep -q "body: JSON.stringify({ q: trimmed })" src/components/ui/search-palette.tsx'
+check "the recent searches are cleared on sign-out" grep -qF "writeRecentSearches([])" src/components/account/sign-out-form.tsx
 refute "no name, key or query in a log line of the search, the store, the job or the profile" \
   grep_code "console\.(log|info|warn|error)\(" src/server/search/keys.ts src/server/search/store.ts src/server/search/query.ts src/server/services/search.ts src/server/services/profile.ts src/server/services/privacy.ts
 check "the job logs counts only" grep -q 'wrote ${result.keys} key(s) for ${result.persons} person(s)' src/server/jobs/worker.ts

@@ -63,6 +63,7 @@ export const profileUpdateInput = z.object({
   /** The person to edit; only the account's own person is accepted (403 otherwise). Defaults to it. */
   personId: z.uuid().optional(),
   names: z.array(nameInput).min(1, { error: MISSING_PRIMARY_MESSAGE }).max(MAX_NAMES, { error: `Add at most ${MAX_NAMES} names.` }),
+  /** The biography; null removes it, and leaving it out keeps the one saved (an API client that sends only names). */
   bio: z.object({ body: z.string().max(BIO_MAX_LENGTH * 2), lang: z.string().max(35) }).nullable().optional(),
   countryCode: z.string().max(2).optional().transform((s) => (s ? s.toUpperCase() : undefined)),
   placeId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
@@ -70,7 +71,8 @@ export const profileUpdateInput = z.object({
   trainingStartYear: z
     .union([z.literal('').transform(() => undefined), z.coerce.number().int()], { error: 'Enter the year as four digits, for example 2009.' })
     .optional(),
-  showPublicly: z.boolean().default(false),
+  // Required: an API client that leaves it out must not unpublish the profile by accident.
+  showPublicly: z.boolean({ error: 'Say whether your profile is public.' }),
 });
 export type ProfileUpdateInput = z.input<typeof profileUpdateInput>;
 
@@ -131,7 +133,7 @@ function fitMessage(script: string, lang: string, romanization: string | null): 
   if (romanization === 'pinyin') return 'Write pinyin in Latin letters, for example “Sū Zhúqíng”.';
   if (script === 'Latn') return 'Use Latin letters here (for example “So Chuk-ching”), or choose the script this name is written in.';
   const writing = NAME_WRITINGS.find((w) => w.lang === lang && w.script === script);
-  return writing ? `This name is not written in ${writing.label}.` : 'Choose how this name is written.';
+  return writing ? `This name is not written in ${writing.label}. Type it in that script, or choose how it is written under “Written in”.` : 'Choose how this name is written.';
 }
 
 // --- Reads ---------------------------------------------------------------------------------------
@@ -232,7 +234,7 @@ export interface ProfileUpdateResult {
 }
 
 /** The cache tags a change to this person can affect: the person, its direct teachers and students, and their lineages. */
-async function neighbourTags(db: Executor, personId: string): Promise<string[]> {
+export async function neighbourTags(db: Executor, personId: string): Promise<string[]> {
   const rows = await db
     .select({ teacher: teachingRelationship.teacherPersonId, student: teachingRelationship.studentPersonId, lineageId: teachingRelationship.lineageId, rootId: lineage.rootPersonId })
     .from(teachingRelationship)
@@ -282,7 +284,10 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
   const db = getDb();
   // Whose profile first: a request for another person is refused before its content is judged.
   if (input.personId) {
-    const [own] = await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
+    const [own] = await db
+      .select({ id: person.id })
+      .from(person)
+      .where(and(eq(person.claimedByUserId, p.user.id), eq(person.stewardship, 'self'), isNull(person.deletedAt)));
     if (own?.id !== input.personId) throw new ServiceError('FORBIDDEN', NOT_YOURS_MESSAGE);
   }
   const names = checkNames(input.names);
@@ -311,7 +316,8 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
         trainingStartYear: person.trainingStartYear,
       })
       .from(person)
-      .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)))
+      // Only a self-stewarded record: one kept by the archive is corrected in the review queue (M10a).
+      .where(and(eq(person.claimedByUserId, p.user.id), eq(person.stewardship, 'self'), isNull(person.deletedAt)))
       .for('update');
     if (input.personId && input.personId !== own?.id) throw new ServiceError('FORBIDDEN', NOT_YOURS_MESSAGE);
     if (!own) throw new ServiceError('NOT_FOUND', 'Create your profile first: finish setting up your account.');
@@ -337,8 +343,10 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
     await tx.insert(personName).values(names.map((n, i) => ({ personId: own.id, ...n, sortOrder: i })));
     const keys = await writePersonKeys(tx, own.id);
 
-    await tx.delete(personBio).where(eq(personBio.personId, own.id));
-    if (bioBody) await tx.insert(personBio).values({ personId: own.id, lang: bioLang, body: bioBody });
+    if (input.bio !== undefined) {
+      await tx.delete(personBio).where(eq(personBio.personId, own.id));
+      if (bioBody) await tx.insert(personBio).values({ personId: own.id, lang: bioLang, body: bioBody });
+    }
 
     await tx
       .update(person)
@@ -366,7 +374,7 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       after: {
         names: shape(names),
         searchKeys: keys,
-        bio: bioBody ? { lang: bioLang, length: bioBody.length } : null,
+        bio: input.bio === undefined ? (bioBefore ? { lang: bioBefore.lang, unchanged: true } : null) : bioBody ? { lang: bioLang, length: bioBody.length } : null,
         countryCode,
         placeId: input.placeId ?? null,
         trainingStartYear: input.trainingStartYear ?? null,

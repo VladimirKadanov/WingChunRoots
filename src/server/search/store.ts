@@ -58,8 +58,9 @@ export interface RebuildResult {
 
 /**
  * Rewrites the keys of every person, BATCH people per transaction (a long single transaction
- * would hold locks on the whole table). A person whose names change meanwhile is rewritten by its
- * own save as well, so the last writer leaves the current keys either way.
+ * would hold locks on the whole table). Each batch first locks its person rows, the lock a profile
+ * save takes too (profile.update: FOR UPDATE), so a save and a rebuild of the same person run one
+ * after the other and the keys always match the names that were committed last.
  */
 export async function rebuildAllKeys(db: Database): Promise<RebuildResult> {
   const ids = (await db.select({ id: person.id }).from(person).orderBy(asc(person.id))).map((r) => r.id);
@@ -67,6 +68,7 @@ export async function rebuildAllKeys(db: Database): Promise<RebuildResult> {
   for (let i = 0; i < ids.length; i += BATCH) {
     const batch = ids.slice(i, i + BATCH);
     keys += await db.transaction(async (tx) => {
+      await tx.select({ id: person.id }).from(person).where(inArray(person.id, batch)).orderBy(asc(person.id)).for('no key update');
       const names = await tx.select(NAME_COLUMNS).from(personName).where(inArray(personName.personId, batch));
       await tx.delete(personNameKey).where(inArray(personNameKey.personId, batch));
       const rows = keyRows(names);

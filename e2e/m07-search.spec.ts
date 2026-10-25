@@ -12,7 +12,7 @@ import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
 import { MISSING_PRIMARY } from '../src/lib/profile-form';
-import { closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
+import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
 import { apiPost, freshAccount } from './helpers/plans';
 import { openPalette, option, palette, personIdOf, search, searchInput, waitForSearchKeys } from './helpers/search';
 import { expectNoAxeViolations, openInTheme, switchColorScheme } from './helpers/ui';
@@ -38,7 +38,7 @@ const tag = () =>
 
 /** The search answer of the API, as the palette receives it. */
 async function apiSearch(page: Page, query: Record<string, string>) {
-  const response = await page.request.get(`/api/v1/search?${new URLSearchParams(query).toString()}`);
+  const response = await page.request.post('/api/v1/search', { data: query, headers: { origin: BASE_URL } });
   expect(response.status(), await response.text()).toBe(200);
   return (await response.json()) as {
     query: string;
@@ -141,7 +141,7 @@ test('@M07 no query is sent during IME composition and one is sent after composi
   await openPalette(page);
   const sent: string[] = [];
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname === '/api/v1/search') sent.push(new URL(request.url()).searchParams.get('q') ?? '');
+    if (new URL(request.url()).pathname === '/api/v1/search') sent.push(((request.postDataJSON() ?? {}) as { q?: string }).q ?? '');
   });
   const input = searchInput(page);
   await input.dispatchEvent('compositionstart', { data: '' });

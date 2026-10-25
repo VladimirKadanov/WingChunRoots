@@ -149,10 +149,11 @@ export const router = {
   // M07: people, schools and lineages by any spelling; public records only, the same for everyone.
   search: {
     query: base
-      .route({ method: 'GET', path: '/search', summary: 'Search people, schools and lineages by any spelling of a name (public records only)' })
+      // POST, so the names people type stay out of URLs and the access logs of any proxy (plan §6.4).
+      .route({ method: 'POST', path: '/search', summary: 'Search people, schools and lineages by any spelling of a name (public records only)' })
       .input(searchInput)
       .output(searchResultSchema)
-      .handler(({ context, input }) => searchQuery(context.principal, input)),
+      .handler(({ context, input }) => searchQuery(context.principal, input, context.meta)),
   },
   admin: {
     overview: base

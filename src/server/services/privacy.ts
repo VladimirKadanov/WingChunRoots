@@ -16,7 +16,7 @@ import * as z from 'zod';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
-import { invalidatePublic, personTag } from '../cache';
+import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
 import { authUser, consentRecord, notification, person, reviewCase } from '../db/schema';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
@@ -24,7 +24,7 @@ import { lockAccount } from './account-lock';
 import { currentConsents, withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
-import { setOwnVisibility } from './profile';
+import { neighbourTags, setOwnVisibility } from './profile';
 
 /** The consents an account may withdraw and keep its account: everything the sign-up does not require. */
 export const OPTIONAL_CONSENTS = ['publication', 'privacy_ack'] as const satisfies readonly ConsentKind[];
@@ -141,13 +141,28 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
       if (own && own.stewardship === 'self') {
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
         personId = own.id;
+        // The visibility change is a change to the person (plan §6.6): before and after, no names.
+        if (profileHidden) {
+          await writeAudit(tx, {
+            action: 'person.update',
+            actorUserId: p.user.id,
+            actorRole: p.user.role,
+            subjectType: 'person',
+            subjectId: own.id,
+            before: { visibility: own.visibility },
+            after: { visibility: 'involved_only', via: 'consent.withdraw' },
+            requestId: meta.requestId,
+            ipHmac: meta.ipHmac,
+          });
+        }
       }
     }
     // Whatever is still given (everything but a `publication` that setOwnVisibility recorded).
     await withdrawConsents(tx, p.user.id, p.user.role, withdrawn, meta);
-    return { withdrawn, profileHidden, personId };
+    return { withdrawn, profileHidden, tags: profileHidden && personId ? await neighbourTags(tx, personId) : [] };
   });
-  if (outcome.personId && outcome.profileHidden) invalidatePublic([personTag(outcome.personId)], 'procedure');
+  // The person and the people and lineages next to it, as after a profile save.
+  if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
   return { withdrawn: outcome.withdrawn, profileHidden: outcome.profileHidden };
 }
 

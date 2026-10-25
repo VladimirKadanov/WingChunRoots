@@ -131,7 +131,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
                 const canWithdraw = !consent.required && (given || (consent.kind === 'publication' && isPublic));
                 return (
                   <li key={consent.kind} data-consent={consent.kind} className="grid gap-2 border-t border-border-subtle py-4">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-x-4">
                       <h3 className="text-ui font-semibold">
                         {text.title}
                         <span className="font-normal text-fg-muted">{consent.required ? ' · required' : ' · optional'}</span>
@@ -143,6 +143,13 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
                       </p>
                     </div>
                     <p className="max-w-[62ch] text-sm text-fg-muted">{text.text}</p>
+                    {consent.kind === 'publication' && !canWithdraw && privacy.profile ? (
+                      <p className="text-sm">
+                        <Link href="/dashboard/profile" className="link inline-flex min-h-11 items-center">
+                          Make your profile public in the profile editor
+                        </Link>
+                      </p>
+                    ) : null}
                     {consent.required ? null : (
                       <WithdrawConsentForm
                         kind={consent.kind as 'publication' | 'privacy_ack'}

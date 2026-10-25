@@ -631,12 +631,12 @@
                     ]
                   },
                   "showPublicly": {
-                    "default": false,
                     "type": "boolean"
                   }
                 },
                 "required": [
-                  "names"
+                  "names",
+                  "showPublicly"
                 ]
               }
             }
@@ -672,45 +672,37 @@
       }
     },
     "/search": {
-      "get": {
+      "post": {
         "operationId": "search.query",
         "summary": "Search people, schools and lineages by any spelling of a name (public records only)",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          },
-          {
-            "name": "country",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 2
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          },
-          {
-            "name": "lineageId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "country": {
+                    "type": "string",
+                    "maxLength": 2
+                  },
+                  "lineageId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "q"
+                ]
+              }
+            }
           }
-        ],
+        },
         "responses": {
           "200": {
             "description": "OK",

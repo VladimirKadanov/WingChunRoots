@@ -12,15 +12,22 @@ import { loadTestEnv } from './auth';
 
 const KEYS_TIMEOUT_MS = 90_000;
 
-/** Waits until the worker has written the search keys of the demo person `slug`. */
-export async function waitForSearchKeys(slug = 'demo-cjk-name'): Promise<void> {
+/**
+ * Waits until the worker has written the search keys of every seeded person (the job writes them
+ * in batches). People that other tests insert straight into the database (`demo-e2e-…`, e2e/helpers/
+ * plans.ts) are left out: no save wrote keys for them, and none of these tests searches for them.
+ */
+export async function waitForSearchKeys(): Promise<void> {
   loadTestEnv();
   const deadline = Date.now() + KEYS_TIMEOUT_MS;
   for (;;) {
-    const rows = await getDb().execute<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM person_name_key k JOIN person p ON p.id = k.person_id WHERE p.slug = ${slug}`);
-    if ((rows.rows[0]?.n ?? 0) > 0) return;
-    if (Date.now() > deadline) throw new Error(`no search keys for ${slug} after ${KEYS_TIMEOUT_MS / 1000} s: is the worker running (pnpm worker)?`);
+    const rows = await getDb().execute<{ missing: number }>(sql`
+      SELECT count(*)::int AS missing FROM person p
+       WHERE p.slug NOT LIKE 'demo-e2e-%'
+         AND EXISTS (SELECT 1 FROM person_name n WHERE n.person_id = p.id)
+         AND NOT EXISTS (SELECT 1 FROM person_name_key k WHERE k.person_id = p.id)`);
+    if ((rows.rows[0]?.missing ?? 1) === 0) return;
+    if (Date.now() > deadline) throw new Error(`search keys still missing after ${KEYS_TIMEOUT_MS / 1000} s: is the worker running (pnpm worker)?`);
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
@@ -50,7 +57,9 @@ export async function openPalette(page: Page): Promise<void> {
 
 /** Types a query into the open palette and waits for the search to answer. */
 export async function search(page: Page, query: string): Promise<void> {
-  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/search' && new URL(r.url()).searchParams.get('q') === query.trim());
+  const answered = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === '/api/v1/search' && ((r.request().postDataJSON() ?? {}) as { q?: string }).q === query.trim(),
+  );
   await searchInput(page).fill(query);
   expect((await answered).status()).toBe(200);
 }

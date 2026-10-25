@@ -64,8 +64,8 @@ export function DeletionRequestForm({ openRequest, initial }: { openRequest: { o
         <div className="grid gap-2 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-ui">
           <p className="font-semibold">You asked for your account to be deleted on {formatDay(openRequest.openedAt)}.</p>
           <p className="text-sm text-fg-muted">
-            The request is open. An administrator carries it out by hand during the pilot; until then you can still sign in and your
-            profile stays as it is.
+            The request is open. An administrator writes to your e-mail address to confirm it before carrying it out by hand; until
+            then you can still sign in and your profile stays as it is. If you change your mind, say so in your reply.
           </p>
         </div>
       ) : state.status === 'done' ? null : (

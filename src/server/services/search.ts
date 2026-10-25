@@ -11,6 +11,7 @@ import { type SearchResultDto, toPublicSearchResult } from '../dto/search';
 import { MAX_QUERY_LENGTH, queryForms } from '../search/keys';
 import { searchLineages, searchPeople, searchSchools, setThresholds } from '../search/query';
 import { isCountryCode } from './account';
+import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 
 export const searchInput = z.object({
@@ -25,8 +26,33 @@ export const searchInput = z.object({
 });
 export type SearchInput = z.input<typeof searchInput>;
 
+/**
+ * A limit against floods (security review): at most SEARCHES_PER_WINDOW searches per client in
+ * SEARCH_WINDOW_MS, counted in this process (the web runs as one replica, plan §6.4) by the
+ * client's ip_hmac, never the address itself. Typing in the palette sends one search per pause.
+ */
+export const SEARCHES_PER_WINDOW = 40;
+export const SEARCH_WINDOW_MS = 10_000;
+const recentSearches = new Map<string, number[]>();
+
+function checkSearchRate(meta: RequestMeta | undefined, now = Date.now()): void {
+  // A request always has a client address (next start sets X-Forwarded-For to the socket's); a
+  // call without one (in-process, the tests) is not counted rather than sharing one bucket.
+  const client = meta?.ipHmac;
+  if (!client) return;
+  const since = now - SEARCH_WINDOW_MS;
+  const times = (recentSearches.get(client) ?? []).filter((t) => t > since);
+  if (times.length >= SEARCHES_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', 'Too many searches at once. Wait a few seconds and try again.');
+  times.push(now);
+  recentSearches.set(client, times);
+  // Forget idle clients, so the map stays small.
+  if (recentSearches.size > 10_000) {
+    for (const [key, list] of recentSearches) if (list.every((t) => t <= since)) recentSearches.delete(key);
+  }
+}
+
 /** search.query: grouped public results; an empty query answers with empty groups. */
-export async function searchQuery(_principal: Principal | null, raw: unknown): Promise<SearchResultDto> {
+export async function searchQuery(_principal: Principal | null, raw: unknown, meta?: RequestMeta): Promise<SearchResultDto> {
   const parsed = searchInput.safeParse(raw);
   if (!parsed.success) {
     const fields: Record<string, string> = {};
@@ -35,6 +61,7 @@ export async function searchQuery(_principal: Principal | null, raw: unknown): P
   }
   const query = parsed.data.q.normalize('NFC').trim();
   const forms = queryForms(query);
+  if (forms.length > 0) checkSearchRate(meta);
   if (forms.length === 0) return toPublicSearchResult({ query, people: [], schools: [], lineages: [] });
   const filters = { countryCode: parsed.data.country ?? null, lineageId: parsed.data.lineageId ?? null };
   const result = await getDb().transaction(async (tx) => {

@@ -42,6 +42,8 @@ const MAX_KEY_LENGTH = 200;
 const HAN = /\p{Script=Han}/u;
 const CYRILLIC = /\p{Script=Cyrillic}/u;
 const LATIN = /\p{Script=Latin}/u;
+/** A letter of a script with no rules of its own here (Greek, Hangul, kana, Arabic, ...). */
+const OTHER_SCRIPT = /(?![\p{Script=Latin}\p{Script=Han}\p{Script=Cyrillic}])\p{L}/u;
 
 // Latin letters that NFKD does not take apart.
 const LATIN_FOLDS: Readonly<Record<string, string>> = {
@@ -201,6 +203,9 @@ export function queryForms(query: string): QueryForm[] {
     add(foldLatin(bgStreamlined(value)));
     add(foldLatin(transliterate(value)));
   }
+  // Any other script (Greek, Hangul, kana, Arabic, ...): its usual Latin transliteration, the form
+  // keysForName() keys such a name by.
+  if (OTHER_SCRIPT.test(value)) add(foldLatin(transliterate(value.replace(/[\p{Script=Han}\p{Script=Cyrillic}]/gu, ' '))));
   const latin = foldLatin(stripToneNumbers(value.replace(/[\p{Script=Han}\p{Script=Cyrillic}]/gu, ' ')));
   if (LATIN.test(latin)) {
     add(latin);

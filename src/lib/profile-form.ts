@@ -77,7 +77,9 @@ export function profileFormFromData(form: FormData): ProfileFormValues {
       kind: text(nameField(i, 'kind'), 10) === 'alias' ? 'alias' : 'name',
       spare: text(`names.${i}.spare`, 2) === '1',
     };
-    if (row.spare && !row.value.trim()) continue;
+    // A spare row left empty is ignored; so is a saved row emptied, other than the display name:
+    // without JavaScript there is no Remove button, and clearing a name is how it is removed.
+    if (!row.value.trim() && (row.spare || i !== primaryAt)) continue;
     if (i === primaryAt) primary = names.length;
     names.push(row);
   }
@@ -160,7 +162,7 @@ function fitMessage(writing: Writing): string {
   if (writing.romanization === 'pinyin') return 'Write pinyin in Latin letters, for example “Sū Zhúqíng”.';
   if (writing.script === 'Latn') return 'Use Latin letters here (for example “So Chuk-ching”), or choose the script this name is written in.';
   const known = NAME_WRITINGS.find((w) => w.lang === writing.lang && w.script === writing.script);
-  return known ? `This name is not written in ${known.label}.` : 'Choose how this name is written.';
+  return known ? `This name is not written in ${known.label}. Type it in that script, or choose how it is written under “Written in”.` : 'Choose how this name is written.';
 }
 
 /**

@@ -233,7 +233,7 @@ export function ProfileEditor({
                 <fieldset className="contents">
                   <legend className="sr-only">Name {i + 1}</legend>
                   {row.spare ? <input type="hidden" name={`names.${i}.spare`} value="1" /> : null}
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(12rem,15rem)]">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)]">
                     <div data-field="" className="grid grid-cols-[minmax(0,1fr)] content-start gap-1.5">
                       <Label htmlFor={valueId} optional={row.spare}>
                         {row.spare ? 'New name' : isPrimary ? 'Display name' : `Name ${i + 1}`}
@@ -276,8 +276,8 @@ export function ProfileEditor({
                     </SelectField>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                  <div className="flex items-center justify-between gap-x-5 gap-y-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
                       <label htmlFor={primaryId} className={cx('flex min-h-11 items-center gap-3 text-ui', eligible || !hydrated ? 'cursor-pointer' : 'text-fg-subtle')}>
                         <input
                           id={primaryId}
@@ -292,11 +292,6 @@ export function ProfileEditor({
                         />
                         Use as display name
                       </label>
-                      {hydrated && !eligible ? (
-                        <span id={`${primaryId}-why`} className="text-sm text-fg-subtle">
-                          Only a name in Latin letters can be shown first.
-                        </span>
-                      ) : null}
                       {isRomanization ? (
                         <input type="hidden" name={nameField(i, 'kind')} value="name" />
                       ) : (
@@ -309,7 +304,7 @@ export function ProfileEditor({
                             name={nameField(i, 'kind')}
                             value={row.kind}
                             onChange={(e) => setName(i, { kind: e.currentTarget.value === 'alias' ? 'alias' : 'name' })}
-                            className="min-h-11 rounded-sm border border-border-strong bg-surface-1 px-2 text-sm text-fg hover:border-fg-muted"
+                            className="min-h-11 rounded-sm border border-border-strong bg-surface-1 pr-3 pl-3 text-sm text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted focus-visible:border-fg"
                           >
                             <option value="name">Name</option>
                             <option value="alias">Also known as</option>
@@ -322,13 +317,19 @@ export function ProfileEditor({
                         type="button"
                         onClick={() => removeName(i)}
                         disabled={values.names.length <= 1}
-                        className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), 'min-h-11 gap-1.5 disabled:opacity-50')}
+                        className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), 'min-h-11 shrink-0 gap-1.5 disabled:opacity-50')}
                       >
                         <CloseIcon size={16} />
                         Remove<span className="sr-only"> name {i + 1}</span>
                       </button>
                     ) : null}
                   </div>
+                  {/* On a line of its own, so Remove stays at the end of the row on every card. */}
+                  {hydrated && !eligible ? (
+                    <p id={`${primaryId}-why`} className="-mt-2 text-sm text-fg-subtle">
+                      Only a name in Latin letters can be your display name.
+                    </p>
+                  ) : null}
                   <FieldError id={`${primaryId}-error`} error={primaryError} />
                 </fieldset>
               </li>

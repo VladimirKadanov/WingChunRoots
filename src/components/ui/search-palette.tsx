@@ -4,7 +4,7 @@
 //
 // - Opened from the field in the app shell or with Ctrl/⌘+K (src/components/shell/search-trigger.tsx).
 //   There is no page-wide "/" key (WCAG 2.1.4).
-// - Searches on the server (search.query at /api/v1/search) after a 200 ms pause, aborts a stale
+// - Searches on the server (search.query, POST /api/v1/search) after a 200 ms pause, aborts a stale
 //   request and keeps the previous results on screen while the next ones load.
 // - Never searches during IME composition (compositionstart … compositionend, isComposing): a
 //   Chinese name is searched once it is composed.
@@ -24,7 +24,9 @@ import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { ArrowRightIcon, CloseIcon, SearchIcon } from '@/components/icons';
 import { Seal } from '@/components/ink/seal';
 import { cx } from '@/lib/cx';
+import { RECENT_SEARCHES_MAX, readRecentSearches, writeRecentSearches } from '@/lib/recent-searches';
 import { releaseLayerEntry, useBackToClose } from './use-back-to-close';
+import { useMediaQuery } from './use-media-query';
 
 /** The search answer (src/server/dto/search.ts), as the browser receives it. */
 interface SearchName {
@@ -52,6 +54,7 @@ type Item =
   | { kind: 'person'; key: string; label: string; href: string; explore: string; hit: SearchAnswer['people'][number] }
   | { kind: 'school'; key: string; label: string; href: string; hit: SearchAnswer['schools'][number] }
   | { kind: 'lineage'; key: string; label: string; href: string; hit: SearchAnswer['lineages'][number] }
+  | { kind: 'page'; key: string; label: string; href: string }
   | { kind: 'recent'; key: string; label: string };
 
 interface Group {
@@ -61,25 +64,30 @@ interface Group {
 
 /** The pause after the last keystroke before the search runs (plan §5.6). */
 export const SEARCH_DEBOUNCE_MS = 200;
-const RECENT_KEY = 'wcr.recent-searches';
-const RECENT_MAX = 5;
+/** Pages of the app the palette offers by their title (plan §5.6: the Pages group). */
+const PAGES: readonly { label: string; href: string }[] = [
+  { label: 'Explore', href: '/' },
+  { label: 'Plans', href: '/plans' },
+  { label: 'Your dashboard', href: '/dashboard' },
+  { label: 'Your profile', href: '/dashboard/profile' },
+  { label: 'Account type and plan', href: '/dashboard/settings' },
+  { label: 'Your account', href: '/account' },
+  { label: 'Security settings', href: '/account/security' },
+  { label: 'Privacy and consents', href: '/account/privacy' },
+  { label: 'Terms of use', href: '/legal/terms' },
+  { label: 'Privacy notice', href: '/legal/privacy' },
+  { label: 'Licenses', href: '/legal/licenses' },
+  { label: 'Sign in', href: '/sign-in' },
+  { label: 'Create an account', href: '/sign-up' },
+];
 
-function readRecent(): string[] {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(RECENT_KEY) ?? '[]') as unknown;
-    return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string').slice(0, RECENT_MAX) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeRecent(list: string[]): void {
-  try {
-    if (list.length === 0) window.localStorage.removeItem(RECENT_KEY);
-    else window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
-  } catch {
-    // Private mode or blocked storage: the palette works without its history.
-  }
+/** The pages whose title has a word starting with the query (two letters or more). */
+function pagesFor(query: string): Item[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  return PAGES.filter((page) => page.label.toLowerCase().split(/s+/).some((word) => word.startsWith(q)) || page.label.toLowerCase().startsWith(q)).map(
+    (page) => ({ kind: 'page' as const, key: `page:${page.href}`, label: page.label, href: page.href }),
+  );
 }
 
 const regionNames = typeof Intl !== 'undefined' ? new Intl.DisplayNames('en', { type: 'region', fallback: 'code' }) : null;
@@ -95,9 +103,10 @@ function Name({ name, className }: { name: SearchName; className?: string }) {
   );
 }
 
-function groupsOf(answer: SearchAnswer | null): Group[] {
-  if (!answer) return [];
+function groupsOf(answer: SearchAnswer | null, query: string): Group[] {
   const groups: Group[] = [];
+  const pages = pagesFor(query);
+  if (!answer) return pages.length > 0 ? [{ value: 'Pages', items: pages }] : [];
   if (answer.people.length > 0) {
     groups.push({
       value: 'People',
@@ -126,6 +135,7 @@ function groupsOf(answer: SearchAnswer | null): Group[] {
       items: answer.lineages.map((hit) => ({ kind: 'lineage' as const, key: `lineage:${hit.id}`, label: hit.name, href: `/people/${hit.root.slug}/lineage`, hit })),
     });
   }
+  if (pages.length > 0) groups.push({ value: 'Pages', items: pages });
   return groups.filter((g) => g.items.length > 0);
 }
 
@@ -136,6 +146,16 @@ function ItemBody({ item }: { item: Item }) {
         <SearchIcon size={16} className="shrink-0 text-fg-subtle" />
         <span className="min-w-0 truncate" translate="no">
           {item.label}
+        </span>
+      </span>
+    );
+  }
+  if (item.kind === 'page') {
+    return (
+      <span className="grid min-w-0 gap-0.5">
+        <span className="text-ui font-semibold">{item.label}</span>
+        <span className="text-sm text-fg-subtle" translate="no">
+          {item.href}
         </span>
       </span>
     );
@@ -201,20 +221,24 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   // The palette loads only in the browser, on first use: the history can be read at once.
-  const [recent, setRecent] = useState<string[]>(readRecent);
+  const [recent, setRecent] = useState<string[]>(readRecentSearches);
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controller = useRef<AbortController | null>(null);
   const highlighted = useRef<Item | undefined>(undefined);
   const hintId = useId();
-  useBackToClose(open, () => onOpenChange(false));
-
-  // Nothing outlives the palette: a pending search is cancelled when it closes or unmounts.
-  useEffect(() => {
-    if (open) return;
+  // The keyboard hints are shown (and describe the dialog) from 640 px; a phone has no such keys.
+  const wide = useMediaQuery('(min-width: 640px)');
+  // Every way of closing comes here: a pending search is cancelled and its spinner cleared.
+  const close = () => {
     if (timer.current) clearTimeout(timer.current);
     controller.current?.abort();
-  }, [open]);
+    setLoading(false);
+    onOpenChange(false);
+  };
+  useBackToClose(open, close);
+
+  // Nothing outlives the palette: a pending search is cancelled when it unmounts.
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
@@ -224,6 +248,8 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
   );
 
   const run = async (q: string) => {
+    // A search that runs now replaces any that waits for its pause.
+    if (timer.current) clearTimeout(timer.current);
     controller.current?.abort();
     const trimmed = q.trim();
     if (!trimmed) {
@@ -236,7 +262,13 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
     controller.current = mine;
     setLoading(true);
     try {
-      const response = await fetch(`/api/v1/search?q=${encodeURIComponent(trimmed)}`, { signal: mine.signal, headers: { accept: 'application/json' } });
+      // POST: the query (a name) never travels in a URL (plan §6.4).
+      const response = await fetch('/api/v1/search', {
+        method: 'POST',
+        signal: mine.signal,
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ q: trimmed }),
+      });
       if (!response.ok) throw new Error(`search ${response.status}`);
       const next = (await response.json()) as SearchAnswer;
       if (mine.signal.aborted) return;
@@ -260,8 +292,8 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
   const remember = (q: string) => {
     const trimmed = q.trim();
     if (!trimmed) return;
-    const next = [trimmed, ...readRecent().filter((r) => r !== trimmed)].slice(0, RECENT_MAX);
-    writeRecent(next);
+    const next = [trimmed, ...readRecentSearches().filter((r) => r !== trimmed)].slice(0, RECENT_SEARCHES_MAX);
+    writeRecentSearches(next);
     setRecent(next);
   };
 
@@ -269,7 +301,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
     remember(query);
     // The result takes the palette's history entry: Back from it returns to the page below.
     releaseLayerEntry();
-    onOpenChange(false);
+    close();
     router.replace(href);
   };
 
@@ -284,7 +316,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
 
   const trimmed = query.trim();
   const groups: Group[] = trimmed
-    ? groupsOf(answer)
+    ? groupsOf(answer, trimmed)
     : recent.length > 0
       ? [{ value: 'Recent searches', items: recent.map((r) => ({ kind: 'recent' as const, key: `recent:${r}`, label: r })) }]
       : [];
@@ -315,13 +347,13 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => onOpenChange(next)}>
+    <Dialog.Root open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-scrim transition-opacity duration-(--duration-base) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <Dialog.Viewport className="fixed inset-0 z-50 flex items-stretch justify-center sm:items-start sm:px-4 sm:pt-[max(4rem,env(safe-area-inset-top,0px))] sm:pb-4">
           <Dialog.Popup
             data-testid="search-palette"
-            aria-describedby={hintId}
+            aria-describedby={wide ? hintId : undefined}
             className={cx(
               'relative flex w-full flex-col bg-surface-2 text-fg outline-none [--seal-ground:var(--surface-2)]',
               // A phone: the whole screen (dvh), clear of the notch and the home indicator.
@@ -343,7 +375,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                 if (details.reason === 'item-press') return;
                 // Esc closes the palette (its own Dialog), rather than only emptying the field.
                 if (details.reason === 'escape-key') {
-                  onOpenChange(false);
+                  close();
                   return;
                 }
                 setQuery(value);
@@ -355,11 +387,15 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                 highlighted.current = item as Item | undefined;
               }}
             >
-              <div onKeyDownCapture={onKeyDownCapture} className="flex items-center gap-1 border-b border-border-subtle pr-1 pl-4 sm:pr-2">
+              <div
+                onKeyDownCapture={onKeyDownCapture}
+                // The input draws no outline of its own: the row's gold rule marks the focus (WCAG 2.4.7).
+                className="flex items-center gap-1 border-b-2 border-border-subtle pr-1 pl-4 has-[input:focus-visible]:border-focus sm:pr-2"
+              >
                 <SearchIcon size={20} className="shrink-0 text-fg-subtle" />
                 <Autocomplete.Input
                   aria-label="Search people, schools and lineages"
-                  placeholder="A name in any script, Jyutping or pinyin"
+                  placeholder="Any name, any script"
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="none"
@@ -412,6 +448,9 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                     , <span translate="no">sou cing laam</span> or <span translate="no">Su Qinglan</span> find the same person.
                   </p>
                 ) : null}
+                {!trimmed && recent.length > 0 ? (
+                  <p className="px-4 pt-3 text-sm text-fg-muted">Your last searches stay only in this browser and are cleared when you sign out.</p>
+                ) : null}
                 <Autocomplete.List className="pb-2">
                   {(group: Group) => (
                     <Autocomplete.Group key={group.value} items={group.items} className="pt-2">
@@ -421,7 +460,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                           <button
                             type="button"
                             onClick={() => {
-                              writeRecent([]);
+                              writeRecentSearches([]);
                               setRecent([]);
                             }}
                             className="link inline-flex min-h-11 items-center normal-case tracking-normal"
@@ -437,10 +476,12 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                             value={item}
                             onClick={() => choose(item)}
                             data-kind={item.kind}
-                            className="group mx-2 grid min-h-14 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-3 py-2 outline-none select-none data-highlighted:bg-surface-3 active:bg-surface-pressed"
+                            // The highlighted result is the keyboard's place (aria-activedescendant): a gold bar and frame
+                            // as well as the tint, at least 3:1 in both themes (WCAG 1.4.11).
+                            className="group mx-2 grid min-h-14 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-3 py-2 outline-none select-none data-highlighted:bg-surface-3 data-highlighted:shadow-[inset_3px_0_0_var(--focus),inset_0_0_0_1px_var(--focus)] active:bg-surface-pressed"
                           >
                             <ItemBody item={item} />
-                            <ArrowRightIcon size={16} className="text-fg-subtle opacity-0 group-data-highlighted:opacity-100" />
+                            <ArrowRightIcon size={16} className="invisible text-fg-muted group-data-highlighted:visible" />
                           </Autocomplete.Item>
                         )}
                       </Autocomplete.Collection>

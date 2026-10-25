@@ -3,7 +3,8 @@
 // (pg_trgm `%`), word similarity (`<%`), a prefix match and, for Chinese characters, an exact or
 // contained match, since a two- or three-character name gives too few trigrams to rank by.
 //
-// Privacy (plan §6.4): every person comes through v_public_person, every school through
+// Privacy (plan §6.4): the keys come only through v_public_person_key (the keys of public people,
+// a security_barrier view; migration m07_public_person_key), every person through v_public_person, every school through
 // v_public_school and every lineage through v_public_edge, so a record that is not public cannot
 // match, whatever its keys say. The keys themselves never leave this file: a person is answered
 // with its display name and the stored name (person_name) whose key matched.
@@ -83,7 +84,7 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
                  -- Jyutping is the match shown rather than the characters it could be read from.
                  + CASE WHEN k.source = 'name' THEN ${num(RANK.asWritten)} ELSE 0 END) AS score
         FROM f
-        JOIN person_name_key k
+        JOIN v_public_person_key k
           ON k.key = f.text
           OR k.key LIKE f.prefix
           OR (f.han AND k.key_kind = 'han' AND strpos(k.key, f.text) > 0)
@@ -133,7 +134,7 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
 }
 
 /** Folded name text in SQL, the counterpart of foldLatin() for the Latin names of schools and lineages. */
-const folded = (column: ReturnType<typeof sql.raw>) => sql`lower(unaccent(${column}))`;
+const folded = (column: ReturnType<typeof sql.raw>) => sql`btrim(regexp_replace(lower(unaccent(${column})), '[^[:alnum:]]+', ' ', 'g'))`;
 
 function nameMatches(column: ReturnType<typeof sql.raw>) {
   return sql`(

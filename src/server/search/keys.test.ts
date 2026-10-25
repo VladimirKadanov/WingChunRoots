@@ -153,5 +153,7 @@ describe('queries', () => {
 
   it('keys any other script by its usual Latin transliteration', () => {
     expect(keyStrings(keysForName(name('Δοκιμή', 'Grek', 'el')))).toEqual(['dokimi']);
+    // And a query in that script meets the key.
+    expect(queryForms('Δοκιμή').map((f) => f.text)).toContain('dokimi');
   });
 });
