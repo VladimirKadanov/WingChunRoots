@@ -37,7 +37,7 @@ import { type ReactNode, useEffect } from 'react';
 import { MinusIcon, PlusIcon, FitIcon } from '@/components/icons';
 import { type LinkKind } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
-import { linkStyles } from '@/design/tokens';
+import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import type { Box, DetailLevel, Point, Scene, SceneEdge } from '@/lib/lineage-layout/types';
 
@@ -241,20 +241,57 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
 const nodeTypes = { person: PersonNodeView };
 const edgeTypes = { lineage: LineageEdgeView };
 
+/** A CSS cubic-bezier() timing function as an easing function of progress (0 to 1), for the moves of the view. */
+export function cubicBezier(css: string): (t: number) => number {
+  const match = /^cubic-bezier\(\s*([\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*([\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/.exec(css);
+  if (!match) throw new Error(`Not a cubic-bezier() timing function: ${css}`);
+  const [x1, y1, x2, y2] = match.slice(1).map(Number) as [number, number, number, number];
+  // The curve from (0, 0) to (1, 1) as a polynomial of its parameter s.
+  const at = (p1: number, p2: number, s: number) => ((3 * p1 - 3 * p2 + 1) * s * s + (3 * p2 - 6 * p1) * s + 3 * p1) * s;
+  return (t) => {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    // x rises from 0 to 1 (x1 and x2 lie in [0, 1]): halving finds the s at which it reaches t.
+    let low = 0;
+    let high = 1;
+    for (let i = 0; i < 30; i++) {
+      const s = (low + high) / 2;
+      if (at(x1, x2, s) < t) low = s;
+      else high = s;
+    }
+    return at(y1, y2, (low + high) / 2);
+  };
+}
+
+/** A motion token in milliseconds ('250ms' is 250). */
+export const ms = (token: string): number => Number.parseFloat(token);
+
+/**
+ * The moves of the view, with the motion tokens (plan §5.8 (e)): the zoom buttons take `base`, a new scene `slow`
+ * with the curve the people slide along (globals.css), so the view and the people move together.
+ */
+export const VIEW_MOTION = { buttons: ms(motion.duration.base), scene: ms(motion.duration.slow), ease: cubicBezier(motion.easing.out) };
+
+/** How the view moves for this long: at once under prefers-reduced-motion. */
+function moveFor(duration: number): { duration: number; ease: (t: number) => number } {
+  const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return { duration: reduced ? 0 : duration, ease: VIEW_MOTION.ease };
+}
+
 function ZoomControls() {
   const flow = useReactFlow();
+  // The ring is drawn inside the button (-outline-offset-2): the group clips what lies outside it.
   const button =
-    'inline-grid size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 active:bg-surface-pressed [&:not(:first-child)]:border-t';
-  const reduced = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    'inline-grid size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed [&:not(:first-child)]:border-t';
   return (
     <div role="group" aria-label="Zoom" className="flex flex-col overflow-hidden rounded-sm border border-border-strong shadow-pop">
-      <button type="button" className={button} aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: reduced() ? 0 : 200 })}>
+      <button type="button" className={button} aria-label="Zoom in" onClick={() => void flow.zoomIn(moveFor(VIEW_MOTION.buttons))}>
         <PlusIcon size={18} />
       </button>
-      <button type="button" className={button} aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: reduced() ? 0 : 200 })}>
+      <button type="button" className={button} aria-label="Zoom out" onClick={() => void flow.zoomOut(moveFor(VIEW_MOTION.buttons))}>
         <MinusIcon size={18} />
       </button>
-      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => void flow.fitView({ padding: FIT_OPTIONS.padding, duration: reduced() ? 0 : 200 })}>
+      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => void flow.fitView({ ...FIT_OPTIONS, ...moveFor(VIEW_MOTION.buttons) })}>
         <FitIcon size={18} />
       </button>
     </div>
@@ -266,7 +303,8 @@ const FIT_ALL_UP_TO = 40;
 /** The zoom a large view starts at: cards at their own size, on a phone the smallest zoom with full cards (plan §4.8). */
 const LARGE_VIEW_ZOOM = { wide: 1, narrow: 0.75 } as const;
 const NARROW_PANE = 640;
-const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
+/** Every fit of the whole view, the first and the button's: cards never larger than their own size. */
+export const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
 
 /**
  * Who the first view of a large scene starts at: the focus, or the first person of the top row
@@ -293,16 +331,16 @@ function FitOnScene({ scene }: { scene: Scene }) {
   const top = start?.top ?? false;
   useEffect(() => {
     if (!sized) return;
-    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250;
+    const move = moveFor(VIEW_MOTION.scene);
     if (x === null || y === null) {
-      void flow.fitView({ ...FIT_OPTIONS, duration });
+      void flow.fitView({ ...FIT_OPTIONS, ...move });
       return;
     }
     // With nobody above, the person sits a quarter down the pane and the rows below fill the rest.
     const { width, height } = store.getState();
     const zoom = width < NARROW_PANE ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
     const below = top ? height / 4 / zoom : 0;
-    void flow.setCenter(x, y + below, { zoom, duration });
+    void flow.setCenter(x, y + below, { zoom, ...move });
   }, [flow, store, key, sized, x, y, top]);
   return null;
 }
