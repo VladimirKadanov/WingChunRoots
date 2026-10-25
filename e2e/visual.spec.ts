@@ -15,7 +15,7 @@ import { expect, test } from '@playwright/test';
 
 import { NAV_ITEMS } from '../src/components/shell/nav';
 import { closeHelpers, signInAs } from './helpers/auth';
-import { EXPLORER_VIEWS, openExplorer } from './helpers/explorer';
+import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 test.afterAll(closeHelpers);
@@ -61,6 +61,16 @@ for (const size of SCREEN_SIZES) {
           await expect(page).toHaveScreenshot(`explore-${view.name}-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
         });
       }
+    }
+
+    // M05: the list view inside the explorer (a screen state too: it needs a demo person's id).
+    for (const theme of THEMES) {
+      test(`the explorer's ${EXPLORER_LIST.name} view at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+        await openExplorerList(page, await EXPLORER_LIST.params());
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
+        await expect(page).toHaveScreenshot(`explore-${EXPLORER_LIST.name}-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
+      });
     }
   });
 }

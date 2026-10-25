@@ -43,3 +43,22 @@ export const EXPLORER_VIEWS: readonly { name: 'person' | 'generations' | 'lineag
   { name: 'generations', params: async () => ({ focus: await personIdOf('demo-converging'), up: 1, down: 1 }) },
   { name: 'lineage', params: async () => ({ focus: await personIdOf('demo-root-b'), lineage: await lineageIdOf('demo-lineage-b') }) },
 ];
+
+/**
+ * The list view inside the explorer (M04's list view in the explorer's frame, plan §4.10), for the
+ * screenshots and the visual regression: a teacher with students, one generation up and two down.
+ */
+export const EXPLORER_LIST: { name: 'list'; params: () => Promise<Record<string, string | number>> } = {
+  name: 'list',
+  params: async () => ({ focus: await personIdOf('demo-hub-a'), up: 1, down: 2, view: 'list' }),
+};
+
+/** Opens /explore with these params (view=list) and waits until the list view is rendered. */
+export async function openExplorerList(page: Page, params: Record<string, string | number>): Promise<void> {
+  const search = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));
+  await page.goto(`/explore?${search.toString()}`);
+  await expect(page.getByRole('heading', { level: 1, name: /Lineage of/ })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { level: 2, name: 'Routes of descent' })).toBeVisible();
+  // The shell marks the explorer's tab once its navigation has hydrated (as e2e/visual.spec.ts waits for).
+  await expect(page.getByRole('navigation', { name: 'Main' }).locator('a[aria-current="page"]').filter({ visible: true })).toHaveAttribute('href', '/explore');
+}

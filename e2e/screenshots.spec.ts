@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
-import { EXPLORER_VIEWS, openExplorer } from './helpers/explorer';
+import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
@@ -208,6 +208,14 @@ const STATES: readonly ScreenState[] = [
       },
     }),
   ),
+  {
+    // M05: the list view inside the explorer's frame (plan §4.10), without M04's own view switch.
+    name: `explore-${EXPLORER_LIST.name}`,
+    milestone: 'M05',
+    async reach(page) {
+      await openExplorerList(page, await EXPLORER_LIST.params());
+    },
+  },
 ];
 const states = STATES.filter((state) => !only || state.milestone === only);
 
