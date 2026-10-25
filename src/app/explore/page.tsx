@@ -135,7 +135,12 @@ export default async function ExplorePage({ searchParams }: Props) {
     if (focus.state === 'failed') console.error(`[explore] the person in focus could not be loaded: ${failure(focus.error)}`);
     list =
       focus.state === 'found' ? (
-        <LineageListPage params={Promise.resolve({ slug: focus.slug })} searchParams={Promise.resolve({})} />
+        // The M04 list view inside the explorer: its pages and "all routes" stay here (screens review).
+        <LineageListPage
+          params={Promise.resolve({ slug: focus.slug })}
+          searchParams={Promise.resolve({ page: query.page, routes: query.routes })}
+          embed={{ href: (page, routesAll) => explorerHref(params, listKeys(page, routesAll)) }}
+        />
       ) : focus.state === 'failed' ? (
         // Retry opens the same view again (M04's ProfileError: a plain reload).
         <ProfileError retryHref={explorerHref(params, listKeysOf(query))} />
