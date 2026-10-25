@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupe, flatten, lockedVersions, pickLicenseFiles, safeHomepage, splitCopyright } from './notices';
+import { dedupe, flatten, lockedVersions, pickLicenseFiles, pnpmCommand, safeHomepage, splitCopyright } from './notices';
 
 describe('safeHomepage', () => {
   it('keeps http and https', () => {
@@ -145,5 +145,24 @@ describe('lockedVersions', () => {
     expect(lockedVersions(lock, 'sharp')).toEqual(['0.35.5']);
     expect(lockedVersions(lock, '@img/sharp-libvips-linux-x64')).toEqual(['1.3.4']);
     expect(lockedVersions(lock, 'missing')).toEqual([]);
+  });
+});
+
+describe('pnpmCommand', () => {
+  const node = 'C:\\Program Files\\nodejs\\node.exe';
+  it("starts the pnpm that runs the script, on Windows by its .exe and never through PATH's shims", () => {
+    const exe = 'C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.11.0\\node_modules\\pnpm\\pnpm.exe';
+    expect(pnpmCommand(exe, node)).toEqual({ file: exe, args: [] });
+    expect(pnpmCommand('/usr/local/lib/node_modules/pnpm/pnpm', '/usr/bin/node')).toEqual({ file: '/usr/local/lib/node_modules/pnpm/pnpm', args: [] });
+    expect(pnpmCommand('/usr/local/lib/node_modules/pnpm/pn', '/usr/bin/node')).toEqual({ file: '/usr/local/lib/node_modules/pnpm/pn', args: [] });
+  });
+  it('runs a JavaScript entry of pnpm through Node', () => {
+    const cjs = 'C:\\Users\\demo\\AppData\\Local\\node\\corepack\\pnpm\\9.15.9\\bin\\pnpm.cjs';
+    expect(pnpmCommand(cjs, node)).toEqual({ file: node, args: [cjs] });
+    expect(pnpmCommand('/opt/pnpm/bin/pnpm.mjs', '/usr/bin/node')).toEqual({ file: '/usr/bin/node', args: ['/opt/pnpm/bin/pnpm.mjs'] });
+  });
+  it('falls back to a bare pnpm outside pnpm, and under npm or yarn', () => {
+    for (const execPath of [undefined, '', 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js', '/usr/lib/node_modules/yarn/bin/yarn.js'])
+      expect(pnpmCommand(execPath, node)).toEqual({ file: 'pnpm', args: [] });
   });
 });

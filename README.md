@@ -77,6 +77,19 @@ Sign-up, e-mail confirmation, sign-in, password reset and TOTP two-factor authen
 
 Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 terminal). Line endings are always LF (`.gitattributes`), so Windows Git settings cannot introduce CRLF changes. The services listen only on `127.0.0.1`: Mailpit is at <http://localhost:8025>, the S3 endpoint at <http://localhost:8333>.
 
+### Windows without WSL2 (Git Bash)
+
+A second, slower path for a PC without WSL2: the repository on a Windows drive (for example `D:\work\wingchunroots`) and every command run from **Git Bash**, with Docker Desktop for the services. WSL2 above remains the main path (plan §7.6, [ADR 0001](docs/adr/0001-stack.md)); this one is measured with `scripts/verify.sh M04`. It is slower than WSL2 (`pnpm install`, `next build` and E2E), so E2E runs with fewer workers. The Bulgarian admin guide has the same steps (`docs/guides/admin-guide.bg.md`, §2). Differences from the WSL2 steps:
+
+- **Node 24** with [nvm for Windows](https://github.com/coreybutler/nvm-windows): `nvm install 24` and `nvm use 24`.
+- **pnpm** with `npm install --global pnpm@12.14.0`, never Corepack. Check `pnpm -v`: an old Corepack shim (`pnpm`, `pnpm.cmd` in `%AppData%\npm`) that comes first on `PATH` fails with `Cannot find module …\corepack\pnpm\…`; then install pnpm into the active Node folder, which nvm puts earlier on `PATH`: `npm install --global --prefix "$(dirname "$(command -v node)")" pnpm@12.14.0`.
+- **psql 15 or newer on `PATH`**, for example the client of [PostgreSQL for Windows](https://www.postgresql.org/download/windows/): in `~/.bashrc`, `export PATH="/c/Program Files/PostgreSQL/17/bin:$PATH"`.
+- **Port 5432 taken** by a native PostgreSQL (`bind: An attempt was made to access a socket in a way forbidden by its access permissions` from `docker compose up`): after `scripts/init-env.sh`, set `POSTGRES_PORT=5433` in `.env` and change the port in `DATABASE_URL` and `TEST_DATABASE_URL` to `5433`, before the first `docker compose up -d --wait`.
+- **Browsers:** `pnpm exec playwright install chromium` (no `--with-deps` on Windows).
+- **E2E workers:** `PW_WORKERS=2` in `.env` (`.env.example`); `scripts/verify.sh` reads it from `.env`, while a bare `pnpm e2e` reads only the environment (`export PW_WORKERS=2` in `~/.bashrc`, or `PW_WORKERS=2 pnpm e2e`). Measured on an 8-core PC with Docker Desktop, `scripts/verify.sh M04` (148 E2E tests): 1 worker passes in 7.4 min, 2 workers in 4.5–5.0 min (also right after a PostgreSQL restart), while Playwright's default of 4 fails the hidden-person 404 test: under that load the proxy's person check runs past its 500 ms deadline and the page answers for itself with 200 (`src/proxy.ts`, ADR 0008). With other heavy work running at the same time even 2 workers can miss that deadline or the 2 s `statement_timeout`; then use 1.
+
+Line endings stay LF (`.gitattributes`), whatever `core.autocrlf` says.
+
 ### Linux
 
 Install Docker Engine with the Compose plugin, Node 24 (for example with nvm), `npm install --global pnpm@12.14.0` and the PostgreSQL client, psql 15 or newer (`sudo apt-get install -y postgresql-client` on Ubuntu 24.04 or Debian 12; older releases need `postgresql-client-16` from the PostgreSQL apt repository). Then follow step 3 above.

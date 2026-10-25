@@ -205,3 +205,17 @@ export function lockedVersions(lockfile: string, name: string): string[] {
   const pattern = new RegExp(`^  '?${escaped}@([^'(:\\s]+)`, 'gm');
   return [...new Set([...lockfile.matchAll(pattern)].map((m) => m[1]!))].sort();
 }
+
+/**
+ * How `pnpm notices` starts pnpm: the pnpm that runs the script (`npm_execpath`, which pnpm sets
+ * for every script), so it also works on Windows, where `pnpm` on PATH is only a .cmd, .ps1 or
+ * sh shim that execFile cannot start without a shell. pnpm 12 points `npm_execpath` at its
+ * native binary, which starts directly; a JavaScript entry (Corepack, an older pnpm) runs through
+ * this Node. A bare `pnpm` only when the script runs outside pnpm (or under npm or yarn).
+ */
+export function pnpmCommand(npmExecPath: string | undefined, nodePath: string): { file: string; args: string[] } {
+  // Either separator, whatever the platform this runs on: a Windows path has `\`.
+  const name = npmExecPath?.split(/[\\/]/).pop() ?? '';
+  if (!npmExecPath || !/^(pnpm|pn)(\.|$)/i.test(name)) return { file: 'pnpm', args: [] };
+  return /\.[cm]?js$/i.test(name) ? { file: nodePath, args: [npmExecPath] } : { file: npmExecPath, args: [] };
+}
