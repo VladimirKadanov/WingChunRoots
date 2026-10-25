@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dedupe, flatten, lockedVersions, pickLicenseFiles, pnpmCommand, safeHomepage, splitCopyright } from './notices';
+import { dedupe, flatten, lockedVersions, pickLicenseFiles, pnpmCommand, reuseLicenseFiles, reuseLicenseFolder, safeHomepage, splitCopyright } from './notices';
 
 describe('safeHomepage', () => {
   it('keeps http and https', () => {
@@ -136,6 +136,21 @@ describe('pickLicenseFiles', () => {
   it('reports licence-like names that no rule takes, so a package is never listed without its text', () => {
     expect(pickLicenseFiles(['LICENSE.APACHE2', 'license.js']).unrecognised).toEqual(['LICENSE.APACHE2', 'license.js']);
     expect(pickLicenseFiles(['LICENSE', 'licenses']).unrecognised).toEqual(['licenses']);
+  });
+});
+
+describe('reuseLicenseFolder and reuseLicenseFiles (M07: opencc-js)', () => {
+  it('reads a REUSE LICENSES folder next to LICENSE, and only a folder of exactly that name', () => {
+    const folder = (name: string) => name === 'LICENSES' || name === 'licenses';
+    expect(reuseLicenseFolder(['LICENSE', 'LICENSES', 'package.json'], folder)).toEqual({ names: ['LICENSE', 'package.json'], folder: 'LICENSES' });
+    // Not a folder: left to pickLicenseFiles, which reports it.
+    expect(reuseLicenseFolder(['LICENSE', 'LICENSES'], () => false)).toEqual({ names: ['LICENSE', 'LICENSES'], folder: null });
+    // Any other spelling stays unrecognised, as before.
+    expect(reuseLicenseFolder(['LICENSE', 'licenses'], folder)).toEqual({ names: ['LICENSE', 'licenses'], folder: null });
+    expect(pickLicenseFiles(reuseLicenseFolder(['LICENSE', 'licenses'], folder).names).unrecognised).toEqual(['licenses']);
+  });
+  it('takes the SPDX text files of the folder, sorted', () => {
+    expect(reuseLicenseFiles(['MIT.txt', 'Apache-2.0.txt', 'README.md', 'LicenseRef-x.txt'])).toEqual(['Apache-2.0.txt', 'LicenseRef-x.txt', 'MIT.txt']);
   });
 });
 

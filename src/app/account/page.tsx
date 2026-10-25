@@ -141,7 +141,12 @@ export default async function AccountPage() {
                     </>
                   )}
                 </p>
-                <p className="text-sm text-fg-muted">Editing names and visibility arrives in a later version of the pilot.</p>
+                {/* M07: the profile editor and the privacy page. */}
+                <div>
+                  <Link href="/dashboard/profile" className={buttonVariants({ variant: 'secondary' })}>
+                    Edit your profile
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -171,6 +176,10 @@ export default async function AccountPage() {
             <div className="mt-5 flex flex-wrap gap-3">
               <Link href="/account/security" className={buttonVariants({ variant: 'secondary' })}>
                 {tf.status === 'pending' ? 'Finish the two-factor setup' : 'Security settings'}
+              </Link>
+              {/* M07: consents and account deletion. */}
+              <Link href="/account/privacy" className={buttonVariants({ variant: 'secondary' })}>
+                Privacy and consents
               </Link>
               {staff ? (
                 <Link href="/admin" className={buttonVariants({ variant: 'secondary' })}>

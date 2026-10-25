@@ -15,6 +15,7 @@ import { expect, test } from '@playwright/test';
 
 import { NAV_ITEMS } from '../src/components/shell/nav';
 import { closeHelpers, signInAs } from './helpers/auth';
+import { openPalette, option, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 test.afterAll(closeHelpers);
@@ -48,6 +49,20 @@ for (const size of SCREEN_SIZES) {
           });
         });
       }
+    }
+
+    // M07: the search palette, open with results (a screen state, not a route).
+    for (const theme of THEMES) {
+      test(`the search palette at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
+        await waitForSearchKeys();
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+        await page.goto('/');
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
+        await openPalette(page);
+        await search(page, 'So Ching');
+        await expect(option(page, 'So Ching Laam').first()).toBeVisible();
+        await expect(page).toHaveScreenshot(`palette-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
+      });
     }
   });
 }

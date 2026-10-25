@@ -513,7 +513,8 @@ export function CheckboxField({
 
 /**
  * The submit button of a form: the red primary action, or `secondary` for a second form on a page
- * that already has its primary action (red only for the one primary action, docs/design/direction.md).
+ * that already has its primary action (red only for the one primary action, docs/design/direction.md),
+ * or `danger` for a destructive request (M07: account deletion; a rouge outline, never the brand red).
  */
 export function SubmitButton({
   pending,
@@ -524,7 +525,7 @@ export function SubmitButton({
   pending: boolean;
   children: ReactNode;
   pendingLabel: string;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'danger';
 }) {
   return (
     <button

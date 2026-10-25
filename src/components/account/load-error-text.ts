@@ -16,6 +16,19 @@ export const LOAD_ERRORS = {
     message: "We couldn't load your account type and plan. Nothing was changed.",
     back: { href: '/dashboard', label: 'Back to the dashboard' },
   },
+  // M07: the profile editor and the privacy page.
+  profile: {
+    eyebrow: 'Dashboard',
+    title: 'Your profile',
+    message: "We couldn't load your profile. Nothing was changed.",
+    back: { href: '/dashboard', label: 'Back to the dashboard' },
+  },
+  privacy: {
+    eyebrow: 'Your account',
+    title: 'Privacy and consents',
+    message: "We couldn't load your consents. Nothing was changed.",
+    back: { href: '/account', label: 'Back to your account' },
+  },
   grants: {
     eyebrow: 'Administration',
     title: 'Plan grants',

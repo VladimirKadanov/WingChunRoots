@@ -36,4 +36,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/grants/actions.ts#createGrantAction': { rpc: ['grants.create'] },
   'src/app/admin/grants/actions.ts#revokeGrantAction': { rpc: ['grants.revoke'] },
   'src/app/admin/grants/actions.ts#closeRequestAction': { rpc: ['grants.closeRequest'] },
+  // M07: the profile editor, consents and account deletion.
+  'src/app/dashboard/profile/actions.ts#saveProfileAction': { rpc: ['profile.update'] },
+  'src/app/account/privacy/actions.ts#withdrawConsentAction': { rpc: ['consent.withdraw'] },
+  'src/app/account/privacy/actions.ts#requestDeletionAction': { rpc: ['account.requestDeletion'] },
 };

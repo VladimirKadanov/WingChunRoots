@@ -24,7 +24,8 @@ export const MIN_TRIGRAM_LENGTH = 3;
 /** Ranking: an exact key, then a prefix, then similarity (0..1); a primary name and a verified person rank higher. */
 export const RANK = { exact: 3, prefix: 2, hanContains: 1.5, primary: 0.15, verified: 0.1, asWritten: 0.01 } as const;
 
-export const LIMITS = { people: 8, schools: 5, lineages: 5 } as const;
+/** At most this many results per group: a common surname (13 demo "Testov"s) still fits in one answer. */
+export const LIMITS = { people: 20, schools: 5, lineages: 5 } as const;
 
 export interface SearchFilters {
   countryCode: string | null;
