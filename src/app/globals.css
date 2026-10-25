@@ -308,3 +308,11 @@
 .explorer-canvas .react-flow__attribution a {
   color: var(--fg-muted);
 }
+/* From 768 px the canvas reaches the right and bottom edges of the screen: the attribution keeps
+   clear of the safe areas there, as the explorer's controls do. */
+@media (width >= 48rem) {
+  .explorer-canvas .react-flow__attribution {
+    margin-right: env(safe-area-inset-right, 0px);
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
