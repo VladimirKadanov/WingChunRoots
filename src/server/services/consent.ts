@@ -79,6 +79,39 @@ export async function grantConsents(
   return fresh;
 }
 
+/**
+ * Records `kinds` as withdrawn (a new consent_record row each, with the current document version),
+ * with one audit entry `consent.withdraw` (milestone M07). Only kinds whose latest record is a
+ * current grant are recorded. Returns the kinds recorded.
+ */
+export async function withdrawConsents(
+  tx: Database | Transaction,
+  userId: string,
+  actorRole: string | null,
+  kinds: readonly ConsentKind[],
+  meta: RequestMeta,
+): Promise<ConsentKind[]> {
+  const current = await currentConsents(tx, userId);
+  const given = [...new Set(kinds)].filter((kind) => current.has(kind));
+  if (given.length === 0) return [];
+  const occurredAt = new Date();
+  await tx.insert(consentRecord).values(
+    given.map((kind) => ({ userId, kind, documentVersion: consentVersion(kind), action: 'withdrawn' as const, occurredAt })),
+  );
+  await writeAudit(tx, {
+    action: 'consent.withdraw',
+    actorUserId: userId,
+    actorRole,
+    subjectType: 'user',
+    subjectId: userId,
+    before: { kinds: given },
+    after: { withdrawn: given, versions: Object.fromEntries(given.map((kind) => [kind, consentVersion(kind)])) },
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  return given;
+}
+
 /** The kinds whose latest record is a grant of the current document version. */
 export async function currentConsents(db: Database | Transaction, userId: string): Promise<Set<ConsentKind>> {
   const rows = await db

@@ -12,6 +12,7 @@ import { emailDelivery } from '../db/schema';
 import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
+import { rebuildAllKeys } from '../search/store';
 import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from '../services/retention';
 import { TemplateDataError } from '../templates/email';
 import { jobTemplateData } from './outbox';
@@ -138,6 +139,25 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
   };
 }
 
+/**
+ * Handles search.keys.rebuild (M07): rewrites the search keys of every person. Logs counts only;
+ * a failure is rethrown with its code alone, like retention.purge, since a message could quote a name.
+ */
+export function searchKeysRebuildHandler(db: Database, log: (line: string) => void) {
+  return async (jobs: JobWithMetadata<JobData[typeof QUEUE.searchKeysRebuild]>[]): Promise<void> => {
+    for (const job of jobs) {
+      try {
+        const result = await rebuildAllKeys(db);
+        log(`${QUEUE.searchKeysRebuild}: wrote ${result.keys} key(s) for ${result.persons} person(s)`);
+      } catch (error) {
+        const code = failureCode(error);
+        log(`${QUEUE.searchKeysRebuild}: job ${job.id}: attempt ${job.retryCount + 1} of ${job.retryLimit + 1} failed (${code})`);
+        throw new Error(`${QUEUE.searchKeysRebuild} failed: ${code}`);
+      }
+    }
+  };
+}
+
 /** Starts pg-boss, the queues, the handlers and the schedules. */
 export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
   const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true } = options;
@@ -150,6 +170,7 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   await boss.work(QUEUE.emailSend, { ...work, localConcurrency: 2 }, emailSendHandler(db, mailer, log));
   await boss.work(QUEUE.emailSendFailed, work, emailSendFailedHandler(mailer, log));
   await boss.work(QUEUE.retentionPurge, work, retentionPurgeHandler(db, log));
+  await boss.work(QUEUE.searchKeysRebuild, work, searchKeysRebuildHandler(db, log));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

@@ -1,3 +1,6 @@
+// `pnpm search:rebuild` (milestone M07): queues search.keys.rebuild, which a running worker turns
+// into fresh search keys for every person (after a change to src/server/search/keys.ts).
+//
 // `pnpm mail:check <address> [--name <Latin-script name>]` (milestone M01b): queues a "mail-check"
 // e-mail through the outbox, exactly as a service would, so a running worker (`pnpm worker`)
 // delivers it: locally to Mailpit (http://localhost:8025), in a cloud session to .mail/.
@@ -11,9 +14,22 @@ import { loadDotEnv } from '../db/dotenv';
 import { assertNotProduction } from '../db/env';
 import { stopProducer } from './boss';
 import { queueEmail } from './outbox';
+import { queueSearchKeysRebuild } from './search-keys';
+
+async function searchRebuild(): Promise<void> {
+  loadDotEnv(path.resolve('.env'));
+  try {
+    const jobId = await queueSearchKeysRebuild();
+    console.log(`search:rebuild: queued search.keys.rebuild (job ${jobId}); a running worker (pnpm worker) writes the keys`);
+  } finally {
+    await stopProducer();
+    await closeDb();
+  }
+}
 
 async function main(): Promise<void> {
   const [command, to, ...rest] = process.argv.slice(2);
+  if (command === 'search-rebuild') return searchRebuild();
   const nameAt = rest.indexOf('--name');
   const name = nameAt >= 0 ? rest[nameAt + 1] : undefined;
   if (command !== 'mail-check' || !to || (nameAt >= 0 && !name)) {

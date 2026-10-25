@@ -45,7 +45,7 @@ export const STEWARDSHIPS = ['self', 'platform', 'unclaimed'] as const;
 export const VISIBILITIES = ['involved_only', 'public'] as const;
 export const NAME_KINDS = ['name', 'alias', 'romanization'] as const;
 export const ROMANIZATIONS = ['jyutping', 'pinyin', 'yale', 'hk_gov', 'bg_streamlined'] as const;
-export const NAME_KEY_KINDS = ['latin', 'jyutping', 'pinyin', 'han', 'cyrillic'] as const;
+export const NAME_KEY_KINDS = ['latin', 'jyutping', 'pinyin', 'han', 'cyrillic', 'alias'] as const;
 export const CLAIM_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
 export const INVITATION_STATUSES = ['pending', 'accepted', 'expired', 'revoked'] as const;
 
