@@ -523,3 +523,125 @@ test.describe('M05 fixes a1', () => {
     await expect(personNodes(page).locator('[data-arbitration-banner]')).toHaveCount(1);
   });
 });
+
+test.describe('M05 fixes a2', () => {
+  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Unconfirmed', arbitration: 'In arbitration' };
+
+  /** Opens the Lineage view of lineage B and fits the whole of it: about a hundred people, as dots. */
+  async function wholeLineageB(page: Parameters<typeof openExplorer>[0]) {
+    await openExplorer(page, { focus: await personIdOf('demo-root-b'), lineage: await lineageIdOf('demo-lineage-b') });
+    await page.getByRole('button', { name: 'Fit the whole view' }).click();
+    await expect(personNodes(page).first()).toHaveAttribute('data-lod', 'dot');
+  }
+
+  test('@M05 every legend sample is drawn with the stroke of the edges it explains: the same width, dash and lines', async ({ page }) => {
+    const checked = new Set<string>();
+    // The person views with a teacher from another lineage and with a relationship in arbitration.
+    for (const slug of ['demo-two-lineages', 'demo-arbitration']) {
+      await openExplorer(page, { focus: await personIdOf(slug) });
+      const drawn = await page.locator('[data-edge]').evaluateAll((paths) =>
+        paths.map((p) => {
+          // A stroke without its colour and its shape: width, dash, caps, and the ground between two lines.
+          const stroke = (el: Element | null) =>
+            el ? ['stroke-width', 'stroke-dasharray', 'stroke-linecap', 'vector-effect'].map((a) => `${a}=${el.getAttribute(a)}`).join(' ') : 'none';
+          const core = document.querySelector(`[data-edge-core="${CSS.escape(p.getAttribute('data-edge')!)}"]`);
+          return { kind: p.getAttribute('data-stroke')!, stroke: `${stroke(p)} | ${stroke(core)}` };
+        }),
+      );
+      const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
+      for (const { kind, stroke } of new Map(drawn.map((d) => [d.kind, d])).values()) {
+        const sample = legend.getByRole('listitem').filter({ hasText: words[kind]! }).locator('svg[data-stroke]');
+        const inLegend = await sample.evaluate((svg) => {
+          const stroke = (el: Element | null) =>
+            el ? ['stroke-width', 'stroke-dasharray', 'stroke-linecap', 'vector-effect'].map((a) => `${a}=${el.getAttribute(a)}`).join(' ') : 'none';
+          const [outer = null, core = null] = svg.querySelectorAll('path');
+          return `${stroke(outer)} | ${stroke(core)}`;
+        });
+        expect(inLegend, `${slug}: the legend's sample for ${kind}`).toBe(stroke);
+        checked.add(kind);
+      }
+    }
+    // Among them the two states whose samples once differed from the canvas.
+    expect([...checked]).toEqual(expect.arrayContaining(['cross_lineage', 'arbitration', 'verified']));
+  });
+
+  test('@M05 zoomed out to dots, every edge keeps its width and its pattern at least a pixel wide on screen', async ({ page }) => {
+    await wholeLineageB(page);
+    const strokes = await page.locator('[data-edge]').evaluateAll((paths) =>
+      paths.map((p) => {
+        const onScreen = (el: Element) => {
+          const path = el as SVGPathElement;
+          const scale = getComputedStyle(path).vectorEffect === 'non-scaling-stroke' ? 1 : (path.getScreenCTM()?.a ?? 1);
+          return {
+            width: Number(path.getAttribute('stroke-width')) * scale,
+            // The dot of a dotted line is a round cap (0.1); every other dash and gap has a length.
+            dash: (path.getAttribute('stroke-dasharray') ?? '').split(/[\s,]+/).filter(Boolean).map(Number).filter((n) => n >= 1).map((n) => n * scale),
+          };
+        };
+        const core = document.querySelector(`[data-edge-core="${CSS.escape(p.getAttribute('data-edge')!)}"]`);
+        return { id: p.getAttribute('data-edge'), outer: onScreen(p), core: core ? onScreen(core) : null, zoom: (p as SVGPathElement).getScreenCTM()?.a ?? 1 };
+      }),
+    );
+    expect(strokes.length).toBeGreaterThan(20);
+    for (const s of strokes) {
+      expect(s.zoom, 'the view is at the dot level').toBeLessThan(0.4);
+      // One line, or each of two lines and the ground between them.
+      const line = s.core ? (s.outer.width - s.core.width) / 2 : s.outer.width;
+      expect(line, `${s.id}: line width on screen`).toBeGreaterThanOrEqual(1);
+      if (s.core) expect(s.core.width, `${s.id}: gap between the two lines`).toBeGreaterThanOrEqual(1.5);
+      for (const d of s.outer.dash) expect(d, `${s.id}: dash or gap on screen`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  test('@M05 in the Lineage view a long cross-lineage curve runs between the rows, not behind the cards, and is labelled beside its student', async ({ page }) => {
+    // A phone stops at the least zoom with a part of lineage B on screen, and only what is on screen
+    // is drawn; the curves are the same on every screen, so they are checked on a wide one.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await wholeLineageB(page);
+    // The cards drawn, and the curves drawn whose student is drawn, as the label goes beside the student.
+    const drawn = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((el) => {
+        const [, x, y] = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(el.style.transform) ?? [];
+        return { id: el.dataset.id!, x: Number(x), y: Number(y), width: parseFloat(el.style.width), height: parseFloat(el.style.height) };
+      });
+      const curves = [...document.querySelectorAll('[data-edge][data-kind="crossLineage"]')].map((p) => {
+        const id = p.getAttribute('data-edge')!;
+        const label = document.querySelector<HTMLElement>(`[data-edge-label="${CSS.escape(id)}"]`);
+        const [, lx, ly] = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)\s*$/.exec(label?.style.transform ?? '') ?? [];
+        return { id, student: p.getAttribute('data-student')!, d: p.getAttribute('d') ?? '', label: label ? { x: Number(lx), y: Number(ly), text: label.textContent } : null };
+      });
+      return { nodes, curves };
+    });
+    const byId = new Map(drawn.nodes.map((n) => [n.id, n]));
+    let long = 0;
+    for (const curve of drawn.curves) {
+      const student = byId.get(curve.student);
+      if (!student) continue;
+      const points = pathPoints(curve.d);
+      const c = points.findIndex((p) => p.command === 'C');
+      expect(c, curve.d).toBeGreaterThan(0);
+      const [p0, p1, p2, p3] = [points[c - 1]!, points[c]!, points[c + 1]!, points[c + 2]!];
+      if (Math.abs(p3.x - p0.x) <= 448) continue;
+      long++;
+      // The cards of the teacher's row and of the student's row (the rows of the curve's two ends), other than the two people's.
+      const inRow = (n: (typeof drawn.nodes)[number], y: number) => n.y < y && y < n.y + n.height;
+      const cards = drawn.nodes.filter((n) => (inRow(n, p0.y) || inRow(n, p3.y)) && n.id !== student.id && !(p0.x >= n.x && p0.x <= n.x + n.width));
+      for (let i = 1; i < 400; i++) {
+        const t = i / 400;
+        const u = 1 - t;
+        const x = u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x;
+        const y = u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y;
+        const behind = cards.find((n) => x > n.x && x < n.x + n.width && y > n.y && y < n.y + n.height);
+        expect(behind?.id, `${curve.id} at t=${t.toFixed(3)} runs behind a card`).toBeUndefined();
+      }
+      // Labelled "Teacher in {lineage}" above the student's row, below the row above it, near the student.
+      expect(curve.label?.text).toMatch(/^Teacher in Demo Lineage [A-C]$/);
+      const studentRowTop = Math.min(...drawn.nodes.filter((n) => inRow(n, p3.y)).map((n) => n.y));
+      const rowAbove = Math.max(...drawn.nodes.filter((n) => n.y + n.height <= studentRowTop).map((n) => n.y + n.height));
+      expect(curve.label!.y).toBeLessThan(studentRowTop);
+      expect(curve.label!.y).toBeGreaterThan(rowAbove);
+      expect(Math.abs(curve.label!.x - p3.x), `${curve.id}: label beside the student`).toBeLessThan(1000);
+    }
+    expect(long, 'the view shows long cross-lineage curves').toBeGreaterThan(0);
+  });
+});
