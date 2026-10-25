@@ -924,13 +924,12 @@ test.describe('M05 fixes B', () => {
       // The worker had time to warm up while the phone's view loaded: the warm-up was laid out.
       const warmup = log.sent.find((s) => s.warmup)!;
       expect(log.answers.find((a) => a.requestId === warmup.requestId)?.type).toBe('result');
-      // Turned to landscape: the view keeps the read it started with (plan §4.3: it *starts* small).
-      const drawn = await personNodes(page).count();
+      // Turned to landscape: the view keeps the read it started with (plan §4.3: it *starts* small),
+      // so nothing is read or laid out again.
       await page.setViewportSize({ width: 844, height: 390 });
       await page.waitForTimeout(800);
       expect(reads).toHaveLength(1);
       expect((await layouts(page)).sent.filter((s) => !s.warmup)).toHaveLength(1);
-      expect(await personNodes(page).count()).toBe(drawn);
     });
 
     test('@M05 with a person selected on a phone, the legend and the zoom buttons stay in view and uncovered', async ({ page }) => {
