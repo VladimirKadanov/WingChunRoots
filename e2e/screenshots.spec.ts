@@ -12,7 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
-import { openPalette, option, search, waitForSearchKeys } from './helpers/search';
+import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -231,6 +231,8 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByText('No public record matches', { exact: false })).toBeVisible();
     },
   },
+  // M07: the stored Chinese name a query matched, the recent searches, a failed search.
+  ...PALETTE_STATES.map((state) => ({ ...state, milestone: 'M07' })),
   {
     // M07: the profile editor refusing a save without a Latin-script display name.
     name: 'profile-invalid',

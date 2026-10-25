@@ -69,3 +69,44 @@ export async function search(page: Page, query: string): Promise<void> {
   await searchInput(page).fill(query);
   expect((await answered).status()).toBe(200);
 }
+
+/**
+ * Screen states of the palette that no route reaches by itself, for the screenshots of the design
+ * review (e2e/screenshots.spec.ts) and the visual regression (e2e/visual.spec.ts): the stored name
+ * a Chinese-character query matched beside the Latin display name, the recent searches, and a
+ * search that failed. Fictional demo names only (D20).
+ */
+export const PALETTE_STATES: readonly { name: string; reach: (page: Page) => Promise<void> }[] = [
+  {
+    name: 'palette-cjk',
+    async reach(page) {
+      await waitForSearchKeys();
+      await page.goto('/');
+      await openPalette(page);
+      await search(page, '蘇晴嵐');
+      await expect(option(page, 'So Ching Laam').first()).toContainText('蘇晴嵐');
+    },
+  },
+  {
+    name: 'palette-recent',
+    async reach(page) {
+      await page.addInitScript(() => {
+        window.localStorage.setItem('wcr.recent-searches', JSON.stringify(['So Ching Laam', '蘇晴嵐', 'sou cing laam', 'Тестов']));
+      });
+      await page.goto('/');
+      await openPalette(page);
+      await expect(palette(page).getByRole('group', { name: 'Recent searches', exact: true })).toBeVisible();
+    },
+  },
+  {
+    name: 'palette-error',
+    async reach(page) {
+      await page.route(`**${PALETTE_SEARCH_PATH}`, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+      await page.goto('/');
+      await openPalette(page);
+      await searchInput(page).fill('So Ching');
+      await expect(palette(page).getByRole('button', { name: 'Try again' })).toBeVisible();
+      await expect(palette(page).getByText('Search is not available right now.')).toBeVisible();
+    },
+  },
+];
