@@ -231,3 +231,23 @@ export async function userRow(userId: string) {
   const [row] = await getDb().select().from(authUser).where(and(eq(authUser.id, userId)));
   return row;
 }
+
+// --- The hardening tests (hardening*.int.test.ts, milestone M02 review fixes) ----------------------
+
+export const ALL_TICKS = { terms: true, privacy_ack: true, authenticity_declaration: true, age_18_plus: true };
+let n = 0;
+export const address = (label: string) => `demo-hardening-${label}-${++n}@example.test`;
+
+export function signUp(email: string, password: string, extra: Record<string, unknown> = {}) {
+  return authFetch(new TestBrowser(), '/sign-up/email', { body: { name: '', email, password, consents: ALL_TICKS, ...extra } });
+}
+
+export function signInWith(email: string, password: string, browser = new TestBrowser()) {
+  return authFetch(browser, '/sign-in/email', { body: { email, password } });
+}
+
+export async function userId(email: string): Promise<string> {
+  const [row] = await getDb().select({ id: authUser.id }).from(authUser).where(eq(authUser.email, email));
+  if (!row) throw new Error(`no account ${email}`);
+  return row.id;
+}
