@@ -22,8 +22,9 @@ const SAMPLE_PATH = `M${SAMPLE[0].join(' ')}C${SAMPLE.slice(1).flat().join(' ')}
 /**
  * A link as the explorer's canvas strokes it (plan §4.6): one line with the state's width and
  * dash (linkStyles), the dotted state with round dots, and the double stroke as a wide stroke
- * with `ground` (the colour behind the drawing) knocked out of its middle. `attributes` go on the
- * drawn path, `coreAttributes` on the knocked-out ground of a double stroke.
+ * with `ground` (the colour behind the drawing) knocked out of its middle. Width and dashes stay
+ * in screen pixels at every zoom, so the pattern still reads zoomed out to the dots. `attributes`
+ * go on the drawn path, `coreAttributes` on the knocked-out ground of a double stroke.
  */
 export function StrokePaths({
   d,
@@ -40,7 +41,7 @@ export function StrokePaths({
 }) {
   const style = linkStyles[kind];
   const double = style.stroke === 'double';
-  const common = { d, fill: 'none', strokeDasharray: style.dash ?? undefined } as const;
+  const common = { d, fill: 'none', strokeDasharray: style.dash ?? undefined, vectorEffect: 'non-scaling-stroke' } as const;
   return (
     <>
       <path

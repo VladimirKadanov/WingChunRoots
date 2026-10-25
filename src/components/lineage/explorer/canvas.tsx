@@ -232,7 +232,9 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
   return (
     <>
       {/* The stroke of the explorer legend's sample (Legend strokes="canvas"), so the key decodes
-          the drawing without colour; a double stroke adds its knocked-out ground ([data-edge-core]). */}
+          the drawing without colour; a double stroke adds its knocked-out ground ([data-edge-core]).
+          Width and dashes stay in screen pixels at every zoom: scaled with the view, zoomed out
+          to the dots, they fell below a pixel and every state looked like a solid line. */}
       <StrokePaths
         d={d}
         kind={data.stroke}

@@ -18,7 +18,7 @@ describe('LinkStroke (plan §4.6: a legend sample is drawn the way its screen dr
     expect(strokes(sample(kind, 'canvas'))).toEqual(strokes(canvas(kind)));
   });
 
-  it('the canvas strokes: the cross-lineage long dash and dot, a double line as two lines', () => {
+  it('the canvas strokes: the cross-lineage long dash and dot, a double line as two lines, all in screen pixels', () => {
     const cross = strokes(canvas('cross_lineage'));
     expect(cross).toHaveLength(1);
     expect(cross[0]).toContain(`stroke-dasharray="${linkStyles.cross_lineage.dash}"`);
@@ -27,6 +27,7 @@ describe('LinkStroke (plan §4.6: a legend sample is drawn the way its screen dr
     expect(double).toHaveLength(2);
     expect(double.join('')).not.toContain('stroke-dasharray');
     expect(double[1]).toContain('stroke="var(--seal-ground, var(--bg))"');
+    for (const kind of KINDS) for (const path of strokes(canvas(kind))) expect(path, kind).toContain('vector-effect="non-scaling-stroke"');
   });
 
   it('the ink samples keep the ink shapes of ADR 0006 (the home page and the lineage screens)', () => {
