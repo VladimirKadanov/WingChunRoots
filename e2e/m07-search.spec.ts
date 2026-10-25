@@ -355,6 +355,18 @@ test("@M07 a user edits their own names in three scripts; editing another person
   await expect(page.getByLabel('Name 3', { exact: true })).toHaveValue('Тест Облак');
   await expect(page.getByLabel('Name 3', { exact: true })).toHaveAttribute('lang', 'bg-Cyrl');
 
+  // Han characters a step larger; Cyrillic at the size of the Latin names. Kind is a 16 px field
+  // like the others (no zoom on iOS), and a name that cannot be the display name says why.
+  const fontSize = (label: string) =>
+    page.getByLabel(label, { exact: true }).first().evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+  expect(await fontSize('Display name')).toBe(16);
+  expect(await fontSize('Name 3')).toBe(16);
+  expect(await fontSize('Name 2')).toBeGreaterThan(16);
+  for (const kind of await page.getByLabel('Kind', { exact: true }).all()) {
+    expect(await kind.evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px');
+  }
+  await expect(page.getByText('Choose “Latin letters” or “Cantonese, Hong Kong spelling” under “Written in” to use this name.')).toHaveCount(2);
+
   // Someone else's record: refused, through the same procedure.
   const other = await personIdOf('demo-hub-a');
   const refused = await apiPost(page, '/profile/update', {
@@ -376,6 +388,8 @@ test('@M07 saving a profile without a Latin-script primary name is refused with 
   await page.getByRole('button', { name: 'Save my profile' }).click();
   const summary = page.locator('[data-form-message]').filter({ visible: true });
   await expect(summary).toContainText(MISSING_PRIMARY);
+  // The row says what to change, not only that Latin letters are needed.
+  await expect(page.getByText('Choose “Latin letters” or “Cantonese, Hong Kong spelling” under “Written in” to use this name.').first()).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toHaveCount(0);
 
   // The procedure refuses it too, with the same message, whatever the browser checked.

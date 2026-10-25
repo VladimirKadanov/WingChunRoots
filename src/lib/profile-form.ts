@@ -3,10 +3,13 @@
 // as a Zod schema for the browser (TanStack Form checks it before anything is sent). The service
 // checks everything again (src/server/services/profile.ts); this file only spares a round trip.
 // Pure: the client editor and the Server Action share it.
+//
+// Zod Mini, the same package with functions instead of methods: the editor ships about 6 kB of
+// it rather than the 26 kB of the full API (plan §5.8 (c), the route's JavaScript budget).
 
-import * as z from 'zod';
+import * as z from 'zod/mini';
 
-import { cleanName, isLatinName, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting } from '@/server/services/names';
+import { cleanName, displayNameRefusal, isLatinName, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting } from '@/server/services/names';
 
 export const PROFILE_MAX_NAMES = 10;
 export const PROFILE_BIO_MAX_LENGTH = 1000;
@@ -51,10 +54,14 @@ export function parseWriting(value: string): Writing {
 
 export const LATIN_WRITING = writingValue(NAME_WRITINGS[0]!);
 
-/** Whether a name written this way may be the display name: Latin letters, not Jyutping or pinyin. */
+/** Why a name written this way cannot be the display name (displayNameRefusal), or null when it can. */
+export function primaryRefusal(writing: string, kind: NameRow['kind']): string | null {
+  return displayNameRefusal({ kind, ...parseWriting(writing) });
+}
+
+/** Whether a name written this way may be the display name: Latin letters, not Jyutping or pinyin, not an alias. */
 export function canBePrimary(writing: string, kind: NameRow['kind']): boolean {
-  const w = parseWriting(writing);
-  return w.script === 'Latn' && w.romanization !== 'jyutping' && w.romanization !== 'pinyin' && kind === 'name';
+  return primaryRefusal(writing, kind) === null;
 }
 
 /** A name row's field name, as the form posts it and as the service's field errors name it. */
@@ -174,8 +181,8 @@ function fitMessage(writing: Writing): string {
 export function profileFormSchema(latestStartYear: number) {
   return z
     .object({
-      names: z.array(z.object({ value: z.string(), writing: z.string(), kind: z.enum(['name', 'alias']), spare: z.boolean().optional() })),
-      primary: z.number().int(),
+      names: z.array(z.object({ value: z.string(), writing: z.string(), kind: z.enum(['name', 'alias']), spare: z.optional(z.boolean()) })),
+      primary: z.int(),
       bio: z.string(),
       bioLang: z.string(),
       countryCode: z.string(),
@@ -183,36 +190,39 @@ export function profileFormSchema(latestStartYear: number) {
       trainingStartYear: z.string(),
       showPublicly: z.boolean(),
     })
-    .superRefine((v, ctx) => {
-      const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
-      if (v.names.length > PROFILE_MAX_NAMES) issue('names', `Add at most ${PROFILE_MAX_NAMES} names.`);
-      const seen = new Set<string>();
-      v.names.forEach((row, i) => {
-        const value = cleanName(row.value);
-        const writing = parseWriting(row.writing);
-        if (!value) issue(nameField(i, 'value'), 'Enter the name, or remove this row.');
-        else if (value.length > NAME_MAX_LENGTH) issue(nameField(i, 'value'), `Use at most ${NAME_MAX_LENGTH} characters.`);
-        else if (!nameFitsWriting(value, writing.script, writing.lang, writing.romanization)) issue(nameField(i, 'value'), fitMessage(writing));
-        else {
-          const id = `${row.writing}\u0000${value.toLowerCase()}`;
-          if (seen.has(id)) issue(nameField(i, 'value'), 'This name is already in the list.');
-          seen.add(id);
+    .check(
+      z.superRefine((v, ctx) => {
+        const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+        if (v.names.length > PROFILE_MAX_NAMES) issue('names', `Add at most ${PROFILE_MAX_NAMES} names.`);
+        const seen = new Set<string>();
+        v.names.forEach((row, i) => {
+          const value = cleanName(row.value);
+          const writing = parseWriting(row.writing);
+          if (!value) issue(nameField(i, 'value'), 'Enter the name, or remove this row.');
+          else if (value.length > NAME_MAX_LENGTH) issue(nameField(i, 'value'), `Use at most ${NAME_MAX_LENGTH} characters.`);
+          else if (!nameFitsWriting(value, writing.script, writing.lang, writing.romanization)) issue(nameField(i, 'value'), fitMessage(writing));
+          else {
+            const id = `${row.writing}\u0000${value.toLowerCase()}`;
+            if (seen.has(id)) issue(nameField(i, 'value'), 'This name is already in the list.');
+            seen.add(id);
+          }
+        });
+        const primary = v.names[v.primary];
+        if (!primary) issue('names', MISSING_PRIMARY);
+        else if (!canBePrimary(primary.writing, primary.kind) || !isLatinName(cleanName(primary.value) || 'x')) {
+          issue('names', MISSING_PRIMARY);
+          // The same reason as the note under the radio (and the service's error).
+          issue(nameField(v.primary, 'isPrimary'), primaryRefusal(primary.writing, primary.kind) ?? 'Your display name must be written in Latin letters.');
         }
-      });
-      const primary = v.names[v.primary];
-      if (!primary) issue('names', MISSING_PRIMARY);
-      else if (!canBePrimary(primary.writing, primary.kind) || !isLatinName(cleanName(primary.value) || 'x')) {
-        issue('names', MISSING_PRIMARY);
-        issue(nameField(v.primary, 'isPrimary'), 'Your display name must be written in Latin letters.');
-      }
-      if (v.bio.trim().length > PROFILE_BIO_MAX_LENGTH) issue('bio', `Use at most ${PROFILE_BIO_MAX_LENGTH} characters.`);
-      if (v.trainingStartYear) {
-        const year = Number(v.trainingStartYear);
-        if (!/^\d{4}$/.test(v.trainingStartYear)) issue('trainingStartYear', 'Enter the year as four digits, for example 2009.');
-        else if (year < 1900) issue('trainingStartYear', `${year} is before 1900. Enter a year from 1900 to ${latestStartYear}.`);
-        else if (year > latestStartYear) issue('trainingStartYear', `${year} is after this year. Enter a year from 1900 to ${latestStartYear}.`);
-      }
-    });
+        if (v.bio.trim().length > PROFILE_BIO_MAX_LENGTH) issue('bio', `Use at most ${PROFILE_BIO_MAX_LENGTH} characters.`);
+        if (v.trainingStartYear) {
+          const year = Number(v.trainingStartYear);
+          if (!/^\d{4}$/.test(v.trainingStartYear)) issue('trainingStartYear', 'Enter the year as four digits, for example 2009.');
+          else if (year < 1900) issue('trainingStartYear', `${year} is before 1900. Enter a year from 1900 to ${latestStartYear}.`);
+          else if (year > latestStartYear) issue('trainingStartYear', `${year} is after this year. Enter a year from 1900 to ${latestStartYear}.`);
+        }
+      }),
+    );
 }
 
 /** The field errors of `values` under the schema, by field name; {} when there are none. */

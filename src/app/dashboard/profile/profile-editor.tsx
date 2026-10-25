@@ -16,7 +16,7 @@ import { type ReactNode, startTransition, useActionState, useEffect, useRef, use
 
 import { FormMessage, SelectField, SubmitButton, fieldClassName, useFocusOnError, useFormId, useHydrated } from '@/components/account/fields';
 import { NameLine } from '@/components/account/person-names';
-import { AlertIcon, CheckIcon, CloseIcon } from '@/components/icons';
+import { AlertIcon, CheckIcon, ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import { IDLE, fieldId, type FormState } from '@/lib/form-state';
@@ -26,6 +26,7 @@ import {
   type NameRow,
   nameField,
   parseWriting,
+  primaryRefusal,
   PROFILE_BIO_MAX_LENGTH,
   PROFILE_MAX_NAMES,
   type ProfileFormValues,
@@ -37,6 +38,8 @@ import {
 import { saveProfileAction } from './actions';
 
 const FORM_NAME = 'profile';
+/** Scripts whose names the name field draws a step larger (text-lg): Han, Japanese and Korean. */
+const LARGER_SCRIPTS = new Set(['Hant', 'Hans', 'Hani', 'Jpan', 'Kore']);
 
 export interface ProfileEditorOptions {
   countries: readonly { code: string; name: string }[];
@@ -225,7 +228,8 @@ export function ProfileEditor({
             const writingError = error(nameField(i, 'writing'));
             const primaryError = error(nameField(i, 'isPrimary'));
             const isRomanization = writing.romanization === 'jyutping' || writing.romanization === 'pinyin';
-            const eligible = canBePrimary(row.writing, row.kind);
+            const refusal = primaryRefusal(row.writing, row.kind);
+            const eligible = refusal === null;
             const isPrimary = values.primary === i;
             return (
               <li
@@ -262,7 +266,8 @@ export function ProfileEditor({
                         aria-invalid={valueError ? true : undefined}
                         aria-errormessage={valueError ? `${valueId}-error` : undefined}
                         aria-describedby={describedBy(valueError && `${valueId}-error`)}
-                        className={cx(fieldClassName, writing.script !== 'Latn' && 'text-lg')}
+                        // Dense Han, kana and Hangul read better a step larger; Cyrillic, Greek and the rest keep the field size.
+                        className={cx(fieldClassName, LARGER_SCRIPTS.has(writing.script) && 'text-lg')}
                       />
                       <FieldError id={`${valueId}-error`} error={valueError} />
                     </div>
@@ -283,7 +288,8 @@ export function ProfileEditor({
                     </SelectField>
                   </div>
 
-                  <div className="flex items-center justify-between gap-x-5 gap-y-2">
+                  {/* items-start: when Kind wraps under the radio on a phone, Remove stays on the radio's line. */}
+                  <div className="flex items-start justify-between gap-x-5 gap-y-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
                       <label htmlFor={primaryId} className={cx('flex min-h-11 items-center gap-3 text-ui', eligible || !hydrated ? 'cursor-pointer' : 'text-fg-subtle')}>
                         <input
@@ -303,20 +309,24 @@ export function ProfileEditor({
                       {isRomanization ? (
                         <input type="hidden" name={nameField(i, 'kind')} value="name" />
                       ) : (
-                        <span className="flex items-center gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
                           <label htmlFor={kindId} className="text-sm text-fg-muted">
                             Kind
                           </label>
-                          <select
-                            id={kindId}
-                            name={nameField(i, 'kind')}
-                            value={row.kind}
-                            onChange={(e) => setName(i, { kind: e.currentTarget.value === 'alias' ? 'alias' : 'name' })}
-                            className="min-h-11 rounded-sm border border-border-strong bg-surface-1 pr-3 pl-3 text-sm text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted focus-visible:border-fg"
-                          >
-                            <option value="name">Name</option>
-                            <option value="alias">Also known as</option>
-                          </select>
+                          {/* The fields' own select: 16 px (no zoom on iOS) and the thin chevron. */}
+                          <span className="relative w-52 min-w-0">
+                            <select
+                              id={kindId}
+                              name={nameField(i, 'kind')}
+                              value={row.kind}
+                              onChange={(e) => setName(i, { kind: e.currentTarget.value === 'alias' ? 'alias' : 'name' })}
+                              className={cx(fieldClassName, 'appearance-none pr-11')}
+                            >
+                              <option value="name">Name</option>
+                              <option value="alias">Also known as</option>
+                            </select>
+                            <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+                          </span>
                         </span>
                       )}
                     </div>
@@ -333,9 +343,10 @@ export function ProfileEditor({
                     ) : null}
                   </div>
                   {/* On a line of its own, so Remove stays at the end of the row on every card. */}
-                  {hydrated && !eligible ? (
+                  {/* Why this name cannot be the display name, and what to change (the save's error says the same). */}
+                  {hydrated && refusal ? (
                     <p id={`${primaryId}-why`} className="-mt-2 text-sm text-fg-subtle">
-                      Only a name in Latin letters can be your display name.
+                      {refusal}
                     </p>
                   ) : null}
                   <FieldError id={`${primaryId}-error`} error={primaryError} />

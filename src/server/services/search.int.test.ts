@@ -371,6 +371,22 @@ describe('profile.update', () => {
     const noLatin = names().map((n) => ({ ...n, isPrimary: n.script === 'Hant' }));
     await expect(profileUpdate(p, { names: noLatin, showPublicly: false }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST', message: MISSING_PRIMARY_MESSAGE });
     await expect(profileUpdate(p, { names: names().slice(1), showPublicly: false }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST', message: MISSING_PRIMARY_MESSAGE });
+    // The refused display name's own error says why, and what to change (as the editor's note does).
+    const jyutpingFirst = names().map((n) => ({ ...n, isPrimary: n.romanization === 'jyutping' }));
+    await expect(profileUpdate(p, { names: jyutpingFirst, showPublicly: false }, meta)).rejects.toMatchObject({
+      fields: { 'names.3.isPrimary': 'Jyutping and pinyin help people find you; your display name is your everyday spelling.' },
+    });
+    await expect(profileUpdate(p, { names: noLatin, showPublicly: false }, meta)).rejects.toMatchObject({
+      fields: { 'names.1.isPrimary': 'Choose “Latin letters” or “Cantonese, Hong Kong spelling” under “Written in” to use this name.' },
+    });
+    const alias = [{ kind: 'alias' as const, value: 'Demo Pending Alias', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true }];
+    await expect(profileUpdate(p, { names: alias, showPublicly: false }, meta)).rejects.toMatchObject({
+      fields: { 'names.0.isPrimary': 'A name marked “Also known as” cannot be your display name.' },
+    });
+    // The biography is English for now (In scope 1): another language is refused.
+    await expect(profileUpdate(p, { names: names(), bio: { body: 'A fictional biography.', lang: 'bg' }, showPublicly: false }, meta)).rejects.toMatchObject({
+      fields: { 'bio.lang': 'Choose the language of your biography.' },
+    });
     await expect(profileUpdate(null, { names: names(), showPublicly: false }, meta)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
 

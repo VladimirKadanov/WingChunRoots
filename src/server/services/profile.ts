@@ -26,22 +26,18 @@ import { type Country, COUNTRIES, fieldErrors, isCountryCode, type PlaceOption }
 import { currentConsents, grantConsents, withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
-import { cleanName, LANG_TAG, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting, type NameWriting } from './names';
+import { cleanName, displayNameRefusal, LANG_TAG, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting, type NameWriting } from './names';
 
 export const MAX_NAMES = 10;
 export const BIO_MAX_LENGTH = 1000;
 
-/** The languages the biography may be written in; English for now (milestone M07), the tag is kept. */
-export const BIO_LANGUAGES: readonly { lang: string; label: string }[] = [
-  { lang: 'en', label: 'English' },
-  { lang: 'bg', label: 'Bulgarian' },
-  { lang: 'zh-Hant', label: 'Chinese, Traditional characters' },
-  { lang: 'zh-Hans', label: 'Chinese, Simplified characters' },
-  { lang: 'de', label: 'German' },
-  { lang: 'fr', label: 'French' },
-  { lang: 'es', label: 'Spanish' },
-  { lang: 'it', label: 'Italian' },
-];
+/**
+ * The languages the biography may be written in: English for now (milestone M07, In scope 1). The
+ * field and person_bio.lang stay, so more languages can come once the public profile renders the
+ * biography with its `lang` (plan §5.3); until then a biography in another language would be read
+ * out with English pronunciation.
+ */
+export const BIO_LANGUAGES: readonly { lang: string; label: string }[] = [{ lang: 'en', label: 'English' }];
 
 export const MISSING_PRIMARY_MESSAGE = 'Add your name in Latin letters and choose it as your display name.';
 const NOT_YOURS_MESSAGE = 'You can edit only your own profile. Records kept by the archive are corrected by the archivists.';
@@ -116,10 +112,11 @@ export function checkNames(names: readonly z.output<typeof nameInput>[]): CleanN
   else if (primaries.length > 1) fields.names = 'Choose one display name.';
   else {
     const i = clean.indexOf(primaries[0]!);
-    const primary = primaries[0]!;
-    if (primary.script !== 'Latn' || primary.kind !== 'name' || primary.romanization === 'jyutping' || primary.romanization === 'pinyin') {
+    // Latin script, of kind `name`, not Jyutping or pinyin; the error says what to change.
+    const refusal = displayNameRefusal(primaries[0]!);
+    if (refusal) {
       fields.names = MISSING_PRIMARY_MESSAGE;
-      fields[`names.${i}.isPrimary`] = 'Your display name must be written in Latin letters.';
+      fields[`names.${i}.isPrimary`] = refusal;
     }
   }
   const seen = new Map<string, number>();

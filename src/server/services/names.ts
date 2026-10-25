@@ -119,6 +119,20 @@ export function nameFitsWriting(value: string, script: string, lang: string, rom
   return known !== undefined && known.script === script && romanization === null && matchesScript(value, lang);
 }
 
+/**
+ * Why a name cannot be the display name (plan §5.3: the everyday spelling, in Latin letters), in
+ * the words the editor's note and the save's error use, or null when it can be. Each reason says
+ * what to change.
+ */
+export function displayNameRefusal(name: { kind: string; script: string; romanization: string | null }): string | null {
+  if (name.romanization === 'jyutping' || name.romanization === 'pinyin' || name.kind === 'romanization') {
+    return 'Jyutping and pinyin help people find you; your display name is your everyday spelling.';
+  }
+  if (name.kind === 'alias') return 'A name marked “Also known as” cannot be your display name.';
+  if (name.script !== 'Latn') return 'Choose “Latin letters” or “Cantonese, Hong Kong spelling” under “Written in” to use this name.';
+  return null;
+}
+
 /** A slug for a new person: the ASCII form of the Latin name and a random suffix. */
 export function slugFromName(latinName: string, suffix: string): string {
   const base = cleanName(latinName)
