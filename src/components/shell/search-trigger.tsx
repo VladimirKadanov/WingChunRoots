@@ -75,7 +75,7 @@ export function SearchField({ variant }: { variant: 'bar' | 'rail' }) {
       )}
     >
       <SearchIcon size={variant === 'bar' ? 18 : 19} className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate">Search</span>
+      <span className="min-w-0 flex-1 truncate">{variant === 'bar' ? 'Find' : 'Find a name'}</span>
       {variant === 'rail' ? (
         <kbd aria-hidden="true" className="shrink-0 rounded-[3px] border border-border-subtle px-1.5 font-sans text-xs text-fg-subtle">
           Ctrl K
