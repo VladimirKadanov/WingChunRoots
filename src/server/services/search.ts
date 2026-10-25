@@ -35,7 +35,7 @@ export const SEARCHES_PER_WINDOW = 40;
 export const SEARCH_WINDOW_MS = 10_000;
 const recentSearches = new Map<string, number[]>();
 
-function checkSearchRate(meta: RequestMeta | undefined, now = Date.now()): void {
+export function checkSearchRate(meta: RequestMeta | undefined, now = Date.now()): void {
   // An in-process call (no request: the tests) is not counted. A request whose client address
   // cannot be read (a forged X-Forwarded-For chain without TRUSTED_PROXIES) shares one bucket, so
   // forging the header never turns the limit off.

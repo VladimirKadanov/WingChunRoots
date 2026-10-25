@@ -17,7 +17,7 @@ import { searchKeysRebuildHandler } from '../jobs/worker';
 import { handleApiRequest } from '../rpc/handler';
 import { consentWithdraw, privacyOverview, requestAccountDeletion } from './privacy';
 import { MISSING_PRIMARY_MESSAGE, profileGet, profileUpdate } from './profile';
-import { searchQuery } from './search';
+import { checkSearchRate, SEARCH_WINDOW_MS, SEARCHES_PER_WINDOW, searchQuery } from './search';
 
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
@@ -167,10 +167,22 @@ describe('search.query', () => {
   });
 
   it('limits the searches of one client in a short window (429), and counts each client apart', async () => {
+    // The limiter on a fixed clock a minute ago (a slow machine must not let early searches leave
+    // the window, and nothing here stays in the window of the real-time calls after it).
     const flood = { requestId: 'flood', ipHmac: 'demo-flood-client' };
-    for (let i = 0; i < 40; i++) await searchQuery(null, { q: 'so' }, flood);
-    await expect(searchQuery(null, { q: 'so' }, flood)).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS', status: 429 });
-    await expect(searchQuery(null, { q: 'so' }, { requestId: 'other', ipHmac: 'demo-other-client' })).resolves.toBeDefined();
+    const t0 = Date.now() - 60_000;
+    for (let i = 0; i < SEARCHES_PER_WINDOW; i++) checkSearchRate(flood, t0 + i);
+    expect(() => checkSearchRate(flood, t0 + 100)).toThrow(expect.objectContaining({ code: 'TOO_MANY_REQUESTS', status: 429 }));
+    // Another client is counted apart, a request without a readable address shares one bucket, and
+    // the window moves on.
+    expect(() => checkSearchRate({ requestId: 'other', ipHmac: 'demo-other-client' }, t0 + 100)).not.toThrow();
+    for (let i = 0; i < SEARCHES_PER_WINDOW; i++) checkSearchRate({ requestId: `n${i}`, ipHmac: null }, t0 + i);
+    expect(() => checkSearchRate({ requestId: 'n', ipHmac: null }, t0 + 100)).toThrow(expect.objectContaining({ code: 'TOO_MANY_REQUESTS' }));
+    expect(() => checkSearchRate(flood, t0 + SEARCH_WINDOW_MS + 100)).not.toThrow();
+    // Through the service, at real time: a flooded client is refused with 429.
+    const busy = { requestId: 'busy', ipHmac: 'demo-busy-client' };
+    for (let i = 0; i < SEARCHES_PER_WINDOW; i++) checkSearchRate(busy);
+    await expect(searchQuery(null, { q: 'so' }, busy)).rejects.toMatchObject({ code: 'TOO_MANY_REQUESTS', status: 429 });
   });
 
   it('reads the keys of public people only, through v_public_person_key', async () => {
