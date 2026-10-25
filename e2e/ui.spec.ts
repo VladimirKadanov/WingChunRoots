@@ -889,9 +889,11 @@ test.describe('@M00b without JavaScript', () => {
   });
 });
 
-test('@M00b the Lineage tab is current on its placeholder page once the page has hydrated', async ({ page }) => {
+// Until M05 /explore was the "not drawn yet" page (404); since M05 it is the explorer (200), and
+// the Lineage tab is current there in the same way.
+test('@M00b the Lineage tab is current on the explorer page once the page has hydrated', async ({ page }) => {
   const response = await page.goto('/explore');
-  expect(response?.status()).toBe(404);
+  expect(response?.status()).toBe(200);
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Lineage' })).toHaveAttribute('aria-current', 'page');
   await expect(links.filter({ hasText: 'Explore' })).not.toHaveAttribute('aria-current', 'page');

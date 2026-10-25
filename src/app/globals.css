@@ -282,3 +282,14 @@
   transform-box: fill-box;
   transform-origin: center;
 }
+
+/* M05: the explorer's layout animates with the motion tokens (plan §5.8 (e)): a node moves to its
+   new place when the scene changes; under reduced motion it is there at once. */
+.explorer-canvas .react-flow__node {
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .explorer-canvas .react-flow__node {
+    transition: none;
+  }
+}

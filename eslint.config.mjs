@@ -54,8 +54,14 @@ const modulePackages = [
   },
   {
     module: 'src/server/rpc',
-    group: ['@orpc/*'],
+    group: ['@orpc/*', '!@orpc/client', '!@orpc/client/*', '!@orpc/tanstack-query'],
     message: 'Only src/server/rpc builds the oRPC router and handlers; Server Actions call serverClient() (plan §6.8).',
+  },
+  {
+    // M05: the browser's client of /api/rpc and its TanStack Query helpers, in one place.
+    module: 'src/lib/rpc-client',
+    group: ['@orpc/client', '@orpc/client/*', '@orpc/tanstack-query'],
+    message: 'The browser reaches the oRPC router only through src/lib/rpc-client (plan §6.8).',
   },
 ];
 
@@ -309,9 +315,16 @@ export default defineConfig([
     // The rest of src/lib is shared with pages and the request path: no ELK and no layout
     // there either, so a re-export cannot carry them into a page bundle (plan §4.1).
     files: ['src/lib/**/*.{ts,tsx}'],
-    ignores: ['src/lib/lineage-layout/**'],
+    ignores: ['src/lib/lineage-layout/**', 'src/lib/rpc-client/**'],
     rules: {
       'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath]),
+    },
+  },
+  {
+    // M05: the same bans for the browser's oRPC client, which may import its own packages.
+    files: ['src/lib/rpc-client/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': restrictImports([elkOnlyInLayoutModule, noLayoutInRequestPath], { module: 'src/lib/rpc-client' }),
     },
   },
   globalIgnores([

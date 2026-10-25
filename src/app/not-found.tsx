@@ -36,8 +36,8 @@ export default async function NotFound() {
       <p className="eyebrow">404 · Not on the record</p>
       <h1 className="max-w-[16ch] font-display text-section">This page is not drawn yet</h1>
       <p className="max-w-[56ch] text-fg-muted">
-        The address may be mistyped, or the page may open later in the pilot: the lineage explorer, the school finder and your own
-        dashboard are still being built. The home page shows a demo lineage today.
+        The address may be mistyped, or the page may open later in the pilot: the school finder is still being built. The home page
+        shows a demo lineage, and the lineage explorer draws the record.
       </p>
       <div>
         <Link href="/" className={buttonVariants({ variant: 'secondary' })}>

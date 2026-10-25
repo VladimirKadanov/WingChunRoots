@@ -106,12 +106,12 @@ test('@M04 profile of demo-two-lineages lists two teachers from different lineag
   await expect(rows.nth(1).getByText('Primary teacher', { exact: true })).toHaveCount(0);
   // The teacher from the other lineage is marked as such, in words.
   await expect(rows.filter({ hasText: 'Demo Lineage B' }).getByText('Cross-lineage', { exact: true })).toBeVisible();
-  // The list view, and the explorer's place: it opens with M05, so until then it says "soon" and
-  // is a link that is switched off, never one to a page that does not exist yet.
+  // The list view, and the explorer: until M05 its place said "soon" as a link that was switched
+  // off; since M05 it is a link to the explorer focused on this person.
   const views = page.getByRole('navigation', { name: 'Views of this person' });
-  const graph = views.getByRole('link', { name: 'Graph soon' });
-  await expect(graph).toHaveAttribute('aria-disabled', 'true');
-  await expect(graph).not.toHaveAttribute('href');
+  const graph = views.getByRole('link', { name: 'Graph', exact: true });
+  await expect(graph).not.toHaveAttribute('aria-disabled');
+  await expect(graph).toHaveAttribute('href', /^\/explore\?focus=[0-9a-f-]{36}$/);
   await expect(views.getByRole('link', { name: 'List' })).toHaveAttribute('href', '/people/demo-two-lineages/lineage');
 });
 

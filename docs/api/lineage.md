@@ -34,6 +34,7 @@
 | `lineage.ancestors` | `GET /lineage/ancestors` | `focusId` | граф: всички записани предци |
 | `lineage.subtree` | `GET /lineage/subtree` | `rootId`; `lineageId` (по избор: само тази линия); `depth` 1–6, по подразбиране 3 | граф: наследниците |
 | `lineage.paths` | `GET /lineage/paths` | `focusId`; `limit` 1–200, по подразбиране 50 | граф с `paths`: пътищата от най-ранните записани учители до личността |
+| `lineage.start` | `GET /lineage/start` | — | началните точки на изследователя (M05): всяка линия с публичен основател, с `id`, `slug`, `name`, броя публични хора (`people`) и основателя (`root`: `id`, `slug`, `displayName`); кеширан публичен DTO с тагове `lineage:<id>` и `person:<основател>` |
 | `people.get` | `GET /people/{slug}` | `slug` (адресът на профила, до 120 знака) | профил |
 | `people.students` | `GET /people/{slug}/students` | `slug`; `page` 1–1000, по подразбиране 1; `pageSize` 1–50, по подразбиране 50; `order` `name` (по подразбиране) или `seniority` (по най-ранното датирано начало на обучението, независимо дали е приключило; недатираните накрая) | страница ученици |
 

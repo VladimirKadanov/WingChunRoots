@@ -7,7 +7,7 @@
 // Sign-up, sign-in, e-mail confirmation, password reset and two-factor authentication are Better
 // Auth's own HTTP API under /api/auth (cookie or bearer, docs/adr/0004-auth.md).
 
-import { ORPCError, os, ValidationError } from '@orpc/server';
+import { ORPCError, os, type RouterClient, ValidationError } from '@orpc/server';
 
 import { requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
@@ -32,6 +32,8 @@ import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAc
 import { setRoleInput, setUserRole } from '../services/roles';
 import { twoFactorOverview } from '../services/two-factor';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
+import { exploreStartSchema } from '../dto/explore';
+import { exploreStart } from '../services/explore-start';
 import {
   ancestorsInput,
   egoInput,
@@ -151,6 +153,11 @@ export const router = {
       .input(pathsInput)
       .output(lineagePathsSchema)
       .handler(({ context, input }) => lineagePaths(context.principal, input, context.meta)),
+    // M05: the explorer's starting points (public lineages with a public root).
+    start: base
+      .route({ method: 'GET', path: '/lineage/start', summary: 'Public lineages with their public root: where the explorer starts' })
+      .output(exploreStartSchema)
+      .handler(() => exploreStart()),
   },
   people: {
     get: base
@@ -213,3 +220,5 @@ export const router = {
 };
 
 export type Router = typeof router;
+/** The router as a client sees it: the type src/lib/rpc-client gives the browser's client (M05). */
+export type AppRouterClient = RouterClient<Router>;

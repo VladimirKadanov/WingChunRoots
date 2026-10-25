@@ -119,17 +119,16 @@ export function FactStrip({ profile, className }: { profile: PersonProfileDto; c
 }
 
 /**
- * Profile, list and graph of one person. The graph is the explorer, which opens with M05: until
- * then its place is there and says "soon", as a link that is switched off (role=link,
- * aria-disabled, no address), never a link to a page that does not exist yet (review round 2).
- * M05 gives it the address /explore?focus=<id>.
+ * Profile, list and graph of one person. The graph is the explorer (M05), at /explore?focus=<id>.
+ * Before M05 its place said "soon", as a link that was switched off; the `soon` branch below stays
+ * for a view that is not built yet.
  */
-export function PersonViews({ profile, current }: { profile: Pick<PersonProfileDto, 'slug'>; current: 'profile' | 'list' }) {
-  const views = [
+export function PersonViews({ profile, current }: { profile: Pick<PersonProfileDto, 'slug' | 'id'>; current: 'profile' | 'list' }) {
+  const views: readonly { key: string; label: string; href: string | null; soon: boolean }[] = [
     { key: 'profile', label: 'Profile', href: `/people/${profile.slug}`, soon: false },
     { key: 'list', label: 'List', href: `/people/${profile.slug}/lineage`, soon: false },
-    { key: 'graph', label: 'Graph', href: null, soon: true },
-  ] as const;
+    { key: 'graph', label: 'Graph', href: `/explore?focus=${profile.id}`, soon: false },
+  ];
   const item = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xs px-3.5 text-ui font-semibold';
   return (
     <nav aria-label="Views of this person">

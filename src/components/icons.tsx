@@ -146,3 +146,8 @@ export const PlannedIcon = icon(
 );
 /** A short dash: not included (always beside the words "Not included"). */
 export const DashIcon = icon('Dash', <path d="M7 12h10" />, 1.9);
+// M05: the explorer's zoom controls.
+export const PlusIcon = icon('Plus', <path d="M12 6v12M6 12h12" />, 1.8);
+export const MinusIcon = icon('Minus', <path d="M6 12h12" />, 1.8);
+/** Fit the whole drawing in view: four corners. */
+export const FitIcon = icon('Fit', <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />, 1.8);
