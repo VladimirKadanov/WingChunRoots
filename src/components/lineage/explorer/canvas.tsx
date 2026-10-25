@@ -41,6 +41,7 @@ import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
+import { bezierLabelPoint } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Point, Scene, SceneEdge } from '@/lib/lineage-layout/types';
 
 import { type GenerationLabel } from '../generation';
@@ -207,9 +208,12 @@ function routeEnds(path: SceneEdge['path']): { start: Point; end: Point } {
   return { start: path.points[0]!, end: path.points[path.points.length - 1]! };
 }
 
-/** Where an edge's label goes: the curve's midpoint, or the middle of an orthogonal route's longest segment. */
+/**
+ * Where an edge's label goes: on a curve, its midpoint or, on a long one, its run beside the
+ * student (bezierLabelPoint); on an orthogonal route, the middle of its longest segment.
+ */
 function labelPoint(path: SceneEdge['path']): Point {
-  if (path.type === 'bezier') return path.midpoint;
+  if (path.type === 'bezier') return bezierLabelPoint(path);
   let best = { length: -1, at: path.points[0] ?? { x: 0, y: 0 } };
   for (let i = 1; i < path.points.length; i++) {
     const a = path.points[i - 1]!;
