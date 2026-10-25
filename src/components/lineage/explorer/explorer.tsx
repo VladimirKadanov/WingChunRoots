@@ -17,7 +17,7 @@
 import { QueryClient, QueryClientProvider, skipToken, useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { createParser, createSerializer, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { createParser, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Activity, createContext, type ReactNode, use, useEffect, useState, useSyncExternalStore } from 'react';
 
@@ -37,6 +37,7 @@ import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../s
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
 import {
+  explorerHref,
   explorerRead,
   type ExplorerParams,
   GENERATIONS_DEFAULT,
@@ -87,8 +88,6 @@ const parsers = {
   page: parseAsString,
   routes: parseAsString,
 };
-/** The explorer's address with these values, as the browser writes it. */
-const serialize = createSerializer(parsers);
 
 export interface ExplorerProps {
   /** The server's first read and the key of the request it answers. */
@@ -669,7 +668,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   // The list view inside the explorer, with this person in focus (the lineage view centres
                   // on a person as the person view, as centerOn does).
                   <Link
-                    href={`/explore${serialize({ ...url, focus: selected.id, view: 'list', page: null, routes: null, ...(kind === 'lineage' ? { lineage: null } : {}) })}#students-heading`}
+                    href={`${explorerHref({ ...url, focus: selected.id, view: 'list', ...(kind === 'lineage' ? { lineage: null } : {}) })}#students-heading`}
                     className="link inline-flex min-h-11 items-center text-sm"
                   >
                     All students in the list view (+{selectedMore} not drawn)
