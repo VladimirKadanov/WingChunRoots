@@ -7,7 +7,7 @@
 //   first read from the server so the page needs no second round trip;
 // - the layout runs in the Web Worker of src/lib/lineage-layout (useLayoutWorker), which loads ELK
 //   only here; until the scene is ready the canvas shows a skeleton of the same shape (plan §5.6);
-// - React Flow (./canvas.tsx) loads with next/dynamic, only on this route;
+// - React Flow (./canvas.tsx) loads with next/dynamic, only on this route, while the first layout runs;
 // - "Graph / List": <Activity> keeps the graph's state (zoom, selection) while the list, the M04
 //   list view rendered on the server, is shown (plan §4.10).
 //
