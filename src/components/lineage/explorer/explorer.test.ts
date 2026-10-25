@@ -1,11 +1,12 @@
 // The explorer's nodes and edges for React Flow (buildFlow; milestone M05): selecting a person
-// shows their ended training, but the generation labels stay those of the view (graph-17).
+// shows their ended training, but the generation labels stay those of the view (graph-17). And
+// egoPart, the phone's smaller person view cut from the desktop one for the skeleton (ci-webkit-2).
 
 import { describe, expect, it } from 'vitest';
 
 import type { Scene } from '@/lib/lineage-layout/types';
 import { generationText } from '../generation';
-import { buildFlow } from './explorer';
+import { buildFlow, egoPart } from './explorer';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const LINEAGE = id(900);
@@ -73,5 +74,37 @@ describe('buildFlow', () => {
 
   it('counts ended training in the labels with show=historical', () => {
     expect(labelOf(buildFlow(graph, scene, new Map(), true, null), 3)).toBe('Generation 3 from Demo Root');
+  });
+});
+
+describe('egoPart', () => {
+  // Four generations of teachers above the focus (5), two of students below it; 9 is a second
+  // teacher of 7, a student of the focus. The desktop read holds all of them.
+  const people = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const desktop = {
+    ...graph,
+    focusId: id(5),
+    nodes: people.map((n) => node(n, `Demo Person ${n}`)),
+    edges: [edge(1, 2), edge(2, 3), edge(3, 4), edge(4, 5), edge(5, 6), edge(5, 7), edge(9, 7), edge(6, 8)],
+  } as unknown as Parameters<typeof egoPart>[0];
+  const ids = (g: Parameters<typeof egoPart>[0]) => g.nodes.map((n) => n.id).sort();
+
+  it('keeps the generations a phone reads (2 up, 1 down) and the links between them', () => {
+    const phone = egoPart(desktop, 2, 1);
+    expect(ids(phone)).toEqual([3, 4, 5, 6, 7].map(id).sort());
+    expect(phone.edges.map((e) => [e.teacherId, e.studentId])).toEqual([
+      [id(3), id(4)],
+      [id(4), id(5)],
+      [id(5), id(6)],
+      [id(5), id(7)],
+    ]);
+  });
+
+  it('walks up through teachers and down through students only, as the server does: not to a student\'s other teacher', () => {
+    expect(ids(egoPart(desktop, 16, 2))).toEqual(ids(desktop).filter((n) => n !== id(9)));
+  });
+
+  it('leaves an answer without a focus as it is', () => {
+    expect(egoPart({ ...desktop, focusId: null }, 2, 1)).toEqual({ ...desktop, focusId: null });
   });
 });

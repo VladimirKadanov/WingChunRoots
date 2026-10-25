@@ -932,6 +932,53 @@ test.describe('M05 fixes B', () => {
       expect((await layouts(page)).sent.filter((s) => !s.warmup)).toHaveLength(1);
     });
 
+    test('@M05 on a phone the loading skeleton has the shape of the phone\'s own smaller view from its first frame', async ({ page, browser, baseURL }) => {
+      // A student two generations below a lineage's root: the desktop view reaches the root, the
+      // phone's (2 up) does not. With reduced motion the fit is placed at once, so every card of the
+      // view is on the page (onlyRenderVisibleElements) when the generations are counted.
+      const { getDb } = await import('../src/server/db');
+      const { sql } = await import('drizzle-orm');
+      const found = await getDb().execute<{ id: string }>(
+        sql`SELECT e.student_person_id::text AS id FROM v_public_edge e JOIN person t ON t.id = e.teacher_person_id WHERE t.slug = 'demo-pro-sifu-8' ORDER BY 1 LIMIT 1`,
+      );
+      const focus = found.rows[0]!.id;
+      const drawnRanks = async (p: typeof page) => {
+        await openExplorer(p, { focus });
+        await p.waitForTimeout(400);
+        return new Set(await personNodes(p).evaluateAll((els) => els.map((el) => el.getAttribute('data-rank')))).size;
+      };
+      const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce', baseURL });
+      const desktopRanks = await drawnRanks(await desktop.newPage());
+      await desktop.close();
+
+      // Every painted frame of the skeleton: how many of its rows are shown. (Streamed HTML waits in
+      // a hidden container before React reveals it: those frames show no skeleton at all.)
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.addInitScript(() => {
+        const frames: number[] = [];
+        (window as unknown as { __rows: number[] }).__rows = frames;
+        const frame = () => {
+          const skeleton = [...document.querySelectorAll('[data-testid="explorer-skeleton"]')].find((s) => s.checkVisibility());
+          if (skeleton) {
+            const rows = [...skeleton.querySelectorAll<HTMLElement>('[data-skeleton-row]')];
+            frames.push(rows.filter((row) => row.checkVisibility()).length);
+          }
+          if (!document.querySelector('.react-flow__node')) requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      });
+      // The phone's own read (up=2, down=1) arrives well after the page and its skeleton.
+      await page.route('**/api/rpc/lineage/**', async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      });
+      const phoneRanks = await drawnRanks(page);
+      expect(desktopRanks, 'the desktop view of this person has more generations than the phone\'s').toBeGreaterThan(phoneRanks);
+      const frames = await page.evaluate(() => (window as unknown as { __rows: number[] }).__rows);
+      expect(frames.length).toBeGreaterThan(10);
+      expect(new Set(frames), 'rows shown, frame by frame').toEqual(new Set([Math.min(phoneRanks, 8)]));
+    });
+
     test('@M05 with a person selected on a phone, the legend and the zoom buttons stay in view and uncovered', async ({ page }) => {
       const id = await personIdOf('demo-two-lineages');
       await openExplorer(page, { focus: id });

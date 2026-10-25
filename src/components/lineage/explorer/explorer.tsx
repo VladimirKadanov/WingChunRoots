@@ -43,6 +43,7 @@ import {
   isUuid,
   MAX_DOWN,
   MAX_UP,
+  NARROW_DEFAULTS,
   NARROW_QUERY,
   capFanout,
   drawnByDefault,
@@ -207,30 +208,89 @@ function drawnKinds(graph: LineageGraphDto, edges: readonly LineageEdge[]): Link
   return legendKinds(kinds);
 }
 
-/** A skeleton with the shape of the coming drawing: one row per generation, a slot per person (plan §5.6). */
-function Skeleton({ graph, showHistorical }: { graph: LineageGraphDto | null; showHistorical: boolean }) {
-  let rows: number[] = [1, 2, 4];
-  if (graph && graph.nodes.length > 0) {
-    try {
-      const { ranks, rankCount } = computeRanks(toLayoutGraph(drawnByDefault(capFanout(graph).graph, showHistorical)));
-      rows = Array.from({ length: rankCount }, () => 0);
-      for (const rank of ranks.values()) rows[rank] = (rows[rank] ?? 0) + 1;
-    } catch {
-      // A graph the layout refuses (a cycle) gets the generic shape; the error state follows.
-    }
+/**
+ * The part of an ego answer that a read of fewer generations returns, as the server's egoNodeIds
+ * makes it: `up` generations of teachers and `down` of students around the focus, and the links
+ * between them. The server's first read is the desktop one, which holds the phone's smaller one,
+ * so the skeleton can take the phone's shape from it before the phone's own answer is here.
+ */
+export function egoPart(graph: LineageGraphDto, up: number, down: number): LineageGraphDto {
+  const focus = graph.focusId;
+  if (focus === null) return graph;
+  const teachers = new Map<string, string[]>();
+  const students = new Map<string, string[]>();
+  for (const e of graph.edges) {
+    teachers.set(e.studentId, [...(teachers.get(e.studentId) ?? []), e.teacherId]);
+    students.set(e.teacherId, [...(students.get(e.teacherId) ?? []), e.studentId]);
   }
+  const kept = new Set([focus]);
+  const walk = (next: Map<string, string[]>, generations: number) => {
+    const reached = new Set([focus]);
+    let frontier = [focus];
+    for (let generation = 1; generation <= generations && frontier.length > 0; generation += 1) {
+      frontier = [...new Set(frontier.flatMap((id) => next.get(id) ?? []))].filter((id) => !reached.has(id));
+      for (const id of frontier) {
+        reached.add(id);
+        kept.add(id);
+      }
+    }
+  };
+  walk(teachers, up);
+  walk(students, down);
+  return {
+    ...graph,
+    nodes: graph.nodes.filter((n) => kept.has(n.id)),
+    edges: graph.edges.filter((e) => kept.has(e.teacherId) && kept.has(e.studentId)),
+  };
+}
+
+/** People per generation of the coming drawing, top down; a generic shape without a graph. */
+function skeletonRows(graph: LineageGraphDto | null, showHistorical: boolean): number[] {
+  if (!graph || graph.nodes.length === 0) return [1, 2, 4];
+  try {
+    const { ranks, rankCount } = computeRanks(toLayoutGraph(drawnByDefault(capFanout(graph).graph, showHistorical)));
+    const rows = Array.from({ length: rankCount }, () => 0);
+    for (const rank of ranks.values()) rows[rank] = (rows[rank] ?? 0) + 1;
+    return rows;
+  } catch {
+    // A graph the layout refuses (a cycle) gets the generic shape; the error state follows.
+    return [1, 2, 4];
+  }
+}
+
+function SkeletonRows({ rows }: { rows: number[] }) {
+  return rows.slice(0, 8).map((count, i) => (
+    <div key={i} data-skeleton-row={i} className="flex max-w-full justify-center gap-3 overflow-hidden">
+      {Array.from({ length: Math.min(count, 7) }, (_, j) => (
+        <div key={j} className="h-16 w-[200px] max-w-[42vw] shrink-0 animate-pulse rounded-sm border border-border-subtle bg-surface-2 motion-reduce:animate-none" />
+      ))}
+    </div>
+  ));
+}
+
+/**
+ * A skeleton with the shape of the coming drawing: one row per generation, a slot per person (plan
+ * §5.6). `phone` is the shape a phone will draw, given only while the width is not known yet (the
+ * server's HTML and hydration): CSS then shows the one that fits, the same width as NARROW_QUERY.
+ */
+function Skeleton({ graph, showHistorical, phone }: { graph: LineageGraphDto | null; showHistorical: boolean; phone?: LineageGraphDto | null }) {
   return (
     <div data-testid="explorer-skeleton" aria-busy="true" className="absolute inset-0 flex flex-col items-center justify-center gap-[30px] overflow-hidden p-6">
       <span className="sr-only" role="status">
         Laying out the lineage…
       </span>
-      {rows.slice(0, 8).map((count, i) => (
-        <div key={i} data-skeleton-row={i} className="flex max-w-full justify-center gap-3 overflow-hidden">
-          {Array.from({ length: Math.min(count, 7) }, (_, j) => (
-            <div key={j} className="h-16 w-[200px] max-w-[42vw] shrink-0 animate-pulse rounded-sm border border-border-subtle bg-surface-2 motion-reduce:animate-none" />
-          ))}
-        </div>
-      ))}
+      {phone ? (
+        <>
+          <div className="contents max-sm:hidden">
+            <SkeletonRows rows={skeletonRows(graph, showHistorical)} />
+          </div>
+          <div className="hidden max-sm:contents">
+            <SkeletonRows rows={skeletonRows(phone, showHistorical)} />
+          </div>
+        </>
+      ) : (
+        <SkeletonRows rows={skeletonRows(graph, showHistorical)} />
+      )}
     </div>
   );
 }
@@ -307,10 +367,18 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // Only the answer of this read is laid out: not the last answer, kept on screen while this one
   // loads, and nothing before the width is known (a phone would lay out the desktop read first).
   const answer = narrow !== null && !query.isPlaceholderData ? graph : null;
+  // Until then the skeleton has the shape of the drawing to come. A phone's first read waits for
+  // the width, so it shows the part of the server's (desktop) answer that the phone's read returns;
+  // before the width is known, both shapes, for CSS to choose.
+  const coming =
+    graph && read?.procedure === 'ego' && query.isPlaceholderData && graph.focusId === read.input.focusId
+      ? egoPart(graph, read.input.up, read.input.down)
+      : graph;
+  const phoneShape = graph && narrow === null && viewKind(params) === 'person' ? egoPart(graph, NARROW_DEFAULTS.up, NARROW_DEFAULTS.down) : null;
 
   const layout = useLayoutWorker();
-  // React Flow's chunk loads in parallel with the worker's first layout, not after it (the
-  // dynamic import is the same one next/dynamic makes; the skeleton stands in until both are done).
+  // React Flow's chunk loads in parallel with the worker's first layout, not after it (the same
+  // import() next/dynamic makes; the skeleton stands in until both are done).
   useEffect(() => {
     loadCanvas().catch(() => undefined);
   }, []);
@@ -467,7 +535,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   </p>
                 </div>
               ) : !flow || !laidOut ? (
-                <Skeleton graph={graph} showHistorical={params.show === 'historical'} />
+                <Skeleton graph={coming} showHistorical={params.show === 'historical'} phone={phoneShape} />
               ) : (
                 <SkeletonShape value={{ graph: laidOut.source, showHistorical: params.show === 'historical' }}>
                   <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
@@ -485,7 +553,6 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                       // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
                       className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
                     >
-                      {/* The words of the lineage screens (M04): the dotted state here is a request, "Pending" as on the cards. */}
                       <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" />
                     </div>
                   </ExplorerCanvas>
