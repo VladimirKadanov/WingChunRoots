@@ -192,7 +192,7 @@ export interface BezierPath {
   control1: Point;
   control2: Point;
   end: Point;
-  /** Point on the curve at t = 0.5, for the "Teacher in {lineage}" label. */
+  /** Point on the curve at t = 0.5 (the label of a short curve; see bezierLabelPoint). */
   midpoint: Point;
 }
 
