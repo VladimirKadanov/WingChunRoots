@@ -282,7 +282,9 @@ check "pnpm account:delete carries out and cancels a deletion request (service, 
   grep -q "\"account:delete\": \"tsx src/server/auth/account-delete-cli.ts\"" package.json &&
   grep -q "export async function carryOutDeletionFromCommandLine" src/server/services/privacy.ts &&
   grep -q "export async function cancelDeletionFromCommandLine" src/server/services/privacy.ts &&
-  grep -q "assertLocalEnvironment(process.env, .account:delete.)" src/server/auth/account-delete-cli.ts &&
+  grep -q "assertNotProduction(.account:delete., env)" src/server/auth/account-delete.ts &&
+  grep -q "assertLocalDatabase(.account:delete., env)" src/server/auth/account-delete.ts &&
+  grep -q "assertAccountDeleteLocal(process.env)" src/server/auth/account-delete-cli.ts &&
   grep -q "pnpm account:delete carries out or cancels a deletion request" src/server/services/search.int.test.ts'
 check "the admin guide says how a deletion request is closed and that the web server is restarted to drop the public cache" bash -c '
   f=docs/guides/admin-guide.bg.md

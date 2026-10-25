@@ -1,7 +1,19 @@
 // The arguments of `pnpm account:delete` (src/server/auth/account-delete-cli.ts; milestone M07,
 // In scope 5 and 9), apart from the command so that unit tests can import them.
 
+import { assertNotProduction } from '../db/env';
+import { assertLocalDatabase } from './admin-create';
+
 export const ACCOUNT_DELETE_USAGE = 'usage: pnpm account:delete --case <id> [--cancel]';
+
+/**
+ * Refuses anything but a local environment, like `pnpm admin:create`: NODE_ENV=production, or a
+ * database that is not on this machine. The message names the command and no URL.
+ */
+export function assertAccountDeleteLocal(env: Record<string, string | undefined> = process.env): void {
+  assertNotProduction('account:delete', env);
+  assertLocalDatabase('account:delete', env);
+}
 
 export interface AccountDeleteArguments {
   caseId: string;

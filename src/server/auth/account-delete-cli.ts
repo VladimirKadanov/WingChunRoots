@@ -14,8 +14,7 @@ import { closeDb } from '../db';
 import { loadDotEnv } from '../db/dotenv';
 import { isServiceError } from '../services/errors';
 import { cancelDeletionFromCommandLine, carryOutDeletionFromCommandLine } from '../services/privacy';
-import { ACCOUNT_DELETE_NEXT_STEPS, ACCOUNT_DELETE_USAGE, accountDeleteArguments } from './account-delete';
-import { assertLocalEnvironment } from './admin-create';
+import { ACCOUNT_DELETE_NEXT_STEPS, ACCOUNT_DELETE_USAGE, accountDeleteArguments, assertAccountDeleteLocal } from './account-delete';
 
 async function main(): Promise<number> {
   const args = accountDeleteArguments(process.argv.slice(2));
@@ -25,7 +24,7 @@ async function main(): Promise<number> {
   }
   // .env first, so that a NODE_ENV=production or a remote DATABASE_URL set there is seen too.
   loadDotEnv(path.resolve('.env'));
-  assertLocalEnvironment(process.env, 'account:delete');
+  assertAccountDeleteLocal(process.env);
   try {
     if (args.cancel) {
       await cancelDeletionFromCommandLine(args.caseId);

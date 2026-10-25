@@ -2,8 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { accountDeleteArguments } from './account-delete';
-import { assertLocalEnvironment } from './admin-create';
+import { accountDeleteArguments, assertAccountDeleteLocal } from './account-delete';
 
 const CASE = '0199f2a4-3b6c-7d10-8e2f-1a2b3c4d5e6f';
 
@@ -26,12 +25,12 @@ describe('accountDeleteArguments', () => {
   });
 });
 
-describe('assertLocalEnvironment for account:delete', () => {
+describe('assertAccountDeleteLocal', () => {
   it('names the command it refuses', () => {
     const local = 'postgres://postgres:throwaway@127.0.0.1:5432/wingchunroots';
-    expect(() => assertLocalEnvironment({ DATABASE_URL: local }, 'account:delete')).not.toThrow();
-    expect(() => assertLocalEnvironment({ DATABASE_URL: local, NODE_ENV: 'production' }, 'account:delete')).toThrow(/account:delete/);
-    expect(() => assertLocalEnvironment({ DATABASE_URL: 'postgres://postgres:throwaway@db.example.test:5432/wcr' }, 'account:delete')).toThrow(
+    expect(() => assertAccountDeleteLocal({ DATABASE_URL: local })).not.toThrow();
+    expect(() => assertAccountDeleteLocal({ DATABASE_URL: local, NODE_ENV: 'production' })).toThrow(/account:delete refuses to run with NODE_ENV=production/);
+    expect(() => assertAccountDeleteLocal({ DATABASE_URL: 'postgres://postgres:throwaway@db.example.test:5432/wcr' })).toThrow(
       /account:delete works only with a database on this machine/,
     );
   });
