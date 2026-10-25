@@ -58,6 +58,8 @@ export const searchResultSchema = z.object({
   /** The query as the search read it (trimmed, NFC). */
   query: z.string(),
   people: z.array(personHitSchema),
+  /** True when more people match than `people` lists (at most 20): the query should be longer. */
+  morePeople: z.boolean(),
   schools: z.array(schoolHitSchema),
   lineages: z.array(lineageHitSchema),
 });

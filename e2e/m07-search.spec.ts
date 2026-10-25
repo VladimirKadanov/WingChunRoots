@@ -132,6 +132,21 @@ test('@M07 a query filtered by country returns only people and schools in that c
       for (const school of answer.schools) expect(school.countryCode, `${q} in ${code}`).toBe(code);
     }
   }
+  // Schools: "kwoon" names demo schools in several countries (Athens, Berlin, Kowloon), and each
+  // country keeps only its own; a country with no such school gets none.
+  const kwoon = await apiSearch(page, { q: 'kwoon' });
+  const schoolCountries = [...new Set(kwoon.schools.map((school) => school.countryCode as string))];
+  expect(schoolCountries.length).toBeGreaterThanOrEqual(2);
+  for (const code of schoolCountries) {
+    const only = await apiSearch(page, { q: 'kwoon', country: code });
+    expect(only.schools.length, `kwoon in ${code}`).toBeGreaterThan(0);
+    for (const school of only.schools) expect(school.countryCode, `kwoon in ${code}`).toBe(code);
+  }
+  expect(schoolCountries).not.toContain('BG');
+  expect((await apiSearch(page, { q: 'kwoon', country: 'BG' })).schools).toEqual([]);
+  const sofia = await apiSearch(page, { q: 'wing chun', country: 'BG' });
+  expect(sofia.schools.length).toBeGreaterThan(0);
+  for (const school of sofia.schools) expect(school.countryCode).toBe('BG');
   expect((await apiSearch(page, { q: 'So Ching Laam', country })).people.map((p) => p.slug)).toContain('demo-cjk-name');
   expect((await apiSearch(page, { q: 'So Ching Laam', country: other })).people.map((p) => p.slug)).not.toContain('demo-cjk-name');
 });

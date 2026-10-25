@@ -62,14 +62,14 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
   const query = parsed.data.q.normalize('NFC').trim();
   const forms = queryForms(query);
   if (forms.length > 0) checkSearchRate(meta);
-  if (forms.length === 0) return toPublicSearchResult({ query, people: [], schools: [], lineages: [] });
+  if (forms.length === 0) return toPublicSearchResult({ query, people: [], morePeople: false, schools: [], lineages: [] });
   const filters = { countryCode: parsed.data.country ?? null, lineageId: parsed.data.lineageId ?? null };
   const result = await getDb().transaction(async (tx) => {
     await setThresholds(tx);
-    const people = await searchPeople(tx, forms, filters);
+    const people = await searchPeople(tx, forms, filters, query);
     const schools = await searchSchools(tx, forms, filters);
     const lineages = await searchLineages(tx, forms, filters);
-    return { query, people, schools, lineages };
+    return { query, people: people.people, morePeople: people.more, schools, lineages };
   });
   return toPublicSearchResult(result);
 }

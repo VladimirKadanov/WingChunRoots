@@ -22,8 +22,12 @@ export const WORD_SIMILARITY_THRESHOLD = 0.5;
 /** Trigram matching needs at least this many characters; shorter queries match by prefix only. */
 export const MIN_TRIGRAM_LENGTH = 3;
 
-/** Ranking: an exact key, then a prefix, then similarity (0..1); a primary name and a verified person rank higher. */
-export const RANK = { exact: 3, prefix: 2, hanContains: 1.5, primary: 0.15, verified: 0.1, asWritten: 0.01 } as const;
+/**
+ * Ranking: an exact key, then a prefix of the whole key, then a prefix of a later word ("ng" in
+ * "siu ming ng") or, for Chinese characters, one inside the other, then similarity (0..1); a primary
+ * name and a verified person rank higher.
+ */
+export const RANK = { exact: 3, prefix: 2, wordPrefix: 1.5, hanContains: 1.5, primary: 0.15, verified: 0.1, asWritten: 0.01 } as const;
 
 /** At most this many results per group: a common surname (13 demo "Testov"s) still fits in one answer. */
 export const LIMITS = { people: 20, schools: 5, lineages: 5 } as const;
@@ -31,6 +35,12 @@ export const LIMITS = { people: 20, schools: 5, lineages: 5 } as const;
 export interface SearchFilters {
   countryCode: string | null;
   lineageId: string | null;
+}
+
+/** The people of an answer, and whether more matched than LIMITS.people. */
+export interface PeopleHits {
+  people: PersonHitDto[];
+  more: boolean;
 }
 
 /** A constant of this file in the SQL text (a bound parameter would be typed as an integer). */
@@ -41,10 +51,14 @@ function prefixPattern(text: string): string {
   return `${text.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 }
 
-/** The query forms as a table f(text, han, prefix): one bound row each, never text in the SQL. */
+/**
+ * The query forms as a table f(text, han, prefix, word_prefix): one bound row each, never text in
+ * the SQL. `word_prefix` matches the form at the start of any word after the first (`% text%`
+ * against ' ' || key).
+ */
 function formsTable(forms: readonly QueryForm[]) {
-  const rows = forms.map((f) => sql`(${f.text}::text, ${f.han}::boolean, ${prefixPattern(f.text)}::text)`);
-  return sql`SELECT * FROM (VALUES ${sql.join(rows, sql`, `)}) AS f(text, han, prefix)`;
+  const rows = forms.map((f) => sql`(${f.text}::text, ${f.han}::boolean, ${prefixPattern(f.text)}::text, ${`% ${prefixPattern(f.text)}`}::text)`);
+  return sql`SELECT * FROM (VALUES ${sql.join(rows, sql`, `)}) AS f(text, han, prefix, word_prefix)`;
 }
 
 /** A read-only transaction with the pg_trgm thresholds of the search (first statement of the transaction). */
@@ -69,15 +83,29 @@ interface PersonRow extends Record<string, unknown> {
   verified: boolean;
 }
 
-export async function searchPeople(tx: Executor, forms: readonly QueryForm[], filters: SearchFilters): Promise<PersonHitDto[]> {
+/**
+ * People whose keys match a form. `query` is the query as the search read it (NFC, trimmed): when
+ * two stored names of a person match equally (蘇晴嵐 and 苏晴岚 share one key), the one written as
+ * typed is the match shown.
+ */
+export async function searchPeople(tx: Executor, forms: readonly QueryForm[], filters: SearchFilters, query = ''): Promise<PeopleHits> {
   const result = await tx.execute<PersonRow>(sql`
     WITH f AS (${formsTable(forms)}),
+    -- The people of the lineage filter, read once: an EXISTS per candidate row ran the public
+    -- edge view tens of thousands of times and passed the 2 s statement timeout.
+    in_lineage AS MATERIALIZED (
+      SELECT e.student_person_id AS person_id FROM v_public_edge e WHERE e.lineage_id = ${filters.lineageId}::uuid
+      UNION
+      SELECT e.teacher_person_id FROM v_public_edge e WHERE e.lineage_id = ${filters.lineageId}::uuid
+    ),
     hits AS (
       SELECT k.person_id, k.person_name_id,
              MAX(CASE
                    WHEN k.key = f.text THEN ${num(RANK.exact)}
                    WHEN k.key LIKE f.prefix THEN ${num(RANK.prefix)} + similarity(k.key, f.text)
-                   WHEN f.han AND strpos(k.key, f.text) > 0 THEN ${num(RANK.hanContains)}
+                   WHEN NOT f.han AND (' ' || k.key) LIKE f.word_prefix THEN ${num(RANK.wordPrefix)} + similarity(k.key, f.text)
+                   WHEN f.han AND k.key_kind = 'han'
+                        AND (strpos(k.key, f.text) > 0 OR (char_length(k.key) >= 2 AND strpos(f.text, k.key) > 0)) THEN ${num(RANK.hanContains)}
                    ELSE greatest(similarity(k.key, f.text), word_similarity(f.text, k.key))
                  END
                  -- A key of the name as written beats one generated from it, so the stored
@@ -87,7 +115,12 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
         JOIN v_public_person_key k
           ON k.key = f.text
           OR k.key LIKE f.prefix
-          OR (f.han AND k.key_kind = 'han' AND strpos(k.key, f.text) > 0)
+          -- A later word of the key starts with the query: "ng" finds "siu ming ng" (two letters
+          -- give no trigrams to compare).
+          OR (NOT f.han AND (' ' || k.key) LIKE f.word_prefix)
+          -- Chinese characters: the query inside a name ("晴" in "苏晴岚"), or a name of two or more
+          -- characters inside the query (a name typed with a title after it).
+          OR (f.han AND k.key_kind = 'han' AND (strpos(k.key, f.text) > 0 OR (char_length(k.key) >= 2 AND strpos(f.text, k.key) > 0)))
           OR (NOT f.han AND char_length(f.text) >= ${MIN_TRIGRAM_LENGTH} AND (k.key % f.text OR f.text <% k.key))
        GROUP BY k.person_id, k.person_name_id
     ),
@@ -104,10 +137,8 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
         JOIN person_name n ON n.id = h.person_name_id AND n.person_id = p.id
         JOIN person_name dn ON dn.person_id = p.id AND dn.is_primary
        WHERE (${filters.countryCode}::text IS NULL OR p.country_code = ${filters.countryCode})
-         AND (${filters.lineageId}::uuid IS NULL OR EXISTS (
-               SELECT 1 FROM v_public_edge e
-                WHERE e.lineage_id = ${filters.lineageId}::uuid AND (e.student_person_id = p.id OR e.teacher_person_id = p.id)))
-       ORDER BY p.id, score DESC, n.is_primary DESC, n.sort_order
+         AND (${filters.lineageId}::uuid IS NULL OR p.id IN (SELECT person_id FROM in_lineage))
+       ORDER BY p.id, score DESC, (n.value = ${query}::text) DESC, n.is_primary DESC, n.sort_order
     )
     SELECT r.*,
            (SELECT e.lineage_name FROM v_public_edge e
@@ -116,8 +147,9 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
              LIMIT 1) AS lineage_name
       FROM ranked r
      ORDER BY r.score + CASE WHEN r.verified THEN ${num(RANK.verified)} ELSE 0 END DESC, r.display_name, r.id
-     LIMIT ${LIMITS.people}`);
-  return result.rows.map((row) => {
+     LIMIT ${LIMITS.people + 1}`);
+  // One row past the limit says that more people match than the answer lists.
+  const people = result.rows.slice(0, LIMITS.people).map((row) => {
     const displayName: SearchNameDto = { value: row.display_name, lang: row.display_lang, script: 'Latn' };
     const matched: SearchNameDto | null = row.name_is_primary ? null : { value: row.name_value, lang: row.name_lang, script: row.name_script };
     return {
@@ -131,6 +163,7 @@ export async function searchPeople(tx: Executor, forms: readonly QueryForm[], fi
       verified: row.verified,
     };
   });
+  return { people, more: result.rows.length > LIMITS.people };
 }
 
 /** Folded name text in SQL, the counterpart of foldLatin() for the Latin names of schools and lineages. */

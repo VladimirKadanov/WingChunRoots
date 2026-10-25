@@ -9,12 +9,15 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { setTestAuthEnv } from '../auth/test-support';
 import type { Principal } from '../auth/principal';
 import { closeDb, getDb } from '../db';
-import { auditLog, consentRecord, notification, person, personName, personNameKey, reviewCase } from '../db/schema';
+import { uuidv7 } from '../db/ids';
+import { auditLog, consentRecord, lineage, notification, person, personName, personNameKey, reviewCase, teachingRelationship } from '../db/schema';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { personHitSchema, searchResultSchema } from '../dto/search';
 import { stopProducer } from '../jobs/boss';
 import { searchKeysRebuildHandler } from '../jobs/worker';
 import { handleApiRequest } from '../rpc/handler';
+import { LIMITS } from '../search/query';
+import { writePersonKeys } from '../search/store';
 import { consentWithdraw, privacyOverview, requestAccountDeletion } from './privacy';
 import { MISSING_PRIMARY_MESSAGE, profileGet, profileUpdate } from './profile';
 import { checkSearchRate, SEARCH_WINDOW_MS, SEARCHES_PER_WINDOW, searchQuery } from './search';
@@ -68,6 +71,17 @@ type RebuildJob = Parameters<ReturnType<typeof searchKeysRebuildHandler>>[0][num
 const job = { id: 'job-1', name: 'search.keys.rebuild', data: {}, retryCount: 0, retryLimit: 3 } as unknown as RebuildJob;
 const peopleSlugs = async (q: string, filters: { country?: string; lineageId?: string } = {}) =>
   (await searchQuery(null, { q, ...filters })).people.map((p) => p.slug);
+
+/** A public, fictional person with these names (the first is the primary) and its search keys. */
+async function insertPublicPerson(slug: string, names: readonly { value: string; script: string; lang: string }[], id = uuidv7()): Promise<string> {
+  await getDb().insert(person).values({ id, slug, kind: 'living', stewardship: 'unclaimed', visibility: 'public' });
+  await getDb()
+    .insert(personName)
+    .values(names.map((n, i) => ({ personId: id, value: n.value, script: n.script, lang: n.lang, isPrimary: i === 0, sortOrder: i })));
+  await writePersonKeys(getDb(), id);
+  return id;
+}
+const latin = (value: string) => ({ value, script: 'Latn', lang: 'und-Latn' });
 
 describe('search.keys.rebuild writes the keys of the existing demo data', () => {
   it('starts with no keys after db:seed, and the job writes them for every person', async () => {
@@ -155,6 +169,102 @@ describe('search.query', () => {
     for (const p of elsewhere.people) expect(p.countryCode).toBe(other);
   });
 
+  it('a country filter returns only the schools of that country, and none where no school matches', async () => {
+    // "kwoon" matches the demo schools of several countries (Athens, Berlin, Kowloon).
+    const all = await searchQuery(null, { q: 'kwoon' });
+    const countries = [...new Set(all.schools.map((s) => s.countryCode))];
+    expect(countries.length).toBeGreaterThanOrEqual(2);
+    for (const country of countries) {
+      const only = await searchQuery(null, { q: 'kwoon', country });
+      expect(only.schools.length, country).toBeGreaterThan(0);
+      for (const s of only.schools) expect(s.countryCode, country).toBe(country);
+    }
+    expect(countries).not.toContain('BG');
+    expect((await searchQuery(null, { q: 'kwoon', country: 'BG' })).schools).toEqual([]);
+    // And "wing chun" the other way round: Sofia (BG) and London (GB).
+    const bg = await searchQuery(null, { q: 'wing chun', country: 'BG' });
+    expect(bg.schools.map((s) => s.countryCode)).toEqual(expect.arrayContaining(['BG']));
+    for (const s of bg.schools) expect(s.countryCode).toBe('BG');
+    expect((await searchQuery(null, { q: 'wing chun' })).schools.map((s) => s.countryCode)).toEqual(expect.arrayContaining(['BG', 'GB']));
+  });
+
+  it('a lineage filter returns only people with a public relationship in that lineage', async () => {
+    const [b] = await getDb().select({ id: lineage.id }).from(lineage).where(eq(lineage.slug, 'demo-lineage-b'));
+    // "So Ching" matches demo-cjk-name (lineage B) and namesakes recorded only in lineage A.
+    const unfiltered = await searchQuery(null, { q: 'So Ching' });
+    const onlyA = await getDb().execute<{ slug: string }>(sql`
+      SELECT p.slug FROM v_public_person p
+       WHERE p.slug = ANY(${`{${unfiltered.people.map((h) => h.slug).join(',')}}`}::text[])
+         AND NOT EXISTS (SELECT 1 FROM v_public_edge e WHERE e.lineage_id = ${b!.id}::uuid AND p.id IN (e.student_person_id, e.teacher_person_id))`);
+    expect(onlyA.rows.length).toBeGreaterThan(0);
+    const filtered = await searchQuery(null, { q: 'So Ching', lineageId: b!.id });
+    const slugs = filtered.people.map((h) => h.slug);
+    expect(slugs).toContain('demo-cjk-name');
+    for (const row of onlyA.rows) expect(slugs).not.toContain(row.slug);
+    for (const hit of filtered.people) {
+      const edges = await getDb().execute<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM v_public_edge e WHERE e.lineage_id = ${b!.id}::uuid AND ${hit.id}::uuid IN (e.student_person_id, e.teacher_person_id)`);
+      expect(edges.rows[0]!.n, hit.slug).toBeGreaterThan(0);
+    }
+  });
+
+  it('ranks a verified person above an equal match that is not verified', async () => {
+    // Two fictional namesakes; the one without a verified relationship has the smaller id, so
+    // only the verified bonus can put the other first (equal scores sort by name, then id).
+    const now = Date.now();
+    const plain = await insertPublicPerson('demo-rank-namesake-plain', [latin('Demo Rank Namesake')], uuidv7(now));
+    const verified = await insertPublicPerson('demo-rank-namesake-verified', [latin('Demo Rank Namesake')], uuidv7(now + 1));
+    expect(plain < verified).toBe(true);
+    const [a] = await getDb().select({ id: lineage.id }).from(lineage).where(eq(lineage.slug, 'demo-lineage-a'));
+    await getDb().insert(teachingRelationship).values({
+      id: uuidv7(),
+      teacherPersonId: ids['demo-root-a']!,
+      studentPersonId: verified,
+      lineageId: a!.id,
+      status: 'verified',
+      visibility: 'public',
+    });
+    const hits = (await searchQuery(null, { q: 'Demo Rank Namesake' })).people.filter((h) => h.slug.startsWith('demo-rank-namesake'));
+    expect(hits.map((h) => [h.slug, h.verified])).toEqual([
+      ['demo-rank-namesake-verified', true],
+      ['demo-rank-namesake-plain', false],
+    ]);
+  });
+
+  it('a two-letter surname finds a name that ends with it', async () => {
+    await insertPublicPerson('demo-short-surname', [latin('Demo Siu Ming Ng')]);
+    expect(await peopleSlugs('Ng')).toContain('demo-short-surname');
+    expect(await peopleSlugs('ming ng')).toContain('demo-short-surname');
+    // Still the start of a word only: "g" inside "ming" is not a word start.
+    expect(await peopleSlugs('in')).not.toContain('demo-short-surname');
+  });
+
+  it('Chinese characters match at any point of a name, a prefix typed one character at a time, and a name followed by a title', async () => {
+    // A fictional name whose last two characters are an OpenCC phrase (乾坤).
+    await insertPublicPerson('demo-phrase-name', [latin('Demo Lei Kin Kwan'), { value: '李乾坤', script: 'Hant', lang: 'zh-Hant' }]);
+    expect(await peopleSlugs('李乾')).toContain('demo-phrase-name');
+    expect(await peopleSlugs('乾')).toContain('demo-phrase-name');
+    expect(await peopleSlugs('李乾坤')).toContain('demo-phrase-name');
+    // A name with a title after it (師傅, sifu).
+    expect(await peopleSlugs('蘇晴嵐師傅')).toContain('demo-cjk-name');
+  });
+
+  it('shows the stored name written as the query was typed when two spellings share a key', async () => {
+    const simplified = (await searchQuery(null, { q: '苏晴岚' })).people.find((h) => h.slug === 'demo-cjk-name');
+    expect(simplified!.matched).toEqual({ value: '苏晴岚', lang: 'zh-Hans', script: 'Hans' });
+    const traditional = (await searchQuery(null, { q: '蘇晴嵐' })).people.find((h) => h.slug === 'demo-cjk-name');
+    expect(traditional!.matched).toEqual({ value: '蘇晴嵐', lang: 'zh-Hant', script: 'Hant' });
+  });
+
+  it('says when more people match than the answer lists', async () => {
+    const many = await searchQuery(null, { q: 'so' });
+    expect(many.people).toHaveLength(LIMITS.people);
+    expect(many.morePeople).toBe(true);
+    const one = await searchQuery(null, { q: 'Ivan Testov' });
+    expect(one.people.length).toBeLessThan(LIMITS.people);
+    expect(one.morePeople).toBe(false);
+  });
+
   it('answers only the public DTO: no keys, no account ids, no private columns', async () => {
     const result = await searchQuery(null, { q: 'so' });
     expect(searchResultSchema.parse(result)).toEqual(result);
@@ -196,7 +306,7 @@ describe('search.query', () => {
   it('refuses a query that is too long or a country that is not one, and answers an empty query with nothing', async () => {
     await expect(searchQuery(null, { q: 'x'.repeat(101) })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(searchQuery(null, { q: 'so', country: 'XX' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], schools: [], lineages: [] });
+    expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], morePeople: false, schools: [], lineages: [] });
   });
 
   it('is served at POST /api/v1/search to anonymous callers (the query never in a URL)', async () => {

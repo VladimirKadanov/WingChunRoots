@@ -822,6 +822,9 @@
                         "additionalProperties": false
                       }
                     },
+                    "morePeople": {
+                      "type": "boolean"
+                    },
                     "schools": {
                       "type": "array",
                       "items": {
@@ -959,6 +962,7 @@
                   "required": [
                     "query",
                     "people",
+                    "morePeople",
                     "schools",
                     "lineages"
                   ],
