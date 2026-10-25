@@ -28,11 +28,13 @@ import {
   Position,
   ReactFlow,
   type ReactFlowState,
+  useOnViewportChange,
   useReactFlow,
   useStore,
   useStoreApi,
+  type Viewport,
 } from '@xyflow/react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 
 import { MinusIcon, PlusIcon, FitIcon } from '@/components/icons';
 import { type LinkKind } from '@/components/ink/link-stroke';
@@ -302,46 +304,99 @@ function ZoomControls() {
 const FIT_ALL_UP_TO = 40;
 /** The zoom a large view starts at: cards at their own size, on a phone the smallest zoom with full cards (plan §4.8). */
 const LARGE_VIEW_ZOOM = { wide: 1, narrow: 0.75 } as const;
+/** The smallest zoom with full cards (plan §4.8, lodOf). */
+const FULL_CARDS = 0.75;
 const NARROW_PANE = 640;
 /** Every fit of the whole view, the first and the button's: cards never larger than their own size. */
 export const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
 
-/**
- * Who the first view of a large scene starts at: the focus, or the first person of the top row
- * when the focus is not drawn; `top` when nobody is drawn above them. Null for a small scene, which
- * is fitted whole. Fitting a wide view whole would draw every person as a dot.
- */
-export function largeViewStart(scene: Scene): { at: Point; top: boolean } | null {
-  if (scene.nodes.length <= FIT_ALL_UP_TO) return null;
-  const node = scene.nodes.find((n) => n.id === scene.focusId) ?? scene.nodes.find((n) => n.rank === 0) ?? scene.nodes[0];
-  return node ? { at: node.center, top: node.rank === 0 } : null;
+/** Where a view starts: the point at the centre of the pane, and the zoom. */
+export interface ViewStart {
+  x: number;
+  y: number;
+  zoom: number;
 }
 
-/** Fits or centres the view whenever a new scene arrives (a new focus, depth or view). */
-function FitOnScene({ scene }: { scene: Scene }) {
+const boxOf = (n: { x: number; y: number; width: number; height: number }): Box => ({ x: n.x, y: n.y, width: n.width, height: n.height });
+function union(a: Box, b: Box): Box {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y };
+}
+
+/**
+ * Where the first view of a large scene starts (DEFAULT, docs/plan/questions/M05.md: full cards, not the
+ * whole view as dots): the focus, or the first person of the top row when the focus is not drawn,
+ * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
+ * (the Lineage view opens on its root with a student of the root, not with the root alone above
+ * the grand-students). When none fits beside them, the person alone at the pane's zoom, a quarter
+ * down the pane when nobody is drawn above them. Null for a small scene, which is fitted whole.
+ * Only what is drawn counts: `hidden` holds the people and links hidden by default (ended training).
+ */
+export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: { width: number; height: number }): ViewStart | null {
+  const people = scene.nodes.filter((n) => !hidden.has(n.id));
+  if (people.length <= FIT_ALL_UP_TO) return null;
+  const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
+  const zoom = pane.width < NARROW_PANE ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
+  const drawn = new Map(people.map((n) => [n.id, n]));
+  const near = scene.edges
+    .filter((e) => !hidden.has(e.id) && (e.teacherId === start.id || e.studentId === start.id))
+    .map((e) => drawn.get(e.teacherId === start.id ? e.studentId : e.teacherId))
+    .filter((n) => n !== undefined)
+    .sort((a, b) => Math.hypot(a.center.x - start.center.x, a.center.y - start.center.y) - Math.hypot(b.center.x - start.center.x, b.center.y - start.center.y));
+  // The room the pane leaves inside the padding of a whole-view fit (React Flow's: pane / (1 + padding)).
+  const room = { width: pane.width / (1 + FIT_OPTIONS.padding), height: pane.height / (1 + FIT_OPTIONS.padding) };
+  let box = boxOf(start);
+  for (const n of near) {
+    const next = union(box, boxOf(n));
+    if (next.width * FULL_CARDS <= room.width && next.height * FULL_CARDS <= room.height) box = next;
+  }
+  if (box.width === start.width && box.height === start.height) {
+    // With nobody above, the person sits a quarter down the pane and the rows below fill the rest.
+    const below = start.rank === 0 ? pane.height / 4 / zoom : 0;
+    return { x: start.center.x, y: start.center.y + below, zoom };
+  }
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2, zoom: Math.max(FULL_CARDS, Math.min(zoom, room.width / box.width, room.height / box.height)) };
+}
+
+/** The scene's identity: strings and numbers, so the view moves once per new scene, not on every render of the same one. */
+const sceneKey = (scene: Scene) => `${scene.dataVersion}:${scene.focusId}:${scene.nodes.map((n) => n.id).join(',')}`;
+
+/**
+ * Fits or centres the view whenever a new scene arrives (a new focus, depth or view), and keeps
+ * the view the user left while the list is shown (plan §4.10).
+ */
+function FitOnScene({ scene, nodes, edges }: { scene: Scene; nodes: PersonNode[]; edges: LineageEdge[] }) {
   const flow = useReactFlow();
   const store = useStoreApi();
   // Centring needs the size of the pane, known after its first measurement.
   const sized = useStore((s) => s.width > 0 && s.height > 0);
-  // Strings and numbers, so the view moves once per new scene, not on every render of the same one.
-  const key = `${scene.dataVersion}:${scene.focusId}:${scene.nodes.map((n) => n.id).join(',')}`;
-  const start = largeViewStart(scene);
-  const x = start?.at.x ?? null;
-  const y = start?.at.y ?? null;
-  const top = start?.top ?? false;
+  const key = sceneKey(scene);
+  // Refs outlive <Activity>: the scene last fitted, and the view the user left.
+  const fitted = useRef<string | null>(null);
+  const left = useRef<Viewport | null>(null);
+  useOnViewportChange({
+    onEnd: (viewport) => {
+      left.current = viewport;
+    },
+  });
+  // While the list is shown, <Activity> runs the effects' cleanups: React Flow empties its store,
+  // and when the graph is shown again it builds its pan and zoom anew at (0, 0) and zoom 1. Back to
+  // the view the user left (this runs before the fit below, which moves only for a new scene).
   useEffect(() => {
-    if (!sized) return;
-    const move = moveFor(VIEW_MOTION.scene);
-    if (x === null || y === null) {
-      void flow.fitView({ ...FIT_OPTIONS, ...move });
-      return;
-    }
-    // With nobody above, the person sits a quarter down the pane and the rows below fill the rest.
+    if (left.current) void flow.setViewport(left.current);
+  }, [flow]);
+  useEffect(() => {
+    if (!sized || fitted.current === key) return;
+    // The first view of the canvas is there at once; a later scene moves with its people.
+    const move = fitted.current === null ? { duration: 0 } : moveFor(VIEW_MOTION.scene);
+    fitted.current = key;
+    const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
     const { width, height } = store.getState();
-    const zoom = width < NARROW_PANE ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
-    const below = top ? height / 4 / zoom : 0;
-    void flow.setCenter(x, y + below, { zoom, ...move });
-  }, [flow, store, key, sized, x, y, top]);
+    const start = largeViewStart(scene, hidden, { width, height });
+    if (start === null) void flow.fitView({ ...FIT_OPTIONS, ...move });
+    else void flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move });
+  }, [flow, store, key, sized, scene, nodes, edges]);
   return null;
 }
 
@@ -370,16 +425,14 @@ export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children
       selectNodesOnDrag={false}
       minZoom={0.1}
       maxZoom={2}
-      // A small scene is fitted whole as soon as its nodes are in the store; FitOnScene moves the view for each later scene
-      // and centres a large one.
-      fitView={largeViewStart(scene) === null}
-      fitViewOptions={FIT_OPTIONS}
+      // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
+      // each time <Activity> shows the graph, over the view the user left.
       onNodeClick={(_, node) => onSelect(node.id)}
       onPaneClick={() => onSelect(null)}
       deleteKeyCode={null}
       aria-label="Lineage graph"
     >
-      <FitOnScene scene={scene} />
+      <FitOnScene scene={scene} nodes={nodes} edges={edges} />
       <div className="pointer-events-none absolute inset-0 z-10">
         <div className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
           <ZoomControls />
