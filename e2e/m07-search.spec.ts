@@ -381,6 +381,36 @@ test("@M07 a user edits their own names in three scripts; editing another person
   expect(unchanged.rows[0]!.value).not.toBe('Demo Someone Else');
 });
 
+test('@M07 a display name typed before the profile editor has its JavaScript is the one saved', async ({ page }) => {
+  // A slow phone connection or webview: the person types into the page the server drew while its
+  // scripts are still on the way. Hydration must not put the old name back (the iPhone run of
+  // PR #13 saved "Demo Placeholder Name").
+  const latin = `Demo ${tag()} Earlybird`;
+  await freshAccount(page, { name: 'Demo Placeholder Name' });
+  let releaseScripts!: () => void;
+  const scriptsHeld = new Promise<void>((resolve) => {
+    releaseScripts = resolve;
+  });
+  await page.route('**/_next/static/**/*.js', async (route) => {
+    await scriptsHeld;
+    await route.continue();
+  });
+  await page.goto('/dashboard/profile', { waitUntil: 'commit' });
+  const display = page.getByLabel('Display name', { exact: true }).filter({ visible: true }).first();
+  await display.fill(latin);
+  // Still the page without JavaScript: "Add a name" comes with it.
+  await expect(page.getByRole('button', { name: 'Add a name' })).toHaveCount(0);
+  releaseScripts();
+  await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  await expect(display).toHaveValue(latin);
+  // The editor's own state has it too: its preview shows it.
+  await expect(page.getByRole('figure', { name: 'How your name will appear' })).toContainText(latin);
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Display name', { exact: true }).first()).toHaveValue(latin);
+});
+
 test('@M07 saving a profile without a Latin-script primary name is refused with a clear message', async ({ page }) => {
   await freshAccount(page, { name: 'Demo Lonely Name' });
   await page.goto('/dashboard/profile');
