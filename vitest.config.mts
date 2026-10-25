@@ -10,7 +10,29 @@ const EXCLUDE = ['**/node_modules/**', '**/.next/**', 'e2e/**/*.spec.ts', 'src/*
  * workers do not share the CPU with them: on a 4-core machine (a cloud session, a CI runner) the
  * contention alone pushed the 500-person view past its budget. The budgets are unchanged.
  */
-const TIMED = ['src/lib/lineage-layout/layout.perf.test.ts', 'src/lib/lineage-layout/layout.test.ts'];
+export const TIMED = ['src/lib/lineage-layout/layout.perf.test.ts', 'src/lib/lineage-layout/layout.test.ts'];
+
+/**
+ * The unit tests that change what other files would see: module mocks, a fresh module registry,
+ * environment variables, globals or fake timers. They keep Vitest's isolation (a fresh module
+ * graph per file). Every other unit test file shares its worker's modules with the files before
+ * it (`isolate: false`), which halves `pnpm test:unit`'s time; scripts/vitest-isolation.test.ts
+ * fails when a file outside this list starts to use one of those APIs.
+ */
+export const ISOLATED = [
+  'src/lib/lineage-layout/layout.worker.test.ts',
+  'src/proxy.test.ts',
+  'src/server/auth/answer-floor.test.ts',
+  'src/server/auth/request-scope.test.ts',
+  'src/server/auth/startup.test.ts',
+  'src/server/faults.test.ts',
+  'src/server/forms/flash.test.ts',
+  'src/server/forms/two-factor.test.ts',
+  'src/server/rpc/api-parity.test.ts',
+  'src/server/services/lineage-graph.test.ts',
+];
+
+const UNIT = ['src/**/*.test.{ts,tsx}', 'e2e/**/*.test.ts', 'scripts/**/*.test.ts'];
 
 export default defineConfig({
   // The `@/*` path of tsconfig.json (M00b: design tokens and components import through it).
@@ -22,9 +44,20 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['src/**/*.test.{ts,tsx}', 'e2e/**/*.test.ts', 'scripts/**/*.test.ts'],
+          include: UNIT,
           // Integration tests need a database: pnpm test:int (vitest.int.config.mts).
-          exclude: [...EXCLUDE, ...TIMED],
+          exclude: [...EXCLUDE, ...TIMED, ...ISOLATED],
+          // Threads that keep their module graph from one file to the next (see ISOLATED).
+          pool: 'threads',
+          isolate: false,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'unit-isolated',
+          include: ISOLATED,
+          exclude: EXCLUDE,
         },
       },
       {
