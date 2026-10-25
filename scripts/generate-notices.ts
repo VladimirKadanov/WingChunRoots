@@ -18,6 +18,7 @@ import {
   flatten,
   lockedVersions,
   pickLicenseFiles,
+  pnpmCommand,
   type Addendum,
   type NoticesData,
   type PnpmPackage,
@@ -39,7 +40,9 @@ function licenseText(dir: string): string | null {
 }
 
 function licenseList(scope: '--prod' | '--dev'): Record<string, PnpmPackage[]> {
-  const raw = execFileSync('pnpm', ['licenses', 'list', '--json', scope], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // Not a bare `pnpm`: on Windows that is a shim execFile cannot start (pnpmCommand).
+  const pnpm = pnpmCommand(process.env.npm_execpath, process.execPath);
+  const raw = execFileSync(pnpm.file, [...pnpm.args, 'licenses', 'list', '--json', scope], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(raw) as Record<string, PnpmPackage[]>;
 }
 
