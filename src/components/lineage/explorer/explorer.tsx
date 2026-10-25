@@ -61,8 +61,9 @@ function CanvasLoading() {
 }
 
 // The chunk is also asked for when the explorer mounts (ExplorerBody), so it loads while the worker
-// lays out the first scene, not after it.
-const ExplorerCanvas = dynamic(() => import('./canvas'), { ssr: false, loading: CanvasLoading });
+// lays out the first scene, not after it. One import() for both, so both ask for the same chunks.
+const loadCanvas = () => import('./canvas');
+const ExplorerCanvas = dynamic(() => loadCanvas(), { ssr: false, loading: CanvasLoading });
 
 const parseAsId = createParser({
   parse: (value: string) => (isUuid(value) ? value.toLowerCase() : null),
@@ -311,7 +312,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // React Flow's chunk loads in parallel with the worker's first layout, not after it (the
   // dynamic import is the same one next/dynamic makes; the skeleton stands in until both are done).
   useEffect(() => {
-    import('./canvas').catch(() => undefined);
+    loadCanvas().catch(() => undefined);
   }, []);
   // `source` is the answer of the read; `graph` what is drawn of it (plan §4.8: large fan-outs counted).
   const [laidOut, setLaidOut] = useState<{ source: LineageGraphDto; graph: LineageGraphDto; more: Map<string, number>; scene: Scene } | null>(null);
