@@ -6,6 +6,9 @@
 // Two layers: a rule table that maps Jyutping initials and finals to the usual Hong Kong letters,
 // and hand-kept rows (ALIAS_ROWS) for the spellings the rules miss. Each row names its source; the
 // rows are romanization conventions, not data about any person. docs/search.md lists the limits.
+//
+// A third table, SURNAME_READINGS, gives the Cantonese reading of surnames that to-jyutping reads
+// by their everyday reading (曾 is zang1 as a surname, "Tsang"; to-jyutping says cang4).
 
 export interface AliasRow {
   /** A toneless Jyutping syllable. */
@@ -41,7 +44,48 @@ export const ALIAS_ROWS: readonly AliasRow[] = [
   { jyutping: 'wong', spellings: ['wong'], source: HK_SURNAMES },
   { jyutping: 'fung', spellings: ['fung'], source: HK_SURNAMES },
   { jyutping: 'mak', spellings: ['mak'], source: HK_SURNAMES },
+  // The surname readings of SURNAME_READINGS below.
+  { jyutping: 'zang', spellings: ['tsang', 'chang'], source: HK_SURNAMES },
+  { jyutping: 'au', spellings: ['au', 'ou'], source: HK_SURNAMES },
+  { jyutping: 'sin', spellings: ['sin', 'shin'], source: HK_SURNAMES },
 ];
+
+/** Where the surname readings come from (the `source` of their keys is alias:surname-reading). */
+export const SURNAME_READINGS_SOURCE = 'Cantonese surname readings (Jyutping), where to-jyutping gives the everyday reading first';
+
+/**
+ * Surnames that Cantonese reads differently from the same character in other words, which
+ * to-jyutping reads by its first (everyday) reading: 曾 is zang1 as a surname ("Tsang"), not cang4.
+ * Keyed by the characters a Chinese name starts with (Traditional and Simplified), with the toned
+ * Jyutping of each character; every reading is one of to-jyutping's own candidates (keys.test.ts).
+ */
+export const SURNAME_READINGS: Readonly<Record<string, readonly string[]>> = {
+  曾: ['zang1'],
+  區: ['au1'],
+  区: ['au1'],
+  單: ['sin6'],
+  单: ['sin6'],
+  解: ['haai6'],
+  翟: ['zaak6'],
+  繆: ['miu6'],
+  缪: ['miu6'],
+  仇: ['kau4'],
+  長孫: ['coeng4', 'syun1'],
+  长孙: ['coeng4', 'syun1'],
+  尉遲: ['wat1', 'ci4'],
+  尉迟: ['wat1', 'ci4'],
+};
+
+/** The surname at the start of a Chinese name and its Jyutping, or null when SURNAME_READINGS has none. */
+export function surnameReading(han: string): { surname: string; jyutping: readonly string[] } | null {
+  const chars = [...han];
+  for (const length of [2, 1]) {
+    const surname = chars.slice(0, length).join('');
+    const jyutping = chars.length > length ? SURNAME_READINGS[surname] : undefined;
+    if (jyutping) return { surname, jyutping };
+  }
+  return null;
+}
 
 const ROWS = new Map(ALIAS_ROWS.map((row) => [row.jyutping, row]));
 

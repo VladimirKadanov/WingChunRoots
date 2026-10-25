@@ -2,11 +2,12 @@
 // demo-cjk-name person, Traditional and Simplified folding, tone marks, and lossless NFC storage of
 // Cyrillic and Chinese names. Only the fictional demo names of src/fixtures (D20).
 
+import ToJyutping from 'to-jyutping';
 import { describe, expect, it } from 'vitest';
 
 import { generateFixtures } from '../../fixtures/generate';
 import { checkNames } from '../services/profile';
-import { hongKongSpellings } from './aliases';
+import { hongKongSpellings, SURNAME_READINGS } from './aliases';
 import { bgStreamlined } from './bg-streamlined';
 import { foldLatin, type GeneratedKey, keysForName, type NameForKeys, queryForms, stripToneNumbers } from './keys';
 
@@ -86,6 +87,67 @@ describe('Chinese names (demo-cjk-name)', () => {
     expect(hongKongSpellings('zoeng')).toEqual(['cheung', 'cheong']);
     expect(hongKongSpellings('gwok')).toEqual(['kwok']);
     expect(hongKongSpellings('xyz')).toEqual([]);
+  });
+});
+
+describe('Chinese characters fold one at a time, whatever the phrase around them', () => {
+  // A fictional name whose last two characters are an OpenCC phrase (乾坤 keeps 乾; 乾 alone is 干).
+  const han = (value: string) => keyStrings(keysForName(name(value, 'Hant', 'zh-Hant')), 'han');
+
+  it('gives a name and the start of it typed as a query the same characters', () => {
+    const [key] = han('李乾坤');
+    const prefix = queryForms('李乾')[0]!;
+    const single = queryForms('乾')[0]!;
+    expect(prefix.han && single.han).toBe(true);
+    expect(key!.startsWith(prefix.text)).toBe(true);
+    expect(key).toContain(single.text);
+    // The fold is the same for the Simplified spelling.
+    expect(han('李乾坤')).toEqual(keyStrings(keysForName(name('李干坤', 'Hans', 'zh-Hans')), 'han'));
+  });
+});
+
+describe('surnames read their own way', () => {
+  // Fictional names: a polyphonic surname and the given name 雲石 / 云石.
+  const pairs = [
+    ['單雲石', '单云石'],
+    ['區雲石', '区云石'],
+    ['繆雲石', '缪云石'],
+    ['樂雲石', '乐云石'],
+    ['車雲石', '车云石'],
+    ['長孫雲石', '长孙云石'],
+  ] as const;
+
+  it('gives the Traditional spelling the surname pinyin of the Simplified one', () => {
+    for (const [traditional, simplified] of pairs) {
+      const t = keyStrings(keysForName(name(traditional, 'Hant', 'zh-Hant')), 'pinyin');
+      const s = keyStrings(keysForName(name(simplified, 'Hans', 'zh-Hans')), 'pinyin');
+      expect(t, traditional).toEqual(expect.arrayContaining(s));
+    }
+    expect(keyStrings(keysForName(name('區雲石', 'Hant', 'zh-Hant')), 'pinyin')).toContain('ou yun shi');
+    expect(keyStrings(keysForName(name('單雲石', 'Hant', 'zh-Hant')), 'pinyin')).toContain('shan yun shi');
+  });
+
+  it('keys a Cantonese surname by its surname reading and its Hong Kong spelling', () => {
+    const tsang = keysForName(name('曾雲石', 'Hant', 'zh-Hant'));
+    expect(tsang).toContainEqual({ key: 'zang wan sek', keyKind: 'jyutping', source: 'alias:surname-reading' });
+    expect(keyStrings(tsang, 'alias')).toContain('tsang wan sek');
+    // The everyday reading stays a key too.
+    expect(keyStrings(tsang, 'jyutping')).toContain('cang wan sek');
+    expect(keyStrings(keysForName(name('區雲石', 'Hant', 'zh-Hant')), 'jyutping')).toContain('au wan sek');
+    expect(keyStrings(keysForName(name('区云石', 'Hans', 'zh-Hans')), 'alias')).toContain('au wan sek');
+    expect(keyStrings(keysForName(name('單雲石', 'Hant', 'zh-Hant')), 'alias')).toContain('sin wan sek');
+    // A query for the Hong Kong surname or the toneless Jyutping meets a key.
+    const keys = keyStrings(tsang);
+    expect(keys.some((k) => k.startsWith(queryForms('Tsang')[0]!.text))).toBe(true);
+    expect(keys.some((k) => k.startsWith(queryForms('zang1')[0]!.text))).toBe(true);
+  });
+
+  it('takes every surname reading from to-jyutping\'s own candidates', () => {
+    for (const [surname, readings] of Object.entries(SURNAME_READINGS)) {
+      const candidates = ToJyutping.getJyutpingCandidates(surname);
+      expect(candidates, surname).toHaveLength(readings.length);
+      readings.forEach((reading, i) => expect(candidates[i]![1], surname).toContain(reading));
+    }
   });
 });
 

@@ -15,7 +15,7 @@ import { pinyin } from 'pinyin-pro';
 import { transliterate } from 'transliteration';
 
 import type { NAME_KEY_KINDS } from '../db/schema/common';
-import { hongKongSpellings } from './aliases';
+import { hongKongSpellings, surnameReading } from './aliases';
 import { bgStreamlined } from './bg-streamlined';
 
 export type KeyKind = (typeof NAME_KEY_KINDS)[number];
@@ -52,11 +52,24 @@ const LATIN_FOLDS: Readonly<Record<string, string>> = {
 
 // Traditional (Hong Kong and Taiwan forms) → Simplified (mainland): both spellings of a name fold
 // to one key. Created once; the dictionaries load on first use.
-let toSimplified: ((s: string) => string) | null = null;
+let converter: ((s: string) => string) | null = null;
+function toSimplified(value: string): string {
+  converter ??= Converter({ from: 'hk', to: 'cn' });
+  return converter(value);
+}
+
+/**
+ * The Chinese characters of a value, each folded to its Simplified form on its own. One character
+ * at a time, never the whole string: OpenCC converts by phrase, so 乾 stays 乾 inside 乾坤 but is
+ * 干 alone, and a stored name (李乾坤) and the start of it typed as a query (李乾) would fold
+ * differently and never meet. The fold only has to agree on both sides: the stored name is what
+ * is shown, never the key.
+ */
 function foldHan(value: string): string {
-  toSimplified ??= Converter({ from: 'hk', to: 'cn' });
-  // Taiwan forms that the Hong Kong table leaves as they are (台/臺) fold too.
-  return [...toSimplified(value)].filter((ch) => HAN.test(ch)).join('');
+  return [...value]
+    .filter((ch) => HAN.test(ch))
+    .map((ch) => [...toSimplified(ch)].filter((c) => HAN.test(c)).join(''))
+    .join('');
 }
 
 /**
@@ -98,14 +111,28 @@ function pinyinOf(han: string): string {
   return foldLatin(pinyin(han, { toneType: 'none', surname: 'head', nonZh: 'removed' }));
 }
 
-/** Toneless Jyutping of Chinese characters ("蘇晴嵐" → "sou cing laam"); characters it does not know are left out. */
+/** The Jyutping of each character it knows ("蘇晴嵐" → ["sou1", "cing4", "laam4"]); characters it does not know are left out. */
+function jyutpingReadings(han: string): string[] {
+  return ToJyutping.getJyutpingList(han)
+    .map(([, reading]) => reading ?? '')
+    .filter(Boolean);
+}
+
+/** Toneless Jyutping of Chinese characters ("蘇晴嵐" → "sou cing laam"). */
 function jyutpingOf(han: string): string {
-  return stripToneNumbers(
-    ToJyutping.getJyutpingList(han)
-      .map(([, reading]) => reading ?? '')
-      .filter(Boolean)
-      .join(' '),
-  );
+  return stripToneNumbers(jyutpingReadings(han).join(' '));
+}
+
+/**
+ * The toneless Jyutping of a Chinese name read with its surname's own reading (./aliases.ts,
+ * SURNAME_READINGS): "曾雲石" → "zang wan sek", where to-jyutping reads "cang wan sek". Null when
+ * the name does not start with such a surname.
+ */
+function surnameJyutpingOf(han: string): string | null {
+  const surname = surnameReading(han);
+  if (!surname) return null;
+  const rest = jyutpingReadings([...han].slice([...surname.surname].length).join(''));
+  return stripToneNumbers([...surname.jyutping, ...rest].join(' '));
 }
 
 /** Whether a name in Chinese characters may be read as Chinese (pinyin, Jyutping). */
@@ -144,8 +171,18 @@ export function keysForName(name: NameForKeys): GeneratedKey[] {
     add(foldHan(value), 'han', 'opencc-js');
     const jyutping = jyutpingOf(value);
     add(pinyinOf(value), 'pinyin', 'pinyin-pro', true);
+    // pinyin-pro reads a surname in surname mode only in Simplified characters (區 is qū, 区 as a
+    // surname is ōu): a Traditional name also gets the pinyin of its Simplified spelling. Both are
+    // kept, since the Simplified spelling can lose a reading (乾 folds to 干, gān).
+    add(pinyinOf(toSimplified(value)), 'pinyin', 'pinyin-pro', true);
     add(jyutping, 'jyutping', 'to-jyutping', true);
     for (const hk of hongKongKeys(jyutping)) add(hk, 'alias', 'alias:hk-spelling', true);
+    // to-jyutping has no surname mode: a surname read differently in names gets its own key.
+    const surnamed = surnameJyutpingOf(value);
+    if (surnamed) {
+      add(surnamed, 'jyutping', 'alias:surname-reading', true);
+      for (const hk of hongKongKeys(surnamed)) add(hk, 'alias', 'alias:hk-spelling', true);
+    }
   } else if (HAN.test(value)) {
     // Japanese or Korean names written partly in Chinese characters: matched by the characters only.
     add(foldHan(value), 'han', 'opencc-js');
