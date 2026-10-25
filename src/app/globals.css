@@ -293,6 +293,12 @@
     transition: none;
   }
 }
+/* The edges and their labels are drawn at their new places at once: they are hidden while the
+   people slide there (canvas.tsx sets data-moving for --duration-slow; never under reduced motion). */
+.explorer-canvas[data-moving] .react-flow__edges,
+.explorer-canvas[data-moving] .react-flow__edgelabel-renderer {
+  visibility: hidden;
+}
 /* The React Flow attribution stays (plan §10.2 row 9), in the theme's own tones and legible. */
 .explorer-canvas .react-flow__attribution {
   background: var(--bg);

@@ -34,7 +34,7 @@ import {
   useStoreApi,
   type Viewport,
 } from '@xyflow/react';
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 
 import { MinusIcon, PlusIcon, FitIcon } from '@/components/icons';
 import { type LinkKind } from '@/components/ink/link-stroke';
@@ -410,8 +410,27 @@ export interface CanvasProps {
 }
 
 export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children }: CanvasProps) {
+  const frame = useRef<HTMLDivElement>(null);
+  const key = sceneKey(scene);
+  const shown = useRef<string | null>(null);
+  // In a new scene the people slide to their places (globals.css) while the edges are drawn at
+  // theirs at once: hidden for that time (before the paint), they never point at an empty place.
+  useLayoutEffect(() => {
+    const previous = shown.current;
+    shown.current = key;
+    const element = frame.current;
+    const { duration } = moveFor(VIEW_MOTION.scene);
+    if (previous === null || previous === key || duration === 0 || !element) return;
+    element.toggleAttribute('data-moving', true);
+    const timer = window.setTimeout(() => element.toggleAttribute('data-moving', false), duration);
+    return () => {
+      window.clearTimeout(timer);
+      element.toggleAttribute('data-moving', false);
+    };
+  }, [key]);
   return (
     <ReactFlow<PersonNode, LineageEdge>
+      ref={frame}
       className="explorer-canvas"
       nodes={nodes}
       edges={edges}
