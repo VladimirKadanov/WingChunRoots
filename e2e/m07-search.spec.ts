@@ -476,6 +476,30 @@ test.describe('on a phone', () => {
     await page.waitForURL((url) => url.pathname === '/people/demo-cjk-name');
     await expect(palette(page)).toHaveCount(0);
   });
+
+  test('@M07 at 390 and 320 px the profile editor fits the screen: Kind and Remove stay inside their card', async ({ page }) => {
+    await freshAccount(page, { name: 'Demo Narrow Screen' });
+    await page.goto('/dashboard/profile');
+    await page.getByRole('button', { name: 'Add a name' }).click();
+    await page.getByLabel('Name 2', { exact: true }).fill('測試雲');
+    await page.getByLabel('Written in').nth(1).selectOption({ label: 'Chinese, Traditional characters' });
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      // A phone widens its layout viewport to fit wider content, so the screen width is the bound.
+      const scrollWidth = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth));
+      expect(scrollWidth, `${width} px: no horizontal scroll`).toBeLessThanOrEqual(width);
+      const cards = page.locator('[data-name-row]');
+      await expect(cards).toHaveCount(2);
+      for (const card of await cards.all()) {
+        const right = await card.evaluate((el) => el.getBoundingClientRect().right);
+        for (const control of [card.getByLabel('Kind', { exact: true }), card.getByRole('button', { name: 'Remove' })]) {
+          const box = (await control.boundingBox())!;
+          expect(box.x + box.width, `${width} px: inside the card`).toBeLessThanOrEqual(right);
+          expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+      }
+    }
+  });
 });
 
 test.describe('on a phone in landscape', () => {

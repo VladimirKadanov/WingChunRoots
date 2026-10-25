@@ -335,8 +335,10 @@ export function ProfileEditor({
                           <label htmlFor={kindId} className="text-sm text-fg-muted">
                             Kind
                           </label>
-                          {/* The fields' own select: 16 px (no zoom on iOS) and the thin chevron. */}
-                          <span className="relative w-52 min-w-0">
+                          {/* The fields' own select: 16 px (no zoom on iOS) and the thin chevron. No fixed width:
+                              as wide as "Also known as" when there is room, narrower on a 320 px phone, so the
+                              row never makes the page wider than the screen. */}
+                          <span className="relative min-w-0 flex-1">
                             <select
                               id={kindId}
                               name={nameField(i, 'kind')}
