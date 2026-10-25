@@ -6,10 +6,11 @@
 # keeps running them (CI, M13).
 #
 # Here: required files, the pinned graph library and the other new packages, ELK only in the
-# worker of the explorer, the client island and its URL state, the edges of plan §4.6 in the code,
-# the legend, the attribution, the routes and the visual regression, the screenshots and the design
-# review, the JavaScript budget of /explore in the build script and in an ADR, the E2E titles and
-# the documentation (the user guide changed in this branch).
+# worker of the explorer (in the source and in the built chunks), the client island and its URL
+# state, the edges of plan §4.6 in the code, the legend, the attribution, the routes and the visual
+# regression, the screenshots and the design review, the JavaScript budget of /explore in the build
+# script, in an ADR and measured on the build, the E2E titles and the documentation (the user guide
+# changed in this branch).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -25,6 +26,18 @@ check() { # check "<description>" <command...>
   local description="$1"
   shift
   if "$@" >/dev/null 2>&1; then ok "$description"; else bad "$description"; fi
+}
+# check_verbose "<description>" <command...>: like check, and shows the command's output on failure.
+check_verbose() {
+  local description="$1"
+  shift
+  local out
+  if out="$("$@" 2>&1)"; then
+    ok "$description"
+  else
+    bad "$description"
+    printf '%s\n' "$out" | tail -n 25 | sed 's/^/     /'
+  fi
 }
 refute() {
   local description="$1"
@@ -79,6 +92,19 @@ check "useLayoutWorker creates the M03 worker exactly as plan §4.1 says and war
   grep -q "WARMUP_GRAPH" "$f"'
 refute "nothing else creates a worker or imports elkjs in src/app or src/components" \
   bash -c 'grep -rnE "new Worker\(|from .elkjs" src/app src/components | grep -v "^src/components/lineage/useLayoutWorker.ts:"'
+# ESLint's no-restricted-imports does not see import() expressions.
+refute "no import() of elkjs or of the layout modules that load it (layout, layout.worker, worker-handler) in src/app or src/components" \
+  grep -rnE "import\(\s*['\"\`](elkjs|[^'\"\`]*lineage-layout/(layout|layout\.worker|worker-handler)(\.ts)?['\"\`])" src/app src/components
+# The build (M05 review, graph-14): the chunk with ELK is named only by the layout worker's chunk list, never
+# by a page or by a chunk a page loads (a lazy import() or next/dynamic included); and the
+# JavaScript budget of every route, /explore's own included (In scope 11). After the build step of
+# scripts/verify.sh.
+if [ -f .next/build-manifest.json ]; then
+  check_verbose "in the build, ELK loads only in the layout worker, and every route is within its JavaScript budget (scripts/check-bundle-budget.mjs)" \
+    node scripts/check-bundle-budget.mjs
+else
+  bad "the build: no build output (.next/build-manifest.json); run pnpm build:e2e first"
+fi
 check "React Flow loads with next/dynamic (ssr: false), only in the explorer" bash -c '
   grep -q "dynamic(() => import('\''./canvas'\''), { ssr: false" src/components/lineage/explorer/explorer.tsx &&
   [ "$(grep -rlE "from .@xyflow/react" src | sort | tr "\n" " ")" = "src/components/lineage/explorer/canvas.tsx " ]'
