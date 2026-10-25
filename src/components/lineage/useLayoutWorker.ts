@@ -6,6 +6,11 @@
 // mounts and warmed at once with a tiny layout, so the first real layout does not also pay for
 // reading ELK (plan §4.11). Every request carries a growing id: the worker answers a request a
 // newer one overtook with `stale`, which resolves here as null (plan §4.8).
+//
+// The warm-up runs only when the worker has time for it: while a phone fetches its own smaller
+// view, or while the first read comes from the browser. A real request that is already waiting
+// when the worker starts (the desktop view, whose data came with the page) overtakes it, because
+// laying out the warm-up first would only delay the real layout by its own time.
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -100,7 +105,7 @@ export function useLayoutWorker(): LayoutFn {
       current.pending.clear();
     });
     // Warm-up: ELK is read and run once before the first real layout (plan §4.11). Its answer is
-    // dropped; a real request sent meanwhile simply overtakes it.
+    // dropped; a real request sent before the worker has read ELK simply overtakes it.
     const warmupId = current.nextId++;
     current.pending.set(warmupId, { resolve: () => undefined, reject: () => undefined });
     worker.postMessage({ type: 'layout', requestId: warmupId, graph: WARMUP_GRAPH } satisfies LayoutWorkerInbound);
