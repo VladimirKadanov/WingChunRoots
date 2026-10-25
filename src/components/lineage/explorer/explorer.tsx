@@ -14,7 +14,7 @@
 // The keyboard model, aria-live, ancestor highlighting, expand buttons and the phone sheet are
 // M06; here a selected node opens a simple panel with "Open profile".
 
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, skipToken, useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { createParser, parseAsStringLiteral, useQueryStates } from 'nuqs';
@@ -29,7 +29,7 @@ import { useMediaQuery } from '@/components/ui/use-media-query';
 import { cx } from '@/lib/cx';
 import { computeRanks } from '@/lib/lineage-layout/ranks';
 import type { Scene } from '@/lib/lineage-layout/types';
-import { rpcClient } from '@/lib/rpc-client';
+import { orpc } from '@/lib/rpc-client';
 import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
@@ -261,16 +261,16 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const lineageRoot = starts.find((l) => l.id === params.lineage)?.root.id ?? null;
   const read = focus ? explorerRead({ ...params, focus }, lineageRoot, narrow) : null;
   const key = read ? readKey(read) : 'none';
-  const query = useQuery({
-    queryKey: ['explorer', key],
-    queryFn: () => {
-      if (!read) throw new Error('No person in focus.');
-      return read.procedure === 'ego' ? rpcClient.lineage.ego(read.input) : rpcClient.lineage.subtree(read.input);
-    },
-    enabled: read !== null,
+  // The oRPC query options: a key per procedure and input, and a request TanStack Query can abort.
+  const reuse = {
     initialData: initial && initial.key === key ? initial.graph : undefined,
-    placeholderData: (previous) => previous,
-  });
+    placeholderData: (previous: LineageGraphDto | undefined) => previous,
+  };
+  const query = useQuery(
+    read?.procedure === 'subtree'
+      ? orpc.lineage.subtree.queryOptions({ input: read.input, ...reuse })
+      : orpc.lineage.ego.queryOptions({ input: read ? read.input : skipToken, ...reuse }),
+  );
   const graph = query.data ?? null;
 
   const layout = useLayoutWorker();
