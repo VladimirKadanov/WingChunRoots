@@ -681,7 +681,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
       </Activity>
 
       <Activity mode={params.view === 'list' ? 'visible' : 'hidden'}>
-        <div className={cx('min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
+        {/* Positioned (relative), so the list's visually hidden text (sr-only: position absolute)
+            is placed and clipped inside this scroller; without it the text escaped to the page,
+            which became as tall as the list and scrolled as well. */}
+        <div data-testid="explorer-list" className={cx('relative min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
           {focusList ?? (
             <p role="status" className="p-6 text-ui text-fg-muted">
               Loading the list…

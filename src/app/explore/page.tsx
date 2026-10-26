@@ -47,8 +47,12 @@ function listKeysOf(query: Record<string, string | string[] | undefined>): Recor
   return listKeys(page && /^\d{1,4}$/.test(page) ? Number(page) : 1, one(query.routes) === 'all');
 }
 
-/** The explorer's frame: the dynamic viewport between the shell's top bar and its tab bar (phones), the whole height beside the rail (desktop). */
-const FRAME = 'h-[calc(100dvh-var(--top-h)-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] md:h-dvh';
+/**
+ * The explorer's frame: the dynamic viewport between the shell's top bar and its tab bar (phones),
+ * the whole height beside the rail (desktop). The top bar is --top-h tall with its 1 px bottom
+ * border below that, so the page is exactly the viewport's height and does not scroll.
+ */
+const FRAME = 'h-[calc(100dvh-var(--top-h)-1px-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] md:h-dvh';
 
 export default async function ExplorePage({ searchParams }: Props) {
   const query = await searchParams;
