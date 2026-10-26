@@ -6,7 +6,7 @@
 import { expect, test, type Worker } from '@playwright/test';
 
 import { closeHelpers, loadTestEnv } from './helpers/auth';
-import { EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, personIdOf, personNodes } from './helpers/explorer';
+import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
 import {
   elkScripts,
   emulateSafeAreaInsets,
@@ -1052,4 +1052,70 @@ test.describe('M05 fixes B', () => {
       expect(href.hash).toBe('#students-heading');
     });
   });
+});
+
+test.describe('M05 fixes L', () => {
+  type Page = Parameters<typeof openExplorer>[0];
+  type Locator = ReturnType<typeof nodeOf>;
+
+  /**
+   * The page itself does not scroll: the document is exactly as tall as the viewport, and neither a
+   * wheel over `still` (outside every scroller) nor a scroll of the window moves it. With `inner`, a
+   * wheel over it scrolls it, and only it.
+   */
+  async function expectPageStill(page: Page, height: number, still: Locator, inner: Locator | null, wheel: boolean) {
+    const sizes = await page.evaluate(() => ({ inner: window.innerHeight, document: document.documentElement.scrollHeight }));
+    expect(sizes.inner).toBe(height);
+    expect(sizes.document, 'the document is as tall as the viewport').toBe(height);
+    // Mobile WebKit has no mouse wheel in Playwright; the window's own scroll below covers it there.
+    if (wheel) {
+      const bar = (await still.boundingBox())!;
+      await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2);
+      await page.mouse.wheel(0, 1500);
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => window.scrollY), 'after a wheel outside the list').toBe(0);
+      if (inner) {
+        const box = (await inner.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 200));
+        await page.mouse.wheel(0, 1500);
+        await expect.poll(() => inner.evaluate((el) => el.scrollTop), { message: 'the list scrolls' }).toBeGreaterThan(0);
+        expect(await page.evaluate(() => window.scrollY), 'after a wheel over the list').toBe(0);
+      }
+    }
+    await page.evaluate(() => window.scrollTo(0, 10_000));
+    expect(await page.evaluate(() => window.scrollY), 'after the window is told to scroll').toBe(0);
+  }
+
+  for (const size of [
+    { name: '1440x900', width: 1440, height: 900, phone: false },
+    { name: '390x844', width: 390, height: 844, phone: true },
+  ]) {
+    test.describe(`at ${size.name}`, () => {
+      test.use({ viewport: { width: size.width, height: size.height }, isMobile: size.phone, hasTouch: size.phone });
+
+      test(`@M05 at ${size.name} the page does not scroll in the Graph or the List view: only the list scrolls, inside the frame`, async ({ page, browserName, isMobile }) => {
+        // The list view of a teacher with students (EXPLORER_LIST): its "Routes of descent" and its
+        // pager hold visually hidden text (sr-only, position: absolute), which escaped the list's
+        // scroller and made the page as long as the list (blank below the frame).
+        const wheel = !(browserName === 'webkit' && isMobile);
+        const toolbar = page.getByRole('group', { name: 'Show as' });
+        const list = await EXPLORER_LIST.params();
+        // The same person, generations and frame, in the Graph view.
+        await openExplorer(page, Object.fromEntries(Object.entries(list).filter(([key]) => key !== 'view')));
+        await expectPageStill(page, size.height, toolbar, null, wheel);
+
+        // The List from the Graph, then the List opened at its address.
+        await toolbar.getByRole('button', { name: 'List' }).click();
+        await expect(page.getByRole('heading', { level: 2, name: 'Routes of descent' })).toBeVisible({ timeout: 30_000 });
+        await expectPageStill(page, size.height, toolbar, page.getByTestId('explorer-list'), wheel);
+        await openExplorerList(page, list);
+        await expectPageStill(page, size.height, toolbar, page.getByTestId('explorer-list'), wheel);
+
+        // And the Graph again, after the List.
+        await toolbar.getByRole('button', { name: 'Graph' }).click();
+        await expect(personNodes(page).first()).toBeVisible({ timeout: 30_000 });
+        await expectPageStill(page, size.height, toolbar, null, wheel);
+      });
+    });
+  }
 });
