@@ -339,6 +339,11 @@ const LARGE_VIEW_ZOOM = { wide: 1, narrow: 0.75 } as const;
 /** The smallest zoom with full cards (plan §4.8, lodOf). */
 const FULL_CARDS = 0.75;
 const NARROW_PANE = 640;
+/**
+ * The overlays' inset from the pane's edges (the legend's and the zoom buttons', 0.75rem): what the
+ * first view frames keeps this far from an overlay, and on a phone from the pane's edges.
+ */
+const OVERLAY_GAP = 12;
 /** Every fit of the whole view, the first and the button's: cards never larger than their own size. */
 export const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
 
@@ -347,6 +352,13 @@ export interface ViewStart {
   x: number;
   y: number;
   zoom: number;
+}
+
+/** The canvas pane: its size, and what lies over it (the legend, the zoom buttons), in the pane's own pixels. */
+export interface Pane {
+  width: number;
+  height: number;
+  overlays?: readonly Box[];
 }
 
 const boxOf = (n: { x: number; y: number; width: number; height: number }): Box => ({ x: n.x, y: n.y, width: n.width, height: n.height });
@@ -361,34 +373,67 @@ function union(a: Box, b: Box): Box {
  * whole view as dots): the focus, or the first person of the top row when the focus is not drawn,
  * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
  * (the Lineage view opens on its root with a student of the root, not with the root alone above
- * the grand-students). When none fits beside them, the person alone at the pane's zoom, a quarter
- * down the pane when nobody is drawn above them. Null for a small scene, which is fitted whole.
+ * the grand-students). When none fits beside them, the person alone at the pane's zoom. A view
+ * that starts in the top row starts at the top of the pane, so the rows below fill the rest;
+ * any other is centred. Null for a small scene, which is fitted whole.
+ *
+ * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
+ * overlays' inset, so that two full cards fit side by side at 390 px) and clear of the overlays
+ * (`pane.overlays`, the legend and the zoom buttons): on a phone the legend spans the pane and the
+ * zoom buttons stand above it, so a frame that reached the pane's bottom edge would be hidden there.
  * Only what is drawn counts: `hidden` holds the people and links hidden by default (ended training).
  */
-export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: { width: number; height: number }): ViewStart | null {
+export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
   if (people.length <= FIT_ALL_UP_TO) return null;
   const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
-  const zoom = pane.width < NARROW_PANE ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
+  const narrow = pane.width < NARROW_PANE;
+  const zoom = narrow ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
+  // The margin a whole-view fit leaves (React Flow's: the pane / (1 + padding) inside it).
+  const padding = (size: number) => (size - size / (1 + FIT_OPTIONS.padding)) / 2;
+  const margin = narrow ? { x: OVERLAY_GAP, y: OVERLAY_GAP } : { x: padding(pane.width), y: padding(pane.height) };
+  const room = { width: pane.width - 2 * margin.x, height: pane.height - 2 * margin.y };
+  // How far down the pane a frame this many pixels wide, centred across it, reaches clear of the overlays.
+  const floor = (width: number) => {
+    const left = (pane.width - width) / 2;
+    let bottom = pane.height - margin.y;
+    for (const o of pane.overlays ?? []) {
+      if (o.width > 0 && o.height > 0 && o.x < left + width && o.x + o.width > left) bottom = Math.min(bottom, o.y - OVERLAY_GAP);
+    }
+    return bottom;
+  };
+  const fits = (box: Box, z: number) => box.width * z <= room.width && box.height * z <= floor(box.width * z) - margin.y;
   const drawn = new Map(people.map((n) => [n.id, n]));
   const near = scene.edges
     .filter((e) => !hidden.has(e.id) && (e.teacherId === start.id || e.studentId === start.id))
     .map((e) => drawn.get(e.teacherId === start.id ? e.studentId : e.teacherId))
     .filter((n) => n !== undefined)
     .sort((a, b) => Math.hypot(a.center.x - start.center.x, a.center.y - start.center.y) - Math.hypot(b.center.x - start.center.x, b.center.y - start.center.y));
-  // The room the pane leaves inside the padding of a whole-view fit (React Flow's: pane / (1 + padding)).
-  const room = { width: pane.width / (1 + FIT_OPTIONS.padding), height: pane.height / (1 + FIT_OPTIONS.padding) };
   let box = boxOf(start);
   for (const n of near) {
     const next = union(box, boxOf(n));
-    if (next.width * FULL_CARDS <= room.width && next.height * FULL_CARDS <= room.height) box = next;
+    if (fits(next, FULL_CARDS)) box = next;
   }
-  if (box.width === start.width && box.height === start.height) {
-    // With nobody above, the person sits a quarter down the pane and the rows below fill the rest.
-    const below = start.rank === 0 ? pane.height / 4 / zoom : 0;
-    return { x: start.center.x, y: start.center.y + below, zoom };
+  let scale: number = zoom;
+  if (box.width !== start.width || box.height !== start.height) {
+    // The largest zoom up to the pane's at which the frame fits; at least full cards, where it fits.
+    scale = Math.max(FULL_CARDS, Math.min(zoom, room.width / box.width, room.height / box.height));
+    if (!fits(box, scale)) scale = Math.max(FULL_CARDS, (floor(box.width * scale) - margin.y) / box.height);
   }
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2, zoom: Math.max(FULL_CARDS, Math.min(zoom, room.width / box.width, room.height / box.height)) };
+  const height = box.height * scale;
+  // The frame's top on the pane: nobody is drawn above the top row, so it starts there.
+  const top = Math.min(start.rank === 0 ? margin.y : (pane.height - height) / 2, floor(box.width * scale) - height);
+  return { x: box.x + box.width / 2, y: box.y + (pane.height / 2 - top) / scale, zoom: scale };
+}
+
+/** The boxes of the overlays on the pane (marked data-canvas-overlay: the legend, the zoom buttons), in the pane's own pixels. */
+function overlaysOn(pane: HTMLElement | null): Box[] {
+  if (!pane) return [];
+  const origin = pane.getBoundingClientRect();
+  return [...pane.querySelectorAll<HTMLElement>('[data-canvas-overlay]')].map((el) => {
+    const box = el.getBoundingClientRect();
+    return { x: box.x - origin.x, y: box.y - origin.y, width: box.width, height: box.height };
+  });
 }
 
 /** The scene's identity: strings and numbers, so the view moves once per new scene, not on every render of the same one. */
@@ -424,8 +469,8 @@ function FitOnScene({ scene, nodes, edges }: { scene: Scene; nodes: PersonNode[]
     const move = fitted.current === null ? { duration: 0 } : moveFor(VIEW_MOTION.scene);
     fitted.current = key;
     const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
-    const { width, height } = store.getState();
-    const start = largeViewStart(scene, hidden, { width, height });
+    const { width, height, domNode } = store.getState();
+    const start = largeViewStart(scene, hidden, { width, height, overlays: overlaysOn(domNode) });
     if (start === null) void flow.fitView({ ...FIT_OPTIONS, ...move });
     else void flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move });
   }, [flow, store, key, sized, scene, nodes, edges]);
@@ -485,7 +530,7 @@ export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children
     >
       <FitOnScene scene={scene} nodes={nodes} edges={edges} />
       <div className="pointer-events-none absolute inset-0 z-10">
-        <div className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
+        <div data-canvas-overlay className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
           <ZoomControls />
         </div>
         {children}

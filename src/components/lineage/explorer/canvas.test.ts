@@ -5,23 +5,27 @@
 import { describe, expect, it } from 'vitest';
 
 import { motion } from '@/design/tokens';
-import type { Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
+import type { Box, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import { cubicBezier, FIT_OPTIONS, largeViewStart, ms, VIEW_MOTION } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
 
-/** A laid-out scene: people by rank and x (the left of their 200×64 slot), and teacher → student links. */
-function sceneOf(people: readonly { id: string; rank: number; x: number }[], links: readonly [string, string][], focusId: string): Scene {
+/**
+ * A laid-out scene: people by rank and x (the left of their 200×64 slot), the top of their row
+ * (y, `rank` × 200 unless given), and teacher → student links.
+ */
+function sceneOf(people: readonly { id: string; rank: number; x: number; y?: number }[], links: readonly [string, string][], focusId: string): Scene {
   const nodes: SceneNode[] = people.map((p) => {
-    const box = { x: p.x, y: p.rank * ROW, ...SLOT };
+    const y = p.y ?? p.rank * ROW;
+    const box = { x: p.x, y, ...SLOT };
     return {
       id: p.id,
       rank: p.rank,
       cutOff: false,
       onSpine: false,
       ...box,
-      center: { x: p.x + SLOT.width / 2, y: p.rank * ROW + SLOT.height / 2 },
+      center: { x: p.x + SLOT.width / 2, y: y + SLOT.height / 2 },
       boxes: { full: box, compact: box, dot: box },
     };
   });
@@ -37,7 +41,7 @@ function sceneOf(people: readonly { id: string; rank: number; x: number }[], lin
     path: { type: 'orthogonal', points: [] },
   }));
   const width = Math.max(...people.map((p) => p.x + SLOT.width));
-  const height = Math.max(...people.map((p) => p.rank * ROW + SLOT.height));
+  const height = Math.max(...nodes.map((n) => n.y + n.height));
   return {
     version: 1,
     dataVersion: 'test',
@@ -74,13 +78,51 @@ function wideLineage(): Scene {
   return sceneOf(people, links, 'root');
 }
 
+/**
+ * Demo Lineage A at its root as the Lineage view lays it out: the root's nearest student 280 px to
+ * its left, two students of both below them (rows 136 and 480 px down: the edges of a wide teacher
+ * run between), and the root's other students thousands of pixels away (41 people in all).
+ */
+function lineageA(): Scene {
+  const people = [
+    { id: 'root', rank: 0, x: 11696, y: 12 },
+    { id: 'student', rank: 1, x: 11416, y: 136 },
+    { id: 'both-left', rank: 2, x: 11472, y: 480 },
+    { id: 'both-right', rank: 2, x: 11696, y: 480 },
+    { id: 'grand', rank: 2, x: 11248, y: 480 },
+  ];
+  const links: [string, string][] = [
+    ['root', 'student'],
+    ['root', 'both-left'],
+    ['root', 'both-right'],
+    ['student', 'both-left'],
+    ['student', 'both-right'],
+    ['student', 'grand'],
+  ];
+  [1132, 3805, 24676, 27588].forEach((x, i) => {
+    people.push({ id: `far${i}`, rank: 1, x, y: 136 });
+    links.push(['root', `far${i}`]);
+    for (let j = 0; j < 9; j++) {
+      people.push({ id: `far${i}g${j}`, rank: 2, x: x - 900 + j * 224, y: 480 });
+      links.push([`far${i}`, `far${i}g${j}`]);
+    }
+  });
+  return sceneOf(people, links, 'root');
+}
+
+/** The box of a person's slot on the pane when the view starts there. */
+function paneBox(scene: Scene, id: string, start: { x: number; y: number; zoom: number }, pane: { width: number; height: number }): Box {
+  const n = scene.nodes.find((node) => node.id === id)!;
+  return { x: (n.x - start.x) * start.zoom + pane.width / 2, y: (n.y - start.y) * start.zoom + pane.height / 2, width: n.width * start.zoom, height: n.height * start.zoom };
+}
+
 /** Whether the slot of a person lies inside the pane when the view starts there. */
 function onScreen(scene: Scene, id: string, start: { x: number; y: number; zoom: number }, pane: { width: number; height: number }): boolean {
-  const n = scene.nodes.find((node) => node.id === id)!;
-  const left = (n.x - start.x) * start.zoom + pane.width / 2;
-  const top = (n.y - start.y) * start.zoom + pane.height / 2;
-  return left >= 0 && top >= 0 && left + n.width * start.zoom <= pane.width && top + n.height * start.zoom <= pane.height;
+  const box = paneBox(scene, id, start, pane);
+  return box.x >= 0 && box.y >= 0 && box.x + box.width <= pane.width && box.y + box.height <= pane.height;
 }
+
+const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 describe('the first view of a scene', () => {
   const desktop = { width: 1208, height: 766 };
@@ -108,13 +150,62 @@ describe('the first view of a scene', () => {
     const scene = wideLineage();
     const start = largeViewStart(scene, new Set(['s3', 'root>s3', ...Array.from({ length: 8 }, (_, j) => `s3>s3g${j}`)]), desktop)!;
     expect(onScreen(scene, 'root', start, desktop)).toBe(true);
-    // The next nearest, 1542 px to the left, is too far for full cards: the root alone, a quarter down.
-    expect(start).toEqual({ x: 8352, y: 32 + 766 / 4, zoom: 1 });
+    // The next nearest, 1542 px to the left, is too far for full cards: the root alone, at the
+    // top of the pane inside a whole-view fit's padding (nobody is above it).
+    expect(start.x).toBe(8352);
+    expect(start.zoom).toBe(1);
+    expect(paneBox(scene, 'root', start, desktop).y).toBeCloseTo((766 - 766 / (1 + FIT_OPTIONS.padding)) / 2, 6);
   });
 
   it('on a phone keeps full cards and the root alone when no student fits beside it', () => {
     const scene = wideLineage();
-    expect(largeViewStart(scene, new Set(), phone)).toEqual({ x: 8352, y: 32 + 600 / 4 / 0.75, zoom: 0.75 });
+    // At the top of the pane, 12 px down, and the rows below fill the rest.
+    expect(largeViewStart(scene, new Set(), phone)).toEqual({ x: 8352, y: (600 / 2 - 12) / 0.75, zoom: 0.75 });
+  });
+
+  describe('on a phone, with the legend and the zoom buttons over the pane', () => {
+    // The pane of the Lineage view at 390x844, and its overlays as the explorer draws them: the
+    // legend across the bottom (two lines), the zoom buttons above its right end.
+    const legend = { x: 12, y: 461, width: 302, height: 64 };
+    const buttons = { x: 332, y: 375, width: 46, height: 134 };
+    const pane = { width: 390, height: 537, overlays: [legend, buttons] };
+
+    it('frames the root and its nearest student in full cards, clear of both, and the row below above the legend', () => {
+      const scene = lineageA();
+      const start = largeViewStart(scene, new Set(), pane)!;
+      expect(start.zoom).toBe(0.75);
+      for (const id of ['root', 'student']) {
+        expect(onScreen(scene, id, start, pane), id).toBe(true);
+        for (const overlay of pane.overlays) expect(overlap(paneBox(scene, id, start, pane), overlay), `${id} under an overlay`).toBe(false);
+      }
+      // Nobody is drawn above the root: the view starts at the top of the pane, 12 px down, and the
+      // students of both, the next row, are on the pane above the legend.
+      expect(paneBox(scene, 'root', start, pane).y).toBeCloseTo(12, 6);
+      for (const id of ['both-left', 'both-right']) {
+        const box = paneBox(scene, id, start, pane);
+        expect(box.y, id).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height, id).toBeLessThanOrEqual(legend.y);
+      }
+    });
+
+    it('frames the students of both too where nothing lies over the pane: the overlays are what leaves them out', () => {
+      const scene = lineageA();
+      const start = largeViewStart(scene, new Set(), { width: pane.width, height: pane.height })!;
+      for (const id of ['root', 'student', 'both-left', 'both-right']) expect(onScreen(scene, id, start, pane), id).toBe(true);
+    });
+
+    it('moves a centred frame up to keep the overlays\' inset from the zoom buttons', () => {
+      // A student of the second row with two of its own students: 318 by 198 px at 0.75, which
+      // centred on the pane would end 7.5 px above the zoom buttons, closer than their 12 px inset.
+      const scene = { ...wideLineage(), focusId: 's1' };
+      const start = largeViewStart(scene, new Set(), pane)!;
+      for (const id of ['s1', 's1g4', 's1g5']) {
+        expect(onScreen(scene, id, start, pane), id).toBe(true);
+        for (const overlay of pane.overlays) expect(overlap(paneBox(scene, id, start, pane), overlay), `${id} under an overlay`).toBe(false);
+      }
+      const bottom = paneBox(scene, 's1g4', start, pane);
+      expect(bottom.y + bottom.height).toBeCloseTo(buttons.y - 12, 6);
+    });
   });
 
   it('brings the teacher drawn above the focus into the first view', () => {
