@@ -159,7 +159,7 @@ async function checkView(name: string, graph: LineageGraph) {
   const { scene, stats } = await layoutLineageWithStats(graph, { focusId: graph.focusId });
   const { outside, besideTheSpine, besideTheSpineIds } = outsideTheirTeachers(scene);
   expect(outside, name).toEqual([]);
-  // The exception below never costs more than one student per row, and the layout says so.
+  // The exception below never costs more than one student per view, and the layout says so.
   expect(besideTheSpine.length, name).toBeLessThanOrEqual(1);
   expect([...stats.unplacedStudents].sort(), name).toEqual([...besideTheSpineIds].sort());
   // The focus spine stays straight (plan §4.5, M03).
