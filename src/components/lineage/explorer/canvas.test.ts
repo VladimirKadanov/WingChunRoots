@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { motion } from '@/design/tokens';
 import type { Box, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, FIT_OPTIONS, largeViewStart, ms, VIEW_MOTION } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, VIEW_MOTION, wholeFitZoom } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
@@ -128,12 +128,82 @@ describe('the first view of a scene', () => {
   const desktop = { width: 1208, height: 766 };
   const phone = { width: 390, height: 600 };
 
-  it('fits a scene of up to 40 drawn people whole, not counting people hidden by default', () => {
+  it('fits a scene whole when the pane shows all its drawn people as cards, not counting people hidden by default', () => {
+    // A teacher above three students, and three more students thousands of pixels away whose only
+    // links ended: laid out, hidden until asked for.
+    const people = [
+      { id: 'p0', rank: 0, x: 224 },
+      ...[0, 1, 2].map((j) => ({ id: `p${j + 1}`, rank: 1, x: j * 224 })),
+      ...[0, 1, 2].map((j) => ({ id: `p${j + 4}`, rank: 1, x: 20000 + j * 224 })),
+    ];
+    const scene = sceneOf(people, people.slice(1).map((p) => ['p0', p.id] as [string, string]), 'p0');
+    const ended = new Set(['p4', 'p5', 'p6', 'p0>p4', 'p0>p5', 'p0>p6']);
+    expect(largeViewStart(scene, ended, desktop)).toBeNull();
+    // Counted, the far three would make every person a dot: the view starts at the focus.
+    expect(largeViewStart(scene, new Set(), desktop)).not.toBeNull();
+  });
+
+  it('starts a view at the focus whenever its whole fit makes every person a dot, however few people it has', () => {
+    // Forty-three people in one row, three of them hidden by default: forty drawn, 0.11 when fitted whole.
     const people = Array.from({ length: 43 }, (_, i) => ({ id: `p${i}`, rank: i === 0 ? 0 : 1, x: i * 224 }));
     const scene = sceneOf(people, people.slice(1).map((p) => ['p0', p.id] as [string, string]), 'p0');
-    expect(largeViewStart(scene, new Set(), desktop)).not.toBeNull();
-    // Three people whose only links ended: laid out, hidden until asked for; the view has 40.
-    expect(largeViewStart(scene, new Set(['p40', 'p41', 'p42', 'p0>p40', 'p0>p41', 'p0>p42']), desktop)).toBeNull();
+    const hidden = new Set(['p40', 'p41', 'p42', 'p0>p40', 'p0>p41', 'p0>p42']);
+    expect(wholeFitZoom(scene.nodes.filter((n) => !hidden.has(n.id)), desktop)).toBeLessThan(READABLE_ZOOM);
+    const start = largeViewStart(scene, hidden, desktop)!;
+    expect(start.zoom).toBeGreaterThanOrEqual(DETAIL_ZOOM.full);
+    expect(onScreen(scene, 'p0', start, desktop)).toBe(true);
+  });
+
+  /**
+   * A person view like demo-hub-a's on a phone: the focus under its teacher, above `count` students
+   * in one row (224 px apart), 2 + count people in all.
+   */
+  function hub(count: number): Scene {
+    const middle = ((count - 1) * 224) / 2;
+    const people = [
+      { id: 'teacher', rank: 0, x: middle },
+      { id: 'hub', rank: 1, x: middle },
+      ...Array.from({ length: count }, (_, j) => ({ id: `s${j}`, rank: 2, x: j * 224 })),
+    ];
+    const links: [string, string][] = [['teacher', 'hub'], ...Array.from({ length: count }, (_, j) => ['hub', `s${j}`] as [string, string])];
+    return sceneOf(people, links, 'hub');
+  }
+
+  it('opens a small view whose whole fit would be dots at the focus, in full cards, with the people that fit beside it', () => {
+    // Fourteen people: fitted whole at 390 px, 0.13, every one a dot.
+    const scene = hub(12);
+    expect(scene.nodes).toHaveLength(14);
+    expect(wholeFitZoom(scene.nodes, phone)).toBeLessThan(READABLE_ZOOM);
+    const start = largeViewStart(scene, new Set(), phone)!;
+    expect(start).not.toBeNull();
+    expect(start.zoom).toBe(DETAIL_ZOOM.full);
+    expect(onScreen(scene, 'hub', start, phone)).toBe(true);
+    // Its teacher above it, and the students nearest below it (two full cards fit side by side at 390 px).
+    expect(onScreen(scene, 'teacher', start, phone)).toBe(true);
+    const students = scene.nodes.filter((n) => n.id.startsWith('s') && onScreen(scene, n.id, start, phone));
+    expect(students.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('decides by the pane: the same view is fitted whole on a desktop and starts at the focus on a phone', () => {
+    // Ten people, 1768 px wide: 0.60 on the desktop pane (compact chips), 0.19 at 390 px.
+    const scene = hub(8);
+    expect(wholeFitZoom(scene.nodes, desktop)).toBeGreaterThanOrEqual(READABLE_ZOOM);
+    expect(largeViewStart(scene, new Set(), desktop)).toBeNull();
+    expect(wholeFitZoom(scene.nodes, phone)).toBeLessThan(READABLE_ZOOM);
+    const start = largeViewStart(scene, new Set(), phone)!;
+    expect(start.zoom).toBe(DETAIL_ZOOM.full);
+    expect(onScreen(scene, 'hub', start, phone)).toBe(true);
+  });
+
+  it('measures the whole fit as React Flow fits the view, never past the cards\' own size', () => {
+    // React Flow's padding of 0.15: floor((size - size / 1.15) / 2) on each side.
+    const scene = hub(12);
+    expect(wholeFitZoom(scene.nodes, desktop)).toBeCloseTo((1208 - 2 * 78) / (11 * 224 + 200), 9);
+    expect(wholeFitZoom(scene.nodes, phone)).toBeCloseTo((390 - 2 * 25) / (11 * 224 + 200), 9);
+    expect(wholeFitZoom([{ x: 0, y: 0, width: 200, height: 64 }], desktop)).toBe(FIT_OPTIONS.maxZoom);
+    // The threshold is the zoom below which every person is a dot (lodOf).
+    expect(READABLE_ZOOM).toBe(DETAIL_ZOOM.compact);
+    expect(DETAIL_ZOOM).toEqual({ full: 0.75, compact: 0.4 });
   });
 
   it('opens the Lineage view on its root with the nearest of its students, in full cards', () => {

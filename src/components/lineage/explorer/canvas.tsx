@@ -91,7 +91,10 @@ export interface LineageEdgeData extends Record<string, unknown> {
 export type PersonNode = Node<PersonNodeData, 'person'>;
 export type LineageEdge = Edge<LineageEdgeData, 'lineage'>;
 
-const lodOf = (s: ReactFlowState): DetailLevel => (s.transform[2] >= 0.75 ? 'full' : s.transform[2] >= 0.4 ? 'compact' : 'dot');
+/** The levels of detail by zoom (plan §4.8): a full card from `full`, a compact chip from `compact`, a dot below. */
+export const DETAIL_ZOOM = { full: 0.75, compact: 0.4 } as const;
+
+const lodOf = (s: ReactFlowState): DetailLevel => (s.transform[2] >= DETAIL_ZOOM.full ? 'full' : s.transform[2] >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
 
 /** The monogram of a full card (plan §4.8): the first letters of the first and the last word of the Latin name. */
 export function monogram(name: string): string {
@@ -336,12 +339,18 @@ function ZoomControls() {
   );
 }
 
-/** Up to this many people the first view shows them all; a larger view starts at the focus. */
-const FIT_ALL_UP_TO = 40;
+/**
+ * The smallest zoom at which the people of a view are still cards with their names (compact chips,
+ * lodOf); below it every person is a dot. The first view fits the whole view only from this zoom:
+ * a view that fits only smaller, of however few people (a teacher's twelve students in one row on a
+ * phone), opens like a large one, at the focus in full cards (DEFAULT, no D number: a first view of
+ * dots shows no one's name; ADR 0009 item 5). "Fit the whole view" still shows all of it.
+ */
+export const READABLE_ZOOM = DETAIL_ZOOM.compact;
 /** The zoom a large view starts at: cards at their own size, on a phone the smallest zoom with full cards (plan §4.8). */
-const LARGE_VIEW_ZOOM = { wide: 1, narrow: 0.75 } as const;
+const LARGE_VIEW_ZOOM = { wide: 1, narrow: DETAIL_ZOOM.full } as const;
 /** The smallest zoom with full cards (plan §4.8, lodOf). */
-const FULL_CARDS = 0.75;
+const FULL_CARDS = DETAIL_ZOOM.full;
 const NARROW_PANE = 640;
 /**
  * The overlays' inset from the pane's edges (the legend's and the zoom buttons', 0.75rem): what the
@@ -373,13 +382,27 @@ function union(a: Box, b: Box): Box {
 }
 
 /**
+ * The zoom at which React Flow's fit of the whole view (fitView with FIT_OPTIONS: the drawn
+ * people's bounds inside the padding, never past the cards' own size) shows these people.
+ */
+export function wholeFitZoom(people: readonly Box[], pane: { width: number; height: number }): number {
+  if (people.length === 0) return FIT_OPTIONS.maxZoom;
+  const bounds = people.reduce(union);
+  // React Flow's padding on each side: floor((size - size / (1 + padding)) / 2).
+  const padding = (size: number) => 2 * Math.floor((size - size / (1 + FIT_OPTIONS.padding)) / 2);
+  return Math.min(FIT_OPTIONS.maxZoom, (pane.width - padding(pane.width)) / bounds.width, (pane.height - padding(pane.height)) / bounds.height);
+}
+
+/**
  * Where the first view of a large scene starts (DEFAULT, docs/plan/questions/M05.md: full cards, not the
- * whole view as dots): the focus, or the first person of the top row when the focus is not drawn,
+ * whole view as dots). A scene is large when its whole fit falls below READABLE_ZOOM on this pane.
+ * The view starts at the focus, or the first person of the top row when the focus is not drawn,
  * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
  * (the Lineage view opens on its root with a student of the root, not with the root alone above
  * the grand-students). When none fits beside them, the person alone at the pane's zoom. With
  * nobody drawn above the start's row, the view starts at the top of the pane, so the rows below
- * fill the rest; any other is centred. Null for a small scene, which is fitted whole.
+ * fill the rest; any other is centred. Null for a small scene, which is fitted whole: one whose
+ * drawn people the pane shows whole at READABLE_ZOOM or more.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
  * overlays' inset, so that two full cards fit side by side at 390 px) and clear of the overlays
@@ -389,7 +412,7 @@ function union(a: Box, b: Box): Box {
  */
 export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
-  if (people.length <= FIT_ALL_UP_TO) return null;
+  if (people.length === 0 || wholeFitZoom(people.map(boxOf), pane) >= READABLE_ZOOM) return null;
   const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
   const narrow = pane.width < NARROW_PANE;
   const zoom = narrow ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
