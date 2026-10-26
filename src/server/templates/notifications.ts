@@ -252,9 +252,38 @@ const pilotAccessClosed: NotificationTemplate<{ planCode: PlanCode }> = {
   sample: { planCode: 'pro_sifu' },
 };
 
+// --- Account deletion (M07) -----------------------------------------------------------------------
+
+/**
+ * "account.deletion-requested": to every admin, when an account asks to be deleted from
+ * /account/privacy (milestone M07). The payload holds the review case id only; /admin lists who
+ * asked, for a session that proved the second factor.
+ */
+const accountDeletionRequested: NotificationTemplate<{ caseId: string }> = {
+  name: 'account.deletion-requested',
+  parse(payload) {
+    const data = payloadObject('account.deletion-requested', payload);
+    if (typeof data.caseId !== 'string' || !UUID.test(data.caseId)) {
+      throw new NotificationDataError('account.deletion-requested', 'caseId must be a UUID');
+    }
+    return { caseId: data.caseId };
+  },
+  render: () => ({
+    title: 'Account deletion requested',
+    body: [
+      {
+        text: 'An account asked to be deleted. Carry the request out from the administration page: the account’s data is deleted, and relationships that others verified stay as historical records until the legal review.',
+      },
+    ],
+    action: { label: 'See deletion requests', href: '/admin#deletion-requests' },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-000000000002' },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
+  'account.deletion-requested': accountDeletionRequested,
   'pilot-access.requested': pilotAccessRequested,
   'pilot-access.closed': pilotAccessClosed,
   'plan.granted': planGranted,

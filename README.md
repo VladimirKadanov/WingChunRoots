@@ -132,7 +132,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm fixtures:generate` | Rewrite `fixtures/lineage-600.json` from the fixture generator |
 | `pnpm build` / `pnpm start` | Production build and server |
 | `pnpm build:e2e` | The build for `pnpm e2e` and `pnpm screenshots`: a production build with the test fault switch (`WCR_E2E_BUILD=1`, M04). Never deploy it |
-| `node scripts/check-bundle-budget.mjs` | After `pnpm build`: initial JavaScript per route, gzip, against its budget (170 kB; `/styleguide` 250 kB) |
+| `node scripts/check-bundle-budget.mjs` | After `pnpm build`: initial JavaScript per route, gzip, against its budget (170 kB; `/dashboard/profile` 195 kB, `/styleguide` 260 kB) |
 | `pnpm tokens:build` | Regenerate `src/design/generated/tokens.css` and `tokens.json` from `src/design/tokens.ts` |
 | `pnpm notices` | Regenerate `THIRD_PARTY_NOTICES.md` and the `/legal/licenses` data from `pnpm licenses list --prod`, the shipped build output of `tailwindcss` and `licenses/addenda/` (optional packages such as `sharp`) |
 | `node scripts/lighthouse.mjs --url=<url> [--chrome-path=<chrome>]` | Lighthouse 13 in the mobile profile against a running server: three runs, median LCP and CLS against `lighthouserc.json` |

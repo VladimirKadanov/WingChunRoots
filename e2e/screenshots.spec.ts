@@ -12,6 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
+import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -195,6 +196,88 @@ const STATES: readonly ScreenState[] = [
       // the sticky sidebar where the scroll left it.
       await page.goto(`/admin/grants?request=${requestId}`);
       await expect(page.getByTestId('request-answered')).toBeVisible();
+    },
+  },
+  {
+    // M07: the search palette with the people a Cantonese romanization finds.
+    name: 'palette',
+    milestone: 'M07',
+    async reach(page) {
+      await waitForSearchKeys();
+      await page.goto('/');
+      await openPalette(page);
+      await search(page, 'So Ching');
+      await expect(option(page, 'So Ching Laam').first()).toBeVisible();
+    },
+  },
+  {
+    // M07: the empty palette with its hint (no recent searches in a new browser).
+    name: 'palette-empty',
+    milestone: 'M07',
+    async reach(page) {
+      await page.goto('/');
+      await openPalette(page);
+    },
+  },
+  {
+    // M07: a query nothing public matches.
+    name: 'palette-no-match',
+    milestone: 'M07',
+    async reach(page) {
+      await waitForSearchKeys();
+      await page.goto('/');
+      await openPalette(page);
+      await search(page, 'Zzyzx Quorvane');
+      await expect(page.getByText('No public record matches', { exact: false })).toBeVisible();
+    },
+  },
+  // M07: the stored Chinese name a query matched, the recent searches, a failed search.
+  ...PALETTE_STATES.map((state) => ({ ...state, milestone: 'M07' })),
+  {
+    // M07: the profile editor refusing a save without a Latin-script display name.
+    name: 'profile-invalid',
+    milestone: 'M07',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Screenshot Name' });
+      await page.goto('/dashboard/profile');
+      await page.getByLabel('Written in').first().selectOption({ label: 'Chinese, Traditional characters' });
+      await page.getByRole('button', { name: 'Save my profile' }).click();
+      await expect(page.locator('[data-form-message]').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M07: a profile with names in three scripts, public, after its save.
+    name: 'profile-saved',
+    milestone: 'M07',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Lantern Example' });
+      const saved = await apiPost(page, '/profile/update', {
+        names: [
+          { kind: 'name', value: 'Demo Lantern Example', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true },
+          { kind: 'name', value: '燈籠', script: 'Hant', lang: 'zh-Hant', romanization: null, isPrimary: false },
+          { kind: 'romanization', value: 'dang1 lung4', script: 'Latn', lang: 'yue-Latn', romanization: 'jyutping', isPrimary: false },
+          { kind: 'name', value: 'Демо Фенер', script: 'Cyrl', lang: 'bg-Cyrl', romanization: null, isPrimary: false },
+        ],
+        bio: { body: 'A fictional practitioner of the demo data, training since the pilot began.', lang: 'en' },
+        trainingStartYear: 2015,
+        showPublicly: true,
+      });
+      expect(saved.status(), await saved.text()).toBe(200);
+      await page.goto('/dashboard/profile');
+      await page.getByRole('button', { name: 'Save my profile' }).click();
+      await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+    },
+  },
+  {
+    // M07: /account/privacy once a deletion request is open.
+    name: 'account-deletion-requested',
+    milestone: 'M07',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Departing Example' });
+      const asked = await apiPost(page, '/account/request-deletion', { confirm: true });
+      expect(asked.status(), await asked.text()).toBe(200);
+      await page.goto('/account/privacy');
+      await expect(page.getByText(/You asked for your account to be deleted on/)).toBeVisible();
     },
   },
 ];

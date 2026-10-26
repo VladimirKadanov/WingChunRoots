@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02 and M08; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07 and M08; later milestones add theirs (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -18,7 +18,14 @@ export type AuditAction =
   | 'grant.revoke'
   | 'account.type_change'
   | 'pilot_access.request'
-  | 'pilot_access.close';
+  | 'pilot_access.close'
+  // M07: profiles, consents and account deletion (plan §6.6).
+  | 'person.update'
+  | 'consent.withdraw'
+  | 'account.deletion_request'
+  // pnpm account:delete (M07, until the review tool of M10a).
+  | 'account.delete'
+  | 'account.deletion_cancel';
 
 export interface AuditEntry {
   action: AuditAction;

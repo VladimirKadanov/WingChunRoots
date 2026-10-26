@@ -238,6 +238,15 @@
   }
 }
 
+/* The search palette as a sheet under the top edge (src/components/ui/search-palette.tsx,
+   SHEET_QUERY): from 40rem wide and 32rem high. A phone in landscape (844 x 390) is wide but low,
+   so it keeps the full-screen palette, whose field and results get the whole height. */
+@custom-variant sheet {
+  @media (width >= 40rem) and (height >= 32rem) {
+    @slot;
+  }
+}
+
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {

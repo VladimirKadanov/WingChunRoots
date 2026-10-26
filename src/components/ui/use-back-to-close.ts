@@ -9,6 +9,18 @@ import { useEffect, useId, useRef } from 'react';
 
 const KEY = 'wcrLayer';
 
+/**
+ * For a layer that closes by navigating (M07: a search result): takes this page's history entry
+ * back from the layer, so closing it does not step back as well. Then navigate with
+ * router.replace(): the new page takes the layer's entry, and Back returns to the page below.
+ */
+export function releaseLayerEntry(): void {
+  const state = { ...((window.history.state as Record<string, unknown> | null) ?? {}) };
+  if (!(KEY in state)) return;
+  delete state[KEY];
+  window.history.replaceState(state, '');
+}
+
 export function useBackToClose(open: boolean, close: () => void): void {
   const id = useId();
   const closeRef = useRef(close);
