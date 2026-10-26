@@ -366,8 +366,24 @@ async function dragGraph(page: Page, dy: number): Promise<void> {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
-/** Whether a person is drawn with the centre of its node on the pane and not covered (by the panel, the legend or the zoom buttons): a tap there selects it. */
-function tappable(page: Page, id: string): Promise<boolean> {
+/**
+ * Whether a person is drawn with the centre of its node on the pane and not covered (by the panel, the
+ * legend or the zoom buttons): a tap there selects it. Read once the view has followed the pane: when a
+ * selection changes the pane's height, the box React Flow fills takes the frame's height a task later
+ * (useFollowFrame in canvas.tsx), and keepSelectionInView moves the view in that same task.
+ */
+async function tappable(page: Page, id: string): Promise<boolean> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const frame = document.querySelector<HTMLElement>('[data-canvas-frame]');
+          const box = frame?.firstElementChild as HTMLElement | null | undefined;
+          return !!frame && !!box && box.style.height === `${frame.clientHeight}px`;
+        }),
+      'the view followed the pane',
+    )
+    .toBe(true);
   return page.evaluate((id) => {
     const el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`);
     if (!el) return false;
