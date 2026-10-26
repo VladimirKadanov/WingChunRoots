@@ -15,8 +15,8 @@
 | M04 | [M04 — API за родословието, публичен профил и списъчен изглед](M04-lineage-api.md) | M02 | слят ([#10](https://github.com/VladimirKadanov/WingChunRoots/pull/10), 24.10.2026) |
 | M05 | [M05 — Интерактивен изследовател: изгледи и връзки](M05-explorer-views.md) | M03, M04 | PR отворен ([#14](https://github.com/VladimirKadanov/WingChunRoots/pull/14), чернова, клон `m05-explorer-views`) |
 | M06 | [M06 — Изследовател: клавиатура, екранни четци, телефон и разгъване](M06-explorer-a11y.md) | M05 | не е започнат |
-| M07 | [M07 — Имена, профил, поверителност на акаунта и търсене](M07-names-search.md) | M04 | PR отворен ([#13](https://github.com/VladimirKadanov/WingChunRoots/pull/13), чернова, клон `m07-names-search`) |
-| M08 | [M08 — Права по план, тестови права и табла](M08-entitlements.md) | M02 | PR отворен ([#11](https://github.com/VladimirKadanov/WingChunRoots/pull/11), чернова, клон `m08-entitlements`) |
+| M07 | [M07 — Имена, профил, поверителност на акаунта и търсене](M07-names-search.md) | M04 | слят ([#13](https://github.com/VladimirKadanov/WingChunRoots/pull/13), 26.10.2026) |
+| M08 | [M08 — Права по план, тестови права и табла](M08-entitlements.md) | M02 | слят ([#11](https://github.com/VladimirKadanov/WingChunRoots/pull/11), 24.10.2026) |
 | M09 | [M09 — Заявки към учител и независими одобрения](M09-teacher-requests.md) | M07, M08 | не е започнат |
 | M10a | [M10a — Доказателства, исторически учители и опашка за преглед](M10a-evidence-review.md) | M09 | не е започнат |
 | M10b | [M10b — Покани, поемане на профил, проверка на инструктор, сигнали и арбитраж](M10b-claims-reports.md) | M10a | не е започнат |
