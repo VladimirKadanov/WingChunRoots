@@ -23,6 +23,53 @@ export async function personNameOf(slug: string): Promise<string> {
   return rows.rows[0]!.name;
 }
 
+// --- The view's moves ----------------------------------------------------------------------------------
+
+/**
+ * The view's pan and zoom (React Flow's viewport transform) once it has stopped moving: the same
+ * in every painted frame for 300 ms, and in at least 10 frames (a zoom button moves it for 200 ms,
+ * a new scene for 250 ms). Counted in the page's animation frames, not in time alone: the view
+ * moves only when the browser paints, and WebKit can paint no frame for a few hundred
+ * milliseconds on a busy machine, which two reads 150 ms apart took for a view at rest in the
+ * middle of a zoom.
+ */
+export async function settledView(page: Page): Promise<{ x: number; y: number; zoom: number }> {
+  await page.locator('.react-flow__viewport').waitFor();
+  return page.evaluate(
+    () =>
+      new Promise<{ x: number; y: number; zoom: number }>((resolve, reject) => {
+        const read = () => {
+          const el = document.querySelector<HTMLElement>('.react-flow__viewport');
+          const m = el ? /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(el.style.transform) : null;
+          return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) } : null;
+        };
+        let last = JSON.stringify(read());
+        let since = performance.now();
+        let frames = 0;
+        let done = false;
+        const deadline = window.setTimeout(() => {
+          done = true;
+          reject(new Error('The view never stopped moving.'));
+        }, 6000);
+        const frame = (now: number) => {
+          if (done) return;
+          const view = read();
+          const key = JSON.stringify(view);
+          if (!view || key !== last) {
+            last = key;
+            since = now;
+            frames = 0;
+          } else frames += 1;
+          if (view && frames >= 10 && now - since >= 300) {
+            window.clearTimeout(deadline);
+            resolve(view);
+          } else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+}
+
 // --- The generation label ---------------------------------------------------------------------------
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -44,15 +91,8 @@ export async function zoomToFullCard(page: Page, id: string): Promise<void> {
     const before = await transform();
     await page.getByRole('button', { name: 'Zoom in' }).click();
     // The zoom animates (the motion tokens): wait until the view has moved and come to rest.
-    let last = before;
-    await expect
-      .poll(async () => {
-        const now = await transform();
-        const settled = now !== before && now === last;
-        last = now;
-        return settled;
-      })
-      .toBe(true);
+    await expect.poll(transform, { message: 'the view has moved' }).not.toBe(before);
+    await settledView(page);
     await expect(node, 'the card stays on screen while zooming in').toBeInViewport();
   }
 }

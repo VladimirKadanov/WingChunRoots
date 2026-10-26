@@ -19,6 +19,7 @@ import {
   recordScripts,
   sceneOf,
   selectionInp,
+  settledView,
   uncoveredNode,
   workerScripts,
   zoomToFullCard,
@@ -486,50 +487,6 @@ test('@M05 no axe violations on /explore in dark and light themes', async ({ pag
 test.describe('M05 fixes a1', () => {
   type Page = Parameters<typeof openExplorer>[0];
   type Locator = ReturnType<typeof nodeOf>;
-  /**
-   * The view's pan and zoom (React Flow's viewport transform) once it has stopped moving: the same
-   * in every painted frame for 300 ms, and in at least 10 frames (a zoom button moves it for 200 ms,
-   * a new scene for 250 ms). Counted in the page's animation frames, not in time alone: the view
-   * moves only when the browser paints, and WebKit can paint no frame for a few hundred
-   * milliseconds on a busy machine, which two reads 150 ms apart took for a view at rest in the
-   * middle of a zoom.
-   */
-  async function settledView(page: Page) {
-    await page.locator('.react-flow__viewport').waitFor();
-    return page.evaluate(
-      () =>
-        new Promise<{ x: number; y: number; zoom: number }>((resolve, reject) => {
-          const read = () => {
-            const el = document.querySelector<HTMLElement>('.react-flow__viewport');
-            const m = el ? /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(el.style.transform) : null;
-            return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) } : null;
-          };
-          let last = JSON.stringify(read());
-          let since = performance.now();
-          let frames = 0;
-          let done = false;
-          const deadline = window.setTimeout(() => {
-            done = true;
-            reject(new Error('The view never stopped moving.'));
-          }, 6000);
-          const frame = (now: number) => {
-            if (done) return;
-            const view = read();
-            const key = JSON.stringify(view);
-            if (!view || key !== last) {
-              last = key;
-              since = now;
-              frames = 0;
-            } else frames += 1;
-            if (view && frames >= 10 && now - since >= 300) {
-              window.clearTimeout(deadline);
-              resolve(view);
-            } else requestAnimationFrame(frame);
-          };
-          requestAnimationFrame(frame);
-        }),
-    );
-  }
   /** Whether a node lies wholly inside the canvas pane (a node off screen is not rendered at all). */
   async function onCanvas(page: Page, node: Locator) {
     if ((await node.count()) === 0) return false;
@@ -693,6 +650,9 @@ test.describe('M05 fixes a2', () => {
     await openExplorer(page, { focus: await personIdOf('demo-root-b'), lineage: await lineageIdOf('demo-lineage-b') });
     await page.getByRole('button', { name: 'Fit the whole view' }).click();
     await expect(personNodes(page).first()).toHaveAttribute('data-lod', 'dot');
+    // The fit moves the view for 200 ms (ease-out), and React Flow draws only what is on the pane:
+    // every person is a dot early in the move, while only a part of the lineage is drawn yet.
+    await settledView(page);
   }
 
   test('@M05 every legend sample is drawn with the stroke of the edges it explains: the same width, dash and lines', async ({ page }) => {
