@@ -3,7 +3,7 @@
  * against `next start` with the seeded fictional demo data (D20); nothing here changes data.
  */
 
-import { expect, test, type Worker } from '@playwright/test';
+import { expect, type Page, test, type Worker } from '@playwright/test';
 
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
@@ -342,6 +342,30 @@ test.describe('on a phone', () => {
   });
 });
 
+/**
+ * Drags the graph up by `distance` px from the middle of the pane, as a person drags it with a finger,
+ * dispatched as script events: Event Timing counts only the browser's own (trusted) events and the INP
+ * probes listen for pointerdown and click, so an INP measured afterwards is that of the selections
+ * alone (a real drag would be an interaction of its own). Resolves once the view has moved and the
+ * people it brings onto the pane are drawn.
+ */
+async function dragGraphUp(page: Page, distance: number): Promise<void> {
+  const viewport = page.locator('.react-flow__viewport');
+  const before = await viewport.evaluate((el) => (el as HTMLElement).style.transform);
+  await page.locator('.react-flow__pane').evaluate((pane, dy) => {
+    const box = pane.getBoundingClientRect();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const fire = (target: EventTarget, type: string, clientY: number) =>
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0, buttons: type === 'mouseup' ? 0 : 1, clientX: x, clientY }));
+    fire(pane, 'mousedown', y);
+    for (let step = 1; step <= 8; step++) fire(window, 'mousemove', y - (dy * step) / 8);
+    fire(window, 'mouseup', y - dy);
+  }, distance);
+  await expect.poll(() => viewport.evaluate((el) => (el as HTMLElement).style.transform), 'the graph moved').not.toBe(before);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
 test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
   // Plan §5.8 (c): INP with the web-vitals library where it is installed (onINP, see
   // installInpProbes), otherwise from the Event Timing API it reads; the frame measure in a
@@ -367,6 +391,11 @@ test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling'
   // panel does not cover, and the root again.
   const root = await personIdOf('demo-root-a');
   await openExplorer(page, { focus: root, lineage: await lineageIdOf('demo-lineage-a') });
+  // On a short phone (an iPhone 15's 393x659) the first view frames the root and its nearest student
+  // in full cards at the top, and the next generation starts just below the pane's bottom edge. A
+  // person drags the graph up to see it; so does the test, by half a card, which keeps the root on
+  // the pane for the selections. Nothing is selected yet, and the drag is no interaction of the INP.
+  if ((await personNodes(page).count()) <= 3) await dragGraphUp(page, (await nodeOf(page, root).boundingBox())!.height / 2);
   expect(await personNodes(page).count(), 'drawn on screen').toBeGreaterThan(3);
   const large = await selectionInp(page, browserName, 3, (selected) => (selected.length === 1 ? uncoveredNode(page, selected) : Promise.resolve(root)));
   report('Lineage view of Demo Lineage A', large);
