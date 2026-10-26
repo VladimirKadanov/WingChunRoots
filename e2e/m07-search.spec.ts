@@ -411,6 +411,251 @@ test('@M07 a display name typed before the profile editor has its JavaScript is 
   await expect(page.getByLabel('Display name', { exact: true }).first()).toHaveValue(latin);
 });
 
+/** Where an edit of the profile editor landed while the page hydrated (watchHydration). */
+type HydrationWindow = 'W0' | 'W1' | 'W2' | 'W3' | 'W4';
+interface HydrationRecord {
+  /** react-dom found the DevTools hook and injected itself: without it, nothing below is seen. */
+  hooked: boolean;
+  /** The commit that hydrated the display name happened; its passive effects (useEffect) ran. */
+  committed: boolean;
+  passive: boolean;
+  /** Every input event of the display name and of the biography, with the window it landed in. */
+  inputs: { field: string; window: HydrationWindow }[];
+  /** textInput events kept from React (suppressTextInput). */
+  textInputs: number;
+  /** The edit made right after the hydrating commit (editInW3): the field's text after it, the country chosen. */
+  w3Edit: { value: string; country: string } | null;
+  problem: string | null;
+}
+
+/**
+ * An init script that watches the profile editor hydrate (PR #13: the iPhone runs saved the old
+ * display name). An edit can land before React has a root (W0), while the display name has no
+ * fiber yet (W1), with a fiber but before the commit that hydrated it (W2), after that commit but
+ * before its passive effects (W3), or after them (W4). React's DevTools hook (which the production
+ * react-dom calls on every commit and after its passive effects) tells the commit; a capture
+ * listener on window (before React's own on the document) tells where each input event landed.
+ * `suppressTextInput` keeps textInput from React, as WebKit sends none before the edit (Chromium
+ * does, and its textInput hydrates the field first). `editInW3` types that name into the display
+ * name, and chooses a country, in a microtask right after the hydrating commit. The record is
+ * window.__hydration: the tests check it, so that a missed window fails instead of passing for
+ * nothing.
+ */
+function watchHydration({ suppressTextInput, editInW3 }: { suppressTextInput: boolean; editInW3: string | null }) {
+  const record: HydrationRecord = { hooked: false, committed: false, passive: false, inputs: [], textInputs: 0, w3Edit: null, problem: null };
+  const w = window as unknown as { __hydration: HydrationRecord; __REACT_DEVTOOLS_GLOBAL_HOOK__?: unknown };
+  w.__hydration = record;
+  type Fiber = { return: Fiber | null };
+  const display = () => document.querySelector<HTMLInputElement>('input[name="names.0.value"]');
+  const fiberOf = (node: Element): Fiber | null => {
+    const key = Object.keys(node).find((k) => k.startsWith('__reactFiber$'));
+    return key ? (node as unknown as Record<string, Fiber>)[key]! : null;
+  };
+  const windowOf = (node: Element): HydrationWindow => {
+    if (!Object.keys(document).some((k) => k.startsWith('__reactContainer$'))) return 'W0';
+    if (!fiberOf(node)) return 'W1';
+    if (!record.committed) return 'W2';
+    return record.passive ? 'W4' : 'W3';
+  };
+  const edit = (text: string) => {
+    const field = display();
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    const country = document.querySelector<HTMLSelectElement>('select[name="countryCode"]');
+    const code = country ? [...country.options].find((o) => o.value && o.value !== country.value)?.value : undefined;
+    if (!field || !setValue || !country || !code) {
+      record.problem = 'the display name, the value setter or a country to choose is missing';
+      return;
+    }
+    // As a person types: the browser's own value setter (React's tracker still holds the old
+    // text), then the input event; and a country chosen in the list.
+    field.focus();
+    setValue.call(field, text);
+    field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    country.value = code;
+    country.dispatchEvent(new Event('change', { bubbles: true }));
+    record.w3Edit = { value: field.value, country: code };
+  };
+  if (w.__REACT_DEVTOOLS_GLOBAL_HOOK__ !== undefined) {
+    record.problem = 'a React DevTools hook was already installed';
+    return;
+  }
+  w.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+    isDisabled: false,
+    supportsFiber: true,
+    renderers: new Map(),
+    inject() {
+      record.hooked = true;
+      return 1;
+    },
+    checkDCE() {},
+    onScheduleFiberRoot() {},
+    onCommitFiberUnmount() {},
+    setStrictMode() {},
+    onCommitFiberRoot(_renderer: number, root: { current: Fiber }) {
+      if (record.committed) return;
+      const field = display();
+      let top = field && fiberOf(field);
+      if (!top) return;
+      // The field's fiber belongs to the tree this commit made current, not to a render still in progress.
+      while (top.return) top = top.return;
+      if (top !== root.current) return;
+      record.committed = true;
+      if (editInW3 !== null) queueMicrotask(() => edit(editInW3));
+    },
+    onPostCommitFiberRoot() {
+      if (record.committed) record.passive = true;
+    },
+  };
+  window.addEventListener(
+    'textInput',
+    (event) => {
+      if (!suppressTextInput) return;
+      record.textInputs++;
+      event.stopImmediatePropagation();
+    },
+    true,
+  );
+  window.addEventListener(
+    'input',
+    (event) => {
+      const target = event.target;
+      if ((target instanceof HTMLInputElement && target.name === 'names.0.value') || (target instanceof HTMLTextAreaElement && target.name === 'bio')) {
+        record.inputs.push({ field: target.name, window: windowOf(target) });
+      }
+    },
+    true,
+  );
+}
+
+const hydrationRecord = (page: Page) => page.evaluate(() => (window as unknown as { __hydration: HydrationRecord }).__hydration);
+
+/** Saves a biography for the account (its only name stays the display name). */
+async function saveBio(page: Page, name: string, body: string) {
+  const saved = await apiPost(page, '/profile/update', {
+    names: [{ kind: 'name', value: name, script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true }],
+    bio: { body, lang: 'en' },
+    showPublicly: false,
+  });
+  expect(saved.status(), await saved.text()).toBe(200);
+}
+
+/** The saved profile in a page of its own (the test's page keeps its init script and routes). */
+async function openSavedProfile(page: Page) {
+  const fresh = await page.context().newPage();
+  await fresh.goto('/dashboard/profile');
+  await expect(fresh.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  return fresh;
+}
+
+test('@M07 a display name typed between the commit that hydrates the profile editor and its effects is the one saved', async ({ page }) => {
+  // The window the iPhone run of PR #13 hit after the first fix (W3): the edit reaches the form
+  // state, but React has not yet subscribed to it and puts the text it drew back into a
+  // controlled field. A controlled select (Country) is changed in the same moment.
+  const latin = `Demo ${tag()} Afterglow`;
+  await freshAccount(page, { name: 'Demo Placeholder Name' });
+  await page.addInitScript(watchHydration, { suppressTextInput: false, editInW3: latin });
+  await page.goto('/dashboard/profile');
+  await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  const record = await hydrationRecord(page);
+  expect(record.problem).toBeNull();
+  expect(record.hooked, 'react-dom used the DevTools hook').toBe(true);
+  expect(record.committed, 'the commit that hydrated the display name was seen').toBe(true);
+  expect(record.inputs, 'the edit landed after that commit, before its effects (W3)').toEqual([{ field: 'names.0.value', window: 'W3' }]);
+  expect(record.w3Edit?.value, 'React left the typed name in the field').toBe(latin);
+
+  const display = page.getByLabel('Display name', { exact: true }).filter({ visible: true }).first();
+  await expect(display).toHaveValue(latin);
+  await expect(page.getByRole('figure', { name: 'How your name will appear' })).toContainText(latin);
+  await expect(page.getByLabel('Country')).toHaveValue(record.w3Edit!.country);
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+  const saved = await openSavedProfile(page);
+  await expect(saved.getByLabel('Display name', { exact: true }).first()).toHaveValue(latin);
+  await expect(saved.getByLabel('Country')).toHaveValue(record.w3Edit!.country);
+});
+
+test('@M07 a display name and a biography typed while the profile editor hydrates are the ones saved, with no textInput before the edit as in WebKit', async ({ page }) => {
+  // W1 (and W2): React has a root, but the editor's fields are not hydrated yet. The chunk with
+  // the editor is held, so the edit lands there; textInput is kept from React. The biography
+  // replaces a saved one: React's hydration of a textarea puts the saved text back into it.
+  const latin = `Demo ${tag()} Midstream`;
+  const bio = `Demo biography ${tag()}, typed while the page was getting ready.`;
+  await freshAccount(page, { name: 'Demo Placeholder Name' });
+  await saveBio(page, 'Demo Placeholder Name', 'Demo saved biography.');
+  await page.addInitScript(watchHydration, { suppressTextInput: true, editInW3: null });
+  let releaseEditor!: () => void;
+  const editorHeld = new Promise<void>((resolve) => {
+    releaseEditor = resolve;
+  });
+  let held = 0;
+  await page.route('**/_next/static/**/*.js', async (route) => {
+    const response = await route.fetch();
+    const body = await response.text();
+    if (body.includes('Use as display name')) {
+      held++;
+      await editorHeld;
+    }
+    await route.fulfill({ response, body });
+  });
+  await page.goto('/dashboard/profile', { waitUntil: 'commit' });
+  // hydrateRoot has run: from here until the editor's chunk comes, an edit lands during hydration.
+  await page.waitForFunction(() => Object.keys(document).some((k) => k.startsWith('__reactContainer$')));
+  const display = page.getByLabel('Display name', { exact: true }).filter({ visible: true }).first();
+  await display.fill(latin);
+  await page.getByLabel('Short biography').fill(bio);
+  expect(held, 'the chunk with the editor was held').toBeGreaterThan(0);
+  releaseEditor();
+  await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  const record = await hydrationRecord(page);
+  expect(record.problem).toBeNull();
+  expect(record.hooked, 'react-dom used the DevTools hook').toBe(true);
+  expect(record.inputs.map((e) => e.field), 'both edits were seen').toEqual(expect.arrayContaining(['names.0.value', 'bio']));
+  for (const { field, window } of record.inputs) expect(['W1', 'W2'], `${field}: the edit landed while the editor hydrated`).toContain(window);
+
+  await expect(display).toHaveValue(latin);
+  await expect(page.getByLabel('Short biography')).toHaveValue(bio);
+  await expect(page.getByRole('figure', { name: 'How your name will appear' })).toContainText(latin);
+  await expect(page.getByText(`${bio.length} of 1000`)).toBeVisible();
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+  const saved = await openSavedProfile(page);
+  await expect(saved.getByLabel('Display name', { exact: true }).first()).toHaveValue(latin);
+  await expect(saved.getByLabel('Short biography')).toHaveValue(bio);
+});
+
+test('@M07 a biography typed over a saved one before the profile editor has its JavaScript is the one saved', async ({ page }) => {
+  // W0 for the biography: unlike an input, a textarea does not keep typed text through
+  // hydration when the server drew some (React writes the saved biography back into it).
+  const bio = `Demo biography ${tag()}, typed before the scripts came.`;
+  await freshAccount(page, { name: 'Demo Placeholder Name' });
+  await saveBio(page, 'Demo Placeholder Name', 'Demo saved biography.');
+  await page.addInitScript(watchHydration, { suppressTextInput: false, editInW3: null });
+  let releaseScripts!: () => void;
+  const scriptsHeld = new Promise<void>((resolve) => {
+    releaseScripts = resolve;
+  });
+  await page.route('**/_next/static/**/*.js', async (route) => {
+    await scriptsHeld;
+    await route.continue();
+  });
+  await page.goto('/dashboard/profile', { waitUntil: 'commit' });
+  const field = page.getByLabel('Short biography');
+  await expect(field).toHaveValue('Demo saved biography.');
+  await field.fill(bio);
+  await expect(page.getByRole('button', { name: 'Add a name' })).toHaveCount(0);
+  releaseScripts();
+  await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  const record = await hydrationRecord(page);
+  expect(record.inputs.length, 'the edit was seen').toBeGreaterThan(0);
+  for (const { window } of record.inputs) expect(window, 'the edit landed before React had a root').toBe('W0');
+  await expect(field).toHaveValue(bio);
+  await expect(page.getByText(`${bio.length} of 1000`)).toBeVisible();
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+  const saved = await openSavedProfile(page);
+  await expect(saved.getByLabel('Short biography')).toHaveValue(bio);
+});
+
 test('@M07 saving a profile without a Latin-script primary name is refused with a clear message', async ({ page }) => {
   await freshAccount(page, { name: 'Demo Lonely Name' });
   await page.goto('/dashboard/profile');
