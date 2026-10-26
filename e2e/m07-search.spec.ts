@@ -29,6 +29,15 @@ test.beforeEach(async ({ context }) => {
   await giveOwnAddress(context);
 });
 
+test.afterEach(async ({ page }) => {
+  // Some tests route the page's scripts, and the page may still ask for a late chunk as the test
+  // ends: a handler still in route.fetch() or response.text() then throws while the context
+  // closes, which fails the test ("Response has been disposed") and stops the worker (CI run
+  // 40302833297). Once unrouted, no handler is called and errors of those still running are
+  // dropped. Not 'wait': a handler held on a promise the test never released would never end.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
 /** Fictional Latin letters for a name no other test uses (desktop and phone run at once). */
 const tag = () =>
   [...randomBytes(6)]
