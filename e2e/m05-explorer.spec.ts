@@ -1248,3 +1248,79 @@ test.describe('M05 small views on a phone', () => {
     expect(shown, 'the hub\'s students drawn').toBeGreaterThanOrEqual(12);
   });
 });
+
+test.describe('M05 on a short phone', () => {
+  // An iPhone 15's viewport (393x659): the canvas pane is about 180 px shorter than on a Pixel 7.
+  test.use({ viewport: { width: 393, height: 659 }, isMobile: true, hasTouch: true });
+
+  test('@M05 on a short phone the selected person stays drawn, whole and uncovered, when the panel opens below the graph', async ({ page }) => {
+    // The focus of the person view is in the lower part of the pane; the panel takes the lower part
+    // of the frame, and React Flow keeps the view's top left corner.
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await nodeOf(page, id).click();
+    await expect(page.getByTestId('explorer-panel')).toBeVisible();
+    const inView = async () => {
+      if ((await nodeOf(page, id).count()) === 0) return 'not drawn';
+      const node = (await nodeOf(page, id).boundingBox())!;
+      const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+      const legend = (await page.getByTestId('explorer-legend').boundingBox())!;
+      if (node.y < pane.y - 0.5 || node.y + node.height > pane.y + pane.height + 0.5) return 'outside the pane';
+      if (node.y + node.height > legend.y && node.x < legend.x + legend.width && legend.x < node.x + node.width) return 'under the legend';
+      return 'in view';
+    };
+    await expect.poll(inView).toBe('in view');
+    // It stays so: the view moved once, at once, and does not move back.
+    await page.waitForTimeout(400);
+    expect(await inView()).toBe('in view');
+    await expect(nodeOf(page, id)).toHaveClass(/selected/);
+  });
+
+  test('@M05 on a short phone the skeleton keeps the elements of the server\'s HTML until the drawing replaces it', async ({ page }) => {
+    // WebKit gives no style to an element added while a stylesheet in the head loads, as React
+    // Flow's does once the canvas chunk is asked for at hydration: a skeleton or rows made anew
+    // then were blank. Every painted frame: the skeleton and its rows shown are the first ones.
+    const { getDb } = await import('../src/server/db');
+    const { sql } = await import('drizzle-orm');
+    const found = await getDb().execute<{ id: string }>(
+      sql`SELECT e.student_person_id::text AS id FROM v_public_edge e JOIN person t ON t.id = e.teacher_person_id WHERE t.slug = 'demo-pro-sifu-8' ORDER BY 1 LIMIT 1`,
+    );
+    await page.addInitScript(() => {
+      const w = window as unknown as { __skeletons: number; __rows: string[] };
+      w.__skeletons = 0;
+      w.__rows = [];
+      const ids = new WeakMap<Element, number>();
+      let next = 0;
+      const idOf = (el: Element) => {
+        if (!ids.has(el)) ids.set(el, next++);
+        return ids.get(el)!;
+      };
+      const skeletons = new Set<number>();
+      const frame = () => {
+        const skeleton = [...document.querySelectorAll('[data-testid="explorer-skeleton"]')].find((s) => s.checkVisibility());
+        if (skeleton) {
+          skeletons.add(idOf(skeleton));
+          w.__skeletons = skeletons.size;
+          const rows = [...skeleton.querySelectorAll('[data-skeleton-row]')].filter((row) => row.checkVisibility()).map(idOf);
+          w.__rows.push(rows.join(','));
+        }
+        if (!document.querySelector('.react-flow__node')) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    // The phone's own read (up=2, down=1) arrives well after the page, its skeleton and the canvas chunk.
+    await page.route('**/api/rpc/lineage/**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await openExplorer(page, { focus: found.rows[0]!.id });
+    const seen = await page.evaluate(() => {
+      const w = window as unknown as { __skeletons: number; __rows: string[] };
+      return { skeletons: w.__skeletons, rows: w.__rows };
+    });
+    expect(seen.rows.length).toBeGreaterThan(10);
+    expect(seen.skeletons, 'skeletons shown').toBe(1);
+    expect(seen.rows[0], 'rows in the first frame').not.toBe('');
+    expect(new Set(seen.rows), 'the rows shown, frame by frame').toEqual(new Set([seen.rows[0]]));
+  });
+});

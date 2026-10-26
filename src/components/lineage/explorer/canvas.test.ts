@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { motion } from '@/design/tokens';
 import type { Box, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, VIEW_MOTION, wholeFitZoom } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
@@ -339,5 +339,44 @@ describe('the moves of the view', () => {
 describe('fitting the whole view', () => {
   it('never zooms past the cards’ own size, for the first view and the button alike', () => {
     expect(FIT_OPTIONS.maxZoom).toBe(1);
+  });
+});
+
+describe('a selected person when the pane gets shorter (a phone\'s panel opens below the graph)', () => {
+  // A 393 px pane, 196 px tall once the panel is open, as on an iPhone 15 (393x659), with the
+  // legend across its bottom and the zoom buttons at the right above it.
+  const legend: Box = { x: 12, y: 130, width: 305, height: 54 };
+  const zoom: Box = { x: 335, y: 36, width: 46, height: 132 };
+  const pane = { width: 393, height: 196, overlays: [legend, zoom] };
+  const card = (x: number, y: number): Box => ({ x, y, width: 141, height: 45 });
+
+  it('stays where it is while it is wholly in view and clear of the overlays', () => {
+    expect(shiftIntoView(card(126, 40), pane)).toBe(0);
+  });
+
+  it('moves up just enough to stand clear of the legend, when it went below the pane\'s new bottom edge', () => {
+    // The focus of the person view: 197 px down the 352 px pane, out of the 196 px one.
+    const shift = shiftIntoView(card(126, 197), pane);
+    expect(197 + shift + 45).toBe(legend.y - 12);
+  });
+
+  it('moves up out from under the legend', () => {
+    const shift = shiftIntoView(card(126, 100), pane);
+    expect(100 + shift + 45).toBe(legend.y - 12);
+  });
+
+  it('keeps clear of the zoom buttons when its width reaches their column and it fits above them', () => {
+    const shift = shiftIntoView(card(240, 300), { ...pane, height: 400, overlays: [{ ...zoom, y: 240 }] });
+    expect(300 + shift + 45).toBe(240 - 12);
+  });
+
+  it('stays inside the pane when it cannot stand clear of the overlays, and never above its top margin', () => {
+    // Across the zoom buttons' column (from 36 px down): no room above them, so only the pane counts.
+    const shift = shiftIntoView(card(240, 170), pane);
+    expect(170 + shift + 45).toBe(196 - 12);
+    // A pane too short for the card: its top stays at the margin.
+    expect(shiftIntoView(card(126, 30), { width: 393, height: 50 })).toBe(12 - 30);
+    // Never down.
+    expect(shiftIntoView(card(126, 5), { width: 393, height: 50 })).toBe(0);
   });
 });

@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { createParser, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
-import { Activity, createContext, type ReactNode, use, useEffect, useState, useSyncExternalStore } from 'react';
+import { Activity, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { CloseIcon, MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
@@ -55,17 +55,12 @@ import {
   type ViewKind,
 } from './state';
 
-/** The shape of the coming drawing, for the skeleton that stands in while React Flow's chunk loads. */
-const SkeletonShape = createContext<{ graph: LineageGraphDto | null; showHistorical: boolean }>({ graph: null, showHistorical: false });
-
-function CanvasLoading() {
-  return <Skeleton {...use(SkeletonShape)} />;
-}
-
 // The chunk is also asked for when the explorer mounts (ExplorerBody), so it loads while the worker
 // lays out the first scene, not after it. One import() for both, so both ask for the same chunks.
+// No `loading` element: the explorer's own skeleton stays until the canvas has mounted
+// (ExplorerBody), so the skeleton the page started with is never replaced by a new one.
 const loadCanvas = () => import('./canvas');
-const ExplorerCanvas = dynamic(() => loadCanvas(), { ssr: false, loading: CanvasLoading });
+const ExplorerCanvas = dynamic(() => loadCanvas(), { ssr: false });
 
 const parseAsId = createParser({
   parse: (value: string) => (isUuid(value) ? value.toLowerCase() : null),
@@ -326,25 +321,32 @@ function SkeletonRows({ rows }: { rows: number[] }) {
  * A skeleton with the shape of the coming drawing: one row per generation, a slot per person (plan
  * §5.6). `phone` is the shape a phone will draw, given only while the width is not known yet (the
  * server's HTML and hydration): CSS then shows the one that fits, the same width as NARROW_QUERY.
+ * `narrow`: the width is known, and the phone's shape is the one drawn (the person view started on
+ * a narrow screen).
+ *
+ * The rows stay the same elements from the server's HTML until the drawing replaces them: each
+ * shape keeps its key, and the one drawn keeps its element when the width becomes known. WebKit
+ * gives no style, so no box, to an element added while a stylesheet in the head is loading, as
+ * React Flow's is once the canvas chunk is asked for at hydration: rows made anew then were blank
+ * for those frames, an empty skeleton on an iPhone.
  */
-function Skeleton({ graph, showHistorical, phone }: { graph: LineageGraphDto | null; showHistorical: boolean; phone?: LineageGraphDto | null }) {
+function Skeleton({ graph, showHistorical, phone, narrow }: { graph: LineageGraphDto | null; showHistorical: boolean; phone?: LineageGraphDto | null; narrow: boolean }) {
+  const shapes = phone
+    ? [
+        { key: 'wide', graph, className: 'contents max-sm:hidden' },
+        { key: 'narrow', graph: phone, className: 'hidden max-sm:contents' },
+      ]
+    : [{ key: narrow ? 'narrow' : 'wide', graph, className: 'contents' }];
   return (
     <div data-testid="explorer-skeleton" aria-busy="true" className="absolute inset-0 flex flex-col items-center justify-center gap-[30px] overflow-hidden p-6">
       <span className="sr-only" role="status">
         Laying out the lineage…
       </span>
-      {phone ? (
-        <>
-          <div className="contents max-sm:hidden">
-            <SkeletonRows rows={skeletonRows(graph, showHistorical)} />
-          </div>
-          <div className="hidden max-sm:contents">
-            <SkeletonRows rows={skeletonRows(phone, showHistorical)} />
-          </div>
-        </>
-      ) : (
-        <SkeletonRows rows={skeletonRows(graph, showHistorical)} />
-      )}
+      {shapes.map((shape) => (
+        <div key={shape.key} className={shape.className}>
+          <SkeletonRows rows={skeletonRows(shape.graph, showHistorical)} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -501,6 +503,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
   const notFound = query.isError && isFinal(query.error);
   const canvasShown = focus !== null && !notFound && !(query.isError && !graph) && !layoutError && flow !== null && laidOut !== null;
+  // Whether the canvas has mounted (its chunk is here): until then the skeleton stays over it, the
+  // same elements from the first frame (Skeleton), not a new skeleton while the chunk loads.
+  const [canvasMounted, setCanvasMounted] = useState(false);
+  const skeletonShown = focus !== null && !notFound && !(query.isError && !graph) && !layoutError && !(canvasShown && canvasMounted);
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
   const centerOn = (id: string) => void setUrl(kind === 'lineage' ? { focus: id, lineage: null, page: null, routes: null } : { focus: id, page: null, routes: null });
   const lineageName = starts.find((l) => l.id === params.lineage)?.name ?? null;
@@ -603,32 +609,38 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     ) : null}
                   </p>
                 </div>
-              ) : !flow || !laidOut ? (
-                <Skeleton graph={coming} showHistorical={params.show === 'historical'} phone={phoneShape} />
-              ) : (
-                <SkeletonShape value={{ graph: laidOut.source, showHistorical: params.show === 'historical' }}>
-                  <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId}>
-                    {ready ? null : (
-                      <p
-                        role="status"
-                        data-testid="explorer-relayout"
-                        className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
-                      >
-                        Laying out the lineage…
-                      </p>
-                    )}
-                    <div
-                      data-testid="explorer-legend"
-                      // The first view keeps the people it frames clear of it (largeViewStart).
-                      data-canvas-overlay
-                      // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
-                      className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
+              ) : flow && laidOut ? (
+                <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId} onMount={() => setCanvasMounted(true)}>
+                  {ready ? null : (
+                    <p
+                      role="status"
+                      data-testid="explorer-relayout"
+                      className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-sm border border-border-subtle bg-surface-1 px-3 py-1.5 text-sm text-fg-muted"
                     >
-                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
-                    </div>
-                  </ExplorerCanvas>
-                </SkeletonShape>
-              )}
+                      Laying out the lineage…
+                    </p>
+                  )}
+                  <div
+                    data-testid="explorer-legend"
+                    // The first view keeps the people it frames clear of it (largeViewStart).
+                    data-canvas-overlay
+                    // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
+                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
+                  >
+                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
+                  </div>
+                </ExplorerCanvas>
+              ) : null}
+              {/* A place of its own among the children, so it stays the same element until the
+                  canvas has mounted; the answer laid out gives it its shape once it is here. */}
+              {skeletonShown ? (
+                <Skeleton
+                  graph={laidOut ? laidOut.source : coming}
+                  showHistorical={params.show === 'historical'}
+                  phone={phoneShape}
+                  narrow={narrow === true && kind === 'person'}
+                />
+              ) : null}
             </div>
             {selected && canvasShown ? (
               <section
