@@ -105,8 +105,10 @@ if [ -f .next/build-manifest.json ]; then
 else
   bad "the build: no build output (.next/build-manifest.json); run pnpm build:e2e first"
 fi
+# One import() of the canvas for next/dynamic and for the early request when the explorer mounts.
 check "React Flow loads with next/dynamic (ssr: false), only in the explorer" bash -c '
-  grep -q "dynamic(() => import('\''./canvas'\''), { ssr: false" src/components/lineage/explorer/explorer.tsx &&
+  f=src/components/lineage/explorer/explorer.tsx
+  grep -q "const loadCanvas = () => import('\''./canvas'\'');" "$f" && grep -q "dynamic(() => loadCanvas(), { ssr: false" "$f" &&
   [ "$(grep -rlE "from .@xyflow/react" src | sort | tr "\n" " ")" = "src/components/lineage/explorer/canvas.tsx " ]'
 
 # 4. The client island (In scope 1–9) -------------------------------------------------------------------
@@ -114,8 +116,9 @@ check "the URL state is focus, up, down, lineage, show and view (nuqs)" bash -c 
   f=src/components/lineage/explorer/explorer.tsx
   grep -q "useQueryStates(parsers)" "$f" && for k in focus up down lineage show view; do grep -qE "^  $k: " "$f" || exit 1; done'
 check "the data come from TanStack Query with the oRPC client" bash -c '
-  grep -q "useQuery({" src/components/lineage/explorer/explorer.tsx && grep -q "rpcClient.lineage.ego" src/components/lineage/explorer/explorer.tsx &&
-  grep -q "createORPCClient" src/lib/rpc-client/index.ts'
+  f=src/components/lineage/explorer/explorer.tsx
+  grep -q "useQuery(" "$f" && grep -q "orpc.lineage.ego.queryOptions(" "$f" && grep -q "orpc.lineage.subtree.queryOptions(" "$f" &&
+  grep -q "createORPCClient" src/lib/rpc-client/index.ts && grep -q "createTanstackQueryUtils(rpcClient)" src/lib/rpc-client/index.ts'
 check "three views: person, generations, lineage (plan §4.3)" bash -c '
   grep -q "export type ViewKind = '\''person'\'' | '\''generations'\'' | '\''lineage'\''" src/components/lineage/explorer/state.ts'
 check "fixed node sizes per level of detail, switched by zoom, and onlyRenderVisibleElements (plan §4.5, §4.8)" bash -c '
@@ -125,9 +128,12 @@ check "nodes show the name with lang, the generation label, the status in words 
   f=src/components/lineage/explorer/canvas.tsx
   grep -q "lang=\"und-Latn\" translate=\"no\"" "$f" && grep -q "data.generation" "$f" && grep -q "data.status.label" "$f" && grep -q "{data.teachers} teachers" "$f"'
 check "edges follow plan §4.6: orthogonal ELK routes, the cross-lineage Bézier curve labelled \"Teacher in {lineage}\", historical hidden by default, a double stroke for arbitration" bash -c '
-  grep -q "path.type === '\''bezier'\''" src/components/lineage/explorer/canvas.tsx && grep -q "style.stroke === '\''double'\''" src/components/lineage/explorer/canvas.tsx &&
-  grep -q "Teacher in \${lineageName}" src/components/lineage/explorer/explorer.tsx && grep -q "isHistoricalRelation(e.periods) && !showHistorical" src/components/lineage/explorer/explorer.tsx && grep -q "hidden: hidden(edge)" src/components/lineage/explorer/explorer.tsx'
-refute "no edge or node is faded with opacity (plan §4.7: solid tones only)" grep -nE "opacity-[0-9]|opacity: 0\.|opacity=\"0\." src/components/lineage/explorer/canvas.tsx
+  grep -q "path.type === '\''bezier'\''" src/components/lineage/explorer/canvas.tsx &&
+  grep -q "<StrokePaths" src/components/lineage/explorer/canvas.tsx && grep -q "style.stroke === '\''double'\''" src/components/ink/link-stroke.tsx &&
+  grep -q "Teacher in \${lineageName}" src/components/lineage/explorer/explorer.tsx &&
+  grep -q "const byDefault = (e: LineageEdgeDto) => showHistorical || !isHistoricalRelation(e.periods);" src/components/lineage/explorer/explorer.tsx &&
+  grep -q "hidden: !byDefault(edge)" src/components/lineage/explorer/explorer.tsx'
+refute "no edge or node is faded with opacity (plan §4.7: solid tones only)" grep -nE "opacity-[0-9]|opacity: 0\.|opacity=\"0\." src/components/lineage/explorer/canvas.tsx src/components/ink/link-stroke.tsx
 check "the legend is the shared one (icon, stroke sample, text) inside the explorer frame" bash -c '
   grep -q "<Legend kinds={drawnKinds" src/components/lineage/explorer/explorer.tsx && grep -q "LinkStroke" src/components/ink/legend.tsx && grep -q "<Seal" src/components/ink/legend.tsx'
 check "Graph / List: <Activity> keeps the graph while the M04 list view is shown" bash -c '
