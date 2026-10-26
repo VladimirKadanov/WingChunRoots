@@ -8,7 +8,7 @@ import { capFanout } from '@/components/lineage/explorer/state';
 import { deferredEdges, joinRoute } from './converging.ts';
 import { buildElkGraph } from './elk-graph.ts';
 import { indexGraph } from './graph.ts';
-import { layoutLineage } from './layout.ts';
+import { layoutLineage, layoutLineageWithStats } from './layout.ts';
 import { NODE_SIZES, explorerLayout } from './presets.ts';
 import { computeRanksIndexed } from './ranks.ts';
 import { demoGraph } from './testing/build.ts';
@@ -105,6 +105,7 @@ function outsideTheirTeachers(scene: Scene) {
   const teacherSet = (g: Converging) => [...g.teachers].sort().join(' ');
   const outside: string[] = [];
   const besideTheSpine: string[] = [];
+  const besideTheSpineIds: string[] = [];
   for (const group of converging) {
     const student = byId.get(group.student)!;
     const xs = group.teachers.map((id) => byId.get(id)!.center.x);
@@ -112,20 +113,61 @@ function outsideTheirTeachers(scene: Scene) {
     if (student.center.x >= from - 1 && student.center.x <= to + 1) continue;
     const text = `${group.student} at ${student.center.x}, teachers at ${xs.join(' and ')}`;
     // Every teacher on the focus spine (a straight vertical line), and the place on it in the
-    // student's row already taken by another student of the same teachers.
+    // student's row already taken: by the spine itself or by another student of the same
+    // teachers.
     const onSpineLine =
       to - from <= 1 &&
       group.teachers.every((id) => byId.get(id)!.onSpine) &&
-      converging.some(
+      scene.nodes.some(
         (other) =>
-          other.student !== group.student &&
-          teacherSet(other) === teacherSet(group) &&
-          byId.get(other.student)!.rank === student.rank &&
-          Math.abs(byId.get(other.student)!.center.x - from) <= 1,
+          other.id !== group.student &&
+          other.rank === student.rank &&
+          Math.abs(other.center.x - from) <= 1 &&
+          (other.onSpine || converging.some((g) => g.student === other.id && teacherSet(g) === teacherSet(group))),
       );
     (onSpineLine ? besideTheSpine : outside).push(text);
+    if (onSpineLine) besideTheSpineIds.push(group.student);
   }
-  return { converging: converging.length, outside, besideTheSpine };
+  return { converging: converging.length, outside, besideTheSpine, besideTheSpineIds };
+}
+
+/**
+ * Sideways travel of an edge into such a student beyond the distance between its ends:
+ * how far its route goes out of its way (review of M05, round 2).
+ */
+function detours(scene: Scene): { edge: string; detour: number }[] {
+  const students = new Set(convergingStudents(scene).map((g) => g.student));
+  const out: { edge: string; detour: number }[] = [];
+  for (const e of scene.edges) {
+    if (!students.has(e.studentId) || e.path.type !== 'orthogonal') continue;
+    const points = e.path.points;
+    let travel = 0;
+    for (let i = 1; i < points.length; i++) travel += Math.abs(points[i]!.x - points[i - 1]!.x);
+    out.push({ edge: e.id, detour: travel - Math.abs(points[points.length - 1]!.x - points[0]!.x) });
+  }
+  return out;
+}
+
+/** At most one card and the spacing on both sides of it: a waypoint that steps round one card. */
+const MAX_DETOUR = NODE_SIZES.full.width + 2 * Number(explorerLayout['elk.spacing.nodeNode']);
+
+/**
+ * Lays out a view and checks plan §4.6 on it: every such student between its teachers, the
+ * one exception reported in the stats, the spine straight and no route far out of its way.
+ */
+async function checkView(name: string, graph: LineageGraph) {
+  const { scene, stats } = await layoutLineageWithStats(graph, { focusId: graph.focusId });
+  const { outside, besideTheSpine, besideTheSpineIds } = outsideTheirTeachers(scene);
+  expect(outside, name).toEqual([]);
+  // The exception below never costs more than one student per row, and the layout says so.
+  expect(besideTheSpine.length, name).toBeLessThanOrEqual(1);
+  expect([...stats.unplacedStudents].sort(), name).toEqual([...besideTheSpineIds].sort());
+  // The focus spine stays straight (plan §4.5, M03).
+  expect(spineBends(scene), name).toBe(0);
+  expect(
+    detours(scene).filter((d) => d.detour > MAX_DETOUR),
+    name,
+  ).toEqual([]);
 }
 
 describe('students with several teachers in one lineage (plan §4.6)', () => {
@@ -137,16 +179,72 @@ describe('students with several teachers in one lineage (plan §4.6)', () => {
   it.each(VIEWS.map((v) => [v.name, v.graph] as const))(
     'places every one between its teachers: %s',
     async (name, graph) => {
-      const scene = await layoutLineage(graph, { focusId: graph.focusId });
-      const { outside, besideTheSpine } = outsideTheirTeachers(scene);
-      expect(outside, name).toEqual([]);
-      // The exception below never costs more than one student per row.
-      expect(besideTheSpine.length, name).toBeLessThanOrEqual(1);
-      // The focus spine stays straight (plan §4.5, M03).
-      expect(spineBends(scene), name).toBe(0);
+      await checkView(name, graph);
     },
     60_000,
   );
+
+  // The ego view of every person, as the explorer reads it (and with its fan-out cap): the
+  // place of a student must not depend on which person is in focus (review of M05, round 2).
+  it.each(
+    (['fixture', 'synthetic'] as const).flatMap((dataset) => EGO_READS.map(({ up, down }) => [dataset, up, down] as const)),
+  )(
+    'places every one between its teachers in the ego view of every person: %s, up %i, down %i',
+    async (dataset, up, down) => {
+      const data = dataset === 'fixture' ? fixture : synthetic;
+      let checked = 0;
+      for (const node of data.graph.nodes) {
+        const view = extractView(data, { focus: node.id, up, down, maxStudentsPerTeacher: 50 });
+        for (const graph of [view, capped(view)]) {
+          if (!graph || !hasConverging(graph)) continue;
+          await checkView(`ego view of ${node.id}${graph === view ? '' : ', fan-out capped'}`, graph);
+          checked++;
+        }
+      }
+      expect(checked).toBeGreaterThan(50);
+    },
+    300_000,
+  );
+
+  it('places a student between its teachers when the first pass bent the spine past it (review of M05, round 2)', async () => {
+    // The first pass puts `d-side` right of `c-mid`, and the spine `root` → `b-hub` → `c-mid`
+    // → `focus` bends; straightened, `d-side` has to stand left of `c-mid`, between `a-other`
+    // and `b-hub`, and `focus` stays between `c-mid` and `d-side`.
+    const graph = demoGraph(
+      ['root', 'a-other', 'b-hub', 'c-mid', 'd-side', 'focus'],
+      [
+        ['root', 'b-hub'],
+        ['root', 'a-other'],
+        ['b-hub', 'c-mid'],
+        ['b-hub', 'd-side'],
+        ['a-other', 'd-side', 'converging'],
+        ['c-mid', 'focus'],
+        ['d-side', 'focus', 'converging'],
+      ],
+      { focusId: 'focus' },
+    );
+    const { scene, stats } = await layoutLineageWithStats(graph);
+    const x = new Map(scene.nodes.map((n) => [n.id, n.center.x]));
+    expect(x.get('d-side')!).toBeGreaterThanOrEqual(Math.min(x.get('a-other')!, x.get('b-hub')!));
+    expect(x.get('d-side')!).toBeLessThanOrEqual(Math.max(x.get('a-other')!, x.get('b-hub')!));
+    expect(x.get('d-side')!).toBeLessThan(x.get('c-mid')!);
+    expect(spineBends(scene)).toBe(0);
+    expect(stats.unplacedStudents).toEqual([]);
+    expect(outsideTheirTeachers(scene).outside).toEqual([]);
+  });
+
+  it('routes the edge from a second teacher straight down past the cards in between (review of M05, round 2)', async () => {
+    // The person view of demo-root-a in the demo data: a student of `demo-root-a` and of one of
+    // its students. Its edge from `demo-root-a` crosses the row in between near the straight
+    // line, not past a card on the far side and back.
+    const graph = extractView(fixture, { focus: anchorId(fixture, 'demo-root-a'), up: 2, down: 2, maxStudentsPerTeacher: 50 });
+    for (const view of [graph, capped(graph)!]) {
+      const scene = await layoutLineage(view, { focusId: view.focusId });
+      const all = detours(scene);
+      expect(all.length).toBeGreaterThan(2);
+      expect(all.filter((d) => d.detour > MAX_DETOUR)).toEqual([]);
+    }
+  });
 
   it('puts a student of a hub between the hub and its other teacher, not at the far end of the fan', async () => {
     // `aux` sorts before `hub`, so it stands left of it; `s10` is the last of hub's ten students
@@ -189,6 +287,8 @@ describe('students with several teachers in one lineage (plan §4.6)', () => {
     const { outside, besideTheSpine } = outsideTheirTeachers(scene);
     expect(outside).toEqual([]);
     expect(besideTheSpine).toHaveLength(1);
+    // The layout reports the student it could not place between its teachers.
+    expect((await layoutLineageWithStats(graph)).stats.unplacedStudents).toEqual(['second']);
   });
 
   it('leaves out of the first ELK pass every incoming edge of such a student but the preferred one', () => {

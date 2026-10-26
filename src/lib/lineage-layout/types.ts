@@ -242,6 +242,13 @@ export interface LayoutStats {
   nodes: number;
   elkEdges: number;
   crossLineageEdges: number;
+  /**
+   * Students with several teachers in one lineage that the layout could not place between
+   * them (plan §4.6, converging.ts), in model order. Empty unless a second such student
+   * shares a row and both teachers with another on the focus spine, or the expand preset
+   * keeps a student shown before where it was.
+   */
+  unplacedStudents: string[];
 }
 
 // ---------------------------------------------------------------------------------------

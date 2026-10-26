@@ -69,6 +69,7 @@ export async function layoutLineageWithStats(
   let elkStarted = now();
   let laidOut: ElkNode;
   let elkMs: number;
+  let unplacedStudents: string[] = [];
   if (deferred.size === 0) {
     laidOut = await runElk(engine, build.elkGraph);
     elkMs = now() - elkStarted;
@@ -76,6 +77,7 @@ export async function layoutLineageWithStats(
     const firstPass = await runElk(engine, firstPassGraph(build, deferred));
     elkMs = now() - elkStarted;
     const pass = convergingPass(index, ranks, build, deferred, firstPass);
+    unplacedStudents = pass.unplaced;
     elkStarted = now();
     laidOut = pass.merge(await runElk(engine, pass.elkGraph));
     elkMs += now() - elkStarted;
@@ -89,6 +91,7 @@ export async function layoutLineageWithStats(
       nodes: scene.nodes.length,
       elkEdges: build.elkEdges.length,
       crossLineageEdges: build.crossLineageEdges.length,
+      unplacedStudents,
     },
   };
 }
