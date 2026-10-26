@@ -1329,6 +1329,9 @@ test.describe('M05 small views on a phone', () => {
     // "Fit the whole view" shows everyone drawn: every person of the scene that is drawn (none hidden
     // by default is rendered) whole on the pane at once, the hub's twelve students among them.
     await page.getByRole('button', { name: 'Fit the whole view' }).click();
+    // Once the fit (200 ms, ease-out) has ended: the poll below also holds in about half of the
+    // move's frames, which are not the fitted view.
+    await settledView(page);
     const drawnWhole = async () => {
       let drawn = 0;
       let whole = 0;
