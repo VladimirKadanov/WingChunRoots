@@ -220,14 +220,23 @@ export function ProfileEditor({
     if (!el || pending) return;
     const data = new FormData(el);
     const shown = shownFormValues(data);
+    const slots = shownSlots(data);
+    const current = form.state.values;
+    // A romanization is always sent as a name: its Kind is a hidden field that says so (see the
+    // rows below). The row keeps the Kind it had, so "Also known as" comes back when its "Written
+    // in" goes back to Latin letters.
+    shown.names.forEach((row, j) => {
+      const kind = el.elements.namedItem(nameField(slots[j]!, 'kind'));
+      const before = current.names[slots[j]!];
+      if (kind instanceof HTMLInputElement && kind.type === 'hidden' && before) row.kind = before.kind;
+    });
     // A ticked display name that can no longer be one (its "Written in" or Kind was just changed):
     // its radio is unticked before it is drawn disabled.
     if (shown.primary === -1 && data.has('primary')) {
       for (const radio of el.querySelectorAll<HTMLInputElement>('input[type="radio"][name="primary"]')) radio.checked = false;
     }
-    const keys = keysOfSlots(rowKeys, shownSlots(data));
+    const keys = keysOfSlots(rowKeys, slots);
     if (keys) setRowKeys(keys);
-    const current = form.state.values;
     if (!sameNames(shown.names, current.names)) form.setFieldValue('names', shown.names);
     for (const key of ['primary', 'bio', 'trainingStartYear', 'showPublicly'] as const) {
       if (shown[key] !== current[key]) form.setFieldValue(key, shown[key]);

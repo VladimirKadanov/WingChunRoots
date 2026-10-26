@@ -738,6 +738,31 @@ test('@M07 while a profile save is on its way, no choice can be made that the sa
   await expect(saved.getByLabel('Show my profile publicly')).toBeChecked();
 });
 
+test('@M07 "Also known as" stays chosen when "Written in" goes to a romanization and back, and is saved so', async ({ page }) => {
+  // A romanization is always a name: its Kind is a hidden field that says so, and the row keeps the
+  // Kind chosen before, which comes back with Latin letters.
+  await freshAccount(page, { name: 'Demo Placeholder Name' });
+  await page.goto('/dashboard/profile');
+  await page.getByRole('button', { name: 'Add a name' }).click();
+  await page.getByLabel('Name 2', { exact: true }).fill(`Demo ${tag()} Alias`);
+  const kind = page.getByLabel('Kind', { exact: true }).nth(1);
+  const second = page.getByRole('radio', { name: 'Use as display name' }).nth(1);
+  await kind.selectOption('alias');
+  await expect(second).toBeDisabled();
+  await page.getByLabel('Written in').nth(1).selectOption({ label: 'Cantonese, Jyutping' });
+  await expect(page.getByLabel('Kind', { exact: true })).toHaveCount(1);
+  await page.getByLabel('Written in').nth(1).selectOption({ label: 'Latin letters' });
+  await expect(kind).toHaveValue('alias');
+  await expect(second).toBeDisabled();
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+  await expect(kind).toHaveValue('alias');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  await expect(kind).toHaveValue('alias');
+  await expect(second).toBeDisabled();
+});
+
 test('@M07 saving a profile without a Latin-script primary name is refused with a clear message', async ({ page }) => {
   await freshAccount(page, { name: 'Demo Lonely Name' });
   await page.goto('/dashboard/profile');
