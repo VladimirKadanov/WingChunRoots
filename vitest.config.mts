@@ -16,8 +16,10 @@ export const TIMED = ['src/lib/lineage-layout/layout.perf.test.ts', 'src/lib/lin
  * The unit tests that change what other files would see: module mocks, a fresh module registry,
  * environment variables, globals or fake timers. They keep Vitest's isolation (a fresh module
  * graph per file). Every other unit test file shares its worker's modules with the files before
- * it (`isolate: false`), which halves `pnpm test:unit`'s time; scripts/vitest-isolation.test.ts
- * fails when a file outside this list starts to use one of those APIs.
+ * it (`isolate: false`), which halves the time of those files; scripts/vitest-isolation.test.ts
+ * fails when a file outside this list starts to use one of those APIs, and
+ * scripts/vitest-shared-state.ts (a setup file of the `unit` project) fails a file that leaves
+ * process.env, fake timers or a globalThis singleton changed, however it did so.
  */
 export const ISOLATED = [
   'src/lib/lineage-layout/layout.worker.test.ts',
@@ -50,6 +52,8 @@ export default defineConfig({
           // Threads that keep their module graph from one file to the next (see ISOLATED).
           pool: 'threads',
           isolate: false,
+          // Fails a file that leaves process.env, fake timers or a globalThis singleton changed.
+          setupFiles: ['./scripts/vitest-shared-state.ts'],
         },
       },
       {
