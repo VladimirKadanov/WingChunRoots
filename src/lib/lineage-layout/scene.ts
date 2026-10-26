@@ -33,6 +33,15 @@ const RUN_REACH = CARD_GAP / 2;
 /** Room kept between a curve's run along the gap between two rows and the cards above and below it, in px. */
 const RUN_CLEARANCE = 8;
 
+/**
+ * The least reach of the control points of a curve between people who overlap horizontally: it
+ * swings 12 px out of their sides, which still reads as a curve in a card gap.
+ */
+const SIDE_MIN_REACH = 16;
+
+/** Points a curve beside two people is checked at for cards it would run behind (bezierBetween). */
+const SIDE_SAMPLES = 128;
+
 /** The steepest extra drop at the two ends that the searches in runHeights try, in px. */
 const RUN_MAX_EXTRA = 1000;
 
@@ -95,6 +104,11 @@ export interface RunSpace {
   teacherRow: number | null;
   /** The x of the side facing the student of the nearest card between them in the student's row. */
   studentRow: number | null;
+  /**
+   * For people who overlap horizontally (the curve leaves and enters on one side): the cards of
+   * the rows from the teacher's to the student's that a curve beside the two of them could reach.
+   */
+  beside?: readonly Box[];
 }
 
 /** A curve between people side by side: its four x coordinates and what it must keep clear of. */
@@ -176,9 +190,63 @@ function runHeights(ends: RunEnds): { y1: number; y2: number } {
 }
 
 /**
+ * The four points of a curve between people who overlap horizontally, on `side` (+1 right, -1
+ * left). With `lead` 0 it bulges out of their sides: both control points `reach` past the outer
+ * of the two sides, level with the two people. With a lead it drops: each control point `reach`
+ * out of its own person's side and `lead` towards the other person's row, so the curve leaves
+ * the teacher's row and enters the student's close beside them and moves across in between.
+ */
+function besideCurve(teacher: SceneNode, student: SceneNode, side: number, reach: number, lead: number): [Point, Point, Point, Point] {
+  const sx = side > 0 ? teacher.x + teacher.width : teacher.x;
+  const ex = side > 0 ? student.x + student.width : student.x;
+  const outer = side > 0 ? Math.max(sx, ex) : Math.min(sx, ex);
+  const y0 = teacher.center.y;
+  const y3 = student.center.y;
+  const towards = Math.sign(y3 - y0) * lead;
+  return [
+    point(sx, y0),
+    point((lead === 0 ? outer : sx) + side * reach, y0 + towards),
+    point((lead === 0 ? outer : ex) + side * reach, y3 - towards),
+    point(ex, y3),
+  ];
+}
+
+/**
+ * Whether a curve beside two people keeps RUN_CLEARANCE to the sides of the cards beside them
+ * (RunSpace.beside) and stays out of the two people's own boxes.
+ */
+function clearBeside(curve: readonly [Point, Point, Point, Point], cards: readonly Box[], own: readonly Box[]): boolean {
+  const [p0, p1, p2, p3] = curve;
+  for (let i = 1; i < SIDE_SAMPLES; i++) {
+    const t = i / SIDE_SAMPLES;
+    const x = cubicAt(p0.x, p1.x, p2.x, p3.x, t);
+    const y = cubicAt(p0.y, p1.y, p2.y, p3.y, t);
+    for (const c of cards) {
+      if (x > c.x - RUN_CLEARANCE && x < c.x + c.width + RUN_CLEARANCE && y > c.y && y < c.y + c.height) return false;
+    }
+    for (const c of own) if (x > c.x && x < c.x + c.width && y > c.y && y < c.y + c.height) return false;
+  }
+  return true;
+}
+
+/** Without the room of a scene: a card a card gap away on both sides of each of the two people, in their rows. */
+function cardsBeside(teacher: SceneNode, student: SceneNode): Box[] {
+  return [teacher, student].flatMap((n) => [
+    { x: n.x - CARD_GAP - n.width, y: n.y, width: n.width, height: n.height },
+    { x: n.x + n.width + CARD_GAP, y: n.y, width: n.width, height: n.height },
+  ]);
+}
+
+/**
  * A cubic Bézier curve between the side attachment points of teacher and student
  * (plan §4.6). When the two boxes overlap horizontally the curve leaves and enters on the
- * same side and bulges outwards. Otherwise it leaves the teacher on the side facing the student
+ * same side and bulges outwards: on the side the student leans to, a quarter of the drop between
+ * them (at least BEZIER_MIN_REACH) out. Where that would run behind a card beside them (in the
+ * explorer's rows the next card stands a card gap away), it swings out only as far as keeps
+ * RUN_CLEARANCE to those cards, on the side that leaves the wider swing (at least
+ * SIDE_MIN_REACH); where no bulge clears them (people further apart than the card gap), it drops
+ * out of the teacher's row and into the student's beside them (besideCurve). Otherwise it leaves
+ * the teacher on the side facing the student
  * and enters the student on the side facing the teacher: as an S with level ends when that
  * passes no card of the two rows, else dropping into the gap above the student's row (`space`),
  * keeping to it and dropping into the student's side. So a long curve never runs behind the
@@ -195,15 +263,36 @@ export function bezierBetween(teacher: SceneNode, student: SceneNode, space?: Ru
   let control1: Point;
   let control2: Point;
   if (overlap) {
-    const side = dx >= 0 ? 1 : -1;
-    const sx = side > 0 ? teacher.x + teacher.width : teacher.x;
-    const ex = side > 0 ? student.x + student.width : student.x;
-    const outer = side > 0 ? Math.max(sx, ex) : Math.min(sx, ex);
-    const reach = Math.max(BEZIER_MIN_REACH, Math.abs(dy) / 4);
-    start = point(sx, teacher.center.y);
-    end = point(ex, student.center.y);
-    control1 = point(outer + side * reach, teacher.center.y);
-    control2 = point(outer + side * reach, student.center.y);
+    const lean = dx >= 0 ? 1 : -1;
+    const widest = Math.max(BEZIER_MIN_REACH, Math.abs(dy) / 4);
+    const cards = space?.beside ?? cardsBeside(teacher, student);
+    const own = [teacher, student];
+    const clear = (side: number, reach: number, lead: number) =>
+      clearBeside(besideCurve(teacher, student, side, reach, lead), cards, own);
+    let chosen = { side: lean, reach: widest, lead: 0 };
+    if (!clear(lean, widest, 0)) {
+      // The widest swing that clears the cards beside them, on either side (the student's side on
+      // a tie): a bulge if one clears them, else the drop with the least lead that does.
+      let best: { side: number; reach: number; lead: number } | null = null;
+      for (const lead of [0, 0.25, 0.5, 0.75, 1].map((f) => f * Math.abs(dy))) {
+        for (const side of [lean, -lean]) {
+          if (!clear(side, SIDE_MIN_REACH, lead)) continue;
+          let lo = SIDE_MIN_REACH;
+          let hi = widest;
+          if (clear(side, hi, lead)) lo = hi;
+          for (let i = 0; i < 16 && lo < hi; i++) {
+            const mid = (lo + hi) / 2;
+            if (clear(side, mid, lead)) lo = mid;
+            else hi = mid;
+          }
+          if (!best || lo > best.reach) best = { side, reach: lo, lead };
+        }
+        if (best) break;
+      }
+      // Nothing clears them: the curve keeps its widest bulge on the student's side.
+      if (best) chosen = best;
+    }
+    [start, control1, control2, end] = besideCurve(teacher, student, chosen.side, chosen.reach, chosen.lead);
   } else {
     const side = dx > 0 ? 1 : -1;
     const sx = side > 0 ? teacher.x + teacher.width : teacher.x;
@@ -239,7 +328,7 @@ export function bezierBetween(teacher: SceneNode, student: SceneNode, space?: Ru
 /**
  * The room of a curve from `teacher` to `student` in a scene (RunSpace): the gap above the
  * student's row, which is always lower than the teacher's (ranks), and the nearest cards between
- * the two people in their rows.
+ * the two people in their rows, or, when they overlap horizontally, the cards beside them.
  */
 function runSpace(teacher: SceneNode, student: SceneNode, nodes: readonly SceneNode[], rowBottom: readonly number[]): RunSpace {
   const side = student.center.x > teacher.center.x ? 1 : -1;
@@ -258,12 +347,22 @@ function runSpace(teacher: SceneNode, student: SceneNode, nodes: readonly SceneN
     if (node.rank === student.rank && (studentRow === null || (facingStudent - studentRow) * side > 0)) studentRow = facingStudent;
   }
   const above = rowBottom[student.rank - 1];
-  return {
+  const space: RunSpace = {
     top: above !== undefined && above <= student.y ? above : teacher.y + teacher.height,
     bottom: student.y,
     teacherRow,
     studentRow,
   };
+  if (Math.abs(student.center.x - teacher.center.x) < (teacher.width + student.width) / 2) {
+    // The cards of the rows from the teacher's to the student's within the widest swing of a curve beside them.
+    const reach = Math.max(BEZIER_MIN_REACH, Math.abs(student.center.y - teacher.center.y) / 4) + RUN_CLEARANCE;
+    const from = Math.min(teacher.x, student.x) - reach;
+    const to = Math.max(teacher.x + teacher.width, student.x + student.width) + reach;
+    space.beside = nodes.filter(
+      (n) => n !== teacher && n !== student && n.rank >= teacher.rank && n.rank <= student.rank && n.x < to && n.x + n.width > from,
+    );
+  }
+  return space;
 }
 
 /**

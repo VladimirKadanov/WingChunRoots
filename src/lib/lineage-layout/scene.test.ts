@@ -3,7 +3,7 @@ import { layoutLineage } from './layout.ts';
 import { NODE_SIZES } from './presets.ts';
 import { LABEL_NEAR_STUDENT_RUN, bezierBetween, bezierLabelPoint } from './scene.ts';
 import { loadLineageFixture } from './testing/fixture.ts';
-import { anchorId } from './testing/synthetic.ts';
+import { anchorId, type AnchorSlug } from './testing/synthetic.ts';
 import { egoView, extractView, lineageIdOf } from './testing/views.ts';
 import type { BezierPath, Point, Scene, SceneNode } from './types.ts';
 
@@ -49,23 +49,38 @@ function twoRows(count: number, gap = 60): SceneNode[][] {
   return [0, 1].map((rank) => Array.from({ length: count }, (_, i) => slot(`demo-${rank}-${i}`, rank, i * 224, rank * (64 + gap))));
 }
 
-/** The lineage views of the explorer (plan §4.3: a lineage root, three rows down, teachers from other lineages). */
-async function lineageViews(): Promise<{ name: string; scene: Scene }[]> {
-  const out: { name: string; scene: Scene }[] = [];
-  for (const [root, lineage] of [
+/**
+ * The lineage views of the explorer (plan §4.3: a lineage root, rows down, teachers from other
+ * lineages) of every root, with the explorer's 12 students per teacher and with 50.
+ */
+const LINEAGE_VIEWS = (
+  [
     ['demo-root-a', 'demo-lineage-a'],
     ['demo-root-b', 'demo-lineage-b'],
     ['demo-root-c', 'demo-lineage-c'],
-  ] as const) {
+  ] as const
+).flatMap(([root, lineage]) => [12, 50].map((maxStudentsPerTeacher) => [root, lineage, maxStudentsPerTeacher] as const));
+
+/**
+ * The lineage views of one root, down 1 to 6 rows (the explorer starts at 3 and expands), each
+ * once: a view deeper than the lineage is the one before it.
+ */
+async function lineageViews(root: AnchorSlug, lineage: string, maxStudentsPerTeacher: number): Promise<{ name: string; scene: Scene }[]> {
+  const out: { name: string; scene: Scene }[] = [];
+  const seen = new Set<string>();
+  for (let down = 1; down <= 6; down++) {
     const graph = extractView(fixture, {
       focus: anchorId(fixture, root),
       up: 0,
-      down: 3,
+      down,
       lineageId: lineageIdOf(fixture, lineage),
       includeForeignTeachers: true,
-      maxStudentsPerTeacher: 12,
+      maxStudentsPerTeacher,
     });
-    out.push({ name: root, scene: await layoutLineage(graph) });
+    const people = graph.nodes.map((n) => n.id).join(',');
+    if (seen.has(people)) continue;
+    seen.add(people);
+    out.push({ name: `${root} down ${down}`, scene: await layoutLineage(graph) });
   }
   return out;
 }
@@ -124,6 +139,51 @@ describe('bezierBetween: a curve to a teacher from another lineage (plan §4.6, 
     }
   });
 
+  // A teacher and a student who overlap horizontally, `offset` px apart, with the next card a card
+  // gap (24 px) away on both sides in both rows, except `roomRight` px right of the student; the
+  // first two are the curve of the Lineage view of Demo Lineage A (down 3, and down 2 with 50
+  // students per teacher) that ran behind the cards beside both people.
+  it.each([
+    [0, 414, 24],
+    [-48.46, 594, 63.46],
+    [0, 124, 24],
+    [0, 234, 24],
+    [100, 124, 24],
+    [-150, 414, 24],
+  ])('between people who overlap horizontally, swings out beside them without running behind the cards next to them (offset %d px, drop %i px)', (offset, drop, roomRight) => {
+    const { width, height } = NODE_SIZES.full;
+    const teacher = slot('demo-teacher', 0, 0, 0);
+    const student = slot('demo-student', 1, offset, drop);
+    const cards = [
+      slot('demo-teacher-left', 0, -24 - width, 0),
+      slot('demo-teacher-right', 0, width + 24, 0),
+      slot('demo-student-left', 1, offset - 24 - width, drop),
+      slot('demo-student-right', 1, offset + width + roomRight, drop),
+    ];
+    const space = { top: height, bottom: drop, teacherRow: null, studentRow: null, beside: cards };
+    for (const path of [bezierBetween(teacher, student, space), bezierBetween(teacher, student)]) {
+      expect(cardsBehind(path, cards)).toEqual([]);
+      expect(cardsBehind(path, [teacher, student])).toEqual([]);
+      // Out of one side of both people and into it, far enough out to read as a curve.
+      const right = path.start.x === teacher.x + width;
+      expect(path.start.x).toBe(right ? teacher.x + width : teacher.x);
+      expect(path.end.x).toBe(right ? student.x + width : student.x);
+      expect((path.control1.x - path.start.x) * (right ? 1 : -1)).toBeGreaterThanOrEqual(16);
+      expect((path.control2.x - path.end.x) * (right ? 1 : -1)).toBeGreaterThanOrEqual(16);
+    }
+  });
+
+  it('between people who overlap horizontally, takes the side with room and swings out a quarter of the drop there', () => {
+    const { width, height } = NODE_SIZES.full;
+    const teacher = slot('demo-teacher', 0, 0, 0);
+    const student = slot('demo-student', 1, 0, 414);
+    const cards = [slot('demo-teacher-right', 0, width + 24, 0), slot('demo-student-right', 1, width + 24, 414)];
+    const path = bezierBetween(teacher, student, { top: height, bottom: 414, teacherRow: null, studentRow: null, beside: cards });
+    expect(path.start).toEqual({ x: 0, y: teacher.center.y });
+    expect(path.control1).toEqual({ x: -414 / 4, y: teacher.center.y });
+    expect(cardsBehind(path, cards)).toEqual([]);
+  });
+
   it('a curve along the two rows centre lines (the old shape) runs behind them, which this test would catch', () => {
     const [above, below] = twoRows(20);
     const teacher = above![0]!;
@@ -142,21 +202,24 @@ describe('bezierBetween: a curve to a teacher from another lineage (plan §4.6, 
     expect(cardsBehind(old, [...above!, ...below!].filter((n) => n !== teacher && n !== student)).length).toBeGreaterThan(5);
   });
 
-  it('in the lineage views of the demo data, no curve runs behind a card of its teacher’s or its student’s row', async () => {
-    let curves = 0;
-    for (const { name, scene } of await lineageViews()) {
-      const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-      for (const edge of scene.edges) {
-        if (edge.path.type !== 'bezier') continue;
-        curves++;
-        const teacher = byId.get(edge.teacherId)!;
-        const student = byId.get(edge.studentId)!;
-        const rows = scene.nodes.filter((n) => (n.rank === teacher.rank || n.rank === student.rank) && n !== teacher && n !== student);
-        expect(cardsBehind(edge.path, rows), `${name} ${edge.id}`).toEqual([]);
+  it.each(LINEAGE_VIEWS)(
+    'in the lineage views of the demo data, no curve runs behind a card of its teacher’s or its student’s row (%s, %s, %i students per teacher)',
+    async (root, lineage, maxStudentsPerTeacher) => {
+      let curves = 0;
+      for (const { name, scene } of await lineageViews(root, lineage, maxStudentsPerTeacher)) {
+        const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+        for (const edge of scene.edges) {
+          if (edge.path.type !== 'bezier') continue;
+          curves++;
+          const teacher = byId.get(edge.teacherId)!;
+          const student = byId.get(edge.studentId)!;
+          const rows = scene.nodes.filter((n) => (n.rank === teacher.rank || n.rank === student.rank) && n !== teacher && n !== student);
+          expect(cardsBehind(edge.path, rows), `${name} ${edge.id}`).toEqual([]);
+        }
       }
-    }
-    expect(curves).toBeGreaterThan(10);
-  });
+      expect(curves).toBeGreaterThan(10);
+    },
+  );
 });
 
 describe('bezierLabelPoint: where "Teacher in {lineage}" goes (plan §4.6, graph-7)', () => {
@@ -186,18 +249,21 @@ describe('bezierLabelPoint: where "Teacher in {lineage}" goes (plan §4.6, graph
     expect(label.y + LABEL_HALF).toBeLessThanOrEqual(124 + 1);
   });
 
-  it('in the lineage views of the demo data, every label is in the gap above its student’s row and near the student', async () => {
-    for (const { name, scene } of await lineageViews()) {
-      const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-      for (const edge of scene.edges) {
-        if (edge.path.type !== 'bezier') continue;
-        const student = byId.get(edge.studentId)!;
-        const label = bezierLabelPoint(edge.path);
-        const rowAbove = Math.max(...scene.nodes.filter((n) => n.rank === student.rank - 1).map((n) => n.y + n.height));
-        expect(label.y + LABEL_HALF, `${name} ${edge.id}`).toBeLessThanOrEqual(student.y + 1);
-        expect(label.y - LABEL_HALF, `${name} ${edge.id}`).toBeGreaterThanOrEqual(rowAbove - 1);
-        expect(Math.abs(label.x - edge.path.end.x), `${name} ${edge.id}`).toBeLessThan(1000);
+  it.each(LINEAGE_VIEWS)(
+    'in the lineage views of the demo data, every label is in the gap above its student’s row and near the student (%s, %s, %i students per teacher)',
+    async (root, lineage, maxStudentsPerTeacher) => {
+      for (const { name, scene } of await lineageViews(root, lineage, maxStudentsPerTeacher)) {
+        const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+        for (const edge of scene.edges) {
+          if (edge.path.type !== 'bezier') continue;
+          const student = byId.get(edge.studentId)!;
+          const label = bezierLabelPoint(edge.path);
+          const rowAbove = Math.max(...scene.nodes.filter((n) => n.rank === student.rank - 1).map((n) => n.y + n.height));
+          expect(label.y + LABEL_HALF, `${name} ${edge.id}`).toBeLessThanOrEqual(student.y + 1);
+          expect(label.y - LABEL_HALF, `${name} ${edge.id}`).toBeGreaterThanOrEqual(rowAbove - 1);
+          expect(Math.abs(label.x - edge.path.end.x), `${name} ${edge.id}`).toBeLessThan(1000);
+        }
       }
-    }
-  });
+    },
+  );
 });
