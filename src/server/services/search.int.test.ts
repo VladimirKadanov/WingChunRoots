@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createAccount, setTestAuthEnv } from '../auth/test-support';
 import type { Principal } from '../auth/principal';
+import { EXPLORE_START_TAG } from '../cache';
 import { closeDb, getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { auditLog, authUser, consentRecord, lineage, notification, person, personBio, personName, personNameKey, reviewCase, teachingRelationship } from '../db/schema';
@@ -477,13 +478,16 @@ describe('the public cache of every teacher above a person whose visibility chan
     const p = principalOf(userId);
     const names = [{ kind: 'name' as const, value: 'Demo Pending Example', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true }];
 
+    // explore-start too (M05): the explorer's start list counts the public people of each lineage
+    // and lists a lineage only once its root is public, so a lineage this change makes eligible is
+    // missing from every tag the cached list carries.
     cache.revalidated.length = 0;
     expect((await profileUpdate(p, { names, showPublicly: true }, meta)).visibilityChanged).toBe(true);
-    expect(cache.revalidated).toEqual(expect.arrayContaining([`lineage:${grand}`, `lineage:${teacher}`, `person:${ids['demo-pending']}`]));
+    expect(cache.revalidated).toEqual(expect.arrayContaining([`lineage:${grand}`, `lineage:${teacher}`, `person:${ids['demo-pending']}`, EXPLORE_START_TAG]));
 
     cache.revalidated.length = 0;
     expect((await consentWithdraw(p, { kinds: ['publication'] }, meta)).profileHidden).toBe(true);
-    expect(cache.revalidated).toEqual(expect.arrayContaining([`lineage:${grand}`, `lineage:${teacher}`]));
+    expect(cache.revalidated).toEqual(expect.arrayContaining([`lineage:${grand}`, `lineage:${teacher}`, EXPLORE_START_TAG]));
 
     // A save that changes only the names: every cached graph that shows the person is tagged
     // person:<id>, and no count above changes.
@@ -491,6 +495,7 @@ describe('the public cache of every teacher above a person whose visibility chan
     expect((await profileUpdate(p, { names, showPublicly: false }, meta)).visibilityChanged).toBe(false);
     expect(cache.revalidated).toContain(`person:${ids['demo-pending']}`);
     expect(cache.revalidated).not.toContain(`lineage:${grand}`);
+    expect(cache.revalidated).not.toContain(EXPLORE_START_TAG);
   });
 });
 

@@ -16,7 +16,7 @@ import * as z from 'zod';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
-import { invalidatePublic, lineageTag, personTag } from '../cache';
+import { EXPLORE_START_TAG, invalidatePublic, lineageTag, personTag } from '../cache';
 import { getDb } from '../db';
 import { lineage, person, personBio, personName, place, teachingRelationship } from '../db/schema';
 import { ROMANIZATIONS } from '../db/schema/common';
@@ -248,8 +248,10 @@ export const ANCESTORS_CAP = 1_000;
  * lineage:<id> of every teacher above, in any lineage: their cached profiles and subtrees count
  * the public descendants across lineages (personCounts) and are tagged lineage:<their id> for it
  * (src/server/cache.ts). The walk takes every relationship, whatever its status, so the edges as
- * they were before the change are among them. A name change needs none of this: every cached
- * graph that shows the person is tagged person:<id>.
+ * they were before the change are among them. With `ancestors` also explore-start (M05): the
+ * explorer's start list counts each lineage's public people and lists a lineage only once its root
+ * is public, so a lineage this change makes eligible is in none of the tags the cached list carries.
+ * A name change needs none of this: every cached graph that shows the person is tagged person:<id>.
  */
 export async function neighbourTags(db: Executor, personId: string, options: { ancestors?: boolean } = {}): Promise<string[]> {
   const rows = await db
@@ -274,6 +276,7 @@ WITH RECURSIVE a(id) AS (
 )
 SELECT id::text AS id FROM (SELECT id FROM a LIMIT ${ANCESTORS_CAP + 1}) x`);
     for (const r of up.rows) tags.push(lineageTag(r.id));
+    tags.push(EXPLORE_START_TAG);
   }
   return [...new Set(tags)];
 }
