@@ -15,6 +15,9 @@
 //   people is selected, so showing it needs no new layout.
 // - Selecting a node opens a simple panel with "Open profile" (the full panel and the keyboard
 //   model come with M06). The React Flow attribution stays (DEFAULT, plan §10.2 row 9).
+// - The legend and the zoom buttons lie over the canvas frame, outside React Flow, and follow the
+//   frame at once; React Flow's own size follows it after the next paint (a phone's panel below
+//   the graph opens, closes or changes its height), so a selection does not redraw the graph.
 
 import '@xyflow/react/dist/base.css';
 
@@ -27,6 +30,7 @@ import {
   type NodeProps,
   Position,
   ReactFlow,
+  ReactFlowProvider,
   type ReactFlowState,
   useOnViewportChange,
   useReactFlow,
@@ -34,7 +38,7 @@ import {
   useStoreApi,
   type Viewport,
 } from '@xyflow/react';
-import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
+import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 
 import { MinusIcon, PlusIcon, FitIcon } from '@/components/icons';
 import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
@@ -427,11 +431,15 @@ export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
   return { x: box.x + box.width / 2, y: box.y + (pane.height / 2 - top) / scale, zoom: scale };
 }
 
-/** The boxes of the overlays on the pane (marked data-canvas-overlay: the legend, the zoom buttons), in the pane's own pixels. */
+/**
+ * The boxes of the overlays on the pane (marked data-canvas-overlay: the legend, the zoom buttons),
+ * in the pane's own pixels. They lie over the canvas frame (data-canvas-frame), outside React Flow.
+ */
 function overlaysOn(pane: HTMLElement | null): Box[] {
   if (!pane) return [];
   const origin = pane.getBoundingClientRect();
-  return [...pane.querySelectorAll<HTMLElement>('[data-canvas-overlay]')].map((el) => {
+  const frame = pane.closest('[data-canvas-frame]') ?? pane;
+  return [...frame.querySelectorAll<HTMLElement>('[data-canvas-overlay]')].map((el) => {
     const box = el.getBoundingClientRect();
     return { x: box.x - origin.x, y: box.y - origin.y, width: box.width, height: box.height };
   });
@@ -483,12 +491,48 @@ export interface CanvasProps {
   nodes: PersonNode[];
   edges: LineageEdge[];
   onSelect: (id: string | null) => void;
-  /** Overlays inside the canvas frame: the legend, the selection panel. */
+  /** Overlays over the canvas frame: the legend, the relayout notice. */
   children?: ReactNode;
 }
 
+/**
+ * The box React Flow fills, kept as tall as the canvas frame (the box's parent), one paint after
+ * the frame changes. On a phone the panel lies below the graph: a selection opens it or changes
+ * its height, and the frame shrinks or grows. React Flow measured that in the same frame, drew the
+ * graph again for its new size and mounted or unmounted the people coming into or going out of
+ * view (onlyRenderVisibleElements), all inside the selection's response (INP, plan §5.8 (c)).
+ * Until the box follows, a smaller frame clips React Flow, which then shows exactly what the
+ * smaller pane shows (the view keeps its top left corner), and a larger one shows the page
+ * background below it for that one frame.
+ */
+function useFollowFrame(): RefObject<HTMLDivElement | null> {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    const frame = el?.parentElement;
+    if (!el || !frame) return;
+    let timer: number | undefined;
+    const apply = () => {
+      timer = undefined;
+      el.style.height = `${frame.clientHeight}px`;
+    };
+    apply();
+    // A task queued from a ResizeObserver callback runs after this frame is painted.
+    const observer = new ResizeObserver(() => {
+      timer ??= window.setTimeout(apply);
+    });
+    observer.observe(frame);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, []);
+  return box;
+}
+
 export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children }: CanvasProps) {
-  const frame = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
+  const box = useFollowFrame();
   const key = sceneKey(scene);
   const shown = useRef<string | null>(null);
   // In a new scene the people slide to their places (globals.css) while the edges are drawn at
@@ -496,7 +540,7 @@ export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children
   useLayoutEffect(() => {
     const previous = shown.current;
     shown.current = key;
-    const element = frame.current;
+    const element = canvas.current;
     const { duration } = moveFor(VIEW_MOTION.scene);
     if (previous === null || previous === key || duration === 0 || !element) return;
     element.toggleAttribute('data-moving', true);
@@ -507,35 +551,42 @@ export default function ExplorerCanvas({ scene, nodes, edges, onSelect, children
     };
   }, [key]);
   return (
-    <ReactFlow<PersonNode, LineageEdge>
-      ref={frame}
-      className="explorer-canvas"
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onlyRenderVisibleElements
-      nodesDraggable={false}
-      nodesConnectable={false}
-      edgesFocusable={false}
-      elementsSelectable
-      selectNodesOnDrag={false}
-      minZoom={0.1}
-      maxZoom={2}
-      // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
-      // each time <Activity> shows the graph, over the view the user left.
-      onNodeClick={(_, node) => onSelect(node.id)}
-      onPaneClick={() => onSelect(null)}
-      deleteKeyCode={null}
-      aria-label="Lineage graph"
-    >
-      <FitOnScene scene={scene} nodes={nodes} edges={edges} />
-      <div className="pointer-events-none absolute inset-0 z-10">
-        <div data-canvas-overlay className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
-          <ZoomControls />
+    // The zoom buttons sit outside <ReactFlow>, over the frame: the provider gives them its store.
+    <ReactFlowProvider>
+      <div data-canvas-frame="" className="absolute inset-0 overflow-hidden">
+        <div ref={box} className="absolute inset-x-0 top-0 h-full">
+          <ReactFlow<PersonNode, LineageEdge>
+            ref={canvas}
+            className="explorer-canvas"
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onlyRenderVisibleElements
+            nodesDraggable={false}
+            nodesConnectable={false}
+            edgesFocusable={false}
+            elementsSelectable
+            selectNodesOnDrag={false}
+            minZoom={0.1}
+            maxZoom={2}
+            // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
+            // each time <Activity> shows the graph, over the view the user left.
+            onNodeClick={(_, node) => onSelect(node.id)}
+            onPaneClick={() => onSelect(null)}
+            deleteKeyCode={null}
+            aria-label="Lineage graph"
+          >
+            <FitOnScene scene={scene} nodes={nodes} edges={edges} />
+          </ReactFlow>
         </div>
-        {children}
+        <div className="pointer-events-none absolute inset-0 z-10">
+          <div data-canvas-overlay className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
+            <ZoomControls />
+          </div>
+          {children}
+        </div>
       </div>
-    </ReactFlow>
+    </ReactFlowProvider>
   );
 }
