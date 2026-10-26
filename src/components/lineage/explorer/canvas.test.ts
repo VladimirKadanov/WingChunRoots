@@ -208,6 +208,15 @@ describe('the first view of a scene', () => {
     });
   });
 
+  it('starts at the top of the pane when the people above the focus are hidden by default', () => {
+    // The root's links ended: nobody is drawn above its students' row.
+    const hidden = new Set(['root', ...Array.from({ length: 5 }, (_, i) => `root>s${i}`)]);
+    const scene = { ...wideLineage(), focusId: 's3' };
+    const start = largeViewStart(scene, hidden, desktop)!;
+    expect(onScreen(scene, 's3', start, desktop)).toBe(true);
+    expect(paneBox(scene, 's3', start, desktop).y).toBeCloseTo((766 - 766 / (1 + FIT_OPTIONS.padding)) / 2, 6);
+  });
+
   it('brings the teacher drawn above the focus into the first view', () => {
     const scene = { ...wideLineage(), focusId: 's1g4' };
     const start = largeViewStart(scene, new Set(), desktop)!;

@@ -373,9 +373,9 @@ function union(a: Box, b: Box): Box {
  * whole view as dots): the focus, or the first person of the top row when the focus is not drawn,
  * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
  * (the Lineage view opens on its root with a student of the root, not with the root alone above
- * the grand-students). When none fits beside them, the person alone at the pane's zoom. A view
- * that starts in the top row starts at the top of the pane, so the rows below fill the rest;
- * any other is centred. Null for a small scene, which is fitted whole.
+ * the grand-students). When none fits beside them, the person alone at the pane's zoom. With
+ * nobody drawn above the start's row, the view starts at the top of the pane, so the rows below
+ * fill the rest; any other is centred. Null for a small scene, which is fitted whole.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
  * overlays' inset, so that two full cards fit side by side at 390 px) and clear of the overlays
@@ -421,8 +421,9 @@ export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
     if (!fits(box, scale)) scale = Math.max(FULL_CARDS, (floor(box.width * scale) - margin.y) / box.height);
   }
   const height = box.height * scale;
-  // The frame's top on the pane: nobody is drawn above the top row, so it starts there.
-  const top = Math.min(start.rank === 0 ? margin.y : (pane.height - height) / 2, floor(box.width * scale) - height);
+  // The frame's top on the pane: with nobody drawn above the start's row, the frame starts at the top.
+  const topRow = !people.some((n) => n.rank < start.rank);
+  const top = Math.min(topRow ? margin.y : (pane.height - height) / 2, floor(box.width * scale) - height);
   return { x: box.x + box.width / 2, y: box.y + (pane.height / 2 - top) / scale, zoom: scale };
 }
 
