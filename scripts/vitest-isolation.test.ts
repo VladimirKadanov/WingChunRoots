@@ -1,11 +1,14 @@
 // The unit tests share their worker's module graph (vitest.config.mts, `isolate: false`), except
 // the files listed in ISOLATED there. A file that mocks modules, resets the module registry,
-// stubs environment variables or globals, sets process.env or uses fake timers could leak that
-// into the next file of its worker, so it has to be in ISOLATED. This test finds such files.
+// stubs environment variables or globals, sets process.env, replaces a built-in such as fetch or
+// Date.now, or uses fake timers could leak that into the next file of its worker, so it has to be
+// in ISOLATED. This test finds such files in their text; scripts/vitest-shared-state.ts checks at
+// run time what each shared file leaves behind.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,26 +31,75 @@ const ASSIGN = String.raw`\s*(\?\?|\|\||&&|\+)?=(?![=>])`;
 /** A property access: `.name` or `[key]`. */
 const PROP = String.raw`(\.\w+|\[[^\]]+\])`;
 
+/** The shared objects a test may not write to: process, the global object and these built-ins. */
+const SHARED = String.raw`(process|globalThis|global|Date|Math|console|JSON)`;
+/** The name itself, not a property of something else (`options.global`). */
+const BARE = String.raw`(?<![\w$.])`;
+
 /**
  * What can change another file's view: module mocks and resets, env and global stubs, fake
- * timers, process.env written in any form (a key set or deleted, the object replaced or merged
- * into), properties of globalThis set or deleted (app singletons such as __wcrAuth), and process
- * listeners. vi.spyOn needs no entry: Vitest restores every spy after each file.
+ * timers, and a write to a property of process (process.env in any form: a key set or deleted,
+ * the object replaced or merged into; process.argv), of globalThis or global (app singletons such
+ * as __wcrAuth, fetch) or of Date, Math, console or JSON (Date.now, console.error), anywhere in a
+ * line, and process listeners. vi.spyOn needs no entry: Vitest restores every spy after each file.
+ * The patterns read codeOf(), so a string or a comment that spells such a write does not count.
  */
 const SHARED_STATE = new RegExp(
   [
     String.raw`\bvi\.(mock|doMock|unmock|doUnmock|resetModules|stubEnv|stubGlobal|useFakeTimers|setSystemTime)\(`,
-    String.raw`process\.env${PROP}?${ASSIGN}`,
-    String.raw`delete process\.env\b`,
-    String.raw`(Object\.(assign|defineProperty|defineProperties)|Reflect\.(set|deleteProperty|defineProperty))\(\s*(process|globalThis)\b`,
-    // A statement that starts with globalThis (not one inside a string), or a cast of it.
-    String.raw`^\s*globalThis${PROP}+${ASSIGN}`,
-    String.raw`\(\s*globalThis as [^)]*\)${PROP}+${ASSIGN}`,
-    String.raw`delete \(?\s*globalThis\b`,
+    String.raw`${BARE}${SHARED}${PROP}+${ASSIGN}`,
+    // A cast: (globalThis as { __wcrAuth?: unknown }).__wcrAuth = undefined
+    String.raw`\(\s*(globalThis|global)\s+as\b.*?\)${PROP}+${ASSIGN}`,
+    String.raw`\bdelete\s+\(?\s*${SHARED}\b`,
+    String.raw`(Object\.(assign|defineProperty|defineProperties)|Reflect\.(set|deleteProperty|defineProperty))\(\s*${SHARED}\b`,
     String.raw`process\.(on|once|addListener|prependListener|prependOnceListener|chdir)\(`,
   ].join('|'),
-  'm',
 );
+
+/** Tokens whose text is data, not code. */
+const LITERALS = new Set([
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+  ts.SyntaxKind.RegularExpressionLiteral,
+  ts.SyntaxKind.JsxText,
+]);
+
+/**
+ * A file's code as SHARED_STATE reads it: comments removed and the text inside strings, template
+ * literals and regular expressions blanked (a fixture string that spells `globalThis.x = 1`
+ * changes nothing). Every other character and every line break keeps its place.
+ */
+function codeOf(file: string, text: string): string {
+  const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false, kind);
+  const out = text.replace(/[^\n]/g, ' ').split('');
+  const visit = (node: ts.Node): void => {
+    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return;
+    const children = node.getChildren(source);
+    if (children.length > 0) {
+      for (const child of children) visit(child);
+      return;
+    }
+    const start = node.getStart(source);
+    const end = node.getEnd();
+    if (start >= end) return;
+    if (LITERALS.has(node.kind)) {
+      out[start] = text[start]!;
+      out[end - 1] = text[end - 1]!;
+      return;
+    }
+    for (let i = start; i < end; i++) out[i] = text[i]!;
+  };
+  visit(source);
+  return out.join('');
+}
+
+function changesSharedState(file: string, text: string): boolean {
+  return SHARED_STATE.test(codeOf(file, text));
+}
 
 /** The unit test files (the `unit` and `unit-isolated` projects): *.test.ts(x) under src, e2e and scripts, no integration tests. */
 function unitTestFiles(): string[] {
@@ -67,7 +119,7 @@ function unitTestFiles(): string[] {
 describe('the unit tests that share a module graph (vitest.config.mts)', () => {
   it('keeps every file that changes shared state in ISOLATED', () => {
     const leaking = unitTestFiles().filter(
-      (file) => file !== SELF && !ISOLATED.includes(file) && !TIMED.includes(file) && SHARED_STATE.test(readFileSync(path.join(root, file), 'utf8')),
+      (file) => file !== SELF && !ISOLATED.includes(file) && !TIMED.includes(file) && changesSharedState(file, readFileSync(path.join(root, file), 'utf8')),
     );
     expect(leaking, 'add these files to ISOLATED in vitest.config.mts').toEqual([]);
   });
@@ -96,10 +148,26 @@ describe('the unit tests that share a module graph (vitest.config.mts)', () => {
       "Reflect.deleteProperty(process.env, 'A')",
       'globalThis.fetch = fake',
       '  (globalThis as { __wcrAuth?: unknown }).__wcrAuth = undefined',
+      '(globalThis as { f?: () => void }).f = fake',
       'delete (globalThis as { __wcrAuth?: unknown }).__wcrAuth',
       "process.on('unhandledRejection', handler)",
+      'beforeAll(() => { globalThis.fetch = fake; });',
+      'if (x) globalThis.foo = 1;',
+      'global.fetch = fake',
+      'global.structuredClone = ((v: unknown) => v) as typeof structuredClone;',
+      "globalThis['fetch'] ??= fake",
+      'delete global.fetch',
+      'Date.now = () => 0',
+      'Math.random = () => 0.5',
+      'console.error = () => undefined',
+      'JSON.parse = fake',
+      "Object.defineProperty(Date, 'now', { value: () => 0 })",
+      "Object.assign(console, { error: () => undefined })",
+      "Reflect.set(globalThis, 'fetch', fake)",
+      "process.argv = ['node', 'x']",
+      'process.exitCode = 1',
     ]) {
-      expect(SHARED_STATE.test(line), line).toBe(true);
+      expect(changesSharedState('sample.ts', line), line).toBe(true);
     }
     for (const line of [
       'process.env.NODE_ENV === "x"',
@@ -109,9 +177,19 @@ describe('the unit tests that share a module graph (vitest.config.mts)', () => {
       'const env = { ...process.env, A: "b" }',
       'const store = globalThis as unknown as { x?: number }',
       '`globalThis.__RSC_MANIFEST = globalThis.__RSC_MANIFEST || {};`',
+      'const script = "globalThis.fetch = fake; Date.now = () => 0";',
+      '// globalThis.fetch = fake',
+      '/* Date.now = () => 0 */',
       "vi.spyOn(console, 'error')",
+      'const now = Date.now()',
+      'if (globalThis.fetch === fake) return;',
+      'const parsed = JSON.parse(text)',
+      "console.error('a = b')",
+      'options.global.fetch = fake',
+      'const x = { global: 1 }; x.global = 2',
+      'const replace = /globalThis\\.x = 1/;',
     ]) {
-      expect(SHARED_STATE.test(line), line).toBe(false);
+      expect(changesSharedState('sample.ts', line), line).toBe(false);
     }
   });
 });
