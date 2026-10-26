@@ -1,9 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { isUuidv7, uuidVersion, uuidv7, uuidv7FromParts, uuidv7Timestamp } from './ids';
+import { isUuidv7, uuidVersion, uuidv7FromParts, uuidv7Timestamp } from './ids';
+
+/**
+ * uuidv7() of a fresh ids module. The generator keeps the last timestamp of its module, and two
+ * tests below move it into the future (2027, 2030): each test takes a module of its own, so none
+ * sees another's clock, in any order (`--sequence.shuffle`). The file is in ISOLATED in
+ * vitest.config.mts for the same reason: the other unit test files never see that clock either.
+ */
+async function freshUuidv7() {
+  vi.resetModules();
+  return (await import('./ids')).uuidv7;
+}
 
 describe('uuidv7', () => {
-  it('produces RFC 9562 version 7 ids with the 10xx variant', () => {
+  it('produces RFC 9562 version 7 ids with the 10xx variant', async () => {
+    const uuidv7 = await freshUuidv7();
     for (let i = 0; i < 1000; i++) {
       const id = uuidv7();
       expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -12,7 +24,8 @@ describe('uuidv7', () => {
     }
   });
 
-  it('stores the current time in the first 48 bits', () => {
+  it('stores the current time in the first 48 bits', async () => {
+    const uuidv7 = await freshUuidv7();
     const before = Date.now();
     const id = uuidv7();
     const after = Date.now();
@@ -21,7 +34,8 @@ describe('uuidv7', () => {
     expect(ts).toBeLessThanOrEqual(after + 1);
   });
 
-  it('is strictly increasing within one millisecond and across counter overflow', () => {
+  it('is strictly increasing within one millisecond and across counter overflow', async () => {
+    const uuidv7 = await freshUuidv7();
     const fixed = 1_800_000_000_000;
     const ids = Array.from({ length: 10_000 }, () => uuidv7(fixed));
     for (let i = 1; i < ids.length; i++) expect(ids[i]! > ids[i - 1]!).toBe(true);
@@ -30,7 +44,8 @@ describe('uuidv7', () => {
     expect(uuidv7Timestamp(ids.at(-1)!)).toBeGreaterThan(fixed);
   });
 
-  it('never decreases when the clock goes backwards', () => {
+  it('never decreases when the clock goes backwards', async () => {
+    const uuidv7 = await freshUuidv7();
     const a = uuidv7(1_900_000_000_000);
     const b = uuidv7(1_899_999_999_000);
     expect(b > a).toBe(true);

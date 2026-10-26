@@ -121,7 +121,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm mail:check <address> [--name <Latin name>]` | Queues a test e-mail; the running worker delivers it to Mailpit or `.mail/` |
 | `pnpm lint` | ESLint, including module boundaries and forbidden packages |
 | `pnpm typecheck` | Route types (`next typegen`) and `tsc --noEmit` |
-| `pnpm test` | Unit tests (Vitest) |
+| `pnpm test` | Unit tests (Vitest). Most files share their worker's modules (`isolate: false`); a file that mocks modules, stubs or changes env or globals, or uses fake timers belongs in `ISOLATED` in `vitest.config.mts`. Two checks fail the run when they find one missing: `scripts/vitest-isolation.test.ts` reads the test files, `scripts/vitest-shared-state.ts` compares the state before and after each file. What they cover and miss, and the measured gains: [ADR 0001](docs/adr/0001-stack.md), "Скорост на тестовете" |
 | `pnpm test:int` | Integration tests against PostGIS: `TEST_DATABASE_URL`, or Testcontainers when it is not set (needs Docker) |
 | `scripts/db-bootstrap.sh` | Roles `migrator`, `app_rw`, `app_public_ro` with the passwords from `.env`, database owner and PostGIS; once per database (idempotent) |
 | `pnpm db:migrate` / `pnpm db:seed` | Apply the migrations and the pg-boss schema step / load the fictional demo data and, from M02, the demo accounts (`DATABASE_URL`, or `TEST_DATABASE_URL` when it is not set; never with `NODE_ENV=production`) |
