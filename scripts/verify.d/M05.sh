@@ -123,7 +123,8 @@ check "three views: person, generations, lineage (plan §4.3)" bash -c '
   grep -q "export type ViewKind = '\''person'\'' | '\''generations'\'' | '\''lineage'\''" src/components/lineage/explorer/state.ts'
 check "fixed node sizes per level of detail, switched by zoom, and onlyRenderVisibleElements (plan §4.5, §4.8)" bash -c '
   f=src/components/lineage/explorer/canvas.tsx
-  grep -q "onlyRenderVisibleElements" "$f" && grep -q "s.transform\[2\] >= 0.75" "$f" && grep -q "s.transform\[2\] >= 0.4" "$f" && grep -q "data.boxes\[lod\]" "$f"'
+  grep -q "onlyRenderVisibleElements" "$f" && grep -q "export const DETAIL_ZOOM = { full: 0.75, compact: 0.4 } as const;" "$f" &&
+  grep -q "s.transform\[2\] >= DETAIL_ZOOM.full" "$f" && grep -q "s.transform\[2\] >= DETAIL_ZOOM.compact" "$f" && grep -q "data.boxes\[lod\]" "$f"'
 check "nodes show the name with lang, the generation label, the status in words with its seal, and the \"2 teachers\" chip" bash -c '
   f=src/components/lineage/explorer/canvas.tsx
   grep -q "lang=\"und-Latn\" translate=\"no\"" "$f" && grep -q "data.generation" "$f" && grep -q "data.status.label" "$f" && grep -q "{data.teachers} teachers" "$f"'
