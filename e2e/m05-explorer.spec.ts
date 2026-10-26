@@ -912,11 +912,9 @@ test.describe('M05 fixes B', () => {
     test.use({ viewport: { width: 852, height: 393 }, isMobile: true, hasTouch: true });
 
     test('@M05 at 852x393 (the rail layout) the bars, the legend and the zoom buttons stay inside the side and bottom safe areas', async ({ page, browserName }) => {
-      test.skip(browserName !== 'chromium', 'the safe-area insets are emulated through the Chrome DevTools protocol');
       // An iPhone in landscape: the sensor housing on one side (59 px each side) and the home indicator (21 px).
-      const insets = { top: 0, left: 59, bottom: 21, right: 59 };
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets });
+      // Emulated in Chromium only (e2e/helpers/explorer-checks.ts); elsewhere the layout is checked without insets.
+      const insets = await emulateSafeAreaInsets(page, browserName, { top: 0, left: 59, bottom: 21, right: 59 });
       const id = await personIdOf('demo-two-lineages');
       await openExplorer(page, { focus: id });
       await nodeOf(page, id).click();
