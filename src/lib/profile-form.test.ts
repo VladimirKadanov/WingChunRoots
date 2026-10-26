@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canBePrimary,
+  keysOfSlots,
   LATIN_WRITING,
   MISSING_PRIMARY,
   nameField,
   primaryRefusal,
+  PROFILE_MAX_NAMES,
   type ProfileFormValues,
   sameNames,
   shownFormValues,
+  shownSlots,
+  SPARE_ROWS,
+  spareRowCount,
 } from './profile-form';
 import { profileFormErrors } from './profile-form-rules';
 
@@ -157,6 +162,44 @@ describe('shownFormValues (what the fields hold when the editor hydrates)', () =
     const none = drawn(saved);
     none.delete('primary');
     expect(shownFormValues(none).primary).toBe(-1);
+  });
+});
+
+describe('shownSlots and keysOfSlots (each row keeps the node of the fields it was typed in)', () => {
+  const drawn = (rows: { value: string; spare?: boolean }[]) => {
+    const form = new FormData();
+    rows.forEach((row, i) => {
+      if (row.spare) form.set(`names.${i}.spare`, '1');
+      form.set(nameField(i, 'value'), row.value);
+      form.set(nameField(i, 'writing'), LATIN_WRITING);
+      form.set(nameField(i, 'kind'), 'name');
+    });
+    form.set('primary', '0');
+    return form;
+  };
+  const keys = ['row-0', 'row-1', 'row-2', 'row-3'];
+
+  it('gives the index of the fields of every kept row, an emptied saved row included', () => {
+    expect(shownSlots(drawn([{ value: 'Demo Lantern Example' }, { value: '' }, { value: '', spare: true }, { value: '', spare: true }]))).toEqual([0, 1]);
+    expect(shownSlots(drawn([{ value: 'Demo Lantern Example' }, { value: '', spare: true }, { value: 'Demo Second Name', spare: true }]))).toEqual([0, 2]);
+  });
+
+  it('keeps the keys when no row moved (spare rows left empty at the end are only dropped)', () => {
+    expect(keysOfSlots(keys, [0, 1])).toBeNull();
+    expect(keysOfSlots(keys, [])).toBeNull();
+  });
+
+  it('gives a row typed into the second spare row the key of that row when the first was left empty', () => {
+    expect(keysOfSlots(keys, [0, 2])).toEqual(['row-0', 'row-2']);
+    expect(keysOfSlots(keys, [0, 1, 3])).toEqual(['row-0', 'row-1', 'row-3']);
+  });
+});
+
+describe('spareRowCount', () => {
+  it('offers the spare rows below the saved names, never more than the names allowed', () => {
+    expect(spareRowCount(1)).toBe(SPARE_ROWS);
+    expect(spareRowCount(PROFILE_MAX_NAMES - 1)).toBe(1);
+    expect(spareRowCount(PROFILE_MAX_NAMES)).toBe(0);
   });
 });
 

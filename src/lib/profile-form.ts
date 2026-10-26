@@ -96,22 +96,18 @@ export function profileFormFromData(form: FormData): ProfileFormValues {
   };
 }
 
+/** How many spare rows a page without JavaScript offers below `names` saved names. */
+export function spareRowCount(names: number): number {
+  return Math.max(0, Math.min(SPARE_ROWS, PROFILE_MAX_NAMES - names));
+}
+
 /**
- * The values the editor's fields hold when it hydrates: what the person typed or chose before the
- * editor hydrated (before the page's JavaScript ran, or in the edit that made React hydrate the
- * field) stays in the fields, and the editor takes it over. As the page drew them: every saved row, even an emptied one (the editor shows it
- * until Remove), then the spare rows that hold a name; a spare row left empty is dropped. A ticked
- * display name that can no longer be one (its "Written in" or Kind was changed) is dropped, as the
- * editor does when that change is made with JavaScript.
+ * The name rows the editor keeps of the form's fields, each with the index of the fields it was
+ * read from (its slot): every saved row, even an emptied one (the editor shows it until Remove),
+ * then the spare rows that hold a name; a spare row left empty is dropped.
  */
-export function shownFormValues(form: FormData): ProfileFormValues {
-  const text = (name: string) => {
-    const v = form.get(name);
-    return typeof v === 'string' ? v : '';
-  };
-  const primaryAt = form.has('primary') ? Number.parseInt(text('primary'), 10) : -1;
-  const names: NameRow[] = [];
-  let primary = -1;
+function shownRows(form: FormData, text: (name: string) => string): { slot: number; row: NameRow }[] {
+  const rows: { slot: number; row: NameRow }[] = [];
   for (let i = 0; i < PROFILE_MAX_NAMES + SPARE_ROWS; i++) {
     if (!form.has(nameField(i, 'value'))) continue;
     const row: NameRow = {
@@ -120,7 +116,30 @@ export function shownFormValues(form: FormData): ProfileFormValues {
       kind: text(nameField(i, 'kind')) === 'alias' ? 'alias' : 'name',
     };
     if (text(`names.${i}.spare`) === '1' && !row.value.trim()) continue;
-    if (i === primaryAt && canBePrimary(row.writing, row.kind)) primary = names.length;
+    rows.push({ slot: i, row });
+  }
+  return rows;
+}
+
+const formText = (form: FormData) => (name: string) => {
+  const v = form.get(name);
+  return typeof v === 'string' ? v : '';
+};
+
+/**
+ * The values the editor's fields hold. The fields are uncontrolled (the editor's form state follows
+ * them), so this is also what the person typed or chose before the editor hydrated: before the
+ * page's JavaScript ran, or in the edit that made React hydrate the field. The rows as in
+ * shownRows. A ticked display name that can no longer be one (its "Written in" or Kind was
+ * changed) is dropped, as the editor does when that change is made with JavaScript.
+ */
+export function shownFormValues(form: FormData): ProfileFormValues {
+  const text = formText(form);
+  const primaryAt = form.has('primary') ? Number.parseInt(text('primary'), 10) : -1;
+  const names: NameRow[] = [];
+  let primary = -1;
+  for (const { slot, row } of shownRows(form, text)) {
+    if (slot === primaryAt && canBePrimary(row.writing, row.kind)) primary = names.length;
     names.push(row);
   }
   return {
@@ -133,6 +152,22 @@ export function shownFormValues(form: FormData): ProfileFormValues {
     trainingStartYear: text('trainingStartYear'),
     showPublicly: form.get('showPublicly') === 'on',
   };
+}
+
+/** For each row shownFormValues keeps, the index of the fields it was read from. */
+export function shownSlots(form: FormData): number[] {
+  return shownRows(form, formText(form)).map((r) => r.slot);
+}
+
+/**
+ * The React keys of the editor's rows once it has taken over rows read from these slots
+ * (shownSlots): each row keeps the key of the fields it was typed in, so React keeps their nodes
+ * (the text, the focus, an input method's composition). Null when every row is still at its own
+ * index: only a spare row left empty above a filled one moves a row.
+ */
+export function keysOfSlots(keys: readonly string[], slots: readonly number[]): string[] | null {
+  if (slots.every((slot, i) => slot === i)) return null;
+  return slots.map((slot) => keys[slot] ?? `slot-${slot}`);
 }
 
 /** Whether two lists hold the same names, written the same way, in the same order. */
