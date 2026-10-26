@@ -21,6 +21,7 @@ import {
   selectionInp,
   uncoveredNode,
   workerScripts,
+  zoomToFullCard,
 } from './helpers/explorer-checks';
 import { expectNoAxeViolations, openInTheme, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
@@ -113,6 +114,9 @@ test('@M05 demo-converging shows two same-lineage incoming edges, routed orthogo
   const student = await centre(id);
   expect(student).toBeGreaterThanOrEqual(Math.min(a, b) - 1);
   expect(student).toBeLessThanOrEqual(Math.max(a, b) + 1);
+  // The chip is on the full card (plan §4.8). A short phone (393x659) opens this view with compact
+  // chips, fitted clear of the legend (ADR 0009 item 5), so a person zooms in to read it; so does the test.
+  await zoomToFullCard(page, id);
   await expect(nodeOf(page, id).locator('[data-teachers-chip]')).toHaveText('2 teachers');
 });
 

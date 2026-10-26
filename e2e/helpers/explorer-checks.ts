@@ -28,16 +28,15 @@ export async function personNameOf(slug: string): Promise<string> {
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Expects a node's generation label (plan §4.4) to read `label`, as every reader gets it: in the
- * node's accessible name, at any level of detail, and on its card. A card shows the label as a full
- * card, from zoom 0.75 (plan §4.8); a phone whose fitted zoom is lower starts with compact chips
+ * Brings a node to a full card with the explorer's own Zoom in button, as a person does, when the
+ * view opened at a lower level of detail. Only a full card, from zoom 0.75, shows the generation
+ * line and the chips (plan §4.8); a phone whose fitted zoom is lower starts with compact chips
  * (owner question 3 of docs/plan/questions/M05.md, the shipped default: 0.70 at the 393×659 of
- * the iPhone 15 profile), so the explorer's own Zoom in button brings the card to a full card first.
+ * the iPhone 15 profile, and lower where the view is fitted clear of the legend, ADR 0009 item 5).
+ * Does nothing where the card is full already.
  */
-export async function expectGenerationLabel(page: Page, id: string, label: string | RegExp): Promise<void> {
+export async function zoomToFullCard(page: Page, id: string): Promise<void> {
   const node = nodeOf(page, id);
-  const words = typeof label === 'string' ? escape(label) : label.source;
-  await expect(node).toHaveAttribute('aria-label', new RegExp(`, ${words}`));
   const lod = () => node.locator('[data-person-node]').getAttribute('data-lod');
   for (let step = 1; (await lod()) !== 'full'; step++) {
     expect(step, 'Zoom in steps to a full card').toBeLessThanOrEqual(3);
@@ -56,6 +55,18 @@ export async function expectGenerationLabel(page: Page, id: string, label: strin
       .toBe(true);
     await expect(node, 'the card stays on screen while zooming in').toBeInViewport();
   }
+}
+
+/**
+ * Expects a node's generation label (plan §4.4) to read `label`, as every reader gets it: in the
+ * node's accessible name, at any level of detail, and on its card, which shows it as a full card
+ * (zoomToFullCard).
+ */
+export async function expectGenerationLabel(page: Page, id: string, label: string | RegExp): Promise<void> {
+  const node = nodeOf(page, id);
+  const words = typeof label === 'string' ? escape(label) : label.source;
+  await expect(node).toHaveAttribute('aria-label', new RegExp(`, ${words}`));
+  await zoomToFullCard(page, id);
   await expect(node.locator('[data-person-node][data-lod="full"]')).toContainText(label);
 }
 
