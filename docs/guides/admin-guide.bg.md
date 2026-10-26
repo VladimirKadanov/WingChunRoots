@@ -281,6 +281,8 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 
 Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, медианата от три пускания) върви като част от `scripts/verify.sh M00b` и в CI чрез `scripts/lighthouse.mjs` (Lighthouse 13 и `chrome-launcher`); праговете са в `lighthouserc.json`. Ползва Chromium на Playwright: локално от `pnpm exec playwright install chromium`, а в облачната сесия от `PW_CHROMIUM_EXECUTABLE`. Отчетите са в `.lighthouseci/reports/`. Пускане на ръка срещу работещ сървър: `node scripts/lighthouse.mjs --url=http://127.0.0.1:3000/`.
 
+Когато E2E тест падне в CI, след отчетите на Playwright (стъпка „Print the end-to-end failure reports“) логът на задачата `verify` съдържа и кратко резюме на trace-а на всеки паднал тест, първо на тези в WebKit, който върви само в CI (стъпка „Summarize the traces of the failed end-to-end tests“, `scripts/trace-summary.mjs`; на ръка: `node scripts/trace-summary.mjs test-results`): грешките на страницата и грешките и предупрежденията в конзолата, стъпките на теста с началото и продължителността им и заявките (метод, път без query string, статус, време), но никога съдържанието, заглавките и бисквитките на заявките, въведените стойности или снимки на страницата.
+
 ## 10. Визуална регресия
 
 Тестът `e2e/visual.spec.ts` (таг `@visual`) сравнява ключовите страници (`/`, `/styleguide`, а от M02 `/sign-up`, `/sign-in` и `/onboarding`) при 390×844 и 1440×900 в тъмна и светла тема с базовите снимки в `e2e/__screenshots__/visual.spec.ts/*-linux.png`. Върви **само в CI**, защото само там Chromium е точно версията на закачения Playwright; на друга машина шрифтовете и изглаждането дават малки разлики.
