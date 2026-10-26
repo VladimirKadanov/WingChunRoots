@@ -1351,3 +1351,38 @@ test.describe('M05 on a short phone', () => {
     expect(new Set(seen.rows), 'the rows shown, frame by frame').toEqual(new Set([seen.rows[0]]));
   });
 });
+
+test.describe('M05 small views on a short phone', () => {
+  // An iPhone 15's viewport (devices['iPhone 15'], 393x659): the pane is about 350 px high and the
+  // legend wraps to two lines over its bottom. Fitted whole as React Flow fits a view, the
+  // students' row of this view lay under the legend, where nobody could see or tap them.
+  test.use({ viewport: { width: 393, height: 659 }, isMobile: true, hasTouch: true });
+
+  test('@M05 at 393x659 the Person view of demo-two-lineages opens with everyone whole, clear of the legend and the zoom buttons, and each can be tapped', async ({ page }) => {
+    await captureScenes(page);
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    const scene = await sceneOf(page, id);
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const overlays = [(await page.getByTestId('explorer-legend').boundingBox())!, (await page.getByRole('group', { name: 'Zoom' }).boundingBox())!];
+    const overlap = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    for (const n of scene.nodes) {
+      const node = nodeOf(page, n.id);
+      // Everyone is drawn: the view shows all of it.
+      await expect(node, n.id).toHaveCount(1);
+      // The card as drawn at its level of detail (centred in the node's slot).
+      const card = await node.evaluate((el) => {
+        const box = el.querySelector(':scope [data-person-node] > div.absolute')!.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return { x: box.x, y: box.y, width: box.width, height: box.height, tappable: !!hit && el.contains(hit) };
+      });
+      expect(card.x, n.id).toBeGreaterThanOrEqual(pane.x);
+      expect(card.y, n.id).toBeGreaterThanOrEqual(pane.y);
+      expect(card.x + card.width, n.id).toBeLessThanOrEqual(pane.x + pane.width);
+      expect(card.y + card.height, n.id).toBeLessThanOrEqual(pane.y + pane.height);
+      for (const o of overlays) expect(overlap(card, o), `${n.id} under an overlay`).toBe(false);
+      expect(card.tappable, `${n.id} can be tapped`).toBe(true);
+    }
+  });
+});

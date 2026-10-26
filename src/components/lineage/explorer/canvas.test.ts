@@ -1,12 +1,13 @@
-// The explorer canvas's view (plan §4.3, §4.8, §5.8 (e)): where the first view of a large scene
+// The explorer canvas's view (plan §4.3, §4.8, §5.8 (e)): where the first view of a scene
 // starts, the moves of the view take the motion tokens, and every fit of the whole view stops at
 // the cards' own size.
 
 import { describe, expect, it } from 'vitest';
 
 import { motion } from '@/design/tokens';
-import type { Box, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom } from './canvas';
+import { NODE_SIZES } from '@/lib/lineage-layout/presets';
+import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom, wholeViewStart } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
@@ -19,14 +20,17 @@ function sceneOf(people: readonly { id: string; rank: number; x: number; y?: num
   const nodes: SceneNode[] = people.map((p) => {
     const y = p.y ?? p.rank * ROW;
     const box = { x: p.x, y, ...SLOT };
+    const center = { x: p.x + SLOT.width / 2, y: y + SLOT.height / 2 };
+    // The box of each level of detail, centred on the slot (as the layout's scene makes them).
+    const centred = (level: DetailLevel): Box => ({ x: center.x - NODE_SIZES[level].width / 2, y: center.y - NODE_SIZES[level].height / 2, ...NODE_SIZES[level] });
     return {
       id: p.id,
       rank: p.rank,
       cutOff: false,
       onSpine: false,
       ...box,
-      center: { x: p.x + SLOT.width / 2, y: y + SLOT.height / 2 },
-      boxes: { full: box, compact: box, dot: box },
+      center,
+      boxes: { full: centred('full'), compact: centred('compact'), dot: centred('dot') },
     };
   });
   const edges: SceneEdge[] = links.map(([teacherId, studentId]) => ({
@@ -275,6 +279,104 @@ describe('the first view of a scene', () => {
       }
       const bottom = paneBox(scene, 's1g4', start, pane);
       expect(bottom.y + bottom.height).toBeCloseTo(buttons.y - 12, 6);
+    });
+  });
+
+  describe('a small view on a short phone, with the legend and the zoom buttons over the pane', () => {
+    /**
+     * The person view of demo-two-lineages on a phone as the layout places it: two teachers'
+     * teachers, the two teachers, the focus, and its two students (rows 124 px apart).
+     */
+    function twoLineages(): Scene {
+      const people = [
+        { id: 'root-a', rank: 0, x: 45, y: 12 },
+        { id: 'root-b', rank: 0, x: 269, y: 12 },
+        { id: 'teacher-a', rank: 1, x: 45, y: 136 },
+        { id: 'teacher-b', rank: 1, x: 269, y: 136 },
+        { id: 'focus', rank: 2, x: 45, y: 260 },
+        { id: 'student-a', rank: 3, x: 12, y: 384 },
+        { id: 'student-b', rank: 3, x: 236, y: 384 },
+      ];
+      const links: [string, string][] = [
+        ['root-a', 'teacher-a'],
+        ['root-b', 'teacher-b'],
+        ['teacher-a', 'focus'],
+        ['teacher-b', 'focus'],
+        ['focus', 'student-a'],
+        ['focus', 'student-b'],
+      ];
+      return sceneOf(people, links, 'focus');
+    }
+    // The pane at 393x659 (an iPhone 15's viewport), 352 px high: the legend wraps to two lines.
+    const legend = { x: 12, y: 276, width: 305, height: 64 };
+    const buttons = { x: 335, y: 190, width: 46, height: 134 };
+    const short = { width: 393, height: 352, overlays: [legend, buttons] };
+    /** A person's box as drawn at the start's level of detail, on the pane. */
+    const drawnBox = (scene: Scene, id: string, start: { x: number; y: number; zoom: number }, pane: { width: number; height: number }): Box => {
+      const n = scene.nodes.find((node) => node.id === id)!;
+      const box = n.boxes[start.zoom >= DETAIL_ZOOM.full ? 'full' : start.zoom >= DETAIL_ZOOM.compact ? 'compact' : 'dot'];
+      return { x: (box.x - start.x) * start.zoom + pane.width / 2, y: (box.y - start.y) * start.zoom + pane.height / 2, width: box.width * start.zoom, height: box.height * start.zoom };
+    };
+
+    it('fits it whole clear of the legend, where React Flow\'s fit would draw its bottom row under the legend', () => {
+      const scene = twoLineages();
+      const fit = wholeFitZoom(scene.nodes, short);
+      // React Flow's fit, centred at its zoom: the students' row lies under the legend.
+      const centred = { x: 12 + 457 / 2, y: 12 + 436 / 2, zoom: fit };
+      expect(overlap(drawnBox(scene, 'student-a', centred, short), legend)).toBe(true);
+      expect(largeViewStart(scene, new Set(), short)).toBeNull();
+      const start = wholeViewStart(scene, new Set(), short)!;
+      expect(start).not.toBeNull();
+      expect(start.zoom).toBeGreaterThanOrEqual(READABLE_ZOOM);
+      expect(start.zoom).toBeLessThanOrEqual(fit);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, start, short), n.id).toBe(true);
+        for (const overlay of short.overlays) expect(overlap(paneBox(scene, n.id, start, short), overlay), `${n.id} under an overlay`).toBe(false);
+        // The overlays' inset: 12 px clear of the legend below it.
+        expect(paneBox(scene, n.id, start, short).y + paneBox(scene, n.id, start, short).height, n.id).toBeLessThanOrEqual(legend.y - 12 + 1e-6);
+      }
+      // A frame narrow enough to pass beside the zoom buttons, not one that stops above them.
+      expect(start.zoom).toBeGreaterThan((buttons.y - 12 - 12) / 436);
+    });
+
+    it('keeps React Flow\'s fit where it draws everyone clear of the overlays: at 390x844, and with nothing over the pane', () => {
+      const scene = twoLineages();
+      // The pane at 390x844 (the legend on two lines there too): compact chips, all of them clear.
+      const pane390 = { width: 390, height: 537, overlays: [{ x: 12, y: 461, width: 302, height: 64 }, { x: 332, y: 375, width: 46, height: 134 }] };
+      expect(wholeFitZoom(scene.nodes, pane390)).toBeLessThan(DETAIL_ZOOM.full);
+      expect(wholeViewStart(scene, new Set(), pane390)).toBeNull();
+      expect(largeViewStart(scene, new Set(), pane390)).toBeNull();
+      expect(wholeViewStart(scene, new Set(), { width: short.width, height: short.height })).toBeNull();
+    });
+
+    it('moves the whole fit up, at its zoom, where it would end under the zoom buttons', () => {
+      // The pane at 412x839 (a Pixel 7's viewport): full cards, the legend on one line; centred, the
+      // right student's card would reach 6 px under the zoom buttons.
+      const scene = twoLineages();
+      const buttons412 = { x: 354, y: 370, width: 46, height: 134 };
+      const tall = { width: 412, height: 532, overlays: [{ x: 12, y: 483, width: 312, height: 37 }, buttons412] };
+      const fit = wholeFitZoom(scene.nodes, tall);
+      expect(fit).toBeGreaterThanOrEqual(DETAIL_ZOOM.full);
+      const start = wholeViewStart(scene, new Set(), tall)!;
+      expect(start.zoom).toBeCloseTo(fit, 9);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, start, tall), n.id).toBe(true);
+        for (const overlay of tall.overlays) expect(overlap(paneBox(scene, n.id, start, tall), overlay), `${n.id} under an overlay`).toBe(false);
+      }
+      const bottom = paneBox(scene, 'student-b', start, tall);
+      expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons412.y - 12 + 1e-6);
+    });
+
+    it('opens it like a large view when the fit clear of the overlays would make every person a dot', () => {
+      // The legend as tall as most of the pane: whole, clear of it, the people would be dots.
+      const scene = twoLineages();
+      const tallLegend = { ...short, overlays: [{ x: 12, y: 150, width: 305, height: 190 }, buttons] };
+      expect(wholeFitZoom(scene.nodes, tallLegend)).toBeGreaterThanOrEqual(READABLE_ZOOM);
+      expect(wholeViewStart(scene, new Set(), tallLegend)).toBeNull();
+      const start = largeViewStart(scene, new Set(), tallLegend)!;
+      expect(start).not.toBeNull();
+      expect(start.zoom).toBe(DETAIL_ZOOM.full);
+      expect(onScreen(scene, 'focus', start, tallLegend)).toBe(true);
     });
   });
 

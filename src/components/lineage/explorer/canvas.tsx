@@ -47,7 +47,7 @@ import { Seal } from '@/components/ink/seal';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import { bezierLabelPoint } from '@/lib/lineage-layout/scene';
-import type { Box, DetailLevel, Point, Scene, SceneEdge } from '@/lib/lineage-layout/types';
+import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 
 import { type GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
@@ -96,6 +96,8 @@ export type LineageEdge = Edge<LineageEdgeData, 'lineage'>;
 export const DETAIL_ZOOM = { full: 0.75, compact: 0.4 } as const;
 
 const lodOf = (s: ReactFlowState): DetailLevel => (s.transform[2] >= DETAIL_ZOOM.full ? 'full' : s.transform[2] >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
+/** The level of detail lodOf gives at this zoom, for a view not yet on the pane. */
+const detailAt = (zoom: number): DetailLevel => (zoom >= DETAIL_ZOOM.full ? 'full' : zoom >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
 
 /** The monogram of a full card (plan §4.8): the first letters of the first and the last word of the Latin name. */
 export function monogram(name: string): string {
@@ -381,6 +383,18 @@ function union(a: Box, b: Box): Box {
   const y = Math.min(a.y, b.y);
   return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y };
 }
+const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/**
+ * React Flow's fit of the whole view (fitView with FIT_OPTIONS: the bounds inside the padding,
+ * centred, never past the cards' own size): its zoom, and where the flow's origin lands on the pane.
+ */
+function reactFlowFit(bounds: Box, pane: { width: number; height: number }): { zoom: number; x: number; y: number } {
+  // React Flow's padding on each side: floor((size - size / (1 + padding)) / 2).
+  const padding = (size: number) => 2 * Math.floor((size - size / (1 + FIT_OPTIONS.padding)) / 2);
+  const zoom = Math.min(FIT_OPTIONS.maxZoom, (pane.width - padding(pane.width)) / bounds.width, (pane.height - padding(pane.height)) / bounds.height);
+  return { zoom, x: pane.width / 2 - (bounds.x + bounds.width / 2) * zoom, y: pane.height / 2 - (bounds.y + bounds.height / 2) * zoom };
+}
 
 /**
  * The zoom at which React Flow's fit of the whole view (fitView with FIT_OPTIONS: the drawn
@@ -388,22 +402,93 @@ function union(a: Box, b: Box): Box {
  */
 export function wholeFitZoom(people: readonly Box[], pane: { width: number; height: number }): number {
   if (people.length === 0) return FIT_OPTIONS.maxZoom;
-  const bounds = people.reduce(union);
-  // React Flow's padding on each side: floor((size - size / (1 + padding)) / 2).
-  const padding = (size: number) => 2 * Math.floor((size - size / (1 + FIT_OPTIONS.padding)) / 2);
-  return Math.min(FIT_OPTIONS.maxZoom, (pane.width - padding(pane.width)) / bounds.width, (pane.height - padding(pane.height)) / bounds.height);
+  return reactFlowFit(people.reduce(union), pane).zoom;
+}
+
+/** The margin a first view keeps from the pane's edges: a whole-view fit's padding; on a phone the overlays' inset, so that two full cards fit side by side at 390 px. */
+function marginOf(pane: Pane): { x: number; y: number } {
+  if (pane.width < NARROW_PANE) return { x: OVERLAY_GAP, y: OVERLAY_GAP };
+  // React Flow's: the pane / (1 + padding) inside it.
+  const padding = (size: number) => (size - size / (1 + FIT_OPTIONS.padding)) / 2;
+  return { x: padding(pane.width), y: padding(pane.height) };
+}
+
+/**
+ * How far down the pane a frame this many pixels wide, centred across it, reaches: the bottom
+ * margin, or OVERLAY_GAP above the highest overlay it spans.
+ */
+function floorOf(pane: Pane, margin: number, width: number): number {
+  const left = (pane.width - width) / 2;
+  let bottom = pane.height - margin;
+  for (const o of pane.overlays ?? []) {
+    if (o.width > 0 && o.height > 0 && o.x < left + width && o.x + o.width > left) bottom = Math.min(bottom, o.y - OVERLAY_GAP);
+  }
+  return bottom;
+}
+
+/**
+ * The first view of a scene shown whole, and its zoom. `start` is null where React Flow's fit of the
+ * whole view (FIT_OPTIONS) draws every person clear of the overlays. Where it would draw one under
+ * an overlay (on a short phone the legend wraps to two lines over the bottom row, and a person under
+ * it can be neither seen nor tapped), the people are fitted whole into the part of the pane clear
+ * of them, as the first view of a large scene frames its people (largeViewStart): inside the same
+ * margin, OVERLAY_GAP above every overlay the frame spans, centred across the pane and in the room
+ * above the overlays, never larger than React Flow's fit. A frame narrow enough to pass beside an
+ * overlay off the pane's centre (the zoom buttons above the legend's right end) reaches lower than
+ * a wide one: the larger zoom wins.
+ */
+function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart | null; zoom: number } {
+  const bounds = people.map(boxOf).reduce(union);
+  const fit = reactFlowFit(bounds, pane);
+  const overlays = (pane.overlays ?? []).filter((o) => o.width > 0 && o.height > 0);
+  // The boxes drawn at the fit's level of detail, where they land on the pane.
+  const level = detailAt(fit.zoom);
+  const drawn = (n: SceneNode): Box => {
+    const box = n.boxes[level];
+    return { x: fit.x + box.x * fit.zoom, y: fit.y + box.y * fit.zoom, width: box.width * fit.zoom, height: box.height * fit.zoom };
+  };
+  if (!people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
+  const margin = marginOf(pane);
+  const centre = pane.width / 2;
+  // The widths to try: as wide as the pane and React Flow's fit allow, and the widest that passes
+  // beside each overlay off the centre (a hair narrower, so rounding never puts it under).
+  const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - 2 * margin.y) / bounds.height);
+  const widths = [widest];
+  for (const o of overlays) {
+    const beside = o.x >= centre ? 2 * (o.x - centre) : o.x + o.width <= centre ? 2 * (centre - o.x - o.width) : 0;
+    if (beside > 0 && beside < widest) widths.push(beside - 1e-6);
+  }
+  const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - margin.y) / bounds.height)));
+  if (!(zoom > 0)) return { start: null, zoom: fit.zoom };
+  // A frame narrower than the width tried reaches at least as low: it is centred in the room it has.
+  const height = bounds.height * zoom;
+  const top = margin.y + (floorOf(pane, margin.y, bounds.width * zoom) - margin.y - height) / 2;
+  return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
+}
+
+/**
+ * Where the first view of a small scene starts: null for React Flow's fit of the whole view, or
+ * the fit clear of the overlays where that one would draw a person under one (wholeView). Null for
+ * a large scene too, which largeViewStart places.
+ */
+export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
+  const people = scene.nodes.filter((n) => !hidden.has(n.id));
+  if (people.length === 0) return null;
+  const whole = wholeView(people, pane);
+  return whole.zoom >= READABLE_ZOOM ? whole.start : null;
 }
 
 /**
  * Where the first view of a large scene starts (DEFAULT, docs/plan/questions/M05.md: full cards, not the
- * whole view as dots). A scene is large when its whole fit falls below READABLE_ZOOM on this pane.
+ * whole view as dots). A scene is large when its whole view (wholeView: React Flow's fit, or the fit
+ * clear of the overlays where that one covers a person) falls below READABLE_ZOOM on this pane.
  * The view starts at the focus, or the first person of the top row when the focus is not drawn,
  * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
  * (the Lineage view opens on its root with a student of the root, not with the root alone above
  * the grand-students). When none fits beside them, the person alone at the pane's zoom. With
  * nobody drawn above the start's row, the view starts at the top of the pane, so the rows below
- * fill the rest; any other is centred. Null for a small scene, which is fitted whole: one whose
- * drawn people the pane shows whole at READABLE_ZOOM or more.
+ * fill the rest; any other is centred. Null for a small scene, which is shown whole
+ * (wholeViewStart): one whose drawn people the pane shows whole at READABLE_ZOOM or more.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
  * overlays' inset, so that two full cards fit side by side at 390 px) and clear of the overlays
@@ -413,23 +498,14 @@ export function wholeFitZoom(people: readonly Box[], pane: { width: number; heig
  */
 export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
-  if (people.length === 0 || wholeFitZoom(people.map(boxOf), pane) >= READABLE_ZOOM) return null;
+  if (people.length === 0 || wholeView(people, pane).zoom >= READABLE_ZOOM) return null;
   const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
   const narrow = pane.width < NARROW_PANE;
   const zoom = narrow ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
-  // The margin a whole-view fit leaves (React Flow's: the pane / (1 + padding) inside it).
-  const padding = (size: number) => (size - size / (1 + FIT_OPTIONS.padding)) / 2;
-  const margin = narrow ? { x: OVERLAY_GAP, y: OVERLAY_GAP } : { x: padding(pane.width), y: padding(pane.height) };
+  const margin = marginOf(pane);
   const room = { width: pane.width - 2 * margin.x, height: pane.height - 2 * margin.y };
   // How far down the pane a frame this many pixels wide, centred across it, reaches clear of the overlays.
-  const floor = (width: number) => {
-    const left = (pane.width - width) / 2;
-    let bottom = pane.height - margin.y;
-    for (const o of pane.overlays ?? []) {
-      if (o.width > 0 && o.height > 0 && o.x < left + width && o.x + o.width > left) bottom = Math.min(bottom, o.y - OVERLAY_GAP);
-    }
-    return bottom;
-  };
+  const floor = (width: number) => floorOf(pane, margin.y, width);
   const fits = (box: Box, z: number) => box.width * z <= room.width && box.height * z <= floor(box.width * z) - margin.y;
   const drawn = new Map(people.map((n) => [n.id, n]));
   const near = scene.edges
@@ -503,7 +579,8 @@ function FitOnScene({ scene, nodes, edges }: { scene: Scene; nodes: PersonNode[]
     fitted.current = key;
     const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
     const { width, height, domNode } = store.getState();
-    const start = largeViewStart(scene, hidden, { width, height, overlays: overlaysOn(domNode) });
+    const pane = { width, height, overlays: overlaysOn(domNode) };
+    const start = largeViewStart(scene, hidden, pane) ?? wholeViewStart(scene, hidden, pane);
     if (start === null) void flow.fitView({ ...FIT_OPTIONS, ...move });
     else void flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move });
   }, [flow, store, key, sized, scene, nodes, edges]);
