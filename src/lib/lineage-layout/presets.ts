@@ -61,7 +61,9 @@ export const expandLayout: Readonly<ElkOptions> = {
 /**
  * Print and posters (plan §4.5, §4.12): larger spacing and a strictly deterministic order.
  * The node order inside each row is the model order (lineage, start year, name), so no
- * random tie-breaking of crossing minimization can change it.
+ * random tie-breaking of crossing minimization can change it; only a student with two
+ * teachers in one lineage then moves within its row to stand between them (plan §4.6,
+ * converging.ts), deterministically as well.
  */
 export const printLayout: Readonly<ElkOptions> = {
   ...explorerLayout,
