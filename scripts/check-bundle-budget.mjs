@@ -47,8 +47,9 @@ export const ROUTE_BUDGETS = {
   // ADR 0006), since M07's search palette shares Base UI's dialog and floating modules with it.
   '/styleguide': 260 * KB,
   // M05, ADR 0009: the explorer's client island loads TanStack Query, the oRPC client and nuqs
-  // with the page (191.4 kB measured); React Flow (58 kB) loads after it with next/dynamic and
-  // ELK (434 kB) only in the layout worker, so neither is in this count.
+  // with the page (195.0 kB measured with M07's search field in the shell); React Flow (60 kB)
+  // loads after it with next/dynamic and ELK (434 kB) only in the layout worker, so neither is in
+  // this count.
   '/explore': 200 * KB,
 };
 
