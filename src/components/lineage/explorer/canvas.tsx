@@ -322,20 +322,34 @@ function moveFor(duration: number): { duration: number; ease: (t: number) => num
   return { duration: reduced ? 0 : duration, ease: VIEW_MOTION.ease };
 }
 
-function ZoomControls() {
+/** When the last animated move of the view ends, in performance.now() time; 0 before any. */
+type MoveEnd = RefObject<number>;
+
+/**
+ * moveFor, with the move's end noted in `moveEnd`: a shift of the view while it runs
+ * (keepSelectionInView) would stop it where it is, so useFollowFrame waits for that end.
+ */
+function trackedMove(moveEnd: MoveEnd, duration: number): { duration: number; ease: (t: number) => number } {
+  const move = moveFor(duration);
+  // d3 ends a move on its first frame after the duration: a few frames' slack.
+  if (move.duration > 0) moveEnd.current = Math.max(moveEnd.current, performance.now() + move.duration + 50);
+  return move;
+}
+
+function ZoomControls({ moveEnd }: { moveEnd: MoveEnd }) {
   const flow = useReactFlow();
   // The ring is drawn inside the button (-outline-offset-2): the group clips what lies outside it.
   const button =
     'inline-grid size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed [&:not(:first-child)]:border-t';
   return (
     <div role="group" aria-label="Zoom" className="flex flex-col overflow-hidden rounded-sm border border-border-strong shadow-pop">
-      <button type="button" className={button} aria-label="Zoom in" onClick={() => void flow.zoomIn(moveFor(VIEW_MOTION.buttons))}>
+      <button type="button" className={button} aria-label="Zoom in" onClick={() => void flow.zoomIn(trackedMove(moveEnd, VIEW_MOTION.buttons))}>
         <PlusIcon size={18} />
       </button>
-      <button type="button" className={button} aria-label="Zoom out" onClick={() => void flow.zoomOut(moveFor(VIEW_MOTION.buttons))}>
+      <button type="button" className={button} aria-label="Zoom out" onClick={() => void flow.zoomOut(trackedMove(moveEnd, VIEW_MOTION.buttons))}>
         <MinusIcon size={18} />
       </button>
-      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => void flow.fitView({ ...FIT_OPTIONS, ...moveFor(VIEW_MOTION.buttons) })}>
+      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => void flow.fitView({ ...FIT_OPTIONS, ...trackedMove(moveEnd, VIEW_MOTION.buttons) })}>
         <FitIcon size={18} />
       </button>
     </div>
@@ -552,7 +566,7 @@ const sceneKey = (scene: Scene) => `${scene.dataVersion}:${scene.focusId}:${scen
  * Fits or centres the view whenever a new scene arrives (a new focus, depth or view), and keeps
  * the view the user left while the list is shown (plan §4.10).
  */
-function FitOnScene({ scene, nodes, edges }: { scene: Scene; nodes: PersonNode[]; edges: LineageEdge[] }) {
+function FitOnScene({ scene, nodes, edges, moveEnd }: { scene: Scene; nodes: PersonNode[]; edges: LineageEdge[]; moveEnd: MoveEnd }) {
   const flow = useReactFlow();
   const store = useStoreApi();
   // Centring needs the size of the pane, known after its first measurement.
@@ -575,7 +589,7 @@ function FitOnScene({ scene, nodes, edges }: { scene: Scene; nodes: PersonNode[]
   useEffect(() => {
     if (!sized || fitted.current === key) return;
     // The first view of the canvas is there at once; a later scene moves with its people.
-    const move = fitted.current === null ? { duration: 0 } : moveFor(VIEW_MOTION.scene);
+    const move = fitted.current === null ? { duration: 0 } : trackedMove(moveEnd, VIEW_MOTION.scene);
     fitted.current = key;
     const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
     const { width, height, domNode } = store.getState();
@@ -583,7 +597,7 @@ function FitOnScene({ scene, nodes, edges }: { scene: Scene; nodes: PersonNode[]
     const start = largeViewStart(scene, hidden, pane) ?? wholeViewStart(scene, hidden, pane);
     if (start === null) void flow.fitView({ ...FIT_OPTIONS, ...move });
     else void flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move });
-  }, [flow, store, key, sized, scene, nodes, edges]);
+  }, [flow, store, key, sized, scene, nodes, edges, moveEnd]);
   return null;
 }
 
@@ -649,9 +663,10 @@ function keepSelectionInView(store: ReturnType<typeof useStoreApi<PersonNode, Li
  * Until the box follows, a smaller frame clips React Flow, which then shows exactly what the
  * smaller pane shows (the view keeps its top left corner), and a larger one shows the page
  * background below it for that one frame. When the box gets shorter, the view first moves the
- * selected person into the smaller pane (keepSelectionInView).
+ * selected person into the smaller pane (keepSelectionInView), after the view's running move, if
+ * any (`moveEnd`): a shift during a zoom button's move or a new scene's fit would stop it short.
  */
-function useFollowFrame(): RefObject<HTMLDivElement | null> {
+function useFollowFrame(moveEnd: MoveEnd): RefObject<HTMLDivElement | null> {
   const box = useRef<HTMLDivElement>(null);
   const store = useStoreApi<PersonNode, LineageEdge>();
   useLayoutEffect(() => {
@@ -664,8 +679,14 @@ function useFollowFrame(): RefObject<HTMLDivElement | null> {
     let height = frame.clientHeight;
     el.style.height = `${height}px`;
     const follow = () => {
-      timer = undefined;
       const next = frame.clientHeight;
+      // Until the move ends, the frame clips the taller box and nothing is unmounted.
+      const wait = next > 0 && next < height ? moveEnd.current - performance.now() : 0;
+      if (wait > 0) {
+        timer = window.setTimeout(follow, wait);
+        return;
+      }
+      timer = undefined;
       if (next > 0 && next < height) keepSelectionInView(store, next);
       height = next;
       el.style.height = `${next}px`;
@@ -679,7 +700,7 @@ function useFollowFrame(): RefObject<HTMLDivElement | null> {
       observer.disconnect();
       window.clearTimeout(timer);
     };
-  }, [store]);
+  }, [store, moveEnd]);
   return box;
 }
 
@@ -695,7 +716,8 @@ export default function ExplorerCanvas(props: CanvasProps) {
 
 function CanvasFrame({ scene, nodes, edges, onSelect, onMount, children }: CanvasProps) {
   const canvas = useRef<HTMLDivElement>(null);
-  const box = useFollowFrame();
+  const moveEnd = useRef(0);
+  const box = useFollowFrame(moveEnd);
   const key = sceneKey(scene);
   useLayoutEffect(() => {
     onMount?.();
@@ -741,12 +763,12 @@ function CanvasFrame({ scene, nodes, edges, onSelect, onMount, children }: Canva
           deleteKeyCode={null}
           aria-label="Lineage graph"
         >
-          <FitOnScene scene={scene} nodes={nodes} edges={edges} />
+          <FitOnScene scene={scene} nodes={nodes} edges={edges} moveEnd={moveEnd} />
         </ReactFlow>
       </div>
       <div className="pointer-events-none absolute inset-0 z-10">
         <div data-canvas-overlay className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
-          <ZoomControls />
+          <ZoomControls moveEnd={moveEnd} />
         </div>
         {children}
       </div>

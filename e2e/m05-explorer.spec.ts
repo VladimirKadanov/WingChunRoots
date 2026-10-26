@@ -651,6 +651,38 @@ test.describe('M05 fixes a1', () => {
     await expect(card.locator('[data-arbitration-banner] [data-seal="scales"]')).toHaveCount(1);
     await expect(personNodes(page).locator('[data-arbitration-banner]')).toHaveCount(1);
   });
+
+  test.describe('on a short phone', () => {
+    // An iPhone 15's viewport (393x659), as in 'M05 on a short phone'.
+    test.use({ viewport: { width: 393, height: 659 }, isMobile: true, hasTouch: true });
+
+    test('@M05 on a short phone a selection during a zoom button\'s move lets the zoom end where it was going', async ({ page }) => {
+      // The person view's focus lies in the lower part of the pane: selecting it opens the panel
+      // below the graph, and the view shifts the person into the shorter pane. A shift while
+      // "Zoom in" still moved the view (200 ms) stopped the zoom where it was.
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const id = await personIdOf('demo-two-lineages');
+      await openExplorer(page, { focus: id });
+      const before = await settledView(page);
+      // In one task, as a tap right after the button's: the zoom's move has only begun.
+      await page.evaluate((id) => {
+        document.querySelector<HTMLElement>('button[aria-label="Zoom in"]')!.click();
+        document.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`)!.click();
+      }, id);
+      await expect(page.getByTestId('explorer-panel')).toBeVisible();
+      const after = await settledView(page);
+      // React Flow's "Zoom in" multiplies the zoom by 1.2.
+      expect(after.zoom).toBeCloseTo(before.zoom * 1.2, 2);
+      // The person was still moved into the shorter pane: whole, and clear of the legend.
+      const node = nodeOf(page, id);
+      expect(await onCanvas(page, node)).toBe(true);
+      const box = (await node.boundingBox())!;
+      const legend = (await page.getByTestId('explorer-legend').boundingBox())!;
+      const besideLegend = box.x < legend.x + legend.width && legend.x < box.x + box.width;
+      expect(!besideLegend || box.y + box.height <= legend.y, 'clear of the legend').toBe(true);
+      await expect(node).toHaveClass(/selected/);
+    });
+  });
 });
 
 test.describe('M05 fixes a2', () => {
