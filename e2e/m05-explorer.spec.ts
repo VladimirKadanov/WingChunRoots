@@ -1187,3 +1187,64 @@ test.describe('M05 fixes I', () => {
     }
   });
 });
+
+test.describe('M05 small views on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  type Rect = { x: number; y: number; width: number; height: number };
+  const within = (inner: Rect, outer: Rect) =>
+    inner.x >= outer.x - 0.5 && inner.y >= outer.y - 0.5 && inner.x + inner.width <= outer.x + outer.width + 0.5 && inner.y + inner.height <= outer.y + outer.height + 0.5;
+  const overlap = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  /** A node's box, or null when it is not rendered (off screen, or hidden by default). */
+  const boxOf = async (node: ReturnType<typeof nodeOf>) => ((await node.count()) === 0 ? null : node.boundingBox());
+
+  test('@M05 at 390x844 the Person view of demo-hub-a opens in readable full cards around the focus, and "Fit the whole view" shows all of it', async ({ page }) => {
+    // Sixteen people, twelve students of the hub in one row: fitted whole at 390 px every person was a
+    // dot (zoom 0.11). Its whole fit is below READABLE_ZOOM (canvas.tsx), so it opens like a large view.
+    await captureScenes(page);
+    const hub = await personIdOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    const scene = await sceneOf(page, hub);
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const overlays = [(await page.getByTestId('explorer-legend').boundingBox())!, (await page.getByRole('group', { name: 'Zoom' }).boundingBox())!];
+    /** Whether a person is drawn whole on the pane, clear of the legend and the zoom buttons. */
+    const clear = async (id: string) => {
+      const box = await boxOf(nodeOf(page, id));
+      return !!box && within(box, pane) && overlays.every((o) => !overlap(box, o));
+    };
+    // The focus in a full card, with its name: whole on the pane and clear of the legend and the zoom buttons.
+    const focus = nodeOf(page, hub);
+    await expect(focus.locator('[data-person-node]')).toHaveAttribute('data-lod', 'full');
+    await expect(focus).toContainText(await personNameOf('demo-hub-a'));
+    expect(await clear(hub), 'the focus is whole on the pane and uncovered').toBe(true);
+    // With at least one of its teachers or students beside it, also whole and in a full card.
+    const neighbours = scene.edges.filter((e) => e.teacherId === hub || e.studentId === hub).map((e) => (e.teacherId === hub ? e.studentId : e.teacherId));
+    const beside: string[] = [];
+    for (const id of new Set(neighbours)) if (await clear(id)) beside.push(id);
+    expect(beside.length, 'teachers or students beside the focus').toBeGreaterThanOrEqual(1);
+    for (const id of beside) await expect(nodeOf(page, id).locator('[data-person-node]')).toHaveAttribute('data-lod', 'full');
+
+    // "Fit the whole view" shows everyone drawn: every person of the scene that is drawn (none hidden
+    // by default is rendered) whole on the pane at once, the hub's twelve students among them.
+    await page.getByRole('button', { name: 'Fit the whole view' }).click();
+    const drawnWhole = async () => {
+      let drawn = 0;
+      let whole = 0;
+      for (const n of scene.nodes) {
+        const box = await boxOf(nodeOf(page, n.id));
+        if (!box) continue;
+        drawn += 1;
+        if (within(box, pane)) whole += 1;
+      }
+      return { drawn, whole };
+    };
+    await expect.poll(async () => {
+      const { drawn, whole } = await drawnWhole();
+      return drawn === whole && drawn >= 14;
+    }).toBe(true);
+    const students = scene.edges.filter((e) => e.teacherId === hub).map((e) => e.studentId);
+    let shown = 0;
+    for (const id of students) if (await boxOf(nodeOf(page, id))) shown += 1;
+    expect(shown, 'the hub\'s students drawn').toBeGreaterThanOrEqual(12);
+  });
+});
