@@ -13,6 +13,7 @@ import { requireUser, safeNextPath } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { authTwoFactor, person, personName, place } from '../db/schema';
+import { writePersonKeys } from '../search/store';
 import { grantConsents, missingRequiredConsents } from './consent';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
@@ -313,6 +314,8 @@ export async function onboard(principal: Principal | null, raw: unknown, meta: R
         names.push({ personId, kind: 'romanization', value: input.pinyin, script: 'Latn', lang: 'zh-Latn-pinyin', romanization: 'pinyin', sortOrder: 3 });
       }
       await tx.insert(personName).values(names);
+      // M07: the search keys of the new names, in the same transaction.
+      await writePersonKeys(tx, personId);
       // The audit log keeps ids and choices, never the names (plan §6.4).
       await writeAudit(tx, {
         action: 'person.create',

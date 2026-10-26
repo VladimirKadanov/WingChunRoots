@@ -21,8 +21,16 @@ export function emailArgument(args: readonly string[]): string | null {
  */
 export function assertLocalEnvironment(env: Record<string, string | undefined> = process.env): void {
   assertNotProduction('admin:create', env);
+  assertLocalDatabase('admin:create', env);
+}
+
+/**
+ * Refuses a database (DATABASE_URL, or TEST_DATABASE_URL without it) that is not on this machine,
+ * naming `command` and no URL. Also used by `pnpm account:delete` (src/server/auth/account-delete.ts).
+ */
+export function assertLocalDatabase(command: string, env: Record<string, string | undefined> = process.env): void {
   if (!isLocalHost(targetDatabaseUrl(env))) {
-    throw new Error('admin:create works only with a database on this machine (DATABASE_URL on localhost)');
+    throw new Error(`${command} works only with a database on this machine (DATABASE_URL on localhost)`);
   }
 }
 

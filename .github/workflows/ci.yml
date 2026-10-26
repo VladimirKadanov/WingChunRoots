@@ -118,6 +118,14 @@ jobs:
         run: |
           [ -f .verify/all.log ] || exit 0
           awk '/^  1\) \[/ { p = 1 } p && /^  [0-9]+ (failed|flaky)$/ { exit } p' .verify/all.log | grep -v -e '^ *attachment #' -e 'show-trace' -e '^ *Usage:$' | head -n 1500
+      - name: Summarize the traces of the failed end-to-end tests
+        # mobile-webkit runs only here, and the artifact cannot always be downloaded: for each failed
+        # test's trace.zip, WebKit first, its page errors, console errors and warnings, action
+        # timeline and requests (path, status, timing), at most 300 lines a test and 2400 in all.
+        # Never bodies, headers, cookies, query strings, typed values or snapshots, and the values of
+        # this job's secret settings become *** (scripts/trace-summary.mjs).
+        if: failure()
+        run: node scripts/trace-summary.mjs test-results
       - name: Print the visual regression screenshots that match no baseline
         # The visual project (e2e/visual.spec.ts, M00b) runs only here. When a screenshot has no
         # baseline or differs from it, this prints it as base64 so it can be reviewed and accepted

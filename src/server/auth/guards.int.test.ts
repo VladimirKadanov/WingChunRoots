@@ -157,7 +157,8 @@ describe('second factor of staff sessions', () => {
     expect(checkRoute('/admin', principal).ok).toBe(true);
     const response = await rpc('/admin/overview', { headers: bearerHeaders(token) });
     expect(response.status).toBe(200);
-    expect((await response.json()).json).toEqual({ failedEmailDeliveries: 0 });
+    // M07: deletion requests are listed for administrators only; a moderator gets none.
+    expect((await response.json()).json).toEqual({ failedEmailDeliveries: 0, deletionRequests: [] });
   });
 
   it('a wrong code leaves the session unverified', async () => {

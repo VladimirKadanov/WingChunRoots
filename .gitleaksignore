@@ -1,0 +1,6 @@
+# Findings that are not leaks, by gitleaks fingerprint (commit:file:rule:line).
+# Fake values in the trace-summary test as first committed in 0c617dd; the test now builds
+# them at run time, so these lines cover only that commit.
+0c617dd52eec3ef090c7a8106abbacb867bec357:scripts/trace-summary.test.ts:generic-api-key:31
+0c617dd52eec3ef090c7a8106abbacb867bec357:scripts/trace-summary.test.ts:generic-api-key:32
+0c617dd52eec3ef090c7a8106abbacb867bec357:scripts/trace-summary.test.ts:generic-api-key:35

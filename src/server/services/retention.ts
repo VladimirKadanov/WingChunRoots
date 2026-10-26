@@ -152,6 +152,12 @@ export interface AccountRetentionResult {
 // and with 23001 (restrict_violation) from PostgreSQL 18; the app runs on both (plan §3.2).
 const REFERENCED_ROW_CODES: ReadonlySet<unknown> = new Set(['23503', '23001']);
 
+/** True when a delete was refused because another row still refers to the row (RESTRICT). */
+export function isReferencedRowError(error: unknown): boolean {
+  const code = (error as { code?: unknown; cause?: { code?: unknown } }).code ?? (error as { cause?: { code?: unknown } }).cause?.code;
+  return REFERENCED_ROW_CODES.has(code);
+}
+
 /**
  * Deletes accounts whose address was not confirmed within UNCONFIRMED_ACCOUNT_RETENTION_DAYS, with
  * their consent records (sessions, credentials and 2FA rows go by cascade; e-mail deliveries keep
@@ -183,8 +189,7 @@ export async function purgeUnconfirmedAccounts(
         });
         accounts += deleted;
       } catch (error) {
-        const code = (error as { code?: unknown; cause?: { code?: unknown } }).code ?? (error as { cause?: { code?: unknown } }).cause?.code;
-        if (!REFERENCED_ROW_CODES.has(code)) throw error;
+        if (!isReferencedRowError(error)) throw error;
         kept += 1;
       }
     }

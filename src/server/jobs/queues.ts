@@ -11,6 +11,8 @@ export const QUEUE = {
   emailSendFailed: 'email.send.failed',
   /** Daily erasure of e-mail addresses past their retention period (src/server/services/retention.ts). */
   retentionPurge: 'retention.purge',
+  /** Rewrite the search keys of every person (src/server/search/store.ts; M07): after db:seed, or a change to the key rules. */
+  searchKeysRebuild: 'search.keys.rebuild',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -28,6 +30,7 @@ export interface JobData {
   [QUEUE.emailSend]: EmailSendJob;
   [QUEUE.emailSendFailed]: EmailSendJob;
   [QUEUE.retentionPurge]: Record<string, never>;
+  [QUEUE.searchKeysRebuild]: Record<string, never>;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -59,6 +62,8 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
     },
   ],
   [QUEUE.retentionPurge, { retryLimit: 3, retryDelay: 300, expireInSeconds: 600, deleteAfterSeconds: 30 * DAY }],
+  // M07: one job rewrites every person's keys in batches; its payload is empty, so nothing personal stays behind.
+  [QUEUE.searchKeysRebuild, { retryLimit: 3, retryDelay: 60, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */

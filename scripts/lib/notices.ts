@@ -143,6 +143,24 @@ export function pickLicenseFiles(names: readonly string[]): { files: string[]; u
   };
 }
 
+/**
+ * A REUSE licence folder (https://reuse.software): `LICENSES/` holding one `<SPDX-id>.txt` per
+ * licence the package ships under, next to its LICENSE (opencc-js 1.4: MIT for the code, Apache-2.0
+ * for the dictionary data). Given the package's file names and whether `LICENSES` is a folder,
+ * returns the names to pass to pickLicenseFiles (without the folder) and whether to read the
+ * folder's `.txt` files too. Only the exact upper-case name of the REUSE specification counts: any
+ * other `licenses` stays unrecognised.
+ */
+export function reuseLicenseFolder(names: readonly string[], isFolder: (name: string) => boolean): { names: string[]; folder: string | null } {
+  const folder = names.includes('LICENSES') && isFolder('LICENSES') ? 'LICENSES' : null;
+  return { names: folder ? names.filter((name) => name !== folder) : [...names], folder };
+}
+
+/** The licence texts of a REUSE folder: its `<SPDX-id>.txt` files, sorted. */
+export function reuseLicenseFiles(names: readonly string[]): string[] {
+  return names.filter((name) => /^[A-Za-z0-9.+-]+\.txt$/.test(name)).sort();
+}
+
 /** Flattens pnpm's licence list (one entry per version), keeping only `include` when given. */
 export function flatten(
   byLicense: Record<string, PnpmPackage[]>,

@@ -64,6 +64,11 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [@socket.io/component-emitter](https://github.com/socketio/emitter#readme) | 3.1.2 | MIT | [text 11](#licence-text-11) |
 | [@standard-schema/spec](https://standardschema.dev/) | 1.1.0 | MIT | [text 3](#licence-text-3) |
 | [@swc/helpers](https://swc.rs/) | 0.5.23 | Apache-2.0 | [text 12](#licence-text-12) |
+| [@tanstack/devtools-event-client](https://tanstack.com/devtools) | 0.4.4 | MIT | [text 3](#licence-text-3) |
+| [@tanstack/form-core](https://tanstack.com/form) | 1.33.5 | MIT | [text 3](#licence-text-3) |
+| [@tanstack/pacer-lite](https://tanstack.com/pacer) | 0.1.1 | MIT | [text 3](#licence-text-3) |
+| [@tanstack/react-form](https://tanstack.com/form) | 1.33.5 | MIT | [text 3](#licence-text-3) |
+| [@tanstack/react-store](https://tanstack.com/store) | 0.11.2 | MIT | [text 3](#licence-text-3) |
 | [@tanstack/store](https://tanstack.com/store) | 0.11.2 | MIT | [text 3](#licence-text-3) |
 | [@tanstack/table-core](https://tanstack.com/table) | 9.3.1 | MIT | [text 3](#licence-text-3) |
 | [@types/cors](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/cors) | 2.8.19 | MIT | [text 13](#licence-text-13) |
@@ -149,27 +154,29 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [nypm](https://github.com/unjs/nypm#readme) | 0.6.6 | MIT | [text 3](#licence-text-3) |
 | [object-assign](https://github.com/sindresorhus/object-assign#readme) | 4.1.1 | MIT | [text 24](#licence-text-24) |
 | [openapi-types](https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-types#readme) | 12.1.3 | MIT | [text 24](#licence-text-24) |
+| [opencc-js](https://github.com/nk2028/opencc-js#readme) | 1.4.2 | MIT AND Apache-2.0 | [text 43](#licence-text-43) |
 | [parseley](https://github.com/mxxii/parseley) | 0.12.1 | MIT | [text 3](#licence-text-3) |
 | [path-scurry](https://github.com/isaacs/path-scurry#readme) | 2.0.2 | BlueOak-1.0.0 | [text 36](#licence-text-36) |
-| [pathe](https://github.com/unjs/pathe#readme) | 2.0.3 | MIT | [text 43](#licence-text-43) |
+| [pathe](https://github.com/unjs/pathe#readme) | 2.0.3 | MIT | [text 44](#licence-text-44) |
 | [peberminta](https://github.com/mxxii/peberminta) | 0.9.0 | MIT | [text 3](#licence-text-3) |
 | [pg](https://github.com/brianc/node-postgres) | 8.23.1 | MIT | [text 3](#licence-text-3) |
 | [pg-boss](https://pgboss.io/) | 12.38.0 | MIT | [text 15](#licence-text-15) |
 | [pg-connection-string](https://github.com/brianc/node-postgres/tree/master/packages/pg-connection-string) | 2.14.1 | MIT | [text 15](#licence-text-15) |
-| [pg-int8](https://github.com/charmander/pg-int8#readme) | 1.0.1 | ISC | [text 44](#licence-text-44) |
+| [pg-int8](https://github.com/charmander/pg-int8#readme) | 1.0.1 | ISC | [text 45](#licence-text-45) |
 | [pg-pool](https://github.com/brianc/node-postgres/tree/master/packages/pg-pool#readme) | 3.14.0 | MIT | [text 3](#licence-text-3) |
 | [pg-protocol](https://github.com/brianc/node-postgres#readme) | 1.16.1 | MIT | [text 3](#licence-text-3) |
 | [pg-types](https://github.com/brianc/node-pg-types) | 2.2.0 | MIT | none shipped |
 | [pgpass](https://github.com/hoegaarden/pgpass#readme) | 1.0.5 | MIT | none shipped |
-| [picocolors](https://github.com/alexeyraspopov/picocolors#readme) | 1.1.1 | ISC | [text 45](#licence-text-45) |
-| [picospinner](https://github.com/tinylibs/picospinner#readme) | 3.1.2 | MIT | [text 46](#licence-text-46) |
+| [picocolors](https://github.com/alexeyraspopov/picocolors#readme) | 1.1.1 | ISC | [text 46](#licence-text-46) |
+| [picospinner](https://github.com/tinylibs/picospinner#readme) | 3.1.2 | MIT | [text 47](#licence-text-47) |
+| [pinyin-pro](https://pinyin-pro.cn/) | 3.29.5 | MIT | [text 3](#licence-text-3) |
 | [postcss](https://postcss.org/) | 8.5.23 | MIT | [text 41](#licence-text-41) |
 | [postgres-array](https://github.com/bendrucker/postgres-array#readme) | 2.0.0 | MIT | [text 24](#licence-text-24) |
 | [postgres-bytea](https://github.com/bendrucker/postgres-bytea#readme) | 1.0.1 | MIT | [text 24](#licence-text-24) |
 | [postgres-date](https://github.com/bendrucker/postgres-date#readme) | 1.0.7 | MIT | [text 24](#licence-text-24) |
 | [postgres-interval](https://github.com/bendrucker/postgres-interval#readme) | 1.2.0 | MIT | [text 24](#licence-text-24) |
 | [prettier](https://prettier.io/) | 3.9.10 | MIT | [text 10](#licence-text-10) |
-| [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | MIT | [text 47](#licence-text-47) |
+| [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | MIT | [text 48](#licence-text-48) |
 | [prompts](https://github.com/terkelg/prompts#readme) | 2.4.2 | MIT | [text 3](#licence-text-3) |
 | [radash](https://github.com/rayepps/radash#readme) | 12.1.1 | MIT | [text 3](#licence-text-3) |
 | [react](https://react.dev/) | 19.3.1 | MIT | [text 3](#licence-text-3) |
@@ -183,15 +190,15 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [rrule-temporal](https://ggaabe.github.io/rrule-temporal/) | 2.2.8 | MIT | [text 3](#licence-text-3) |
 | [scheduler](https://react.dev/) | 0.28.0 | MIT | [text 3](#licence-text-3) |
 | [selderee](https://github.com/mxxii/selderee) | 0.11.0 | MIT | [text 3](#licence-text-3) |
-| [semver](https://github.com/npm/node-semver#readme) | 7.8.5 | ISC | [text 48](#licence-text-48) |
+| [semver](https://github.com/npm/node-semver#readme) | 7.8.5 | ISC | [text 49](#licence-text-49) |
 | [serialize-error](https://github.com/sindresorhus/serialize-error#readme) | 13.0.2 | MIT | [text 21](#licence-text-21) |
 | [set-cookie-parser](https://github.com/nfriedly/set-cookie-parser) | 3.1.4 | MIT | [text 24](#licence-text-24) |
 | [sisteransi](https://github.com/terkelg/sisteransi#readme) | 1.0.5 | MIT | [text 3](#licence-text-3) |
 | [socket.io](https://github.com/socketio/socket.io/tree/main/packages/socket.io#readme) | 4.8.4 | MIT | [text 14](#licence-text-14) |
-| [socket.io-adapter](https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme) | 2.5.8 | MIT | [text 49](#licence-text-49) |
-| [socket.io-parser](https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme) | 4.2.7 | MIT | [text 49](#licence-text-49) |
-| [source-map-js](https://github.com/7rulnik/source-map-js) | 1.2.2 | BSD-3-Clause | [text 50](#licence-text-50) |
-| [split2](https://github.com/mcollina/split2#readme) | 4.2.0 | ISC | [text 51](#licence-text-51) |
+| [socket.io-adapter](https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme) | 2.5.8 | MIT | [text 50](#licence-text-50) |
+| [socket.io-parser](https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme) | 4.2.7 | MIT | [text 50](#licence-text-50) |
+| [source-map-js](https://github.com/7rulnik/source-map-js) | 1.2.2 | BSD-3-Clause | [text 51](#licence-text-51) |
+| [split2](https://github.com/mcollina/split2#readme) | 4.2.0 | ISC | [text 52](#licence-text-52) |
 | [strip-bom](https://github.com/sindresorhus/strip-bom#readme) | 3.0.0 | MIT | [text 24](#licence-text-24) |
 | [stubborn-fs](https://github.com/fabiospampinato/stubborn-fs#readme) | 2.0.0 | MIT | [text 16](#licence-text-16) |
 | [stubborn-utils](https://github.com/fabiospampinato/stubborn-utils#readme) | 1.0.2 | MIT | [text 16](#licence-text-16) |
@@ -199,19 +206,21 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [tagged-tag](https://github.com/sindresorhus/tagged-tag#readme) | 1.0.0 | MIT | [text 21](#licence-text-21) |
 | [tailwind-merge](https://github.com/dcastil/tailwind-merge) | 3.7.0 | MIT | [text 3](#licence-text-3) |
 | [tailwindcss](https://tailwindcss.com/) | 4.3.3 | MIT | [text 3](#licence-text-3) |
-| [temporal-spec](https://github.com/fullcalendar/temporal-polyfill#readme) | 1.0.1 | Apache-2.0 | [text 52](#licence-text-52) |
+| [temporal-spec](https://github.com/fullcalendar/temporal-polyfill#readme) | 1.0.1 | Apache-2.0 | [text 53](#licence-text-53) |
 | [tinyexec](https://github.com/tinylibs/tinyexec#readme) | 1.3.1 | MIT | [text 3](#licence-text-3) |
+| [to-jyutping](https://github.com/CanCLID/to-jyutping#readme) | 3.1.1 | BSD-2-Clause | [text 54](#licence-text-54) |
+| [transliteration](https://github.com/yf-hk/transliteration#readme) | 2.6.2 | MIT | [text 55](#licence-text-55) |
 | [tsconfig-paths](https://github.com/dividab/tsconfig-paths#readme) | 4.2.0 | MIT | [text 15](#licence-text-15) |
-| [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 53](#licence-text-53) |
-| [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | [text 54](#licence-text-54) |
+| [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 56](#licence-text-56) |
+| [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | [text 57](#licence-text-57) |
 | [uint8array-extras](https://github.com/sindresorhus/uint8array-extras#readme) | 1.6.0 | MIT | [text 21](#licence-text-21) |
 | [undici-types](https://undici.nodejs.org/) | 7.24.6 | MIT | [text 3](#licence-text-3) |
 | [uqr](https://github.com/unjs/uqr#readme) | 0.1.3 | MIT | [text 3](#licence-text-3) |
 | [use-sync-external-store](https://github.com/react/react#readme) | 1.7.0 | MIT | [text 3](#licence-text-3) |
 | [vary](https://github.com/jshttp/vary#readme) | 1.1.2 | MIT | [text 14](#licence-text-14) |
 | [when-exit](https://github.com/fabiospampinato/when-exit#readme) | 2.1.5 | MIT | [text 16](#licence-text-16) |
-| [ws](https://github.com/websockets/ws) | 8.21.3 | MIT | [text 55](#licence-text-55) |
-| [xtend](https://github.com/Raynos/xtend) | 4.0.2 | MIT | [text 56](#licence-text-56) |
+| [ws](https://github.com/websockets/ws) | 8.21.3 | MIT | [text 58](#licence-text-58) |
+| [xtend](https://github.com/Raynos/xtend) | 4.0.2 | MIT | [text 59](#licence-text-59) |
 | [yoctocolors](https://github.com/sindresorhus/yoctocolors#readme) | 2.2.0 | MIT | [text 21](#licence-text-21) |
 | [zod](https://zod.dev/) | 4.6.7 | MIT | [text 3](#licence-text-3) |
 
@@ -622,7 +631,7 @@ THE SOFTWARE.
 
 ### Licence text 3
 
-Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 7.24.6, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7
+Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/devtools-event-client 0.4.4, @tanstack/form-core 1.33.5, @tanstack/pacer-lite 0.1.1, @tanstack/react-form 1.33.5, @tanstack/react-store 0.11.2, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, pinyin-pro 3.29.5, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 7.24.6, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7
 
 ```text
 Copyright (c) 2019 Material-UI SAS    (@base-ui/react 1.9.0, @base-ui/utils 0.5.0)
@@ -630,7 +639,10 @@ Copyright (c) Bereket Engida    (@better-fetch/fetch 1.3.2)
 Copyright (c) 2023 oRPC    (@orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7)
 Copyright (c) 2021-2022 KillyMXI <killy@mxii.eu.org>    (@selderee/plugin-htmlparser2 0.11.0, leac 0.6.0, parseley 0.12.1, peberminta 0.9.0, selderee 0.11.0)
 Copyright (c) 2024 Colin McDonnell    (@standard-schema/spec 1.1.0)
-Copyright (c) 2021 Tanner Linsley    (@tanstack/store 0.11.2)
+Copyright (c) 2025 TanStack    (@tanstack/devtools-event-client 0.4.4)
+Copyright (c) 2021-present Tanner Linsley    (@tanstack/form-core 1.33.5, @tanstack/react-form 1.33.5)
+Copyright (c) 2025 Tanner Linsley    (@tanstack/pacer-lite 0.1.1)
+Copyright (c) 2021 Tanner Linsley    (@tanstack/react-store 0.11.2, @tanstack/store 0.11.2)
 Copyright (c) 2016 Tanner Linsley    (@tanstack/table-core 9.3.1)
 Copyright (c) 2020 Evgeny Poberezkin    (ajv-formats 3.0.1)
 Copyright (c) 2025 Bereket Engida    (better-call 1.4.2)
@@ -639,6 +651,7 @@ Copyright (c) 2020 Evan Wallace    (esbuild 0.28.2)
 Copyright (c) 2017 Evgeny Poberezkin    (fast-deep-equal 3.1.3, json-schema-traverse 1.0.0)
 Copyright (c) 2010 - 2021 Brian Carlson    (pg 8.23.1, pg-protocol 1.16.1)
 Copyright (c) 2017 Brian M. Carlson    (pg-pool 3.14.0)
+Copyright (c) 2022-present zh-lx    (pinyin-pro 3.29.5)
 Copyright (c) 2018 Terkel Gjervig Nielsen    (prompts 2.4.2, sisteransi 1.0.5)
 Copyright (c) 2022 radash    (radash 12.1.1)
 Copyright (c) Meta Platforms, Inc. and affiliates.    (react 19.3.1, react-dom 19.3.1, scheduler 0.28.0, use-sync-external-store 1.7.0)
@@ -3269,6 +3282,92 @@ SOFTWARE.
 
 ### Licence text 43
 
+Used by: opencc-js 1.4.2
+
+```text
+Copyright (c) 2020-2021 The nk2028 Project    (opencc-js 1.4.2)
+```
+
+```text
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+
+"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+
+"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+
+"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+
+   1. You must give any other recipients of the Work or Derivative Works a copy of this License; and
+
+   2. You must cause any modified files to carry prominent notices stating that You changed the files; and
+
+   3. You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+
+   4. If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+
+You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+```
+
+### Licence text 44
+
 Used by: pathe 2.0.3
 
 ```text
@@ -3346,7 +3445,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 44
+### Licence text 45
 
 Used by: pg-int8 1.0.1
 
@@ -3368,7 +3467,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 45
+### Licence text 46
 
 Used by: picocolors 1.1.1
 
@@ -3392,7 +3491,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 46
+### Licence text 47
 
 Used by: picospinner 3.1.2
 
@@ -3421,7 +3520,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ```
 
-### Licence text 47
+### Licence text 48
 
 Used by: prismjs 1.30.0
 
@@ -3451,7 +3550,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Licence text 48
+### Licence text 49
 
 Used by: semver 7.8.5
 
@@ -3475,7 +3574,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 49
+### Licence text 50
 
 Used by: socket.io-adapter 2.5.8, socket.io-parser 4.2.7
 
@@ -3504,7 +3603,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 50
+### Licence text 51
 
 Used by: source-map-js 1.2.2
 
@@ -3540,7 +3639,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 51
+### Licence text 52
 
 Used by: split2 4.2.0
 
@@ -3562,7 +3661,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 52
+### Licence text 53
 
 Used by: temporal-spec 1.0.1
 
@@ -3590,7 +3689,68 @@ Portions of this software are derived from the TypeScript project
 licensed under the Apache License, Version 2.0.
 ```
 
-### Licence text 53
+### Licence text 54
+
+Used by: to-jyutping 3.1.1
+
+```text
+Copyright (c) 2024 Cantonese Computational Linguistics Infrastructure Development Workgroup    (to-jyutping 3.1.1)
+All rights reserved.    (to-jyutping 3.1.1)
+```
+
+```text
+BSD 2-Clause License
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Licence text 55
+
+Used by: transliteration 2.6.2
+
+```text
+Copyright http://github.com/yf-hk/transliteration
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+Software), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, andor sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 56
 
 Used by: tslib 2.8.1
 
@@ -3611,7 +3771,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 54
+### Licence text 57
 
 Used by: type-fest 5.10.0
 
@@ -3749,7 +3909,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 55
+### Licence text 58
 
 Used by: ws 8.21.3
 
@@ -3778,7 +3938,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 56
+### Licence text 59
 
 Used by: xtend 4.0.2
 

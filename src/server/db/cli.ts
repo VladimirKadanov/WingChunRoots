@@ -29,6 +29,9 @@ import {
 } from './admin';
 import { loadDotEnv } from './dotenv';
 import { redactUrl, targetDatabaseUrl } from './env';
+import { stopProducer } from '../jobs/boss';
+import { queueSearchKeysRebuild } from '../jobs/search-keys';
+import { closeDb } from './index';
 import { seedDatabase } from './seed';
 
 const log = (message: string) => console.log(message);
@@ -58,6 +61,17 @@ async function seed(): Promise<void> {
   log(`db:seed: content hash ${result.hash}`);
   for (const what of result.skipped) {
     log(`db:seed: warning: demo accounts created without ${what}; scripts/init-env.sh adds the variables`);
+  }
+  // M07: the search keys of the demo people are written by the worker (search.keys.rebuild), so
+  // that the load itself stays the same on every run (content hash).
+  try {
+    const jobId = await queueSearchKeysRebuild();
+    log(`db:seed: queued search.keys.rebuild (job ${jobId}); a running worker (pnpm worker) writes the search keys`);
+  } catch (error) {
+    log(`db:seed: warning: could not queue search.keys.rebuild (${(error as Error).name}); run pnpm search:rebuild once the worker can reach the database`);
+  } finally {
+    await stopProducer();
+    await closeDb();
   }
 }
 

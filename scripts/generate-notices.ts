@@ -9,7 +9,7 @@
 // (scripts/verify.d/M00b.sh, CI).
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -19,6 +19,8 @@ import {
   lockedVersions,
   pickLicenseFiles,
   pnpmCommand,
+  reuseLicenseFiles,
+  reuseLicenseFolder,
   type Addendum,
   type NoticesData,
   type PnpmPackage,
@@ -30,13 +32,19 @@ const NOTICES_JSON = 'src/app/legal/licenses/notices.json';
 /** Licence-like files that no rule of pickLicenseFiles takes (pnpm notices stops on them). */
 const unrecognisedLicenseFiles: string[] = [];
 
-/** The package's licence file, or its licence files joined in name order when it ships several. */
+/**
+ * The package's licence file, or its licence files joined in name order when it ships several,
+ * followed by the texts of a REUSE `LICENSES/` folder (M07: opencc-js).
+ */
 function licenseText(dir: string): string | null {
   if (!existsSync(dir)) return null;
-  const { files, unrecognised } = pickLicenseFiles(readdirSync(dir));
+  const reuse = reuseLicenseFolder(readdirSync(dir), (name) => statSync(join(dir, name)).isDirectory());
+  const { files, unrecognised } = pickLicenseFiles(reuse.names);
   for (const name of unrecognised) unrecognisedLicenseFiles.push(join(dir, name));
-  if (!files.length) return null;
-  return files.map((file) => readFileSync(join(dir, file), 'utf8').replace(/\r\n?/g, '\n').trim()).join('\n\n');
+  const folder = reuse.folder ? join(dir, reuse.folder) : null;
+  const paths = [...files.map((file) => join(dir, file)), ...(folder ? reuseLicenseFiles(readdirSync(folder)).map((file) => join(folder, file)) : [])];
+  if (!paths.length) return null;
+  return paths.map((path) => readFileSync(path, 'utf8').replace(/\r\n?/g, '\n').trim()).join('\n\n');
 }
 
 function licenseList(scope: '--prod' | '--dev'): Record<string, PnpmPackage[]> {

@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 
 import { PageRedirect } from '@/components/account/page-redirect';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { serverClient } from '@/server/rpc/server';
 
@@ -67,6 +68,50 @@ export default async function AdminPage() {
           </span>
         </dd>
       </dl>
+      {/* M07: open account deletion requests, for administrators (docs/guides/admin-guide.bg.md). */}
+      {guard.principal?.user.role === 'admin' ? (
+        <section id="deletion-requests" aria-labelledby="deletion-requests-heading" className="mt-8 scroll-mt-4 border-t border-border-subtle pt-5">
+          <h2 id="deletion-requests-heading" className="font-display text-2xl">
+            Account deletion requests
+          </h2>
+          {overview.deletionRequests.length === 0 ? (
+            <p className="mt-3 text-ui text-fg-muted">None open. When a member asks for their account to be deleted, the request appears here and you get a notification.</p>
+          ) : (
+            <>
+              <p className="mt-3 max-w-[60ch] text-sm text-fg-muted">
+                Carry each request out as the administration guide describes: delete the account&apos;s data and keep the links others
+                confirmed as historical records until the legal review.
+              </p>
+              <ul className="mt-4 grid border-b border-border-subtle">
+                {overview.deletionRequests.map((request) => (
+                  <li key={request.caseId} data-deletion-request={request.caseId} className="grid gap-1 border-t border-border-subtle py-3 text-ui">
+                    <p className="flex flex-wrap items-baseline gap-x-3">
+                      {request.person ? (
+                        <Link href={`/people/${request.person.slug}`} className="link font-semibold" lang={request.person.lang} translate="no">
+                          {request.person.displayName}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold">An account without a profile</span>
+                      )}
+                      {request.accountEmail ? (
+                        <span translate="no" className="text-sm text-fg-muted [overflow-wrap:anywhere]">
+                          {request.accountEmail}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-sm text-fg-muted">
+                      Asked on {formatDay(request.openedAt)} · {request.status === 'open' ? 'Open' : request.status === 'in_review' ? 'In review' : 'Needs information'} · case{' '}
+                      <span translate="no" className="font-mono">
+                        {request.caseId}
+                      </span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      ) : null}
       {/* M08: the administrators' tool for test plans. */}
       {guard.principal?.user.role === 'admin' ? (
         <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">

@@ -33,6 +33,12 @@ const forbiddenPackages = [
 // Packages that only one module may import (plan §6.1; milestone M01b).
 const modulePackages = [
   {
+    // M07: the search keys are made in one place, so the form, the store and the query agree.
+    module: 'src/server/search',
+    group: ['transliteration', 'transliteration/*', 'pinyin-pro', 'pinyin-pro/*', 'to-jyutping', 'to-jyutping/*', 'opencc-js', 'opencc-js/*'],
+    message: 'Only src/server/search transliterates names: use keysForName and queryForms (src/server/search/keys.ts).',
+  },
+  {
     module: 'src/server/jobs',
     group: ['pg-boss', 'pg-boss/*'],
     message: 'Only src/server/jobs uses pg-boss: queue work with its outbox helpers (src/server/jobs/outbox.ts).',

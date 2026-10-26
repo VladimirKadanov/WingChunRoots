@@ -15,6 +15,7 @@ import { expect, test } from '@playwright/test';
 
 import { NAV_ITEMS } from '../src/components/shell/nav';
 import { closeHelpers, signInAs } from './helpers/auth';
+import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 test.afterAll(closeHelpers);
@@ -46,6 +47,29 @@ for (const size of SCREEN_SIZES) {
           await expect(page).toHaveScreenshot(`${route.name}-${size.name}-${theme}.png`, {
             stylePath: resolve('e2e/visual.css'),
           });
+        });
+      }
+    }
+
+    // M07: the search palette, open with results (a screen state, not a route).
+    for (const theme of THEMES) {
+      test(`the search palette at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
+        await waitForSearchKeys();
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+        await page.goto('/');
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
+        await openPalette(page);
+        await search(page, 'So Ching');
+        await expect(option(page, 'So Ching Laam').first()).toBeVisible();
+        await expect(page).toHaveScreenshot(`palette-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
+      });
+      // The stored Chinese name beside the display name, the recent searches, a failed search.
+      for (const state of PALETTE_STATES) {
+        test(`the search palette (${state.name}) at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
+          await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+          await state.reach(page);
+          await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          await expect(page).toHaveScreenshot(`${state.name}-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
         });
       }
     }
