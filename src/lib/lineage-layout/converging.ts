@@ -25,8 +25,9 @@
  *    in (b) is stale (deferred, a moved end, or a detour of more than a card) go to the gap
  *    of their row nearest the straight line between its ends. A student whose teachers all
  *    stand on the spine stands on it too: one per row, the line holds one card (see the owner
- *    question of M05 for the second one). A constraint that would contradict the others is
- *    never added: the student is reported (`LayoutStats.unplacedStudents`).
+ *    question of M05 for a second one, and for one in a row of the spine: it stands a card
+ *    step beside the line). A constraint that would contradict the others is never added: a
+ *    student that is not between its teachers is reported (`LayoutStats.unplacedStudents`).
  * 3. ELK routes every edge with the positions fixed (INTERACTIVE crossing minimization and
  *    node placement, waypoints as nodes, ports at fixed positions: the incoming edges of a
  *    card at the middle of its top side, the outgoing ones where the first pass put them or,
@@ -98,9 +99,10 @@ export interface ConvergingPass {
   /** The ELK graph of the third step. */
   elkGraph: ElkNode;
   /**
-   * Students that could not be placed between their teachers: a second student in a row
-   * whose teachers all stand on the spine, or (with the expand preset) a student shown before
-   * whose place in its row is kept. Their ids, in model order (`LayoutStats.unplacedStudents`).
+   * Students that do not stand between their teachers (to a pixel): no place there was left,
+   * as for a student whose teachers all stand on the spine in a row where the place on the
+   * spine line is taken, or (with the expand preset) a student shown before keeps its place
+   * in its row. Their ids, in model order (`LayoutStats.unplacedStudents`).
    */
   unplaced: string[];
   /** Turns ELK's result for `elkGraph` into the result of a single pass for `buildScene`. */
@@ -271,7 +273,8 @@ export function convergingPass(
   });
   // A student whose teachers all stand on the spine has to stand on it too: one such
   // student per row (the spine line holds one card per row). It takes the place of the
-  // spine and does not pull it towards its own place after the first pass.
+  // spine and does not pull it towards its own place after the first pass. With the expand
+  // preset a student shown before keeps its place in the order of its row instead.
   const onSpineLine = new Set<number>();
   if (spineVariable !== -1) {
     const spine = items.filter((item) => item.variable === spineVariable);
@@ -279,7 +282,7 @@ export function convergingPass(
     const spineRows = new Set(spine.map((item) => item.rank));
     for (const { student, teachers } of groups) {
       const s = items[student]!;
-      if (s.variable === spineVariable || spineRows.has(s.rank)) continue;
+      if (s.variable === spineVariable || spineRows.has(s.rank) || previous?.has(build.order[s.node]!)) continue;
       if (!teachers.every((t) => items[t]!.variable === spineVariable)) continue;
       s.variable = spineVariable;
       s.weight = 0;
@@ -351,20 +354,25 @@ export function convergingPass(
   // that order. A student outside that span moves in its row to the nearest point of it
   // (onto the side of a spine card that faces the span), but not past the people of its own
   // lineage there unless that is the only way (`free`); everyone else keeps the order of
-  // (a). A constraint that would contradict the others is never added; the student is
-  // reported (`unplaced`).
+  // (a). A student whose teachers all stand on the spine line, in a row where the place on
+  // the line is taken, stands one card step beside it on the side it stood on in (a), and
+  // the spans of its own students start from there. A constraint that would contradict the
+  // others is never added; the student is reported if it ends up outside its span (`unplaced`).
   const place = (free: ReadonlySet<number>) => {
     items.forEach((item, i) => {
       item.x = desired[i]!;
       item.key = item.tie = placed[i]!;
     });
+    // Where each card stands in this step, for the spans of the rows below it: its place in (a)
+    // or, for a moved student, its key.
+    const at = [...placed];
     const moved = new Set(onSpineLine);
     const clamped = new Set<number>();
     for (const group of groups) {
       const s = items[group.student]!;
-      group.teachers.sort((a, b) => items[a]!.key - items[b]!.key || items[a]!.node - items[b]!.node);
-      const from = items[group.teachers[0]!]!.key;
-      const to = items[group.teachers[group.teachers.length - 1]!]!.key;
+      group.teachers.sort((a, b) => at[a]! - at[b]! || items[a]!.node - items[b]!.node);
+      const from = at[group.teachers[0]!]!;
+      const to = at[group.teachers[group.teachers.length - 1]!]!;
       if ((s.key >= from && s.key <= to) || previous?.has(build.order[s.node]!)) continue;
       const fromRight = s.key > to;
       let x = Math.min(to, Math.max(from, s.key));
@@ -379,6 +387,18 @@ export function convergingPass(
       // standing exactly at its end, such as the teacher's straight child or a spine card.
       s.key = to - from >= 1 ? x + (fromRight ? -0.5 : 0.5) : x;
       s.tie = (from + to) / 2;
+      at[group.student] = s.key;
+      if (to - from < 1 && Math.abs(x - from) < 1 && sharesVariable(group.teachers)) {
+        // The place on the spine line is taken in this row (by the spine card, a spine edge or
+        // another such student): the student comes right after it, on the side it came from.
+        const line = items[group.teachers[0]!]!.variable;
+        const taken = rows[s.rank]!.find((i) => i !== group.student && items[i]!.variable === line);
+        if (taken !== undefined) {
+          const side = fromRight ? 1 : -1;
+          s.key = x + side * 0.5;
+          at[group.student] = x + side * (s.width / 2 + items[taken]!.width / 2 + spacing);
+        }
+      }
       moved.add(group.student);
     }
     // The edges of a moved card cross the rows in between on the straight line.
@@ -450,7 +470,13 @@ export function convergingPass(
     solved = solve(graph);
   }
   for (const item of items) item.final = solved[item.variable]!;
-  const unplaced = [...new Set(attempt.refused.map((g) => g.student))]
+  // A student whose constraint was refused, unless it stands between its teachers anyway (to a pixel).
+  const outside = ({ student, teachers }: { student: number; teachers: number[] }) => {
+    const xs = teachers.map((t) => items[t]!.final);
+    const x = items[student]!.final;
+    return x < Math.min(...xs) - 1 || x > Math.max(...xs) + 1;
+  };
+  const unplaced = [...new Set(attempt.refused.filter(outside).map((g) => g.student))]
     .sort((a, b) => items[a]!.node - items[b]!.node)
     .map((i) => build.order[items[i]!.node]!);
 

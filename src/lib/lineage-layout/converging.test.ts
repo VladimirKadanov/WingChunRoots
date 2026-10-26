@@ -12,7 +12,7 @@ import { layoutLineage, layoutLineageWithStats } from './layout.ts';
 import { NODE_SIZES, explorerLayout } from './presets.ts';
 import { computeRanksIndexed } from './ranks.ts';
 import { demoGraph } from './testing/build.ts';
-import { spineBends } from './testing/checks.ts';
+import { positionsOf, rowOrderFlips, spineBends } from './testing/checks.ts';
 import { loadLineageFixture } from './testing/fixture.ts';
 import { LINEAGES, anchorId, generateSyntheticLineage, type AnchorSlug, type LineageDataset } from './testing/synthetic.ts';
 import { extractView, lineageIdOf, standardViews, type NamedView } from './testing/views.ts';
@@ -290,6 +290,83 @@ describe('students with several teachers in one lineage (plan §4.6)', () => {
     // The layout reports the student it could not place between its teachers.
     expect((await layoutLineageWithStats(graph)).stats.unplacedStudents).toEqual(['second']);
   });
+
+  it.each([
+    ['sib', 'kid'],
+    ['a-sib', 'z-kid'],
+    ['z-sib', 'a-kid'],
+  ])(
+    'places a student of the student beside the spine and of a spine teacher between them (review of M05, round 3: %s, %s)',
+    async (sib, kid) => {
+      // Spine `root` → `mid` → `low` → `focus`. `sib` is a student of `mid` and `root` in the row of
+      // `low`, which holds the spine card: it stands one step beside the line (the case of the
+      // owner question). `kid` is a student of `sib` and `mid` in the row of `focus`: its span runs
+      // from the line to `sib`, and the place beside `focus` on that side is free.
+      const graph = demoGraph(
+        ['root', 'mid', 'low', 'focus', sib, kid],
+        [
+          ['root', 'mid'],
+          ['mid', 'low'],
+          ['low', 'focus'],
+          ['mid', sib],
+          ['root', sib, 'converging'],
+          [sib, kid],
+          ['mid', kid, 'converging'],
+        ],
+        { focusId: 'focus' },
+      );
+      const { scene, stats } = await layoutLineageWithStats(graph);
+      const x = new Map(scene.nodes.map((n) => [n.id, n.center.x]));
+      expect(spineBends(scene)).toBe(0);
+      expect(x.get(kid)!).toBeGreaterThanOrEqual(Math.min(x.get('mid')!, x.get(sib)!));
+      expect(x.get(kid)!).toBeLessThanOrEqual(Math.max(x.get('mid')!, x.get(sib)!));
+      const { outside, besideTheSpineIds } = outsideTheirTeachers(scene);
+      expect(outside).toEqual([]);
+      expect(besideTheSpineIds).toEqual([sib]);
+      // Only the student that is not between its teachers is reported.
+      expect(stats.unplacedStudents).toEqual([sib]);
+    },
+  );
+
+  // A fuzz graph of the review of M05 (round 3, seed 106): the focus `p4` (lineage y) stands
+  // under `p2` and `p0`; `p7` is a student of `p4` and `p2` (both on the spine), `p5` of `p4`
+  // and `p1`. Showing one more student (`p6` of the focus, or `p3` of the root) put `p7`, shown
+  // before, onto the spine line and moved it past `p5`.
+  it.each([[['p6']], [['p3']], [['p3', 'p6']]])(
+    'with the expand preset, keeps the order of the people shown before when a student joins (hidden before: %j)',
+    async (hidden) => {
+      const graph = demoGraph(
+        ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'],
+        [
+          ['p0', 'p1'],
+          ['p0', 'p2'],
+          ['p0', 'p3'],
+          ['p2', 'p4', 'primary', 'demo-lineage-y'],
+          ['p4', 'p5'],
+          ['p1', 'p5', 'converging'],
+          ['p4', 'p6'],
+          ['p4', 'p7'],
+          ['p0', 'p4', 'converging', 'demo-lineage-y'],
+          ['p2', 'p7', 'converging'],
+        ],
+        { focusId: 'p4' },
+      );
+      const names: Record<string, string> = { p0: 'Z0', p1: 'E1', p2: 'S2', p3: 'D3', p4: 'F4', p5: 'G5', p6: 'G6', p7: 'X7' };
+      const years = ['1982', '2008', '1970', '1982', '1975', '1984', '1950', '1972', '1950', '2001'];
+      graph.nodes = graph.nodes.map((n) => ({ ...n, displayName: `Demo ${names[n.id]}`, lineageIds: [n.id === 'p4' ? 'demo-lineage-y' : 'demo-lineage-x'] }));
+      graph.edges = graph.edges.map((e, i) => ({ ...e, periods: [{ ...e.periods[0]!, from: years[i]! }] }));
+      const before = await layoutLineage(
+        {
+          ...graph,
+          nodes: graph.nodes.filter((n) => !hidden.includes(n.id)),
+          edges: graph.edges.filter((e) => !hidden.includes(e.teacherId) && !hidden.includes(e.studentId)),
+        },
+        { focusId: 'p4' },
+      );
+      const after = await layoutLineage(graph, { focusId: 'p4', preset: 'expand', previousPositions: positionsOf(before) });
+      expect(rowOrderFlips(before, after).flips).toBe(0);
+    },
+  );
 
   it('leaves out of the first ELK pass every incoming edge of such a student but the preferred one', () => {
     const graph = demoGraph(
