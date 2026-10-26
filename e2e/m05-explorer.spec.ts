@@ -343,13 +343,13 @@ test.describe('on a phone', () => {
 });
 
 /**
- * Drags the graph up by `distance` px from the middle of the pane, as a person drags it with a finger,
- * dispatched as script events: Event Timing counts only the browser's own (trusted) events and the INP
- * probes listen for pointerdown and click, so an INP measured afterwards is that of the selections
- * alone (a real drag would be an interaction of its own). Resolves once the view has moved and the
- * people it brings onto the pane are drawn.
+ * Drags the graph `dy` px down (negative: up) from the middle of the pane, as a person drags it with a
+ * finger, dispatched as script events: Event Timing counts only the browser's own (trusted) events and
+ * the INP probes listen for pointerdown and click, so an INP measured around it is that of the
+ * selections alone (a real drag would be an interaction of its own). Resolves once the view has moved
+ * and the people it brings onto the pane are drawn.
  */
-async function dragGraphUp(page: Page, distance: number): Promise<void> {
+async function dragGraph(page: Page, dy: number): Promise<void> {
   const viewport = page.locator('.react-flow__viewport');
   const before = await viewport.evaluate((el) => (el as HTMLElement).style.transform);
   await page.locator('.react-flow__pane').evaluate((pane, dy) => {
@@ -359,11 +359,22 @@ async function dragGraphUp(page: Page, distance: number): Promise<void> {
     const fire = (target: EventTarget, type: string, clientY: number) =>
       target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0, buttons: type === 'mouseup' ? 0 : 1, clientX: x, clientY }));
     fire(pane, 'mousedown', y);
-    for (let step = 1; step <= 8; step++) fire(window, 'mousemove', y - (dy * step) / 8);
-    fire(window, 'mouseup', y - dy);
-  }, distance);
+    for (let step = 1; step <= 8; step++) fire(window, 'mousemove', y + (dy * step) / 8);
+    fire(window, 'mouseup', y + dy);
+  }, dy);
   await expect.poll(() => viewport.evaluate((el) => (el as HTMLElement).style.transform), 'the graph moved').not.toBe(before);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+/** Whether a person is drawn with the centre of its node on the pane and not covered (by the panel, the legend or the zoom buttons): a tap there selects it. */
+function tappable(page: Page, id: string): Promise<boolean> {
+  return page.evaluate((id) => {
+    const el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`);
+    if (!el) return false;
+    const box = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return !!hit && el.contains(hit);
+  }, id);
 }
 
 test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
@@ -394,10 +405,25 @@ test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling'
   // On a short phone (an iPhone 15's 393x659) the first view frames the root and its nearest student
   // in full cards at the top, and the next generation starts just below the pane's bottom edge. A
   // person drags the graph up to see it; so does the test, by half a card, which keeps the root on
-  // the pane for the selections. Nothing is selected yet, and the drag is no interaction of the INP.
-  if ((await personNodes(page).count()) <= 3) await dragGraphUp(page, (await nodeOf(page, root).boundingBox())!.height / 2);
+  // the pane for the first selection. Nothing is selected yet, and the drag is no interaction of the INP.
+  const halfCard = (await nodeOf(page, root).boundingBox())!.height / 2;
+  if ((await personNodes(page).count()) <= 3) await dragGraph(page, -halfCard);
   expect(await personNodes(page).count(), 'drawn on screen').toBeGreaterThan(3);
-  const large = await selectionInp(page, browserName, 3, (selected) => (selected.length === 1 ? uncoveredNode(page, selected) : Promise.resolve(root)));
+  const large = await selectionInp(page, browserName, 3, async (selected) => {
+    if (selected.length === 1) return uncoveredNode(page, selected);
+    if (selected.length === 2) {
+      // On the short phone the second person's panel is taller than the root's: the pane gets shorter
+      // again and the view moves that person up clear of the legend (keepSelectionInView in
+      // canvas.tsx), which takes the root, at the pane's top edge, out of the pane. A person drags the
+      // graph down to tap the root again; so does the test, half a card at a time, with the selection
+      // and the 4x throttling kept. On a taller pane the root stays tappable and nothing is dragged.
+      for (let drags = 0; !(await tappable(page, root)); drags++) {
+        expect(drags, 'drags down to the root').toBeLessThan(6);
+        await dragGraph(page, halfCard);
+      }
+    }
+    return root;
+  });
   report('Lineage view of Demo Lineage A', large);
   expect(large.inp).toBeLessThan(200);
 });
