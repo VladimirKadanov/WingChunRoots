@@ -656,6 +656,88 @@ test('@M07 a biography typed over a saved one before the profile editor has its 
   await expect(saved.getByLabel('Short biography')).toHaveValue(bio);
 });
 
+test('@M07 while a profile save is on its way, no choice can be made that the saved profile would undo', async ({ page }) => {
+  // A slow connection: the save sends what the fields held when Save was pressed, and the saved
+  // profile is written back into them when the answer comes. A choice made in between would be
+  // undone without a word ("Show my profile publicly" is the consent to publication), so every
+  // control is inert until then, as the text fields are.
+  await freshAccount(page, { name: 'Demo Placeholder Name' });
+  const two = await apiPost(page, '/profile/update', {
+    names: [
+      { kind: 'name', value: 'Demo Placeholder Name', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true },
+      { kind: 'name', value: 'Demo Second Name', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: false },
+    ],
+    showPublicly: false,
+  });
+  expect(two.status(), await two.text()).toBe(200);
+  await page.goto('/dashboard/profile');
+  await expect(page.getByRole('button', { name: 'Add a name' })).toBeVisible();
+  let releaseSave!: () => void;
+  const saveHeld = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === '/dashboard/profile',
+    async (route) => {
+      if (route.request().method() === 'POST') await saveHeld;
+      await route.continue();
+    },
+  );
+
+  const name2 = page.getByLabel('Name 2', { exact: true });
+  const publicly = page.getByLabel('Show my profile publicly');
+  const radios = page.getByRole('radio', { name: 'Use as display name' });
+  const preview = page.getByRole('figure', { name: 'How your name will appear' });
+  const controls = [
+    publicly,
+    radios.nth(0),
+    radios.nth(1),
+    page.getByLabel('Written in').nth(0),
+    page.getByLabel('Written in').nth(1),
+    page.getByLabel('Kind', { exact: true }).nth(0),
+    page.getByLabel('Kind', { exact: true }).nth(1),
+    page.getByLabel('Language of the biography'),
+    page.getByLabel('Country'),
+    page.getByLabel('City'),
+    page.getByRole('button', { name: 'Add a name' }),
+    page.getByRole('button', { name: 'Remove name 1' }),
+    page.getByRole('button', { name: 'Remove name 2' }),
+  ];
+  const textFields = [page.getByLabel('Display name', { exact: true }), name2, page.getByLabel('Short biography'), page.getByLabel('Year you started Wing Chun')];
+  await name2.fill('Demo Second Edited');
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await expect(page.getByRole('button', { name: 'Saving…' })).toBeVisible();
+  // A tap on the consent or on another display name while it is on its way changes nothing.
+  await publicly.click({ force: true });
+  await radios.nth(1).click({ force: true });
+  await expect(publicly).not.toBeChecked();
+  await expect(radios.nth(0)).toBeChecked();
+  await expect(preview).toContainText('Demo Placeholder Name');
+  for (const control of controls) await expect(control).toBeDisabled();
+  for (const field of textFields) await expect(field).not.toBeEditable();
+
+  releaseSave();
+  await expect(page.getByRole('status').filter({ hasText: 'Your profile is saved.' })).toBeVisible();
+  for (const control of controls) await expect(control).toBeEnabled();
+  for (const field of textFields) await expect(field).toBeEditable();
+  await expect(name2).toHaveValue('Demo Second Edited');
+  await expect(publicly).not.toBeChecked();
+  await expect(radios.nth(0)).toBeChecked();
+  await expect(preview).toContainText('Demo Placeholder Name');
+
+  // Then the same choices are made and saved.
+  await publicly.check();
+  await radios.nth(1).check();
+  await expect(preview).toContainText('Demo Second Edited');
+  const answered = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/dashboard/profile');
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+  await answered;
+  await expect(page.getByRole('button', { name: 'Save my profile' })).toBeVisible();
+  const saved = await openSavedProfile(page);
+  await expect(saved.getByLabel('Display name', { exact: true }).first()).toHaveValue('Demo Second Edited');
+  await expect(saved.getByLabel('Show my profile publicly')).toBeChecked();
+});
+
 test('@M07 saving a profile without a Latin-script primary name is refused with a clear message', async ({ page }) => {
   await freshAccount(page, { name: 'Demo Lonely Name' });
   await page.goto('/dashboard/profile');

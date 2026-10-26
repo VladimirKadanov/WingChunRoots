@@ -402,10 +402,12 @@ export function SelectField({
   value,
   onValue,
   defaultValue,
+  disabled,
   className,
   children,
 }: BaseFieldProps & {
   autoComplete: string;
+  disabled?: boolean;
   className?: string;
   children: ReactNode;
 } & ({ value: string; onValue: (value: string) => void; defaultValue?: never } | { defaultValue: string; value?: never; onValue?: never })) {
@@ -441,6 +443,7 @@ export function SelectField({
           required={!optional}
           value={value}
           defaultValue={defaultValue}
+          disabled={disabled}
           onChange={onValue ? (event) => onValue(event.currentTarget.value) : undefined}
           autoFocus={autoFocus}
           aria-invalid={error ? true : undefined}

@@ -215,7 +215,9 @@ export function ProfileEditor({
   // The form state takes over what the fields hold; React never writes it back (see the top).
   const syncFromDom = () => {
     const el = formRef.current;
-    if (!el) return;
+    // While a save is on its way every control is read-only or disabled, and a disabled control is
+    // not in the form's data: there is nothing to take over.
+    if (!el || pending) return;
     const data = new FormData(el);
     const shown = shownFormValues(data);
     // A ticked display name that can no longer be one (its "Written in" or Kind was just changed):
@@ -241,8 +243,9 @@ export function ProfileEditor({
   useLayoutEffect(() => takeOverFields(), []);
 
   // A save shows the saved profile (the server cleans and orders the names, trims the biography):
-  // the fields are written, then the state takes the same values. The text fields are read-only
-  // while the save is pending.
+  // the fields are written, then the state takes the same values. While the save is on its way the
+  // text fields are read-only and every other control is disabled (the form's data was read when it
+  // was sent), so no choice is made then that this would undo.
   const seen = useRef(state);
   useLayoutEffect(() => {
     if (seen.current === state) return;
@@ -402,6 +405,7 @@ export function ProfileEditor({
                       label="Written in"
                       autoComplete="off"
                       defaultValue={row.writing}
+                      disabled={pending}
                       state={selectState}
                     >
                       {writings.map((w) => (
@@ -422,7 +426,7 @@ export function ProfileEditor({
                           name="primary"
                           value={i}
                           defaultChecked={isPrimary}
-                          disabled={hydrated && !eligible}
+                          disabled={pending || (hydrated && !eligible)}
                           aria-describedby={describedBy(primaryError && `${primaryId}-error`, hydrated && !eligible && `${primaryId}-why`)}
                           className="size-5 shrink-0 cursor-pointer accent-[var(--fg)] disabled:cursor-not-allowed"
                         />
@@ -443,6 +447,7 @@ export function ProfileEditor({
                               id={kindId}
                               name={nameField(i, 'kind')}
                               defaultValue={row.kind}
+                              disabled={pending}
                               className={cx(fieldClassName, 'appearance-none pr-11')}
                             >
                               <option value="name">Name</option>
@@ -457,7 +462,7 @@ export function ProfileEditor({
                       <button
                         type="button"
                         onClick={() => removeName(i)}
-                        disabled={values.names.length <= 1}
+                        disabled={pending || values.names.length <= 1}
                         className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), 'min-h-11 shrink-0 gap-1.5 disabled:opacity-50')}
                       >
                         <CloseIcon size={16} />
@@ -484,7 +489,7 @@ export function ProfileEditor({
               id={`${FORM}-add-name`}
               type="button"
               onClick={addName}
-              disabled={values.names.length >= PROFILE_MAX_NAMES}
+              disabled={pending || values.names.length >= PROFILE_MAX_NAMES}
               className={cx(buttonVariants({ variant: 'secondary' }), 'disabled:opacity-50')}
             >
               Add a name
@@ -546,6 +551,7 @@ export function ProfileEditor({
           autoComplete="off"
           value={values.bioLang}
           onValue={(v) => form.setFieldValue('bioLang', v)}
+          disabled={pending}
           state={selectState}
           className="max-w-[22rem]"
         >
@@ -572,6 +578,7 @@ export function ProfileEditor({
               const place = options.places.find((p) => p.id === values.placeId);
               if (place && place.countryCode !== code) form.setFieldValue('placeId', '');
             }}
+            disabled={pending}
             state={selectState}
           >
             <option value="">Not given</option>
@@ -605,6 +612,7 @@ export function ProfileEditor({
               const place = options.places.find((p) => p.id === id);
               if (place) form.setFieldValue('countryCode', place.countryCode);
             }}
+            disabled={pending}
             state={selectState}
           >
             <option value="">Not given</option>
@@ -655,6 +663,7 @@ export function ProfileEditor({
               type="checkbox"
               value="on"
               defaultChecked={values.showPublicly}
+              disabled={pending}
               aria-describedby={`${publicId}-hint`}
               className="peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1 transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted"
             />
