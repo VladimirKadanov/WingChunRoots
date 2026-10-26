@@ -27,6 +27,7 @@ export const ISOLATED = [
   'src/server/auth/answer-floor.test.ts',
   'src/server/auth/request-scope.test.ts',
   'src/server/auth/startup.test.ts',
+  'src/server/db/ids.test.ts',
   'src/server/faults.test.ts',
   'src/server/forms/flash.test.ts',
   'src/server/forms/two-factor.test.ts',
