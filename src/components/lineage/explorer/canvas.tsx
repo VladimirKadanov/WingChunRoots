@@ -614,8 +614,8 @@ export interface CanvasProps {
 
 /**
  * How far the view moves down (negative: up) so that a person stays wholly in view once the pane
- * is `pane.height` tall: on a phone the panel below the graph opens or grows with a selection, and
- * the pane shrinks from its bottom edge (plan §4.6: the people stay in view). `node` is the
+ * is `pane.height` tall: on a phone the panel below the graph (plan §4.7) opens or grows with a
+ * selection, and the pane shrinks from its bottom edge. `node` is the
  * person's box on the pane, in the pane's pixels. The person ends clear of the overlays across its
  * width (the legend, the zoom buttons) when it fits above them, else inside the pane, and never
  * higher than the overlays' inset from the top. 0 when it is in view already.
