@@ -386,7 +386,9 @@ export function CodeField({
 /**
  * A native select. `value` with `onValue` makes it controlled: React resets an uncontrolled form
  * after its action, and a select (unlike an input) then falls back to the option it first rendered
- * with, so a choice made before a failed submit would be lost (finding H2).
+ * with, so a choice made before a failed submit would be lost (finding H2). `defaultValue` instead
+ * makes it uncontrolled, for a form that sends itself (React never resets it) and whose state
+ * follows its fields (the profile editor, M07): React then never writes the choice.
  */
 export function SelectField({
   form,
@@ -399,15 +401,14 @@ export function SelectField({
   autoComplete,
   value,
   onValue,
+  defaultValue,
   className,
   children,
 }: BaseFieldProps & {
   autoComplete: string;
-  value: string;
-  onValue: (value: string) => void;
   className?: string;
   children: ReactNode;
-}) {
+} & ({ value: string; onValue: (value: string) => void; defaultValue?: never } | { defaultValue: string; value?: never; onValue?: never })) {
   const id = fieldId(form, name);
   const error = state.status === 'error' ? state.fields?.[name] : undefined;
   const hintId = hint ? `${id}-hint` : undefined;
@@ -416,7 +417,7 @@ export function SelectField({
   const hydrated = useRef(false);
   useEffect(() => {
     const select = ref.current;
-    if (!select) return;
+    if (!select || value === undefined || !onValue) return;
     if (!hydrated.current) {
       hydrated.current = true;
       // A choice made before the page became interactive: hydration keeps it in the DOM, so the
@@ -439,7 +440,8 @@ export function SelectField({
           autoComplete={autoComplete}
           required={!optional}
           value={value}
-          onChange={(event) => onValue(event.currentTarget.value)}
+          defaultValue={defaultValue}
+          onChange={onValue ? (event) => onValue(event.currentTarget.value) : undefined}
           autoFocus={autoFocus}
           aria-invalid={error ? true : undefined}
           aria-errormessage={error ? errorId : undefined}
