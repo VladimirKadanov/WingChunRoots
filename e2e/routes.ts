@@ -67,6 +67,11 @@ export const ROUTES: readonly AppRoute[] = [
   // person's id, so they are screen states (e2e/screenshots.spec.ts, e2e/visual.spec.ts; axe in
   // e2e/m05-explorer.spec.ts).
   { path: '/explore', name: 'explore-start', status: 200, milestone: 'M05', key: true },
+  // Names, profile and privacy (M07): the profile editor and the privacy page of a demo account
+  // that no test changes (the tests that save use accounts of their own). The search palette is a
+  // screen state (e2e/screenshots.spec.ts, e2e/visual.spec.ts, e2e/m07-search.spec.ts).
+  { path: '/dashboard/profile', name: 'profile', status: 200, milestone: 'M07', key: true, signInAs: 'demo-pending' },
+  { path: '/account/privacy', name: 'account-privacy', status: 200, milestone: 'M07', key: true, signInAs: 'demo-pending' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

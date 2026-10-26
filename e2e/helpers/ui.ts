@@ -49,3 +49,25 @@ export async function expectNoAxeViolations(page: Page, label: string) {
   );
   expect(summary, `axe violations on ${label}`).toEqual([]);
 }
+
+/**
+ * Makes Chromium treat a tap the way WebKit's GTK and WPE ports do, which Playwright's WebKit (the
+ * mobile-webkit project, an iPhone viewport) runs on: a tap whose touch pointerdown was cancelled
+ * counts as handled, so no mouse events and no click follow it (WebCore EventHandler::
+ * handleTouchEvent; CI run 40225350083, a palette result that a tap never opened). Chromium sends
+ * the click, as the Pointer Events spec asks; cancelling the touchend of such a tap stops it.
+ * Call before page.goto().
+ */
+export async function noClickAfterCancelledTouchPress(page: Page) {
+  await page.addInitScript(() => {
+    let press: PointerEvent | null = null;
+    // Kept from the capture phase on, read once every listener has run.
+    window.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch' && event.isPrimary) press = event;
+    }, { capture: true });
+    window.addEventListener('touchend', (event) => {
+      if (press?.defaultPrevented) event.preventDefault();
+      press = null;
+    }, { capture: true, passive: false });
+  });
+}

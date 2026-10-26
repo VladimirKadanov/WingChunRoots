@@ -79,6 +79,56 @@ export async function grantConsents(
   return fresh;
 }
 
+/**
+ * Records `kinds` as withdrawn (a new consent_record row each, with the current document version),
+ * with one audit entry `consent.withdraw` (milestone M07). Every kind whose latest record is a
+ * grant is recorded, of the current document version or an older one. Returns the kinds recorded.
+ */
+export async function withdrawConsents(
+  tx: Database | Transaction,
+  userId: string,
+  actorRole: string | null,
+  kinds: readonly ConsentKind[],
+  meta: RequestMeta,
+): Promise<ConsentKind[]> {
+  const granted = await grantedConsents(tx, userId);
+  const given = [...new Set(kinds)].filter((kind) => granted.has(kind));
+  if (given.length === 0) return [];
+  const occurredAt = new Date();
+  await tx.insert(consentRecord).values(
+    given.map((kind) => ({ userId, kind, documentVersion: consentVersion(kind), action: 'withdrawn' as const, occurredAt })),
+  );
+  await writeAudit(tx, {
+    action: 'consent.withdraw',
+    actorUserId: userId,
+    actorRole,
+    subjectType: 'user',
+    subjectId: userId,
+    before: { kinds: given },
+    after: { withdrawn: given, versions: Object.fromEntries(given.map((kind) => [kind, consentVersion(kind)])) },
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  return given;
+}
+
+/** The kinds whose latest record is a grant, of whatever document version (milestone M07). */
+export async function grantedConsents(db: Database | Transaction, userId: string): Promise<Set<ConsentKind>> {
+  const rows = await db
+    .select({ kind: consentRecord.kind, action: consentRecord.action })
+    .from(consentRecord)
+    .where(eq(consentRecord.userId, userId))
+    .orderBy(desc(consentRecord.occurredAt), desc(consentRecord.id));
+  const seen = new Set<ConsentKind>();
+  const granted = new Set<ConsentKind>();
+  for (const row of rows) {
+    if (seen.has(row.kind)) continue;
+    seen.add(row.kind);
+    if (row.action === 'granted') granted.add(row.kind);
+  }
+  return granted;
+}
+
 /** The kinds whose latest record is a grant of the current document version. */
 export async function currentConsents(db: Database | Transaction, userId: string): Promise<Set<ConsentKind>> {
   const rows = await db

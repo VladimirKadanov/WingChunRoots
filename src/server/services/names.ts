@@ -78,6 +78,61 @@ export function isPinyin(value: string): boolean {
   return PINYIN.test(name) && LATIN_LETTER.test(name);
 }
 
+// --- The profile editor (milestone M07, In scope 1) ------------------------------------------------
+
+/**
+ * How a name is written, as the profile editor offers it: a script, a language tag and, for a
+ * romanization, its system. The Latin forms come first; then every original script.
+ */
+export interface NameWriting {
+  /** Stable id for the form's select. */
+  id: string;
+  label: string;
+  script: string;
+  lang: string;
+  romanization: 'jyutping' | 'pinyin' | 'hk_gov' | null;
+}
+
+export const NAME_WRITINGS: readonly NameWriting[] = [
+  // The language of a Latin-script name is not asked: `und-Latn` (BCP 47 "undetermined, Latin script").
+  { id: 'latin', label: 'Latin letters', script: 'Latn', lang: 'und-Latn', romanization: null },
+  { id: 'hk', label: 'Cantonese, Hong Kong spelling', script: 'Latn', lang: 'yue-Latn', romanization: 'hk_gov' },
+  { id: 'jyutping', label: 'Cantonese, Jyutping', script: 'Latn', lang: 'yue-Latn', romanization: 'jyutping' },
+  { id: 'pinyin', label: 'Mandarin, pinyin', script: 'Latn', lang: 'zh-Latn-pinyin', romanization: 'pinyin' },
+  ...ORIGINAL_SCRIPTS.map((s) => ({ id: s.lang, label: s.label, script: s.script, lang: s.lang, romanization: null })),
+];
+
+/** BCP 47, as the person_name and person_bio CHECK constraints accept it. */
+export const LANG_TAG = /^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$/;
+
+/**
+ * Whether `value` fits how the name says it is written: Latin letters (or Jyutping, or pinyin) for
+ * Latin script, the letters of an original script for that script's language tag.
+ */
+export function nameFitsWriting(value: string, script: string, lang: string, romanization: string | null): boolean {
+  if (script === 'Latn') {
+    if (romanization === 'jyutping') return isJyutping(value);
+    if (romanization === 'pinyin') return isPinyin(value);
+    return isLatinName(value);
+  }
+  const known = originalScript(lang);
+  return known !== undefined && known.script === script && romanization === null && matchesScript(value, lang);
+}
+
+/**
+ * Why a name cannot be the display name (plan §5.3: the everyday spelling, in Latin letters), in
+ * the words the editor's note and the save's error use, or null when it can be. Each reason says
+ * what to change.
+ */
+export function displayNameRefusal(name: { kind: string; script: string; romanization: string | null }): string | null {
+  if (name.romanization === 'jyutping' || name.romanization === 'pinyin' || name.kind === 'romanization') {
+    return 'Jyutping and pinyin help people find you; your display name is your everyday spelling.';
+  }
+  if (name.kind === 'alias') return 'A name marked “Also known as” cannot be your display name.';
+  if (name.script !== 'Latn') return 'Choose “Latin letters” or “Cantonese, Hong Kong spelling” under “Written in” to use this name.';
+  return null;
+}
+
 /** A slug for a new person: the ASCII form of the Latin name and a random suffix. */
 export function slugFromName(latinName: string, suffix: string): string {
   const base = cleanName(latinName)

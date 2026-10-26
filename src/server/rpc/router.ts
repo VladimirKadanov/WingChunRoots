@@ -31,6 +31,10 @@ import { listNotifications, markNotificationsRead, markReadInput } from '../serv
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import { setRoleInput, setUserRole } from '../services/roles';
 import { twoFactorOverview } from '../services/two-factor';
+import { profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
+import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
+import { searchInput, searchQuery } from '../services/search';
+import { searchResultSchema } from '../dto/search';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
@@ -114,12 +118,44 @@ export const router = {
       .route({ method: 'POST', path: '/account/type', summary: 'Choose Student or Sifu: sets the free plan, audited, verifies nothing' })
       .input(setAccountTypeInput)
       .handler(({ context, input }) => setAccountType(context.principal, input, context.meta)),
+    // M07: /account/privacy.
+    privacy: base
+      .route({ method: 'GET', path: '/account/privacy', summary: "The account's consents, its open deletion request and whether its profile is public" })
+      .handler(({ context }) => privacyOverview(context.principal)),
+    requestDeletion: signedIn
+      .route({ method: 'POST', path: '/account/request-deletion', summary: 'Ask for the account to be deleted: opens a review case and notifies the admins, audited' })
+      .input(requestDeletionInput)
+      .handler(({ context, input }) => requestAccountDeletion(context.principal, input, context.meta)),
   },
   consent: {
     record: signedIn
       .route({ method: 'POST', path: '/consent/record', summary: 'Record consents for the current document versions' })
       .input(recordConsentsInput)
       .handler(({ context, input }) => recordConsents(context.principal, input, context.meta)),
+    // M07: an optional consent (publication, privacy notice acknowledged); publication also hides the profile.
+    withdraw: signedIn
+      .route({ method: 'POST', path: '/consent/withdraw', summary: 'Withdraw optional consents: a new consent record each, audited; publication also hides the own profile' })
+      .input(consentWithdrawInput)
+      .handler(({ context, input }) => consentWithdraw(context.principal, input, context.meta)),
+  },
+  // M07: the own profile (names in any script, biography, place, public or not).
+  profile: {
+    get: base
+      .route({ method: 'GET', path: '/profile', summary: "The signed-in account's own profile and the editor's options" })
+      .handler(({ context }) => profileGet(context.principal)),
+    update: signedIn
+      .route({ method: 'POST', path: '/profile/update', summary: "Save the account's own profile: names (a Latin-script display name is required), biography, place, public or not; audited" })
+      .input(profileUpdateInput)
+      .handler(({ context, input }) => profileUpdate(context.principal, input, context.meta)),
+  },
+  // M07: people, schools and lineages by any spelling; public records only, the same for everyone.
+  search: {
+    query: base
+      // POST, so the names people type stay out of URLs and the access logs of any proxy (plan §6.4).
+      .route({ method: 'POST', path: '/search', summary: 'Search people, schools and lineages by any spelling of a name (public records only)' })
+      .input(searchInput)
+      .output(searchResultSchema)
+      .handler(({ context, input }) => searchQuery(context.principal, input, context.meta)),
   },
   admin: {
     overview: base

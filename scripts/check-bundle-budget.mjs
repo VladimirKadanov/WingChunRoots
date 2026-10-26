@@ -37,9 +37,15 @@ export const DEFAULT_BUDGET = 170 * KB;
  * explorer gets its own in M05 and the map in M11).
  */
 export const ROUTE_BUDGETS = {
-  // DEFAULT (M00b, ADR 0006): the noindex style guide for developers and the design review
-  // renders every overlay component (dialog, sheets, menu, toast, tabs) at once on one page.
-  '/styleguide': 250 * KB,
+  // The owner's decision of 2026-10-25 (docs/plan/questions/M07.md, question 3; ADR 0006): the
+  // signed-in, noindex profile editor (M07) loads TanStack Form, which M07 In scope 1 and plan
+  // §5.6 require (about 25 kB gzip on top of the shell and router that every route loads).
+  '/dashboard/profile': 195 * KB,
+  // M00b (ADR 0006): the noindex style guide for developers and the design review renders every
+  // overlay component (dialog, sheets, menu, toast, tabs) at once on one page. 250 kB from M00b;
+  // 260 kB by the owner's decision of 2026-10-25 (docs/plan/questions/M07.md, question 3;
+  // ADR 0006), since M07's search palette shares Base UI's dialog and floating modules with it.
+  '/styleguide': 260 * KB,
   // M05, ADR 0009: the explorer's client island loads TanStack Query, the oRPC client and nuqs
   // with the page (191.4 kB measured); React Flow (58 kB) loads after it with next/dynamic and
   // ELK (434 kB) only in the layout worker, so neither is in this count.

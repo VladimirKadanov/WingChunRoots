@@ -1,7 +1,7 @@
 // The app shell (plan §5.8 (b)): a top bar and bottom tabs on phones, a side rail from 768 px.
 // It pads every edge with env(safe-area-inset-*) (viewport-fit=cover), sizes with dvh, keeps
-// every control at least 44x44 px and needs no hover. Server component; only the nav links
-// and the theme menu hydrate.
+// every control at least 44x44 px and needs no hover. Server component; only the nav links,
+// the theme menu and the search field (M07) hydrate.
 
 import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
@@ -9,6 +9,7 @@ import { BrandMark } from '@/components/brand/brand-mark';
 import { DEMO_NOTICE } from './demo-notice';
 import { FocusInView } from './focus-in-view';
 import { NavLinks, NavList } from './nav-links';
+import { SearchField, SearchHost } from './search-trigger';
 import { TabBarRoom } from './tab-bar-room';
 import { ThemeMenu } from './theme-menu';
 
@@ -28,9 +29,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-border-subtle bg-bg pt-[env(safe-area-inset-top,0px)] md:hidden">
         <div className="flex min-h-(--top-h) items-center justify-between gap-2 pr-[max(0.375rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))]">
           {/* min-w-0: at 200 % text the wordmark is cut, never the theme switch or the page. */}
-          <Link href="/" className="inline-flex min-h-11 min-w-0 items-center" aria-label="WingChunRoots, home">
+          <Link href="/" className="inline-flex min-h-11 min-w-0 shrink items-center" aria-label="WingChunRoots, home">
             <BrandMark className="min-w-0" />
           </Link>
+          {/* M07: the search palette's field (plan §5.6). */}
+          <div className="flex min-w-0 max-w-[11rem] flex-1 justify-end">
+            <SearchField variant="bar" />
+          </div>
           <ThemeMenu variant="icon" />
         </div>
       </header>
@@ -49,6 +54,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="mb-7 hidden min-h-11 items-center px-2 md:inline-flex" aria-label="WingChunRoots, home">
             <BrandMark />
           </Link>
+          <div className="mb-5 hidden md:block">
+            <SearchField variant="rail" />
+          </div>
           <div className="flex flex-1 md:hidden">
             <Suspense fallback={<NavList variant="tabs" pathname={null} />}>
               <NavLinks variant="tabs" />
@@ -75,6 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main id="main" tabIndex={-1} className="outline-none">
           {children}
         </main>
+        <SearchHost />
       </div>
     </div>
   );
