@@ -83,7 +83,7 @@ export const VERIFY_BACKUP_CODE_PATH = '/two-factor/verify-backup-code';
 const SECOND_FACTOR_PATHS = new Set([VERIFY_TOTP_PATH, VERIFY_BACKUP_CODE_PATH]);
 /**
  * Endpoints of a signed-in session that check the account's password: src/server/rpc/api-parity.test.ts
- * keeps the list complete, hardening.int.test.ts tests what they count.
+ * keeps the list complete, hardening-lockout.int.test.ts tests what they count.
  */
 export const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password']);
 /** Of those, the ones that hand out a second factor: a staff session must have passed it first. */
