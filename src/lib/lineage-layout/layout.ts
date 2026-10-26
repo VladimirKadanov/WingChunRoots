@@ -9,7 +9,8 @@
  * `elk-worker.min.js` is not used, so there is never a worker inside a worker.
  */
 import ELK from 'elkjs/lib/elk.bundled.js';
-import type { ELK as ElkEngine } from 'elkjs/lib/elk.bundled.js';
+import type { ELK as ElkEngine, ElkNode } from 'elkjs/lib/elk.bundled.js';
+import { convergingPass, deferredEdges, firstPassGraph } from './converging.ts';
 import { buildElkGraph } from './elk-graph.ts';
 import { ElkLayoutError } from './errors.ts';
 import { indexGraph } from './graph.ts';
@@ -36,8 +37,20 @@ function now(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
 
+async function runElk(engine: ElkEngine, graph: ElkNode): Promise<ElkNode> {
+  try {
+    return await engine.layout(graph);
+  } catch (error) {
+    throw new ElkLayoutError(error instanceof Error ? error.message : String(error));
+  }
+}
+
 /**
  * Lays out a lineage view: ranks → ELK graph → scene. Returns the scene and timings.
+ *
+ * A view with a student who has several teachers in one lineage takes two ELK passes and a
+ * placement step in between, so that the student stands between them (plan §4.6,
+ * converging.ts).
  *
  * Rejects with `LineageCycleError` (code `CYCLE`) for a cycle, `LineageInputError`
  * (`INVALID_INPUT`) for a malformed graph and `ElkLayoutError` (`ELK_FAILED`) when ELK
@@ -52,14 +65,21 @@ export async function layoutLineageWithStats(
   const index = indexGraph(graph);
   const ranks = computeRanksIndexed(index);
   const build = buildElkGraph(index, ranks, options);
-  const elkStarted = now();
-  let laidOut;
-  try {
-    laidOut = await engine.layout(build.elkGraph);
-  } catch (error) {
-    throw new ElkLayoutError(error instanceof Error ? error.message : String(error));
+  const deferred = deferredEdges(index, build);
+  let elkStarted = now();
+  let laidOut: ElkNode;
+  let elkMs: number;
+  if (deferred.size === 0) {
+    laidOut = await runElk(engine, build.elkGraph);
+    elkMs = now() - elkStarted;
+  } else {
+    const firstPass = await runElk(engine, firstPassGraph(build, deferred));
+    elkMs = now() - elkStarted;
+    const pass = convergingPass(index, ranks, build, deferred, firstPass);
+    elkStarted = now();
+    laidOut = pass.merge(await runElk(engine, pass.elkGraph));
+    elkMs += now() - elkStarted;
   }
-  const elkMs = now() - elkStarted;
   const scene = buildScene(graph, ranks, build, laidOut);
   return {
     scene,

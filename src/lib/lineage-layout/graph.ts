@@ -166,6 +166,18 @@ function startYear(edge: LineageEdge | undefined): number {
 }
 
 /**
+ * The lineage a node is ordered by (plan §4.5): the lineage of the edge to the teacher
+ * preferred for display, otherwise the first of the node's own lineages.
+ */
+export function orderLineage(
+  index: GraphIndex,
+  nodeId: string,
+  primary: LineageEdge | undefined = displayPrimaryTeacherEdge(index, nodeId),
+): string {
+  return primary?.lineageId ?? [...(index.nodes.get(nodeId)!.lineageIds ?? [])].sort(compareStrings)[0] ?? '';
+}
+
+/**
  * Model order of the nodes (plan §4.5): by lineage, then by the year the person started
  * with the teacher preferred for display, then by name, then by id. Lineages stay in
  * adjacent blocks and the order does not depend on the order of the input arrays, so the
@@ -175,8 +187,7 @@ export function modelOrder(index: GraphIndex): string[] {
   const keys = new Map<string, { lineage: string; year: number; name: string }>();
   for (const node of index.graph.nodes) {
     const primary = displayPrimaryTeacherEdge(index, node.id);
-    const lineage = primary?.lineageId ?? [...(node.lineageIds ?? [])].sort(compareStrings)[0] ?? '';
-    keys.set(node.id, { lineage, year: startYear(primary), name: node.displayName ?? '' });
+    keys.set(node.id, { lineage: orderLineage(index, node.id, primary), year: startYear(primary), name: node.displayName ?? '' });
   }
   return index.graph.nodes
     .map((n) => n.id)
