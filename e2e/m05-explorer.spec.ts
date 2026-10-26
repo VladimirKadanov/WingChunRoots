@@ -1255,7 +1255,15 @@ test.describe('M05 fixes I', () => {
         before,
       );
     const selected: string[] = [];
+    const halfCard = (await nodeOf(page, root).boundingBox())!.height / 2;
     for (let i = 0; i < 3; i++) {
+      // As in the INP test: on a short phone (393x659) the second person's taller panel moves the
+      // view so that the root leaves the pane over its top edge (keepSelectionInView). A person drags
+      // the graph down to tap it again; so does the test, before it marks the edges drawn.
+      for (let drags = 0; i === 2 && !(await tappable(page, root)); drags++) {
+        expect(drags, 'drags down to the root').toBeLessThan(6);
+        await dragGraph(page, halfCard);
+      }
       const target = i === 1 ? await uncoveredNode(page, selected) : root;
       expect(target, `a node to select (${i + 1} of 3)`).toBeTruthy();
       const before = await mark();
