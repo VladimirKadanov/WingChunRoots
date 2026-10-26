@@ -607,15 +607,16 @@ export interface CanvasProps {
  * higher than the overlays' inset from the top. 0 when it is in view already.
  */
 export function shiftIntoView(node: Box, pane: Pane): number {
-  const floorOf = (overlays: readonly Box[]) => {
+  // How far down the person may reach: OVERLAY_GAP above these overlays across its width, or the pane's bottom.
+  const reach = (overlays: readonly Box[]) => {
     let floor = pane.height - OVERLAY_GAP;
     for (const o of overlays) {
       if (o.width > 0 && o.height > 0 && o.x < node.x + node.width && o.x + o.width > node.x) floor = Math.min(floor, o.y - OVERLAY_GAP);
     }
     return floor;
   };
-  let floor = floorOf(pane.overlays ?? []);
-  if (floor - OVERLAY_GAP < node.height) floor = floorOf([]);
+  let floor = reach(pane.overlays ?? []);
+  if (floor - OVERLAY_GAP < node.height) floor = reach([]);
   const bottom = node.y + node.height;
   if (bottom <= floor) return 0;
   return Math.min(0, Math.max(floor - bottom, OVERLAY_GAP - node.y));
