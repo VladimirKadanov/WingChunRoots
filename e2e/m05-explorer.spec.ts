@@ -1146,3 +1146,44 @@ test.describe('M05 fixes L', () => {
     });
   }
 });
+
+test.describe('M05 fixes I', () => {
+  test('@M05 a selection on the large Lineage view draws no edge again: every edge on the canvas stays as it was', async ({ page }) => {
+    // Plan §4.8: a selection changes only what it touches. React Flow drops what it measured of a
+    // node that comes as a new object, as the selected one does, unless the node says its size: it
+    // then took the node's edges off the canvas and drew them again, every edge of the root of Demo
+    // Lineage A on each selection, and the INP test measured it. Marks the drawn edges, selects as
+    // the INP test does (the root, a person on screen that the panel does not cover, the root again)
+    // and checks that each edge drawn before is the same element after. Ended training a selection
+    // shows may add edges; none of the edges already there is drawn again.
+    const root = await personIdOf('demo-root-a');
+    await openExplorer(page, { focus: root, lineage: await lineageIdOf('demo-lineage-a') });
+    const mark = () =>
+      page.evaluate(() => {
+        const ids: string[] = [];
+        for (const el of document.querySelectorAll<SVGPathElement>('[data-edge]')) {
+          (el as unknown as { __kept?: boolean }).__kept = true;
+          ids.push(el.dataset.edge!);
+        }
+        return ids;
+      });
+    const drawnAgain = (before: string[]) =>
+      page.evaluate(
+        (ids) => [...document.querySelectorAll<SVGPathElement>('[data-edge]')].filter((el) => ids.includes(el.dataset.edge!) && !(el as unknown as { __kept?: boolean }).__kept).map((el) => el.dataset.edge!),
+        before,
+      );
+    const selected: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const target = i === 1 ? await uncoveredNode(page, selected) : root;
+      expect(target, `a node to select (${i + 1} of 3)`).toBeTruthy();
+      const before = await mark();
+      expect(before.length, 'edges drawn').toBeGreaterThan(3);
+      await nodeOf(page, target!).click();
+      await expect(page.getByTestId('explorer-panel')).toBeVisible();
+      // React Flow measures again in a ResizeObserver callback, after the next layout.
+      await page.waitForTimeout(300);
+      expect(await drawnAgain(before), `edges drawn again after selecting ${target}`).toEqual([]);
+      selected.push(target!);
+    }
+  });
+});
