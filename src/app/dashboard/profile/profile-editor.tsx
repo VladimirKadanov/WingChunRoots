@@ -4,9 +4,16 @@
 // Latin-script display name, a short biography with its language, country, city, the year training
 // started, and "Show my profile publicly" (never ticked in advance).
 //
-// TanStack Form holds the values (the rows of names can be added, removed and reordered by their
-// display-name choice) and checks them with the Zod rules of src/lib/profile-form-rules.ts before
-// anything is sent; the Server Action saves through profile.update, which checks everything again.
+// The fields hold what the person typed or chose: the names, "Written in", Kind, the display-name
+// radios, the biography, the year and "Show my profile publicly" are uncontrolled, so React never
+// writes their value after it created them, whatever the moment of an edit (before the page's
+// JavaScript ran, while it hydrates, or between a commit and its effects: the iPhone runs of
+// PR #13 saved the old display name). TanStack Form follows the fields (syncFromDom: on hydration,
+// on every input and change event of the form, before Add, Remove and a save) for what the page
+// draws from them (the preview, "N of 10", labels), and checks them with the Zod rules of
+// src/lib/profile-form-rules.ts before anything is sent; the Server Action saves through
+// profile.update, which checks everything again. The language of the biography, the country and
+// the city stay controlled selects (SelectField takes over a choice made before hydration itself).
 // The rules are fetched when the person first focuses the form or saves it, not with the page
 // (Zod is about 40 kB of gzip JavaScript; plan §5.8 (c)); if they cannot be fetched, the form is
 // sent unchecked and the server's answer shows the same messages.
@@ -15,7 +22,7 @@
 // messages (src/server/forms/flash.ts).
 
 import { useForm, useStore } from '@tanstack/react-form';
-import { type ReactNode, startTransition, useActionState, useEffect, useRef, useState } from 'react';
+import { type ReactNode, startTransition, useActionState, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, fieldClassName, useFocusOnError, useFormId, useHydrated } from '@/components/account/fields';
 import { NameLine } from '@/components/account/person-names';
@@ -25,6 +32,7 @@ import { cx } from '@/lib/cx';
 import { IDLE, fieldId, type FormState } from '@/lib/form-state';
 import {
   canBePrimary,
+  keysOfSlots,
   LATIN_WRITING,
   type NameRow,
   nameField,
@@ -35,7 +43,8 @@ import {
   type ProfileFormValues,
   sameNames,
   shownFormValues,
-  SPARE_ROWS,
+  shownSlots,
+  spareRowCount,
   unflattenValues,
   writingValue,
 } from '@/lib/profile-form';
@@ -55,6 +64,55 @@ function loadRules(): Promise<Rules> {
 }
 /** Scripts whose names the name field draws a step larger (text-lg): Han, Japanese and Korean. */
 const LARGER_SCRIPTS = new Set(['Hant', 'Hans', 'Hani', 'Jpan', 'Kore']);
+
+// A biography typed before the editor hydrated. Unlike an input's, a textarea's typed text does not
+// survive hydration: React puts the server's text back into it when that text is not empty
+// (initTextarea in react-dom), so an edit of a saved biography made while the page's JavaScript
+// was on the way would be lost. This module always runs before React draws the editor, so it reads
+// what the field holds then, and a capture listener on window (which runs before React's own
+// listener on the document, which may hydrate the field in the same event) follows every later
+// edit, until the editor's first layout effect puts the text back and removes the listener.
+let typedBio: string | null = null;
+const isBioField = (target: unknown): target is HTMLTextAreaElement =>
+  target instanceof HTMLTextAreaElement && target.name === 'bio' && !!target.form?.id.startsWith(FORM_NAME);
+function noteTypedBio(event: Event) {
+  if (isBioField(event.target)) typedBio = event.target.value;
+}
+if (typeof window !== 'undefined') {
+  const field = document.querySelector('textarea[name="bio"]');
+  if (isBioField(field) && field.value !== field.defaultValue) typedBio = field.value;
+  window.addEventListener('input', noteTypedBio, true);
+}
+/** Puts a biography typed before hydration back into its field (see typedBio); once. */
+function restoreTypedBio(form: HTMLFormElement) {
+  window.removeEventListener('input', noteTypedBio, true);
+  const field = form.elements.namedItem('bio');
+  if (typedBio !== null && isBioField(field) && field.value !== typedBio) field.value = typedBio;
+  typedBio = null;
+}
+
+/**
+ * Writes saved values into the editor's uncontrolled fields, by the index of each row (the server
+ * keeps the order of the rows it saves). The controlled selects follow the form state.
+ */
+function showValues(form: HTMLFormElement, values: ProfileFormValues) {
+  const write = (name: string, value: string) => {
+    const field = form.elements.namedItem(name);
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) return;
+    // A romanization's Kind is a hidden input that React draws with its value.
+    if (field.type !== 'hidden' && field.value !== value) field.value = value;
+  };
+  values.names.forEach((row, i) => {
+    write(nameField(i, 'value'), row.value);
+    write(nameField(i, 'writing'), row.writing);
+    write(nameField(i, 'kind'), row.kind);
+  });
+  write('bio', values.bio);
+  write('trainingStartYear', values.trainingStartYear);
+  for (const radio of form.querySelectorAll<HTMLInputElement>('input[type="radio"][name="primary"]')) radio.checked = radio.value === String(values.primary);
+  const showPublicly = form.elements.namedItem('showPublicly');
+  if (showPublicly instanceof HTMLInputElement) showPublicly.checked = values.showPublicly;
+}
 
 export interface ProfileEditorOptions {
   countries: readonly { code: string; name: string }[];
@@ -125,8 +183,12 @@ export function ProfileEditor({
       () => undefined,
     );
 
+  // The values the fields were drawn with, kept: the fields hold the values from then on, so a new
+  // render of the page (a refresh after a save elsewhere on it) must not move the state away from
+  // them (TanStack Form takes new default values while nothing is touched).
+  const [drawn] = useState(() => unflattenValues(initial?.values) ?? initialValues);
   const form = useForm({
-    defaultValues: unflattenValues(initial?.values) ?? initialValues,
+    defaultValues: drawn,
     validators: {
       onSubmit: ({ value }) => {
         const fields = rules.current?.profileFormErrors(value, options.latestStartYear) ?? {};
@@ -144,40 +206,52 @@ export function ProfileEditor({
     },
   });
   const values = useStore(form.store, (s) => s.values);
-  // The display-name radios and "Show my profile publicly" are uncontrolled (defaultChecked): the
-  // browser keeps a person's own choice. When the code changes them (a removed or rewritten name
-  // stops being the display name), this count remounts them with the new value.
-  const [redraw, setRedraw] = useState(0);
+  // The React key of each row of names, by index: a row keeps its fields' nodes (their text and
+  // focus) when a row above it is removed, and when it is taken over at hydration (keysOfSlots).
+  // Before hydration the rows are the saved names and the spare rows.
+  const [rowKeys, setRowKeys] = useState(() => Array.from({ length: drawn.names.length + spareRowCount(drawn.names.length) }, (_, i) => `row-${i}`));
+  const addedRows = useRef(0);
 
-  // What the person typed or chose before the editor hydrated: before the page's JavaScript ran (a
-  // slow phone connection, a webview), or in the edit whose own `input` event made React hydrate the
-  // field (React then starts its value tracker with the edited value and skips onChange; WebKit
-  // sends no `textInput` before the edit, as Chromium does). Hydration leaves it in the fields, but
-  // the form state still holds the values the page was drawn with, and the render that follows
-  // hydration wrote those back into the fields, so a name typed early was replaced by the old one
-  // and saved so (the iPhone run of PR #13). Once, on hydration and before anything renders again,
-  // the state takes over what the fields show. A biography already saved is the exception: React
-  // puts the server's text back into the textarea while hydrating, so it is read as unchanged.
-  useEffect(() => {
-    const shown = shownFormValues(new FormData(formRef.current!));
+  // The form state takes over what the fields hold; React never writes it back (see the top).
+  const syncFromDom = () => {
+    const el = formRef.current;
+    if (!el) return;
+    const data = new FormData(el);
+    const shown = shownFormValues(data);
+    // A ticked display name that can no longer be one (its "Written in" or Kind was just changed):
+    // its radio is unticked before it is drawn disabled.
+    if (shown.primary === -1 && data.has('primary')) {
+      for (const radio of el.querySelectorAll<HTMLInputElement>('input[type="radio"][name="primary"]')) radio.checked = false;
+    }
+    const keys = keysOfSlots(rowKeys, shownSlots(data));
+    if (keys) setRowKeys(keys);
     const current = form.state.values;
     if (!sameNames(shown.names, current.names)) form.setFieldValue('names', shown.names);
-    for (const key of ['primary', 'bio', 'bioLang', 'countryCode', 'placeId', 'trainingStartYear', 'showPublicly'] as const) {
+    for (const key of ['primary', 'bio', 'trainingStartYear', 'showPublicly'] as const) {
       if (shown[key] !== current[key]) form.setFieldValue(key, shown[key]);
     }
-    // Another display name, or one that can no longer be one: the radios are drawn again with it.
-    if (shown.primary !== current.primary) setRedraw((n) => n + 1);
-  }, [form]);
+  };
+  // On hydration, before anything is painted and before any later event: what was typed or chosen
+  // before (a slow phone connection, a webview), or in the edit whose own event made React hydrate
+  // the field (it then skips that field's change event; the form's input event still comes).
+  const takeOverFields = useEffectEvent(() => {
+    restoreTypedBio(formRef.current!);
+    syncFromDom();
+  });
+  useLayoutEffect(() => takeOverFields(), []);
 
-  // A save puts the saved profile back into the form (the server cleans and orders the names).
+  // A save shows the saved profile (the server cleans and orders the names, trims the biography):
+  // the fields are written, then the state takes the same values. The text fields are read-only
+  // while the save is pending.
   const seen = useRef(state);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (seen.current === state) return;
     seen.current = state;
     if (state.status !== 'done') return;
     const saved = unflattenValues(state.values);
-    // The radios and the checkbox already show what was saved: it is what the browser sent.
-    if (saved) form.reset(saved);
+    if (!saved) return;
+    showValues(formRef.current!, saved);
+    form.reset(saved, { keepDefaultValues: true });
   }, [state, form]);
 
   const shown = checked ?? state;
@@ -188,7 +262,7 @@ export function ProfileEditor({
   // Without JavaScript: the saved names and two spare rows; the server ignores spare rows left empty.
   const rows: (NameRow & { spare?: boolean })[] = hydrated
     ? values.names
-    : [...values.names, ...Array.from({ length: Math.min(SPARE_ROWS, PROFILE_MAX_NAMES - values.names.length) }, () => ({ value: '', writing: LATIN_WRITING, kind: 'name' as const, spare: true }))];
+    : [...values.names, ...Array.from({ length: spareRowCount(values.names.length) }, () => ({ value: '', writing: LATIN_WRITING, kind: 'name' as const, spare: true }))];
 
   const writings = [...options.writings.map((w) => ({ value: writingValue(w), label: w.label }))];
   for (const row of values.names) {
@@ -198,25 +272,26 @@ export function ProfileEditor({
     }
   }
 
-  const setName = (i: number, patch: Partial<NameRow>) => {
-    form.setFieldValue('names', (list) => list.map((row, j) => (j === i ? { ...row, ...patch } : row)));
-    if (i === values.primary && !canBePrimary(patch.writing ?? values.names[i]!.writing, patch.kind ?? values.names[i]!.kind)) {
-      form.setFieldValue('primary', -1);
-      setRedraw((n) => n + 1);
-    }
-  };
   const addName = () => {
+    syncFromDom();
+    const at = form.state.values.names.length;
+    const key = `added-${addedRows.current++}`;
     form.setFieldValue('names', (list) => [...list, { value: '', writing: LATIN_WRITING, kind: 'name' }]);
+    setRowKeys((keys) => [...keys.slice(0, at), key]);
     // The new row's name field takes the focus once it is rendered.
-    requestAnimationFrame(() => document.getElementById(fieldId(FORM, nameField(values.names.length, 'value')))?.focus());
+    requestAnimationFrame(() => document.getElementById(fieldId(FORM, nameField(at, 'value')))?.focus());
   };
   const removeName = (i: number) => {
+    syncFromDom();
+    const count = form.state.values.names.length;
+    // The rows below keep their nodes, with their text and a ticked radio; the radio of a removed
+    // display name goes with its row.
     form.setFieldValue('names', (list) => list.filter((_, j) => j !== i));
     form.setFieldValue('primary', (p) => (p === i ? -1 : p > i ? p - 1 : p));
-    setRedraw((n) => n + 1);
+    setRowKeys((keys) => keys.filter((_, j) => j !== i));
     // The focus goes to the row that took its place, or to "Add a name".
     requestAnimationFrame(() => {
-      const next = document.getElementById(fieldId(FORM, nameField(Math.min(i, values.names.length - 2), 'value')));
+      const next = document.getElementById(fieldId(FORM, nameField(Math.min(i, count - 2), 'value')));
       (next ?? document.getElementById(`${FORM}-add-name`))?.focus();
     });
   };
@@ -247,9 +322,16 @@ export function ProfileEditor({
       noValidate
       aria-busy={pending || undefined}
       onFocus={() => void prepareRules()}
+      onInput={syncFromDom}
+      onChange={syncFromDom}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!pending) void prepareRules().then(() => form.handleSubmit());
+        if (pending) return;
+        // The rules check what is about to be sent.
+        void prepareRules().then(() => {
+          syncFromDom();
+          return form.handleSubmit();
+        });
       }}
       className="grid gap-10"
     >
@@ -277,7 +359,7 @@ export function ProfileEditor({
             const isPrimary = values.primary === i;
             return (
               <li
-                key={i}
+                key={rowKeys[i] ?? `slot-${i}`}
                 data-name-row=""
                 className={cx(
                   'grid gap-4 rounded-sm border bg-surface-1 p-4 sm:p-5',
@@ -297,8 +379,7 @@ export function ProfileEditor({
                         id={valueId}
                         name={nameField(i, 'value')}
                         type="text"
-                        value={row.value}
-                        onChange={(e) => setName(i, { value: e.currentTarget.value })}
+                        defaultValue={row.value}
                         lang={writing.lang || undefined}
                         translate="no"
                         spellCheck={false}
@@ -320,8 +401,7 @@ export function ProfileEditor({
                       name={nameField(i, 'writing')}
                       label="Written in"
                       autoComplete="off"
-                      value={row.writing}
-                      onValue={(v) => setName(i, { writing: v })}
+                      defaultValue={row.writing}
                       state={selectState}
                     >
                       {writings.map((w) => (
@@ -337,14 +417,12 @@ export function ProfileEditor({
                     <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
                       <label htmlFor={primaryId} className={cx('flex min-h-11 items-center gap-3 text-ui', eligible || !hydrated ? 'cursor-pointer' : 'text-fg-subtle')}>
                         <input
-                          key={`primary-${redraw}`}
                           id={primaryId}
                           type="radio"
                           name="primary"
                           value={i}
                           defaultChecked={isPrimary}
                           disabled={hydrated && !eligible}
-                          onChange={() => form.setFieldValue('primary', i)}
                           aria-describedby={describedBy(primaryError && `${primaryId}-error`, hydrated && !eligible && `${primaryId}-why`)}
                           className="size-5 shrink-0 cursor-pointer accent-[var(--fg)] disabled:cursor-not-allowed"
                         />
@@ -364,8 +442,7 @@ export function ProfileEditor({
                             <select
                               id={kindId}
                               name={nameField(i, 'kind')}
-                              value={row.kind}
-                              onChange={(e) => setName(i, { kind: e.currentTarget.value === 'alias' ? 'alias' : 'name' })}
+                              defaultValue={row.kind}
                               className={cx(fieldClassName, 'appearance-none pr-11')}
                             >
                               <option value="name">Name</option>
@@ -444,8 +521,7 @@ export function ProfileEditor({
           <textarea
             id={bioId}
             name="bio"
-            value={values.bio}
-            onChange={(e) => form.setFieldValue('bio', e.currentTarget.value)}
+            defaultValue={values.bio}
             rows={5}
             maxLength={PROFILE_BIO_MAX_LENGTH}
             readOnly={pending}
@@ -551,8 +627,7 @@ export function ProfileEditor({
             autoComplete="off"
             enterKeyHint="done"
             maxLength={4}
-            value={values.trainingStartYear}
-            onChange={(e) => form.setFieldValue('trainingStartYear', e.currentTarget.value)}
+            defaultValue={values.trainingStartYear}
             readOnly={pending}
             aria-invalid={error('trainingStartYear') ? true : undefined}
             aria-errormessage={error('trainingStartYear') ? `${yearId}-error` : undefined}
@@ -575,13 +650,11 @@ export function ProfileEditor({
         <label htmlFor={publicId} className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 text-ui">
           <span className="relative grid size-6 shrink-0 place-items-center">
             <input
-              key={`public-${redraw}`}
               id={publicId}
               name="showPublicly"
               type="checkbox"
               value="on"
               defaultChecked={values.showPublicly}
-              onChange={(e) => form.setFieldValue('showPublicly', e.currentTarget.checked)}
               aria-describedby={`${publicId}-hint`}
               className="peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1 transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted"
             />
