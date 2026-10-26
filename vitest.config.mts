@@ -19,7 +19,8 @@ export const TIMED = ['src/lib/lineage-layout/layout.perf.test.ts', 'src/lib/lin
  * it (`isolate: false`), which halves the time of those files; scripts/vitest-isolation.test.ts
  * fails when a file outside this list starts to use one of those APIs, and
  * scripts/vitest-shared-state.ts (a setup file of the `unit` project) fails a file that leaves
- * process.env, fake timers or a globalThis singleton changed, however it did so.
+ * process.env, fake timers or a property of globalThis, Date, Math, console or JSON changed,
+ * however it did so.
  */
 export const ISOLATED = [
   'src/lib/lineage-layout/layout.worker.test.ts',
@@ -53,7 +54,8 @@ export default defineConfig({
           // Threads that keep their module graph from one file to the next (see ISOLATED).
           pool: 'threads',
           isolate: false,
-          // Fails a file that leaves process.env, fake timers or a globalThis singleton changed.
+          // Fails a file that leaves process.env, fake timers or a property of globalThis, Date,
+          // Math, console or JSON changed.
           setupFiles: ['./scripts/vitest-shared-state.ts'],
         },
       },
