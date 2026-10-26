@@ -6,6 +6,10 @@
 // JavaScript (streamed Suspense content would need inline scripts). A section whose read fails
 // says so in place, under its own heading, with a Retry link that is a plain reload; the rest of
 // the page stands. A person the viewer may not see answers 404 (src/proxy.ts, plan §6.4).
+//
+// The explorer (/explore?view=list, M05) shows the same view inside its frame, with `embed`: its
+// links (the students' pages, all routes, Retry) stay in the explorer, and the explorer's own
+// Graph / List takes the place of the Profile / List / Graph switch.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -45,6 +49,8 @@ const MAX_PAGE = 1000;
 type Props = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
+  /** Inside the explorer (M05): the address of this view at students page `n`, with or without all routes. */
+  embed?: { href: (page: number, routesAll: boolean) => string };
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -199,17 +205,18 @@ function listHref(slug: string, n: number, routesAll: boolean): string {
   return search.size > 0 ? `${base}?${search}` : base;
 }
 
-export default async function LineageListPage({ params, searchParams }: Props) {
+export default async function LineageListPage({ params, searchParams, embed }: Props) {
   const read = await profileFor(params);
   if (read.state === 'none') return <PersonNotFound />;
   const query = await searchParams;
   const page = pageFrom(single(query.page));
   const allRoutes = single(query.routes) === 'all';
+  const hrefOf = (slug: string, n: number, routesAll: boolean) => (embed ? embed.href(n, routesAll) : listHref(slug, n, routesAll));
   // Retry opens the same view again: the same students page and routes (validated, review round 2).
-  if (read.state === 'failed') return <ProfileError retryHref={listHref(read.slug, page, allRoutes)} />;
+  if (read.state === 'failed') return <ProfileError retryHref={hrefOf(read.slug, page, allRoutes)} />;
   const profile: PersonProfileDto = read.profile;
   /** This view at students page `n`, with or without "all routes" (kept as it is by default). */
-  const viewHref = (n: number, routesAll = allRoutes) => listHref(profile.slug, n, routesAll);
+  const viewHref = (n: number, routesAll = allRoutes) => hrefOf(profile.slug, n, routesAll);
   const here = viewHref(page);
   const pageHref = (n: number) => `${viewHref(n)}#students-heading`;
 
@@ -275,7 +282,7 @@ export default async function LineageListPage({ params, searchParams }: Props) {
       }
       rail={
         <>
-          <PersonViews profile={profile} current="list" />
+          {embed ? null : <PersonViews profile={profile} current="list" />}
           <OnThisPage />
           <PersonCounts
             profile={profile}

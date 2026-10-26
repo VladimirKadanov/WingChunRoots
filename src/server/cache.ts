@@ -7,7 +7,10 @@
 //                  relationships drops it;
 //   lineage:<id>   for a subtree or a profile, the person at its root (their descendant count and
 //                  outline change when anything below them changes); and every lineage an answer
-//                  names (a renamed lineage or a new root).
+//                  names (a renamed lineage or a new root);
+//   explore-start  the explorer's start list (M05): every lineage with its public root and its
+//                  number of public people, so any change to whether a person or a relationship
+//                  is public drops it.
 //
 // The services that change these records (M09 onwards) call invalidatePublic(). Answers for a
 // signed-in participant with their own involved_only relationships are never cached.
@@ -19,6 +22,7 @@ const MAX_TAGS_PER_CALL = 128;
 
 export const personTag = (personId: string) => `person:${personId}`;
 export const lineageTag = (id: string) => `lineage:${id}`;
+export const EXPLORE_START_TAG = 'explore-start';
 
 /** Tags the current 'use cache' entry. Only inside a 'use cache' function. */
 export function tagCacheEntry(tags: Iterable<string>): void {

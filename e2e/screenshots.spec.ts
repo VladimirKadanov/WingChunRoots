@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
@@ -196,6 +197,24 @@ const STATES: readonly ScreenState[] = [
       // the sticky sidebar where the scroll left it.
       await page.goto(`/admin/grants?request=${requestId}`);
       await expect(page.getByTestId('request-answered')).toBeVisible();
+    },
+  },
+  ...EXPLORER_VIEWS.map(
+    (view): ScreenState => ({
+      // M05: the explorer's three views (plan §4.3), drawn by the layout worker.
+      name: `explore-${view.name}`,
+      milestone: 'M05',
+      async reach(page) {
+        await openExplorer(page, await view.params());
+      },
+    }),
+  ),
+  {
+    // M05: the list view inside the explorer's frame (plan §4.10), without M04's own view switch.
+    name: `explore-${EXPLORER_LIST.name}`,
+    milestone: 'M05',
+    async reach(page) {
+      await openExplorerList(page, await EXPLORER_LIST.params());
     },
   },
   {

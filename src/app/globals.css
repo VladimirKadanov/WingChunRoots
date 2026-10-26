@@ -291,3 +291,37 @@
   transform-box: fill-box;
   transform-origin: center;
 }
+
+/* M05: the explorer's layout animates with the motion tokens (plan §5.8 (e)): a node moves to its
+   new place when the scene changes; under reduced motion it is there at once. */
+.explorer-canvas .react-flow__node {
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .explorer-canvas .react-flow__node {
+    transition: none;
+  }
+}
+/* The edges and their labels are drawn at their new places at once: they are hidden while the
+   people slide there (canvas.tsx sets data-moving for --duration-slow; never under reduced motion). */
+.explorer-canvas[data-moving] .react-flow__edges,
+.explorer-canvas[data-moving] .react-flow__edgelabel-renderer {
+  visibility: hidden;
+}
+/* The React Flow attribution stays (plan §10.2 row 9), in the theme's own tones and legible. */
+.explorer-canvas .react-flow__attribution {
+  background: var(--bg);
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.explorer-canvas .react-flow__attribution a {
+  color: var(--fg-muted);
+}
+/* From 768 px the canvas reaches the right and bottom edges of the screen: the attribution keeps
+   clear of the safe areas there, as the explorer's controls do. */
+@media (width >= 48rem) {
+  .explorer-canvas .react-flow__attribution {
+    margin-right: env(safe-area-inset-right, 0px);
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

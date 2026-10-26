@@ -1,7 +1,9 @@
 // The always-visible legend (from the Constellation prototype): every link state as its stroke,
 // its seal and its name, so the drawing never depends on colour (plan §4.6). Shared by the home
 // page, the lineage screens (M04) and the explorer (M05); a screen may name a state in its own
-// words (`labels`), never draw it differently.
+// words (`labels`), never draw it differently: its samples are drawn the way the screen draws its
+// links, in ink (the home page, the lineage screens) or as the explorer's canvas strokes
+// (`strokes="canvas"`).
 
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
@@ -26,6 +28,7 @@ export function Legend({
   layout = 'wrap',
   descriptions = false,
   labels = {},
+  strokes = 'ink',
   className,
 }: {
   kinds?: LinkKind[];
@@ -35,6 +38,8 @@ export function Legend({
   descriptions?: boolean | 'xl';
   /** A screen's own words for a state (the lineage screens call the dotted state "Pending"). */
   labels?: Partial<Record<LinkKind, LegendWording>>;
+  /** How the screen draws its links: in ink, or as the explorer's canvas strokes. */
+  strokes?: 'ink' | 'canvas';
   className?: string;
 }) {
   return (
@@ -55,7 +60,7 @@ export function Legend({
             key={kind}
             className={cx('flex gap-2', descriptions === true && 'items-start', !descriptions && 'items-center', descriptions === 'xl' && 'items-center xl:items-start')}
           >
-            <LinkStroke kind={kind} width={34} className={cx(descriptions === true && 'mt-1', descriptions === 'xl' && 'xl:mt-1')} />
+            <LinkStroke kind={kind} variant={strokes} width={34} className={cx(descriptions === true && 'mt-1', descriptions === 'xl' && 'xl:mt-1')} />
             <Seal kind={style.seal} size={15} className={cx(descriptions === true && 'mt-0.5', descriptions === 'xl' && 'xl:mt-0.5')} />
             <span className="text-sm text-fg">
               <span className="font-semibold">{words.label}</span>

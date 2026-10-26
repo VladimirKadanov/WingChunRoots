@@ -192,7 +192,7 @@ export interface BezierPath {
   control1: Point;
   control2: Point;
   end: Point;
-  /** Point on the curve at t = 0.5, for the "Teacher in {lineage}" label. */
+  /** Point on the curve at t = 0.5 (the label of a short curve; see bezierLabelPoint). */
   midpoint: Point;
 }
 
@@ -242,6 +242,14 @@ export interface LayoutStats {
   nodes: number;
   elkEdges: number;
   crossLineageEdges: number;
+  /**
+   * Students with several teachers in one lineage that do not stand between them (to a pixel),
+   * in model order: the layout had no place for them there (plan §4.6, converging.ts). In the
+   * demo data only a student whose teachers all stand on the focus spine, in a row where the
+   * place on the spine line is taken (by a spine card, a spine edge or another such student);
+   * with the expand preset also a student shown before that keeps its place in its row.
+   */
+  unplacedStudents: string[];
 }
 
 // ---------------------------------------------------------------------------------------

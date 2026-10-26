@@ -29,6 +29,8 @@ export interface ElkGraphBuild {
   preset: PresetName;
   nodePlacement: NodePlacement;
   nodeSize: DetailLevel;
+  /** Previous positions of the people shown before (`expand` preset only). */
+  previous?: Map<string, Point>;
 }
 
 /**
@@ -114,7 +116,7 @@ export function buildElkGraph(index: GraphIndex, ranks: RankResult, options: Lay
     children,
     edges,
   };
-  return { elkGraph, order, elkEdges, crossLineageEdges, spine, focusId, preset, nodePlacement, nodeSize };
+  return { elkGraph, order, elkEdges, crossLineageEdges, spine, focusId, preset, nodePlacement, nodeSize, previous };
 }
 
 /**
