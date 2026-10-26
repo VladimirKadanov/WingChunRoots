@@ -494,8 +494,8 @@ function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart
 
 /**
  * Where the first view of a small scene starts: null for React Flow's fit of the whole view, or
- * the fit clear of the overlays where that one would draw a person under one (wholeView). Null for
- * a large scene too, which largeViewStart places.
+ * the fit clear of the overlays where that one would draw a person under one (wholeView; DEFAULT,
+ * no D number, ADR 0009 item 5). Null for a large scene too, which largeViewStart places.
  */
 export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
@@ -649,7 +649,8 @@ export function shiftIntoView(node: Box, pane: Pane): number {
 }
 
 /**
- * Keeps the selected person in view when the pane becomes `height` tall. React Flow keeps the
+ * Keeps the selected person in view when the pane becomes `height` tall (DEFAULT, no D number,
+ * ADR 0009 item 6, until the phone's bottom sheet in M06). React Flow keeps the
  * view's top left corner, so on a short phone (393x659) a person in the lower part of the pane
  * went out of view when the panel opened below the graph: not drawn there
  * (onlyRenderVisibleElements), it left the page, with the keyboard focus it had.
