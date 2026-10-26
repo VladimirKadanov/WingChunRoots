@@ -184,6 +184,11 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
       position: { x: sn.x, y: sn.y },
       width: sn.width,
       height: sn.height,
+      // The slot is the node's size (canvas.tsx), so React Flow need not measure it. Without
+      // `measured`, React Flow drops what it measured of a node whenever the node is a new object,
+      // as the selected one is: it measured it again in a ResizeObserver callback and redrew the
+      // whole canvas, and the node's edges were unmounted and drawn again, on every selection.
+      measured: { width: sn.width, height: sn.height },
       draggable: false,
       hidden: linked.has(sn.id) && !shown.has(sn.id) && sn.id !== graph.focusId && !lit,
       selected,

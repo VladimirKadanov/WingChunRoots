@@ -93,6 +93,17 @@ describe('selectFlow', () => {
     expect(selectFlow(base, null).nodes).toBe(base.nodes);
   });
 
+  it('gives every node, a selected one too, its slot as its measured size', () => {
+    // React Flow keeps what it measured of a node only when the node says its size (`measured`):
+    // otherwise each new object, as a selection makes, is measured and its edges drawn again.
+    for (const selected of [null, id(1), id(2), id(3)]) {
+      for (const n of selectFlow(base, selected).nodes) {
+        expect(n.measured, n.id).toEqual({ width: n.width, height: n.height });
+        expect(n.measured, n.id).toEqual({ width: n.data.slot.width, height: n.data.slot.height });
+      }
+    }
+  });
+
   it('draws the same as building everything for the selection', () => {
     for (const selected of [null, id(1), id(2), id(3)]) {
       const overlay = selectFlow(base, selected);
