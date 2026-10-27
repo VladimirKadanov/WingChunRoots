@@ -35,9 +35,12 @@ import { actionOf, type GraphAction } from './shortcuts';
 import { isSummaryId, summaryTeacherOf } from './state';
 import { TeacherChooser } from './teacher-chooser';
 
-// In a chunk of its own, asked for when the canvas mounts (the lazy component renders, closed,
-// with the canvas), so "?" never waits for it.
-const ShortcutHelp = lazy(() => import('./shortcut-help').then((m) => ({ default: m.ShortcutHelp })));
+// In a chunk of its own, asked for as soon as the canvas chunk runs, while the worker lays out the
+// first scene (nothing the canvas uses is asked for after the first layout; M05), so "?" never
+// waits for it. The lazy component then renders, closed, with the canvas.
+const loadHelp = () => import('./shortcut-help');
+loadHelp().catch(() => undefined);
+const ShortcutHelp = lazy(() => loadHelp().then((m) => ({ default: m.ShortcutHelp })));
 
 export interface GraphKeys {
   /** The wrapper's one key handler, or undefined. */
