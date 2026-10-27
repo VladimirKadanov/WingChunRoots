@@ -23,7 +23,7 @@ const OPEN_EVENT = 'wcr:open-search';
 const loadPalette = () => import('@/components/ui/search-palette');
 const SearchPalette = lazy(loadPalette);
 
-function openSearch() {
+export function openSearch() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
 

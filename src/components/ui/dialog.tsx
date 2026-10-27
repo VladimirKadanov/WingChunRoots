@@ -11,8 +11,11 @@ import { cn } from '@/lib/utils';
 import { useBackToClose } from './use-back-to-close';
 
 export interface DialogProps {
-  /** The element that opens the dialog, e.g. <Button>Open</Button>. */
-  trigger: ReactElement;
+  /** The element that opens the dialog, e.g. <Button>Open</Button>; none for a dialog its parent opens (`open`). */
+  trigger?: ReactElement;
+  /** Controlled: whether the dialog is open (the parent opens it, e.g. from a key). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: ReactNode;
   description?: ReactNode;
   children?: ReactNode;
@@ -21,12 +24,17 @@ export interface DialogProps {
   className?: string;
 }
 
-export function Dialog({ trigger, title, description, children, footer, className }: DialogProps) {
-  const [open, setOpen] = useState(false);
+export function Dialog({ trigger, open: openProp, onOpenChange, title, description, children, footer, className }: DialogProps) {
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setOpenState(next);
+    onOpenChange?.(next);
+  };
   useBackToClose(open, () => setOpen(false));
   return (
     <BaseDialog.Root open={open} onOpenChange={setOpen}>
-      <BaseDialog.Trigger render={trigger} />
+      {trigger ? <BaseDialog.Trigger render={trigger} /> : null}
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className="fixed inset-0 z-50 bg-scrim transition-opacity duration-(--duration-base) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0" />
         {/* The viewport scrolls when the dialog is taller than the window (a short landscape

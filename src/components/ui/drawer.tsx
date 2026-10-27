@@ -13,6 +13,7 @@
 // still shows whole. It rests on the phone tab bar, which keeps the home indicator's inset, and
 // is clipped there (overflow: clip, which never scrolls), so the tabs stay visible and tappable.
 // Its body is inert while it peeks, so the keyboard never reaches content that is off screen.
+// A fraction as its first snap point (the explorer's 0.15) is floored at that peek, and is the peek.
 // Below full height, a keyboard focus that lands under the bottom edge expands the sheet first
 // (WCAG 2.4.11).
 //
@@ -32,7 +33,7 @@
 // in progress (that would restyle the page on every frame); it catches up when the drag settles.
 
 import { Drawer as BaseDrawer } from '@base-ui/react/drawer';
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type FocusEvent, type ReactElement, type ReactNode } from 'react';
 import { ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { useBackToClose } from './use-back-to-close';
@@ -67,6 +68,17 @@ export interface DrawerProps {
    */
   modal?: boolean;
   className?: string;
+  // Pass-throughs (milestone M06: the explorer's sheet).
+  /** Where focus goes when the sheet opens (Base UI Popup); `false` leaves it where it is. */
+  initialFocus?: ComponentProps<typeof BaseDrawer.Popup>['initialFocus'];
+  /** Where focus goes when the sheet closes (Base UI Popup); `false` leaves it where it is. */
+  finalFocus?: ComponentProps<typeof BaseDrawer.Popup>['finalFocus'];
+  /** The sheet came to rest at another snap point (by a drag, a button or a new opening): its value as given and its index. */
+  onSnapPointChange?: (point: SnapPoint, index: number) => void;
+  /** A row of actions in the header, under the title: always in view, at the peek too (the peek grows with it). */
+  headerActions?: ReactNode;
+  /** Keeps the sheet's elements mounted while it is closed (Base UI Portal). */
+  keepMounted?: boolean;
 }
 
 // 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
@@ -83,6 +95,11 @@ export function Drawer({
   snapPoints: snapPointsProp,
   modal = true,
   className,
+  initialFocus,
+  finalFocus,
+  onSnapPointChange,
+  headerActions,
+  keepMounted,
 }: DrawerProps) {
   const side = useMediaQuery(SIDE_PANEL);
   const [openState, setOpenState] = useState(false);
@@ -99,12 +116,27 @@ export function Drawer({
     observer.observe(header);
     return () => observer.disconnect();
   }, [header]);
-  const peek = `${Math.max(PEEK_PX, headerHeight)}px`;
+  const peekPx = Math.max(PEEK_PX, headerHeight);
+  const peek = `${peekPx}px`;
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  // A non-modal sheet's first snap point given as a fraction of the viewport (the explorer's 0.15)
+  // is the peek: never shorter than the measured peek, and inert as the peek is. Base UI reads a
+  // fraction against its viewport element, measured here; the window until it is there.
+  const viewportHeight = useHeight(viewport);
+  const given = snapPointsProp ?? (modal ? MODAL_SNAP_POINTS : PEEK_SNAP_POINTS);
+  const fractionPeek = !modal && typeof given[0] === 'number' && given[0] <= 1 && !given.includes(PEEK);
   const snapPoints = side
     ? undefined
-    : (snapPointsProp ?? (modal ? MODAL_SNAP_POINTS : PEEK_SNAP_POINTS)).map((point) => (point === PEEK ? peek : point));
+    : given.map((point, index) => {
+        if (point === PEEK) return peek;
+        if (index === 0 && fractionPeek) {
+          const height = viewportHeight || (typeof window === 'undefined' ? 0 : window.innerHeight);
+          return `${Math.max(peekPx, Math.round((point as number) * height))}px`;
+        }
+        return point;
+      });
   const lastIndex = snapPoints ? snapPoints.length - 1 : 0;
-  const peekIndex = snapPointsProp ? snapPointsProp.indexOf(PEEK) : modal ? -1 : 0;
+  const peekIndex = snapPointsProp ? (fractionPeek ? 0 : snapPointsProp.indexOf(PEEK)) : modal ? -1 : 0;
 
   // The sheet rests at a snap point by index, so a peek that grows with the text stays the peek.
   const [snapIndex, setSnapIndex] = useState(0);
@@ -124,7 +156,20 @@ export function Drawer({
   const expanded = snapIndex === lastIndex;
   const peeking = !side && snapIndex === peekIndex;
 
-  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  // The snap point the sheet rests at, as given (a fraction stays a fraction), for the caller.
+  const restsAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open || side) {
+      restsAt.current = null;
+      return;
+    }
+    const index = Math.min(snapIndex, lastIndex);
+    if (restsAt.current === index) return;
+    restsAt.current = index;
+    const point = given[index];
+    if (point !== undefined) onSnapPointChange?.(point, index);
+  });
+
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
   useSheetRoom(open, side, modal, viewport, popup, header);
 
@@ -159,7 +204,7 @@ export function Drawer({
       disablePointerDismissal={!modal}
     >
       {trigger ? <BaseDrawer.Trigger render={trigger} /> : null}
-      <BaseDrawer.Portal>
+      <BaseDrawer.Portal keepMounted={keepMounted}>
         {modal ? (
           // A steady scrim at every snap point. Base UI's --drawer-swipe-progress counts from the
           // highest snap point, so it reads 1 at half height and would hide the scrim there.
@@ -184,6 +229,8 @@ export function Drawer({
         >
           <BaseDrawer.Popup
             ref={setPopup}
+            initialFocus={initialFocus}
+            finalFocus={finalFocus}
             className={cn(
               'pointer-events-auto relative flex min-h-0 w-full flex-col border-border-subtle bg-surface-2 text-fg shadow-sheet outline-none',
               // Below 1024 px: a bottom sheet, never taller than its viewport (above the tab bar when non-modal).
@@ -232,6 +279,7 @@ export function Drawer({
                   <CloseIcon size={20} />
                 </BaseDrawer.Close>
               </div>
+              {headerActions ? <div className="mt-2 flex flex-wrap items-center gap-2">{headerActions}</div> : null}
             </div>
             <BaseDrawer.Content
               inert={peeking}
@@ -248,6 +296,20 @@ export function Drawer({
       </BaseDrawer.Portal>
     </BaseDrawer.Root>
   );
+}
+
+/** An element's height in px, kept as it changes (0 until there is one). */
+function useHeight(element: HTMLElement | null): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!element || typeof ResizeObserver !== 'function') return;
+    const update = () => setHeight(element.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return height;
 }
 
 interface Room {
