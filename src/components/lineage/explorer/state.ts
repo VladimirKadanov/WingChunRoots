@@ -107,6 +107,24 @@ export function explorerRead(params: ExplorerParams & { focus: string }, lineage
 /** Plan §4.8: above about 12 visible students of one teacher, the first ones are drawn and the rest counted. */
 export const FANOUT_SHOWN = 12;
 
+/** No pinned students (capFanout's default). */
+export const NO_PINS: ReadonlySet<string> = new Set();
+
+// M06 seam: summary ids (F). The summary node "and N more" of a teacher whose students the cap cut
+// (milestone M06 In scope 4) is a layout node of its own, `more:<teacherId>`, in the students' row,
+// with a pseudo-edge from the teacher that is used for the layout only and never drawn.
+/** The prefix of the summary node's id and of its pseudo-edge's id. */
+export const MORE_PREFIX = 'more:';
+/** Whether a scene id (a node's or an edge's) is a summary node's or its pseudo-edge's, not a person's or a relationship's. */
+export const isSummaryId = (id: string): boolean => id.startsWith(MORE_PREFIX);
+/** The summary node of a teacher. */
+export const summaryIdOf = (teacherId: string): string => `${MORE_PREFIX}${teacherId}`;
+/** The teacher a summary node (or its pseudo-edge, `more:<teacherId>:edge`) belongs to. */
+export const summaryTeacherOf = (id: string): string => id.slice(MORE_PREFIX.length).split(':')[0]!;
+/** The id of a person node's relationships in words (its aria-describedby; set in explorer.tsx, drawn in canvas.tsx). */
+export const relationsId = (id: string): string => `rel-${id}`;
+
+// M06 seam: capFanout pins (F wires the parameter, C fills)
 /**
  * The graph with at most FANOUT_SHOWN students drawn under each teacher (plan §4.8: "verified,
  * active, with the most descendants"): verified relationships first, then the active ones (the
@@ -116,8 +134,16 @@ export const FANOUT_SHOWN = 12;
  * teacher whose students the cap cut, every student not drawn: those of the answer left out here
  * and the public ones the read itself left out (hiddenCounts: the server's fan-out limit). The
  * expand buttons that show them come with M06; the list view has them all.
+ *
+ * M06: `pinned` students are drawn whatever the cap, as the focus's links are: those an expansion
+ * showed, so a later layout never drops a person already drawn (milestone M06 In scope 4). It is
+ * empty by default, so M05's callers keep their meaning.
  */
-export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph: LineageGraphDto; more: Map<string, number> } {
+export function capFanout(
+  graph: LineageGraphDto,
+  shown = FANOUT_SHOWN,
+  pinned: ReadonlySet<string> = NO_PINS,
+): { graph: LineageGraphDto; more: Map<string, number> } {
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
   const byTeacher = new Map<string, LineageGraphDto['edges']>();
   for (const e of graph.edges) byTeacher.set(e.teacherId, [...(byTeacher.get(e.teacherId) ?? []), e]);
@@ -134,7 +160,7 @@ export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph
         (nodes.get(a.studentId)?.displayName ?? '').localeCompare(nodes.get(b.studentId)?.displayName ?? '', 'en'),
     );
     // The focus's link to each of its teachers is always drawn (its own students are capped like anyone's).
-    const forced = sorted.filter((e) => e.studentId === graph.focusId);
+    const forced = sorted.filter((e) => e.studentId === graph.focusId || pinned.has(e.studentId));
     const rest = sorted.filter((e) => !forced.includes(e));
     const keep = [...forced, ...rest.slice(0, Math.max(0, shown - forced.length))];
     for (const e of keep) kept.add(e.id);
@@ -235,6 +261,15 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
     hiddenCounts: graph.hiddenCounts,
   };
 }
+
+// M06 seam: withSummaryNodes (F wires the signature, C fills)
+/**
+ * The layout graph with a summary node `more:<teacherId>` and its pseudo-edge for every teacher
+ * whose drawn students reached the cap (FANOUT_SHOWN) and who has students not drawn (`more`),
+ * for the real layout only: the skeleton's toLayoutGraph stays as it is (milestone M06 In scope 4).
+ * Package F wires it with the graph unchanged; package C adds the nodes.
+ */
+export const withSummaryNodes: (graph: LineageGraph, more: ReadonlyMap<string, number>) => LineageGraph = (graph) => graph;
 
 /**
  * The way from the route's end `at` (on the border of the full-size slot) to the border of the

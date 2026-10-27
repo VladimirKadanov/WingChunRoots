@@ -19,6 +19,15 @@
 //   frame at once; React Flow's own size follows it after the next paint (a phone's panel below
 //   the graph opens, closes or changes its height), so a selection does not redraw the graph.
 //   When the pane gets shorter, the view moves the selected person into it first.
+//
+// M06 (milestone M06, package F wires the seams marked `// M06 seam: <name>`): React Flow's own
+// keyboard is off and the graph has one tab stop, the active node (roving tabindex), moved by the
+// keys of keys.tsx on the wrapper around React Flow (data-graph-keys), by a click or a tap, and
+// kept on a drawn node; focus never falls out of the graph when its node leaves the screen. A
+// polite live region speaks the key moves and the notices. The summary node "and N more" is a
+// node type of its own; an expansion keeps the pressed node at its screen point (the anchor); a
+// selection lights its routes (data-lit, data-highlighting); "Center on selection" and "Keyboard
+// shortcuts" are buttons over the canvas next to the zoom buttons.
 
 import '@xyflow/react/dist/base.css';
 
@@ -39,9 +48,21 @@ import {
   useStoreApi,
   type Viewport,
 } from '@xyflow/react';
-import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
+import {
+  createContext,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
-import { MinusIcon, PlusIcon, FitIcon } from '@/components/icons';
+import { FitIcon, MinusIcon, PlusIcon } from '@/components/icons';
 import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { linkStyles, motion } from '@/design/tokens';
@@ -51,7 +72,28 @@ import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib
 
 import { type GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
-import { joinToBox } from './state';
+import { announce, createAnnouncer } from './announce';
+import {
+  type ActiveOptions,
+  type CanvasHandle,
+  type FlowApi,
+  type FlowNode,
+  type GraphContext,
+  KEYS_HELP_ID,
+  NO_NODE_ACTIONS,
+  type NodeActions,
+  NodeActionsContext,
+  type Notice,
+  type PanelHandle,
+} from './graph-api';
+import { useGraphKeys } from './keys';
+import { NodeControls } from './node-controls';
+import { KEY_HELP } from './shortcuts';
+import { relationsText } from './relations';
+import { isSummaryId, joinToBox, relationsId, summaryTeacherOf } from './state';
+import { SummaryCard } from './summary-node';
+import { CenterIcon, KeyboardIcon } from './tool-icons';
+import { anchorDelta, ensureVisible, isDrawn, nearest, type PaneArea, type View, visibleArea } from './viewport';
 
 export interface PersonNodeData extends Record<string, unknown> {
   name: string;
@@ -74,6 +116,36 @@ export interface PersonNodeData extends Record<string, unknown> {
   root: boolean;
   slot: Box;
   boxes: Record<DetailLevel, Box>;
+  // M06 seam: node-data (built by explorer.tsx flowBase)
+  /** The profile's address: Enter opens /people/<slug>. */
+  slug: string;
+  /** Teachers and students in the record (public): those in this answer and those it left out (hiddenCounts, childCount). */
+  totals: { teachers: number; students: number };
+  /** Teachers and students drawn in this view before anyone is selected. */
+  drawn: { teachers: number; students: number };
+  /** The teachers drawn, by name: the node's description names them (relations.ts). */
+  teacherNames: readonly string[];
+  // M06 seam: lit-attrs (routes.ts litFlow sets it)
+  /** On a route of descent of the selected person (plan §4.7). */
+  lit?: boolean;
+  // M06 seam: roving (the canvas sets it)
+  /** The graph's one tab stop: the buttons inside it follow it in the Tab order. */
+  active?: boolean;
+}
+
+/** The summary node "and N more" of a teacher whose students the cap cut (milestone M06 In scope 4). */
+export interface SummaryNodeData extends Record<string, unknown> {
+  teacherId: string;
+  /** The teacher's name. */
+  name: string;
+  slug: string;
+  /** The teacher's students not drawn. */
+  more: number;
+  rank: number;
+  slot: Box;
+  boxes: Record<DetailLevel, Box>;
+  /** The graph's one tab stop. */
+  active?: boolean;
 }
 
 export interface LineageEdgeData extends Record<string, unknown> {
@@ -87,9 +159,13 @@ export interface LineageEdgeData extends Record<string, unknown> {
   historical: boolean;
   /** The boxes of the teacher and the student at each level of detail, to join the route to the box drawn. */
   ends: { teacher: Record<DetailLevel, Box>; student: Record<DetailLevel, Box> };
+  // M06 seam: lit-attrs (routes.ts litFlow sets it)
+  /** On a route of descent of the selected person (plan §4.7). */
+  lit?: boolean;
 }
 
 export type PersonNode = Node<PersonNodeData, 'person'>;
+export type SummaryNode = Node<SummaryNodeData, 'more'>;
 export type LineageEdge = Edge<LineageEdgeData, 'lineage'>;
 
 /** The levels of detail by zoom (plan §4.8): a full card from `full`, a compact chip from `compact`, a dot below. */
@@ -107,8 +183,32 @@ export function monogram(name: string): string {
   return (first + last).toUpperCase();
 }
 
-function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
+// M06 seam: roving (the focus-loss guard)
+/** Told when a node that has the keyboard focus is about to leave the DOM (CanvasFrame's lost). */
+const FocusGuard = createContext<(id: string) => void>(() => undefined);
+
+/**
+ * The focus-loss guard of a node: when the node leaves the DOM with the keyboard focus inside it
+ * (a pan or a zoom by pointer takes it off screen under onlyRenderVisibleElements, or a new layout
+ * drops it), the canvas moves the focus to the new tab stop on the next frame, so the focus never
+ * falls to <body> from inside the graph. React runs the cleanup before it removes the element.
+ */
+function useFocusGuard(id: string): RefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement>(null);
+  const lost = useContext(FocusGuard);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    return () => {
+      const node = element?.closest('.react-flow__node');
+      if (node && document.activeElement && node.contains(document.activeElement)) lost(id);
+    };
+  }, [id, lost]);
+  return ref;
+}
+
+function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
   const lod = useStore(lodOf);
+  const root = useFocusGuard(id);
   const box = data.boxes[lod];
   // The box of this level of detail, centred in the slot.
   const offset = { left: box.x - data.slot.x, top: box.y - data.slot.y };
@@ -116,8 +216,13 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
   // The focus gets a heavier frame drawn inside its 1 px border, so its three lines keep their room.
   const frame = data.focus ? 'border border-fg shadow-[inset_0_0_0_1px_var(--fg)]' : 'border border-border-strong';
   return (
-    <div data-person-node="" data-rank={data.rank} data-lod={lod} className="relative size-full">
+    // M06 seam: lit-attrs (data-lit)
+    <div ref={root} data-person-node="" data-rank={data.rank} data-lod={lod} data-lit={data.lit ? '' : undefined} className="relative size-full">
       <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
+      {/* M06 seam: node-data. The relationships in words: the node's aria-describedby (plan §4.9). */}
+      <span id={relationsId(id)} hidden>
+        {relationsText(data.teacherNames, data.totals, data.drawn)}
+      </span>
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
         {lod === 'full' && data.disputed ? (
           // On the card's top edge, at the right: the name starts at the left and its line keeps its room.
@@ -169,11 +274,8 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
                     {data.teachers} teachers
                   </span>
                 ) : null}
-                {data.more > 0 ? (
-                  <span data-more-chip="" className={cx('shrink-0 text-fg-muted', data.teachers < 2 && 'ml-auto')}>
-                    +{data.more} students
-                  </span>
-                ) : null}
+                {/* M06 seam: node-slot ("+N students", "+N teachers": node-controls.tsx) */}
+                <NodeControls id={id} data={data} active={data.active === true} />
               </span>
             </span>
           </div>
@@ -195,6 +297,56 @@ function PersonNodeView({ data, selected }: NodeProps<PersonNode>) {
             ) : null}
           </div>
         )}
+      </div>
+      <Handle type="source" position={Position.Bottom} isConnectable={false} className="!invisible" />
+    </div>
+  );
+}
+
+// M06 seam: more-node
+/**
+ * The summary nodes of a scene: a `more:<teacherId>` scene node (package C: withSummaryNodes) is a
+ * node of its own, "and N more →", named after its teacher, whose node has the count. A plain
+ * button (Enter, Space or a click opens the teacher's students), never selected or lit; its
+ * pseudo-edge is laid out, never drawn (explorer.tsx leaves it out).
+ */
+export function summaryNodes(scene: Scene, people: readonly PersonNode[]): SummaryNode[] {
+  const out: SummaryNode[] = [];
+  for (const sn of scene.nodes) {
+    if (!isSummaryId(sn.id)) continue;
+    const teacherId = summaryTeacherOf(sn.id);
+    const teacher = people.find((p) => p.id === teacherId)?.data;
+    const more = teacher?.more ?? 0;
+    out.push({
+      id: sn.id,
+      type: 'more',
+      position: { x: sn.x, y: sn.y },
+      width: sn.width,
+      height: sn.height,
+      measured: { width: sn.width, height: sn.height },
+      draggable: false,
+      selectable: false,
+      ariaRole: 'button',
+      ariaLabel: `and ${more} more students of ${teacher?.name ?? ''}`,
+      // One of the graph's many stops (roving tabindex), and a plain button: no "node" role description.
+      domAttributes: { tabIndex: -1, 'aria-roledescription': undefined },
+      data: { teacherId, name: teacher?.name ?? '', slug: teacher?.slug ?? '', more, rank: sn.rank, slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height }, boxes: sn.boxes },
+    });
+  }
+  return out;
+}
+
+/** The summary node "and N more →" (summary-node.tsx), in the students' row; its pseudo-edge is laid out, never drawn. */
+function SummaryNodeView({ id, data }: NodeProps<SummaryNode>) {
+  const lod = useStore(lodOf);
+  const root = useFocusGuard(id);
+  const box = data.boxes[lod];
+  const offset = { left: box.x - data.slot.x, top: box.y - data.slot.y };
+  return (
+    <div ref={root} data-summary-node="" data-rank={data.rank} data-lod={lod} className="relative size-full">
+      <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
+      <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
+        <SummaryCard data={data} lod={lod} />
       </div>
       <Handle type="source" position={Position.Bottom} isConnectable={false} className="!invisible" />
     </div>
@@ -261,6 +413,8 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
           'data-lineage': data.lineageId,
           'data-stroke': data.stroke,
           'data-routed': data.routedBy,
+          // M06 seam: lit-attrs
+          ...(data.lit ? { 'data-lit': '' } : {}),
         }}
         coreAttributes={{ 'data-edge-core': id }}
       />
@@ -282,7 +436,7 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
   );
 }
 
-const nodeTypes = { person: PersonNodeView };
+const nodeTypes = { person: PersonNodeView, more: SummaryNodeView };
 const edgeTypes = { lineage: LineageEdgeView };
 
 /** A CSS cubic-bezier() timing function as an easing function of progress (0 to 1), for the moves of the view. */
@@ -344,26 +498,62 @@ function trackMove(moves: Moves, duration: number, move: Promise<unknown>): void
   window.setTimeout(end, duration + 500);
 }
 
-function ZoomControls({ moves }: { moves: Moves }) {
-  const flow = useReactFlow();
-  const zoom = (go: (move: ReturnType<typeof moveFor>) => Promise<unknown>) => {
+// M06 seam: zoom-controls (F wires; package D lays the buttons out and owns the Fit handler)
+/** The view's moves of the buttons over the canvas, with the motion tokens; the keys (+, −, 0) make the same moves. */
+function useViewButtons(moves: Moves) {
+  const flow = useReactFlow<FlowNode, LineageEdge>();
+  const go = (to: (move: ReturnType<typeof moveFor>) => Promise<unknown>) => {
     const move = moveFor(VIEW_MOTION.buttons);
-    trackMove(moves, move.duration, go(move));
+    trackMove(moves, move.duration, to(move));
   };
+  return {
+    zoomIn: () => go((move) => flow.zoomIn(move)),
+    zoomOut: () => go((move) => flow.zoomOut(move)),
+    fit: () => go((move) => flow.fitView({ ...FIT_OPTIONS, ...move })),
+    /** Centres the view on a node, at the zoom it has. */
+    center: (id: string) => {
+      const node = flow.getInternalNode(id);
+      if (!node) return;
+      const { x, y } = node.internals.positionAbsolute;
+      const width = node.measured.width ?? node.width ?? 0;
+      const height = node.measured.height ?? node.height ?? 0;
+      go((move) => flow.setCenter(x + width / 2, y + height / 2, { zoom: flow.getZoom(), ...move }));
+    },
+  };
+}
+type ViewButtons = ReturnType<typeof useViewButtons>;
+
+/**
+ * The buttons over the canvas: the "Zoom" group of M05 (its three buttons, its name: tests find it
+ * by both) and, above it, "Center on selection" and "Keyboard shortcuts" in a group of their own,
+ * the latter only with a fine pointer (a touch-only phone has no keys; "?" works anywhere).
+ */
+function ZoomControls({ buttons, onCenter, onHelp }: { buttons: ViewButtons; onCenter: () => void; onHelp: () => void }) {
   // The ring is drawn inside the button (-outline-offset-2): the group clips what lies outside it.
   const button =
-    'inline-grid size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed [&:not(:first-child)]:border-t';
+    'size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed [&:not(:first-child)]:border-t';
+  const group = 'flex flex-col overflow-hidden rounded-sm border border-border-strong shadow-pop';
   return (
-    <div role="group" aria-label="Zoom" className="flex flex-col overflow-hidden rounded-sm border border-border-strong shadow-pop">
-      <button type="button" className={button} aria-label="Zoom in" onClick={() => zoom((move) => flow.zoomIn(move))}>
-        <PlusIcon size={18} />
-      </button>
-      <button type="button" className={button} aria-label="Zoom out" onClick={() => zoom((move) => flow.zoomOut(move))}>
-        <MinusIcon size={18} />
-      </button>
-      <button type="button" className={button} aria-label="Fit the whole view" onClick={() => zoom((move) => flow.fitView({ ...FIT_OPTIONS, ...move }))}>
-        <FitIcon size={18} />
-      </button>
+    <div className="flex flex-col items-end gap-2">
+      <div role="group" aria-label="Canvas tools" className={group}>
+        <button type="button" className={cx(button, 'inline-grid')} aria-label="Center on selection" onClick={onCenter}>
+          <CenterIcon size={18} />
+        </button>
+        <button type="button" className={cx(button, 'hidden any-pointer-fine:inline-grid')} aria-label="Keyboard shortcuts" onClick={onHelp}>
+          <KeyboardIcon size={18} />
+        </button>
+      </div>
+      <div role="group" aria-label="Zoom" className={group}>
+        <button type="button" className={cx(button, 'inline-grid')} aria-label="Zoom in" onClick={buttons.zoomIn}>
+          <PlusIcon size={18} />
+        </button>
+        <button type="button" className={cx(button, 'inline-grid')} aria-label="Zoom out" onClick={buttons.zoomOut}>
+          <MinusIcon size={18} />
+        </button>
+        <button type="button" className={cx(button, 'inline-grid')} aria-label="Fit the whole view" onClick={buttons.fit}>
+          <FitIcon size={18} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -571,6 +761,21 @@ function overlaysOn(pane: HTMLElement | null): Box[] {
   });
 }
 
+/**
+ * What lies over the pane, in its own pixels: the overlays (overlaysOn) and the covers, marked
+ * data-canvas-cover anywhere in the page (the desktop panel over the canvas, a phone's sheet):
+ * a person under one can be neither seen nor tapped (viewport.ts ensureVisible).
+ */
+function coversOn(pane: HTMLElement | null): Box[] {
+  if (!pane) return [];
+  const origin = pane.getBoundingClientRect();
+  const covers = [...document.querySelectorAll<HTMLElement>('[data-canvas-cover]')].map((el) => {
+    const box = el.getBoundingClientRect();
+    return { x: box.x - origin.x, y: box.y - origin.y, width: box.width, height: box.height };
+  });
+  return [...overlaysOn(pane), ...covers];
+}
+
 /** The scene's identity: strings and numbers, so the view moves once per new scene, not on every render of the same one. */
 const sceneKey = (scene: Scene) => `${scene.dataVersion}:${scene.focusId}:${scene.nodes.map((n) => n.id).join(',')}`;
 
@@ -578,7 +783,19 @@ const sceneKey = (scene: Scene) => `${scene.dataVersion}:${scene.focusId}:${scen
  * Fits or centres the view whenever a new scene arrives (a new focus, depth or view), and keeps
  * the view the user left while the list is shown (plan §4.10).
  */
-function FitOnScene({ scene, nodes, edges, moves }: { scene: Scene; nodes: PersonNode[]; edges: LineageEdge[]; moves: Moves }) {
+function FitOnScene({
+  scene,
+  nodes,
+  edges,
+  moves,
+  anchorId,
+}: {
+  scene: Scene;
+  nodes: readonly FlowNode[];
+  edges: LineageEdge[];
+  moves: Moves;
+  anchorId: string | null;
+}) {
   const flow = useReactFlow();
   const store = useStoreApi();
   // Centring needs the size of the pane, known after its first measurement.
@@ -587,6 +804,8 @@ function FitOnScene({ scene, nodes, edges, moves }: { scene: Scene; nodes: Perso
   // Refs outlive <Activity>: the scene last fitted, and the view the user left.
   const fitted = useRef<string | null>(null);
   const left = useRef<Viewport | null>(null);
+  // M06 seam: anchor. The last scene's places (top left corners), by node.
+  const places = useRef<Map<string, Point>>(new Map());
   useOnViewportChange({
     onEnd: (viewport) => {
       left.current = viewport;
@@ -600,16 +819,31 @@ function FitOnScene({ scene, nodes, edges, moves }: { scene: Scene; nodes: Perso
   }, [flow]);
   useEffect(() => {
     if (!sized || fitted.current === key) return;
+    const first = fitted.current === null;
     // The first view of the canvas is there at once; a later scene moves with its people.
-    const move = fitted.current === null ? { duration: 0 } : moveFor(VIEW_MOTION.scene);
+    const move = first ? { duration: 0 } : moveFor(VIEW_MOTION.scene);
     fitted.current = key;
+    // M06 seam: anchor. A scene an expansion made (anchorId, package C) is not a new view: the view
+    // moves with the pressed person, as their card slides to its new place (the same duration and
+    // curve), so they keep their screen point; no fit, which would undo it (milestone M06 In scope 4).
+    const before = places.current;
+    places.current = new Map(scene.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+    const from = anchorId ? before.get(anchorId) : undefined;
+    const to = anchorId ? places.current.get(anchorId) : undefined;
+    if (!first && from && to) {
+      const { panZoom, transform } = store.getState();
+      const [x, y, zoom] = transform;
+      const delta = anchorDelta(from, to, zoom);
+      if (panZoom && (delta.x !== 0 || delta.y !== 0)) trackMove(moves, move.duration, panZoom.setViewport({ x: x + delta.x, y: y + delta.y, zoom }, move));
+      return;
+    }
     const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
     const { width, height, domNode } = store.getState();
     const pane = { width, height, overlays: overlaysOn(domNode) };
     const start = largeViewStart(scene, hidden, pane) ?? wholeViewStart(scene, hidden, pane);
     const moved = start === null ? flow.fitView({ ...FIT_OPTIONS, ...move }) : flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move });
     trackMove(moves, move.duration, moved);
-  }, [flow, store, key, sized, scene, nodes, edges, moves]);
+  }, [flow, store, key, sized, scene, nodes, edges, moves, anchorId]);
   return null;
 }
 
@@ -622,6 +856,19 @@ export interface CanvasProps {
   onMount?: () => void;
   /** Overlays over the canvas frame: the legend, the relayout notice. */
   children?: ReactNode;
+  // M06 seams (package F wires them all; the packages named fill them in elsewhere).
+  /** node-slot: what the buttons inside a node and the summary node do (package C). */
+  actions?: NodeActions;
+  /** live-region: a notice spoken once ("Added 12 students of {name}.", package C). */
+  notice?: Notice | null;
+  /** anchor: the node whose screen point this scene keeps (an expansion, package C); null for a new read. */
+  anchorId?: string | null;
+  /** lit-attrs: a selection lights its routes; the frame dims the rest (package B). */
+  highlighting?: boolean;
+  /** graph-keys: the panel's handle, for Esc on a raised sheet (package B). */
+  panel?: RefObject<PanelHandle | null>;
+  /** roving: the canvas's handle, for the panel (package B). */
+  handle?: Ref<CanvasHandle>;
 }
 
 /**
@@ -655,9 +902,12 @@ export function shiftIntoView(node: Box, pane: Pane): number {
  * went out of view when the panel opened below the graph: not drawn there
  * (onlyRenderVisibleElements), it left the page, with the keyboard focus it had.
  */
-function keepSelectionInView(store: ReturnType<typeof useStoreApi<PersonNode, LineageEdge>>, height: number) {
+function keepSelectionInView(store: ReturnType<typeof useStoreApi<FlowNode, LineageEdge>>, height: number) {
   const { panZoom, transform, width, nodes, domNode } = store.getState();
-  const selected = nodes.find((n) => n.selected && !n.hidden);
+  // M06 seam: roving. The node that has the keyboard focus when the focus is in the graph, else
+  // the selected one (milestone M06 b11): the focus never leaves the view with its node.
+  const focused = focusedNode(domNode);
+  const selected = nodes.find((n) => (focused ? n.id === focused : n.selected) && !n.hidden);
   if (!panZoom || width === 0 || !selected) return;
   const [x, y, zoom] = transform;
   const box = { x: x + selected.position.x * zoom, y: y + selected.position.y * zoom, width: (selected.width ?? 0) * zoom, height: (selected.height ?? 0) * zoom };
@@ -682,7 +932,7 @@ function keepSelectionInView(store: ReturnType<typeof useStoreApi<PersonNode, Li
  */
 function useFollowFrame(moves: Moves): RefObject<HTMLDivElement | null> {
   const box = useRef<HTMLDivElement>(null);
-  const store = useStoreApi<PersonNode, LineageEdge>();
+  const store = useStoreApi<FlowNode, LineageEdge>();
   useLayoutEffect(() => {
     const el = box.current;
     const frame = el?.parentElement;
@@ -718,6 +968,193 @@ function useFollowFrame(moves: Moves): RefObject<HTMLDivElement | null> {
   return box;
 }
 
+// M06 seam: roving (the graph's one tab stop; package F)
+
+type FlowState = ReactFlowState<FlowNode, LineageEdge>;
+
+const viewOf = (s: FlowState): View => ({ x: s.transform[0], y: s.transform[1], zoom: s.transform[2] });
+/** The pane, with its overlays and covers. */
+const paneOf = (s: FlowState): PaneArea => ({ width: s.width, height: s.height, overlays: coversOn(s.domNode) });
+
+/** The id of the node the keyboard focus is in, when it is in this graph. */
+function focusedNode(root: Element | null): string | null {
+  const now = document.activeElement;
+  if (!root || !now || !root.contains(now)) return null;
+  return now.closest<HTMLElement>('.react-flow__node')?.dataset.id ?? null;
+}
+
+/** A node's element, when React Flow draws it. */
+function elementOf(root: Element | null, id: string): HTMLElement | null {
+  return root?.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`) ?? null;
+}
+
+/** The nodes React Flow draws at this view (onlyRenderVisibleElements), with their flow boxes. */
+function drawnNodes(s: FlowState): { id: string; box: Box }[] {
+  const view = viewOf(s);
+  const out: { id: string; box: Box }[] = [];
+  for (const node of s.nodeLookup.values()) {
+    if (node.hidden) continue;
+    const { x, y } = node.internals.positionAbsolute;
+    const box = { x, y, width: node.measured.width ?? node.width ?? 0, height: node.measured.height ?? node.height ?? 0 };
+    if (isDrawn(box, view, s)) out.push({ id: node.id, box });
+  }
+  return out;
+}
+
+/**
+ * The drawn node nearest the centre of the visible area (DEFAULT, no D number): the tab stop when
+ * the active node is no longer drawn (milestone M06 In scope 1).
+ */
+function nearestDrawn(s: FlowState, except?: string): string | null {
+  const view = viewOf(s);
+  const area = visibleArea(paneOf(s));
+  const centre = { x: (area.x + area.width / 2 - view.x) / view.zoom, y: (area.y + area.height / 2 - view.y) / view.zoom };
+  return nearest(
+    centre,
+    drawnNodes(s).filter((n) => n.id !== except),
+  );
+}
+
+/**
+ * The graph's one tab stop (plan §4.9, roving tabindex): every node is tabIndex -1 (explorer.tsx)
+ * but the active one, 0. The active node is the one chosen last (a key move, a click or a tap)
+ * while it is in the view, else the person in focus, else the first one drawn; only the two nodes
+ * whose tab stop changes are new objects. It always stays on a drawn node: a view move that takes
+ * it off screen while the focus is outside the graph moves the tab stop to the drawn node nearest
+ * the centre (`retarget`, at the end of every move), and one that takes the focused node away
+ * moves the focus there (`lost`, the focus-loss guard).
+ */
+function useRoving({
+  nodes,
+  focusId,
+  moves,
+  speak,
+}: {
+  nodes: readonly FlowNode[];
+  focusId: string | null;
+  moves: Moves;
+  speak: (node: FlowNode) => void;
+}) {
+  const store = useStoreApi<FlowNode, LineageEdge>();
+  const [chosen, setChosen] = useState<string | null>(null);
+  const shown = (id: string | null) => id !== null && nodes.some((n) => n.id === id && !n.hidden);
+  const active = shown(chosen) ? chosen : shown(focusId) ? focusId : (nodes.find((n) => !n.hidden)?.id ?? null);
+  // Every node comes with tabIndex -1 (explorer.tsx flowBase): only the active one is a new object.
+  const rfNodes = nodes.map((n): FlowNode => {
+    const tabIndex = n.id === active ? 0 : -1;
+    if (n.domAttributes?.tabIndex === tabIndex) return n;
+    return { ...n, domAttributes: { ...n.domAttributes, tabIndex }, data: { ...n.data, active: tabIndex === 0 } } as FlowNode;
+  });
+  // For the callbacks, which run after a render: the active node and the nodes then.
+  const latest = useRef({ active, nodes });
+  useLayoutEffect(() => {
+    latest.current = { active, nodes };
+  });
+
+  // A focus move waiting for its node to be drawn; a newer move replaces it.
+  const waiting = useRef<(() => void) | null>(null);
+  /**
+   * Calls `then` with the node's element once React Flow draws it: at once, or when it enters the
+   * DOM (a view move brings it in), for at most 1500 ms. Not a number of frames: WebKit can paint
+   * no frame for a few hundred milliseconds (trackMove).
+   */
+  const whenDrawn = (id: string, then: (element: HTMLElement) => void) => {
+    waiting.current?.();
+    waiting.current = null;
+    const root = store.getState().domNode;
+    const now = elementOf(root, id);
+    if (now || !root) {
+      if (now) then(now);
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      const element = elementOf(root, id);
+      if (!element) return;
+      stop();
+      then(element);
+    });
+    const timer = window.setTimeout(() => stop(), 1500);
+    const stop = () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+      if (waiting.current === stop) waiting.current = null;
+    };
+    observer.observe(root, { childList: true, subtree: true });
+    waiting.current = stop;
+  };
+  useEffect(() => () => waiting.current?.(), []);
+
+  /** Moves the view, if it must, so that the node is wholly in the visible area (viewport.ts ensureVisible). */
+  const reveal = (id: string) => {
+    const s = store.getState();
+    const node = s.nodeLookup.get(id);
+    if (!node || !s.panZoom) return;
+    const { x, y } = node.internals.positionAbsolute;
+    const box = { x, y, width: node.measured.width ?? node.width ?? 0, height: node.measured.height ?? node.height ?? 0 };
+    const next = ensureVisible(box, viewOf(s), paneOf(s), { minZoom: READABLE_ZOOM });
+    if (!next) return;
+    const move = moveFor(VIEW_MOTION.buttons);
+    trackMove(moves, move.duration, s.panZoom.setViewport(next, move));
+  };
+
+  const setActive = (id: string, options: ActiveOptions = {}) => {
+    setChosen(id);
+    if (!options.focus) return;
+    reveal(id);
+    // The node that has the focus keeps it until the new one can take it.
+    whenDrawn(id, (element) => {
+      element.focus({ preventScroll: true });
+      const node = latest.current.nodes.find((n) => n.id === id);
+      if (options.announce && node) speak(node);
+    });
+  };
+
+  /** At the end of every view move: a tab stop that is no longer drawn moves to the drawn node nearest the centre, unless the focus is in the graph. */
+  const retarget = () => {
+    const s = store.getState();
+    if (s.domNode && document.activeElement && s.domNode.contains(document.activeElement)) return;
+    const current = latest.current.active;
+    if (current !== null && drawnNodes(s).some((n) => n.id === current)) return;
+    const next = nearestDrawn(s);
+    if (next !== null && next !== current) setChosen(next);
+  };
+
+  /**
+   * The focus-loss guard: the focused node `id` is leaving the DOM (or its guard was renewed, while
+   * the node stays: then the focus is still in it, and nothing happens).
+   */
+  const lost = (id: string) => {
+    window.requestAnimationFrame(() => {
+      const s = store.getState();
+      const root = s.domNode;
+      const now = document.activeElement;
+      // The focus went somewhere on purpose, or the graph is not shown (the list view).
+      if (!root || !root.isConnected || root.getClientRects().length === 0) return;
+      if (now && now !== document.body) return;
+      const next = nearestDrawn(s, id);
+      if (next === null) return;
+      setChosen(next);
+      whenDrawn(next, (element) => element.focus({ preventScroll: true }));
+    });
+  };
+
+  /**
+   * A press on the pane or an edge with the focus in the graph (a pointer pan) leaves the focus
+   * where it is: the browser would drop it to the page, out of the graph. When the pan takes the
+   * focused node off screen, `lost` moves the focus to the nearest drawn node.
+   */
+  const keepFocus = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const root = store.getState().domNode;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!root || !target || !root.contains(target) || !root.contains(document.activeElement)) return;
+    const own = target.closest('.react-flow__node, a, button, input, select, textarea, [tabindex]');
+    if (own && root.contains(own)) return;
+    event.preventDefault();
+  };
+
+  return { active, rfNodes, setActive, retarget, lost, keepFocus, reveal, whenDrawn, latest };
+}
+
 export default function ExplorerCanvas(props: CanvasProps) {
   // The zoom buttons sit outside <ReactFlow>, over the frame: the provider gives them its store,
   // as it does to the frame (useFollowFrame).
@@ -728,11 +1165,25 @@ export default function ExplorerCanvas(props: CanvasProps) {
   );
 }
 
-function CanvasFrame({ scene, nodes, edges, onSelect, onMount, children }: CanvasProps) {
+function CanvasFrame({
+  scene,
+  nodes,
+  edges,
+  onSelect,
+  onMount,
+  children,
+  actions = NO_NODE_ACTIONS,
+  notice = null,
+  anchorId = null,
+  highlighting = false,
+  panel,
+  handle,
+}: CanvasProps) {
   const canvas = useRef<HTMLDivElement>(null);
   const moves = useRef(0);
   const box = useFollowFrame(moves);
   const key = sceneKey(scene);
+  const store = useStoreApi<FlowNode, LineageEdge>();
   useLayoutEffect(() => {
     onMount?.();
   }, [onMount]);
@@ -752,40 +1203,140 @@ function CanvasFrame({ scene, nodes, edges, onSelect, onMount, children }: Canva
       element.toggleAttribute('data-moving', false);
     };
   }, [key]);
+
+  // M06 seam: live-region. Rendered empty with the canvas (a live region added with its words is
+  // not announced); a key move's words come after a short quiet, a notice at once (announce.ts).
+  const [spoken, setSpoken] = useState('');
+  // The same words twice change nothing in the DOM, and would not be spoken again: a no-break space tells them apart.
+  const [announcer] = useState(() => createAnnouncer((text) => setSpoken((before) => (before === text ? `${text} ` : text))));
+  useEffect(() => () => announcer.dispose(), [announcer]);
+  useEffect(() => {
+    if (notice) announcer.notice(notice.text);
+  }, [notice, announcer]);
+  const speak = (node: FlowNode) => announcer.move(announce(node));
+
+  // M06 seam: roving
+  // M06 seam: more-node. Built once per scene: a selection changes no summary node.
+  const [summariesOf, setSummariesOf] = useState<{ scene: Scene; nodes: SummaryNode[] } | null>(null);
+  const summaries = summariesOf?.scene === scene ? summariesOf.nodes : summaryNodes(scene, nodes);
+  if (summariesOf?.scene !== scene) setSummariesOf({ scene, nodes: summaries });
+  const all: readonly FlowNode[] = summaries.length === 0 ? nodes : [...nodes, ...summaries];
+  const roving = useRoving({ nodes: all, focusId: scene.focusId, moves, speak });
+  const { active, setActive } = roving;
+  useImperativeHandle(
+    handle,
+    (): CanvasHandle => ({
+      activeElement: () => {
+        const id = roving.latest.current.active;
+        return id === null ? null : elementOf(store.getState().domNode, id);
+      },
+      ensureVisible: (id) => {
+        const target = id ?? roving.latest.current.active;
+        if (target !== null) roving.reveal(target);
+      },
+      focusActive: () => {
+        const target = roving.latest.current.active;
+        if (target !== null) setActive(target, { focus: true });
+      },
+    }),
+  );
+
+  // M06 seam: zoom-controls
+  const buttons = useViewButtons(moves);
+  const selectedId = all.find((n) => n.selected && !n.hidden)?.id ?? null;
+  const centerOnSelection = () => {
+    const target = selectedId ?? active;
+    if (target !== null) buttons.center(target);
+  };
+
+  // M06 seam: graph-keys. The keys get the view and the graph through these (keys.tsx, package A).
+  const flowApi: FlowApi = {
+    view: () => viewOf(store.getState()),
+    pane: () => paneOf(store.getState()),
+    element: (id) => elementOf(store.getState().domNode, id),
+    drawn: () => drawnNodes(store.getState()).map((n) => n.id),
+    zoomIn: buttons.zoomIn,
+    zoomOut: buttons.zoomOut,
+    fit: buttons.fit,
+    center: buttons.center,
+  };
+  const context: GraphContext = {
+    nodes: all,
+    edges,
+    focusId: scene.focusId,
+    activeId: active,
+    setActive,
+    selectedId,
+    select: onSelect,
+    openStudents: actions.openStudents,
+    say: (text) => announcer.notice(text),
+    collapseSheet: () => panel?.current?.collapse() ?? false,
+  };
+  const keys = useGraphKeys(flowApi, context);
+
   return (
-    <div data-canvas-frame="" className="absolute inset-0 overflow-hidden">
-      <div ref={box} className="absolute inset-x-0 top-0 h-full">
-        <ReactFlow<PersonNode, LineageEdge>
-          ref={canvas}
-          className="explorer-canvas"
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          onlyRenderVisibleElements
-          nodesDraggable={false}
-          nodesConnectable={false}
-          edgesFocusable={false}
-          elementsSelectable
-          selectNodesOnDrag={false}
-          minZoom={0.1}
-          maxZoom={2}
-          // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
-          // each time <Activity> shows the graph, over the view the user left.
-          onNodeClick={(_, node) => onSelect(node.id)}
-          onPaneClick={() => onSelect(null)}
-          deleteKeyCode={null}
-          aria-label="Lineage graph"
-        >
-          <FitOnScene scene={scene} nodes={nodes} edges={edges} moves={moves} />
-        </ReactFlow>
+    // M06 seam: lit-attrs (data-highlighting: a selection lights its routes, the rest is dimmed)
+    <div data-canvas-frame="" data-highlighting={highlighting ? '' : undefined} className="absolute inset-0 overflow-hidden">
+      {/* M06 seam: graph-keys. One key handler for the graph, on the wrapper around React Flow:
+          single-key shortcuts work only while the focus is in it (WCAG 2.1.4). */}
+      <div ref={box} data-graph-keys="" onKeyDown={keys.onKeyDown} onMouseDownCapture={roving.keepFocus} className="absolute inset-x-0 top-0 h-full">
+        <FocusGuard.Provider value={roving.lost}>
+          <NodeActionsContext.Provider value={actions}>
+            <ReactFlow<FlowNode, LineageEdge>
+              ref={canvas}
+              className="explorer-canvas"
+              nodes={roving.rfNodes as FlowNode[]}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onlyRenderVisibleElements
+              // M06 seam: rf-keyboard-props. React Flow's own keyboard is off: the graph's keys are
+              // ours (keys.tsx), and none of its single keys works anywhere on the page.
+              disableKeyboardA11y
+              nodesDraggable={false}
+              nodesConnectable={false}
+              edgesFocusable={false}
+              panActivationKeyCode={null}
+              selectionKeyCode={null}
+              multiSelectionKeyCode={null}
+              elementsSelectable
+              selectNodesOnDrag={false}
+              minZoom={0.1}
+              maxZoom={2}
+              // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
+              // each time <Activity> shows the graph, over the view the user left.
+              onNodeClick={(_, node) => {
+                // The active node follows a click or a tap too (the click focuses it).
+                setActive(node.id);
+                if (isSummaryId(node.id)) actions.openStudents(summaryTeacherOf(node.id));
+                else onSelect(node.id);
+              }}
+              onPaneClick={() => onSelect(null)}
+              onMoveEnd={roving.retarget}
+              deleteKeyCode={null}
+              aria-label="Lineage graph"
+              aria-describedby={KEYS_HELP_ID}
+            >
+              <FitOnScene scene={scene} nodes={all} edges={edges} moves={moves} anchorId={anchorId} />
+            </ReactFlow>
+          </NodeActionsContext.Provider>
+        </FocusGuard.Provider>
       </div>
       <div className="pointer-events-none absolute inset-0 z-10">
         <div data-canvas-overlay className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
-          <ZoomControls moves={moves} />
+          <ZoomControls buttons={buttons} onCenter={centerOnSelection} onHelp={keys.showHelp} />
         </div>
         {children}
       </div>
+      {/* M06 seam: live-region */}
+      <p aria-live="polite" aria-atomic="true" data-testid="explorer-announcement" className="sr-only">
+        {spoken}
+      </p>
+      {/* M06 seam: graph-keys. The graph's description, in the DOM before the first focus. */}
+      <p id={KEYS_HELP_ID} hidden>
+        {KEY_HELP}
+      </p>
+      {keys.overlay}
     </div>
   );
 }
