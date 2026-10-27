@@ -16,7 +16,7 @@ Phase 1 is in progress and runs **locally only**: Docker Compose on a developer 
 
 | Tool | Version | Notes |
 |---|---|---|
-| Node.js | 24 LTS (`.nvmrc`); 22.12 or newer works | `nvm install` reads `.nvmrc` |
+| Node.js | 26.12.1 (`.nvmrc`); `engines.node` is `>=26.12.1` | `nvm install` reads `.nvmrc` |
 | pnpm | 12.14.0 (exact, from `packageManager`) | `npm install --global pnpm@12.14.0` (no Corepack) |
 | Docker | Docker Desktop (Windows, macOS) or Docker Engine with the Compose plugin (Linux) | about 8 GB of memory for Docker |
 | PostgreSQL client | `psql` 16 or newer (at least 15) | used by `scripts/db-env-check.sh`, `scripts/db-bootstrap.sh`, `scripts/verify.sh` and `pnpm test:int`; `scripts/db-bootstrap.sql` needs `\getenv` (psql 15+). Ubuntu 24.04 ships psql 16; Ubuntu 22.04 ships psql 14, which is too old |
@@ -33,7 +33,7 @@ Work inside WSL2, with the repository **in the WSL2 filesystem** (for example `~
    ```bash
    sudo apt-get update && sudo apt-get install -y git postgresql-client
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash   # then reopen the terminal
-   nvm install 24
+   nvm install          # reads .nvmrc (26.12.1)
    npm install --global pnpm@12.14.0
    ```
 
@@ -81,7 +81,7 @@ Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 te
 
 A second, slower path for a PC without WSL2: the repository on a Windows drive (for example `D:\work\wingchunroots`) and every command run from **Git Bash**, with Docker Desktop for the services. WSL2 above remains the main path (plan §7.6, [ADR 0001](docs/adr/0001-stack.md)); this one is measured with `scripts/verify.sh M04`. It is slower than WSL2 (`pnpm install`, `next build` and E2E), so E2E runs with fewer workers. The Bulgarian admin guide has the same steps (`docs/guides/admin-guide.bg.md`, §2). Differences from the WSL2 steps:
 
-- **Node 24** with [nvm for Windows](https://github.com/coreybutler/nvm-windows): `nvm install 24` and `nvm use 24`.
+- **Node 26.12.1** with [nvm for Windows](https://github.com/coreybutler/nvm-windows): `nvm install 26.12.1` and `nvm use 26.12.1`.
 - **pnpm** with `npm install --global pnpm@12.14.0`, never Corepack. Check `pnpm -v`: an old Corepack shim (`pnpm`, `pnpm.cmd` in `%AppData%\npm`) that comes first on `PATH` fails with `Cannot find module …\corepack\pnpm\…`; then install pnpm into the active Node folder, which nvm puts earlier on `PATH`: `npm install --global --prefix "$(dirname "$(command -v node)")" pnpm@12.14.0`.
 - **psql 15 or newer on `PATH`**, for example the client of [PostgreSQL for Windows](https://www.postgresql.org/download/windows/): in `~/.bashrc`, `export PATH="/c/Program Files/PostgreSQL/17/bin:$PATH"`.
 - **Port 5432 taken** by a native PostgreSQL (`bind: An attempt was made to access a socket in a way forbidden by its access permissions` from `docker compose up`): after `scripts/init-env.sh`, set `POSTGRES_PORT=5433` in `.env` and change the port in `DATABASE_URL` and `TEST_DATABASE_URL` to `5433`, before the first `docker compose up -d --wait`.
@@ -92,11 +92,11 @@ Line endings stay LF (`.gitattributes`), whatever `core.autocrlf` says.
 
 ### Linux
 
-Install Docker Engine with the Compose plugin, Node 24 (for example with nvm), `npm install --global pnpm@12.14.0` and the PostgreSQL client, psql 15 or newer (`sudo apt-get install -y postgresql-client` on Ubuntu 24.04 or Debian 12; older releases need `postgresql-client-16` from the PostgreSQL apt repository). Then follow step 3 above.
+Install Docker Engine with the Compose plugin, Node 26.12.1 (for example with nvm), `npm install --global pnpm@12.14.0` and the PostgreSQL client, psql 15 or newer (`sudo apt-get install -y postgresql-client` on Ubuntu 24.04 or Debian 12; older releases need `postgresql-client-16` from the PostgreSQL apt repository). Then follow step 3 above.
 
 ### macOS
 
-Install Docker Desktop, Node 24 (nvm or Homebrew), `npm install --global pnpm@12.14.0` and the PostgreSQL client (`brew install libpq && brew link --force libpq`). Then follow step 3 above. The `postgis/postgis` image is published for `linux/amd64` only, so on Apple Silicon it runs under emulation (Rosetta); expect a slower first start.
+Install Docker Desktop, Node 26.12.1 (nvm or Homebrew), `npm install --global pnpm@12.14.0` and the PostgreSQL client (`brew install libpq && brew link --force libpq`). Then follow step 3 above. The `postgis/postgis` image is published for `linux/amd64` only, so on Apple Silicon it runs under emulation (Rosetta); expect a slower first start.
 
 ### Claude Code cloud session
 

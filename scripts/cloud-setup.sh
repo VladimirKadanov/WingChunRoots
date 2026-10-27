@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Prepares a Claude Code cloud session for WingChunRoots (plan §7.6, milestone M00).
 #
-# Cloud sessions have Node 22, no Docker daemon, and the network proxy blocks
+# Cloud sessions have an older preinstalled Node, no Docker daemon, and the network proxy blocks
 # apt.postgresql.org (PGDG). This script therefore:
+#   0. installs the exact Node from .nvmrc from nodejs.org (SHA-256 checked against
+#      SHASUMS256.txt) under ~/.local/share/wingchunroots and puts it first on PATH;
 #   1. installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive;
 #   2. starts the cluster and creates a UTF-8 test database (C.UTF-8 locale:
 #      with LC_CTYPE=C pg_trgm extracts no trigrams from Cyrillic or Chinese);
@@ -10,7 +12,7 @@
 #      never Corepack) and runs `pnpm install --frozen-lockfile`;
 #   4. never installs browsers: if the pinned Playwright expects a different
 #      Chromium build than the preinstalled one, it sets PW_CHROMIUM_EXECUTABLE;
-#   5. exports TEST_DATABASE_URL, the role passwords DB_MIGRATOR_PASSWORD, DB_APP_RW_PASSWORD
+#   5. exports PATH (Node from .nvmrc first), TEST_DATABASE_URL, the role passwords DB_MIGRATOR_PASSWORD, DB_APP_RW_PASSWORD
 #      and DB_APP_PUBLIC_RO_PASSWORD, the account settings BETTER_AUTH_SECRET, IP_HMAC_KEY,
 #      MAIL_SEAL_KEY, E2E_PASSWORD and E2E_TOTP_SECRET (M02), NEXT_TELEMETRY_DISABLED and PW_CHROMIUM_EXECUTABLE
 #      to $CLAUDE_ENV_FILE (SessionStart hook) and prints them as `export` lines;
@@ -95,7 +97,17 @@ chromium_executable() {
   "$ROOT/scripts/pw-chromium.sh"
 }
 
+NODE_VERSION="$(tr -d '[:space:]v' < .nvmrc)"
+NODE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/wingchunroots/node-v${NODE_VERSION}"
+case "$(uname -m)" in
+  x86_64) NODE_ARCH=x64 ;;
+  aarch64 | arm64) NODE_ARCH=arm64 ;;
+  *) NODE_ARCH="$(uname -m)" ;;
+esac
+export PATH="${NODE_DIR}/bin:${PATH}"
+
 print_base_env() {
+  echo "export PATH='${NODE_DIR}/bin':\"\$PATH\""
   echo "export TEST_DATABASE_URL='${TEST_DATABASE_URL}'"
   echo "export DB_MIGRATOR_PASSWORD='${DB_MIGRATOR_PASSWORD}'"
   echo "export DB_APP_RW_PASSWORD='${DB_APP_RW_PASSWORD}'"
@@ -127,6 +139,22 @@ if [ "${1:-}" = "--print-env" ]; then
   print_env
   exit 0
 fi
+
+# 0. The exact Node from .nvmrc (engines.node is its floor, so the preinstalled one is too old).
+if [ "$("${NODE_DIR}/bin/node" -p 'process.versions.node' 2>/dev/null || true)" != "$NODE_VERSION" ]; then
+  node_tarball="node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"
+  node_tmp="$(mktemp -d)"
+  log "installing Node ${NODE_VERSION} from nodejs.org"
+  curl -fsSL --retry 3 -o "${node_tmp}/${node_tarball}" "https://nodejs.org/dist/v${NODE_VERSION}/${node_tarball}"
+  curl -fsSL --retry 3 -o "${node_tmp}/SHASUMS256.txt" "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+  (cd "$node_tmp" && grep " ${node_tarball}\$" SHASUMS256.txt | sha256sum -c --status) \
+    || { log "checksum mismatch for ${node_tarball}"; rm -rf "$node_tmp"; exit 1; }
+  rm -rf "$NODE_DIR"
+  mkdir -p "$NODE_DIR"
+  tar -xJf "${node_tmp}/${node_tarball}" -C "$NODE_DIR" --strip-components=1
+  rm -rf "$node_tmp"
+fi
+hash -r
 
 # 1. PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive (no Docker, no PGDG).
 packages=(postgresql-16 postgresql-16-postgis-3 postgresql-contrib)
@@ -190,5 +218,5 @@ fi
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   print_browser_env >> "$CLAUDE_ENV_FILE"
 fi
-log "ready: PostgreSQL $(as_postgres psql -At -p "$DB_PORT" -d postgres -c 'SHOW server_version'), pnpm $(pnpm --version), TEST_DATABASE_URL and role passwords set"
+log "ready: Node $(node --version), PostgreSQL $(as_postgres psql -At -p "$DB_PORT" -d postgres -c 'SHOW server_version'), pnpm $(pnpm --version), TEST_DATABASE_URL and role passwords set"
 print_env

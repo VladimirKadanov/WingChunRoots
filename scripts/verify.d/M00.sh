@@ -124,9 +124,9 @@ check "every dependency in package.json has an exact version" node -e "
   if (loose.length) { console.error(loose); process.exit(1); }"
 
 # 5. Node versions -----------------------------------------------------------------------
-check ".nvmrc points to Node 24" grep -Eq '^v?24(\.[0-9]+){0,2}[[:space:]]*$' .nvmrc
-check "package.json engines.node is >=22.12" \
-  node -e "process.exit(require('./package.json').engines.node === '>=22.12' ? 0 : 1)"
+check ".nvmrc points to Node 26.12.1" grep -Eq '^v?26\.12\.1[[:space:]]*$' .nvmrc
+check "package.json engines.node is >=26.12.1" \
+  node -e "process.exit(require('./package.json').engines.node === '>=26.12.1' ? 0 : 1)"
 
 # 6. Images pinned by digest, actions pinned by commit SHA -------------------------------
 images="$(grep -Eh '^[[:space:]]*(image|container):[[:space:]]*[^[:space:]]' docker-compose.yml .github/workflows/*.yml | sed -E 's/^[[:space:]]*(image|container):[[:space:]]*//')"
@@ -180,7 +180,8 @@ check "ci.yml: POSTGRES_DB is postgres; the test database comes from docker/post
 check "ci.yml installs Chromium and WebKit for Playwright" grep -Eq 'playwright install --with-deps chromium webkit' "$ci"
 check "ci.yml runs gitleaks" grep -q 'gitleaks' "$ci"
 check "ci.yml runs pnpm audit --prod --audit-level=high" grep -q 'pnpm audit --prod --audit-level=high' "$ci"
-check "ci.yml has a light Node 22 job" grep -Eq 'node-version: "?22' "$ci"
+check "ci.yml takes Node only from .nvmrc" bash -c "
+  grep -q 'node-version-file: .nvmrc' '$ci' && ! grep -Eq '^[^#]*node-version:' '$ci'"
 check "ci.yml uploads the verify log" grep -q '\.verify/' "$ci"
 check "renovate.json is valid JSON with minimumReleaseAge and digest pinning" node -e "
   const r = require('./renovate.json');

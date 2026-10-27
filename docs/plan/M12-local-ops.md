@@ -17,7 +17,7 @@ M10b, M11 (и всички етапи преди тях).
 ## Обхват (In scope)
 
 1. **Образ и Compose.**
-   - `Dockerfile` (`node:24-trixie-slim`, Next.js standalone, команди `web` и `worker`, процесът не върви като root); базовите образи са по digest.
+   - `Dockerfile` (`node:26.12.1-trixie-slim`, Next.js standalone, команди `web` и `worker`, процесът не върви като root); базовите образи са по digest.
    - Профил `app` в `docker-compose.yml`: `web` (една реплика, план §7.6), `worker`, еднократната услуга `migrate` с ролята `migrator`, PostGIS, Mailpit и SeaweedFS. `docker compose --profile app up --build` пуска всичко на `http://localhost:3000`.
    - `scripts/check-env.sh` спира стартирането, ако липсва задължителна променлива или ако стойност е оставена като примерната от `.env.example`.
 2. **Наблюдение.**

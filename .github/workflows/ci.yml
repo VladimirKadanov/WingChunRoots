@@ -25,7 +25,7 @@ jobs:
     # suite in desktop-chromium, mobile-chromium and mobile-webkit, the visual regression (from
     # M00b), and every scripts/verify.d/*.sh (from M00b with the JavaScript budget and Lighthouse
     # CI), against PostgreSQL 18 + PostGIS 3.6 and Mailpit.
-    name: verify (Node 24, PostgreSQL 18, Playwright)
+    name: verify (Node 26, PostgreSQL 18, Playwright)
     runs-on: ubuntu-24.04
     # 30 minutes stopped the job in checks:M03 after the whole suite had passed (M04, run 39198539517).
     timeout-minutes: 60
@@ -145,28 +145,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  node22:
-    # Cloud sessions run Node 22 (engines: >=22.12), so lint, typecheck and unit tests run
-    # on it too (plan §3.2).
-    name: node22 (lint, typecheck, unit)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "22"
-      - name: Install pnpm (exact version from packageManager, no Corepack)
-        run: npm install --global "pnpm@$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '')")"
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      # M04: docs/api/openapi.json matches the router (plan §6.8).
-      - run: pnpm api:openapi --check
 
   security:
     name: security (gitleaks, pnpm audit)
@@ -194,15 +172,14 @@ jobs:
     # The single required status check for main (plan §7.4).
     name: ci
     if: always()
-    needs: [verify, node22, security]
+    needs: [verify, security]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Every job passed
         env:
           VERIFY: ${{ needs.verify.result }}
-          NODE22: ${{ needs.node22.result }}
           SECURITY: ${{ needs.security.result }}
         run: |
-          echo "verify=$VERIFY node22=$NODE22 security=$SECURITY"
-          test "$VERIFY" = success && test "$NODE22" = success && test "$SECURITY" = success
+          echo "verify=$VERIFY security=$SECURITY"
+          test "$VERIFY" = success && test "$SECURITY" = success

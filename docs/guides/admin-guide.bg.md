@@ -33,7 +33,7 @@
    ```bash
    sudo apt-get update && sudo apt-get install -y git postgresql-client
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash   # после отворете терминала наново
-   nvm install 24
+   nvm install          # чете .nvmrc (26.12.1)
    npm install --global pnpm@12.14.0
    ```
 
@@ -77,7 +77,7 @@ pnpm worker     # във втори терминал
 
 Разлики от стъпките по-горе:
 
-- **Node 24** с [nvm for Windows](https://github.com/coreybutler/nvm-windows): `nvm install 24` и `nvm use 24`. На nvm for Windows давайте версията изрично, вместо `nvm use` от `.nvmrc`.
+- **Node 26.12.1** с [nvm for Windows](https://github.com/coreybutler/nvm-windows): `nvm install 26.12.1` и `nvm use 26.12.1`. На nvm for Windows давайте версията изрично, вместо `nvm use` от `.nvmrc`.
 - **pnpm** с `npm install --global pnpm@12.14.0`, никога през Corepack. Проверете с `pnpm -v`. Грешка `Cannot find module …\corepack\pnpm\…` значи, че по `PATH` първи е стар shim на Corepack (`pnpm`, `pnpm.cmd` в `%AppData%\npm`); тогава инсталирайте pnpm в папката на активния Node, която nvm слага по-напред в `PATH`: `npm install --global --prefix "$(dirname "$(command -v node)")" pnpm@12.14.0`.
 - **psql 15 или по-нов в `PATH`** вместо `postgresql-client` от apt, например клиентът от [PostgreSQL for Windows](https://www.postgresql.org/download/windows/). В `~/.bashrc`: `export PATH="/c/Program Files/PostgreSQL/17/bin:$PATH"`.
 - **Порт 5432 е зает** от PostgreSQL, инсталиран направо в Windows (`docker compose up` казва `bind: An attempt was made to access a socket in a way forbidden by its access permissions`): след `scripts/init-env.sh` задайте `POSTGRES_PORT=5433` в `.env` и сменете порта в `DATABASE_URL` и `TEST_DATABASE_URL` на `5433`, преди първото `docker compose up -d --wait`.
@@ -85,7 +85,7 @@ pnpm worker     # във втори терминал
 - **Паралелни E2E процеси:** `PW_WORKERS=2` в `.env` (виж `.env.example`). `scripts/verify.sh` го чете от `.env`, а обикновеното `pnpm e2e` чете само средата: добавете `export PW_WORKERS=2` в `~/.bashrc` или пуснете `PW_WORKERS=2 pnpm e2e`. Измерено на компютър с 8 ядра и Docker Desktop, `scripts/verify.sh M04` (148 E2E теста): с 1 процес минава за 7,4 min, с 2 — за 4,5–5,0 min, а с 4 (подразбиращото се на Playwright) пада тестът за 404 на скрита личност: при това натоварване проверката на личността в proxy минава срока си от 500 ms и страницата отговаря сама със статус 200 (раздел 11). Ако едновременно върви друга тежка работа, и 2 процеса могат да изпуснат този срок или `statement_timeout` от 2 s; тогава ползвайте 1.
 - **Краищата на редовете** остават LF (`.gitattributes`), каквото и да казва `core.autocrlf`.
 
-При обновяване (раздел 4) влезте в папката на хранилището на диска на Windows вместо `~/src/wingchunroots` и дайте на `nvm use` версията от `.nvmrc` (например `nvm use 24`).
+При обновяване (раздел 4) влезте в папката на хранилището на диска на Windows вместо `~/src/wingchunroots` и дайте на `nvm use` версията от `.nvmrc` (например `nvm use 26.12.1`).
 
 ## 3. Спиране
 
@@ -294,7 +294,7 @@ Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, м
 
 Базовите снимки се сменят само с commit. Когато екранът е променен нарочно, CI пада на тези тестове и печата новите снимки в лога на задачата `verify` (стъпка „Print the visual regression screenshots that match no baseline“). Обновяване:
 
-1. В GitHub отворете неуспешното изпълнение на `ci` в PR → задачата `verify (Node 24, PostgreSQL 18, Playwright)`.
+1. В GitHub отворете неуспешното изпълнение на `ci` в PR → задачата `verify (Node 26, PostgreSQL 18, Playwright)`.
 2. Вземете снимките по един от двата начина:
    - артефакта `verify-log` (бутонът *Artifacts* долу на страницата на изпълнението): разархивирайте го, например в `~/Downloads/verify-log`; там е и отчетът на Playwright (`playwright-report/index.html`), който показва разликите;
    - или лога на задачата (⋯ → *Download log archive*): разархивирайте и вземете файла на задачата `verify`.

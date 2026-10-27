@@ -26,7 +26,7 @@ The full table, with reasons and deviations, is in `docs/adr/0001-stack.md`. Pin
 
 | Layer | Version |
 |---|---|
-| Node.js | 24 LTS in `.nvmrc` (CI, Docker); `engines.node` `>=22.12` (cloud sessions run Node 22) |
+| Node.js | 26.12.1 in `.nvmrc` (CI, Docker, cloud sessions); `engines.node` `>=26.12.1` (a security release; `scripts/cloud-setup.sh` installs it from nodejs.org) |
 | pnpm | 12.14.0 (`packageManager`; install with `npm install --global pnpm@<version>`, never Corepack) |
 | Next.js | 16.4.1 — App Router, Turbopack, Cache Components, Partial Prefetching, React Compiler |
 | React | 19.3.1 |
@@ -63,10 +63,10 @@ Rules:
 
 ### Environments
 
-- **Cloud session (this sandbox):** no Docker daemon; apt.postgresql.org is blocked. The SessionStart hook (`.claude/settings.json` → `scripts/cloud-setup.sh`) installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive, creates `wingchunroots_test` (UTF8, `C.UTF-8`) and exports `TEST_DATABASE_URL`. If those variables are missing, run `eval "$(scripts/cloud-setup.sh --print-env)"`.
+- **Cloud session (this sandbox):** the preinstalled Node is older than `.nvmrc`, so the SessionStart hook installs Node 26.12.1 (checksum-verified) and puts it first on `PATH`; no Docker daemon; apt.postgresql.org is blocked. The SessionStart hook (`.claude/settings.json` → `scripts/cloud-setup.sh`) installs PostgreSQL 16 + PostGIS 3.4 from the Ubuntu archive, creates `wingchunroots_test` (UTF8, `C.UTF-8`) and exports `TEST_DATABASE_URL`. If those variables are missing, run `eval "$(scripts/cloud-setup.sh --print-env)"`.
 - **Browsers:** never run `playwright install` in a cloud session. The preinstalled Chromium is used through `PW_CHROMIUM_EXECUTABLE` when the pinned Playwright expects another build. `mobile-webkit` runs only in CI (`CI=true`).
 - **Local (owner):** Windows with Docker Desktop + WSL2, repository inside the WSL2 filesystem; `docker compose up -d --wait` (PostGIS 18-3.6, Mailpit, SeaweedFS). See `README.md`.
-- **Local, Windows without WSL2:** a second, slower path; WSL2 stays the main one (plan §7.6, ADR 0001). Repository on a Windows drive, commands in Git Bash; Node 24 via nvm for Windows, pnpm via `npm install --global` (not Corepack), psql 15+ on `PATH`, `POSTGRES_PORT=5433` (and the port in `DATABASE_URL`/`TEST_DATABASE_URL`) when a native PostgreSQL holds 5432, `PW_WORKERS=2` for E2E (Playwright's default overruns the proxy's 500 ms person check): `scripts/verify.sh` reads it from `.env`, while a bare `pnpm e2e` reads only the environment, so export it or run `PW_WORKERS=2 pnpm e2e`. Measured there with `scripts/verify.sh M04`. Code and tests stay path-agnostic: compare paths with `/` separators, start Node CLIs through `process.execPath` and pnpm through `npm_execpath` (`pnpmCommand` in `scripts/lib/notices.ts`), never `node_modules/.bin/*` or a bare `pnpm` without a shell. See `README.md` and `docs/guides/admin-guide.bg.md` §2.
+- **Local, Windows without WSL2:** a second, slower path; WSL2 stays the main one (plan §7.6, ADR 0001). Repository on a Windows drive, commands in Git Bash; Node 26.12.1 via nvm for Windows, pnpm via `npm install --global` (not Corepack), psql 15+ on `PATH`, `POSTGRES_PORT=5433` (and the port in `DATABASE_URL`/`TEST_DATABASE_URL`) when a native PostgreSQL holds 5432, `PW_WORKERS=2` for E2E (Playwright's default overruns the proxy's 500 ms person check): `scripts/verify.sh` reads it from `.env`, while a bare `pnpm e2e` reads only the environment, so export it or run `PW_WORKERS=2 pnpm e2e`. Measured there with `scripts/verify.sh M04`. Code and tests stay path-agnostic: compare paths with `/` separators, start Node CLIs through `process.execPath` and pnpm through `npm_execpath` (`pnpmCommand` in `scripts/lib/notices.ts`), never `node_modules/.bin/*` or a bare `pnpm` without a shell. See `README.md` and `docs/guides/admin-guide.bg.md` §2.
 - **CI:** GitHub Actions, required check `ci`; PostgreSQL 18 service container; Chromium and WebKit.
 
 ## 5. Module boundaries (plan §6.1)
