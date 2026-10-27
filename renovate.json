@@ -51,12 +51,12 @@
       "allowedVersions": "<10"
     },
     {
-      "description": "Types follow the Node 24 LTS baseline (.nvmrc); Node 26 is a separate goal (plan §9).",
+      "description": "Types follow the Node 26 baseline (.nvmrc).",
       "matchPackageNames": ["@types/node"],
-      "allowedVersions": "<25"
+      "allowedVersions": "<27"
     },
     {
-      "description": "engines.node stays a range (>=22.12) so cloud sessions on Node 22 keep working; never pin it.",
+      "description": "engines.node is the .nvmrc floor (>=26.12.1, a security release) and changes only with .nvmrc.",
       "matchDepTypes": ["engines"],
       "enabled": false
     },

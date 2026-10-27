@@ -31,7 +31,7 @@ cd "$ROOT" || exit 2
 . scripts/lib/psql.sh
 
 MILESTONES=(M00 M00b M01 M01b M02 M03 M04 M05 M06 M07 M08 M09 M10a M10b M11 M12 M13)
-MIN_NODE="22.12.0"
+MIN_NODE="26.12.1"
 
 usage() {
   echo "usage: scripts/verify.sh <milestone|all>   (milestones: ${MILESTONES[*]})" >&2

@@ -81,7 +81,7 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [@types/d3-selection](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection) | 3.0.12 | MIT | [text 13](#licence-text-13) |
 | [@types/d3-transition](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-transition) | 3.0.9 | MIT | [text 13](#licence-text-13) |
 | [@types/d3-zoom](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom) | 3.0.9 | MIT | [text 13](#licence-text-13) |
-| [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) | 24.19.2 | MIT | [text 13](#licence-text-13) |
+| [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) | 26.6.5 | MIT | [text 13](#licence-text-13) |
 | [@types/ws](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ws) | 8.18.2 | MIT | [text 13](#licence-text-13) |
 | [@xyflow/react](https://reactflow.dev/) | 12.12.0 | MIT | [text 3](#licence-text-3) |
 | [@xyflow/system](https://github.com/xyflow/xyflow#readme) | 0.0.83 | MIT | [text 3](#licence-text-3) |
@@ -236,7 +236,7 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 59](#licence-text-59) |
 | [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | [text 60](#licence-text-60) |
 | [uint8array-extras](https://github.com/sindresorhus/uint8array-extras#readme) | 1.6.0 | MIT | [text 22](#licence-text-22) |
-| [undici-types](https://undici.nodejs.org/) | 7.24.6 | MIT | [text 3](#licence-text-3) |
+| [undici-types](https://undici.nodejs.org/) | 8.9.0 | MIT | [text 3](#licence-text-3) |
 | [uqr](https://github.com/unjs/uqr#readme) | 0.1.3 | MIT | [text 3](#licence-text-3) |
 | [use-sync-external-store](https://github.com/react/react#readme) | 1.7.0 | MIT | [text 3](#licence-text-3) |
 | [vary](https://github.com/jshttp/vary#readme) | 1.1.2 | MIT | [text 14](#licence-text-14) |
@@ -654,7 +654,7 @@ THE SOFTWARE.
 
 ### Licence text 3
 
-Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @orpc/tanstack-query 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/devtools-event-client 0.4.4, @tanstack/form-core 1.33.5, @tanstack/pacer-lite 0.1.1, @tanstack/query-core 5.104.3, @tanstack/react-form 1.33.5, @tanstack/react-query 5.104.3, @tanstack/react-store 0.11.2, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, @xyflow/react 12.12.0, @xyflow/system 0.0.83, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nuqs 2.10.2, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, pinyin-pro 3.29.5, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 7.24.6, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7, zustand 4.5.7
+Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @orpc/tanstack-query 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/devtools-event-client 0.4.4, @tanstack/form-core 1.33.5, @tanstack/pacer-lite 0.1.1, @tanstack/query-core 5.104.3, @tanstack/react-form 1.33.5, @tanstack/react-query 5.104.3, @tanstack/react-store 0.11.2, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, @xyflow/react 12.12.0, @xyflow/system 0.0.83, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nuqs 2.10.2, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, pinyin-pro 3.29.5, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 8.9.0, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7, zustand 4.5.7
 
 ```text
 Copyright (c) 2019 Material-UI SAS    (@base-ui/react 1.9.0, @base-ui/utils 0.5.0)
@@ -686,7 +686,7 @@ Copyright (c) 2016-present Vercel, Inc.    (styled-jsx 5.1.6)
 Copyright (c) 2021 Dany Castillo    (tailwind-merge 3.7.0)
 Copyright (c) Tailwind Labs, Inc.    (tailwindcss 4.3.3)
 Copyright (c) 2024 Tinylibs    (tinyexec 1.3.1)
-Copyright (c) Matteo Collina and Undici contributors    (undici-types 7.24.6)
+Copyright (c) Matteo Collina and Undici contributors    (undici-types 8.9.0)
 Copyright (c) Project Nayuki    (uqr 0.1.3)
 Copyright (c) 2023 Anthony Fu <https://github.com/antfu>    (uqr 0.1.3)
 Copyright (c) 2025 Colin McDonnell    (zod 4.6.7)
@@ -1404,10 +1404,10 @@ limitations under the License.
 
 ### Licence text 13
 
-Used by: @types/cors 2.8.19, @types/d3-color 3.1.3, @types/d3-drag 3.0.7, @types/d3-interpolate 3.0.4, @types/d3-selection 3.0.12, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.9, @types/node 24.19.2, @types/ws 8.18.2
+Used by: @types/cors 2.8.19, @types/d3-color 3.1.3, @types/d3-drag 3.0.7, @types/d3-interpolate 3.0.4, @types/d3-selection 3.0.12, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.9, @types/node 26.6.5, @types/ws 8.18.2
 
 ```text
-Copyright (c) Microsoft Corporation.    (@types/cors 2.8.19, @types/d3-color 3.1.3, @types/d3-drag 3.0.7, @types/d3-interpolate 3.0.4, @types/d3-selection 3.0.12, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.9, @types/node 24.19.2, @types/ws 8.18.2)
+Copyright (c) Microsoft Corporation.    (@types/cors 2.8.19, @types/d3-color 3.1.3, @types/d3-drag 3.0.7, @types/d3-interpolate 3.0.4, @types/d3-selection 3.0.12, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.9, @types/node 26.6.5, @types/ws 8.18.2)
 ```
 
 ```text

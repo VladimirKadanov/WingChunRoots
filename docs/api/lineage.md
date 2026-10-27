@@ -22,7 +22,7 @@
 - **`/api/rpc`** — протоколът на oRPC за уеб клиента (`POST /api/rpc/lineage/ego` с тяло `{"json": {…}}`). Заявка с бисквитка на сесия трябва да носи `Origin`, равен на `APP_URL` (защита от CSRF, `docs/adr/0004-auth.md`).
 - **`/api/v1`** — OpenAPI (REST) за бъдещото мобилно приложение: `GET` с параметри в адреса, например `GET /api/v1/lineage/ego?focusId=<uuid>&up=2&down=2&fanoutLimit=50`.
 
-Договорът е **[`docs/api/openapi.json`](openapi.json)**. Генерира се от рутера с `pnpm api:openapi` и не се редактира на ръка. `pnpm api:openapi --check` излиза със статус 1, ако записаният файл се различава от рутера; проверката върви в CI (задачата `node22` и `scripts/verify.d/M04.sh` в задачата `verify`). Файлът е детерминиран: същият рутер дава същите байтове.
+Договорът е **[`docs/api/openapi.json`](openapi.json)**. Генерира се от рутера с `pnpm api:openapi` и не се редактира на ръка. `pnpm api:openapi --check` излиза със статус 1, ако записаният файл се различава от рутера; проверката върви в CI (отделна стъпка и `scripts/verify.d/M04.sh` в задачата `verify`). Файлът е детерминиран: същият рутер дава същите байтове.
 
 ## 2. Процедури
 
