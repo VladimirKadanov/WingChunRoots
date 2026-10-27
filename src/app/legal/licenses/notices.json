@@ -586,7 +586,7 @@
     },
     {
       "name": "@types/node",
-      "version": "24.19.2",
+      "version": "26.6.5",
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node",
@@ -1826,7 +1826,7 @@
     },
     {
       "name": "undici-types",
-      "version": "7.24.6",
+      "version": "8.9.0",
       "license": "MIT",
       "author": null,
       "homepage": "https://undici.nodejs.org/",
@@ -2213,7 +2213,7 @@
       {
         "line": "Copyright (c) Matteo Collina and Undici contributors",
         "packages": [
-          "undici-types 7.24.6"
+          "undici-types 8.9.0"
         ]
       },
       {
@@ -2352,7 +2352,7 @@
           "@types/d3-selection 3.0.12",
           "@types/d3-transition 3.0.9",
           "@types/d3-zoom 3.0.9",
-          "@types/node 24.19.2",
+          "@types/node 26.6.5",
           "@types/ws 8.18.2"
         ]
       }
