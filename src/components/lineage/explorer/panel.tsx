@@ -22,6 +22,7 @@ import type { GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
 import type { CanvasHandle, NodeActions, PanelHandle } from './graph-api';
 import { explorerHref, type ExplorerParams, viewKind } from './state';
+import { StudentsList } from './students-list';
 
 /** What the panel shows: the selected person, or the students of a teacher (the summary node "and N more"). */
 export type PanelMode = { kind: 'person'; id: string } | { kind: 'students'; teacherId: string };
@@ -61,9 +62,39 @@ export interface PanelProps {
   canvas: RefObject<CanvasHandle | null>;
 }
 
-export default function ExplorerPanel({ open, mode, person, generation, more, openProfile, url, setUrl, onClose, handle }: PanelProps) {
+// M06 seam: students (C). The panel's place and frame for a teacher's students, as the person's below.
+const STUDENTS_PANEL =
+  'grid max-h-[50%] shrink-0 content-start gap-3 overflow-y-auto overscroll-contain border-t border-border-strong bg-surface-1 py-4 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:absolute md:top-3 md:right-[calc(max(0.75rem,env(safe-area-inset-right,0px))+3.5rem)] md:z-20 md:max-h-[calc(100%-1.5rem)] md:w-[min(22rem,calc(100%-5rem))] md:rounded-sm md:border md:p-4 md:shadow-pop';
+
+export default function ExplorerPanel({ open, mode, graph, person, generation, more, openProfile, url, setUrl, onClose, handle }: PanelProps) {
   // No sheet here yet: Esc never collapses it (package B).
   useImperativeHandle(handle, () => ({ collapse: () => false }), []);
+  // M06 seam: students (C). The students of a teacher: the summary node "and N more", or "+N
+  // students" beyond the cap (package C; package B gives it the phone's sheet).
+  const teacher = open && mode?.kind === 'students' ? graph.nodes.find((n) => n.id === mode.teacherId) : undefined;
+  if (teacher) {
+    return (
+      <section aria-labelledby="explorer-students-heading" data-testid="explorer-panel" data-canvas-cover="" className={STUDENTS_PANEL}>
+        <div className="flex items-start justify-between gap-2">
+          <h2 id="explorer-students-heading" className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
+            Students of{' '}
+            <span lang="und-Latn" translate="no">
+              {teacher.displayName}
+            </span>
+          </h2>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
+          >
+            <CloseIcon size={18} />
+          </button>
+        </div>
+        <StudentsList key={teacher.id} teacherId={teacher.id} slug={teacher.slug} name={teacher.displayName} />
+      </section>
+    );
+  }
   if (!open || mode?.kind !== 'person' || !person) return null;
   const kind = viewKind(url);
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
