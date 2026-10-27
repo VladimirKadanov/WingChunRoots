@@ -6,14 +6,34 @@
 //
 // Package F wires the live region in canvas.tsx and the announcer below; package A writes the words.
 
+import { generationText } from '../generation';
+import type { PersonNode } from './canvas';
 import type { FlowNode } from './graph-api';
+import { isSummaryId } from './state';
 
 /** The quiet after a key move before its words are spoken (DEFAULT, no D number). */
 export const ANNOUNCE_DELAY = 250;
 
-/** The words for the node a key move landed on. Package F's stub: the name (a summary node: its label). */
+const counted = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The words for the node a key move landed on: "{name}. {Status}. {T} teachers, {S} students.
+ * {generation label}." The status is the card's (the line into the person drawn, display-primary
+ * first); a person with no line drawn into them reads as the card does, "Root of this lineage." or
+ * "Top of this view.". The counts are the record's (public): the teachers in the answer and those
+ * it left out, and every student (explorer.tsx flowBase `totals`), not only those drawn.
+ * DEFAULT D22: the generation label is the card's (generationText), "Generation N from {root}"
+ * only on a verified chain to the lineage's recorded root, else "N generations below {name} in
+ * this view"; none for the top of the view. A summary node says its name, "and N more students
+ * of {name}".
+ */
 export function announce(node: FlowNode): string {
-  return node.type === 'more' ? (node.ariaLabel ?? '') : node.data.name;
+  if (isSummaryId(node.id)) return `${node.ariaLabel ?? ''}.`;
+  const { data } = node as PersonNode;
+  const status = data.status ? data.status.label : data.root ? 'Root of this lineage' : 'Top of this view';
+  const parts = [data.name, status, `${counted(data.totals.teachers, 'teacher', 'teachers')}, ${counted(data.totals.students, 'student', 'students')}`];
+  if (data.generation) parts.push(generationText(data.generation));
+  return parts.map((part) => `${part}.`).join(' ');
 }
 
 export interface Announcer {
