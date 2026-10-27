@@ -320,7 +320,8 @@ export function uncoveredNode(page: Page, skip: readonly string[]): Promise<stri
   return page.evaluate((skipped) => {
     for (const el of document.querySelectorAll<HTMLElement>('.react-flow__node')) {
       const id = el.dataset.id;
-      if (!id || skipped.includes(id)) continue;
+      // A person's node only (M06): the summary node "and N more" is not a person to select.
+      if (!id || skipped.includes(id) || !el.querySelector('[data-person-node]')) continue;
       const box = el.getBoundingClientRect();
       const x = box.x + box.width / 2;
       const y = box.y + box.height / 2;
