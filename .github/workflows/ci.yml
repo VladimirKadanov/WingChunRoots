@@ -85,6 +85,8 @@ jobs:
         run: npm install --global "pnpm@$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '')")"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # M04: docs/api/openapi.json matches the router (plan §6.8); fails fast, before the long run.
+      - run: pnpm api:openapi --check
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: Install the PostgreSQL client
