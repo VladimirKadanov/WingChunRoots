@@ -82,8 +82,9 @@ export interface CanvasHandle {
   /** The active node's element when it is drawn. */
   activeElement(): HTMLElement | null;
   /**
-   * Moves the view so that this node (default: the active one) is wholly in the visible area,
-   * once the view's running moves (a zoom button's, a new scene's fit) have ended.
+   * Moves the view so that this node (default: the one active by then) is wholly in the visible
+   * area, once the view's running moves (a zoom button's, a new scene's fit) have ended; a newer
+   * call, a move to another node, a pan or a zoom by the user cancels a call still waiting.
    */
   ensureVisible(id?: string): void;
   /** Moves the keyboard focus to the active node (after ensureVisible). */

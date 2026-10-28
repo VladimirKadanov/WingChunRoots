@@ -2,12 +2,12 @@
 // starts, the moves of the view take the motion tokens, and every fit of the whole view stops at
 // the cards' own size.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom, wholeViewStart } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
@@ -458,6 +458,54 @@ describe('the moves of the view', () => {
     // An ease-out curve: ahead of the clock all the way.
     expect(out(0.5)).toBeGreaterThan(0.5);
     expect(() => cubicBezier('ease-out')).toThrow();
+  });
+});
+
+describe('a reveal that waits for the view\'s running moves (CanvasHandle ensureVisible)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('runs at once while no move runs', () => {
+    const then = vi.fn();
+    whenMovesEnd({ current: 0 }, then);
+    expect(then).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits while a move runs, and runs once it has ended', () => {
+    vi.useFakeTimers();
+    const moves = { current: 1 };
+    const then = vi.fn();
+    whenMovesEnd(moves, then);
+    vi.advanceTimersByTime(200);
+    expect(then).not.toHaveBeenCalled();
+    moves.current = 0;
+    vi.advanceTimersByTime(16);
+    expect(then).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(then).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs a second later at most, for a move that never ends', () => {
+    vi.useFakeTimers();
+    const then = vi.fn();
+    whenMovesEnd({ current: 1 }, then);
+    vi.advanceTimersByTime(990);
+    expect(then).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(30);
+    expect(then).toHaveBeenCalledTimes(1);
+  });
+
+  it('never runs once cancelled: a newer reveal, a move to another node, a pan by the user', () => {
+    vi.useFakeTimers();
+    const moves = { current: 1 };
+    const then = vi.fn();
+    const cancel = whenMovesEnd(moves, then);
+    vi.advanceTimersByTime(100);
+    cancel();
+    moves.current = 0;
+    vi.advanceTimersByTime(2000);
+    expect(then).not.toHaveBeenCalled();
   });
 });
 

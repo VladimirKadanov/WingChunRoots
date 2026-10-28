@@ -505,6 +505,23 @@ function trackMove(moves: Moves, duration: number, move: Promise<unknown>): void
   window.setTimeout(end, duration + 500);
 }
 
+/**
+ * Runs `then` once the view's running moves (trackMove) have ended, at once when none runs: a move
+ * of the view meanwhile would stop them short. Looked at every 16 ms, for at most `limit` ms (a
+ * move something else stopped counts for a while). Returns what cancels it.
+ */
+export function whenMovesEnd(moves: { readonly current: number }, then: () => void, limit = 1000): () => void {
+  const start = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const step = () => {
+    timer = undefined;
+    if (moves.current > 0 && Date.now() - start < limit) timer = setTimeout(step, 16);
+    else then();
+  };
+  step();
+  return () => clearTimeout(timer);
+}
+
 // M06 seam: zoom-controls (F wires; package D lays the buttons out and owns the Fit handler)
 /**
  * The view's moves of the buttons over the canvas, with the motion tokens (at once under
@@ -1355,7 +1372,19 @@ function useRoving({
     observer.observe(root, { childList: true, subtree: true });
     waiting.current = { id, stop };
   };
-  useEffect(() => () => waiting.current?.stop(), []);
+  // A reveal waiting for the view's running moves to end (revealWhenStill): what cancels it.
+  const revealing = useRef<(() => void) | null>(null);
+  const cancelReveal = () => {
+    revealing.current?.();
+    revealing.current = null;
+  };
+  useEffect(
+    () => () => {
+      waiting.current?.stop();
+      revealing.current?.();
+    },
+    [],
+  );
 
   /** Moves the view, if it must, so that the node is wholly in the visible area (viewport.ts ensureVisible). */
   const reveal = (id: string) => {
@@ -1370,7 +1399,28 @@ function useRoving({
     trackMove(moves, move.duration, s.panZoom.setViewport(next, move));
   };
 
+  /**
+   * Reveals this node, or without one the node active by then, once the view's running moves have
+   * ended (whenMovesEnd: CanvasHandle ensureVisible). A newer reveal, a move to another node, a pan
+   * or a zoom by the user (moveStart) and the canvas leaving cancel it, so it never takes the view
+   * back to a person the user has left.
+   */
+  const revealWhenStill = (id?: string) => {
+    cancelReveal();
+    revealing.current = whenMovesEnd(moves, () => {
+      revealing.current = null;
+      const target = id ?? latest.current.active;
+      if (target !== null) reveal(target);
+    });
+  };
+
+  /** React Flow's onMoveStart: a pan or a zoom by the user (an event; none for the view's own moves) cancels a waiting reveal. */
+  const moveStart = (event: MouseEvent | TouchEvent | null) => {
+    if (event) cancelReveal();
+  };
+
   const setActive = (id: string, options: ActiveOptions = {}) => {
+    if (id !== latest.current.active) cancelReveal();
     setChosen(id);
     // A newer choice (a click, another key) replaces a focus move still on its way.
     waiting.current?.stop();
@@ -1477,7 +1527,7 @@ function useRoving({
     event.preventDefault();
   };
 
-  return { active, rfNodes, setActive, retarget, lost, controlsLost, keepFocus, reveal, whenDrawn, latest };
+  return { active, rfNodes, setActive, retarget, lost, controlsLost, keepFocus, revealWhenStill, moveStart, whenDrawn, latest };
 }
 
 export default function ExplorerCanvas(props: CanvasProps) {
@@ -1561,18 +1611,9 @@ function CanvasFrame({
         const id = roving.latest.current.active;
         return id === null ? null : elementOf(store.getState().domNode, id);
       },
-      ensureVisible: (id) => {
-        const target = id ?? roving.latest.current.active;
-        if (target === null) return;
-        // Once the view's running moves (a zoom button's, a new scene's fit) have ended: a move
-        // now would stop them short (trackMove). At most a second later.
-        const start = performance.now();
-        const reveal = () => {
-          if (moves.current > 0 && performance.now() - start < 1000) window.setTimeout(reveal, 16);
-          else roving.reveal(target);
-        };
-        reveal();
-      },
+      // Once the view's running moves (a zoom button's, a new scene's fit) have ended: a move now
+      // would stop them short (trackMove). At most a second later, and never for a node left behind.
+      ensureVisible: (id) => roving.revealWhenStill(id),
       focusActive: () => {
         const target = roving.latest.current.active;
         if (target !== null) setActive(target, { focus: true });
@@ -1677,6 +1718,7 @@ function CanvasFrame({
                 else select(node.id);
               }}
               onPaneClick={() => select(null)}
+              onMoveStart={roving.moveStart}
               onMoveEnd={roving.retarget}
               deleteKeyCode={null}
               aria-label="Lineage graph"

@@ -23,6 +23,7 @@ export const TIMED = ['src/lib/lineage-layout/layout.perf.test.ts', 'src/lib/lin
  * however it did so.
  */
 export const ISOLATED = [
+  'src/components/lineage/explorer/canvas.test.ts',
   'src/lib/lineage-layout/layout.worker.test.ts',
   'src/proxy.test.ts',
   'src/server/auth/answer-floor.test.ts',
