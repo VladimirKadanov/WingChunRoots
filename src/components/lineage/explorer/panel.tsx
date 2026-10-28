@@ -190,6 +190,8 @@ export default function ExplorerPanel(props: PanelProps) {
 
   const shown = subject.person;
   const students = subject.mode?.kind === 'students' ? subject.teacher : null;
+  // The body shown: this subject's, or while it is a step behind, the last person's (kept unseen below).
+  const kept = body ?? (deferred.mode?.kind === 'person' ? deferred : null);
   const title = students ? (
     <>
       Students of <LatinName name={students.displayName} />
@@ -248,8 +250,13 @@ export default function ExplorerPanel(props: PanelProps) {
     >
       {students ? (
         <StudentsList key={students.id} teacherId={students.id} slug={students.slug} name={students.displayName} />
-      ) : body?.person ? (
-        <PersonBody subject={body} person={body.person} url={url} setUrl={setUrl} actions={props.actions} kind={kind} />
+      ) : kept?.person ? (
+        // While the next person's body is a step behind, the last one keeps its place, unseen and
+        // inert: the sheet keeps its height, so the room it takes from the page (and the canvas
+        // frame above it) does not jump to the header and back on every selection.
+        <div inert={kept !== body || undefined} className={kept !== body ? 'invisible' : undefined}>
+          <PersonBody subject={kept} person={kept.person} url={url} setUrl={setUrl} actions={props.actions} kind={kind} />
+        </div>
       ) : null}
     </Drawer>
   );

@@ -223,7 +223,7 @@ export function Drawer({
   });
 
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
-  useSheetRoom(open, side, modal, viewport, popup, header);
+  useSheetRoom(open, side, modal, viewport, popup, header, snapPoints ? (snapPoints[Math.min(snapIndex, lastIndex)] ?? null) : null);
 
   // Below full height the lower part of the sheet is off screen. A focus that lands there (Tab,
   // or a script restoring focus) expands the sheet first, so the focused control is never hidden
@@ -421,8 +421,25 @@ function topInset(): number {
 }
 
 /**
+ * How tall a sheet resting at this snap point is, as Base UI resolves it (useDrawerSnapPoints): a
+ * fraction of the viewport up to 1, px above it or as a px or rem string, never taller than the
+ * popup or the viewport; null for a value Base UI does not resolve either.
+ */
+function restingHeight(point: SnapPoint, popup: number, viewport: number): number | null {
+  let height: number | null = null;
+  if (typeof point === 'number') height = point <= 1 ? Math.max(0, point) * viewport : point;
+  else if (point.trim().endsWith('px')) height = Number.parseFloat(point);
+  else if (point.trim().endsWith('rem')) height = Number.parseFloat(point) * (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+  return height === null || !Number.isFinite(height) ? null : Math.min(Math.max(0, height), popup, viewport);
+}
+
+/**
  * Publishes the room an open sheet takes. The snap offset comes from the popup's inline style
- * (Base UI), so the page is restyled only when the snap point or a size changes.
+ * (Base UI), so the page is restyled only when the snap point or a size changes. With snap points
+ * the room is the height of the one the sheet rests at (`rest`), resolved as Base UI resolves it:
+ * Base UI sets the offset a render after it measures a new popup height, so a new height read
+ * with the old offset (the sheet's content changes: another person selected in the explorer)
+ * would publish, for a frame, a room the sheet never takes.
  */
 function useSheetRoom(
   open: boolean,
@@ -431,6 +448,7 @@ function useSheetRoom(
   viewport: HTMLElement | null,
   popup: HTMLElement | null,
   header: HTMLElement | null,
+  rest: SnapPoint | null,
 ) {
   // One key per sheet, and one place in the opening order per opening: the effect below runs
   // again when the sheet turns into a side panel or its elements change, and must not move the
@@ -456,7 +474,8 @@ function useSheetRoom(
       offset = next;
       // The insets change only with the window (rotation), which resizes the viewport.
       if (force) inset = topInset();
-      const visible = Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
+      const resting = rest === null ? null : restingHeight(rest, popup.offsetHeight, viewport.offsetHeight);
+      const visible = resting ?? Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
       const bottom = viewport.getBoundingClientRect().bottom;
       const top = bottom - visible;
       // The popup's 1 px top border, then the header.
@@ -491,5 +510,5 @@ function useSheetRoom(
       rooms.delete(key);
       publishRooms();
     };
-  }, [key, open, side, modal, viewport, popup, header]);
+  }, [key, open, side, modal, viewport, popup, header, rest]);
 }
