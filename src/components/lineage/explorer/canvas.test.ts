@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom, wholeViewStart } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom, wholeViewStart } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
@@ -377,6 +377,29 @@ describe('the first view of a scene', () => {
       expect(start).not.toBeNull();
       expect(start.zoom).toBe(DETAIL_ZOOM.full);
       expect(onScreen(scene, 'focus', start, tallLegend)).toBe(true);
+    });
+
+    it('"Fit the whole view" fits it whole clear of the overlays even where that makes every person a dot (screens-6)', () => {
+      // The same pane: the first view opens like a large view, but the button shows all of it, in
+      // dots, with nobody under the legend or the buttons (not React Flow's fit, which draws its
+      // lower rows under the legend).
+      const scene = twoLineages();
+      const tallLegend = { ...short, overlays: [{ x: 12, y: 150, width: 305, height: 190 }, buttons] };
+      const fit = wholeFitZoom(scene.nodes, tallLegend);
+      const centred = { x: 12 + 457 / 2, y: 12 + 436 / 2, zoom: fit };
+      expect(overlap(drawnBox(scene, 'student-a', centred, tallLegend), tallLegend.overlays[0]!)).toBe(true);
+      const start = fitViewStart(scene, new Set(), tallLegend)!;
+      expect(start).not.toBeNull();
+      expect(start.zoom).toBeLessThan(READABLE_ZOOM);
+      expect(start.zoom).toBeLessThanOrEqual(fit);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, start, tallLegend), n.id).toBe(true);
+        for (const overlay of tallLegend.overlays) expect(overlap(paneBox(scene, n.id, start, tallLegend), overlay), `${n.id} under an overlay`).toBe(false);
+      }
+      // Where the first view fits it whole clear of the overlays, the button shows that same view.
+      expect(fitViewStart(scene, new Set(), short)).toEqual(wholeViewStart(scene, new Set(), short));
+      // Where React Flow's fit draws everyone clear (nothing over the pane), the button keeps it.
+      expect(fitViewStart(scene, new Set(), { width: short.width, height: short.height })).toBeNull();
     });
   });
 

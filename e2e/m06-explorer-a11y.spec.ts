@@ -17,7 +17,7 @@ import { captureScenes, installInpProbes, personNameOf, selectionInp, settledVie
 import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf, walkToSummary } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
 import { drawnEdges, litIds, recordPaths, routesUp, searchOf, tappableAtCentre } from './helpers/m06-panel';
-import { controlProblems, dragSheetToHalf, isSheet, PHONES, settledTop, startMotion, stopMotion, wholeAndUncovered } from './helpers/m06-touch';
+import { cardsUnderOverlays, controlProblems, dragSheetToHalf, isSheet, PHONES, settledTop, startMotion, stopMotion, wholeAndUncovered } from './helpers/m06-touch';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
 
@@ -431,6 +431,27 @@ test.describe('selection (B)', () => {
     // A tap on "Open profile" opens the person's profile.
     await profile.tap();
     await expect(page).toHaveURL(/\/people\/demo-two-lineages$/);
+  });
+
+  test('@M06 on a short phone "Fit the whole view" with the sheet at its peek draws nobody under the legend or the zoom buttons', async ({ page }) => {
+    // screens-6: at the peek of a 393x659 phone's sheet the canvas is about 215 px tall, the legend
+    // wraps to two lines and the buttons stand in two rows; React Flow's own fit drew the selected
+    // person's students under the legend. The button's fit keeps everyone clear, in dots if it must.
+    await page.setViewportSize({ width: 393, height: 659 });
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    await nodeOf(page, id).tap();
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    expect(await isSheet(panel), 'the panel is the bottom sheet').toBe(true);
+    await settledTop(panel.locator('xpath=ancestor-or-self::*[@role="dialog"][1]'));
+    await settledView(page);
+    await page.getByRole('button', { name: 'Fit the whole view' }).tap();
+    await settledView(page);
+    await expect(nodeOf(page, id), 'the selected person is drawn').toHaveCount(1);
+    expect(await page.locator('.react-flow__node [data-person-node]').count(), 'the whole view is drawn').toBeGreaterThanOrEqual(7);
+    expect(await cardsUnderOverlays(page), 'every person whole on the canvas, clear of the legend and the buttons').toEqual([]);
   });
 
   test('@M06 on a phone a selection that opens the bottom sheet responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {

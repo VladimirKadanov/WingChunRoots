@@ -509,10 +509,9 @@ function trackMove(moves: Moves, duration: number, move: Promise<unknown>): void
 /**
  * The view's moves of the buttons over the canvas, with the motion tokens (at once under
  * prefers-reduced-motion); the keys (+, −, 0) make the same moves. "Fit the whole view" shows the
- * whole view as the first view of a small scene does (wholeViewStart: React Flow's fit, or, where
- * that would draw a person under the legend or the buttons, the fit clear of them; milestone M06
- * b4), never larger than React Flow's fit (FIT_OPTIONS); a large scene, whose whole view is all
- * dots, gets React Flow's fit.
+ * whole view (fitViewStart: React Flow's fit, or, where that would draw a person under the legend
+ * or the buttons, the fit clear of them, at any zoom; milestone M06 b4), never larger than React
+ * Flow's fit (FIT_OPTIONS).
  */
 function useViewButtons(moves: Moves, scene: Scene) {
   const flow = useReactFlow<FlowNode, LineageEdge>();
@@ -525,7 +524,7 @@ function useViewButtons(moves: Moves, scene: Scene) {
     const { nodes, edges, width, height, domNode } = store.getState();
     // What is drawn now: ended training only with show=historical or the selection's own.
     const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
-    const start = width > 0 && height > 0 ? wholeViewStart(scene, hidden, { width, height, overlays: overlaysOn(domNode) }) : null;
+    const start = width > 0 && height > 0 ? fitViewStart(scene, hidden, { width, height, overlays: overlaysOn(domNode) }) : null;
     return start ? flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move }) : flow.fitView({ ...FIT_OPTIONS, ...move });
   };
   return {
@@ -823,6 +822,21 @@ export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
   if (people.length === 0) return null;
   const whole = wholeView(people, pane);
   return whole.zoom >= READABLE_ZOOM ? whole.start : null;
+}
+
+/**
+ * Where "Fit the whole view" (the button, the key 0) puts the view: null for React Flow's fit of
+ * the whole view, or the fit clear of the overlays where that one would draw a person under one
+ * (wholeView), however small. Unlike the first view (wholeViewStart), which opens a scene whose
+ * whole view is all dots like a large one, the button always shows the whole view, in dots where it
+ * must (plan §4.8), and never a person under the legend or the buttons (milestone M06 b4,
+ * screens-6: at the peek of a 393x659 phone's sheet React Flow's fit drew two students under the
+ * legend, where the fit clear of it is in dots).
+ */
+export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
+  const people = scene.nodes.filter((n) => !hidden.has(n.id));
+  if (people.length === 0) return null;
+  return wholeView(people, pane).start;
 }
 
 /**

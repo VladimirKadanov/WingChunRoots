@@ -207,3 +207,38 @@ export function stopMotion(page: Page): Promise<Motion> {
     return { frames: motion.frames, views: motion.views, places: motion.places, between: motion.between };
   });
 }
+
+/**
+ * What is wrong with the people drawn on the canvas, one line each (empty: nothing): a person's
+ * (or a summary node's) card as drawn at its level of detail that is not whole on the canvas
+ * frame, or that meets the legend or the zoom buttons (the box of the buttons' overlay, whatever
+ * way they lie). After "Fit the whole view", where everyone is drawn, it must be empty (milestone
+ * M06 b4, screens-6).
+ */
+export function cardsUnderOverlays(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const frame = document.querySelector('[data-canvas-frame]')?.getBoundingClientRect();
+    if (!frame) return ['no canvas frame'];
+    const overlays = [
+      ['the legend', document.querySelector('[data-testid="explorer-legend"]')],
+      ['the zoom buttons', document.querySelector('[data-canvas-overlay][data-controls]')],
+    ] as const;
+    const problems: string[] = [];
+    const at = (r: DOMRect) => `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}`;
+    for (const node of document.querySelectorAll<HTMLElement>('.react-flow__node')) {
+      const card = node.querySelector(':scope [data-person-node] > div.absolute, :scope [data-summary-node] > div.absolute');
+      if (!card) continue;
+      const r = card.getBoundingClientRect();
+      const name = node.getAttribute('aria-label')?.split(',')[0] ?? node.dataset.id;
+      if (r.left < frame.left - 0.5 || r.top < frame.top - 0.5 || r.right > frame.right + 0.5 || r.bottom > frame.bottom + 0.5) {
+        problems.push(`${name} at ${at(r)} is not whole on the canvas frame ${at(frame)}`);
+      }
+      for (const [what, el] of overlays) {
+        const o = el?.getBoundingClientRect();
+        if (!o || o.width === 0 || o.height === 0) continue;
+        if (r.left < o.right && o.left < r.right && r.top < o.bottom && o.top < r.bottom) problems.push(`${name} at ${at(r)} meets ${what} at ${at(o)}`);
+      }
+    }
+    return problems;
+  });
+}
