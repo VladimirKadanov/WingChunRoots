@@ -15,6 +15,9 @@ import { activeNodeId, announcement, dragNodeOffScreen, focusedNodeId, focusGrap
 import { captureScenes, installInpProbes, personNameOf, settledView } from './helpers/explorer-checks';
 import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
+import { controlProblems, dragSheetToHalf, isSheet, PHONES, settledTop, startMotion, stopMotion } from './helpers/m06-touch';
+import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
+import { THEMES } from './routes';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -379,5 +382,175 @@ test.describe('expansion (C)', () => {
 
 test.describe('touch and motion (D)', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  // Package D: tests 8, 10 and 12.
+
+  test('@M06 on mobile every explorer control is at least 44x44 CSS px', async ({ page }) => {
+    test.setTimeout(180_000);
+    const id = await personIdOf('demo-two-lineages');
+    const zoom = page.getByRole('group', { name: 'Zoom' });
+    const panel = page.getByTestId('explorer-panel');
+    // The phones of the mobile projects and of the plan's screenshots, the iPhone's short page among them.
+    for (const size of PHONES) {
+      const at = `${size.width}x${size.height}`;
+      await page.setViewportSize(size);
+      await openExplorer(page, { focus: id });
+      await settledView(page);
+      // Nothing selected: the buttons over the canvas in their column, the attribution, the bars.
+      await expect(zoom, `${at}: the zoom buttons are shown`).toBeVisible();
+      await expect.poll(() => controlProblems(page), `${at}, nothing selected`).toEqual([]);
+
+      // A tap on a person opens the selection's panel: on a phone a bottom sheet (package B).
+      await nodeOf(page, id).tap();
+      await expect(panel).toBeVisible();
+      await settledView(page);
+      if (!(await isSheet(panel))) {
+        // A panel in the page under the canvas (M05's), before the sheet.
+        await expect.poll(() => controlProblems(page), `${at}, the panel open`).toEqual([]);
+        continue;
+      }
+      // The sheet at its peek: a shorter canvas, the buttons in a column or a row above the legend.
+      const sheet = panel.locator('xpath=ancestor-or-self::*[@role="dialog"][1]');
+      await settledTop(sheet);
+      await expect(zoom, `${at}: the zoom buttons are shown with the sheet at its peek`).toBeVisible();
+      await expect.poll(() => controlProblems(page), `${at}, the sheet at its peek`).toEqual([]);
+      // At half height: the sheet's buttons, and whatever of the canvas's still fits (on a short
+      // phone a sliver, where the buttons are not shown: their keys still work).
+      await dragSheetToHalf(page, sheet);
+      await expect.poll(() => controlProblems(page), `${at}, the sheet at half height`).toEqual([]);
+    }
+  });
+
+  test.describe('with reduced motion', () => {
+    test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false, reducedMotion: 'reduce' });
+
+    test('@M06 prefers-reduced-motion disables layout animation', async ({ page }) => {
+      test.setTimeout(120_000);
+      const hub = await personIdOf('demo-hub-a');
+      await captureScenes(page);
+      // The generations view of demo-hub-a: one generation of teachers, none of students.
+      await openExplorer(page, { focus: hub, up: 1, down: 0 });
+      await settledView(page);
+      expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), 'the page prefers reduced motion').toBe(true);
+
+      // An expansion ("+N students", package C) lays the view out again: every person is drawn at
+      // their new place at once, never between two places, and the view jumps with the person pressed.
+      // First the hub's own students (drawn below it: nobody moves), then those of its teacher
+      // demo-root-a, which take the row beside the hub and push the hub and its students aside.
+      const moved = new Set<string>();
+      for (const slug of ['demo-hub-a', 'demo-root-a']) {
+        const pressed = await personIdOf(slug);
+        const scenes = (await scenesFor(page, hub)).length;
+        await startMotion(page);
+        await nodeOf(page, pressed).locator('[data-more-chip]').focus();
+        await page.keyboard.press('Enter');
+        await expect.poll(async () => (await scenesFor(page, hub)).length, { timeout: 15_000 }).toBeGreaterThan(scenes);
+        await settledView(page);
+        // Longer than a slide (--duration-slow) would take.
+        await page.waitForTimeout(400);
+        const motion = await stopMotion(page);
+        const added = (await scenesFor(page, hub)).length - scenes;
+        expect(motion.frames, `${slug}: frames sampled`).toBeGreaterThan(20);
+        expect(motion.between, `${slug}: no person drawn between two places`).toEqual([]);
+        for (const [id, places] of Object.entries(motion.places)) {
+          if (places.length > 1) moved.add(id);
+          expect(places.length, `${slug}: ${id} went straight to each new place: ${places.join(' → ')}`).toBeLessThanOrEqual(1 + added);
+        }
+        expect(motion.views.length, `${slug}: the view went straight to its new place: ${motion.views.join(' → ')}`).toBeLessThanOrEqual(1 + added);
+        await expect(page.locator('.explorer-canvas[data-moving]'), `${slug}: the edges were never hidden for a slide`).toHaveCount(0);
+      }
+      expect(moved.size, 'the expansions moved people').toBeGreaterThan(0);
+
+      // The buttons: Fit after a zoom moves the view in one step.
+      await page.getByRole('button', { name: 'Zoom in' }).click();
+      const zoomed = await settledView(page);
+      await startMotion(page);
+      await page.getByRole('button', { name: 'Fit the whole view' }).click();
+      const fitted = await settledView(page);
+      const fit = await stopMotion(page);
+      expect(fitted, 'Fit moved the view').not.toEqual(zoomed);
+      expect(fit.views, `the view went straight from the zoom to the fit: ${fit.views.join(' → ')}`).toHaveLength(2);
+      expect(fit.between).toEqual([]);
+    });
+  });
+
+  test('@M06 no axe violations on /explore at desktop and mobile sizes in dark and light themes', async ({ browser, baseURL }) => {
+    test.setTimeout(300_000);
+    const id = await personIdOf('demo-two-lineages');
+    const name = await personNameOf('demo-two-lineages');
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    for (const size of [
+      { name: 'phone', use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+      { name: 'desktop', use: { viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false } },
+    ]) {
+      const context = await browser.newContext({ ...size.use, baseURL });
+      try {
+        const page = await context.newPage();
+        const press = (target: ReturnType<typeof nodeOf>) => (size.use.hasTouch ? target.tap() : target.click());
+        const check = async (state: string) => {
+          for (const theme of THEMES) {
+            await switchColorScheme(page, theme);
+            await expectNoAxeViolations(page, `/explore at ${size.name} size, ${state}, ${theme} theme`);
+          }
+        };
+        await captureScenes(page);
+        await openExplorer(page, { focus: id });
+        await settledView(page);
+        await check('the person view');
+
+        // The shortcut help.
+        expect(await focusGraph(page)).toBe(id);
+        const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+        await page.keyboard.press('?');
+        await expect(help).toBeVisible();
+        await check('the shortcut help open');
+        await page.keyboard.press('Escape');
+        await expect(help).toHaveCount(0);
+
+        // A selection and its panel (a bottom sheet on a phone).
+        await press(nodeOf(page, id));
+        await expect(page.getByTestId('explorer-panel')).toBeVisible();
+        await settledView(page);
+        await check('a person selected');
+
+        // An expansion: the hub's students and the summary node "and N more".
+        await openExplorer(page, { focus: hub, up: 1, down: 0 });
+        await settledView(page);
+        expect(await focusGraph(page)).toBe(hub);
+        const scenes = (await scenesFor(page, hub)).length;
+        await nodeOf(page, hub).locator('[data-more-chip]').focus();
+        await page.keyboard.press('Enter');
+        await expect.poll(async () => (await scenesFor(page, hub)).length, { timeout: 15_000 }).toBeGreaterThan(scenes);
+        await settledView(page);
+        const summary = summaryNodeOf(page, hub);
+        if ((await summary.count()) === 0) {
+          await press(page.getByRole('button', { name: 'Fit the whole view' }));
+          await settledView(page);
+        }
+        await expect(summary).toHaveCount(1);
+        await check('the hub expanded');
+
+        if (!size.use.isMobile) {
+          // The summary node's list of students (a desktop's panel).
+          await summary.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
+          await page.keyboard.press('Enter');
+          await expect(page.getByTestId('explorer-panel').getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
+          expect((await listedStudents(page, hubName, 1)).length).toBeGreaterThan(0);
+          await check('the list of students open');
+
+          // The teacher chooser: ArrowUp on a person with two teachers drawn.
+          await openExplorer(page, { focus: id });
+          await settledView(page);
+          expect(await focusGraph(page)).toBe(id);
+          await page.keyboard.press('ArrowUp');
+          const chooser = page.getByRole('menu', { name: `Teachers of ${name}` });
+          await expect(chooser).toBeVisible();
+          await check('the teacher chooser open');
+          await page.keyboard.press('Escape');
+          await expect(chooser).toHaveCount(0);
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  });
 });
