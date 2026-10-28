@@ -7,9 +7,9 @@
 // the cap. Previous and Next stay in place on the first and the last page (aria-disabled), so the
 // focus never falls out of the list while paging.
 //
-// The pages come through the explorer's query client (expand.ts reads
-// orpc.people.students.queryOptions(...) for it; expand-state.ts readStudents), so a page read
-// once comes from its cache: this chunk imports neither TanStack Query nor the oRPC client
+// The pages are people.students answers read through the oRPC client and the explorer's query
+// client by expand.ts (useExpansions gives the reader; expand-state.ts readStudents), so a page
+// read once comes from the cache: this chunk imports neither TanStack Query nor the oRPC client
 // (expand-state.ts says why).
 
 import Link from 'next/link';
