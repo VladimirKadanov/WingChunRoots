@@ -7,10 +7,12 @@
 
 import { expect, test } from '@playwright/test';
 
+import { FANOUT_SHOWN, summaryIdOf } from '../src/components/lineage/explorer/state';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
-import { EXPLORER_VIEWS, nodeOf, openExplorer } from './helpers/explorer';
-import { activeNodeId, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, tabStops } from './helpers/explorer-a11y';
-import { settledView } from './helpers/explorer-checks';
+import { EXPLORER_VIEWS, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
+import { activeNodeId, announcement, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, tabStops } from './helpers/explorer-a11y';
+import { captureScenes, personNameOf, settledView } from './helpers/explorer-checks';
+import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf } from './helpers/m06-expand';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -78,7 +80,109 @@ test.describe('selection (B)', () => {
 
 test.describe('expansion (C)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false });
-  // Package C: tests 5 and 6.
+
+  test('@M06 "+N students" on demo-hub-a adds nodes and keeps the focused node in view', async ({ page }) => {
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    await captureScenes(page);
+    // The generations view: one generation of teachers, none of students.
+    await openExplorer(page, { focus: hub, up: 1, down: 0 });
+    await settledView(page);
+    const before = (await scenesFor(page, hub)).at(-1)!;
+    // N: the hub's public students (the API) minus those drawn.
+    const n = (await publicStudentCount(page, 'demo-hub-a')) - drawnStudents(before, hub).size;
+    expect(n).toBeGreaterThan(0);
+
+    // The keyboard: Tab into the graph reaches the hub (the view's focus), and its "+N students"
+    // button follows it in the Tab order. WebKit's Tab may skip a button, so the button is focused
+    // as the next Tab would, and pressed with Enter.
+    expect(await focusGraph(page)).toBe(hub);
+    const button = nodeOf(page, hub).getByRole('button', { name: `+${n} students of ${hubName}`, exact: true });
+    await expect(button).toHaveText(`+${n} students`);
+    await button.focus();
+    expect(await focusedNodeId(page)).toBe(hub);
+    const at = (await screenBox(page, hub))!;
+    const scenes = (await scenesFor(page, hub)).length;
+    await page.keyboard.press('Enter');
+
+    // The expansion is laid out again: the hub's students are drawn, at most FANOUT_SHOWN of them,
+    // with the summary node "and N more" when the cap cut them.
+    await expect.poll(async () => (await scenesFor(page, hub)).length, { timeout: 15_000 }).toBeGreaterThan(scenes);
+    await settledView(page);
+    const after = (await scenesFor(page, hub)).at(-1)!;
+    const shown = drawnStudents(after, hub);
+    expect(shown.size).toBeGreaterThan(0);
+    expect(shown.size).toBeLessThanOrEqual(FANOUT_SHOWN);
+    const summary = after.nodes.some((s) => s.id === summaryIdOf(hub));
+    expect(summary, 'the summary node is drawn exactly when the cap cut the students').toBe(shown.size >= FANOUT_SHOWN && n > shown.size);
+    await expect.poll(() => announcement(page)).toContain(`Added ${shown.size} students of ${hubName}.`);
+
+    // The hub keeps the focus and its place on screen; the people drawn before keep their rows.
+    expect(await focusedNodeId(page)).toBe(hub);
+    const now = (await screenBox(page, hub))!;
+    expect(Math.abs(now.x - at.x), 'the hub moved across').toBeLessThanOrEqual(2);
+    expect(Math.abs(now.y - at.y), 'the hub moved up or down').toBeLessThanOrEqual(2);
+    const yOf = (scene: typeof before, id: string) => scene.nodes.find((s) => s.id === id)!.center.y;
+    for (const node of before.nodes) {
+      expect(after.nodes.some((s) => s.id === node.id), `${node.id} is still drawn`).toBe(true);
+      expect(yOf(after, node.id) - yOf(after, hub), `${node.id} keeps its row`).toBeCloseTo(yOf(before, node.id) - yOf(before, hub), 0);
+    }
+    // The button now counts the students not drawn; beyond the cap it opens their list.
+    await expect(nodeOf(page, hub).locator('[data-more-chip]')).toHaveText(`+${n - shown.size} students`);
+  });
+
+  test('@M06 a teacher with more than 12 students shows an "and N more" node that opens a paginated list', async ({ page }) => {
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    await captureScenes(page);
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    // N: the students not drawn, from the API's count and the scene (never a number of the demo data).
+    const total = await publicStudentCount(page, 'demo-hub-a');
+    const scene = (await scenesFor(page, hub)).at(-1)!;
+    // At least the cap: a student the cap left out is drawn anyway when another teacher in the view keeps it.
+    const drawn = drawnStudents(scene, hub).size;
+    expect(drawn).toBeGreaterThanOrEqual(FANOUT_SHOWN);
+    const n = total - drawn;
+    expect(n).toBeGreaterThan(0);
+    expect(scene.nodes.some((s) => s.id === summaryIdOf(hub))).toBe(true);
+
+    // The node is drawn once it is in view (React Flow draws only what is on screen): Fit shows it.
+    const node = summaryNodeOf(page, hub);
+    if ((await node.count()) === 0) {
+      await page.getByRole('button', { name: 'Fit the whole view' }).click();
+      await settledView(page);
+    }
+    await expect(node).toHaveAttribute('aria-label', `and ${n} more students of ${hubName}`);
+    await expect(node).toHaveAttribute('role', 'button');
+    // Its words at every level of detail but the dot.
+    if ((await node.locator('[data-summary-node]').getAttribute('data-lod')) !== 'dot') await expect(node).toContainText(`and ${n} more`);
+
+    // Activating it (a click here; Enter and Space come with the graph's keys, package A) opens the
+    // teacher's students in the panel, 20 to a page, by name, as people.students lists them.
+    await node.click();
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
+    const size = 20;
+    const first = await listedStudents(page, hubName, 1);
+    expect(first.map((s) => s.name)).toEqual(await studentNamesOfPage(page, 'demo-hub-a', 1, size));
+    expect(first).toHaveLength(Math.min(size, total));
+
+    const pages = panel.getByRole('navigation', { name: 'Pages of students' });
+    await pages.getByRole('button', { name: 'Next' }).click();
+    const second = await listedStudents(page, hubName, 2);
+    expect(second.map((s) => s.name)).toEqual(await studentNamesOfPage(page, 'demo-hub-a', 2, size));
+    expect(second).toHaveLength(Math.min(size, total - size));
+    const once = new Set([...first, ...second].map((s) => s.href));
+    expect(once.size, 'no student on both pages').toBe(first.length + second.length);
+    await expect(pages.getByRole('status')).toHaveText(`Page 2 of ${Math.ceil(total / size)}`);
+
+    await pages.getByRole('button', { name: 'Previous' }).click();
+    expect(await listedStudents(page, hubName, 1)).toEqual(first);
+    await expect(pages.getByRole('button', { name: 'Previous' })).toHaveAttribute('aria-disabled', 'true');
+  });
 });
 
 test.describe('touch and motion (D)', () => {
