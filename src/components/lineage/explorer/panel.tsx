@@ -15,10 +15,15 @@
 // The sheet (DEFAULT, no D number unless named):
 // - Its peek (0.15, floored at the measured header) holds the name, Expand, Close and one row of
 //   actions: "Open profile" and "Center on this person". Focus stays on the node when it opens.
-// - At 0.5 the frame above it is shorter: the active node is moved into view once the frame has
-//   settled. At 0.92 it covers the graph (no page room is kept), so a focus in the graph moves into
-//   the sheet; when it comes down again, the active node is moved into view, and the focus goes
-//   back to it when it is still on the sheet itself.
+// - At the peek and at 0.5 the frame above it is shorter: the active node is moved into view once
+//   the sheet and the frame have settled. At 0.92 it covers the graph (no page room is kept), so a
+//   focus in the graph moves into the sheet; when it comes down again, the active node is moved
+//   into view, and the focus goes back to it when it is still on the sheet itself.
+// - In a short window below 768 px (200 % zoom on a laptop, a phone turned to landscape; a11y-6)
+//   the peek may leave the canvas no room for the legend and a card: the sheet then covers the
+//   graph instead of shrinking it (the Drawer's coverAbove), and the active node is placed above
+//   it. Where even that strip cannot show the node, the sheet covers the graph as at 0.92: a focus
+//   in the graph moves into the sheet, and comes back to the node when the sheet closes.
 // - Closed from inside (Close, Esc, a swipe), focus returns to the active node, at once (the body
 //   turns inert as the sheet closes); closed from the graph (Esc there), focus stays where it is.
 //   Esc in the graph is the graph's (keys.tsx: a raised sheet comes down to its peek first, then
@@ -155,8 +160,6 @@ export default function ExplorerPanel(props: PanelProps) {
   const { open, mode, graph, person, url, setUrl, onClose, canvas } = props;
   const overlay = useMediaQuery(OVERLAY_QUERY);
   const sheet = useRef<DrawerActions>(null);
-  /** The snap point the sheet last rested at. */
-  const restedAt = useRef(0);
   useImperativeHandle(props.handle, () => ({ collapse: () => sheet.current?.collapse() ?? false }), []);
   // The panel leaves with the graph (List, or no canvas): its sheet's history entry goes back to
   // the page before the Drawer's cleanup (a passive effect) would step back over the URL change.
@@ -179,17 +182,14 @@ export default function ExplorerPanel(props: PanelProps) {
   // its history entry) follows in a deferred render. It closes at once.
   const opening = useDeferredValue(live);
   const sheetOpen = live && opening;
-  /** The sheet took the focus from the graph at its top snap point (onSheetSnap). */
+  /** The sheet took the focus from the graph where it covers it (onSheetSnap). */
   const tookFocus = useRef(false);
-  // Every opening starts at the peek (the Drawer's first snap point), not where the last one rested.
   useEffect(() => {
-    if (sheetOpen) return;
-    restedAt.current = 0;
-    tookFocus.current = false;
+    if (!sheetOpen) tookFocus.current = false;
   }, [sheetOpen]);
   useFocusKept(canvas);
   const router = useRouter();
-  const keepAbove = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
+  const { keepAbove, coverAbove } = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
   useRevealFocused(live && overlay, canvas, live ? `${mode?.kind}:${(person ?? teacher)?.id}` : null);
 
   const kind = viewKind(url);
@@ -274,13 +274,10 @@ export default function ExplorerPanel(props: PanelProps) {
       keepMounted
       initialFocus={false}
       finalFocus={() => focusBack(canvas)}
-      onSnapPointChange={(_point, index) => {
-        const was = restedAt.current;
-        restedAt.current = index;
-        onSheetSnap(index, was, canvas, tookFocus);
-      }}
+      onSnapPointChange={(_point, index) => onSheetSnap(index, canvas, tookFocus)}
       actions={sheet}
       keepAbove={keepAbove}
+      coverAbove={coverAbove}
       popupAttributes={{ 'data-testid': 'explorer-panel', 'data-explorer-sheet': '', 'data-panel-home': '', 'data-canvas-cover': sheetOpen ? '' : undefined }}
       headerActions={
         shown && !students ? (
@@ -549,27 +546,39 @@ function useClearHeight(panel: RefObject<HTMLElement | null>): number | null {
   return height;
 }
 
+/** What the canvas needs above the sheet (useKeepAbove). */
+interface Above {
+  keepAbove: number | null;
+  coverAbove: number | null;
+}
+const NOTHING_ABOVE: Above = { keepAbove: null, coverAbove: null };
+
 /**
  * How far down the window the canvas must still reach above the sheet at its middle snap point
  * (the Drawer's keepAbove): the legend and the selected person's card fit whole in it (plan §4.6:
  * the legend is always in view; canvas.tsx keepInView), measured on the page, not a phone's size
  * (DEFAULT, no D number). On a tall phone that is above half height and the point stays 0.5; on a
- * short one (393x659) the point is lowered. Measured when the sheet opens or shows another person,
- * and when the window changes; not on every zoom.
+ * short one (393x659) the point is lowered. And how far it must reach for the room the sheet keeps
+ * for the page to be of use at all (the Drawer's coverAbove: the legend and the card at the
+ * smallest zoom the view zooms out to; canvas.tsx coverAbove): a sheet that rests higher (the peek
+ * in a short window below 768 px, a11y-6) covers the canvas instead of shrinking it (DEFAULT, no D
+ * number). Measured when the sheet opens or shows another person, and when the window changes;
+ * not on every zoom.
  */
-function useKeepAbove(open: boolean, canvas: RefObject<CanvasHandle | null>, person: string | null): number | null {
-  const [keepAbove, setKeepAbove] = useState<number | null>(null);
+function useKeepAbove(open: boolean, canvas: RefObject<CanvasHandle | null>, person: string | null): Above {
+  const [above, setAbove] = useState<Above>(NOTHING_ABOVE);
   useLayoutEffect(() => {
     if (!open) return;
     const measure = () => {
-      const next = canvas.current?.keepInView() ?? null;
-      setKeepAbove((now) => (now === next ? now : next));
+      const keepAbove = canvas.current?.keepInView() ?? null;
+      const coverAbove = canvas.current?.coverAbove() ?? null;
+      setAbove((now) => (now.keepAbove === keepAbove && now.coverAbove === coverAbove ? now : { keepAbove, coverAbove }));
     };
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [open, canvas, person]);
-  return open ? keepAbove : null;
+  return open ? above : NOTHING_ABOVE;
 }
 
 /**
@@ -637,24 +646,35 @@ function focusActiveNode(canvas: RefObject<CanvasHandle | null>) {
 }
 
 /**
- * The sheet came to rest at a snap point (from `was`): keep the active node in view, or move the
- * focus into a sheet that covers the graph (`tookFocus`), and back to the active node when the sheet
- * comes down again with the focus still on the sheet itself.
+ * The sheet came to rest at a snap point. At its top it covers the graph: a focus in the graph
+ * moves into the sheet (`tookFocus`). Below it, once the sheet and the canvas frame have settled,
+ * the active node is moved into view above the sheet, and a focus the sheet took goes back to it
+ * while it is still on the sheet itself. Except where the canvas above the sheet cannot show the
+ * active node at all (a short window below 768 px, where even the peek covers the canvas: a11y-6):
+ * there the sheet covers the graph as at its top, and the focus comes back when it closes.
  */
-function onSheetSnap(index: number, was: number, canvas: RefObject<CanvasHandle | null>, tookFocus: { current: boolean }) {
+function onSheetSnap(index: number, canvas: RefObject<CanvasHandle | null>, tookFocus: { current: boolean }) {
+  const cover = () => {
+    const inGraph = !!document.activeElement?.closest('.react-flow');
+    // A focus this sheet took where it covered at another point stays the sheet's to give back.
+    tookFocus.current = inGraph || (tookFocus.current && document.activeElement === sheetElement());
+    if (inGraph) sheetElement()?.focus({ preventScroll: true });
+  };
   if (index === TOP) {
-    tookFocus.current = !!document.activeElement?.closest('.react-flow');
-    if (tookFocus.current) sheetElement()?.focus({ preventScroll: true });
+    cover();
     return;
   }
-  const giveBack = was === TOP && tookFocus.current;
-  tookFocus.current = false;
-  if (index === 1 || was === TOP) {
-    afterFrameSettles(() => {
-      if (giveBack && document.activeElement === sheetElement()) canvas.current?.focusActive();
-      else canvas.current?.ensureVisible();
-    });
-  }
+  afterSheetSettles(() => {
+    const sheet = sheetElement();
+    if (sheet && canvas.current && !canvas.current.showsAbove(sheet.getBoundingClientRect().top)) {
+      cover();
+      return;
+    }
+    const giveBack = tookFocus.current;
+    tookFocus.current = false;
+    if (giveBack && document.activeElement === sheetElement()) canvas.current?.focusActive();
+    else canvas.current?.ensureVisible();
+  });
 }
 
 /**
@@ -705,18 +725,25 @@ function useFocusKept(canvas: RefObject<CanvasHandle | null>) {
 }
 
 /**
- * Runs `then` once the canvas frame keeps its height (the sheet's room is published as it comes
- * to rest): by time, at most about a second, not by a count of frames (WebKit can paint none for a while).
+ * Runs `then` once the sheet has come to rest and the canvas frame keeps its height (the sheet's
+ * room is published as it comes to rest; a sheet that covers the canvas leaves the frame as it
+ * is, and slides for --duration-slow): the same in three frames running, or at most about a second
+ * later, not by a count of frames alone (WebKit can paint none for a while). A sheet that has not
+ * started its slide yet (Base UI's starting style holds it below the window, for some frames on a
+ * busy machine) or is still sliding is not at rest, however still it stands: measured there, a
+ * person the sheet then slides over would count as in view.
  */
-function afterFrameSettles(then: () => void) {
+function afterSheetSettles(then: () => void) {
   const frame = document.querySelector('[data-canvas-frame]');
   const start = performance.now();
-  let last = -1;
+  let last = '';
   let still = 0;
   const step = () => {
-    const height = frame?.getBoundingClientRect().height ?? 0;
-    still = height === last ? still + 1 : 0;
-    last = height;
+    const sheet = sheetElement();
+    const sliding = !!sheet && (sheet.hasAttribute('data-starting-style') || sheet.getAnimations().some((a) => a.playState === 'running'));
+    const now = `${frame?.getBoundingClientRect().height ?? 0} ${sheet?.getBoundingClientRect().top ?? 0}`;
+    still = !sliding && now === last ? still + 1 : 0;
+    last = now;
     if (still >= 3 || performance.now() - start > 1000) then();
     else requestAnimationFrame(step);
   };

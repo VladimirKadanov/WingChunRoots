@@ -1121,6 +1121,30 @@ const viewOf = (s: FlowState): View => ({ x: s.transform[0], y: s.transform[1], 
 /** The pane, with its overlays and covers. */
 const paneOf = (s: FlowState): PaneArea => ({ width: s.width, height: s.height, overlays: coversOn(s.domNode) });
 
+/**
+ * How far down the window (px from its top) the canvas frame must reach so that what lies along
+ * its bottom edge (the legend; not the buttons, which make way: controls-layout.ts) and the
+ * active node's card fit whole in it, one above the other with the view's gaps (viewport.ts
+ * VIEW_GAP), and a pixel for rounding; null without a canvas. The card at the zoom now
+ * (CanvasHandle keepInView), or, `least`, at the smallest zoom ensureVisible zooms out to
+ * (READABLE_ZOOM, or the zoom now where smaller: CanvasHandle coverAbove).
+ */
+function reachOf(s: FlowState, active: string | null, least: boolean): number | null {
+  const frame = s.domNode?.closest('[data-canvas-frame]');
+  if (!frame) return null;
+  const box = frame.getBoundingClientRect();
+  // From the frame's bottom edge up to the highest top of what lies along it.
+  let along = 0;
+  for (const el of frame.querySelectorAll<HTMLElement>('[data-canvas-overlay]:not([data-controls])')) {
+    const r = el.getBoundingClientRect();
+    if (r.height > 0) along = Math.max(along, box.bottom - r.top);
+  }
+  const node = active === null ? undefined : s.nodeLookup.get(active);
+  const zoom = least ? Math.min(s.transform[2], READABLE_ZOOM) : s.transform[2];
+  const card = (node?.measured.height ?? node?.height ?? 0) * zoom;
+  return Math.ceil(box.top + VIEW_GAP + card + VIEW_GAP + along + 1);
+}
+
 /** The id of the node the keyboard focus is in, when it is in this graph. */
 function focusedNode(root: Element | null): string | null {
   const now = document.activeElement;
@@ -1483,29 +1507,32 @@ function CanvasFrame({
       },
       ensureVisible: (id) => {
         const target = id ?? roving.latest.current.active;
-        if (target !== null) roving.reveal(target);
+        if (target === null) return;
+        // Once the view's running moves (a zoom button's, a new scene's fit) have ended: a move
+        // now would stop them short (trackMove). At most a second later.
+        const start = performance.now();
+        const reveal = () => {
+          if (moves.current > 0 && performance.now() - start < 1000) window.setTimeout(reveal, 16);
+          else roving.reveal(target);
+        };
+        reveal();
       },
       focusActive: () => {
         const target = roving.latest.current.active;
         if (target !== null) setActive(target, { focus: true });
       },
-      keepInView: () => {
+      keepInView: () => reachOf(store.getState(), roving.latest.current.active, false),
+      coverAbove: () => reachOf(store.getState(), roving.latest.current.active, true),
+      showsAbove: (y) => {
         const s = store.getState();
         const frame = s.domNode?.closest('[data-canvas-frame]');
-        if (!frame) return null;
-        const box = frame.getBoundingClientRect();
-        // What lies along the frame's bottom edge (the legend; not the buttons, which make way:
-        // controls-layout.ts), from the frame's bottom edge up to its highest top.
-        let along = 0;
-        for (const el of frame.querySelectorAll<HTMLElement>('[data-canvas-overlay]:not([data-controls])')) {
-          const r = el.getBoundingClientRect();
-          if (r.height > 0) along = Math.max(along, box.bottom - r.top);
-        }
         const id = roving.latest.current.active;
         const node = id === null ? undefined : s.nodeLookup.get(id);
-        const card = (node?.measured.height ?? node?.height ?? 0) * s.transform[2];
-        // The view's gaps (viewport.ts VIEW_GAP) above the card and between it and the legend, and a pixel for rounding.
-        return Math.ceil(box.top + VIEW_GAP + card + VIEW_GAP + along + 1);
+        if (!frame || !node) return true;
+        const box = frame.getBoundingClientRect();
+        // The card at the smallest zoom ensureVisible zooms out to (READABLE_ZOOM, or the zoom now where smaller).
+        const card = (node.measured.height ?? node.height ?? 0) * Math.min(s.transform[2], READABLE_ZOOM);
+        return Math.min(y, box.bottom) - box.top >= VIEW_GAP + card + VIEW_GAP;
       },
     }),
   );

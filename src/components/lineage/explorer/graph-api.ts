@@ -81,7 +81,10 @@ export interface PanelHandle {
 export interface CanvasHandle {
   /** The active node's element when it is drawn. */
   activeElement(): HTMLElement | null;
-  /** Moves the view so that this node (default: the active one) is wholly in the visible area. */
+  /**
+   * Moves the view so that this node (default: the active one) is wholly in the visible area,
+   * once the view's running moves (a zoom button's, a new scene's fit) have ended.
+   */
   ensureVisible(id?: string): void;
   /** Moves the keyboard focus to the active node (after ensureVisible). */
   focusActive(): void;
@@ -93,6 +96,19 @@ export interface CanvasHandle {
    * its middle snap point.
    */
   keepInView(): number | null;
+  /**
+   * The same with the active node's card at the smallest zoom the view zooms out to for it
+   * (READABLE_ZOOM, or the zoom now where smaller): a phone's sheet that would leave the canvas
+   * frame less covers it instead of shrinking it (the Drawer's coverAbove; milestone M06, a11y-6).
+   * Never more than keepInView.
+   */
+  coverAbove(): number | null;
+  /**
+   * Whether the canvas above this window y (the top of a sheet that covers it) can show the active
+   * node whole, at the smallest zoom the view zooms out to for it, with the view's gaps; true
+   * without a canvas or an active node.
+   */
+  showsAbove(y: number): boolean;
 }
 
 /** Where an expand button opens the view: the person's students, or their teachers (package C). */

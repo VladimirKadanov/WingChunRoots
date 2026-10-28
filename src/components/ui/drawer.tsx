@@ -27,7 +27,9 @@
 //   live): the page keeps that room clear, so focus never lands on a control under the sheet
 //   (WCAG 2.4.11). From 1024 px the page narrows beside the side panel. A bottom sheet that leaves
 //   less than 9rem of the page above it keeps no room: the page is behind it whatever its padding,
-//   and a screen of padding would only make the page jump when the sheet comes down again.
+//   and a screen of padding would only make the page jump when the sheet comes down again. Nor
+//   does one that leaves the page less than its caller's `coverAbove` (a page whose own content
+//   needs that room to be of use: the explorer's canvas): it covers that page as it is.
 // With two sheets open, the newer one's room is published (for the page: the newer non-modal
 // one's), and the older one's again when it closes. The room follows the snap point, not a drag
 // in progress (that would restyle the page on every frame); it catches up when the drag settles.
@@ -112,6 +114,15 @@ export interface DrawerProps {
    * in view above a short phone's sheet). The last point is never lowered: there the sheet covers.
    */
   keepAbove?: number | null;
+  /**
+   * A non-modal bottom sheet: how far down the window (px from its top) the page must still show
+   * above the sheet, the room the sheet publishes for it included, for that room to be of use. A
+   * sheet resting higher (its first snap point, which is never lowered, in a short window) covers
+   * the page as at its last snap point: it publishes no room, and the page keeps its size behind
+   * it (milestone M06, a11y-6: below 768 px with 200 % zoom the explorer's canvas shrank to 0 px
+   * over the peek). Never more than `keepAbove`, so a middle point lowered for that one keeps room.
+   */
+  coverAbove?: number | null;
 }
 
 // 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
@@ -136,6 +147,7 @@ export function Drawer({
   popupAttributes,
   actions,
   keepAbove = null,
+  coverAbove = null,
 }: DrawerProps) {
   const side = useMediaQuery(SIDE_PANEL);
   const [openState, setOpenState] = useState(false);
@@ -223,7 +235,7 @@ export function Drawer({
   });
 
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
-  useSheetRoom(open, side, modal, viewport, popup, header, snapPoints ? (snapPoints[Math.min(snapIndex, lastIndex)] ?? null) : null);
+  useSheetRoom(open, side, modal, viewport, popup, header, snapPoints ? (snapPoints[Math.min(snapIndex, lastIndex)] ?? null) : null, modal ? null : coverAbove);
 
   // Below full height the lower part of the sheet is off screen. A focus that lands there (Tab,
   // or a script restoring focus) expands the sheet first, so the focused control is never hidden
@@ -378,7 +390,7 @@ interface Room {
   head: number | null;
   /** A bottom sheet with less than 9rem of the window above it and more room under its header. */
   full: boolean;
-  /** A bottom sheet with less than 9rem of the window above it: the page is behind it. */
+  /** A bottom sheet with less than 9rem of the window above it, or less than its coverAbove: the page is behind it. */
   covers: boolean;
 }
 
@@ -439,7 +451,7 @@ function restingHeight(point: SnapPoint, popup: number, viewport: number): numbe
  * the room is the height of the one the sheet rests at (`rest`), resolved as Base UI resolves it:
  * Base UI sets the offset a render after it measures a new popup height, so a new height read
  * with the old offset (the sheet's content changes: another person selected in the explorer)
- * would publish, for a frame, a room the sheet never takes.
+ * would publish, for a frame, a room the sheet never takes. `coverAbove`: see DrawerProps.
  */
 function useSheetRoom(
   open: boolean,
@@ -449,6 +461,7 @@ function useSheetRoom(
   popup: HTMLElement | null,
   header: HTMLElement | null,
   rest: SnapPoint | null,
+  coverAbove: number | null,
 ) {
   // One key per sheet, and one place in the opening order per opening: the effect below runs
   // again when the sheet turns into a side panel or its elements change, and must not move the
@@ -481,7 +494,7 @@ function useSheetRoom(
       // The popup's 1 px top border, then the header.
       const head = top + 1 + (header?.offsetHeight ?? 0);
       const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const covers = top < inset + 9 * rem;
+      const short = top < inset + 9 * rem;
       rooms.set(key, {
         order: order.current,
         modal,
@@ -490,8 +503,9 @@ function useSheetRoom(
         head,
         // Under the header only where that leaves more room than above the sheet (not over a
         // peek in a short landscape window, where the header itself is low on the screen).
-        full: covers && window.innerHeight - head > top - inset,
-        covers,
+        full: short && window.innerHeight - head > top - inset,
+        // The page's room ends FOCUS_AIR above the sheet (publishRooms).
+        covers: short || (coverAbove !== null && top - FOCUS_AIR < coverAbove),
       });
       publishRooms();
     };
@@ -510,5 +524,5 @@ function useSheetRoom(
       rooms.delete(key);
       publishRooms();
     };
-  }, [key, open, side, modal, viewport, popup, header, rest]);
+  }, [key, open, side, modal, viewport, popup, header, rest, coverAbove]);
 }

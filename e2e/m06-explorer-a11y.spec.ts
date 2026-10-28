@@ -613,6 +613,61 @@ test.describe('selection (B)', () => {
   });
 });
 
+test.describe('selection in a short window (B)', () => {
+  // 200 % browser zoom on a laptop (a11y-6): a 1440x900 screen is 720x450 CSS px, a 1366x768 one
+  // 683x384. Below 768 px the panel is the bottom sheet, and its peek is about 130 px tall.
+  test.use({ viewport: { width: 720, height: 450 }, isMobile: false, hasTouch: false });
+
+  test('@M06 in a short window below 768 px the sheet never hides the person the keyboard selected', async ({ page }) => {
+    test.setTimeout(120_000);
+    const id = await personIdOf('demo-two-lineages');
+    const panel = page.getByTestId('explorer-panel');
+    const sheet = panel.locator('xpath=ancestor-or-self::*[@role="dialog"][1]');
+    const frameHeight = () => page.locator('[data-canvas-frame]').evaluate((el) => el.getBoundingClientRect().height);
+
+    // 720x450: room kept for the sheet would leave the canvas no room for the legend and a card (it
+    // was 58 px), so the sheet covers the canvas instead, and the person is placed above it.
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    const idle = await frameHeight();
+    expect(await focusGraph(page)).toBe(id);
+    await page.keyboard.press('Space');
+    await expect(panel).toBeVisible();
+    expect(await isSheet(panel), 'the panel is the bottom sheet').toBe(true);
+    await settledTop(sheet);
+    await settledView(page);
+    expect(await frameHeight(), 'the canvas keeps its height behind the sheet').toBe(idle);
+    expect(await focusedNodeId(page), 'the focus stays on the person').toBe(id);
+    await expect.poll(() => isInVisibleArea(page, id), 'the person lies wholly in the canvas above the sheet').toBe(true);
+    expect(await wholeAndUncovered(nodeOf(page, id)), 'whole and uncovered').toBe(true);
+    // A key move lands above the sheet too.
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => focusedNodeId(page), 'ArrowDown moves to a student').not.toBe(id);
+    await settledView(page);
+    const student = (await focusedNodeId(page))!;
+    expect(student, 'a node has the focus').not.toBeNull();
+    expect(await isInVisibleArea(page, student), 'the student lies wholly in the canvas above the sheet').toBe(true);
+    expect(await wholeAndUncovered(nodeOf(page, student)), 'whole and uncovered').toBe(true);
+
+    // 683x384: even the peek covers the whole canvas. The sheet covers the graph as at its top: it
+    // takes the focus, so no hidden node keeps it, and gives it back when it closes from inside.
+    await page.setViewportSize({ width: 683, height: 384 });
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(id);
+    await page.keyboard.press('Space');
+    await expect(panel).toBeVisible();
+    await settledTop(sheet);
+    await expect.poll(() => page.evaluate(() => document.activeElement?.matches('[data-explorer-sheet]') ?? false), 'the sheet took the focus').toBe(true);
+    expect(await focusedNodeId(page), 'no node under the sheet keeps the focus').toBeNull();
+    await expect(page.locator('[data-explorer-sheet]'), 'the sheet with the focus is on screen').toBeInViewport();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'Esc in the sheet closes it').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'the focus is back on the person').toBe(id);
+    await expect(nodeOf(page, id), 'who is on screen again').toBeInViewport();
+  });
+});
+
 test.describe('expansion (C)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false });
 
