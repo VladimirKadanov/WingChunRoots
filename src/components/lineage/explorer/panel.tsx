@@ -17,13 +17,13 @@
 //   actions: "Open profile" and "Center on this person". Focus stays on the node when it opens.
 // - At 0.5 the frame above it is shorter: the active node is moved into view once the frame has
 //   settled. At 0.92 it covers the graph (no page room is kept), so a focus in the graph moves into
-//   the sheet; when it comes down again, the active node is moved into view.
-// - At 0.92 it covers the graph, so a focus in the graph moves into the sheet; when it comes down
-//   again with the focus still on the sheet itself, the focus returns to the active node.
-// - Closed from inside (Close, Esc, a swipe), focus returns to the active node, at once: the body
-//   turns inert as the sheet closes. Closed from the graph (Esc there), focus stays where it is. Esc in the graph is the graph's (keys.tsx: a raised
-//   sheet comes down to its peek first, then the selection is cleared): the Drawer's own Esc, which
-//   listens on the document, is cancelled there and in other layers (a menu, a dialog).
+//   the sheet; when it comes down again, the active node is moved into view, and the focus goes
+//   back to it when it is still on the sheet itself.
+// - Closed from inside (Close, Esc, a swipe), focus returns to the active node, at once (the body
+//   turns inert as the sheet closes); closed from the graph (Esc there), focus stays where it is.
+//   Esc in the graph is the graph's (keys.tsx: a raised sheet comes down to its peek first, then
+//   the selection is cleared): the Drawer's own Esc, which listens on the document, is cancelled
+//   there and in other layers (a menu, a dialog).
 // - It is closed while the List view is shown (explorer.tsx), and its history entry (Back closes
 //   it) is handed back to the page first, so closing it does not step back over the URL change.
 //   A link in it takes that entry (router.replace), so Back from where it leads returns to the
