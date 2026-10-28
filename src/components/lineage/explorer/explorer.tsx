@@ -654,7 +654,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">
-            <div className="relative min-h-0 flex-1 [touch-action:none]">
+            <div className="relative min-h-0 flex-1">
               {!focus ? null : notFound ? (
                 <div className="absolute inset-0 grid place-items-center p-6 text-center">
                   <p className="max-w-[40ch] text-ui text-fg-muted">There is no public profile with this address in the record.</p>
