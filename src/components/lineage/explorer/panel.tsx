@@ -39,7 +39,7 @@ import {
   useState,
 } from 'react';
 
-import { CloseIcon } from '@/components/icons';
+import { CheckIcon, CloseIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { Drawer, type DrawerActions, type DrawerChangeDetails, type SnapPoint } from '@/components/ui/drawer';
 import { releaseLayerEntry } from '@/components/ui/use-back-to-close';
@@ -449,12 +449,14 @@ function PersonBody({
             Focus this lineage
           </button>
         ) : null}
+        {/* A toggle: pressed, it is drawn in ink with a check mark (its state not by colour alone). */}
         <button
           type="button"
           aria-pressed={showHistorical}
-          className={buttonVariants({ variant: 'secondary' })}
+          className={buttonVariants({ variant: showHistorical ? 'ink' : 'secondary' })}
           onClick={() => setUrl({ show: showHistorical ? null : 'historical' })}
         >
+          {showHistorical ? <CheckIcon size={18} /> : null}
           Show ended training
         </button>
       </div>
