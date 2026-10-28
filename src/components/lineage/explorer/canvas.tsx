@@ -549,6 +549,9 @@ const PANEL_OVER_CANVAS = '(width >= 48rem)';
  * bottom edge, each from the bottom of the box it is placed in. That is the frame for the legend;
  * React Flow's attribution is placed in React Flow's own box, which follows the frame one paint
  * later (useFollowFrame), so its distance from the frame's bottom edge is read from its own box's.
+ * In a corner (a phone) the attribution is moved beside the buttons (--attribution-right on the
+ * frame, globals.css); its own place, in the frame's bottom right corner, is what placeControls is
+ * given, wherever it was last drawn.
  */
 function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace {
   const [place, setPlace] = useState<ControlsPlace>(CONTROLS_START);
@@ -558,7 +561,8 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
     const el = root.current;
     const frame = el?.closest<HTMLElement>('[data-canvas-frame]');
     if (!el || !frame) return;
-    const beneath = () => [...frame.querySelectorAll<HTMLElement>('[data-canvas-overlay], .react-flow__attribution')].filter((other) => other !== el);
+    const beneath = () => [...frame.querySelectorAll<HTMLElement>('[data-canvas-overlay]')].filter((other) => other !== el);
+    const attribution = () => frame.querySelector<HTMLElement>('.react-flow__attribution');
     const measure = () => {
       const groups = [...el.querySelectorAll<HTMLElement>('[role="group"]')];
       if (groups.length > 0) {
@@ -566,27 +570,37 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
       }
       if (!strips.current) return;
       const origin = frame.getBoundingClientRect();
-      const below = beneath().map((other) => {
+      const inFrame = (other: HTMLElement) => {
         const box = other.getBoundingClientRect();
         const within = (other.offsetParent ?? frame).getBoundingClientRect();
         return { x: box.x - origin.x, y: origin.height - (within.bottom - box.y), width: box.width, height: box.height };
-      });
+      };
+      const mark = attribution();
+      // Its own place: at the frame's right edge, however far a corner moved it.
+      const home = mark ? { ...inFrame(mark), x: origin.width - mark.offsetWidth } : undefined;
       const next = placeControls(
         { width: origin.width, height: origin.height },
         origin.right - el.getBoundingClientRect().right,
         strips.current,
-        below,
-        { row: !window.matchMedia(PANEL_OVER_CANVAS).matches },
+        beneath().map(inFrame),
+        { row: !window.matchMedia(PANEL_OVER_CANVAS).matches, attribution: home },
       );
-      setPlace((now) => (now.kind === next.kind && now.bottom === next.bottom ? now : next));
+      setPlace((now) => (now.kind === next.kind && now.bottom === next.bottom && now.attribution === next.attribution ? now : next));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(frame);
     // The legend's height follows the states in view.
-    for (const other of beneath()) observer.observe(other);
+    for (const other of [...beneath(), attribution()]) if (other) observer.observe(other);
     return () => observer.disconnect();
   }, [root]);
+  // The attribution beside the buttons in a corner, else in its own place.
+  useLayoutEffect(() => {
+    const frame = root.current?.closest<HTMLElement>('[data-canvas-frame]');
+    if (!frame) return;
+    if (place.attribution === undefined) frame.style.removeProperty('--attribution-right');
+    else frame.style.setProperty('--attribution-right', `${place.attribution}px`);
+  }, [root, place.attribution]);
   return place;
 }
 
@@ -595,7 +609,8 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
  * by both) and "Center on selection" and "Keyboard shortcuts" in a group of their own, above it or,
  * in one row, before it; "Keyboard shortcuts" only with a fine pointer (a touch-only phone has no
  * keys; "?" works anywhere). At the frame's bottom right, clear of the legend and of React Flow's
- * attribution, in a column, a stack of rows or one row as the frame has room (useControlsPlace);
+ * attribution, in a corner beside the attribution (a phone, where the legend leaves room), a
+ * column, a stack of rows or one row as the frame has room (useControlsPlace, controls-layout.ts);
  * in a sliver of canvas above a raised sheet, none.
  */
 function ZoomControls({
@@ -622,25 +637,27 @@ function ZoomControls({
       if (element && document.activeElement && element.contains(document.activeElement)) onFocusLost();
     };
   }, [shown, onFocusLost]);
-  // Each group's buttons lie in a row in a stack and in a row, and the groups side by side only in a row.
+  // Each group's buttons lie in a row in a stack and in a row, and the groups side by side in a corner and in a row.
   const lying = place.kind === 'stack' || place.kind === 'row';
+  const sideBySide = place.kind === 'corner' || place.kind === 'row';
   // The ring is drawn inside the button (-outline-offset-2): the group clips what lies outside it.
   const button = cx(
     'size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed',
     lying ? '[&:not(:first-child)]:border-l' : '[&:not(:first-child)]:border-t',
   );
-  const group = cx('flex overflow-hidden rounded-sm border border-border-strong shadow-pop', lying ? 'flex-row' : 'flex-col');
+  // Only the groups take taps: the room beside the narrower group (a stack, a corner) passes them to the graph under it.
+  const group = cx('pointer-events-auto flex overflow-hidden rounded-sm border border-border-strong shadow-pop', lying ? 'flex-row' : 'flex-col');
   return (
     <div
       ref={root}
       // The first view and the moves of the view keep people clear of it (largeViewStart, wholeViewStart, ensureVisible).
       data-canvas-overlay
       data-controls={place.kind}
-      className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))]"
+      className="pointer-events-none absolute right-[max(0.75rem,env(safe-area-inset-right,0px))]"
       style={{ bottom: place.bottom }}
     >
       {place.kind === 'none' ? null : (
-        <div ref={groups} className={cx('flex items-end gap-2', place.kind === 'row' ? 'flex-row' : 'flex-col')}>
+        <div ref={groups} className={cx('flex items-end gap-2', sideBySide ? 'flex-row' : 'flex-col')}>
           <div role="group" aria-label="Canvas tools" className={group}>
             <button type="button" className={cx(button, 'inline-grid')} aria-label="Center on selection" onClick={onCenter}>
               <CenterIcon size={18} />

@@ -424,11 +424,15 @@
 }
 /* On a phone the React Flow attribution (kept, plan §10.2 row 9) is a 44 x 44 px touch target
    (plan §5.8): the link fills it, its words on a band of the ground as before; the buttons over the
-   canvas stand above it (controls-layout.ts). */
+   canvas stand above it, or in a corner beside it, which moves it left of them (--attribution-right,
+   set on the canvas frame by canvas.tsx useControlsPlace; controls-layout.ts). */
 @media (width < 48rem) {
   .explorer-canvas .react-flow__attribution {
     padding: 0;
     background: none;
+  }
+  .explorer-canvas .react-flow__panel.react-flow__attribution {
+    right: var(--attribution-right, 0px);
   }
   .explorer-canvas .react-flow__attribution a {
     display: inline-flex;
