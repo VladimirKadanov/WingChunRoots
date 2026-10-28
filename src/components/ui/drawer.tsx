@@ -30,6 +30,10 @@
 //   and a screen of padding would only make the page jump when the sheet comes down again. Nor
 //   does one that leaves the page less than its caller's `coverAbove` (a page whose own content
 //   needs that room to be of use: the explorer's canvas): it covers that page as it is.
+// - --sheet-page-cover, for a non-modal bottom sheet that covers the page so (it keeps no room):
+//   px from the bottom of the window to its top edge. A page that lays out controls of its own
+//   over its content (the explorer's canvas) keeps them above that edge or hides them, so focus
+//   never lands on a control under the sheet there either (WCAG 2.4.11).
 // With two sheets open, the newer one's room is published (for the page: the newer non-modal
 // one's), and the older one's again when it closes. The room follows the snap point, not a drag
 // in progress (that would restyle the page on every frame); it catches up when the drag settles.
@@ -414,6 +418,7 @@ function publishRooms() {
     ['--sheet-inline', px(newest?.inline)],
     ['--sheet-head', newest?.full ? px(newest.head) : null],
     ['--sheet-page-clear', page?.clear == null || page.covers ? null : px(page.clear + FOCUS_AIR)],
+    ['--sheet-page-cover', page?.clear == null || !page.covers ? null : px(page.clear)],
     ['--sheet-page-inline', px(page?.inline)],
   ] as const) {
     if (value) root.style.setProperty(name, value);

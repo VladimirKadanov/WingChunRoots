@@ -670,6 +670,24 @@ test.describe('selection in a short window (B)', () => {
     expect(await focusedNodeId(page), 'the focus stays on the person').toBe(id);
     await expect.poll(() => isInVisibleArea(page, id), 'the person lies wholly in the canvas above the sheet').toBe(true);
     expect(await wholeAndUncovered(nodeOf(page, id)), 'whole and uncovered').toBe(true);
+    // Tab from the person reaches no control under the sheet (WCAG 2.4.11): the buttons over the
+    // canvas stand above it or are not shown, and React Flow's attribution is hidden under it.
+    // Up to the first focus that leaves the canvas (the tab bar, the sheet itself).
+    const sheetBox = (await sheet.boundingBox())!;
+    for (let press = 0; press < 12; press++) {
+      await page.keyboard.press('Tab');
+      const focused = await page.evaluate(() => {
+        const at = document.activeElement;
+        if (!at?.closest('[data-canvas-frame]')) return null;
+        const r = at.getBoundingClientRect();
+        return { name: at.getAttribute('aria-label') ?? at.textContent?.trim() ?? at.tagName, x: r.x, y: r.y, width: r.width, height: r.height };
+      });
+      if (focused === null) break;
+      const under = focused.x < sheetBox.x + sheetBox.width && sheetBox.x < focused.x + focused.width && focused.y < sheetBox.y + sheetBox.height && sheetBox.y < focused.y + focused.height;
+      expect(under, `Tab reached "${focused.name}" under the sheet`).toBe(false);
+    }
+    await nodeOf(page, id).focus();
+    expect(await focusedNodeId(page), 'back on the person').toBe(id);
     // A key move lands above the sheet too.
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => focusedNodeId(page), 'ArrowDown moves to a student').not.toBe(id);

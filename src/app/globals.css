@@ -444,4 +444,10 @@
     background: linear-gradient(var(--bg), var(--bg)) center / 100% 1.25rem no-repeat;
   }
 }
+/* Under a sheet that covers the canvas (data-sheet-covered on the frame: canvas.tsx
+   useControlsPlace), the attribution is hidden, so the keyboard never reaches a link under the
+   sheet (WCAG 2.4.11); it comes back with the canvas. */
+[data-sheet-covered] .explorer-canvas .react-flow__attribution {
+  visibility: hidden;
+}
 /* end M06 touch and motion (D) */

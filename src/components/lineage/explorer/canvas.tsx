@@ -557,9 +557,17 @@ const PANEL_OVER_CANVAS = '(width >= 48rem)';
  * In a corner (a phone) the attribution is moved beside the buttons (--attribution-right on the
  * frame, globals.css); its own place, in the frame's bottom right corner, is what placeControls is
  * given, wherever it was last drawn.
+ *
+ * A non-modal sheet that covers the canvas instead of shrinking it (a short window below 768 px,
+ * a11y-6; a phone's sheet at its top) publishes how far up it reaches (the Drawer's
+ * --sheet-page-cover): the buttons are then placed as in a frame that ends at the sheet's top
+ * edge, or not shown (none) where they do not fit above it, and what lies wholly under the sheet
+ * does not count. React Flow's attribution, at the frame's bottom edge, is under the sheet then:
+ * hidden (`covered`, data-sheet-covered on the frame, globals.css). So the keyboard reaches no
+ * control under the sheet (WCAG 2.4.11).
  */
-function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace {
-  const [place, setPlace] = useState<ControlsPlace>(CONTROLS_START);
+function useControlsPlace(root: RefObject<HTMLDivElement | null>): Place {
+  const [place, setPlace] = useState<Place>(PLACE_START);
   // The groups' sizes, kept from the last time they were drawn (not drawn: kind none).
   const strips = useRef<Strip[] | null>(null);
   useLayoutEffect(() => {
@@ -568,6 +576,8 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
     if (!el || !frame) return;
     const beneath = () => [...frame.querySelectorAll<HTMLElement>('[data-canvas-overlay]')].filter((other) => other !== el);
     const attribution = () => frame.querySelector<HTMLElement>('.react-flow__attribution');
+    // The sheet's cover last measured (sheetCover).
+    let cover = 0;
     const measure = () => {
       const groups = [...el.querySelectorAll<HTMLElement>('[role="group"]')];
       if (groups.length > 0) {
@@ -575,38 +585,70 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
       }
       if (!strips.current) return;
       const origin = frame.getBoundingClientRect();
+      // How much of the frame, from its bottom edge, a covering sheet takes; the frame above it is what the buttons get.
+      cover = sheetCover();
+      const covered = cover > 0 ? Math.min(origin.height, Math.max(0, origin.bottom - (window.innerHeight - cover))) : 0;
+      const height = origin.height - covered;
       const inFrame = (other: HTMLElement) => {
         const box = other.getBoundingClientRect();
         const within = (other.offsetParent ?? frame).getBoundingClientRect();
         return { x: box.x - origin.x, y: origin.height - (within.bottom - box.y), width: box.width, height: box.height };
       };
-      const mark = attribution();
+      const mark = covered > 0 ? null : attribution();
       // Its own place: at the frame's right edge, however far a corner moved it.
       const home = mark ? { ...inFrame(mark), x: origin.width - mark.offsetWidth } : undefined;
+      const below = beneath().map(inFrame);
       const next = placeControls(
-        { width: origin.width, height: origin.height },
+        { width: origin.width, height },
         origin.right - el.getBoundingClientRect().right,
         strips.current,
-        beneath().map(inFrame),
+        covered > 0 ? below.filter((b) => b.y < height) : below,
         { row: !window.matchMedia(PANEL_OVER_CANVAS).matches, attribution: home },
       );
-      setPlace((now) => (now.kind === next.kind && now.bottom === next.bottom && now.attribution === next.attribution ? now : next));
+      const placed: Place = { ...next, bottom: next.bottom + covered, covered: covered > 0 };
+      setPlace((now) =>
+        now.kind === placed.kind && now.bottom === placed.bottom && now.attribution === placed.attribution && now.covered === placed.covered ? now : placed,
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(frame);
     // The legend's height follows the states in view.
     for (const other of [...beneath(), attribution()]) if (other) observer.observe(other);
-    return () => observer.disconnect();
+    // A sheet that covers the frame changes no size in it: its cover, on <html>, is watched.
+    const sheet = new MutationObserver(() => {
+      if (sheetCover() !== cover) measure();
+    });
+    sheet.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    return () => {
+      observer.disconnect();
+      sheet.disconnect();
+    };
   }, [root]);
-  // The attribution beside the buttons in a corner, else in its own place.
+  // The attribution beside the buttons in a corner, else in its own place; hidden under a covering sheet.
   useLayoutEffect(() => {
     const frame = root.current?.closest<HTMLElement>('[data-canvas-frame]');
     if (!frame) return;
     if (place.attribution === undefined) frame.style.removeProperty('--attribution-right');
     else frame.style.setProperty('--attribution-right', `${place.attribution}px`);
-  }, [root, place.attribution]);
+    frame.toggleAttribute('data-sheet-covered', place.covered);
+  }, [root, place.attribution, place.covered]);
   return place;
+}
+
+/** Where the buttons over the canvas lie, and whether a sheet covers the frame's bottom edge (useControlsPlace). */
+interface Place extends ControlsPlace {
+  covered: boolean;
+}
+const PLACE_START: Place = { ...CONTROLS_START, covered: false };
+
+/**
+ * How far up from the window's bottom edge a non-modal sheet covers the page without keeping room
+ * for it (the Drawer's --sheet-page-cover on <html>), in px; 0 when none does.
+ */
+function sheetCover(): number {
+  const px = Number.parseFloat(document.documentElement.style.getPropertyValue('--sheet-page-cover'));
+  return Number.isFinite(px) && px > 0 ? px : 0;
 }
 
 /**
@@ -616,7 +658,7 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
  * keys; "?" works anywhere). At the frame's bottom right, clear of the legend and of React Flow's
  * attribution, in a corner beside the attribution (a phone, where the legend leaves room), a
  * column, a stack of rows or one row as the frame has room (useControlsPlace, controls-layout.ts);
- * in a sliver of canvas above a raised sheet, none.
+ * in a sliver of canvas above a raised sheet, or above a sheet that covers the canvas, none.
  */
 function ZoomControls({
   buttons,
