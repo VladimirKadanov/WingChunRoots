@@ -267,9 +267,53 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
  * The layout graph with a summary node `more:<teacherId>` and its pseudo-edge for every teacher
  * whose drawn students reached the cap (FANOUT_SHOWN) and who has students not drawn (`more`),
  * for the real layout only: the skeleton's toLayoutGraph stays as it is (milestone M06 In scope 4).
- * Package F wires it with the graph unchanged; package C adds the nodes.
+ *
+ * The pseudo-edge ranks the summary node one row below its teacher (computeRanks), in the lineage
+ * of the teacher's first line in the graph, and the node sorts after the teacher's students in that
+ * lineage (no start year, the last name: graph.ts modelOrder). Neither enters a count, a label or
+ * the legend: those are made from the explorer's graph, which has no summary nodes. A teacher with
+ * fewer students drawn than the cap (a `down=0` view) keeps only its "+N students" button.
  */
-export const withSummaryNodes: (graph: LineageGraph, more: ReadonlyMap<string, number>) => LineageGraph = (graph) => graph;
+export function withSummaryNodes(graph: LineageGraph, more: ReadonlyMap<string, number>): LineageGraph {
+  if (more.size === 0) return graph;
+  const people = new Set(graph.nodes.map((n) => n.id));
+  const students = new Map<string, Set<string>>();
+  const lineageOf = new Map<string, string>();
+  for (const e of graph.edges) {
+    students.set(e.teacherId, (students.get(e.teacherId) ?? new Set()).add(e.studentId));
+    if (!lineageOf.has(e.teacherId)) lineageOf.set(e.teacherId, e.lineageId);
+  }
+  const nodes: LineageGraph['nodes'] = [];
+  const edges: LineageGraph['edges'] = [];
+  for (const [teacherId, count] of more) {
+    const lineageId = lineageOf.get(teacherId);
+    if (count <= 0 || !people.has(teacherId) || lineageId === undefined || (students.get(teacherId)?.size ?? 0) < FANOUT_SHOWN) continue;
+    const id = summaryIdOf(teacherId);
+    nodes.push({
+      id,
+      // Sorts after every name (graph.ts compares them ordinally): the node ends its teacher's row.
+      displayName: '￿',
+      altNames: [],
+      lifeStatus: 'unknown',
+      claimState: 'unclaimed',
+      lineageIds: [lineageId],
+      childCount: 0,
+      hasMoreChildren: false,
+    });
+    edges.push({
+      id: `${id}:edge`,
+      teacherId,
+      studentId: id,
+      lineageId,
+      kind: 'primary',
+      status: 'verified',
+      isDisplayPrimary: true,
+      visibility: 'public',
+      periods: [],
+    });
+  }
+  return nodes.length === 0 ? graph : { ...graph, nodes: [...graph.nodes, ...nodes], edges: [...graph.edges, ...edges] };
+}
 
 /**
  * The way from the route's end `at` (on the border of the full-size slot) to the border of the

@@ -37,7 +37,7 @@ import { chainEdge, generationLabels, generationText } from '../generation';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
-import { useExpansions } from './expand';
+import { anchoredScene, useExpansions } from './expand';
 import type { CanvasHandle, NodeActions, PanelHandle } from './graph-api';
 import type { PanelMode } from './panel';
 import { litFlow, litOf, NO_LIGHT } from './routes';
@@ -505,7 +505,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
     const capped = capFanout(view, FANOUT_SHOWN, pinned);
     layout(withSummaryNodes(toLayoutGraph(capped.graph), capped.more), { focusId: view.focusId, ...layoutOptions })
       .then((result) => {
-        if (current && result) setLaidOut({ source: view, graph: capped.graph, more: capped.more, scene: result.scene, anchorId });
+        if (current && result) setLaidOut((prev) => ({ source: view, graph: capped.graph, more: capped.more, scene: anchoredScene(result.scene, prev?.scene ?? null, anchorId), anchorId }));
       })
       .catch(() => {
         if (current) setFailed(view);
