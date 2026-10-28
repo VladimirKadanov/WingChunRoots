@@ -111,15 +111,42 @@ check "routes.ts has litOf and litFlow and orders the routes by DEFAULT D05" bas
   grep -q "export function litOf" "$f" && grep -q "export function litFlow" "$f" && grep -q "DEFAULT D05" "$f"'
 check "the canvas sets data-highlighting and data-lit" bash -c '
   grep -q "data-highlighting" src/components/lineage/explorer/canvas.tsx && grep -q "data-lit" src/components/lineage/explorer/canvas.tsx'
-# The M06 blocks of globals.css, from each opening marker to its end marker.
+# The M06 blocks of globals.css, from each opening marker to its end marker; the route highlight
+# block (B) alone; and CSS without its comments (the rules alone: the blocks' comments name the
+# tokens and "opacity" in words).
 m06_css() { awk '/^\/\* M06 (keyboard \(A\)|route highlight \(B\)|touch and motion \(D\))/,/^\/\* end M06 /' src/app/globals.css; }
-check "the route highlight dims with the solid dim tokens (plan §4.7)" bash -c "
-  $(declare -f m06_css); m06_css | grep -q 'route highlight (B)' && grep -qE -- '--dim-(stroke|text|frame)' src/app/globals.css"
+m06_highlight_css() { awk '/^\/\* M06 route highlight \(B\)/,/^\/\* end M06 route highlight \(B\)/' src/app/globals.css; }
+css_rules() {
+  awk '{
+    line = $0; out = ""
+    while (length(line) > 0) {
+      if (inside) { i = index(line, "*/"); if (i == 0) line = ""; else { line = substr(line, i + 2); inside = 0 } }
+      else { i = index(line, "/*"); if (i == 0) { out = out line; line = "" } else { out = out substr(line, 1, i - 1); line = substr(line, i + 2); inside = 1 } }
+    }
+    print out
+  }'
+}
+# Its own block's rules, not the tokens main already has elsewhere in globals.css: rules for the lit
+# routes ([data-edge][data-lit], not only :not([data-lit])), and everything off them in the solid
+# dim tones.
+check "the route highlight block (B) lights the routes by data-lit and dims the rest with the solid dim tokens (plan §4.7)" bash -c "
+  $(declare -f m06_highlight_css css_rules)
+  rules=\$(m06_highlight_css | css_rules)
+  for p in '[^(]\\[data-lit\\]' ':not\\(\\[data-lit\\]\\)' 'var\\(--dim-stroke\\)' 'var\\(--dim-text\\)'; do
+    printf '%s\n' \"\$rules\" | grep -qE -- \"\$p\" || exit 1
+  done"
+# Fails on a match in any of the files or the blocks (each grep's own status, not the last one's);
+# a grep that cannot read its files fails it too.
 refute "no opacity in the explorer's M06 files and CSS blocks (solid tones only, plan §4.7)" bash -c "
-  $(declare -f m06_css)
-  grep -nE 'opacity-[0-9]|opacity: 0\\.|opacity=\"0\\.' src/components/lineage/explorer/canvas.tsx src/components/lineage/explorer/panel.tsx \
+  $(declare -f m06_css css_rules)
+  grep -nE 'opacity-[0-9[]|opacity:[[:space:]]*0?\\.[0-9]|opacity=[\"{]*0?\\.[0-9]' src/components/lineage/explorer/canvas.tsx src/components/lineage/explorer/panel.tsx \
     src/components/lineage/explorer/summary-node.tsx src/components/lineage/explorer/node-controls.tsx src/components/ink/link-stroke.tsx
-  m06_css | grep -nE 'opacity: 0\\.'"
+  tsx=\$?
+  m06_css | css_rules | grep -nE 'opacity[[:space:]]*:'
+  css=\$?
+  if [ \$tsx -eq 2 ] || [ \$css -eq 2 ]; then exit 2; fi
+  if [ \$tsx -eq 1 ] && [ \$css -eq 1 ]; then exit 1; fi
+  exit 0"
 
 # 6. The phone's bottom sheet (In scope 3, 5) -------------------------------------------------------------------
 check "panel.tsx: a non-modal Drawer with snap points 0.15, 0.5 and 0.92, Focus this lineage, Show ended training, the routes" bash -c '
@@ -159,7 +186,21 @@ check "touch-action: none is on React Flow's element only (the explorer-canvas c
   m06_css | grep -A1 '^\\.explorer-canvas {' | grep -q 'touch-action: none' &&
   grep -qF 'className=\"explorer-canvas\"' src/components/lineage/explorer/canvas.tsx &&
   ! grep -rqE '\\[touch-action:none\\]|touch-none' src/components/lineage/explorer/explorer.tsx"
-check "the explorer's motion stops under prefers-reduced-motion" grep -q "prefers-reduced-motion" src/app/globals.css
+# M06's own motion: the transitions of its CSS blocks, stopped by the global reduced-motion rule
+# (M00b) because they take the motion tokens, and the view's moves (key moves, Center on selection,
+# the anchor of an expansion), which take moveFor's duration: none under reduced motion.
+check "the M06 motion stops under prefers-reduced-motion: the M06 CSS blocks take only motion tokens (zeroed by the global rule) and every view move in the explorer takes moveFor's duration" bash -c "
+  $(declare -f m06_css css_rules)
+  css_rules < src/app/globals.css | awk '
+    /@media \\(prefers-reduced-motion: reduce\\)/ { on = 1 }
+    on && /transition-duration: 0\\.01ms !important/ { t = 1 }
+    on && /animation-duration: 0\\.01ms !important/ { a = 1 }
+    END { exit !(t && a) }' || exit 1
+  ! m06_css | css_rules | grep -qE '(^|[^-[:alnum:]])[0-9]*\\.?[0-9]+m?s([^[:alnum:]-]|\$)' || exit 1
+  c=src/components/lineage/explorer/canvas.tsx
+  grep -qF \"matchMedia('(prefers-reduced-motion: reduce)')\" \$c && grep -qF 'duration: reduced ? 0 : duration' \$c || exit 1
+  grep -rqE 'duration:[[:space:]]*([1-9]|0\\.[0-9]*[1-9])' src/components/lineage/explorer --include=*.tsx --include=*.ts --exclude=*.test.ts
+  [ \$? -eq 1 ]"
 check "Zoom in, Zoom out and Fit the whole view in the group named Zoom; Center on selection and Keyboard shortcuts outside it" bash -c '
   f=src/components/lineage/explorer/canvas.tsx
   for w in "Zoom in" "Zoom out" "Fit the whole view" "Center on selection" "Keyboard shortcuts"; do grep -q "\"$w\"" "$f" || exit 1; done
