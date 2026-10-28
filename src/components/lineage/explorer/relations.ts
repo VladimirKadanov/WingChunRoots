@@ -30,3 +30,11 @@ export function relationsText(teachers: readonly string[], totals: RelationCount
         : `${counted(totals.students, 'student', 'students')}, ${drawn.students} drawn.`;
   return `${first} ${second}`;
 }
+
+/**
+ * The description of a summary node "and N more" (its aria-describedby): what it opens. The page's
+ * size is the students list's (students-list.tsx STUDENTS_PER_PAGE; relations.test.ts keeps them one).
+ */
+export function summaryText(teacher: string): string {
+  return `Opens the list of all students of ${teacher}, 20 to a page.`;
+}

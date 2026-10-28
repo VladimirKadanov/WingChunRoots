@@ -28,7 +28,8 @@ describe('summaryNodes', () => {
       ariaLabel: 'and 5 more students of Demo Teacher',
       data: { teacherId: 't', name: 'Demo Teacher', slug: 'demo-teacher', more: 5, rank: 1 },
     });
-    expect(more!.domAttributes).toEqual({ tabIndex: -1, 'aria-roledescription': undefined });
+    // Described by what it opens (relations.ts summaryText), in a hidden element of the node's view.
+    expect(more!.domAttributes).toEqual({ tabIndex: -1, 'aria-roledescription': undefined, 'aria-describedby': 'rel-more:t' });
   });
 
   it('says "student" for one left out', () => {

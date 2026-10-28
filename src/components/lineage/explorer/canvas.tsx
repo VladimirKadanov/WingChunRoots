@@ -90,7 +90,7 @@ import { useGraphKeys } from './keys';
 import { NodeControls } from './node-controls';
 import { CONTROLS_START, type ControlsPlace, placeControls, type Strip } from './controls-layout';
 import { KEY_HELP } from './shortcuts';
-import { relationsText } from './relations';
+import { relationsText, summaryText } from './relations';
 import { isSummaryId, joinToBox, relationsId, summaryTeacherOf } from './state';
 import { SummaryCard } from './summary-node';
 import { CenterIcon, KeyboardIcon } from './tool-icons';
@@ -329,8 +329,9 @@ export function summaryNodes(scene: Scene, people: readonly PersonNode[]): Summa
       selectable: false,
       ariaRole: 'button',
       ariaLabel: `and ${more} more ${more === 1 ? 'student' : 'students'} of ${teacher?.name ?? ''}`,
-      // One of the graph's many stops (roving tabindex), and a plain button: no "node" role description.
-      domAttributes: { tabIndex: -1, 'aria-roledescription': undefined },
+      // One of the graph's many stops (roving tabindex), and a plain button: no "node" role
+      // description. What it opens describes it, as the relationships describe a person.
+      domAttributes: { tabIndex: -1, 'aria-roledescription': undefined, 'aria-describedby': relationsId(sn.id) },
       data: { teacherId, name: teacher?.name ?? '', slug: teacher?.slug ?? '', more, rank: sn.rank, slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height }, boxes: sn.boxes },
     });
   }
@@ -346,6 +347,10 @@ function SummaryNodeView({ id, data }: NodeProps<SummaryNode>) {
   return (
     <div ref={root} data-summary-node="" data-rank={data.rank} data-lod={lod} className="relative size-full">
       <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
+      {/* What it opens: the node's aria-describedby. */}
+      <span id={relationsId(id)} hidden>
+        {summaryText(data.name)}
+      </span>
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
         <SummaryCard data={data} lod={lod} />
       </div>

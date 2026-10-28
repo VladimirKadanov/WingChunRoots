@@ -3,7 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { relationsText } from './relations';
+import { relationsText, summaryText } from './relations';
+import { STUDENTS_PER_PAGE } from './students-list';
 
 describe('relationsText', () => {
   it('names the teachers drawn and counts those not drawn', () => {
@@ -18,5 +19,11 @@ describe('relationsText', () => {
   it('says when no teacher is drawn, or none is in the record', () => {
     expect(relationsText([], { teachers: 1, students: 1 }, { teachers: 0, students: 1 })).toBe('1 teacher, not drawn. 1 student, all drawn.');
     expect(relationsText([], { teachers: 0, students: 3 }, { teachers: 0, students: 0 })).toBe('No teachers in the record. 3 students, 0 drawn.');
+  });
+});
+
+describe('summaryText', () => {
+  it('says what the summary node opens, with the students list\'s page size', () => {
+    expect(summaryText('Demo Teacher')).toBe(`Opens the list of all students of Demo Teacher, ${STUDENTS_PER_PAGE} to a page.`);
   });
 });
