@@ -342,9 +342,12 @@ test.describe('expansion (C)', () => {
     // Its words at every level of detail but the dot.
     if ((await node.locator('[data-summary-node]').getAttribute('data-lod')) !== 'dot') await expect(node).toContainText(`and ${n} more`);
 
-    // Activating it (a click here; Enter and Space come with the graph's keys, package A) opens the
-    // teacher's students in the panel, 20 to a page, by name, as people.students lists them.
-    await node.click();
+    // Enter on it (the graph's keys, package A) opens the teacher's students in the panel, 20 to a
+    // page, by name, as people.students lists them.
+    // Focused as a key move would (no scroll of the graph's box), not with the pointer.
+    await node.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
+    expect(await focusedNodeId(page)).toBe(summaryIdOf(hub));
+    await page.keyboard.press('Enter');
     const panel = page.getByTestId('explorer-panel');
     await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
     const size = 20;
@@ -364,6 +367,13 @@ test.describe('expansion (C)', () => {
     await pages.getByRole('button', { name: 'Previous' }).click();
     expect(await listedStudents(page, hubName, 1)).toEqual(first);
     await expect(pages.getByRole('button', { name: 'Previous' })).toHaveAttribute('aria-disabled', 'true');
+
+    // A click on the summary node opens the same list.
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
+    await node.click();
+    await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
+    expect(await listedStudents(page, hubName, 1)).toEqual(first);
   });
 });
 
