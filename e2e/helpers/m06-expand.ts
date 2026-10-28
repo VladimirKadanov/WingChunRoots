@@ -1,14 +1,34 @@
 // Steps of the M06 expansion tests (milestone M06, package C): the API's counts and pages of a
 // teacher's students, the layout worker's scenes (captureScenes), the summary node "and N more",
-// a node's place on screen, and the students list in the panel.
+// a node's place on screen, the key moves to the summary node, and the students list in the panel.
 
 import { expect, type Locator, type Page } from '@playwright/test';
 
-import type { CapturedScene } from './explorer-checks';
+import { FANOUT_SHOWN, summaryIdOf } from '../../src/components/lineage/explorer/state';
 import { nodeOf } from './explorer';
+import { focusedNodeId } from './explorer-a11y';
+import { type CapturedScene, settledView } from './explorer-checks';
 
 /** The summary node "and N more" of a teacher (state.ts summaryIdOf). */
 export const summaryNodeOf = (page: Page, teacherId: string): Locator => nodeOf(page, `more:${teacherId}`);
+
+/**
+ * Key moves from the focused node to a teacher's summary node "and N more": down to the row of its
+ * students, then along it. Each move waits for its pan (viewport.ts ensureVisible) to come to rest,
+ * so the view keeps its readable zoom (moves in a row each start from a view in flight).
+ */
+export async function walkToSummary(page: Page, teacherId: string): Promise<void> {
+  // React Flow draws only the nodes in view: the summary node's id, not its element.
+  const id = summaryIdOf(teacherId);
+  await page.keyboard.press('ArrowDown');
+  await settledView(page);
+  for (let step = 0; (await focusedNodeId(page)) !== id; step++) {
+    // At most one step past each drawn student.
+    expect(step, 'ArrowRight steps along the row to the summary node').toBeLessThanOrEqual(FANOUT_SHOWN);
+    await page.keyboard.press('ArrowRight');
+    await settledView(page);
+  }
+}
 
 /** A person's public students, as people.get counts them (the API; every public student, ended training included). */
 export async function publicStudentCount(page: Page, slug: string): Promise<number> {

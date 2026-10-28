@@ -16,6 +16,7 @@ import { expect, test } from '@playwright/test';
 import { NAV_ITEMS } from '../src/components/shell/nav';
 import { closeHelpers, signInAs } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
+import { EXPLORER_STATES } from './helpers/m06-states';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
@@ -72,6 +73,20 @@ for (const size of SCREEN_SIZES) {
         await page.evaluate(() => document.fonts.ready.then(() => undefined));
         await expect(page).toHaveScreenshot(`explore-${EXPLORER_LIST.name}-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
       });
+    }
+
+    // M06: the explorer's selection with its routes (the panel; on a phone the bottom sheet at its
+    // middle snap point) and an expansion with its summary node "and N more" (screen states).
+    for (const state of EXPLORER_STATES.filter((s) => s.name === 'explore-selection' || s.name === 'explore-expanded')) {
+      for (const theme of THEMES) {
+        test(`the explorer (${state.name}) at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
+          test.setTimeout(90_000);
+          await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+          await state.reach(page);
+          await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          await expect(page).toHaveScreenshot(`${state.name}-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
+        });
+      }
     }
 
     // M07: the search palette, open with results (a screen state, not a route).
