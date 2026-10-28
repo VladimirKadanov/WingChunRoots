@@ -22,9 +22,9 @@
 //   to the element focused before they opened).
 // - Esc: the chooser and the help close themselves (they have the focus); on a node, Esc lowers a
 //   phone's sheet that is above its peek, else clears the selection.
-// - With the focus on the graph itself (canvas.tsx holds it there while no node is drawn), an
-//   arrow, Enter or Space brings the active node back into view and focuses it; the other keys
-//   act as they do on it.
+// - With the focus on the graph itself (canvas.tsx holds it there while no node is drawn, and it
+//   is the graph's tab stop then), an arrow, Enter or Space brings the active node back into view
+//   and focuses it; the other keys act as they do on it.
 
 import { useRouter } from 'next/navigation';
 import { type KeyboardEvent, lazy, type ReactNode, Suspense, useState } from 'react';
@@ -145,7 +145,8 @@ const BACK_TO_NODE: ReadonlySet<GraphAction> = new Set(['up', 'down', 'left', 'r
 
 /**
  * Whether a key was pressed on the graph itself, React Flow's element: it holds the focus while
- * no node can (canvas.tsx holdFocus: a drag took every node off screen).
+ * no node can (canvas.tsx holdFocus: a drag took every node off screen), and Tab reaches it as the
+ * graph's one stop while no node is drawn to be one (canvas.tsx useGraphStop).
  */
 function onGraph(event: KeyboardEvent<HTMLDivElement>): boolean {
   const target = event.target instanceof HTMLElement ? event.target : null;

@@ -12,7 +12,7 @@ import { MAX_ROUTES } from '../src/components/lineage/explorer/route-list';
 import { FANOUT_SHOWN, summaryIdOf } from '../src/components/lineage/explorer/state';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { edgesInto, EXPLORER_VIEWS, lineageIdOf, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
-import { activeNodeId, announcement, dragEveryNodeOffScreen, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
+import { activeNodeId, announcement, dragEveryNodeOffScreen, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, graphIsTabStop, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
 import { captureScenes, installInpProbes, personNameOf, selectionInp, settledView, uncoveredNode } from './helpers/explorer-checks';
 import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf, walkToSummary } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
@@ -75,7 +75,7 @@ test.describe('foundation', () => {
   });
 
   test('@M06 a drag that takes every node off screen keeps the focus on the graph, and an arrow key brings the active node back', async ({ page }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     for (const size of [
       { width: 1440, height: 900 },
       { width: 390, height: 844 },
@@ -91,7 +91,9 @@ test.describe('foundation', () => {
       await expect.poll(() => focusInGraph(page), `${where}: the focus stays in the graph`).toBe(true);
       expect(await page.evaluate(() => document.activeElement?.classList.contains('react-flow') ?? false), `${where}: on the graph itself`).toBe(true);
       expect(await focusedNodeId(page), `${where}: on no node`).toBeNull();
-      expect(await tabStops(page), `${where}: no node drawn, so no tab stop drawn`).toBe(0);
+      // No node is drawn to be the tab stop: the graph itself is the one stop (plan §4.9).
+      expect(await tabStops(page), `${where}: no node drawn, still one tab stop`).toBe(1);
+      expect(await graphIsTabStop(page), `${where}: the stop is the graph itself`).toBe(true);
 
       // The next arrow key brings the active node back into view and gives it the focus.
       await page.keyboard.press('ArrowDown');
@@ -102,6 +104,34 @@ test.describe('foundation', () => {
       expect(await isInVisibleArea(page, back), `${where}: it lies wholly in the visible area`).toBe(true);
       await expect.poll(() => tabStops(page), `${where}: one tab stop`).toBe(1);
       expect(await page.evaluate(() => document.querySelector('.react-flow')?.hasAttribute('tabindex') ?? true), `${where}: the graph is no stop of its own`).toBe(false);
+
+      // A pointer user drags every node off screen with the focus outside the graph (requirements-4):
+      // the graph itself is its one stop, Tab from the toolbar reaches it, and an arrow key brings
+      // the active node back.
+      const graphButton = page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'Graph' });
+      await graphButton.focus();
+      await dragEveryNodeOffScreen(page);
+      expect(await focusInGraph(page), `${where}: the focus is outside the graph`).toBe(false);
+      await expect.poll(() => tabStops(page), `${where}: one tab stop after the pointer drag`).toBe(1);
+      expect(await graphIsTabStop(page), `${where}: the stop is the graph itself`).toBe(true);
+      // The graph's element is a named application (React Flow's role): no axe violation as a tab stop.
+      if (size.width === 1440) await expectNoAxeViolations(page, `/explore with the graph itself as its tab stop, ${where}`);
+      await graphButton.focus();
+      let reached = false;
+      for (let i = 0; i < 40 && !reached; i++) {
+        await page.keyboard.press('Tab');
+        reached = await focusInGraph(page);
+      }
+      expect(reached, `${where}: Tab reaches the graph`).toBe(true);
+      expect(await page.evaluate(() => document.activeElement?.classList.contains('react-flow') ?? false), `${where}: Tab reaches the graph itself`).toBe(true);
+      await page.keyboard.press('ArrowDown');
+      await expect.poll(() => focusedNodeId(page), `${where}: the arrow gives a node the focus`).not.toBeNull();
+      await settledView(page);
+      const again = (await focusedNodeId(page))!;
+      expect(await activeNodeId(page), `${where}: it is the tab stop`).toBe(again);
+      expect(await isInVisibleArea(page, again), `${where}: it lies wholly in the visible area`).toBe(true);
+      await expect.poll(() => tabStops(page), `${where}: one tab stop, on the node`).toBe(1);
+      expect(await graphIsTabStop(page), `${where}: the graph is no stop of its own`).toBe(false);
     }
   });
 });

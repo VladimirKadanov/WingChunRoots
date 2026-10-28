@@ -29,9 +29,17 @@ export function focusInGraph(page: Page): Promise<boolean> {
   return page.evaluate(() => !!document.activeElement?.closest('.react-flow'));
 }
 
-/** How many elements inside .react-flow have tabindex="0" (the roving tab stop: always exactly one). */
+/**
+ * How many elements of the graph have tabindex="0": the roving tab stop, always exactly one. The
+ * graph's own element (.react-flow) counts too: it is the stop while no node is drawn to be one.
+ */
 export function tabStops(page: Page): Promise<number> {
-  return page.evaluate(() => document.querySelectorAll('.react-flow [tabindex="0"]').length);
+  return page.evaluate(() => document.querySelectorAll('.react-flow[tabindex="0"], .react-flow [tabindex="0"]').length);
+}
+
+/** Whether the graph's own element, React Flow's (.react-flow), is the graph's tab stop (tabindex="0"). */
+export function graphIsTabStop(page: Page): Promise<boolean> {
+  return page.evaluate(() => document.querySelector('.react-flow')?.getAttribute('tabindex') === '0');
 }
 
 /**

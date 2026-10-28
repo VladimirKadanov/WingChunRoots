@@ -23,8 +23,9 @@
 // M06 (milestone M06, package F wires the seams marked `// M06 seam: <name>`): React Flow's own
 // keyboard is off and the graph has one tab stop, the active node (roving tabindex), moved by the
 // keys of keys.tsx on the wrapper around React Flow (data-graph-keys), by a click or a tap, and
-// kept on a drawn node; focus never falls out of the graph when its node leaves the screen. A
-// polite live region speaks the key moves and the notices. The summary node "and N more" is a
+// kept on a drawn node (on the graph itself while none is drawn); focus never falls out of the
+// graph when its node leaves the screen. A polite live region speaks the key moves and the
+// notices. The summary node "and N more" is a
 // node type of its own; an expansion keeps the pressed node at its screen point (the anchor); a
 // selection lights its routes (data-lit, data-highlighting); "Center on selection" and "Keyboard
 // shortcuts" are buttons over the canvas next to the zoom buttons.
@@ -1148,16 +1149,56 @@ function nearestDrawn(s: FlowState, except?: string): string | null {
 /**
  * Holds the keyboard focus on the graph itself, React Flow's element ("Lineage graph", its
  * application role and the key help as its description), while no node can hold it: a drag took
- * every node off screen, or a key move's target is not drawn yet. Focusable (tabIndex -1, never a
- * tab stop) only while it has the focus, so a click on the bare pane focuses nothing, as before.
+ * every node off screen, or a key move's target is not drawn yet. Focusable while it has the focus:
+ * the tab stop (tabindex 0) while no node is one, else -1 until the focus leaves it (syncGraphStop).
  * The next arrow key, Enter or Space brings the active node back (keys.tsx). Nothing is announced:
  * the element's own name is.
  */
 function holdFocus(root: HTMLElement): void {
   if (document.activeElement === root) return;
-  root.tabIndex = -1;
-  root.addEventListener('blur', () => root.removeAttribute('tabindex'), { once: true });
+  if (!root.hasAttribute('tabindex')) root.tabIndex = -1;
+  root.addEventListener('blur', () => syncGraphStop(root, false), { once: true });
   root.focus({ preventScroll: true });
+}
+
+/**
+ * Makes the graph itself, React Flow's element, its one tab stop (tabindex 0) exactly while no
+ * node inside it is (requirements-4): React Flow draws only the nodes on screen, so a pointer pan
+ * that takes every node off screen leaves the active node, the stop, undrawn, and Tab would pass
+ * the graph by. Once a node is the stop again, the element is none: it keeps tabindex -1 while it
+ * still has the focus (holdFocus), and none at all once the focus leaves it, so a click on the bare
+ * pane focuses nothing. `focused`: whether the element has the focus (false from its blur).
+ */
+function syncGraphStop(root: HTMLElement, focused = document.activeElement === root): void {
+  const stop = root.querySelector('.react-flow__node[tabindex="0"]') === null;
+  const want = stop ? '0' : focused ? '-1' : null;
+  if (root.getAttribute('tabindex') === want) return;
+  if (want === null) root.removeAttribute('tabindex');
+  else root.setAttribute('tabindex', want);
+}
+
+/**
+ * Keeps the graph's one tab stop (plan §4.9) when no node can be it (syncGraphStop): looked at
+ * again whenever a node enters or leaves the DOM or a tabindex inside the graph changes (a pan, a
+ * zoom, a new scene, the roving stop moving), and when the graph itself lets the focus go. The
+ * check is one query, so the pans and the selections that change the DOM cost next to nothing.
+ */
+function useGraphStop(): void {
+  const root = useStore((s) => s.domNode);
+  useEffect(() => {
+    if (!root) return;
+    const sync = () => syncGraphStop(root);
+    const blur = () => syncGraphStop(root, false);
+    sync();
+    // Our own change of the element's tabindex comes back here once and changes nothing more.
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['tabindex'] });
+    root.addEventListener('blur', blur);
+    return () => {
+      observer.disconnect();
+      root.removeEventListener('blur', blur);
+    };
+  }, [root]);
 }
 
 /**
@@ -1168,8 +1209,9 @@ function holdFocus(root: HTMLElement): void {
  * it off screen while the focus is outside the graph moves the tab stop to the drawn node nearest
  * the centre (`retarget`, at the end of every move), and one that takes the focused node away
  * moves the focus there (`lost`, the focus-loss guard), or, with no node drawn at all, to the
- * graph itself (holdFocus): never to <body>. A key move's target wins over both: while its focus
- * waits for the target to be drawn, the guard holds the focus on the graph and lets it come.
+ * graph itself (holdFocus): never to <body>. With no node drawn to be the stop, the graph itself is
+ * the one stop (useGraphStop). A key move's target wins over both: while its focus waits for the
+ * target to be drawn, the guard holds the focus on the graph and lets it come.
  */
 function useRoving({
   nodes,
@@ -1416,6 +1458,7 @@ function CanvasFrame({
   if (summariesOf?.scene !== scene) setSummariesOf({ scene, nodes: summaries });
   const all: readonly FlowNode[] = summaries.length === 0 ? nodes : [...nodes, ...summaries];
   const roving = useRoving({ nodes: all, focusId: scene.focusId, moves, speak });
+  useGraphStop();
   const { active, setActive } = roving;
   useImperativeHandle(
     handle,
