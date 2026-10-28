@@ -167,6 +167,15 @@ describe('flowBase node data for the keyboard and screen readers (M06)', () => {
     expect(base.nodes.find((n) => n.id === id(2))!.ariaLabel).toBe('Demo Teacher');
   });
 
+  it('names the selected person as selected, and only them', () => {
+    const base = flowBase(graph, scene, new Map(), false);
+    const { nodes } = selectFlow(base, id(3));
+    expect(nodes.find((n) => n.id === id(3))!.ariaLabel).toMatch(/^Demo Student, .+, Verified, selected$/);
+    expect(nodes.filter((n) => n.ariaLabel?.endsWith(', selected')).map((n) => n.id)).toEqual([id(3)]);
+    // Cleared, the base's nodes come back, with their names as they were.
+    expect(selectFlow(base, null).nodes.some((n) => n.ariaLabel?.endsWith('selected'))).toBe(false);
+  });
+
   it('counts teachers and students in the record and those drawn, and names the teachers drawn', () => {
     const base = flowBase({ ...graph, hiddenCounts: { [id(3)]: { teachers: 1, students: 0 } } }, scene, new Map(), false);
     const data = (n: number) => base.nodes.find((x) => x.id === id(n))!.data;

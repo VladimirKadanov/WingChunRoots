@@ -2,7 +2,8 @@
 // {Status}. {T} teachers, {S} students. {generation label}." (package A, DEFAULT D22 for the
 // label), and the notices ("Added 12 students of {name}.", package C) and the reasons a move has
 // no target, each once in its place. Key moves are spoken after a short quiet, so holding an
-// arrow key does not queue a stream of speech (DEFAULT, no D number: 250 ms).
+// arrow key does not queue a stream of speech (DEFAULT, no D number: 250 ms); so are a selection,
+// its clearing and a list of students opened (after their change is painted).
 //
 // Package F wires the live region in canvas.tsx and the announcer below; package A writes the words.
 
@@ -34,6 +35,22 @@ export function announce(node: FlowNode): string {
   const parts = [data.name, status, `${counted(data.totals.teachers, 'teacher', 'teachers')}, ${counted(data.totals.students, 'student', 'students')}`];
   if (data.generation) parts.push(generationText(data.generation));
   return parts.map((part) => `${part}.`).join(' ');
+}
+
+/**
+ * The words for a selection (Space, a click or a tap): the person, and where the details are (the
+ * panel over the canvas, or on a phone the bottom sheet).
+ */
+export function selectedWords(name: string, sheet: boolean): string {
+  return sheet ? `${name} selected. Routes of descent and details are in the sheet below.` : `${name} selected. Routes of descent and details are open.`;
+}
+
+/** The words for a selection cleared (Esc, a click on the empty canvas). */
+export const SELECTION_CLEARED = 'Selection cleared.';
+
+/** The words for the list of a teacher's students opened (the summary node "and N more"). */
+export function studentsOpenWords(name: string): string {
+  return `Students of ${name}: list open.`;
 }
 
 export interface Announcer {

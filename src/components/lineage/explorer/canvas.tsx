@@ -72,7 +72,7 @@ import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib
 
 import { type GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
-import { announce, createAnnouncer } from './announce';
+import { announce, createAnnouncer, SELECTION_CLEARED, selectedWords, studentsOpenWords } from './announce';
 import {
   type ActiveOptions,
   type CanvasHandle,
@@ -1472,6 +1472,18 @@ function CanvasFrame({
     fit: buttons.fit,
     center: buttons.center,
   };
+  // A selection, its clearing and a list of students opened are spoken too (plan §4.9), from a key,
+  // a click or a tap, after the short quiet of a key move: the change paints first (INP).
+  const nameOf = (id: string) => all.find((n) => n.id === id)?.data.name ?? '';
+  const select = (id: string | null) => {
+    onSelect(id);
+    if (id !== null) announcer.move(selectedWords(nameOf(id), !window.matchMedia(PANEL_OVER_CANVAS).matches));
+    else if (selectedId !== null) announcer.move(SELECTION_CLEARED);
+  };
+  const openStudents = (teacherId: string) => {
+    actions.openStudents(teacherId);
+    announcer.move(studentsOpenWords(nameOf(teacherId)));
+  };
   const context: GraphContext = {
     nodes: all,
     edges,
@@ -1479,8 +1491,8 @@ function CanvasFrame({
     activeId: active,
     setActive,
     selectedId,
-    select: onSelect,
-    openStudents: actions.openStudents,
+    select,
+    openStudents,
     closeList: actions.closeStudents,
     say: (text) => announcer.notice(text),
     collapseSheet: () => panel?.current?.collapse() ?? false,
@@ -1521,10 +1533,10 @@ function CanvasFrame({
               onNodeClick={(_, node) => {
                 // The active node follows a click or a tap too (the click focuses it).
                 setActive(node.id);
-                if (isSummaryId(node.id)) actions.openStudents(summaryTeacherOf(node.id));
-                else onSelect(node.id);
+                if (isSummaryId(node.id)) openStudents(summaryTeacherOf(node.id));
+                else select(node.id);
               }}
-              onPaneClick={() => onSelect(null)}
+              onPaneClick={() => select(null)}
               onMoveEnd={roving.retarget}
               deleteKeyCode={null}
               aria-label="Lineage graph"

@@ -219,8 +219,9 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
       hidden: linked.has(sn.id) && !shown.has(sn.id) && sn.id !== graph.focusId && !lit,
       selected,
       // M06 seam: node-data. Name, generation in the view, status (plan §4.9): a person with no
-      // line drawn into them has no status (the announcement says "Root of this lineage").
-      ariaLabel: [person.displayName, label ? generationText(label) : null, status?.label].filter(Boolean).join(', '),
+      // line drawn into them has no status (the announcement says "Root of this lineage"). The
+      // selection is part of the name (WCAG 4.1.2): only the nodes a selection changes are built again.
+      ariaLabel: [person.displayName, label ? generationText(label) : null, status?.label, selected ? 'selected' : null].filter(Boolean).join(', '),
       // One tab stop for the graph (roving tabindex): the canvas gives the active node 0. The
       // relationships in words describe the node; "person", not React Flow's "node".
       domAttributes: { tabIndex: -1, 'aria-describedby': relationsId(sn.id), 'aria-roledescription': 'person' },
