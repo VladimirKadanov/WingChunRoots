@@ -87,6 +87,13 @@ export interface CanvasHandle {
    * call, a move to another node, a pan or a zoom by the user cancels a call still waiting.
    */
   ensureVisible(id?: string): void;
+  /**
+   * Selects a person or clears the selection, as a key, a click or a tap on the graph does, and
+   * says so in the live region (plan §4.9): the panel's Close, Esc and swipe go through it.
+   */
+  select(id: string | null): void;
+  /** Opens the panel's list of a teacher's students, as the summary node does, and says so: the panel's "List all students". */
+  openStudents(teacherId: string): void;
   /** Moves the keyboard focus to the active node (after ensureVisible). */
   focusActive(): void;
   /**

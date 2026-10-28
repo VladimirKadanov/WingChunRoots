@@ -600,6 +600,7 @@ test.describe('selection (B)', () => {
     await page.keyboard.press('Escape');
     await expect(panel, 'Esc in the sheet closes it').toBeHidden();
     await expect.poll(() => focusedNodeId(page), 'closed from inside, the focus is back on the person').toBe(id);
+    await expect.poll(() => announcement(page), 'the clearing is announced, as from the graph').toBe('Selection cleared.');
   });
 
   test('@M06 on a phone Esc in the raised students sheet gives the focus back to the summary node', async ({ page }) => {
@@ -848,6 +849,29 @@ test.describe('expansion (C)', () => {
     await expect.poll(() => wholeAndUncovered(summaryNodeOf(page, hub)), 'the summary node is whole and uncovered').toBe(true);
     await settledView(page);
     expect(await wholeAndUncovered(summaryNodeOf(page, hub)), 'and stays so').toBe(true);
+  });
+
+  test('@M06 the panel\'s Close and "List all students" are announced as a key\'s are', async ({ page }) => {
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    const panel = page.getByTestId('explorer-panel');
+    await page.keyboard.press('Space');
+    await expect.poll(() => announcement(page), 'the selection is announced').toBe(`${hubName} selected. Routes of descent and details are open.`);
+
+    // Close in the overlay clears the selection, says so, and gives the focus back to the person.
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveCount(0);
+    await expect.poll(() => announcement(page), 'the clearing is announced').toBe('Selection cleared.');
+    await expect.poll(() => focusedNodeId(page), 'the focus is back on the person').toBe(hub);
+
+    // "List all students" opens the list, and says so as the summary node does.
+    await page.keyboard.press('Space');
+    await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).click();
+    await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
+    await expect.poll(() => announcement(page), 'the list is announced').toBe(`Students of ${hubName}: list open.`);
   });
 
   test('@M06 Esc closes a list of students with nobody selected, from the graph and from the list', async ({ page }) => {

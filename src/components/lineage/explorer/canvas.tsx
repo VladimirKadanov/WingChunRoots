@@ -1604,35 +1604,6 @@ function CanvasFrame({
   const roving = useRoving({ nodes: all, focusId: scene.focusId, moves, speak });
   useGraphStop();
   const { active, setActive } = roving;
-  useImperativeHandle(
-    handle,
-    (): CanvasHandle => ({
-      activeElement: () => {
-        const id = roving.latest.current.active;
-        return id === null ? null : elementOf(store.getState().domNode, id);
-      },
-      // Once the view's running moves (a zoom button's, a new scene's fit) have ended: a move now
-      // would stop them short (trackMove). At most a second later, and never for a node left behind.
-      ensureVisible: (id) => roving.revealWhenStill(id),
-      focusActive: () => {
-        const target = roving.latest.current.active;
-        if (target !== null) setActive(target, { focus: true });
-      },
-      keepInView: () => reachOf(store.getState(), roving.latest.current.active, false),
-      coverAbove: () => reachOf(store.getState(), roving.latest.current.active, true),
-      showsAbove: (y) => {
-        const s = store.getState();
-        const frame = s.domNode?.closest('[data-canvas-frame]');
-        const id = roving.latest.current.active;
-        const node = id === null ? undefined : s.nodeLookup.get(id);
-        if (!frame || !node) return true;
-        const box = frame.getBoundingClientRect();
-        // The card at the smallest zoom ensureVisible zooms out to (READABLE_ZOOM, or the zoom now where smaller).
-        const card = (node.measured.height ?? node.height ?? 0) * Math.min(s.transform[2], READABLE_ZOOM);
-        return Math.min(y, box.bottom) - box.top >= VIEW_GAP + card + VIEW_GAP;
-      },
-    }),
-  );
 
   // M06 seam: zoom-controls
   const buttons = useViewButtons(moves, scene);
@@ -1665,6 +1636,39 @@ function CanvasFrame({
     actions.openStudents(teacherId);
     announcer.move(studentsOpenWords(nameOf(teacherId)));
   };
+  // M06 seam: roving. The canvas's handle, for the panel: its Close and "List all students" select
+  // and open through the canvas too, so they are spoken as a key's or a click's are, once.
+  useImperativeHandle(
+    handle,
+    (): CanvasHandle => ({
+      activeElement: () => {
+        const id = roving.latest.current.active;
+        return id === null ? null : elementOf(store.getState().domNode, id);
+      },
+      // Once the view's running moves (a zoom button's, a new scene's fit) have ended: a move now
+      // would stop them short (trackMove). At most a second later, and never for a node left behind.
+      ensureVisible: (id) => roving.revealWhenStill(id),
+      select,
+      openStudents,
+      focusActive: () => {
+        const target = roving.latest.current.active;
+        if (target !== null) setActive(target, { focus: true });
+      },
+      keepInView: () => reachOf(store.getState(), roving.latest.current.active, false),
+      coverAbove: () => reachOf(store.getState(), roving.latest.current.active, true),
+      showsAbove: (y) => {
+        const s = store.getState();
+        const frame = s.domNode?.closest('[data-canvas-frame]');
+        const id = roving.latest.current.active;
+        const node = id === null ? undefined : s.nodeLookup.get(id);
+        if (!frame || !node) return true;
+        const box = frame.getBoundingClientRect();
+        // The card at the smallest zoom ensureVisible zooms out to (READABLE_ZOOM, or the zoom now where smaller).
+        const card = (node.measured.height ?? node.height ?? 0) * Math.min(s.transform[2], READABLE_ZOOM);
+        return Math.min(y, box.bottom) - box.top >= VIEW_GAP + card + VIEW_GAP;
+      },
+    }),
+  );
   const context: GraphContext = {
     nodes: all,
     edges,

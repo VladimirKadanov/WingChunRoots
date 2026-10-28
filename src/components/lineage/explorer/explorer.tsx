@@ -535,6 +535,16 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   };
   const panelHandle = useRef<PanelHandle>(null);
   const canvasHandle = useRef<CanvasHandle>(null);
+  // The panel's Close (Esc, a swipe) and "List all students" go through the canvas, which says
+  // what changed in its live region as it does for a key or a click (plan §4.9).
+  const closePanel = () => {
+    if (canvasHandle.current) canvasHandle.current.select(null);
+    else select(null);
+  };
+  const listStudents = (teacherId: string) => {
+    if (canvasHandle.current) canvasHandle.current.openStudents(teacherId);
+    else openStudents(teacherId);
+  };
   const [flowOf, setFlowOf] = useState<{ laidOut: LaidOut; showHistorical: boolean; base: FlowBase } | null>(null);
   // The list the server rendered, and for whom: a focus changed in the browser (a shallow update)
   // keeps the last one, which belongs to the person before, until the server renders the new one.
@@ -755,8 +765,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                 routes={lit.routes}
                 url={url}
                 setUrl={setUrl}
-                onClose={() => select(null)}
-                actions={actions}
+                onClose={closePanel}
+                actions={{ ...actions, openStudents: listStudents }}
                 handle={panelHandle}
                 canvas={canvasHandle}
               />
