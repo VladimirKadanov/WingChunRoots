@@ -1396,7 +1396,7 @@ function useRoving({
    * can take the node it starts from off screen before its target is drawn: the graph holds the
    * focus until then, and the key's target takes it (whenDrawn).
    */
-  const lost = (id: string) => {
+  const lostNow = (id: string) => {
     afterFocusFell((root) => {
       const pending = waiting.current;
       if (pending && pending.id !== id) holdFocus(root);
@@ -1405,7 +1405,21 @@ function useRoving({
   };
 
   /** The guard of the buttons over the canvas: they leave the DOM with the focus (a sliver of canvas above a raised sheet). */
-  const controlsLost = () => afterFocusFell(() => refocus());
+  const controlsLostNow = () => afterFocusFell(() => refocus());
+
+  // Both guards are one function each for the life of the canvas, calling this render's version:
+  // `lost` is the FocusGuard context's value, which every drawn node reads (useFocusGuard), and
+  // refocus and whenDrawn are new closures on every render. A new value on every render would
+  // re-render every drawn node, and renew its guard, on each selection, key move and announcement,
+  // so a selection would cost more as the view grows (plan §4.8).
+  const guards = useRef({ lost: lostNow, controlsLost: controlsLostNow });
+  useLayoutEffect(() => {
+    guards.current = { lost: lostNow, controlsLost: controlsLostNow };
+  });
+  const [{ lost, controlsLost }] = useState(() => ({
+    lost: (id: string) => guards.current.lost(id),
+    controlsLost: () => guards.current.controlsLost(),
+  }));
 
   /**
    * A press on the pane or an edge with the focus in the graph (a pointer pan) leaves the focus

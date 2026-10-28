@@ -319,6 +319,35 @@ test.describe('keyboard (A)', () => {
     expect(await focusInGraph(page), 'the focus stayed in the graph').toBe(true);
     expect(result.inp).toBeLessThan(200);
   });
+
+  test('@M06 a selection and a key move renew the focus guard of no node that stays drawn', async ({ page }) => {
+    // Plan §4.8: a selection must not cost more as the view grows. A node's focus guard (canvas.tsx
+    // useFocusGuard) asks .react-flow__node for its slot only in its cleanup, which runs when the node
+    // leaves the DOM, or on every drawn node when the guard function changes on a render (review
+    // finding perf-3). Every element that asked must be gone from the DOM by the end.
+    const hub = await personIdOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page), 'Tab reaches the person in focus').toBe(hub);
+    await page.evaluate(() => {
+      const w = window as unknown as { __guards: Element[] };
+      w.__guards = [];
+      const original = Element.prototype.closest;
+      Element.prototype.closest = function (this: Element, selectors: string) {
+        if (selectors === '.react-flow__node') w.__guards.push(this);
+        return original.call(this, selectors);
+      } as typeof original;
+    });
+
+    await page.keyboard.press('Space');
+    await expect(page.getByTestId('explorer-panel'), 'Space opens the panel').toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => focusedNodeId(page), 'ArrowDown moves to a student').not.toBe(hub);
+    await settledView(page);
+
+    const renewed = await page.evaluate(() => (window as unknown as { __guards: Element[] }).__guards.filter((element) => element.isConnected).length);
+    expect(renewed, 'focus guards renewed on nodes that stayed drawn').toBe(0);
+  });
 });
 
 test.describe('selection (B)', () => {
