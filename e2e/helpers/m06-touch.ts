@@ -25,13 +25,16 @@ export const TOUCH_TARGET = 44;
  * - whole: not cut by the edge of the window or of what clips it (the canvas frame, a sheet clipped
  *   at the tab bar), unless it lies in a list that scrolls, which brings it in;
  * - uncovered: a tap at the centre of its part on screen reaches it.
- * The skip link waits above the top edge and is no control on screen.
+ * The skip link waits above the top edge and is no control on screen. `within`: only the controls
+ * inside the element this selector finds (a sheet raised over the page, which covers the rest).
  */
-export function controlProblems(page: Page): Promise<string[]> {
-  return page.evaluate((least) => {
+export function controlProblems(page: Page, within?: string): Promise<string[]> {
+  return page.evaluate(([least, scope]) => {
     const problems: string[] = [];
     const scrolls = (el: Element) => /(auto|scroll)/.test(`${getComputedStyle(el).overflowX} ${getComputedStyle(el).overflowY}`);
-    for (const el of document.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [role="button"]')) {
+    const root = scope === null ? document : document.querySelector(scope);
+    if (!root) return [`nothing matches ${scope}`];
+    for (const el of root.querySelectorAll<HTMLElement>('button, a[href], input, select, summary, [role="button"]')) {
       if (el.closest('.react-flow__node') || el.closest('[inert]')) continue;
       if (!el.checkVisibility({ checkVisibilityCSS: true })) continue;
       const label = el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio') ? el.closest('label') : null;
@@ -68,7 +71,7 @@ export function controlProblems(page: Page): Promise<string[]> {
       }
     }
     return problems;
-  }, TOUCH_TARGET);
+  }, [TOUCH_TARGET, within ?? null] as const);
 }
 
 /** Whether the selection's panel is a bottom sheet (a Base UI Drawer: a dialog), not a panel in the page. */

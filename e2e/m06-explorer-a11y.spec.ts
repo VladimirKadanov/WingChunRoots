@@ -324,6 +324,10 @@ test.describe('selection (B)', () => {
     const panel = page.getByTestId('explorer-panel');
     await expect(panel).toBeVisible();
     await expect(nodeOf(page, id)).toHaveClass(/\bselected\b/);
+    // A screen reader hears the selection, and the node's name carries it (plan §4.9, WCAG 4.1.2).
+    const name = await personNameOf('demo-two-lineages');
+    await expect.poll(() => announcement(page), 'the selection is announced').toBe(`${name} selected. Routes of descent and details are in the sheet below.`);
+    await expect(nodeOf(page, id)).toHaveAttribute('aria-label', new RegExp(`^${name}, .+, selected$`));
     await expect(page.locator('[data-canvas-frame][data-highlighting]')).toHaveCount(1);
     // The sheet takes its room from the canvas: fit the view again, so that every edge is drawn.
     await fit.click();
@@ -484,6 +488,77 @@ test.describe('selection (B)', () => {
     await expect(panel, 'the second Esc closes the sheet').toBeHidden();
     await expect(nodeOf(page, id)).not.toHaveClass(/\bselected\b/);
     expect(await focusedNodeId(page), 'the focus stays on the person').toBe(id);
+    await expect.poll(() => announcement(page), 'the clearing is announced').toBe('Selection cleared.');
+    await expect(nodeOf(page, id)).not.toHaveAttribute('aria-label', /, selected$/);
+  });
+
+  test('@M06 on a phone the sheet gives the focus back to the person when it comes down or closes from inside', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(id);
+    await page.keyboard.press('Space');
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    const expand = panel.getByRole('button', { name: 'Expand' });
+    const collapse = panel.getByRole('button', { name: 'Collapse' });
+    // Raised to its top with the focus in the graph (a click event without a pointer moves no
+    // focus), the sheet takes the focus; lowered again, it gives it back to the person.
+    await expand.dispatchEvent('click');
+    await expect(collapse).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.matches('[data-explorer-sheet]') ?? false), 'the sheet took the focus').toBe(true);
+    await collapse.dispatchEvent('click');
+    await expect(expand).toBeVisible();
+    await expect.poll(() => focusedNodeId(page), 'lowered, the focus is back on the person').toBe(id);
+
+    // Esc on a control in the raised sheet's body closes the sheet: the focus goes back to the person, not to <body>.
+    await expand.dispatchEvent('click');
+    const ended = panel.getByRole('button', { name: 'Show ended training' });
+    await expect(ended).toBeVisible();
+    await ended.focus();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'Esc in the sheet closes it').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'closed from inside, the focus is back on the person').toBe(id);
+  });
+
+  test('@M06 on a phone Esc in the raised students sheet gives the focus back to the summary node', async ({ page }) => {
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await walkToSummary(page, hub);
+    await page.keyboard.press('Enter');
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Expand' }).dispatchEvent('click');
+    const row = panel.getByRole('link', { name: /^Explore from here: / }).first();
+    await expect(row).toBeVisible();
+    await row.focus();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'Esc in the sheet closes it').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'the focus is back on the summary node').toBe(summaryIdOf(hub));
+  });
+
+  test('@M06 on a phone a link in the sheet takes its history entry: one Back returns to the explorer, the next leaves it', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    // A page before the explorer, for the last Back to land on.
+    await page.goto('/');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    const url = page.url();
+    await nodeOf(page, id).tap();
+    const panel = page.getByTestId('explorer-panel');
+    const profile = panel.getByRole('link', { name: 'Open profile' });
+    await expect(profile).toBeVisible();
+    await profile.tap();
+    await expect(page).toHaveURL(/\/people\/demo-two-lineages$/);
+    await page.goBack();
+    await expect(page).toHaveURL(url);
+    await expect(nodeOf(page, id)).toBeVisible();
+    await expect(panel, 'back in the explorer, the sheet is closed').toBeHidden();
+    await page.goBack();
+    await expect(page, 'the next Back leaves the explorer').toHaveURL(/\/$/);
   });
 });
 
@@ -566,6 +641,7 @@ test.describe('expansion (C)', () => {
     }
     await expect(node).toHaveAttribute('aria-label', `and ${n} more students of ${hubName}`);
     await expect(node).toHaveAttribute('role', 'button');
+    await expect(node, 'described by what it opens').toHaveAccessibleDescription(`Opens the list of all students of ${hubName}, 20 to a page.`);
     // Its words at every level of detail but the dot.
     if ((await node.locator('[data-summary-node]').getAttribute('data-lod')) !== 'dot') await expect(node).toContainText(`and ${n} more`);
 
@@ -623,6 +699,7 @@ test.describe('expansion (C)', () => {
   test('@M06 Esc closes a list of students with nobody selected, from the graph and from the list', async ({ page }) => {
     test.setTimeout(120_000);
     const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
     const summary = summaryIdOf(hub);
     await openExplorer(page, { focus: hub });
     await settledView(page);
@@ -634,6 +711,7 @@ test.describe('expansion (C)', () => {
     // In the graph: Enter opens the list and Esc closes it; the focus stays on the summary node.
     await page.keyboard.press('Enter');
     await expect(heading).toBeVisible();
+    await expect.poll(() => announcement(page), 'the list is announced').toBe(`Students of ${hubName}: list open.`);
     await page.keyboard.press('Escape');
     await expect(panel, 'Esc in the graph closes the list').toBeHidden();
     expect(await focusedNodeId(page), 'the focus stays on the summary node').toBe(summary);
@@ -647,6 +725,72 @@ test.describe('expansion (C)', () => {
     await page.keyboard.press('Escape');
     await expect(panel, 'Esc in the list closes it').toBeHidden();
     await expect.poll(() => focusedNodeId(page), 'the focus is back on the summary node').toBe(summary);
+
+    // The list's Close, from the keyboard: the focus goes back to the summary node too, not to <body>.
+    await page.keyboard.press('Enter');
+    await expect(heading).toBeVisible();
+    await panel.getByRole('button', { name: 'Close' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(panel, 'Close closes the list').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'after Close the focus is on the summary node').toBe(summary);
+  });
+
+  test('@M06 a panel action that takes away its own button leaves the focus in the panel, never on <body>', async ({ page }) => {
+    test.setTimeout(120_000);
+    const panel = page.getByTestId('explorer-panel');
+    const onBody = () => page.evaluate(() => document.activeElement === null || document.activeElement === document.body);
+    const inPanel = () => page.evaluate(() => !!document.activeElement?.closest('[data-testid="explorer-panel"]'));
+    const id = await personIdOf('demo-two-lineages');
+    await captureScenes(page);
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+
+    // A person drawn whose students not drawn all fit under the cap (FANOUT_SHOWN), from their
+    // "+N students" and the scene: "Show N more students" draws every one of them.
+    const scene = (await scenesFor(page, id)).at(-1)!;
+    const chips = await page.locator('.react-flow__node').evaluateAll((nodes) =>
+      nodes.map((n) => ({ id: (n as HTMLElement).dataset.id!, chip: n.querySelector('[data-more-chip]')?.textContent?.trim() ?? '' })),
+    );
+    const teacher = chips.find((c) => {
+      const n = /^\+(\d+) students?$/.exec(c.chip);
+      return n !== null && drawnStudents(scene, c.id).size + Number(n[1]) <= FANOUT_SHOWN;
+    })?.id;
+    expect(teacher, 'a person whose students not drawn fit under the cap').toBeDefined();
+    await nodeOf(page, teacher!).evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
+    await page.keyboard.press('Space');
+    const more = panel.getByRole('button', { name: /^Show \d+ more students of / });
+    await expect(more).toHaveCount(1);
+
+    // "Show N more students": once all of them are drawn the button goes, and the focus stays in the panel.
+    await more.focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => announcement(page), { timeout: 15_000 }).toMatch(/^Added \d+ students? of /);
+    await expect(panel.getByRole('button', { name: /more students of |^List all students/ }), 'every student is drawn').toHaveCount(0);
+    await settledView(page);
+    expect(await onBody(), 'after "Show N more students" the focus is not on <body>').toBe(false);
+    expect(await inPanel(), 'and is in the panel').toBe(true);
+
+    // "Focus this lineage" goes once that lineage is open.
+    const lineage = panel.getByRole('button', { name: /^Focus this lineage/ });
+    await lineage.focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => searchOf(page).lineage ?? null, 'the lineage is in the URL').not.toBeNull();
+    await expect(lineage).toHaveCount(0);
+    await settledView(page);
+    await expect.poll(onBody, 'after "Focus this lineage" the focus is not on <body>').toBe(false);
+
+    // "List all students": the person's panel gives way to the list, which takes the focus.
+    const hub = await personIdOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await page.keyboard.press('Space');
+    const listAll = panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / });
+    await listAll.focus();
+    await page.keyboard.press('Enter');
+    await expect(panel.getByRole('heading', { name: /^Students of / })).toBeVisible();
+    await expect.poll(onBody, 'after "List all students" the focus is not on <body>').toBe(false);
+    expect(await inPanel(), 'the list has the focus').toBe(true);
   });
 });
 
@@ -691,6 +835,25 @@ test.describe('touch and motion (D)', () => {
       await expect.poll(() => wholeAndUncovered(page.getByTestId('explorer-legend')), `${at}: the legend is whole and uncovered with the sheet at half height`).toBe(true);
       await expect.poll(() => isInVisibleArea(page, id), `${at}: the selected person is in view above the sheet`).toBe(true);
     }
+
+    // The list of a teacher's students (the summary node "and N more") in the sheet, raised to its
+    // top and scrolled to its pages: Previous and Next as well (the sheet covers the rest there).
+    await page.setViewportSize(PHONES[0]);
+    const hub = await personIdOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await walkToSummary(page, hub);
+    await page.keyboard.press('Enter');
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Expand' }).tap();
+    await expect(panel.getByRole('button', { name: 'Collapse' })).toBeVisible();
+    await settledTop(panel.locator('xpath=ancestor-or-self::*[@role="dialog"][1]'));
+    const pages = panel.getByRole('navigation', { name: 'Pages of students' });
+    await expect(pages.getByRole('button', { name: 'Next' })).toBeVisible();
+    await pages.scrollIntoViewIfNeeded();
+    await expect(pages).toBeInViewport();
+    await expect.poll(() => controlProblems(page, '[data-explorer-sheet]'), 'the students sheet raised, at its pages').toEqual([]);
   });
 
   test.describe('with reduced motion', () => {
