@@ -13,6 +13,7 @@
 // still shows whole. It rests on the phone tab bar, which keeps the home indicator's inset, and
 // is clipped there (overflow: clip, which never scrolls), so the tabs stay visible and tappable.
 // Its body is inert while it peeks, so the keyboard never reaches content that is off screen.
+// A fraction as its first snap point (the explorer's 0.15) is floored at that peek, and is the peek.
 // Below full height, a keyboard focus that lands under the bottom edge expands the sheet first
 // (WCAG 2.4.11).
 //
@@ -26,13 +27,30 @@
 //   live): the page keeps that room clear, so focus never lands on a control under the sheet
 //   (WCAG 2.4.11). From 1024 px the page narrows beside the side panel. A bottom sheet that leaves
 //   less than 9rem of the page above it keeps no room: the page is behind it whatever its padding,
-//   and a screen of padding would only make the page jump when the sheet comes down again.
+//   and a screen of padding would only make the page jump when the sheet comes down again. Nor
+//   does one that leaves the page less than its caller's `coverAbove` (a page whose own content
+//   needs that room to be of use: the explorer's canvas): it covers that page as it is.
+// - --sheet-page-cover, for a non-modal bottom sheet that covers the page so (it keeps no room):
+//   px from the bottom of the window to its top edge. A page that lays out controls of its own
+//   over its content (the explorer's canvas) keeps them above that edge or hides them, so focus
+//   never lands on a control under the sheet there either (WCAG 2.4.11).
 // With two sheets open, the newer one's room is published (for the page: the newer non-modal
 // one's), and the older one's again when it closes. The room follows the snap point, not a drag
 // in progress (that would restyle the page on every frame); it catches up when the drag settles.
 
 import { Drawer as BaseDrawer } from '@base-ui/react/drawer';
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactElement, type ReactNode } from 'react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FocusEvent,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { useBackToClose } from './use-back-to-close';
@@ -50,11 +68,21 @@ export const PEEK_SNAP_POINTS: SnapPoint[] = [PEEK, 0.5, 1];
 /** From this width the sheet is a side panel (the lg breakpoint). */
 const SIDE_PANEL = '(min-width: 64rem)';
 
+/** Why the sheet opens or closes (Base UI's event details); `cancel()` keeps it as it is. */
+export type DrawerChangeDetails = Parameters<NonNullable<ComponentProps<typeof BaseDrawer.Root>['onOpenChange']>>[1];
+
+/** What a caller can do to an open sheet (milestone M06: Esc in the explorer's graph). */
+export interface DrawerActions {
+  /** Lowers a bottom sheet above its first snap point to it; false when it was not above it (or is closed, or a side panel). */
+  collapse(): boolean;
+}
+
 export interface DrawerProps {
   /** The element that opens the sheet. */
   trigger?: ReactElement;
   open?: boolean;
-  onOpenChange?: (open: boolean) => void;
+  /** The sheet opens or closes; without `details` when Back closed it (the history layer). */
+  onOpenChange?: (open: boolean, details?: DrawerChangeDetails) => void;
   title: ReactNode;
   /** A line under the title, visible at the peek. */
   description?: ReactNode;
@@ -67,6 +95,38 @@ export interface DrawerProps {
    */
   modal?: boolean;
   className?: string;
+  // Pass-throughs (milestone M06: the explorer's sheet).
+  /** Where focus goes when the sheet opens (Base UI Popup); `false` leaves it where it is. */
+  initialFocus?: ComponentProps<typeof BaseDrawer.Popup>['initialFocus'];
+  /** Where focus goes when the sheet closes (Base UI Popup); `false` leaves it where it is. */
+  finalFocus?: ComponentProps<typeof BaseDrawer.Popup>['finalFocus'];
+  /** The sheet came to rest at another snap point (by a drag, a button or a new opening): its value as given and its index. */
+  onSnapPointChange?: (point: SnapPoint, index: number) => void;
+  /** A row of actions in the header, under the title: always in view, at the peek too (the peek grows with it). */
+  headerActions?: ReactNode;
+  /** Keeps the sheet's elements mounted while it is closed (Base UI Portal). */
+  keepMounted?: boolean;
+  /** Data attributes for the popup (the sheet's element), such as a test id. */
+  popupAttributes?: { [name: `data-${string}`]: string | undefined };
+  /** The sheet's actions (DrawerActions). */
+  actions?: Ref<DrawerActions>;
+  /**
+   * A non-modal bottom sheet: how far down the window (px from its top) the page must still show
+   * above the sheet at a middle snap point (one between the first and the last), the room the
+   * sheet publishes for the page included. A middle point that would rest higher is lowered to
+   * that, never below the first one (milestone M06: the explorer's legend and selected card stay
+   * in view above a short phone's sheet). The last point is never lowered: there the sheet covers.
+   */
+  keepAbove?: number | null;
+  /**
+   * A non-modal bottom sheet: how far down the window (px from its top) the page must still show
+   * above the sheet, the room the sheet publishes for it included, for that room to be of use. A
+   * sheet resting higher (its first snap point, which is never lowered, in a short window) covers
+   * the page as at its last snap point: it publishes no room, and the page keeps its size behind
+   * it (milestone M06, a11y-6: below 768 px with 200 % zoom the explorer's canvas shrank to 0 px
+   * over the peek). Never more than `keepAbove`, so a middle point lowered for that one keeps room.
+   */
+  coverAbove?: number | null;
 }
 
 // 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
@@ -83,6 +143,15 @@ export function Drawer({
   snapPoints: snapPointsProp,
   modal = true,
   className,
+  initialFocus,
+  finalFocus,
+  onSnapPointChange,
+  headerActions,
+  keepMounted,
+  popupAttributes,
+  actions,
+  keepAbove = null,
+  coverAbove = null,
 }: DrawerProps) {
   const side = useMediaQuery(SIDE_PANEL);
   const [openState, setOpenState] = useState(false);
@@ -99,12 +168,33 @@ export function Drawer({
     observer.observe(header);
     return () => observer.disconnect();
   }, [header]);
-  const peek = `${Math.max(PEEK_PX, headerHeight)}px`;
+  const peekPx = Math.max(PEEK_PX, headerHeight);
+  const peek = `${peekPx}px`;
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  // A non-modal sheet's first snap point given as a fraction of the viewport (the explorer's 0.15)
+  // is the peek: never shorter than the measured peek, and inert as the peek is. Base UI reads a
+  // fraction against its viewport element, measured here; the window until it is there.
+  const viewportHeight = useHeight(viewport);
+  const given = snapPointsProp ?? (modal ? MODAL_SNAP_POINTS : PEEK_SNAP_POINTS);
+  const fractionPeek = !modal && typeof given[0] === 'number' && given[0] <= 1 && !given.includes(PEEK);
   const snapPoints = side
     ? undefined
-    : (snapPointsProp ?? (modal ? MODAL_SNAP_POINTS : PEEK_SNAP_POINTS)).map((point) => (point === PEEK ? peek : point));
+    : given.map((point, index) => {
+        if (point === PEEK) return peek;
+        const height = viewportHeight || (typeof window === 'undefined' ? 0 : window.innerHeight);
+        if (index === 0 && fractionPeek) {
+          return `${Math.max(peekPx, Math.round((point as number) * height))}px`;
+        }
+        if (!modal && keepAbove !== null && index > 0 && index < given.length - 1 && height > 0) {
+          // The viewport's top is the window's (fixed, inset 0): its bottom is its height.
+          const px = typeof point === 'number' ? (point <= 1 ? point * height : point) : Number.parseFloat(point);
+          const most = Math.floor(height - keepAbove - FOCUS_AIR);
+          if (Number.isFinite(px) && px > most) return `${Math.max(peekPx + 1, most)}px`;
+        }
+        return point;
+      });
   const lastIndex = snapPoints ? snapPoints.length - 1 : 0;
-  const peekIndex = snapPointsProp ? snapPointsProp.indexOf(PEEK) : modal ? -1 : 0;
+  const peekIndex = snapPointsProp ? (fractionPeek ? 0 : snapPointsProp.indexOf(PEEK)) : modal ? -1 : 0;
 
   // The sheet rests at a snap point by index, so a peek that grows with the text stays the peek.
   const [snapIndex, setSnapIndex] = useState(0);
@@ -115,18 +205,41 @@ export function Drawer({
     setWasOpen(open);
     if (open) setSnapIndex(0);
   }
-  const setOpen = (next: boolean) => {
+  const setOpen = (next: boolean, details?: DrawerChangeDetails) => {
+    onOpenChange?.(next, details);
+    // The caller kept the sheet as it is (details.cancel()): Base UI does not change it either.
+    if (details?.isCanceled) return;
     if (openProp === undefined) setOpenState(next);
-    onOpenChange?.(next);
   };
   useBackToClose(open, () => setOpen(false));
 
   const expanded = snapIndex === lastIndex;
   const peeking = !side && snapIndex === peekIndex;
+  useImperativeHandle(actions, () => ({
+    collapse: () => {
+      const first = Math.max(peekIndex, 0);
+      if (!open || side || !snapPoints || snapIndex <= first) return false;
+      setSnapIndex(first);
+      return true;
+    },
+  }));
 
-  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  // The snap point the sheet rests at, as given (a fraction stays a fraction), for the caller.
+  const restsAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open || side) {
+      restsAt.current = null;
+      return;
+    }
+    const index = Math.min(snapIndex, lastIndex);
+    if (restsAt.current === index) return;
+    restsAt.current = index;
+    const point = given[index];
+    if (point !== undefined) onSnapPointChange?.(point, index);
+  });
+
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
-  useSheetRoom(open, side, modal, viewport, popup, header);
+  useSheetRoom(open, side, modal, viewport, popup, header, snapPoints ? (snapPoints[Math.min(snapIndex, lastIndex)] ?? null) : null, modal ? null : coverAbove);
 
   // Below full height the lower part of the sheet is off screen. A focus that lands there (Tab,
   // or a script restoring focus) expands the sheet first, so the focused control is never hidden
@@ -159,7 +272,7 @@ export function Drawer({
       disablePointerDismissal={!modal}
     >
       {trigger ? <BaseDrawer.Trigger render={trigger} /> : null}
-      <BaseDrawer.Portal>
+      <BaseDrawer.Portal keepMounted={keepMounted}>
         {modal ? (
           // A steady scrim at every snap point. Base UI's --drawer-swipe-progress counts from the
           // highest snap point, so it reads 1 at half height and would hide the scrim there.
@@ -183,7 +296,10 @@ export function Drawer({
           )}
         >
           <BaseDrawer.Popup
+            {...popupAttributes}
             ref={setPopup}
+            initialFocus={initialFocus}
+            finalFocus={finalFocus}
             className={cn(
               'pointer-events-auto relative flex min-h-0 w-full flex-col border-border-subtle bg-surface-2 text-fg shadow-sheet outline-none',
               // Below 1024 px: a bottom sheet, never taller than its viewport (above the tab bar when non-modal).
@@ -232,6 +348,7 @@ export function Drawer({
                   <CloseIcon size={20} />
                 </BaseDrawer.Close>
               </div>
+              {headerActions ? <div className="mt-2 flex flex-wrap items-center gap-2">{headerActions}</div> : null}
             </div>
             <BaseDrawer.Content
               inert={peeking}
@@ -250,6 +367,20 @@ export function Drawer({
   );
 }
 
+/** An element's height in px, kept as it changes (0 until there is one). */
+function useHeight(element: HTMLElement | null): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!element || typeof ResizeObserver !== 'function') return;
+    const update = () => setHeight(element.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return height;
+}
+
 interface Room {
   /** When the sheet opened (rooms are published in this order, see the top of this file). */
   order: number;
@@ -263,7 +394,7 @@ interface Room {
   head: number | null;
   /** A bottom sheet with less than 9rem of the window above it and more room under its header. */
   full: boolean;
-  /** A bottom sheet with less than 9rem of the window above it: the page is behind it. */
+  /** A bottom sheet with less than 9rem of the window above it, or less than its coverAbove: the page is behind it. */
   covers: boolean;
 }
 
@@ -287,6 +418,7 @@ function publishRooms() {
     ['--sheet-inline', px(newest?.inline)],
     ['--sheet-head', newest?.full ? px(newest.head) : null],
     ['--sheet-page-clear', page?.clear == null || page.covers ? null : px(page.clear + FOCUS_AIR)],
+    ['--sheet-page-cover', page?.clear == null || !page.covers ? null : px(page.clear)],
     ['--sheet-page-inline', px(page?.inline)],
   ] as const) {
     if (value) root.style.setProperty(name, value);
@@ -306,8 +438,25 @@ function topInset(): number {
 }
 
 /**
+ * How tall a sheet resting at this snap point is, as Base UI resolves it (useDrawerSnapPoints): a
+ * fraction of the viewport up to 1, px above it or as a px or rem string, never taller than the
+ * popup or the viewport; null for a value Base UI does not resolve either.
+ */
+function restingHeight(point: SnapPoint, popup: number, viewport: number): number | null {
+  let height: number | null = null;
+  if (typeof point === 'number') height = point <= 1 ? Math.max(0, point) * viewport : point;
+  else if (point.trim().endsWith('px')) height = Number.parseFloat(point);
+  else if (point.trim().endsWith('rem')) height = Number.parseFloat(point) * (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+  return height === null || !Number.isFinite(height) ? null : Math.min(Math.max(0, height), popup, viewport);
+}
+
+/**
  * Publishes the room an open sheet takes. The snap offset comes from the popup's inline style
- * (Base UI), so the page is restyled only when the snap point or a size changes.
+ * (Base UI), so the page is restyled only when the snap point or a size changes. With snap points
+ * the room is the height of the one the sheet rests at (`rest`), resolved as Base UI resolves it:
+ * Base UI sets the offset a render after it measures a new popup height, so a new height read
+ * with the old offset (the sheet's content changes: another person selected in the explorer)
+ * would publish, for a frame, a room the sheet never takes. `coverAbove`: see DrawerProps.
  */
 function useSheetRoom(
   open: boolean,
@@ -316,6 +465,8 @@ function useSheetRoom(
   viewport: HTMLElement | null,
   popup: HTMLElement | null,
   header: HTMLElement | null,
+  rest: SnapPoint | null,
+  coverAbove: number | null,
 ) {
   // One key per sheet, and one place in the opening order per opening: the effect below runs
   // again when the sheet turns into a side panel or its elements change, and must not move the
@@ -341,13 +492,14 @@ function useSheetRoom(
       offset = next;
       // The insets change only with the window (rotation), which resizes the viewport.
       if (force) inset = topInset();
-      const visible = Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
+      const resting = rest === null ? null : restingHeight(rest, popup.offsetHeight, viewport.offsetHeight);
+      const visible = resting ?? Math.max(0, popup.offsetHeight - (Number.parseFloat(next) || 0));
       const bottom = viewport.getBoundingClientRect().bottom;
       const top = bottom - visible;
       // The popup's 1 px top border, then the header.
       const head = top + 1 + (header?.offsetHeight ?? 0);
       const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const covers = top < inset + 9 * rem;
+      const short = top < inset + 9 * rem;
       rooms.set(key, {
         order: order.current,
         modal,
@@ -356,8 +508,9 @@ function useSheetRoom(
         head,
         // Under the header only where that leaves more room than above the sheet (not over a
         // peek in a short landscape window, where the header itself is low on the screen).
-        full: covers && window.innerHeight - head > top - inset,
-        covers,
+        full: short && window.innerHeight - head > top - inset,
+        // The page's room ends FOCUS_AIR above the sheet (publishRooms).
+        covers: short || (coverAbove !== null && top - FOCUS_AIR < coverAbove),
       });
       publishRooms();
     };
@@ -376,5 +529,5 @@ function useSheetRoom(
       rooms.delete(key);
       publishRooms();
     };
-  }, [key, open, side, modal, viewport, popup, header]);
+  }, [key, open, side, modal, viewport, popup, header, rest, coverAbove]);
 }

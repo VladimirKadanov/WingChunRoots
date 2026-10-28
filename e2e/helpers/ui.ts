@@ -25,15 +25,29 @@ export async function openInTheme(page: Page, path: string, theme: Theme) {
  * awaiting `finished` or polling getAnimations(): for a transition inside a closed <details>,
  * Chromium never settles that promise, and getAnimations() polled on every frame never came back
  * empty (the security page's "Start again" form).
+ *
+ * WebKit applies an emulated scheme to the page's styles only in its next rendering update, so
+ * right after emulateMedia() getAnimations() can come back before the switch has started any
+ * transition (CI run 40645974337, mobile-webkit: the shell's navigation labels measured mid-fade
+ * on the light ground). The page's own media query is therefore awaited first, then one frame, in
+ * whose rendering update the new styles start their transitions.
  */
 export async function switchColorScheme(page: Page, theme: Theme) {
   await page.emulateMedia({ colorScheme: theme });
-  await page.evaluate(async () => {
+  await page.evaluate(async (dark) => {
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const scheme = matchMedia('(prefers-color-scheme: dark)');
+    const deadline = performance.now() + 5_000;
+    while (scheme.matches !== dark) {
+      if (performance.now() > deadline) throw new Error('The page never saw the new colour scheme.');
+      await frame();
+    }
+    await frame();
     const transitions = document.getAnimations().filter((animation) => animation instanceof CSSTransition);
     while (transitions.some((transition) => transition.playState === 'running')) {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await frame();
     }
-  });
+  }, theme === 'dark');
 }
 
 /** The theme the page shows: the computed color-scheme of <html>. */
@@ -41,11 +55,22 @@ export function resolvedTheme(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
 }
 
-/** axe with every rule it enables by default (WCAG 2.x A and AA plus best practices). */
+/**
+ * axe with every rule it enables by default (WCAG 2.x A and AA plus best practices). A contrast
+ * violation names the colours axe measured, so a CI log tells a real token pair from a colour
+ * caught mid-transition.
+ */
 export async function expectNoAxeViolations(page: Page, label: string) {
   const results = await new AxeBuilder({ page }).analyze();
+  type Node = (typeof results.violations)[number]['nodes'][number];
+  const measured = (node: Node) => {
+    const data = node.any.find((check) => check.id === 'color-contrast')?.data as
+      | { fgColor?: string; bgColor?: string; contrastRatio?: number }
+      | undefined;
+    return data?.contrastRatio ? ` (${data.fgColor} on ${data.bgColor}, ${data.contrastRatio}:1)` : '';
+  };
   const summary = results.violations.map(
-    (v) => `${v.id} (${v.impact}): ${v.help}\n${v.nodes.map((n) => `    ${n.target.join(' ')}`).join('\n')}`,
+    (v) => `${v.id} (${v.impact}): ${v.help}\n${v.nodes.map((n) => `    ${n.target.join(' ')}${measured(n)}`).join('\n')}`,
   );
   expect(summary, `axe violations on ${label}`).toEqual([]);
 }

@@ -2,12 +2,12 @@
 // starts, the moves of the view take the motion tokens, and every fit of the whole view stops at
 // the cards' own size.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, wholeFitZoom, wholeViewStart } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
 
 const SLOT = { width: 200, height: 64 };
 const ROW = 200;
@@ -378,6 +378,29 @@ describe('the first view of a scene', () => {
       expect(start.zoom).toBe(DETAIL_ZOOM.full);
       expect(onScreen(scene, 'focus', start, tallLegend)).toBe(true);
     });
+
+    it('"Fit the whole view" fits it whole clear of the overlays even where that makes every person a dot (screens-6)', () => {
+      // The same pane: the first view opens like a large view, but the button shows all of it, in
+      // dots, with nobody under the legend or the buttons (not React Flow's fit, which draws its
+      // lower rows under the legend).
+      const scene = twoLineages();
+      const tallLegend = { ...short, overlays: [{ x: 12, y: 150, width: 305, height: 190 }, buttons] };
+      const fit = wholeFitZoom(scene.nodes, tallLegend);
+      const centred = { x: 12 + 457 / 2, y: 12 + 436 / 2, zoom: fit };
+      expect(overlap(drawnBox(scene, 'student-a', centred, tallLegend), tallLegend.overlays[0]!)).toBe(true);
+      const start = fitViewStart(scene, new Set(), tallLegend)!;
+      expect(start).not.toBeNull();
+      expect(start.zoom).toBeLessThan(READABLE_ZOOM);
+      expect(start.zoom).toBeLessThanOrEqual(fit);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, start, tallLegend), n.id).toBe(true);
+        for (const overlay of tallLegend.overlays) expect(overlap(paneBox(scene, n.id, start, tallLegend), overlay), `${n.id} under an overlay`).toBe(false);
+      }
+      // Where the first view fits it whole clear of the overlays, the button shows that same view.
+      expect(fitViewStart(scene, new Set(), short)).toEqual(wholeViewStart(scene, new Set(), short));
+      // Where React Flow's fit draws everyone clear (nothing over the pane), the button keeps it.
+      expect(fitViewStart(scene, new Set(), { width: short.width, height: short.height })).toBeNull();
+    });
   });
 
   it('starts at the top of the pane when the people above the focus are hidden by default', () => {
@@ -435,6 +458,54 @@ describe('the moves of the view', () => {
     // An ease-out curve: ahead of the clock all the way.
     expect(out(0.5)).toBeGreaterThan(0.5);
     expect(() => cubicBezier('ease-out')).toThrow();
+  });
+});
+
+describe('a reveal that waits for the view\'s running moves (CanvasHandle ensureVisible)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('runs at once while no move runs', () => {
+    const then = vi.fn();
+    whenMovesEnd({ current: 0 }, then);
+    expect(then).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits while a move runs, and runs once it has ended', () => {
+    vi.useFakeTimers();
+    const moves = { current: 1 };
+    const then = vi.fn();
+    whenMovesEnd(moves, then);
+    vi.advanceTimersByTime(200);
+    expect(then).not.toHaveBeenCalled();
+    moves.current = 0;
+    vi.advanceTimersByTime(16);
+    expect(then).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(then).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs a second later at most, for a move that never ends', () => {
+    vi.useFakeTimers();
+    const then = vi.fn();
+    whenMovesEnd({ current: 1 }, then);
+    vi.advanceTimersByTime(990);
+    expect(then).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(30);
+    expect(then).toHaveBeenCalledTimes(1);
+  });
+
+  it('never runs once cancelled: a newer reveal, a move to another node, a pan by the user', () => {
+    vi.useFakeTimers();
+    const moves = { current: 1 };
+    const then = vi.fn();
+    const cancel = whenMovesEnd(moves, then);
+    vi.advanceTimersByTime(100);
+    cancel();
+    moves.current = 0;
+    vi.advanceTimersByTime(2000);
+    expect(then).not.toHaveBeenCalled();
   });
 });
 

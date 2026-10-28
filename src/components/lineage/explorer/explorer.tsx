@@ -11,17 +11,19 @@
 // - "Graph / List": <Activity> keeps the graph's state (zoom, selection) while the list, the M04
 //   list view rendered on the server, is shown (plan §4.10).
 //
-// The keyboard model, aria-live, ancestor highlighting, expand buttons and the phone sheet are
-// M06; here a selected node opens a simple panel with "Open profile".
+// M06 (package F wires the seams marked `// M06 seam: <name>`): the nodes carry what the keyboard
+// and screen readers need (node-data), the view is the answer with its expansions merged in
+// (expansions, expand.ts), a selection lights its routes (select-lit, routes.ts), and the panel
+// (panel.tsx) loads with the canvas, in its own chunk.
 
 import { QueryClient, QueryClientProvider, skipToken, useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { createParser, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
-import { Activity, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
+import { Activity, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-import { CloseIcon, MinusIcon, PlusIcon } from '@/components/icons';
+import { MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -32,15 +34,19 @@ import { orpc } from '@/lib/rpc-client';
 import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageEdgeDto, LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
-import { GenerationText } from '../generation-text';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
+import { anchoredScene, useExpansions } from './expand';
+import type { CanvasHandle, NodeActions, PanelHandle } from './graph-api';
+import type { PanelMode } from './panel';
+import { litFlow, litOf, NO_LIGHT } from './routes';
 import {
-  explorerHref,
   explorerRead,
   type ExplorerParams,
+  FANOUT_SHOWN,
   GENERATIONS_DEFAULT,
+  isSummaryId,
   isUuid,
   MAX_DOWN,
   MAX_UP,
@@ -50,9 +56,11 @@ import {
   drawnByDefault,
   parseCount,
   readKey,
+  relationsId,
   toLayoutGraph,
   viewKind,
   type ViewKind,
+  withSummaryNodes,
 } from './state';
 
 // The chunk is also asked for when the explorer mounts (ExplorerBody), so it loads while the worker
@@ -61,6 +69,10 @@ import {
 // (ExplorerBody), so the skeleton the page started with is never replaced by a new one.
 const loadCanvas = () => import('./canvas');
 const ExplorerCanvas = dynamic(() => loadCanvas(), { ssr: false });
+// M06 seam: panel. The selection's panel (a phone's bottom sheet, package B) in a chunk of its
+// own, asked for with the canvas's, so the first selection does not wait for it.
+const loadPanel = () => import('./panel');
+const ExplorerPanel = dynamic(() => loadPanel(), { ssr: false });
 
 const parseAsId = createParser({
   parse: (value: string) => (isUuid(value) ? value.toLowerCase() : null),
@@ -161,7 +173,17 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
     if (byDefault(e)) continue;
     for (const id of [e.teacherId, e.studentId]) endedOf.set(id, [...(endedOf.get(id) ?? []), e]);
   }
-  const sceneNodes = new Map(scene.nodes.map((sn) => [sn.id, sn]));
+  // M06 seam: node-data. A summary node `more:<teacherId>` and its pseudo-edge (package C) are in
+  // the scene for the layout only: the canvas draws the node as a node of its own, the edge never.
+  const sceneNodes = new Map(scene.nodes.filter((sn) => !isSummaryId(sn.id)).map((sn) => [sn.id, sn]));
+  // A teacher's students along these lines, by id (a person may have two lines with one teacher).
+  const studentsBy = (lines: readonly LineageEdgeDto[]) => {
+    const of = new Map<string, Set<string>>();
+    for (const e of lines) of.set(e.teacherId, (of.get(e.teacherId) ?? new Set()).add(e.studentId));
+    return of;
+  };
+  const studentsOf = studentsBy(graph.edges);
+  const drawnStudentsOf = studentsBy(drawn);
 
   const nodeWith = (id: string, extra: readonly LineageEdgeDto[], selected: boolean): PersonNode => {
     const sn = sceneNodes.get(id)!;
@@ -172,7 +194,16 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
     const incoming =
       extra.length === 0 ? incomingByDefault : new Map([[sn.id, (into.get(sn.id) ?? []).filter((e) => byDefault(e) || extra.includes(e))]]);
     const statusEdge = chainEdge(incoming.get(sn.id) ?? []);
+    const status = statusEdge ? relationStatus(statusEdge.status) : null;
     const lit = selected || extra.some((e) => e.teacherId === sn.id || e.studentId === sn.id);
+    // M06 seam: node-data. Counts in the record (public, plan §4.9): the teachers and students in
+    // the answer and those it left out; and those drawn before anyone is selected, as the label.
+    const teacherIds = [...new Set((incomingByDefault.get(sn.id) ?? []).map((e) => e.teacherId))];
+    const totals = {
+      teachers: new Set((into.get(sn.id) ?? []).map((e) => e.teacherId)).size + (graph.hiddenCounts[sn.id]?.teachers ?? 0),
+      students: Math.max(person.childCount, studentsOf.get(sn.id)?.size ?? 0),
+    };
+    const drawnCounts = { teachers: teacherIds.length, students: drawnStudentsOf.get(sn.id)?.size ?? 0 };
     return {
       id: sn.id,
       type: 'person',
@@ -187,12 +218,18 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
       draggable: false,
       hidden: linked.has(sn.id) && !shown.has(sn.id) && sn.id !== graph.focusId && !lit,
       selected,
-      ariaLabel: `${person.displayName}${label ? `, ${generationText(label)}` : ''}`,
+      // M06 seam: node-data. Name, generation in the view, status (plan §4.9): a person with no
+      // line drawn into them has no status (the announcement says "Root of this lineage"). The
+      // selection is part of the name (WCAG 4.1.2): only the nodes a selection changes are built again.
+      ariaLabel: [person.displayName, label ? generationText(label) : null, status?.label, selected ? 'selected' : null].filter(Boolean).join(', '),
+      // One tab stop for the graph (roving tabindex): the canvas gives the active node 0. The
+      // relationships in words describe the node; "person", not React Flow's "node".
+      domAttributes: { tabIndex: -1, 'aria-describedby': relationsId(sn.id), 'aria-roledescription': 'person' },
       data: {
         name: person.displayName,
         original: original ? { value: original.value, lang: original.lang } : null,
         generation: label ?? null,
-        status: statusEdge ? relationStatus(statusEdge.status) : null,
+        status,
         disputed: (incoming.get(sn.id) ?? []).some((e) => e !== statusEdge && e.status === 'in_arbitration'),
         teachers: incoming.get(sn.id)?.length ?? 0,
         more: more.get(sn.id) ?? 0,
@@ -201,13 +238,17 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
         root: roots.has(sn.id),
         slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height },
         boxes: sn.boxes,
+        slug: person.slug,
+        totals,
+        drawn: drawnCounts,
+        teacherNames: teacherIds.map((t) => persons.get(t)?.displayName ?? ''),
       },
     };
   };
-  const nodes = scene.nodes.map((sn) => nodeWith(sn.id, [], false));
+  const nodes = [...sceneNodes.keys()].map((id) => nodeWith(id, [], false));
 
   const boxes = new Map(scene.nodes.map((sn) => [sn.id, sn.boxes]));
-  const flowEdges: LineageEdge[] = scene.edges.map((se) => {
+  const flowEdges: LineageEdge[] = scene.edges.filter((se) => !isSummaryId(se.id)).map((se) => {
     const edge = edges.get(se.id)!;
     const historical = isHistoricalRelation(edge.periods);
     const stroke = strokeOf(edge);
@@ -406,6 +447,9 @@ interface LaidOut {
   graph: LineageGraphDto;
   more: Map<string, number>;
   scene: Scene;
+  // M06 seam: expansions
+  /** The node whose screen point this scene keeps (an expansion), or null (a new read). */
+  anchorId: string | null;
 }
 
 function ExplorerBody({ initial, starts, list }: ExplorerProps) {
@@ -445,35 +489,72 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // import() next/dynamic makes; the skeleton stands in until both are done).
   useEffect(() => {
     loadCanvas().catch(() => undefined);
+    // M06 seam: panel (preloaded with the canvas)
+    loadPanel().catch(() => undefined);
   }, []);
   const [laidOut, setLaidOut] = useState<LaidOut | null>(null);
   // The answer whose layout failed: the error belongs to that answer only, not to the next one.
   const [failed, setFailed] = useState<LineageGraphDto | null>(null);
+  // M06 seam: expansions. The view: the answer with the people "+N students" and "+N teachers"
+  // drew merged in (package C), laid out with the expand preset and kept where they were.
+  const expansions = useExpansions(answer, key, laidOut?.scene ?? null);
+  const view = expansions.graph;
+  const { pinned, layoutOptions, anchorId, layoutFailed } = expansions;
   useEffect(() => {
-    if (!answer) return;
+    if (!view) return;
     let current = true;
-    const capped = capFanout(answer);
-    layout(toLayoutGraph(capped.graph), { focusId: answer.focusId })
+    const capped = capFanout(view, FANOUT_SHOWN, pinned);
+    layout(withSummaryNodes(toLayoutGraph(capped.graph), capped.more), { focusId: view.focusId, ...layoutOptions })
       .then((result) => {
-        if (current && result) setLaidOut({ source: answer, graph: capped.graph, more: capped.more, scene: result.scene });
+        if (current && result) setLaidOut((prev) => ({ source: view, graph: capped.graph, more: capped.more, scene: anchoredScene(result.scene, prev?.scene ?? null, anchorId), anchorId }));
       })
       .catch(() => {
-        if (current) setFailed(answer);
+        if (!current) return;
+        // An expanded view that cannot be laid out goes back to the answer (expand-state.ts
+        // withoutFailedView), which stays drawn; only the answer's own failure is an error.
+        if (layoutOptions.preset === 'expand') layoutFailed(view);
+        else setFailed(view);
       });
     return () => {
       current = false;
     };
-  }, [answer, layout]);
+  }, [view, layout, pinned, layoutOptions, anchorId, layoutFailed]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // M06 seam: panel. The teacher whose students the panel lists (the summary node), or null.
+  const [studentsOf, setStudentsOf] = useState<string | null>(null);
+  const select = (id: string | null) => {
+    setSelectedId(id);
+    setStudentsOf(null);
+  };
+  const openStudents = (teacherId: string) => setStudentsOf(teacherId);
+  const closeStudents = () => {
+    if (studentsOf === null) return false;
+    setStudentsOf(null);
+    return true;
+  };
+  const panelHandle = useRef<PanelHandle>(null);
+  const canvasHandle = useRef<CanvasHandle>(null);
+  // The panel's Close (Esc, a swipe) and "List all students" go through the canvas, which says
+  // what changed in its live region as it does for a key or a click (plan §4.9).
+  const closePanel = () => {
+    if (canvasHandle.current) canvasHandle.current.select(null);
+    else select(null);
+  };
+  const listStudents = (teacherId: string) => {
+    if (canvasHandle.current) canvasHandle.current.openStudents(teacherId);
+    else openStudents(teacherId);
+  };
   const [flowOf, setFlowOf] = useState<{ laidOut: LaidOut; showHistorical: boolean; base: FlowBase } | null>(null);
   // The list the server rendered, and for whom: a focus changed in the browser (a shallow update)
   // keeps the last one, which belongs to the person before, until the server renders the new one.
   const [listOf, setListOf] = useState({ list, focus });
   if (listOf.list !== list) setListOf({ list, focus });
   const focusList = listOf.focus === focus ? list : null;
-  const ready = laidOut !== null && laidOut.source === graph;
-  const layoutError = graph !== null && failed === graph;
+  // M06 seam: expansions. Against the view (the answer and its expansions), not the read's answer
+  // alone: an expansion's layout is "laying out" until it is drawn, and its failure is an error.
+  const ready = laidOut !== null && laidOut.source === (view ?? graph);
+  const layoutError = graph !== null && failed === (view ?? graph);
   // While the next scene is laid out the last one stays on the canvas, so the people who stay move
   // to their new places (plan §5.2) instead of the canvas starting over; the skeleton is for the first.
   // The scene's nodes and edges, built once per layout and per `show`, and kept as state: a
@@ -483,7 +564,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const kept = laidOut && flowOf?.laidOut === laidOut && flowOf.showHistorical === showHistorical ? flowOf.base : null;
   const base = kept ?? (laidOut ? flowBase(laidOut.graph, laidOut.scene, laidOut.more, showHistorical) : null);
   if (laidOut && base && !kept) setFlowOf({ laidOut, showHistorical, base });
-  const flow = base ? selectFlow(base, selectedId) : null;
+  // M06 seam: select-lit. The selection's routes of descent are lit, the rest dimmed (package B).
+  const shownFlow = base ? selectFlow(base, selectedId) : null;
+  const lit = shownFlow && laidOut ? litOf(shownFlow, laidOut.graph, selectedId) : NO_LIGHT;
+  const flow = shownFlow ? litFlow(shownFlow, lit) : null;
   const selected = laidOut && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
   const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
   const selectedGeneration = selected ? flow?.nodes.find((n) => n.id === selected.id)?.data.generation ?? null : null;
@@ -507,9 +591,15 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // same elements from the first frame (Skeleton), not a new skeleton while the chunk loads.
   const [canvasMounted, setCanvasMounted] = useState(false);
   const skeletonShown = focus !== null && !notFound && !(query.isError && !graph) && !layoutError && !(canvasShown && canvasMounted);
-  // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
-  const centerOn = (id: string) => void setUrl(kind === 'lineage' ? { focus: id, lineage: null, page: null, routes: null } : { focus: id, page: null, routes: null });
   const lineageName = starts.find((l) => l.id === params.lineage)?.name ?? null;
+
+  // M06 seam: panel. Open only while the graph is shown: a phone's sheet is a portal, which
+  // <Activity> does not hide (package B); back in Graph the kept selection opens it again.
+  const panelMode: PanelMode | null =
+    studentsOf !== null ? { kind: 'students', teacherId: studentsOf } : selected ? { kind: 'person', id: selected.id } : null;
+  const panelOpen = panelMode !== null && params.view === 'graph' && canvasShown;
+  // M06 seam: node-slot (the buttons inside a node and the summary node; package C fills onExpand and pending).
+  const actions: NodeActions = { expand: expansions.onExpand, pending: expansions.pending, openStudents, closeStudents };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -584,7 +674,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">
-            <div className="relative min-h-0 flex-1 [touch-action:none]">
+            <div className="relative min-h-0 flex-1">
               {!focus ? null : notFound ? (
                 <div className="absolute inset-0 grid place-items-center p-6 text-center">
                   <p className="max-w-[40ch] text-ui text-fg-muted">There is no public profile with this address in the record.</p>
@@ -610,7 +700,20 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   </p>
                 </div>
               ) : flow && laidOut ? (
-                <ExplorerCanvas scene={laidOut.scene} nodes={flow.nodes} edges={flow.edges} onSelect={setSelectedId} onMount={() => setCanvasMounted(true)}>
+                <ExplorerCanvas
+                  scene={laidOut.scene}
+                  nodes={flow.nodes}
+                  edges={flow.edges}
+                  onSelect={select}
+                  onMount={() => setCanvasMounted(true)}
+                  // M06 seams (canvas.tsx CanvasProps)
+                  actions={actions}
+                  notice={expansions.notice}
+                  anchorId={laidOut.anchorId}
+                  highlighting={lit.nodes.size > 0}
+                  panel={panelHandle}
+                  handle={canvasHandle}
+                >
                   {ready ? null : (
                     <p
                       role="status"
@@ -642,58 +745,31 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                 />
               ) : null}
             </div>
-            {selected && canvasShown ? (
-              <section
-                aria-label={`Selected: ${selected.displayName}`}
-                data-testid="explorer-panel"
-                // On a phone a panel below the graph, which leaves the legend, the zoom buttons and the
-                // people in view (plan §4.6); over the graph on the right from md (plan §4.7), left of
-                // the zoom buttons' column (44 px and its border), so a short pane (a phone turned to
-                // landscape) does not cover them either.
-                className="grid max-h-[50%] shrink-0 gap-3 overflow-y-auto border-t border-border-strong bg-surface-1 py-4 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] [--seal-ground:var(--surface-1)] md:absolute md:top-3 md:right-[calc(max(0.75rem,env(safe-area-inset-right,0px))+3.5rem)] md:z-20 md:max-h-[calc(100%-1.5rem)] md:w-[min(20rem,calc(100%-5rem))] md:rounded-sm md:border md:p-4 md:shadow-pop"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
-                    <span lang="und-Latn" translate="no">
-                      {selected.displayName}
-                    </span>
-                  </h2>
-                  <button
-                    type="button"
-                    aria-label="Close"
-                    onClick={() => setSelectedId(null)}
-                    className="-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg"
-                  >
-                    <CloseIcon size={18} />
-                  </button>
-                </div>
-                {selectedGeneration ? (
-                  <p className="text-sm text-fg-muted">
-                    <GenerationText label={selectedGeneration} />
-                  </p>
-                ) : null}
-                <div className="flex flex-wrap gap-2">
-                  <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
-                    Open profile
-                  </Link>
-                  {selected.id !== focus ? (
-                    <button type="button" className={buttonVariants({ variant: 'secondary' })} onClick={() => centerOn(selected.id)}>
-                      Center on this person
-                    </button>
-                  ) : null}
-                </div>
-                {selectedMore > 0 ? (
-                  // Plan §4.8: the students a large fan-out does not draw are a paginated list away.
-                  // The list view inside the explorer, with this person in focus (the lineage view centres
-                  // on a person as the person view, as centerOn does).
-                  <Link
-                    href={`${explorerHref({ ...url, focus: selected.id, view: 'list', ...(kind === 'lineage' ? { lineage: null } : {}) })}#students-heading`}
-                    className="link inline-flex min-h-11 items-center text-sm"
-                  >
-                    All students in the list view (+{selectedMore} not drawn)
-                  </Link>
-                ) : null}
-              </section>
+            {/* M06 seam: panel. Mounted with the canvas, closed until a selection opens it, so the
+                first selection does not wait for its chunk (panel.tsx; a phone's sheet: package B). */}
+            {canvasShown && laidOut ? (
+              <ExplorerPanel
+                open={panelOpen}
+                mode={panelMode}
+                graph={laidOut.graph}
+                person={selected}
+                generation={selectedGeneration}
+                more={selectedMore}
+                openProfile={
+                  selected ? (
+                    <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
+                      Open profile
+                    </Link>
+                  ) : null
+                }
+                routes={lit.routes}
+                url={url}
+                setUrl={setUrl}
+                onClose={closePanel}
+                actions={{ ...actions, openStudents: listStudents }}
+                handle={panelHandle}
+                canvas={canvasHandle}
+              />
             ) : null}
           </div>
         </div>

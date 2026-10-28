@@ -151,3 +151,46 @@ describe('egoPart', () => {
     expect(egoPart({ ...desktop, focusId: null }, 2, 1)).toEqual({ ...desktop, focusId: null });
   });
 });
+
+// Milestone M06 (package F): what the keyboard and screen readers read on a node, and the summary
+// node "and N more" a `more:` scene node becomes.
+describe('flowBase node data for the keyboard and screen readers (M06)', () => {
+  it('makes every node one of many tab stops (-1), a "person" described by its relationships, named with its status', () => {
+    const base = flowBase(graph, scene, new Map(), false);
+    for (const n of base.nodes) {
+      expect(n.domAttributes).toEqual({ tabIndex: -1, 'aria-describedby': `rel-${n.id}`, 'aria-roledescription': 'person' });
+    }
+    const student = base.nodes.find((n) => n.id === id(3))!;
+    expect(student.ariaLabel).toMatch(/^Demo Student, .+, Verified$/);
+    expect(student.data.slug).toBe('demo-3');
+    // The root's ended training is hidden: the teacher has no line drawn into them, so no status.
+    expect(base.nodes.find((n) => n.id === id(2))!.ariaLabel).toBe('Demo Teacher');
+  });
+
+  it('names the selected person as selected, and only them', () => {
+    const base = flowBase(graph, scene, new Map(), false);
+    const { nodes } = selectFlow(base, id(3));
+    expect(nodes.find((n) => n.id === id(3))!.ariaLabel).toMatch(/^Demo Student, .+, Verified, selected$/);
+    expect(nodes.filter((n) => n.ariaLabel?.endsWith(', selected')).map((n) => n.id)).toEqual([id(3)]);
+    // Cleared, the base's nodes come back, with their names as they were.
+    expect(selectFlow(base, null).nodes.some((n) => n.ariaLabel?.endsWith('selected'))).toBe(false);
+  });
+
+  it('counts teachers and students in the record and those drawn, and names the teachers drawn', () => {
+    const base = flowBase({ ...graph, hiddenCounts: { [id(3)]: { teachers: 1, students: 0 } } }, scene, new Map(), false);
+    const data = (n: number) => base.nodes.find((x) => x.id === id(n))!.data;
+    // The student: one teacher drawn, one the answer left out (hiddenCounts).
+    expect(data(3)).toMatchObject({ teacherNames: ['Demo Teacher'], totals: { teachers: 2, students: 0 }, drawn: { teachers: 1, students: 0 } });
+    // The teacher: their own teacher's line is ended training, hidden by default.
+    expect(data(2)).toMatchObject({ teacherNames: [], totals: { teachers: 1, students: 1 }, drawn: { teachers: 0, students: 1 } });
+    expect(data(1)).toMatchObject({ teacherNames: [], totals: { teachers: 0, students: 1 }, drawn: { teachers: 0, students: 0 } });
+  });
+
+  it('leaves a `more:` scene node and its pseudo-edge to the canvas (summary nodes), out of the people and the lines', () => {
+    const summary = { ...scene.nodes[2]!, id: `more:${id(2)}`, x: 240 };
+    const pseudo = { ...scene.edges[1]!, id: `more:${id(2)}:edge`, studentId: summary.id };
+    const base = flowBase(graph, { ...scene, nodes: [...scene.nodes, summary], edges: [...scene.edges, pseudo] } as Scene, new Map([[id(2), 5]]), false);
+    expect(base.nodes.map((n) => n.id)).toEqual([1, 2, 3].map(id));
+    expect(base.edges.map((e) => e.id)).toEqual(graph.edges.map((e) => e.id));
+  });
+});

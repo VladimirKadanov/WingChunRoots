@@ -3,7 +3,23 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LineageGraphDto } from '@/server/dto/public';
-import { capFanout, drawnByDefault, explorerHref, explorerRead, FANOUT_SHOWN, joinToBox, paramsFrom, viewKind } from './state';
+import { indexGraph, modelOrder } from '@/lib/lineage-layout/graph';
+import { computeRanks } from '@/lib/lineage-layout/ranks';
+import {
+  capFanout,
+  drawnByDefault,
+  explorerHref,
+  explorerRead,
+  FANOUT_SHOWN,
+  isSummaryId,
+  joinToBox,
+  paramsFrom,
+  summaryIdOf,
+  summaryTeacherOf,
+  toLayoutGraph,
+  viewKind,
+  withSummaryNodes,
+} from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const node = (n: number, childCount = 0) => ({
@@ -189,5 +205,103 @@ describe('drawnByDefault (plan §4.6: ended training only with show=historical)'
 
   it('keeps everything with show=historical', () => {
     expect(drawnByDefault(graph, true)).toBe(graph);
+  });
+});
+
+describe('capFanout with pinned students (milestone M06: an expansion never drops a person drawn)', () => {
+  const many = Array.from({ length: 30 }, (_, i) => i + 2);
+  const graph: LineageGraphDto = {
+    focusId: id(1),
+    dataVersion: 'test',
+    nodes: [node(1), ...many.map((n) => node(n))],
+    edges: many.map((n) => edge(1, n)),
+    hiddenCounts: {},
+    lineages: [{ id: id(900), slug: 'demo-lineage', name: 'Demo Lineage', rootPersonId: id(1) }],
+    truncated: false,
+  };
+
+  it('draws the pinned students beyond the first 12, and counts only the rest', () => {
+    // 2..31 sort by name: 29, 30 and 31 are past the cap.
+    const pinned = new Set([id(29), id(30), id(31)]);
+    const { graph: capped, more } = capFanout(graph, FANOUT_SHOWN, pinned);
+    const drawn = new Set(capped.edges.filter((e) => e.teacherId === id(1)).map((e) => e.studentId));
+    for (const p of pinned) expect(drawn.has(p)).toBe(true);
+    expect(drawn.size).toBe(FANOUT_SHOWN);
+    expect(more.get(id(1))).toBe(30 - FANOUT_SHOWN);
+  });
+
+  it('draws every pinned student when there are more than 12 of them', () => {
+    const pinned = new Set(many.slice(0, 20).map(id));
+    const { graph: capped, more } = capFanout(graph, FANOUT_SHOWN, pinned);
+    expect(capped.edges.filter((e) => e.teacherId === id(1))).toHaveLength(20);
+    expect(more.get(id(1))).toBe(10);
+  });
+
+  it('gives M05\'s result with no pins', () => {
+    expect(capFanout(graph, FANOUT_SHOWN, new Set())).toEqual(capFanout(graph));
+  });
+});
+
+describe('withSummaryNodes (milestone M06: the summary node "and N more")', () => {
+  const many = Array.from({ length: 30 }, (_, i) => i + 2);
+  const graph: LineageGraphDto = {
+    focusId: id(1),
+    dataVersion: 'test',
+    nodes: [node(1, 30), ...many.map((n) => node(n))],
+    edges: many.map((n) => edge(1, n)),
+    hiddenCounts: {},
+    lineages: [{ id: id(900), slug: 'demo-lineage', name: 'Demo Lineage', rootPersonId: id(1) }],
+    truncated: false,
+  };
+
+  it('adds one node and its pseudo-edge for a teacher whose drawn students reached the cap', () => {
+    const { graph: capped, more } = capFanout(graph);
+    const layout = toLayoutGraph(capped);
+    const withMore = withSummaryNodes(layout, more);
+    const added = withMore.nodes.filter((n) => isSummaryId(n.id));
+    expect(added.map((n) => n.id)).toEqual([summaryIdOf(id(1))]);
+    const pseudo = withMore.edges.filter((e) => isSummaryId(e.id));
+    expect(pseudo).toHaveLength(1);
+    expect(pseudo[0]).toMatchObject({ teacherId: id(1), studentId: summaryIdOf(id(1)), lineageId: id(900) });
+    expect(summaryTeacherOf(pseudo[0]!.id)).toBe(id(1));
+    expect(summaryTeacherOf(summaryIdOf(id(1)))).toBe(id(1));
+    // The people and relationships are those of the capped graph, unchanged.
+    expect(withMore.nodes.filter((n) => !isSummaryId(n.id))).toEqual(layout.nodes);
+    expect(withMore.edges.filter((e) => !isSummaryId(e.id))).toEqual(layout.edges);
+  });
+
+  it('ranks the summary node in its teacher\'s students\' row, and orders it after them', () => {
+    const { graph: capped, more } = capFanout(graph);
+    const withMore = withSummaryNodes(toLayoutGraph(capped), more);
+    const { ranks } = computeRanks(withMore);
+    expect(ranks.get(summaryIdOf(id(1)))).toBe(ranks.get(id(1))! + 1);
+    const order = modelOrder(indexGraph(withMore));
+    expect(order.at(-1)).toBe(summaryIdOf(id(1)));
+  });
+
+  it('adds nothing where nothing is left out, or where fewer students than the cap are drawn', () => {
+    const layout = toLayoutGraph(graph);
+    expect(withSummaryNodes(layout, new Map())).toBe(layout);
+    // A view that draws 3 of the 30 students (a down=0 view and its expansions keep only the button).
+    const few = toLayoutGraph({ ...graph, nodes: graph.nodes.slice(0, 4), edges: graph.edges.slice(0, 3) });
+    expect(withSummaryNodes(few, new Map([[id(1), 27]]))).toBe(few);
+    // A teacher that is not in the graph, or a count of zero.
+    expect(withSummaryNodes(layout, new Map([[id(77), 5]]))).toBe(layout);
+    expect(withSummaryNodes(layout, new Map([[id(1), 0]]))).toBe(layout);
+  });
+
+  it('counts the lines capFanout kept, so a student with a line in two lineages still leaves the node', () => {
+    const second = { id: id(901), slug: 'demo-lineage-two', name: 'Demo Lineage Two', rootPersonId: id(1) };
+    const twice: LineageGraphDto = {
+      ...graph,
+      lineages: [...graph.lineages, second],
+      edges: [{ ...edge(1, 2), id: id(5000), lineageId: second.id }, ...graph.edges],
+    };
+    const { graph: capped, more } = capFanout(twice);
+    const layout = toLayoutGraph(capped);
+    // Twelve lines, eleven people: the cap is reached and students are left out.
+    expect(new Set(layout.edges.filter((e) => e.teacherId === id(1)).map((e) => e.studentId)).size).toBeLessThan(FANOUT_SHOWN);
+    expect(more.get(id(1))).toBeGreaterThan(0);
+    expect(withSummaryNodes(layout, more).nodes.map((n) => n.id)).toContain(summaryIdOf(id(1)));
   });
 });

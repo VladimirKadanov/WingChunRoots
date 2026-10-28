@@ -1,0 +1,137 @@
+import { describe, expect, it } from 'vitest';
+
+import { arrangement, CONTROLS_EDGE, CONTROLS_GAP, placeControls, type Strip } from './controls-layout';
+
+// The groups as a phone draws them: "Canvas tools" with one 44 px button, "Zoom" with three
+// (44 px buttons, a 1 px line between them and a 1 px frame around); with a fine pointer the tools
+// have two ("Keyboard shortcuts" too).
+const TOOLS: Strip = { long: 46, short: 46 };
+const TOOLS_FINE: Strip = { long: 91, short: 46 };
+const ZOOM: Strip = { long: 136, short: 46 };
+const PHONE = [TOOLS, ZOOM];
+const RIGHT = 12;
+// The legend at the bottom left (two lines on a 393 px phone) and the attribution's 44 px hit area at the bottom right.
+const legend = (frame: { width: number; height: number }) => ({ x: 12, y: frame.height - 12 - 64, width: frame.width - 88, height: 64 });
+const attribution = (frame: { width: number; height: number }) => ({ x: frame.width - 56, y: frame.height - 44, width: 56, height: 44 });
+
+describe('arrangement', () => {
+  it('lays the groups one above the other (upright or lying) or side by side, CONTROLS_GAP apart', () => {
+    expect(arrangement(PHONE, 'column')).toEqual({ width: 46, height: 46 + CONTROLS_GAP + 136 });
+    expect(arrangement(PHONE, 'stack')).toEqual({ width: 136, height: 46 + CONTROLS_GAP + 46 });
+    expect(arrangement(PHONE, 'row')).toEqual({ width: 46 + CONTROLS_GAP + 136, height: 46 });
+    expect(arrangement([TOOLS_FINE, ZOOM], 'column')).toEqual({ width: 46, height: 91 + CONTROLS_GAP + 136 });
+    expect(arrangement([TOOLS_FINE, ZOOM], 'stack')).toEqual({ width: 136, height: 46 + CONTROLS_GAP + 46 });
+    expect(arrangement(PHONE, 'corner')).toEqual({ width: 46 + CONTROLS_GAP + 46, height: 136 });
+    expect(arrangement([TOOLS_FINE, ZOOM], 'corner')).toEqual({ width: 46 + CONTROLS_GAP + 46, height: 136 });
+    expect(arrangement([], 'row')).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe('placeControls', () => {
+  it('keeps the column at the bottom right, above the attribution, when it fits (an idle phone)', () => {
+    const frame = { width: 393, height: 352 };
+    const place = placeControls(frame, RIGHT, PHONE, [legend(frame), attribution(frame)], { row: true });
+    // The legend lies left of the column; the attribution under it.
+    expect(place).toEqual({ kind: 'column', bottom: 44 + CONTROLS_GAP });
+  });
+
+  it('stacks the groups, each in a row, above the legend when the column does not fit (a short phone with the panel open)', () => {
+    // The sheet at its peek, and M05's panel below the graph (the stack just fits).
+    for (const height of [223, 196]) {
+      const frame = { width: 393, height };
+      const place = placeControls(frame, RIGHT, PHONE, [legend(frame), attribution(frame)], { row: true });
+      // The stack spans the legend's right end: it stands above the legend's top.
+      expect(place).toEqual({ kind: 'stack', bottom: 12 + 64 + CONTROLS_GAP });
+      expect(place.bottom + 100 + CONTROLS_EDGE).toBeLessThanOrEqual(frame.height);
+    }
+  });
+
+  it('lays both groups in one row above the legend where not even the stack fits (a phone with the sheet at half height)', () => {
+    const frame = { width: 390, height: 147 };
+    const place = placeControls(frame, RIGHT, PHONE, [legend(frame), attribution(frame)], { row: true });
+    expect(place).toEqual({ kind: 'row', bottom: 12 + 64 + CONTROLS_GAP });
+    expect(place.bottom + 46 + CONTROLS_EDGE).toBeLessThanOrEqual(frame.height);
+    expect(placeControls({ width: 393, height: 195 }, RIGHT, PHONE, [legend({ width: 393, height: 195 })], { row: true }).kind).toBe('row');
+  });
+
+  it('shows no buttons in a sliver of canvas where not even the row fits (a short phone with the sheet at half height)', () => {
+    const frame = { width: 393, height: 54 };
+    expect(placeControls(frame, RIGHT, PHONE, [legend(frame), attribution(frame)], { row: true }).kind).toBe('none');
+  });
+
+  it('never lays rows from 768 px, where the panel lies over the canvas beside the column', () => {
+    const tall = { width: 620, height: 259 };
+    expect(placeControls(tall, RIGHT, PHONE, [attribution(tall)], { row: false }).kind).toBe('column');
+    const low = { width: 620, height: 200 };
+    expect(placeControls(low, RIGHT, PHONE, [attribution(low)], { row: false }).kind).toBe('none');
+    expect(placeControls(low, RIGHT, PHONE, [attribution(low)], { row: true }).kind).toBe('stack');
+  });
+
+  it('stands only above what lies under it: the bottom edge inset, else CONTROLS_GAP above the highest thing beneath', () => {
+    const frame = { width: 1200, height: 800 };
+    // Nothing under the column: the edge inset.
+    expect(placeControls(frame, RIGHT, [TOOLS_FINE, ZOOM], [{ x: 12, y: 760, width: 300, height: 28 }], { row: true })).toEqual({ kind: 'column', bottom: CONTROLS_EDGE });
+    // A desktop attribution, 18 px tall at the bottom right corner.
+    expect(placeControls(frame, RIGHT, [TOOLS_FINE, ZOOM], [{ x: 1144, y: 782, width: 56, height: 18 }], { row: true })).toEqual({
+      kind: 'column',
+      bottom: 18 + CONTROLS_GAP,
+    });
+    // Empty boxes (an overlay not drawn) take no room.
+    expect(placeControls(frame, RIGHT, [TOOLS_FINE, ZOOM], [{ x: 1144, y: 400, width: 0, height: 0 }], { row: true }).bottom).toBe(CONTROLS_EDGE);
+  });
+
+  describe('the corner (a phone, where the legend leaves room along the bottom edge)', () => {
+    // An idle 393x659 iPhone's canvas with up and down steppers in the toolbar, and React Flow's
+    // attribution (62 px wide with its 44 px hit area) in the frame's bottom right corner.
+    const frame = { width: 393, height: 298 };
+    const mark = { x: 393 - 62, y: 298 - 44, width: 62, height: 44 };
+    // A one-line legend of two states, at the bottom left.
+    const short = { x: 12, y: 298 - 12 - 37, width: 140, height: 37 };
+
+    it('stands "Zoom" in the corner on the bottom edge inset, the tools beside it and the attribution beside those', () => {
+      const place = placeControls(frame, RIGHT, PHONE, [short], { row: true, attribution: mark });
+      // Moved: its right edge CONTROLS_GAP left of the tools.
+      expect(place).toEqual({ kind: 'corner', bottom: CONTROLS_EDGE, attribution: RIGHT + 46 + CONTROLS_GAP + 46 + CONTROLS_GAP });
+      // "Zoom" reaches no higher than M05's column of three over the 18 px attribution (bottom-7: 28 px).
+      expect(frame.height - place.bottom - 136).toBeGreaterThan(frame.height - 28 - 136);
+      // The attribution, moved, keeps CONTROLS_GAP from the legend.
+      expect(frame.width - place.attribution! - mark.width).toBeGreaterThanOrEqual(short.x + short.width + CONTROLS_GAP);
+    });
+
+    it('gives way to the column, over the attribution in its own place, where the legend leaves no room', () => {
+      // The legend on two lines, as wide as it may be (clear of the column on its right).
+      expect(placeControls(frame, RIGHT, PHONE, [legend(frame)], { row: true, attribution: mark })).toEqual({ kind: 'column', bottom: 44 + CONTROLS_GAP });
+      // One line that ends CONTROLS_GAP short of the moved attribution: still no room.
+      const near = { ...short, width: 393 - 120 - 62 - 12 - CONTROLS_GAP + 1 };
+      expect(placeControls(frame, RIGHT, PHONE, [near], { row: true, attribution: mark }).kind).toBe('column');
+      expect(placeControls(frame, RIGHT, PHONE, [{ ...near, width: near.width - 1 }], { row: true, attribution: mark }).kind).toBe('corner');
+    });
+
+    it('needs the frame to hold "Zoom" upright: lower, the rows as before, over the attribution in its own place', () => {
+      const low = { width: 393, height: CONTROLS_EDGE + 136 + CONTROLS_EDGE - 1 };
+      const lowMark = { ...mark, y: low.height - 44 };
+      const place = placeControls(low, RIGHT, PHONE, [{ ...short, y: low.height - 49 }], { row: true, attribution: lowMark });
+      // The stack over the attribution (52 + 100 + 12 px) is too high for this frame; one row is not.
+      expect(place).toEqual({ kind: 'row', bottom: 44 + CONTROLS_GAP });
+      // As high as the corner needs: the corner again.
+      const enough = { width: 393, height: low.height + 1 };
+      expect(placeControls(enough, RIGHT, PHONE, [{ ...short, y: enough.height - 49 }], { row: true, attribution: { ...mark, y: enough.height - 44 } }).kind).toBe('corner');
+    });
+
+    it('is never used from 768 px, where the buttons stay in their column', () => {
+      const wide = { width: 620, height: 298 };
+      expect(placeControls(wide, RIGHT, PHONE, [short], { row: false, attribution: { ...mark, x: 620 - 62 } })).toEqual({ kind: 'column', bottom: 44 + CONTROLS_GAP });
+    });
+  });
+
+  it('shows nothing without groups or without a frame', () => {
+    expect(placeControls({ width: 393, height: 352 }, RIGHT, [], [], { row: true }).kind).toBe('none');
+    expect(placeControls({ width: 0, height: 0 }, RIGHT, PHONE, [], { row: true }).kind).toBe('none');
+  });
+
+  it('needs the whole column inside the frame, CONTROLS_EDGE from its top', () => {
+    const height = CONTROLS_EDGE + 190 + CONTROLS_EDGE;
+    expect(placeControls({ width: 393, height }, RIGHT, PHONE, [], { row: false }).kind).toBe('column');
+    expect(placeControls({ width: 393, height: height - 1 }, RIGHT, PHONE, [], { row: false }).kind).toBe('none');
+  });
+});

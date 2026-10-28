@@ -30,7 +30,11 @@ export function useBackToClose(open: boolean, close: () => void): void {
 
   useEffect(() => {
     if (!open) return;
-    window.history.pushState({ ...(window.history.state ?? {}), [KEY]: id }, '');
+    // The browser's own pushState, not the one Next.js and nuqs patch over it: the entry keeps the
+    // page's URL (and Next.js's state, spread here), so it is no navigation, and nuqs must not take
+    // it for one: its patched pushState drops the URL updates it has queued, which lost the
+    // explorer's switch back to Graph when the kept selection reopened its sheet (milestone M06).
+    History.prototype.pushState.call(window.history, { ...(window.history.state ?? {}), [KEY]: id }, '');
     let poppedByBack = false;
     const onPopState = () => {
       if ((window.history.state as Record<string, unknown> | null)?.[KEY] !== id) {

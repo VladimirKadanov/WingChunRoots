@@ -107,6 +107,24 @@ export function explorerRead(params: ExplorerParams & { focus: string }, lineage
 /** Plan §4.8: above about 12 visible students of one teacher, the first ones are drawn and the rest counted. */
 export const FANOUT_SHOWN = 12;
 
+/** No pinned students (capFanout's default). */
+export const NO_PINS: ReadonlySet<string> = new Set();
+
+// M06 seam: summary ids (F). The summary node "and N more" of a teacher whose students the cap cut
+// (milestone M06 In scope 4) is a layout node of its own, `more:<teacherId>`, in the students' row,
+// with a pseudo-edge from the teacher that is used for the layout only and never drawn.
+/** The prefix of the summary node's id and of its pseudo-edge's id. */
+export const MORE_PREFIX = 'more:';
+/** Whether a scene id (a node's or an edge's) is a summary node's or its pseudo-edge's, not a person's or a relationship's. */
+export const isSummaryId = (id: string): boolean => id.startsWith(MORE_PREFIX);
+/** The summary node of a teacher. */
+export const summaryIdOf = (teacherId: string): string => `${MORE_PREFIX}${teacherId}`;
+/** The teacher a summary node (or its pseudo-edge, `more:<teacherId>:edge`) belongs to. */
+export const summaryTeacherOf = (id: string): string => id.slice(MORE_PREFIX.length).split(':')[0]!;
+/** The id of a person node's relationships in words (its aria-describedby; set in explorer.tsx, drawn in canvas.tsx). */
+export const relationsId = (id: string): string => `rel-${id}`;
+
+// M06 seam: capFanout pins (F wires the parameter, C fills)
 /**
  * The graph with at most FANOUT_SHOWN students drawn under each teacher (plan §4.8: "verified,
  * active, with the most descendants"): verified relationships first, then the active ones (the
@@ -116,8 +134,16 @@ export const FANOUT_SHOWN = 12;
  * teacher whose students the cap cut, every student not drawn: those of the answer left out here
  * and the public ones the read itself left out (hiddenCounts: the server's fan-out limit). The
  * expand buttons that show them come with M06; the list view has them all.
+ *
+ * M06: `pinned` students are drawn whatever the cap, as the focus's links are: those an expansion
+ * showed, so a later layout never drops a person already drawn (milestone M06 In scope 4). It is
+ * empty by default, so M05's callers keep their meaning.
  */
-export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph: LineageGraphDto; more: Map<string, number> } {
+export function capFanout(
+  graph: LineageGraphDto,
+  shown = FANOUT_SHOWN,
+  pinned: ReadonlySet<string> = NO_PINS,
+): { graph: LineageGraphDto; more: Map<string, number> } {
   const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
   const byTeacher = new Map<string, LineageGraphDto['edges']>();
   for (const e of graph.edges) byTeacher.set(e.teacherId, [...(byTeacher.get(e.teacherId) ?? []), e]);
@@ -134,7 +160,7 @@ export function capFanout(graph: LineageGraphDto, shown = FANOUT_SHOWN): { graph
         (nodes.get(a.studentId)?.displayName ?? '').localeCompare(nodes.get(b.studentId)?.displayName ?? '', 'en'),
     );
     // The focus's link to each of its teachers is always drawn (its own students are capped like anyone's).
-    const forced = sorted.filter((e) => e.studentId === graph.focusId);
+    const forced = sorted.filter((e) => e.studentId === graph.focusId || pinned.has(e.studentId));
     const rest = sorted.filter((e) => !forced.includes(e));
     const keep = [...forced, ...rest.slice(0, Math.max(0, shown - forced.length))];
     for (const e of keep) kept.add(e.id);
@@ -234,6 +260,61 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
     })),
     hiddenCounts: graph.hiddenCounts,
   };
+}
+
+// M06 seam: withSummaryNodes (F wires the signature, C fills)
+/**
+ * The layout graph with a summary node `more:<teacherId>` and its pseudo-edge for every teacher
+ * whose drawn lines to students reached the cap (FANOUT_SHOWN, counted as capFanout counts them)
+ * and who has students not drawn (`more`),
+ * for the real layout only: the skeleton's toLayoutGraph stays as it is (milestone M06 In scope 4).
+ *
+ * The pseudo-edge ranks the summary node one row below its teacher (computeRanks), in the lineage
+ * of the teacher's first line in the graph, and the node sorts after the teacher's students in that
+ * lineage (no start year, the last name: graph.ts modelOrder). Neither enters a count, a label or
+ * the legend: those are made from the explorer's graph, which has no summary nodes. A teacher with
+ * fewer students drawn than the cap (a `down=0` view) keeps only its "+N students" button.
+ */
+export function withSummaryNodes(graph: LineageGraph, more: ReadonlyMap<string, number>): LineageGraph {
+  if (more.size === 0) return graph;
+  const people = new Set(graph.nodes.map((n) => n.id));
+  // Lines, not people, as capFanout caps them: a student with a line in two lineages takes two places.
+  const lines = new Map<string, number>();
+  const lineageOf = new Map<string, string>();
+  for (const e of graph.edges) {
+    lines.set(e.teacherId, (lines.get(e.teacherId) ?? 0) + 1);
+    if (!lineageOf.has(e.teacherId)) lineageOf.set(e.teacherId, e.lineageId);
+  }
+  const nodes: LineageGraph['nodes'] = [];
+  const edges: LineageGraph['edges'] = [];
+  for (const [teacherId, count] of more) {
+    const lineageId = lineageOf.get(teacherId);
+    if (count <= 0 || !people.has(teacherId) || lineageId === undefined || (lines.get(teacherId) ?? 0) < FANOUT_SHOWN) continue;
+    const id = summaryIdOf(teacherId);
+    nodes.push({
+      id,
+      // Sorts after every name (graph.ts compares them ordinally): the node ends its teacher's row.
+      displayName: '￿',
+      altNames: [],
+      lifeStatus: 'unknown',
+      claimState: 'unclaimed',
+      lineageIds: [lineageId],
+      childCount: 0,
+      hasMoreChildren: false,
+    });
+    edges.push({
+      id: `${id}:edge`,
+      teacherId,
+      studentId: id,
+      lineageId,
+      kind: 'primary',
+      status: 'verified',
+      isDisplayPrimary: true,
+      visibility: 'public',
+      periods: [],
+    });
+  }
+  return nodes.length === 0 ? graph : { ...graph, nodes: [...graph.nodes, ...nodes], edges: [...graph.edges, ...edges] };
 }
 
 /**

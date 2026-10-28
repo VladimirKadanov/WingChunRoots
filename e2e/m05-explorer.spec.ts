@@ -7,6 +7,7 @@ import { expect, type Page, test, type Worker } from '@playwright/test';
 
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
+import { visibleBox } from './helpers/explorer-a11y';
 import {
   captureScenes,
   elkScripts,
@@ -1149,9 +1150,10 @@ test.describe('M05 fixes B', () => {
       const panel = page.getByTestId('explorer-panel');
       await expect(panel).toBeVisible();
       await expectLegendAndZoomUncovered(page);
-      // The panel lies below the graph, above the tab bar: it covers nothing of the canvas.
+      // The panel lies below the graph, above the tab bar: it covers nothing of the canvas. (M06: the
+      // panel is a bottom sheet, whose popup reaches below the screen; its visible part is measured.)
       const canvas = (await page.locator('.react-flow').boundingBox())!;
-      const sheet = (await panel.boundingBox())!;
+      const sheet = (await visibleBox(panel))!;
       const bar = (await page.locator('[data-tab-bar]').boundingBox())!;
       expect(sheet.y).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
       expect(sheet.y + sheet.height).toBeLessThanOrEqual(bar.y + 1);

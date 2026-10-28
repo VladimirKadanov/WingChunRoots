@@ -46,9 +46,13 @@ function LinkSegment({ kind }: { kind: LinkKind }) {
     case 'historical':
       shape = <InkShapeSvg shape={inkShapes(DOWN, 'verified', { w0: 1.8, w1: 1.1, n: 40 })} />;
       break;
-    case 'cross_lineage':
-      shape = <path d="M11 0C8 38 19 62 15 100M17 0C14 38 23 62 15 100" {...pattern} strokeWidth={1.4} strokeDasharray="9 3 2 3" />;
+    case 'cross_lineage': {
+      // The key's sample (LinkStroke): the hollow ribbon of a link to a teacher of another
+      // lineage, the same shape on the route as in the key (milestone M06, M05 review item b13).
+      const ribbon = inkShapes(DOWN, 'verified', { w0: 6.4, w1: 1.8, n: 40, crossLineage: true });
+      shape = ribbon.kind === 'hollow' ? <path d={ribbon.d} {...pattern} strokeWidth={1.3} strokeDasharray={ribbon.dash ?? undefined} /> : null;
       break;
+    }
     case 'unconfirmed':
       shape = <path d="M14 0V100" {...pattern} strokeWidth={2.6} strokeLinecap="round" strokeDasharray="0.1 6" />;
       break;

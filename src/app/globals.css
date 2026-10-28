@@ -302,12 +302,103 @@
     transition: none;
   }
 }
+/* M06 keyboard (A): the keyboard focus ring on a node, told apart from the selection (WCAG 2.4.7). */
+/* The standard focus ring around the node's slot, a gap clear of the card: the selected card's own
+   ring lies 2 px off the card (canvas.tsx), so a focused, selected person shows both, apart. Only
+   for the keyboard (:focus-visible): a click or a tap focuses the node without it. */
+.explorer-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 6px;
+  border-radius: var(--radius-sm, 3px);
+}
+/* The graph itself, when it holds the focus with no node drawn (canvas.tsx holdFocus): the same
+   ring, inside its edge, where the canvas frame does not clip it. */
+.explorer-canvas:focus-visible {
+  outline-offset: -2px;
+}
+/* end M06 keyboard (A) */
 /* The edges and their labels are drawn at their new places at once: they are hidden while the
    people slide there (canvas.tsx sets data-moving for --duration-slow; never under reduced motion). */
 .explorer-canvas[data-moving] .react-flow__edges,
 .explorer-canvas[data-moving] .react-flow__edgelabel-renderer {
   visibility: hidden;
 }
+/* M06 route highlight (B): the selection's routes lit (data-lit), the rest dimmed under
+   [data-canvas-frame][data-highlighting]; colour and width only, never opacity (plan §4.7).
+   Every rule ends on an attribute the canvas sets (data-person-node, data-edge, data-edge-core,
+   data-summary-node), and a person's card changes through the tokens it is drawn with: a
+   selection restyles the canvas's people and links, not every element in it (INP, plan §5.8 (c)). */
+/* The halo's tone, fixed before a lit person takes the ink for their frame. */
+.explorer-canvas {
+  --lit-halo: var(--border-strong);
+}
+/* A link coming onto a route takes its ink and width over --duration-fast (instant under reduced
+   motion: the rule at the top of this file); the other links and the cards change at once. A
+   transition on every link of a large view cost a selection about 50 ms of INP at 4x CPU
+   throttling (plan §5.8 (c)), so only the few links of the routes have one. */
+[data-canvas-frame][data-highlighting] [data-edge][data-lit],
+[data-canvas-frame][data-highlighting] [data-edge][data-lit] + [data-edge-core] {
+  transition:
+    stroke var(--duration-fast) var(--ease-out),
+    stroke-width var(--duration-fast) var(--ease-out);
+}
+/* The selected person: the card's own ring (canvas.tsx, 2 px off the card) in ink, apart from the
+   keyboard's focus ring (6 px off the slot, in the focus colour: M06 keyboard (A)). */
+.explorer-canvas .react-flow__node.selected [data-person-node] {
+  --focus: var(--fg);
+}
+/* Lit: the routes of descent in ink, heavier, with a halo. A person's frame takes the ink (their
+   card's 1 px border, as the focus has it), with a halo around the card at any level of detail; a
+   link is drawn 1 px heavier than its own width. */
+[data-canvas-frame][data-highlighting] [data-person-node][data-lit] {
+  --border-strong: var(--fg);
+  filter: drop-shadow(0 0 1.5px var(--lit-halo)) drop-shadow(0 0 3px var(--lit-halo));
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-lit] {
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 1.5px var(--border-strong));
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-lit][data-stroke="unconfirmed"] {
+  stroke-width: 2.5px;
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-lit][data-stroke="cross_lineage"] {
+  stroke-width: 2.75px;
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-lit][data-stroke="historical"] {
+  stroke-width: 2px;
+}
+/* A double line (in arbitration) stays double: the wider line and its ground core, both heavier. */
+[data-canvas-frame][data-highlighting] [data-edge][data-lit][data-stroke="arbitration"] {
+  stroke-width: 6px;
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-lit][data-stroke="arbitration"] + [data-edge-core] {
+  stroke-width: 2.4px;
+}
+/* Dimmed: everyone and every link off the routes, in the solid dim tones (DIM_TONES): a link keeps
+   its pattern at 1 px in --dim-stroke; a person's text takes --dim-text, their frame stays
+   --dim-frame (the focus keeps its heavier frame, in the dim text tone), and the seals and state
+   words lose their colour as `tone="dim"` seals do (.seal-dim). */
+[data-canvas-frame][data-highlighting] [data-edge]:not([data-lit]) {
+  stroke: var(--dim-stroke);
+  stroke-width: 1px;
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-stroke="arbitration"]:not([data-lit]) {
+  stroke-width: 3px;
+}
+[data-canvas-frame][data-highlighting] [data-edge][data-stroke="arbitration"]:not([data-lit]) + [data-edge-core] {
+  stroke-width: 1px;
+}
+[data-canvas-frame][data-highlighting] [data-person-node]:not([data-lit]),
+[data-canvas-frame][data-highlighting] [data-summary-node] {
+  --fg: var(--dim-text);
+  --verified: var(--dim-stroke);
+  --on-verified: var(--seal-ground, var(--bg));
+  --review: var(--dim-stroke);
+  --unconfirmed: var(--dim-stroke);
+  --arbitration: var(--dim-stroke);
+  --cross-lineage: var(--dim-stroke);
+}
+/* end M06 route highlight (B) */
 /* The React Flow attribution stays (plan §10.2 row 9), in the theme's own tones and legible. */
 .explorer-canvas .react-flow__attribution {
   background: var(--bg);
@@ -325,3 +416,38 @@
     margin-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+/* M06 touch and motion (D): touch-action on .react-flow only, the attribution's phone hit area. */
+/* A finger on the graph pans and pinches it (React Flow), never the page; the toolbar, the legend,
+   the buttons over the canvas and the sheet keep the browser's own touch behaviour. */
+.explorer-canvas {
+  touch-action: none;
+}
+/* On a phone the React Flow attribution (kept, plan §10.2 row 9) is a 44 x 44 px touch target
+   (plan §5.8): the link fills it, its words on a band of the ground as before; the buttons over the
+   canvas stand above it, or in a corner beside it, which moves it left of them (--attribution-right,
+   set on the canvas frame by canvas.tsx useControlsPlace; controls-layout.ts). */
+@media (width < 48rem) {
+  .explorer-canvas .react-flow__attribution {
+    padding: 0;
+    background: none;
+  }
+  .explorer-canvas .react-flow__panel.react-flow__attribution {
+    right: var(--attribution-right, 0px);
+  }
+  .explorer-canvas .react-flow__attribution a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 6px;
+    background: linear-gradient(var(--bg), var(--bg)) center / 100% 1.25rem no-repeat;
+  }
+}
+/* Under a sheet that covers the canvas (data-sheet-covered on the frame: canvas.tsx
+   useControlsPlace), the attribution is hidden, so the keyboard never reaches a link under the
+   sheet (WCAG 2.4.11); it comes back with the canvas. */
+[data-sheet-covered] .explorer-canvas .react-flow__attribution {
+  visibility: hidden;
+}
+/* end M06 touch and motion (D) */

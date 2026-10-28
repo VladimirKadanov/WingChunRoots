@@ -12,6 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
+import { EXPLORER_STATES } from './helpers/m06-states';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
@@ -217,6 +218,8 @@ const STATES: readonly ScreenState[] = [
       await openExplorerList(page, await EXPLORER_LIST.params());
     },
   },
+  // M06: a selection with its routes, an expansion, the summary node's list, the shortcut help and the keyboard's focus ring.
+  ...EXPLORER_STATES.map((state) => ({ ...state, milestone: 'M06' })),
   {
     // M07: the search palette with the people a Cantonese romanization finds.
     name: 'palette',

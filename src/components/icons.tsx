@@ -7,7 +7,8 @@ import { cx } from '@/lib/cx';
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, 'children'> & { size?: number };
 
-function icon(name: string, body: ReactNode, strokeWidth = 1.6) {
+/** An icon of this set (also for a few icons kept in the chunk of the one island that draws them). */
+export function icon(name: string, body: ReactNode, strokeWidth = 1.6) {
   function Icon({ size = 22, className, ...props }: IconProps) {
     return (
       <svg
