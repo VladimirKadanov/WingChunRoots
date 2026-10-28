@@ -8,13 +8,15 @@
 import { expect, test } from '@playwright/test';
 
 import { SHORTCUTS } from '../src/components/lineage/explorer/shortcuts';
+import { MAX_ROUTES } from '../src/components/lineage/explorer/route-list';
 import { FANOUT_SHOWN, summaryIdOf } from '../src/components/lineage/explorer/state';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { edgesInto, EXPLORER_VIEWS, lineageIdOf, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
-import { activeNodeId, announcement, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, isInVisibleArea, tabStops } from './helpers/explorer-a11y';
-import { captureScenes, installInpProbes, personNameOf, settledView } from './helpers/explorer-checks';
+import { activeNodeId, announcement, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
+import { captureScenes, installInpProbes, personNameOf, selectionInp, settledView, uncoveredNode } from './helpers/explorer-checks';
 import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
+import { drawnEdges, litIds, recordPaths, routesUp, searchOf, tappableAtCentre } from './helpers/m06-panel';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -258,6 +260,197 @@ test.describe('keyboard (A)', () => {
 test.describe('selection (B)', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   // Package B: tests 4 and 7 (and the phone selection INP extra, the Back and history checks).
+
+  test('@M06 Space on demo-two-lineages highlights both routes of descent and the panel lists them', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    // The whole view on the pane: React Flow draws only the edges on it (onlyRenderVisibleElements).
+    const fit = page.getByRole('button', { name: 'Fit the whole view' });
+    await fit.click();
+    await settledView(page);
+    const drawn = await drawnEdges(page);
+
+    // The routes of descent of the view, read from its drawing: up the drawn edges to the person.
+    const routes = routesUp(drawn, id);
+    const teachers = new Set(drawn.filter((e) => e.student === id).map((e) => e.teacher));
+    expect(teachers.size, 'teachers drawn').toBeGreaterThanOrEqual(2);
+    expect(routes.length, 'routes of descent in the view').toBeGreaterThanOrEqual(2);
+    expect(new Set(routes.map((r) => r.people.at(-2))), 'a route through each teacher').toEqual(teachers);
+    // Each is the lower part of a route of descent of the record (M04's lineage.paths answer).
+    const record = await recordPaths(page, id);
+    for (const route of routes) {
+      const found = record.paths.some((p) => p.edgeIds.length >= route.edges.length && p.edgeIds.slice(p.edgeIds.length - route.edges.length).join() === route.edges.join());
+      expect(found, `the route ${route.people.join(' > ')} is part of a route of the record`).toBe(true);
+    }
+
+    // Space on the person: their routes light up, and nothing else does.
+    expect(await focusGraph(page), 'Tab reaches the person in focus').toBe(id);
+    await page.keyboard.press('Space');
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    await expect(nodeOf(page, id)).toHaveClass(/\bselected\b/);
+    await expect(page.locator('[data-canvas-frame][data-highlighting]')).toHaveCount(1);
+    // The sheet takes its room from the canvas: fit the view again, so that every edge is drawn.
+    await fit.click();
+    await settledView(page);
+    expect(await drawnEdges(page), 'the edges drawn').toEqual(drawn);
+    await expect
+      .poll(() => litIds(page), 'lit: the people and edges of the routes, no others')
+      .toEqual({ nodes: [...new Set(routes.flatMap((r) => r.people))].sort(), edges: [...new Set(routes.flatMap((r) => r.edges))].sort() });
+
+    // The panel lists them: one list per route, headed "Route k of N", the names root first.
+    await panel.getByRole('button', { name: 'Expand' }).click();
+    await expect(panel.getByRole('button', { name: 'Collapse' })).toBeVisible();
+    const lists = panel.getByRole('list', { name: /^Route \d+ of \d+: / });
+    const shown = Math.min(routes.length, MAX_ROUTES);
+    await expect(lists).toHaveCount(shown);
+    const names = new Map<string, string>();
+    for (const person of new Set(routes.flatMap((r) => r.people))) names.set(person, await personNameById(person));
+    const expected = routes.map((r) => r.people.map((p) => names.get(p)!).join(' > '));
+    const listed: string[] = [];
+    for (let k = 0; k < shown; k++) {
+      await expect(lists.nth(k)).toHaveAccessibleName(new RegExp(`^Route ${k + 1} of ${routes.length}: `));
+      listed.push((await lists.nth(k).getByRole('listitem').allTextContents()).map((t) => t.trim()).join(' > '));
+    }
+    expect(new Set(listed).size, 'no route listed twice').toBe(shown);
+    for (const route of listed) expect(expected, 'a listed route is a route of the view').toContain(route);
+    if (routes.length > MAX_ROUTES) await expect(panel.getByRole('link', { name: `${routes.length - MAX_ROUTES} more routes in the list view` })).toBeVisible();
+  });
+
+  test('@M06 at 390x844 a tap opens the bottom sheet with Open profile; zoom and fit buttons work', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    await nodeOf(page, id).tap();
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    await expect(nodeOf(page, id)).toHaveClass(/\bselected\b/);
+    await settledView(page);
+
+    // The sheet at its peek lies below the graph and above the tab bar: it covers nothing of the canvas.
+    const canvas = (await page.locator('.react-flow').boundingBox())!;
+    const bar = (await page.locator('[data-tab-bar]').boundingBox())!;
+    const sheet = await visibleBox(panel);
+    expect(sheet, 'the sheet is on screen').not.toBeNull();
+    expect(sheet!.y).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+    expect(sheet!.y + sheet!.height).toBeLessThanOrEqual(bar.y + 1);
+
+    // "Open profile" is in the peek: a full touch target that a tap reaches.
+    const profile = panel.getByRole('link', { name: 'Open profile' });
+    await expect(profile).toBeVisible();
+    expect((await profile.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await tappableAtCentre(profile), 'a tap on Open profile reaches it').toBe(true);
+
+    // With the sheet open, Zoom in zooms in and "Fit the whole view" brings the fitted view back.
+    const fit = page.getByRole('button', { name: 'Fit the whole view' });
+    const zoomIn = page.getByRole('button', { name: 'Zoom in' });
+    expect(await tappableAtCentre(fit), 'a tap on Fit reaches it').toBe(true);
+    expect(await tappableAtCentre(zoomIn), 'a tap on Zoom in reaches it').toBe(true);
+    await fit.tap();
+    const fitted = await settledView(page);
+    await zoomIn.tap();
+    const zoomed = await settledView(page);
+    expect(zoomed.zoom, 'Zoom in').toBeGreaterThan(fitted.zoom);
+    await fit.tap();
+    const again = await settledView(page);
+    expect(again.zoom, 'Fit after Zoom in').toBeCloseTo(fitted.zoom, 3);
+    expect(Math.abs(again.x - fitted.x), 'Fit after Zoom in: x').toBeLessThanOrEqual(1);
+    expect(Math.abs(again.y - fitted.y), 'Fit after Zoom in: y').toBeLessThanOrEqual(1);
+    await expect(nodeOf(page, id), 'the selection is kept').toHaveClass(/\bselected\b/);
+    await expect(panel).toBeVisible();
+
+    // A tap on "Open profile" opens the person's profile.
+    await profile.tap();
+    await expect(page).toHaveURL(/\/people\/demo-two-lineages$/);
+  });
+
+  test('@M06 on a phone a selection that opens the bottom sheet responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
+    // Plan §5.8 (c), as the M05 selection INP (installInpProbes, selectionInp): the person of
+    // demo-two-lineages, then their two teachers, above the person and the sheet. The first
+    // selection opens the sheet (the Drawer's first opening on the page), the others change it.
+    await installInpProbes(page);
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    const teachers = await edgesInto(page, id).evaluateAll((paths) => paths.map((p) => p.getAttribute('data-teacher')!));
+    expect(teachers.length, 'teachers drawn').toBeGreaterThanOrEqual(2);
+    const targets = [id, ...teachers];
+    const result = await selectionInp(page, browserName, 3, async (selected) => targets[selected.length] ?? null);
+    test.info().annotations.push({
+      type: `INP (ms, worst of 3 selections, 4x CPU, phone person view of demo-two-lineages, ${result.method})`,
+      description: `${result.inp} (Event Timing ${result.eventTiming ?? 'none'}, frame measure ${Math.round(result.frame)})`,
+    });
+    expect(result.inp).toBeLessThan(200);
+  });
+
+  test('@M06 on a phone Back with the bottom sheet open closes it and keeps the explorer URL', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    const url = page.url();
+    await nodeOf(page, id).tap();
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    await page.goBack();
+    await expect(panel, 'Back closes the sheet').toBeHidden();
+    await expect(nodeOf(page, id), 'and clears the selection').not.toHaveClass(/\bselected\b/);
+    expect(page.url(), 'the explorer URL is kept').toBe(url);
+    await expect(nodeOf(page, id)).toBeVisible();
+  });
+
+  test('@M06 on a phone "Center on this person" with the sheet open, then Esc, keeps the new focus in the URL', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    const other = await uncoveredNode(page, [id]);
+    expect(other, 'another person on screen').not.toBeNull();
+    await nodeOf(page, other!).tap();
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Center on this person' }).tap();
+    await expect.poll(() => searchOf(page).focus, 'the new focus is in the URL').toBe(other);
+    await expect(nodeOf(page, other!)).toHaveClass(/\bselected\b/);
+    await expect(panel).toBeVisible();
+    const url = page.url();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'Esc closes the sheet').toBeHidden();
+    await expect(nodeOf(page, other!)).not.toHaveClass(/\bselected\b/);
+    // The close does not step back over the change of focus: the URL stays (checked across a second,
+    // the time a history step and the scene it brings back would take).
+    for (let i = 0; i < 4; i++) {
+      await page.waitForTimeout(250);
+      expect(page.url(), 'the URL after Esc').toBe(url);
+    }
+    await expect(nodeOf(page, other!)).toBeVisible();
+  });
+
+  test('@M06 on a phone Esc in the graph lowers a raised sheet to its peek, then clears the selection', async ({ page }) => {
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(id);
+    await page.keyboard.press('Space');
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    // The sheet raised to its top while the focus is in the graph (a drag on its handle moves no
+    // focus; so does a click event without a pointer): it covers the graph, so the focus moves into it.
+    await panel.getByRole('button', { name: 'Expand' }).dispatchEvent('click');
+    await expect(panel.getByRole('button', { name: 'Collapse' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-explorer-sheet]')), 'the focus moved into the sheet').toBe(true);
+
+    // Back in the graph, Esc lowers the sheet to its peek and keeps the selection; Esc again clears it.
+    await nodeOf(page, id).focus();
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('button', { name: 'Expand' }), 'the sheet is at its peek').toBeVisible();
+    await expect(panel).toBeVisible();
+    await expect(nodeOf(page, id)).toHaveClass(/\bselected\b/);
+    expect(await focusedNodeId(page)).toBe(id);
+    await page.keyboard.press('Escape');
+    await expect(panel, 'the second Esc closes the sheet').toBeHidden();
+    await expect(nodeOf(page, id)).not.toHaveClass(/\bselected\b/);
+    expect(await focusedNodeId(page), 'the focus stays on the person').toBe(id);
+  });
 });
 
 test.describe('expansion (C)', () => {
