@@ -31,6 +31,7 @@ import {
   type Ref,
   type RefObject,
   useDeferredValue,
+  useEffect,
   useId,
   useImperativeHandle,
   useLayoutEffect,
@@ -163,6 +164,7 @@ export default function ExplorerPanel(props: PanelProps) {
   const opening = useDeferredValue(live);
   const sheetOpen = live && opening;
   const keepAbove = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
+  useRevealFocused(live && overlay, canvas, live ? `${mode?.kind}:${(person ?? teacher)?.id}` : null);
 
   const kind = viewKind(url);
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
@@ -510,6 +512,35 @@ function useKeepAbove(open: boolean, canvas: RefObject<CanvasHandle | null>, per
     return () => window.removeEventListener('resize', measure);
   }, [open, canvas, person]);
   return open ? keepAbove : null;
+}
+
+/**
+ * From md the panel lies over the canvas (data-canvas-cover). When it opens, shows another person
+ * or teacher, or changes its size (a list of students arrives and the panel grows over the node it
+ * came from), while the keyboard focus is on a node, the view moves that node out from under it
+ * (WCAG 2.4.11, focus not obscured; canvas.tsx ensureVisible counts the panel as a cover). After
+ * the paint, so the key's response (INP) does not grow; a click (no visible focus) leaves the view
+ * where it is.
+ */
+function useRevealFocused(open: boolean, canvas: RefObject<CanvasHandle | null>, subject: string | null) {
+  useEffect(() => {
+    if (!open || typeof ResizeObserver !== 'function') return;
+    let timer: number | undefined;
+    // A task queued from a ResizeObserver callback runs after that frame is painted; one per frame.
+    const sizes = new ResizeObserver(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const at = document.activeElement;
+        if (at instanceof HTMLElement && at.matches('.react-flow__node:focus-visible')) canvas.current?.ensureVisible();
+      });
+    });
+    // Observing calls back once at the start: the panel as it opens.
+    for (const cover of document.querySelectorAll('[data-canvas-cover]')) sizes.observe(cover);
+    return () => {
+      sizes.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [open, canvas, subject]);
 }
 
 /** The sheet's element (its popup), when there is one. */

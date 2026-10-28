@@ -14,7 +14,7 @@ import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { edgesInto, EXPLORER_VIEWS, lineageIdOf, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
 import { activeNodeId, announcement, dragEveryNodeOffScreen, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
 import { captureScenes, installInpProbes, personNameOf, selectionInp, settledView, uncoveredNode } from './helpers/explorer-checks';
-import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf } from './helpers/m06-expand';
+import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf, walkToSummary } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
 import { drawnEdges, litIds, recordPaths, routesUp, searchOf, tappableAtCentre } from './helpers/m06-panel';
 import { controlProblems, dragSheetToHalf, isSheet, PHONES, settledTop, startMotion, stopMotion, wholeAndUncovered } from './helpers/m06-touch';
@@ -601,6 +601,23 @@ test.describe('expansion (C)', () => {
     await node.click();
     await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
     expect(await listedStudents(page, hubName, 1)).toEqual(first);
+  });
+
+  test('@M06 the panel never covers the node the keyboard opened it from', async ({ page }) => {
+    test.setTimeout(120_000);
+    // The summary node ends demo-hub-a's row of students, at the canvas's right edge once the keys
+    // reach it: where the desktop panel opens over the canvas (WCAG 2.4.11, focus not obscured).
+    const hub = await personIdOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await walkToSummary(page, hub);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('explorer-panel').getByRole('heading', { name: /^Students of / })).toBeVisible();
+    expect(await focusedNodeId(page), 'the focus stays on the summary node').toBe(summaryIdOf(hub));
+    await expect.poll(() => wholeAndUncovered(summaryNodeOf(page, hub)), 'the summary node is whole and uncovered').toBe(true);
+    await settledView(page);
+    expect(await wholeAndUncovered(summaryNodeOf(page, hub)), 'and stays so').toBe(true);
   });
 });
 
