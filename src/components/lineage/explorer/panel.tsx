@@ -18,15 +18,25 @@
 // - At 0.5 the frame above it is shorter: the active node is moved into view once the frame has
 //   settled. At 0.92 it covers the graph (no page room is kept), so a focus in the graph moves into
 //   the sheet; when it comes down again, the active node is moved into view.
-// - Closed from inside (Close, Esc, a swipe), focus returns to the active node; closed from the
-//   graph (Esc there), focus stays where it is. Esc in the graph is the graph's (keys.tsx: a raised
+// - At 0.92 it covers the graph, so a focus in the graph moves into the sheet; when it comes down
+//   again with the focus still on the sheet itself, the focus returns to the active node.
+// - Closed from inside (Close, Esc, a swipe), focus returns to the active node, at once: the body
+//   turns inert as the sheet closes. Closed from the graph (Esc there), focus stays where it is. Esc in the graph is the graph's (keys.tsx: a raised
 //   sheet comes down to its peek first, then the selection is cleared): the Drawer's own Esc, which
 //   listens on the document, is cancelled there and in other layers (a menu, a dialog).
 // - It is closed while the List view is shown (explorer.tsx), and its history entry (Back closes
 //   it) is handed back to the page first, so closing it does not step back over the URL change.
+//   A link in it takes that entry (router.replace), so Back from where it leads returns to the
+//   explorer in one step; leaving the List view aside, the sheet closes with it.
+//
+// A panel control that has the focus and goes with its own action ("Show N more students" once
+// everyone is drawn, "Focus this lineage", "List all students", the list's Close) leaves the focus
+// to the panel, or with the panel gone to the active node: never to <body> (useFocusKept).
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
+  type MouseEvent,
   type ReactNode,
   type Ref,
   type RefObject,
@@ -112,6 +122,9 @@ const STUDENTS_PANEL =
 const PERSON_PANEL =
   'absolute top-3 right-[calc(max(0.75rem,env(safe-area-inset-right,0px))+3.5rem)] z-20 grid max-h-[calc(100%-1.5rem-env(safe-area-inset-bottom,0px))] w-[min(22rem,calc(100%-5rem))] content-start gap-3 overflow-y-auto overscroll-contain rounded-sm border border-border-strong bg-surface-1 p-4 shadow-pop outline-none [--seal-ground:var(--surface-1)]';
 
+/** The panel's element that takes the focus when a control in it goes (useFocusKept): the overlay's section, or the sheet. */
+const PANEL_HOME = '[data-panel-home]';
+
 const closeButton =
   '-mt-2 -mr-2 inline-grid size-11 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg';
 
@@ -157,16 +170,25 @@ export default function ExplorerPanel(props: PanelProps) {
   if (live && !sameSubject(subject, current)) setSubject(current);
   // The body a step behind the header: rendered when it is the same subject's, else nothing yet.
   const deferred = useDeferredValue(subject);
-  const body = deferred.mode?.kind === subject.mode?.kind && deferred.person === subject.person && deferred.teacher === subject.teacher ? deferred : null;
+  // By id: an expansion gives the same person a new object (mergeExpansion), and the body, with the
+  // focus in it, must not go for a render.
+  const body =
+    deferred.mode?.kind === subject.mode?.kind && deferred.person?.id === subject.person?.id && deferred.teacher?.id === subject.teacher?.id ? deferred : null;
   // The sheet opens a step behind the selection (plan §5.8 (c), INP): the tap paints the selected
   // node and its lit routes first, and the Drawer's opening (its measures, the page room it takes,
   // its history entry) follows in a deferred render. It closes at once.
   const opening = useDeferredValue(live);
   const sheetOpen = live && opening;
+  /** The sheet took the focus from the graph at its top snap point (onSheetSnap). */
+  const tookFocus = useRef(false);
   // Every opening starts at the peek (the Drawer's first snap point), not where the last one rested.
   useEffect(() => {
-    if (!sheetOpen) restedAt.current = 0;
+    if (sheetOpen) return;
+    restedAt.current = 0;
+    tookFocus.current = false;
   }, [sheetOpen]);
+  useFocusKept(canvas);
+  const router = useRouter();
   const keepAbove = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
   useRevealFocused(live && overlay, canvas, live ? `${mode?.kind}:${(person ?? teacher)?.id}` : null);
 
@@ -180,9 +202,11 @@ export default function ExplorerPanel(props: PanelProps) {
       return (
         <section
           aria-labelledby="explorer-students-heading"
+          tabIndex={-1}
           data-testid="explorer-panel"
           data-canvas-cover=""
-          className={STUDENTS_PANEL}
+          data-panel-home=""
+          className={`${STUDENTS_PANEL} outline-none`}
           onKeyDown={(event) => {
             // Esc in the list closes it, as in the graph (keys.tsx), and the focus goes back to the graph.
             if (event.key !== 'Escape' || event.defaultPrevented) return;
@@ -195,7 +219,16 @@ export default function ExplorerPanel(props: PanelProps) {
             <h2 id="explorer-students-heading" className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
               Students of <LatinName name={teacher.displayName} />
             </h2>
-            <button type="button" aria-label="Close" onClick={onClose} className={closeButton}>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => {
+                // The focus goes back to the graph, as with Esc: the button goes with the list.
+                onClose();
+                canvas.current?.focusActive();
+              }}
+              className={closeButton}
+            >
               <CloseIcon size={18} />
             </button>
           </div>
@@ -229,7 +262,11 @@ export default function ExplorerPanel(props: PanelProps) {
           details.cancel();
           return;
         }
+        // Decided now, not in finalFocus: the body turns inert as the sheet closes, and a control
+        // focused there has dropped the focus to <body> by the time finalFocus runs.
+        const fromInside = !!document.activeElement?.closest('[data-explorer-sheet]');
         onClose();
+        if (fromInside) focusActiveNode(canvas);
       }}
       title={title}
       snapPoints={SNAP_POINTS}
@@ -240,14 +277,14 @@ export default function ExplorerPanel(props: PanelProps) {
       onSnapPointChange={(_point, index) => {
         const was = restedAt.current;
         restedAt.current = index;
-        onSheetSnap(index, was, canvas);
+        onSheetSnap(index, was, canvas, tookFocus);
       }}
       actions={sheet}
       keepAbove={keepAbove}
-      popupAttributes={{ 'data-testid': 'explorer-panel', 'data-explorer-sheet': '', 'data-canvas-cover': sheetOpen ? '' : undefined }}
+      popupAttributes={{ 'data-testid': 'explorer-panel', 'data-explorer-sheet': '', 'data-panel-home': '', 'data-canvas-cover': sheetOpen ? '' : undefined }}
       headerActions={
         shown && !students ? (
-          <>
+          <div className="contents" onClickCapture={(event) => followInSheet(event, router, onClose)}>
             {subject.openProfile}
             {shown.id !== url.focus ? (
               <button
@@ -262,20 +299,22 @@ export default function ExplorerPanel(props: PanelProps) {
                 Center on this person
               </button>
             ) : null}
-          </>
+          </div>
         ) : null
       }
     >
-      {students ? (
-        <StudentsList key={students.id} teacherId={students.id} slug={students.slug} name={students.displayName} />
-      ) : kept?.person ? (
-        // While the next person's body is a step behind, the last one keeps its place, unseen and
-        // inert: the sheet keeps its height, so the room it takes from the page (and the canvas
-        // frame above it) does not jump to the header and back on every selection.
-        <div inert={kept !== body || undefined} className={kept !== body ? 'invisible' : undefined}>
-          <PersonBody subject={kept} person={kept.person} url={url} setUrl={setUrl} actions={props.actions} kind={kind} />
-        </div>
-      ) : null}
+      <div className="contents" onClickCapture={(event) => followInSheet(event, router, onClose)}>
+        {students ? (
+          <StudentsList key={students.id} teacherId={students.id} slug={students.slug} name={students.displayName} />
+        ) : kept?.person ? (
+          // While the next person's body is a step behind, the last one keeps its place, unseen and
+          // inert: the sheet keeps its height, so the room it takes from the page (and the canvas
+          // frame above it) does not jump to the header and back on every selection.
+          <div inert={kept !== body || undefined} className={kept !== body ? 'invisible' : undefined}>
+            <PersonBody subject={kept} person={kept.person} url={url} setUrl={setUrl} actions={props.actions} kind={kind} />
+          </div>
+        ) : null}
+      </div>
     </Drawer>
   );
 }
@@ -305,6 +344,7 @@ function PersonOverlay({
       aria-label={`Selected: ${person.displayName}`}
       data-testid="explorer-panel"
       data-canvas-cover=""
+      data-panel-home=""
       className={PERSON_PANEL}
       style={height === null ? undefined : { maxHeight: height }}
       onKeyDown={(event) => {
@@ -589,13 +629,79 @@ function focusBack(canvas: RefObject<CanvasHandle | null>): HTMLElement | false 
   return false;
 }
 
-/** The sheet came to rest at a snap point (from `was`): keep the active node in view, or move the focus into a sheet that covers the graph. */
-function onSheetSnap(index: number, was: number, canvas: RefObject<CanvasHandle | null>) {
+/** Focuses the active node: where it is drawn, else the canvas moves it into view first. */
+function focusActiveNode(canvas: RefObject<CanvasHandle | null>) {
+  const node = canvas.current?.activeElement() ?? null;
+  if (node) node.focus({ preventScroll: true });
+  else canvas.current?.focusActive();
+}
+
+/**
+ * The sheet came to rest at a snap point (from `was`): keep the active node in view, or move the
+ * focus into a sheet that covers the graph (`tookFocus`), and back to the active node when the sheet
+ * comes down again with the focus still on the sheet itself.
+ */
+function onSheetSnap(index: number, was: number, canvas: RefObject<CanvasHandle | null>, tookFocus: { current: boolean }) {
   if (index === TOP) {
-    if (document.activeElement?.closest('.react-flow')) sheetElement()?.focus({ preventScroll: true });
+    tookFocus.current = !!document.activeElement?.closest('.react-flow');
+    if (tookFocus.current) sheetElement()?.focus({ preventScroll: true });
     return;
   }
-  if (index === 1 || was === TOP) afterFrameSettles(() => canvas.current?.ensureVisible());
+  const giveBack = was === TOP && tookFocus.current;
+  tookFocus.current = false;
+  if (index === 1 || was === TOP) {
+    afterFrameSettles(() => {
+      if (giveBack && document.activeElement === sheetElement()) canvas.current?.focusActive();
+      else canvas.current?.ensureVisible();
+    });
+  }
+}
+
+/**
+ * A click on a link in the sheet (code-2): the destination takes the sheet's history entry
+ * (releaseLayerEntry, then router.replace, as the search palette does), so one Back returns to the
+ * explorer. The sheet closes with it (its selection cleared), except for the List view, whose
+ * selection opens the sheet again back in Graph. A new tab or window is the browser's.
+ */
+function followInSheet(event: MouseEvent<HTMLElement>, router: ReturnType<typeof useRouter>, close: () => void) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  if (!(link instanceof HTMLAnchorElement) || (link.target !== '' && link.target !== '_self') || link.hasAttribute('download') || link.origin !== window.location.origin) return;
+  event.preventDefault();
+  releaseLayerEntry();
+  const list = link.pathname === window.location.pathname && new URLSearchParams(link.search).get('view') === 'list';
+  if (!list) close();
+  router.replace(`${link.pathname}${link.search}${link.hash}`);
+}
+
+/**
+ * Keeps the keyboard focus off <body> when the panel control that has it leaves the DOM with its
+ * own action (code-1, a11y-4). After the commit that removed it, the panel as it is now takes the
+ * focus (PANEL_HOME: the overlay's section, the list's, or the sheet), else, with the panel gone,
+ * the active node. Only a control that went while the focus is on <body> is followed (no blur is
+ * relied on: browsers differ on firing one for a removed element).
+ */
+function useFocusKept(canvas: RefObject<CanvasHandle | null>) {
+  const holder = useRef<Element | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      holder.current = target?.closest(PANEL_HOME) ? target : null;
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+  // After every commit of the panel: cheap, and only a control gone with the focus acts.
+  useLayoutEffect(() => {
+    const was = holder.current;
+    if (!was || was.isConnected) return;
+    holder.current = null;
+    const at = document.activeElement;
+    if (at && at !== document.body) return;
+    const home = document.querySelector<HTMLElement>(PANEL_HOME);
+    if (home && home.getClientRects().length > 0) home.focus({ preventScroll: true });
+    else canvas.current?.focusActive();
+  });
 }
 
 /**
