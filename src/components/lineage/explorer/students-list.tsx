@@ -6,16 +6,20 @@
 // link, all at least 44 px tall. The summary node "and N more" opens it, and "+N students" beyond
 // the cap. Previous and Next stay in place on the first and the last page (aria-disabled), so the
 // focus never falls out of the list while paging.
+//
+// The pages come through the explorer's query client (expand.ts reads
+// orpc.people.students.queryOptions(...) for it; expand-state.ts readStudents), so a page read
+// once comes from its cache: this chunk imports neither TanStack Query nor the oRPC client
+// (expand-state.ts says why).
 
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 import { cx } from '@/lib/cx';
-import { orpc } from '@/lib/rpc-client';
-import type { StudentEntryDto } from '@/server/dto/public';
+import type { StudentEntryDto, StudentsPageDto } from '@/server/dto/public';
 
 import { studentTotalsText } from '../status';
+import { readStudents } from './expand-state';
 
 /** Students per page of the panel's list (DEFAULT, no D number). */
 export const STUDENTS_PER_PAGE = 20;
@@ -53,19 +57,37 @@ function Row({ entry, note }: { entry: StudentEntryDto; note: string | null }) {
 
 export function StudentsList({ slug, name }: StudentsListProps): ReactNode {
   const [page, setPage] = useState(1);
-  // The pages already read stay in the browser's cache: paging back is at once.
-  const query = useQuery(orpc.people.students.queryOptions({ input: { slug, page, pageSize: STUDENTS_PER_PAGE }, placeholderData: keepPreviousData }));
-  const data = query.data;
-  if (query.isError && !data) {
+  const [attempt, setAttempt] = useState(0);
+  // The page asked for (and the attempt: Retry asks again).
+  const of = `${slug} ${page} ${attempt}`;
+  // The last page read, which stays on screen while the next one is read (aria-busy), and the ask that failed.
+  const [shown, setShown] = useState<{ of: string; data: StudentsPageDto } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    readStudents({ slug, page, pageSize: STUDENTS_PER_PAGE }).then(
+      (data) => {
+        if (current) setShown({ of, data });
+      },
+      () => {
+        if (current) setFailed(of);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [slug, page, of]);
+  if (failed === of) {
     return (
       <p role="alert" className="text-ui">
         The students could not be loaded.{' '}
-        <button type="button" className="link inline-flex min-h-11 items-center" onClick={() => void query.refetch()}>
+        <button type="button" className="link inline-flex min-h-11 items-center" onClick={() => setAttempt((n) => n + 1)}>
           Retry
         </button>
       </p>
     );
   }
+  const data = shown?.data;
   if (!data) {
     return (
       <p role="status" className="text-sm text-fg-muted">
@@ -73,6 +95,7 @@ export function StudentsList({ slug, name }: StudentsListProps): ReactNode {
       </p>
     );
   }
+  const busy = shown?.of !== of;
   const total = data.activeTotal + data.historicalTotal;
   const pageButton = (label: 'Previous' | 'Next', to: number, enabled: boolean) => (
     <button
@@ -87,7 +110,7 @@ export function StudentsList({ slug, name }: StudentsListProps): ReactNode {
     </button>
   );
   return (
-    <div className="grid gap-2" aria-busy={query.isPlaceholderData || undefined}>
+    <div className="grid gap-2" aria-busy={busy || undefined}>
       <p className="text-sm text-fg-muted">
         {studentTotalsText(data.activeTotal, data.historicalTotal)}
         {total > 0 ? ', by name' : ''}.

@@ -125,6 +125,10 @@ function NodeButton({
       aria-label={busy ? `Loading, ${label} of ${name}` : `${label} of ${name}`}
       aria-busy={busy || undefined}
       onClick={press}
+      // Enter and Space press the button; they are not the node's keys (Enter opens the profile).
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+      }}
       className={cx(
         'nodrag nopan pointer-events-none shrink-0 rounded-xs border border-border-strong bg-surface-1 px-1 leading-3.5 font-semibold text-fg pointer-fine:pointer-events-auto pointer-fine:cursor-pointer pointer-fine:hover:bg-surface-3 focus-visible:outline-offset-1',
         className,

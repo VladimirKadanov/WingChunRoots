@@ -1,13 +1,16 @@
 // Expanding the view (plan §4.8; milestone M06, package C): the read of an expansion, the merge by
-// id, the record check, when expansions are dropped, and the words said once they are drawn.
+// id, the record check, when expansions are dropped, the layout's options and the words said once
+// they are drawn.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { Scene } from '@/lib/lineage-layout/types';
+import type { Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import type { LineageGraphDto } from '@/server/dto/public';
 
-import { expandInput, expansionWords, keepsExpansions, mergeExpansion, positionsOf, sameRecord } from './expand';
-import { capFanout, FANOUT_SHOWN } from './state';
+import { anchoredScene as anchoredOnScreen, expandInput, expandLayout, keepsExpansions, type Latest, positionsOf, type Work } from './expand';
+import { anchoredScene, arrived, drawn, expansionWords, mergeExpansion, RELAYOUT_DEBOUNCE_MS, sameRecord } from './expand-engine';
+import { counting, fresh, provideStudents, readStudents, type State } from './expand-state';
+import { capFanout, FANOUT_SHOWN, summaryIdOf } from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const LINEAGE = id(900);
@@ -232,5 +235,213 @@ describe('positionsOf', () => {
     const scene = { nodes: [{ id: id(1), x: 10, y: 20 }, { id: id(2), x: 30, y: 144 }] } as unknown as Scene;
     expect(positionsOf(scene)).toEqual({ [id(1)]: { x: 10, y: 20 }, [id(2)]: { x: 30, y: 144 } });
     expect(positionsOf(null)).toEqual({});
+  });
+
+  it('gives the expand preset the positions of the scene on screen', () => {
+    const scene = { nodes: [{ id: id(1), x: 10, y: 20 }] } as unknown as Scene;
+    expect(expandLayout(scene)).toEqual({ preset: 'expand', previousPositions: { [id(1)]: { x: 10, y: 20 } } });
+  });
+});
+
+describe('anchoredScene', () => {
+  const slot = (n: number, x: number, y: number): SceneNode => ({
+    id: id(n),
+    rank: y / 100,
+    cutOff: false,
+    onSpine: false,
+    x,
+    y,
+    width: 200,
+    height: 64,
+    center: { x: x + 100, y: y + 32 },
+    boxes: {
+      full: { x, y, width: 200, height: 64 },
+      compact: { x: x + 20, y: y + 12, width: 160, height: 40 },
+      dot: { x: x + 92, y: y + 24, width: 16, height: 16 },
+    },
+  });
+  const link = (teacher: SceneNode, student: SceneNode, curve = false): SceneEdge => ({
+    id: `${teacher.id}>${student.id}`,
+    teacherId: teacher.id,
+    studentId: student.id,
+    lineageId: LINEAGE,
+    kind: curve ? 'crossLineage' : 'primary',
+    routedBy: curve ? 'scene' : 'elk',
+    onSpine: false,
+    bends: curve ? 0 : 2,
+    path: curve
+      ? { type: 'bezier', start: teacher.center, control1: { x: 1, y: 2 }, control2: { x: 3, y: 4 }, end: student.center, midpoint: { x: 5, y: 6 } }
+      : { type: 'orthogonal', points: [teacher.center, { x: teacher.center.x, y: 150 }, { x: student.center.x, y: 150 }, student.center] },
+  });
+  const sceneOf = (nodes: SceneNode[], edges: SceneEdge[]): Scene => ({
+    version: 1,
+    dataVersion: 'v1',
+    focusId: nodes[0]!.id,
+    preset: 'expand',
+    nodePlacement: 'BRANDES_KOEPF',
+    nodeSize: 'full',
+    width: 1000,
+    height: 300,
+    bounds: { x: 0, y: 0, width: 1000, height: 264 },
+    rowY: [0, 100, 200],
+    nodes,
+    edges,
+    spine: [],
+  });
+
+  // On screen: the teacher above the hub. The expansion's layout centres the hub over its new students.
+  const before = sceneOf([slot(1, 0, 0), slot(2, 0, 100)], []);
+  const teacher = slot(1, 400, 0);
+  const hub = slot(2, 400, 100);
+  const students = [slot(3, 0, 200), slot(4, 800, 200)];
+  const after = sceneOf([teacher, hub, ...students], [link(teacher, hub, true), link(hub, students[0]!), link(hub, students[1]!)]);
+
+  it('moves the whole scene so that the pressed node keeps its place, and the rest keep theirs around it', () => {
+    const anchored = anchoredScene(after, before, id(2));
+    const moved = (n: number) => anchored.nodes.find((x) => x.id === id(n))!;
+    expect({ x: moved(2).x, y: moved(2).y }).toEqual({ x: 0, y: 100 });
+    expect(moved(1)).toEqual(slot(1, 0, 0));
+    expect(moved(3)).toEqual(slot(3, -400, 200));
+    expect(moved(4)).toEqual(slot(4, 400, 200));
+    expect(anchored.bounds).toEqual({ x: -400, y: 0, width: 1000, height: 264 });
+    expect(anchored.rowY).toEqual([0, 100, 200]);
+    // Every route moves with its people.
+    expect(anchored.edges[0]!.path).toEqual({
+      type: 'bezier',
+      start: moved(1).center,
+      control1: { x: -399, y: 2 },
+      control2: { x: -397, y: 4 },
+      end: moved(2).center,
+      midpoint: { x: -395, y: 6 },
+    });
+    expect(anchored.edges[1]!.path).toEqual({
+      type: 'orthogonal',
+      points: [moved(2).center, { x: 100, y: 150 }, { x: -300, y: 150 }, moved(3).center],
+    });
+    // The rest of the scene is the layout's.
+    expect({ ...anchored, nodes: [], edges: [], bounds: null, rowY: [] }).toEqual({ ...after, nodes: [], edges: [], bounds: null, rowY: [] });
+    // The input is not changed.
+    expect(after.nodes[1]).toEqual(slot(2, 400, 100));
+  });
+
+  it('moves rows too when the pressed node changes row', () => {
+    const lower = sceneOf([slot(2, 400, 200)], []);
+    const anchored = anchoredScene(lower, before, id(2));
+    // The node keeps its rank; only its place moves.
+    expect(anchored.nodes[0]).toEqual({ ...slot(2, 0, 100), rank: 2 });
+    expect(anchored.rowY).toEqual([-100, 0, 100]);
+  });
+
+  it('gives the same scene without an anchor, without a scene on screen, when either lacks the node, or when it has not moved', () => {
+    expect(anchoredScene(after, before, null)).toBe(after);
+    expect(anchoredScene(after, null, id(2))).toBe(after);
+    expect(anchoredScene(after, before, id(3))).toBe(after);
+    expect(anchoredScene(after, before, id(99))).toBe(after);
+    expect(anchoredScene(after, after, id(2))).toBe(after);
+  });
+});
+
+describe('the expansions\' state (expand-state.ts)', () => {
+  it('counts the people being read and being laid out as busy, keeping the set while they stay the same', () => {
+    const s = fresh('read');
+    expect(counting(s)).toBe(s);
+    const reading = counting({ ...s, loading: new Set([id(1)]) });
+    expect([...reading.pending]).toEqual([id(1)]);
+    expect(counting(reading)).toBe(reading);
+    const laying = counting({ ...reading, loading: new Set(), laying: { scene: null, done: [{ id: id(2), direction: 'students', name: 'Demo Person 002' }] } });
+    expect([...laying.pending]).toEqual([id(2)]);
+    expect(counting({ ...laying, laying: null }).pending.size).toBe(0);
+  });
+
+  it('reads a page of students through the explorer\'s reader, and fails without one', async () => {
+    await expect(readStudents({ slug: 'demo-1', page: 1, pageSize: 20 })).rejects.toThrow();
+    const page = { page: 2 } as never;
+    const reader = vi.fn(() => Promise.resolve(page));
+    const undo = provideStudents(reader);
+    await expect(readStudents({ slug: 'demo-1', page: 2, pageSize: 20 })).resolves.toBe(page);
+    expect(reader).toHaveBeenCalledWith({ slug: 'demo-1', page: 2, pageSize: 20 });
+    // Undoing an older reader leaves the newer one.
+    const newer = vi.fn(() => Promise.resolve(page));
+    const undoNewer = provideStudents(newer);
+    undo();
+    await readStudents({ slug: 'demo-1', page: 1, pageSize: 20 });
+    expect(newer).toHaveBeenCalledTimes(1);
+    undoNewer();
+    await expect(readStudents({ slug: 'demo-1', page: 1, pageSize: 20 })).rejects.toThrow();
+  });
+});
+
+describe('an expansion\'s answer (expand-engine.ts arrived)', () => {
+  /** Past the relayout debounce (real timers: a later timer never fires before an earlier one). */
+  const debounced = () => new Promise((resolve) => setTimeout(resolve, RELAYOUT_DEBOUNCE_MS + 20));
+
+  const scene = { nodes: [{ id: id(1), x: 0, y: 0 }, { id: id(2), x: 0, y: 100 }] } as unknown as Scene;
+  /** A Work over a plain state, as useExpansions gives it, with the view's read on screen. */
+  const workOn = (state: { s: State }, latest: Latest) => {
+    const reread = vi.fn();
+    const work: Work = {
+      latest: { current: latest },
+      setState: (next) => {
+        state.s = typeof next === 'function' ? next(state.s) : next;
+      },
+      queue: [],
+      timer: undefined,
+      layout: expandLayout,
+      reread,
+    };
+    return { work, reread };
+  };
+
+  it('merges the answers that arrive within the debounce for one layout, anchored on the last pressed, every person drawn pinned', async () => {
+    const state = { s: counting({ ...fresh('read'), loading: new Set([id(2)]) }) };
+    const at: Latest = { key: 'read', answer: view, graph: view, scene, pending: state.s.pending };
+    const { work, reread } = workOn(state, at);
+    arrived(work, at, id(2), 'students', 'Demo Person 002', students);
+    expect(state.s.graph).toBeNull();
+    await debounced();
+    expect(reread).not.toHaveBeenCalled();
+    expect(state.s.graph).toEqual(mergeExpansion(view, students, id(2)));
+    expect(state.s.version).toBe('view');
+    expect(state.s.layoutOptions).toEqual(expandLayout(scene));
+    expect(state.s.anchorId).toBe(id(2));
+    expect([...state.s.pinned].sort()).toEqual([id(1), id(2)]);
+    expect(state.s.loading.size).toBe(0);
+    // Busy until it is drawn; then the notice says what it added.
+    expect([...state.s.pending]).toEqual([id(2)]);
+    const next = { nodes: [...scene.nodes, { id: id(3), x: 0, y: 200 }, { id: summaryIdOf(id(2)), x: 200, y: 200 }] } as unknown as Scene;
+    const shown = drawn(state.s, next);
+    expect(shown.laying).toBeNull();
+    expect(shown.pending.size).toBe(0);
+    expect(shown.notice?.text).toBe('Added 1 student of Demo Person 002.');
+  });
+
+  it('drops the expansions and reads the view again when the record changed since it was read', async () => {
+    const state = { s: counting({ ...fresh('read'), loading: new Set([id(2)]) }) };
+    const at: Latest = { key: 'read', answer: view, graph: view, scene, pending: state.s.pending };
+    const { work, reread } = workOn(state, at);
+    const changed = { ...students, nodes: [{ ...node(2, 4), hasMoreChildren: true }, ...students.nodes.slice(1)] };
+    arrived(work, at, id(2), 'students', 'Demo Person 002', changed);
+    expect(reread).toHaveBeenCalledTimes(1);
+    expect(state.s.pending.size).toBe(0);
+    expect(state.s.graph).toBeNull();
+    expect(state.s.notice?.text).toBe('The record has changed since this view was read; it is read again.');
+    await debounced();
+    expect(work.queue).toEqual([]);
+  });
+
+  it('ignores an answer for a read that is no longer on screen', async () => {
+    const state = { s: fresh('other') };
+    const at: Latest = { key: 'read', answer: view, graph: view, scene, pending: new Set() };
+    const { work } = workOn(state, { ...at, key: 'other' });
+    arrived(work, at, id(2), 'students', 'Demo Person 002', students);
+    await debounced();
+    expect(state.s).toEqual(fresh('other'));
+  });
+});
+
+describe('anchoredScene in the explorer\'s first JavaScript (expand.ts)', () => {
+  it('gives a new read\'s scene as it is', () => {
+    const scene = { nodes: [] } as unknown as Scene;
+    expect(anchoredOnScreen(scene, null, null)).toBe(scene);
   });
 });
