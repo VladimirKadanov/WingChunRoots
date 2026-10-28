@@ -324,7 +324,8 @@ test.describe('keyboard (A)', () => {
     // Plan §4.8: a selection must not cost more as the view grows. A node's focus guard (canvas.tsx
     // useFocusGuard) asks .react-flow__node for its slot only in its cleanup, which runs when the node
     // leaves the DOM, or on every drawn node when the guard function changes on a render (review
-    // finding perf-3). Every element that asked must be gone from the DOM by the end.
+    // finding perf-3). Every node root that asked must be gone from the DOM by the end. The key
+    // handlers ask from the focused node itself (keys.tsx, focusedId), which is not a guard.
     const hub = await personIdOf('demo-hub-a');
     await openExplorer(page, { focus: hub });
     await settledView(page);
@@ -334,7 +335,7 @@ test.describe('keyboard (A)', () => {
       w.__guards = [];
       const original = Element.prototype.closest;
       Element.prototype.closest = function (this: Element, selectors: string) {
-        if (selectors === '.react-flow__node') w.__guards.push(this);
+        if (selectors === '.react-flow__node' && this.matches('[data-person-node], [data-summary-node]')) w.__guards.push(this);
         return original.call(this, selectors);
       } as typeof original;
     });
