@@ -104,7 +104,10 @@ export function visibleBox(locator: Locator): Promise<ScreenBox | null> {
 /**
  * Drags the pane with the mouse, a stroke at a time, until the node `id` is no longer drawn
  * (onlyRenderVisibleElements unmounts it): each stroke starts on the bare pane (not on a node or
- * a control over the canvas) and moves the view in the direction that takes the node off soonest.
+ * a control over the canvas) and moves the view in the direction that takes the node off soonest
+ * while another node drawn now stays on the pane, so that the focus-loss guard has a drawn node to
+ * move the focus to (the direction that takes the node off soonest when none does). With every
+ * node off screen the guard holds the focus on the graph itself instead (dragEveryNodeOffScreen).
  */
 export async function dragNodeOffScreen(page: Page, id: string, strokes = 8): Promise<void> {
   const node = page.locator(`.react-flow__node[data-id="${id}"]`);
@@ -121,10 +124,15 @@ export async function dragNodeOffScreen(page: Page, id: string, strokes = 8): Pr
         { dx: 0, dy: -(box.bottom - pane.top) },
         { dx: 0, dy: pane.bottom - box.top },
       ].sort((a, b) => Math.abs(a.dx + a.dy) - Math.abs(b.dx + b.dy));
+      // The other nodes drawn now: a stroke that leaves one of them on the pane is preferred.
+      const others = [...document.querySelectorAll<HTMLElement>('.react-flow__node')].filter((n) => n.dataset.id !== nodeId).map((n) => n.getBoundingClientRect());
+      const keepsOne = (dx: number, dy: number) =>
+        others.some((r) => r.right + dx > pane.left && r.left + dx < pane.right && r.bottom + dy > pane.top && r.top + dy < pane.bottom);
       const bare = (x: number, y: number) => {
         const hit = document.elementFromPoint(x, y);
         return !!hit && flow.contains(hit) && !hit.closest('.react-flow__node, .react-flow__attribution, [data-canvas-overlay], a, button');
       };
+      let fallback: { from: { x: number; y: number }; to: { x: number; y: number } } | null = null;
       for (const way of ways) {
         // The bare point that lets this stroke travel furthest, its end 8 px inside the pane.
         let best: { x: number; y: number; reach: number } | null = null;
@@ -140,10 +148,12 @@ export async function dragNodeOffScreen(page: Page, id: string, strokes = 8): Pr
         }
         if (best && best.reach > 40) {
           const step = Math.min(best.reach, Math.abs(way.dx + way.dy) + 24);
-          return { from: { x: best.x, y: best.y }, to: { x: best.x + Math.sign(way.dx) * step, y: best.y + Math.sign(way.dy) * step } };
+          const stroke = { from: { x: best.x, y: best.y }, to: { x: best.x + Math.sign(way.dx) * step, y: best.y + Math.sign(way.dy) * step } };
+          if (keepsOne(stroke.to.x - stroke.from.x, stroke.to.y - stroke.from.y)) return stroke;
+          fallback ??= stroke;
         }
       }
-      return null;
+      return fallback;
     }, id);
     if (!plan) break;
     await page.mouse.move(plan.from.x, plan.from.y);
@@ -152,4 +162,38 @@ export async function dragNodeOffScreen(page: Page, id: string, strokes = 8): Pr
     await page.mouse.up();
   }
   await expect(node, 'the drag took the node off screen').toHaveCount(0);
+}
+
+/**
+ * Drags the pane with the mouse, a stroke at a time, until no node is drawn at all: each stroke
+ * starts on the bare pane (not on a node or a control over the canvas) and moves the view down
+ * as far as the pane allows, so the graph leaves at the bottom.
+ */
+export async function dragEveryNodeOffScreen(page: Page, strokes = 16): Promise<void> {
+  const nodes = page.locator('.react-flow .react-flow__node');
+  for (let i = 0; i < strokes && (await nodes.count()) > 0; i++) {
+    const plan = await page.evaluate(() => {
+      const flow = document.querySelector('.react-flow')!;
+      const pane = flow.getBoundingClientRect();
+      const bare = (x: number, y: number) => {
+        const hit = document.elementFromPoint(x, y);
+        return !!hit && flow.contains(hit) && !hit.closest('.react-flow__node, .react-flow__attribution, [data-canvas-overlay], a, button');
+      };
+      // The bare point highest on the pane: the stroke from it travels furthest down.
+      for (let gy = 0.03; gy <= 0.9; gy += 0.03) {
+        for (let gx = 0.05; gx <= 0.95; gx += 0.05) {
+          const x = pane.left + gx * pane.width;
+          const y = pane.top + gy * pane.height;
+          if (bare(x, y) && pane.bottom - 8 - y > 40) return { from: { x, y }, to: { x, y: pane.bottom - 8 } };
+        }
+      }
+      return null;
+    });
+    if (!plan) break;
+    await page.mouse.move(plan.from.x, plan.from.y);
+    await page.mouse.down();
+    await page.mouse.move(plan.to.x, plan.to.y, { steps: 12 });
+    await page.mouse.up();
+  }
+  await expect(nodes, 'the drags took every node off screen').toHaveCount(0);
 }

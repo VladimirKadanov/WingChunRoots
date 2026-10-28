@@ -162,6 +162,7 @@ export default function ExplorerPanel(props: PanelProps) {
   // its history entry) follows in a deferred render. It closes at once.
   const opening = useDeferredValue(live);
   const sheetOpen = live && opening;
+  const keepAbove = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
 
   const kind = viewKind(url);
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
@@ -222,6 +223,7 @@ export default function ExplorerPanel(props: PanelProps) {
         onSheetSnap(index, was, canvas);
       }}
       actions={sheet}
+      keepAbove={keepAbove}
       popupAttributes={{ 'data-testid': 'explorer-panel', 'data-explorer-sheet': '', 'data-canvas-cover': sheetOpen ? '' : undefined }}
       headerActions={
         shown && !students ? (
@@ -478,6 +480,29 @@ function useClearHeight(panel: RefObject<HTMLElement | null>): number | null {
     return () => sizes.disconnect();
   }, [panel]);
   return height;
+}
+
+/**
+ * How far down the window the canvas must still reach above the sheet at its middle snap point
+ * (the Drawer's keepAbove): the legend and the selected person's card fit whole in it (plan §4.6:
+ * the legend is always in view; canvas.tsx keepInView), measured on the page, not a phone's size
+ * (DEFAULT, no D number). On a tall phone that is above half height and the point stays 0.5; on a
+ * short one (393x659) the point is lowered. Measured when the sheet opens or shows another person,
+ * and when the window changes; not on every zoom.
+ */
+function useKeepAbove(open: boolean, canvas: RefObject<CanvasHandle | null>, person: string | null): number | null {
+  const [keepAbove, setKeepAbove] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const next = canvas.current?.keepInView() ?? null;
+      setKeepAbove((now) => (now === next ? now : next));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open, canvas, person]);
+  return open ? keepAbove : null;
 }
 
 /** The sheet's element (its popup), when there is one. */

@@ -104,6 +104,14 @@ export interface DrawerProps {
   popupAttributes?: { [name: `data-${string}`]: string | undefined };
   /** The sheet's actions (DrawerActions). */
   actions?: Ref<DrawerActions>;
+  /**
+   * A non-modal bottom sheet: how far down the window (px from its top) the page must still show
+   * above the sheet at a middle snap point (one between the first and the last), the room the
+   * sheet publishes for the page included. A middle point that would rest higher is lowered to
+   * that, never below the first one (milestone M06: the explorer's legend and selected card stay
+   * in view above a short phone's sheet). The last point is never lowered: there the sheet covers.
+   */
+  keepAbove?: number | null;
 }
 
 // 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
@@ -127,6 +135,7 @@ export function Drawer({
   keepMounted,
   popupAttributes,
   actions,
+  keepAbove = null,
 }: DrawerProps) {
   const side = useMediaQuery(SIDE_PANEL);
   const [openState, setOpenState] = useState(false);
@@ -156,9 +165,15 @@ export function Drawer({
     ? undefined
     : given.map((point, index) => {
         if (point === PEEK) return peek;
+        const height = viewportHeight || (typeof window === 'undefined' ? 0 : window.innerHeight);
         if (index === 0 && fractionPeek) {
-          const height = viewportHeight || (typeof window === 'undefined' ? 0 : window.innerHeight);
           return `${Math.max(peekPx, Math.round((point as number) * height))}px`;
+        }
+        if (!modal && keepAbove !== null && index > 0 && index < given.length - 1 && height > 0) {
+          // The viewport's top is the window's (fixed, inset 0): its bottom is its height.
+          const px = typeof point === 'number' ? (point <= 1 ? point * height : point) : Number.parseFloat(point);
+          const most = Math.floor(height - keepAbove - FOCUS_AIR);
+          if (Number.isFinite(px) && px > most) return `${Math.max(peekPx + 1, most)}px`;
         }
         return point;
       });

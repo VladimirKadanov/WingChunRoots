@@ -83,6 +83,14 @@ export interface CanvasHandle {
   ensureVisible(id?: string): void;
   /** Moves the keyboard focus to the active node (after ensureVisible). */
   focusActive(): void;
+  /**
+   * How far down the window (px from its top) the canvas frame must reach so that the legend (and
+   * whatever else lies along the frame's bottom edge) and the active node's card, at the zoom now,
+   * fit whole in it, one above the other with the view's gaps (plan §4.6: the legend is always in
+   * view; viewport.ts ensureVisible); null without a canvas. A phone's sheet rests no higher at
+   * its middle snap point.
+   */
+  keepInView(): number | null;
 }
 
 /** Where an expand button opens the view: the person's students, or their teachers (package C). */

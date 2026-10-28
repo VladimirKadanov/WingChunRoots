@@ -311,6 +311,11 @@
   outline-offset: 6px;
   border-radius: var(--radius-sm, 3px);
 }
+/* The graph itself, when it holds the focus with no node drawn (canvas.tsx holdFocus): the same
+   ring, inside its edge, where the canvas frame does not clip it. */
+.explorer-canvas:focus-visible {
+  outline-offset: -2px;
+}
 /* end M06 keyboard (A) */
 /* The edges and their labels are drawn at their new places at once: they are hidden while the
    people slide there (canvas.tsx sets data-moving for --duration-slow; never under reduced motion). */

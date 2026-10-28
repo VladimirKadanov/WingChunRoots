@@ -94,7 +94,7 @@ import { relationsText } from './relations';
 import { isSummaryId, joinToBox, relationsId, summaryTeacherOf } from './state';
 import { SummaryCard } from './summary-node';
 import { CenterIcon, KeyboardIcon } from './tool-icons';
-import { anchorDelta, ensureVisible, isDrawn, nearest, type PaneArea, type View, visibleArea } from './viewport';
+import { anchorDelta, ensureVisible, isDrawn, nearest, type PaneArea, type View, VIEW_GAP, visibleArea } from './viewport';
 
 export interface PersonNodeData extends Record<string, unknown> {
   name: string;
@@ -598,9 +598,30 @@ function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace
  * attribution, in a column, a stack of rows or one row as the frame has room (useControlsPlace);
  * in a sliver of canvas above a raised sheet, none.
  */
-function ZoomControls({ buttons, onCenter, onHelp }: { buttons: ViewButtons; onCenter: () => void; onHelp: () => void }) {
+function ZoomControls({
+  buttons,
+  onCenter,
+  onHelp,
+  onFocusLost,
+}: {
+  buttons: ViewButtons;
+  onCenter: () => void;
+  onHelp: () => void;
+  /** The buttons left the DOM with the keyboard focus in one of them (kind none): the canvas gives the focus to the graph. */
+  onFocusLost: () => void;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const place = useControlsPlace(root);
+  // React runs this cleanup before it removes the buttons: the focus is still in one of them then.
+  const groups = useRef<HTMLDivElement>(null);
+  const shown = place.kind !== 'none';
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const element = groups.current;
+    return () => {
+      if (element && document.activeElement && element.contains(document.activeElement)) onFocusLost();
+    };
+  }, [shown, onFocusLost]);
   // Each group's buttons lie in a row in a stack and in a row, and the groups side by side only in a row.
   const lying = place.kind === 'stack' || place.kind === 'row';
   // The ring is drawn inside the button (-outline-offset-2): the group clips what lies outside it.
@@ -619,7 +640,7 @@ function ZoomControls({ buttons, onCenter, onHelp }: { buttons: ViewButtons; onC
       style={{ bottom: place.bottom }}
     >
       {place.kind === 'none' ? null : (
-        <div className={cx('flex items-end gap-2', place.kind === 'row' ? 'flex-row' : 'flex-col')}>
+        <div ref={groups} className={cx('flex items-end gap-2', place.kind === 'row' ? 'flex-row' : 'flex-col')}>
           <div role="group" aria-label="Canvas tools" className={group}>
             <button type="button" className={cx(button, 'inline-grid')} aria-label="Center on selection" onClick={onCenter}>
               <CenterIcon size={18} />
@@ -1103,13 +1124,30 @@ function nearestDrawn(s: FlowState, except?: string): string | null {
 }
 
 /**
+ * Holds the keyboard focus on the graph itself, React Flow's element ("Lineage graph", its
+ * application role and the key help as its description), while no node can hold it: a drag took
+ * every node off screen, or a key move's target is not drawn yet. Focusable (tabIndex -1, never a
+ * tab stop) only while it has the focus, so a click on the bare pane focuses nothing, as before.
+ * The next arrow key, Enter or Space brings the active node back (keys.tsx). Nothing is announced:
+ * the element's own name is.
+ */
+function holdFocus(root: HTMLElement): void {
+  if (document.activeElement === root) return;
+  root.tabIndex = -1;
+  root.addEventListener('blur', () => root.removeAttribute('tabindex'), { once: true });
+  root.focus({ preventScroll: true });
+}
+
+/**
  * The graph's one tab stop (plan §4.9, roving tabindex): every node is tabIndex -1 (explorer.tsx)
  * but the active one, 0. The active node is the one chosen last (a key move, a click or a tap)
  * while it is in the view, else the person in focus, else the first one drawn; only the two nodes
  * whose tab stop changes are new objects. It always stays on a drawn node: a view move that takes
  * it off screen while the focus is outside the graph moves the tab stop to the drawn node nearest
  * the centre (`retarget`, at the end of every move), and one that takes the focused node away
- * moves the focus there (`lost`, the focus-loss guard).
+ * moves the focus there (`lost`, the focus-loss guard), or, with no node drawn at all, to the
+ * graph itself (holdFocus): never to <body>. A key move's target wins over both: while its focus
+ * waits for the target to be drawn, the guard holds the focus on the graph and lets it come.
  */
 function useRoving({
   nodes,
@@ -1138,15 +1176,16 @@ function useRoving({
     latest.current = { active, nodes };
   });
 
-  // A focus move waiting for its node to be drawn; a newer move replaces it.
-  const waiting = useRef<(() => void) | null>(null);
+  // A focus move waiting for its node to be drawn, and that node; a newer move replaces it.
+  const waiting = useRef<{ id: string; stop: () => void } | null>(null);
   /**
    * Calls `then` with the node's element once React Flow draws it: at once, or when it enters the
    * DOM (a view move brings it in), for at most 1500 ms. Not a number of frames: WebKit can paint
-   * no frame for a few hundred milliseconds (trackMove).
+   * no frame for a few hundred milliseconds (trackMove). A focus the graph held for it meanwhile
+   * (`lost`) goes to the nearest drawn node when the time is up.
    */
   const whenDrawn = (id: string, then: (element: HTMLElement) => void) => {
-    waiting.current?.();
+    waiting.current?.stop();
     waiting.current = null;
     const root = store.getState().domNode;
     const now = elementOf(root, id);
@@ -1160,16 +1199,19 @@ function useRoving({
       stop();
       then(element);
     });
-    const timer = window.setTimeout(() => stop(), 1500);
+    const timer = window.setTimeout(() => {
+      stop();
+      if (document.activeElement === root) refocus();
+    }, 1500);
     const stop = () => {
       observer.disconnect();
       window.clearTimeout(timer);
-      if (waiting.current === stop) waiting.current = null;
+      if (waiting.current?.stop === stop) waiting.current = null;
     };
     observer.observe(root, { childList: true, subtree: true });
-    waiting.current = stop;
+    waiting.current = { id, stop };
   };
-  useEffect(() => () => waiting.current?.(), []);
+  useEffect(() => () => waiting.current?.stop(), []);
 
   /** Moves the view, if it must, so that the node is wholly in the visible area (viewport.ts ensureVisible). */
   const reveal = (id: string) => {
@@ -1186,6 +1228,8 @@ function useRoving({
 
   const setActive = (id: string, options: ActiveOptions = {}) => {
     setChosen(id);
+    // A newer choice (a click, another key) replaces a focus move still on its way.
+    waiting.current?.stop();
     if (!options.focus) return;
     reveal(id);
     // The node that has the focus keeps it until the new one can take it.
@@ -1196,9 +1240,13 @@ function useRoving({
     });
   };
 
-  /** At the end of every view move: a tab stop that is no longer drawn moves to the drawn node nearest the centre, unless the focus is in the graph. */
+  /**
+   * At the end of every view move: a tab stop that is no longer drawn moves to the drawn node
+   * nearest the centre, unless the focus is in the graph or a key move's focus is on its way to it.
+   */
   const retarget = () => {
     const s = store.getState();
+    if (waiting.current) return;
     if (s.domNode && document.activeElement && s.domNode.contains(document.activeElement)) return;
     const current = latest.current.active;
     if (current !== null && drawnNodes(s).some((n) => n.id === current)) return;
@@ -1207,23 +1255,55 @@ function useRoving({
   };
 
   /**
-   * The focus-loss guard: the focused node `id` is leaving the DOM (or its guard was renewed, while
-   * the node stays: then the focus is still in it, and nothing happens).
+   * Gives the focus, which nothing holds, to the graph: the active node while it is drawn (no view
+   * move), else the drawn node nearest the centre of the visible area, which becomes the tab stop,
+   * else, with no node drawn at all, the graph itself (holdFocus). `except`: a node leaving the DOM.
    */
-  const lost = (id: string) => {
+  const refocus = (except?: string) => {
+    const s = store.getState();
+    const root = s.domNode;
+    if (!root) return;
+    const current = latest.current.active;
+    const next = current !== null && current !== except && drawnNodes(s).some((n) => n.id === current) ? current : nearestDrawn(s, except);
+    if (next === null) {
+      holdFocus(root);
+      return;
+    }
+    if (next !== current) setChosen(next);
+    whenDrawn(next, (element) => element.focus({ preventScroll: true }));
+  };
+
+  /**
+   * Runs `then` a frame after a control of the graph that had the focus left the DOM (React runs
+   * a cleanup before it removes the element), when the focus fell to the page with it; not while
+   * the graph is hidden (the list view), nor when the focus went somewhere on purpose.
+   */
+  const afterFocusFell = (then: (root: HTMLElement) => void) => {
     window.requestAnimationFrame(() => {
-      const s = store.getState();
-      const root = s.domNode;
+      const root = store.getState().domNode;
       const now = document.activeElement;
-      // The focus went somewhere on purpose, or the graph is not shown (the list view).
       if (!root || !root.isConnected || root.getClientRects().length === 0) return;
       if (now && now !== document.body) return;
-      const next = nearestDrawn(s, id);
-      if (next === null) return;
-      setChosen(next);
-      whenDrawn(next, (element) => element.focus({ preventScroll: true }));
+      then(root);
     });
   };
+
+  /**
+   * The focus-loss guard: the focused node `id` is leaving the DOM (or its guard was renewed, while
+   * the node stays: then the focus is still in it, and nothing happens). A key move's view move
+   * can take the node it starts from off screen before its target is drawn: the graph holds the
+   * focus until then, and the key's target takes it (whenDrawn).
+   */
+  const lost = (id: string) => {
+    afterFocusFell((root) => {
+      const pending = waiting.current;
+      if (pending && pending.id !== id) holdFocus(root);
+      else refocus(id);
+    });
+  };
+
+  /** The guard of the buttons over the canvas: they leave the DOM with the focus (a sliver of canvas above a raised sheet). */
+  const controlsLost = () => afterFocusFell(() => refocus());
 
   /**
    * A press on the pane or an edge with the focus in the graph (a pointer pan) leaves the focus
@@ -1239,7 +1319,7 @@ function useRoving({
     event.preventDefault();
   };
 
-  return { active, rfNodes, setActive, retarget, lost, keepFocus, reveal, whenDrawn, latest };
+  return { active, rfNodes, setActive, retarget, lost, controlsLost, keepFocus, reveal, whenDrawn, latest };
 }
 
 export default function ExplorerCanvas(props: CanvasProps) {
@@ -1324,6 +1404,24 @@ function CanvasFrame({
       focusActive: () => {
         const target = roving.latest.current.active;
         if (target !== null) setActive(target, { focus: true });
+      },
+      keepInView: () => {
+        const s = store.getState();
+        const frame = s.domNode?.closest('[data-canvas-frame]');
+        if (!frame) return null;
+        const box = frame.getBoundingClientRect();
+        // What lies along the frame's bottom edge (the legend; not the buttons, which make way:
+        // controls-layout.ts), from the frame's bottom edge up to its highest top.
+        let along = 0;
+        for (const el of frame.querySelectorAll<HTMLElement>('[data-canvas-overlay]:not([data-controls])')) {
+          const r = el.getBoundingClientRect();
+          if (r.height > 0) along = Math.max(along, box.bottom - r.top);
+        }
+        const id = roving.latest.current.active;
+        const node = id === null ? undefined : s.nodeLookup.get(id);
+        const card = (node?.measured.height ?? node?.height ?? 0) * s.transform[2];
+        // The view's gaps (viewport.ts VIEW_GAP) above the card and between it and the legend, and a pixel for rounding.
+        return Math.ceil(box.top + VIEW_GAP + card + VIEW_GAP + along + 1);
       },
     }),
   );
@@ -1411,7 +1509,7 @@ function CanvasFrame({
       </div>
       <div className="pointer-events-none absolute inset-0 z-10">
         {/* M06 seam: zoom-controls (its own place over the frame: ZoomControls) */}
-        <ZoomControls buttons={buttons} onCenter={centerOnSelection} onHelp={keys.showHelp} />
+        <ZoomControls buttons={buttons} onCenter={centerOnSelection} onHelp={keys.showHelp} onFocusLost={roving.controlsLost} />
         {children}
       </div>
       {/* M06 seam: live-region */}

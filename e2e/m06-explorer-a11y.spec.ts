@@ -12,12 +12,12 @@ import { MAX_ROUTES } from '../src/components/lineage/explorer/route-list';
 import { FANOUT_SHOWN, summaryIdOf } from '../src/components/lineage/explorer/state';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { edgesInto, EXPLORER_VIEWS, lineageIdOf, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
-import { activeNodeId, announcement, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
+import { activeNodeId, announcement, dragEveryNodeOffScreen, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
 import { captureScenes, installInpProbes, personNameOf, selectionInp, settledView, uncoveredNode } from './helpers/explorer-checks';
 import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
 import { drawnEdges, litIds, recordPaths, routesUp, searchOf, tappableAtCentre } from './helpers/m06-panel';
-import { controlProblems, dragSheetToHalf, isSheet, PHONES, settledTop, startMotion, stopMotion } from './helpers/m06-touch';
+import { controlProblems, dragSheetToHalf, isSheet, PHONES, settledTop, startMotion, stopMotion, wholeAndUncovered } from './helpers/m06-touch';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
 
@@ -71,6 +71,37 @@ test.describe('foundation', () => {
         await expect.poll(() => tabStops(page), `${where}: after the drag`).toBe(1);
         expect(await activeNodeId(page), `${where}: the tab stop is the focused node`).toBe(await focusedNodeId(page));
       }
+    }
+  });
+
+  test('@M06 a drag that takes every node off screen keeps the focus on the graph, and an arrow key brings the active node back', async ({ page }) => {
+    test.setTimeout(120_000);
+    for (const size of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      const where = `${size.width}x${size.height}`;
+      await page.setViewportSize(size);
+      await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
+      await settledView(page);
+      await focusGraph(page);
+
+      // The focus-loss guard with no node left to take the focus: the graph itself holds it, never the page.
+      await dragEveryNodeOffScreen(page);
+      await expect.poll(() => focusInGraph(page), `${where}: the focus stays in the graph`).toBe(true);
+      expect(await page.evaluate(() => document.activeElement?.classList.contains('react-flow') ?? false), `${where}: on the graph itself`).toBe(true);
+      expect(await focusedNodeId(page), `${where}: on no node`).toBeNull();
+      expect(await tabStops(page), `${where}: no node drawn, so no tab stop drawn`).toBe(0);
+
+      // The next arrow key brings the active node back into view and gives it the focus.
+      await page.keyboard.press('ArrowDown');
+      await expect.poll(() => focusedNodeId(page), `${where}: a node has the focus again`).not.toBeNull();
+      await settledView(page);
+      const back = (await focusedNodeId(page))!;
+      expect(await activeNodeId(page), `${where}: it is the tab stop`).toBe(back);
+      expect(await isInVisibleArea(page, back), `${where}: it lies wholly in the visible area`).toBe(true);
+      await expect.poll(() => tabStops(page), `${where}: one tab stop`).toBe(1);
+      expect(await page.evaluate(() => document.querySelector('.react-flow')?.hasAttribute('tabindex') ?? true), `${where}: the graph is no stop of its own`).toBe(false);
     }
   });
 });
@@ -605,10 +636,14 @@ test.describe('touch and motion (D)', () => {
       await settledTop(sheet);
       await expect(zoom, `${at}: the zoom buttons are shown with the sheet at its peek`).toBeVisible();
       await expect.poll(() => controlProblems(page), `${at}, the sheet at its peek`).toEqual([]);
-      // At half height: the sheet's buttons, and whatever of the canvas's still fits (on a short
-      // phone a sliver, where the buttons are not shown: their keys still work).
+      // At half height (on a short phone lower, so that the legend and the selected card keep their
+      // room above it): the sheet's buttons, and whatever of the canvas's still fits (on a short
+      // phone the buttons may make way: their keys still work).
       await dragSheetToHalf(page, sheet);
       await expect.poll(() => controlProblems(page), `${at}, the sheet at half height`).toEqual([]);
+      // The legend stays whole in view (plan §4.6), and so does the selected person (2.4.11).
+      await expect.poll(() => wholeAndUncovered(page.getByTestId('explorer-legend')), `${at}: the legend is whole and uncovered with the sheet at half height`).toBe(true);
+      await expect.poll(() => isInVisibleArea(page, id), `${at}: the selected person is in view above the sheet`).toBe(true);
     }
   });
 

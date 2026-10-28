@@ -91,7 +91,9 @@ export async function settledTop(sheet: Locator): Promise<number> {
 /**
  * Drags a sheet at its peek by its handle up to half height (half of the room above the tab bar),
  * slowly and still for a moment before letting go, as e2e/ui.spec.ts does: a flick would carry it
- * on to full height. Returns the sheet's top edge at rest.
+ * on to full height. It comes to rest at its middle snap point: half height, or lower on a short
+ * phone, where the canvas above it keeps the legend and the selected card whole (panel.tsx
+ * useKeepAbove), and above its peek. Returns the sheet's top edge at rest.
  */
 export async function dragSheetToHalf(page: Page, sheet: Locator): Promise<number> {
   const barTop = (await page.locator('[data-tab-bar]').boundingBox())!.y;
@@ -110,9 +112,37 @@ export async function dragSheetToHalf(page: Page, sheet: Locator): Promise<numbe
   await page.waitForTimeout(250);
   await page.mouse.up();
   const top = await settledTop(sheet);
-  expect(top, 'the sheet rests at half height').toBeGreaterThan(half - 24);
-  expect(top, 'the sheet rests at half height').toBeLessThan(half + 24);
+  expect(top, 'the sheet rests at half height or lower').toBeGreaterThan(half - 24);
+  expect(top, 'the sheet rests above its peek').toBeLessThan(peekTop - 24);
   return top;
+}
+
+/**
+ * Whether an element is shown whole on screen (no clipping ancestor and no edge of the window
+ * cuts it) and uncovered (what lies at its centre and at its four corners, 4 px in, is its own).
+ */
+export function wholeAndUncovered(locator: Locator): Promise<boolean> {
+  return locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0 || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return false;
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      const style = getComputedStyle(a);
+      if (!/(hidden|clip|auto|scroll)/.test(`${style.overflowX} ${style.overflowY}`)) continue;
+      const c = a.getBoundingClientRect();
+      if (r.left < c.left - 0.5 || r.top < c.top - 0.5 || r.right > c.right + 0.5 || r.bottom > c.bottom + 0.5) return false;
+    }
+    const points = [
+      [(r.left + r.right) / 2, (r.top + r.bottom) / 2],
+      [r.left + 4, r.top + 4],
+      [r.right - 4, r.top + 4],
+      [r.left + 4, r.bottom - 4],
+      [r.right - 4, r.bottom - 4],
+    ] as const;
+    return points.every(([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return !!hit && el.contains(hit);
+    });
+  });
 }
 
 /** What the motion probe saw: frames sampled, the view's transforms in turn, and every person's places in turn. */

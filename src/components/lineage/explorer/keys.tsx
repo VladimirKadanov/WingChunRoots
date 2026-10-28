@@ -22,6 +22,9 @@
 //   to the element focused before they opened).
 // - Esc: the chooser and the help close themselves (they have the focus); on a node, Esc lowers a
 //   phone's sheet that is above its peek, else clears the selection.
+// - With the focus on the graph itself (canvas.tsx holds it there while no node is drawn), an
+//   arrow, Enter or Space brings the active node back into view and focuses it; the other keys
+//   act as they do on it.
 
 import { useRouter } from 'next/navigation';
 import { type KeyboardEvent, lazy, type ReactNode, Suspense, useState } from 'react';
@@ -135,6 +138,18 @@ export function keyHandlers(deps: KeyDeps): Record<GraphAction, KeyHandler> {
   };
 }
 
+/** The keys that, pressed on the graph itself, bring the active node back (useGraphKeys). */
+const BACK_TO_NODE: ReadonlySet<GraphAction> = new Set(['up', 'down', 'left', 'right', 'open', 'select']);
+
+/**
+ * Whether a key was pressed on the graph itself, React Flow's element: it holds the focus while
+ * no node can (canvas.tsx holdFocus: a drag took every node off screen).
+ */
+function onGraph(event: KeyboardEvent<HTMLDivElement>): boolean {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  return !!target && target.classList.contains('react-flow') && event.currentTarget.contains(target);
+}
+
 /** The node a key was pressed on, and whether on a control inside it; null when not on a node of this graph. */
 function nodeOf(event: KeyboardEvent<HTMLDivElement>): { id: string; inside: boolean } | null {
   const target = event.target instanceof Element ? event.target : null;
@@ -162,7 +177,18 @@ export function useGraphKeys(flow: FlowApi, context: GraphContext): GraphKeys {
     const action = actionOf(event);
     if (action === null) return;
     const on = nodeOf(event);
-    if (!on) return;
+    if (!on) {
+      // On the graph itself (no node drawn to hold the focus): an arrow, Enter or Space brings the
+      // active node back into view and focuses it, with nothing new to announce; the other keys
+      // act as on the active node.
+      const id = context.activeId;
+      if (!onGraph(event) || id === null) return;
+      if (BACK_TO_NODE.has(action)) {
+        context.setActive(id, { focus: true });
+        event.preventDefault();
+      } else if (handlers[action](id)) event.preventDefault();
+      return;
+    }
     // Enter and Space on a button inside a node are that button's.
     if (on.inside && (action === 'open' || action === 'select')) return;
     if (handlers[action](on.id)) event.preventDefault();
