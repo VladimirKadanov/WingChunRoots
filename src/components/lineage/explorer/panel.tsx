@@ -699,7 +699,10 @@ function followInSheet(event: MouseEvent<HTMLElement>, router: ReturnType<typeof
  * own action (code-1, a11y-4). After the commit that removed it, the panel as it is now takes the
  * focus (PANEL_HOME: the overlay's section, the list's, or the sheet), else, with the panel gone,
  * the active node. Only a control that went while the focus is on <body> is followed (no blur is
- * relied on: browsers differ on firing one for a removed element).
+ * relied on: browsers differ on firing one for a removed element). A press of a pointer outside
+ * the panel forgets the control: the focus it drops to <body> (a click on the bare canvas, which
+ * also clears the selection and takes the panel away) is the pointer's, and the view stays where
+ * the user left it.
  */
 function useFocusKept(canvas: RefObject<CanvasHandle | null>) {
   const holder = useRef<Element | null>(null);
@@ -708,8 +711,17 @@ function useFocusKept(canvas: RefObject<CanvasHandle | null>) {
       const target = event.target instanceof Element ? event.target : null;
       holder.current = target?.closest(PANEL_HOME) ? target : null;
     };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest(PANEL_HOME)) holder.current = null;
+    };
     document.addEventListener('focusin', onFocusIn);
-    return () => document.removeEventListener('focusin', onFocusIn);
+    // Captured: the graph's own handlers may stop the press on its way up.
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
   }, []);
   // After every commit of the panel: cheap, and only a control gone with the focus acts.
   useLayoutEffect(() => {
