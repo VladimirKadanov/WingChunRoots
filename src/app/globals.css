@@ -339,4 +339,27 @@
   }
 }
 /* M06 touch and motion (D): touch-action on .react-flow only, the attribution's phone hit area. */
+/* A finger on the graph pans and pinches it (React Flow), never the page; the toolbar, the legend,
+   the buttons over the canvas and the sheet keep the browser's own touch behaviour. */
+.explorer-canvas {
+  touch-action: none;
+}
+/* On a phone the React Flow attribution (kept, plan §10.2 row 9) is a 44 x 44 px touch target
+   (plan §5.8): the link fills it, its words on a band of the ground as before; the buttons over the
+   canvas stand above it (controls-layout.ts). */
+@media (width < 48rem) {
+  .explorer-canvas .react-flow__attribution {
+    padding: 0;
+    background: none;
+  }
+  .explorer-canvas .react-flow__attribution a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 6px;
+    background: linear-gradient(var(--bg), var(--bg)) center / 100% 1.25rem no-repeat;
+  }
+}
 /* end M06 touch and motion (D) */

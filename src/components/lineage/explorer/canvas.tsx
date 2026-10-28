@@ -88,6 +88,7 @@ import {
 } from './graph-api';
 import { useGraphKeys } from './keys';
 import { NodeControls } from './node-controls';
+import { CONTROLS_START, type ControlsPlace, placeControls, type Strip } from './controls-layout';
 import { KEY_HELP } from './shortcuts';
 import { relationsText } from './relations';
 import { isSummaryId, joinToBox, relationsId, summaryTeacherOf } from './state';
@@ -499,17 +500,32 @@ function trackMove(moves: Moves, duration: number, move: Promise<unknown>): void
 }
 
 // M06 seam: zoom-controls (F wires; package D lays the buttons out and owns the Fit handler)
-/** The view's moves of the buttons over the canvas, with the motion tokens; the keys (+, −, 0) make the same moves. */
-function useViewButtons(moves: Moves) {
+/**
+ * The view's moves of the buttons over the canvas, with the motion tokens (at once under
+ * prefers-reduced-motion); the keys (+, −, 0) make the same moves. "Fit the whole view" shows the
+ * whole view as the first view of a small scene does (wholeViewStart: React Flow's fit, or, where
+ * that would draw a person under the legend or the buttons, the fit clear of them; milestone M06
+ * b4), never larger than React Flow's fit (FIT_OPTIONS); a large scene, whose whole view is all
+ * dots, gets React Flow's fit.
+ */
+function useViewButtons(moves: Moves, scene: Scene) {
   const flow = useReactFlow<FlowNode, LineageEdge>();
+  const store = useStoreApi<FlowNode, LineageEdge>();
   const go = (to: (move: ReturnType<typeof moveFor>) => Promise<unknown>) => {
     const move = moveFor(VIEW_MOTION.buttons);
     trackMove(moves, move.duration, to(move));
   };
+  const fit = (move: ReturnType<typeof moveFor>) => {
+    const { nodes, edges, width, height, domNode } = store.getState();
+    // What is drawn now: ended training only with show=historical or the selection's own.
+    const hidden = new Set([...nodes, ...edges].filter((element) => element.hidden).map((element) => element.id));
+    const start = width > 0 && height > 0 ? wholeViewStart(scene, hidden, { width, height, overlays: overlaysOn(domNode) }) : null;
+    return start ? flow.setCenter(start.x, start.y, { zoom: start.zoom, ...move }) : flow.fitView({ ...FIT_OPTIONS, ...move });
+  };
   return {
     zoomIn: () => go((move) => flow.zoomIn(move)),
     zoomOut: () => go((move) => flow.zoomOut(move)),
-    fit: () => go((move) => flow.fitView({ ...FIT_OPTIONS, ...move })),
+    fit: () => go(fit),
     /** Centres the view on a node, at the zoom it has. */
     center: (id: string) => {
       const node = flow.getInternalNode(id);
@@ -523,37 +539,108 @@ function useViewButtons(moves: Moves) {
 }
 type ViewButtons = ReturnType<typeof useViewButtons>;
 
+/** From this width the selection's panel lies over the canvas, beside the column of buttons (panel.tsx, md). */
+const PANEL_OVER_CANVAS = '(width >= 48rem)';
+
+/**
+ * Where the buttons over the canvas lie (controls-layout.ts placeControls), measured on the canvas
+ * frame and kept up to date as it changes (a phone's sheet comes up or goes down, the phone turns):
+ * the groups' sizes, the buttons' inset from the frame's right edge, and what lies along its
+ * bottom edge, each from the bottom of the box it is placed in. That is the frame for the legend;
+ * React Flow's attribution is placed in React Flow's own box, which follows the frame one paint
+ * later (useFollowFrame), so its distance from the frame's bottom edge is read from its own box's.
+ */
+function useControlsPlace(root: RefObject<HTMLDivElement | null>): ControlsPlace {
+  const [place, setPlace] = useState<ControlsPlace>(CONTROLS_START);
+  // The groups' sizes, kept from the last time they were drawn (not drawn: kind none).
+  const strips = useRef<Strip[] | null>(null);
+  useLayoutEffect(() => {
+    const el = root.current;
+    const frame = el?.closest<HTMLElement>('[data-canvas-frame]');
+    if (!el || !frame) return;
+    const beneath = () => [...frame.querySelectorAll<HTMLElement>('[data-canvas-overlay], .react-flow__attribution')].filter((other) => other !== el);
+    const measure = () => {
+      const groups = [...el.querySelectorAll<HTMLElement>('[role="group"]')];
+      if (groups.length > 0) {
+        strips.current = groups.map((g) => ({ long: Math.max(g.offsetWidth, g.offsetHeight), short: Math.min(g.offsetWidth, g.offsetHeight) }));
+      }
+      if (!strips.current) return;
+      const origin = frame.getBoundingClientRect();
+      const below = beneath().map((other) => {
+        const box = other.getBoundingClientRect();
+        const within = (other.offsetParent ?? frame).getBoundingClientRect();
+        return { x: box.x - origin.x, y: origin.height - (within.bottom - box.y), width: box.width, height: box.height };
+      });
+      const next = placeControls(
+        { width: origin.width, height: origin.height },
+        origin.right - el.getBoundingClientRect().right,
+        strips.current,
+        below,
+        { row: !window.matchMedia(PANEL_OVER_CANVAS).matches },
+      );
+      setPlace((now) => (now.kind === next.kind && now.bottom === next.bottom ? now : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    // The legend's height follows the states in view.
+    for (const other of beneath()) observer.observe(other);
+    return () => observer.disconnect();
+  }, [root]);
+  return place;
+}
+
 /**
  * The buttons over the canvas: the "Zoom" group of M05 (its three buttons, its name: tests find it
- * by both) and, above it, "Center on selection" and "Keyboard shortcuts" in a group of their own,
- * the latter only with a fine pointer (a touch-only phone has no keys; "?" works anywhere).
+ * by both) and "Center on selection" and "Keyboard shortcuts" in a group of their own, above it or,
+ * in one row, before it; "Keyboard shortcuts" only with a fine pointer (a touch-only phone has no
+ * keys; "?" works anywhere). At the frame's bottom right, clear of the legend and of React Flow's
+ * attribution, in a column, a stack of rows or one row as the frame has room (useControlsPlace);
+ * in a sliver of canvas above a raised sheet, none.
  */
 function ZoomControls({ buttons, onCenter, onHelp }: { buttons: ViewButtons; onCenter: () => void; onHelp: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  const place = useControlsPlace(root);
+  // Each group's buttons lie in a row in a stack and in a row, and the groups side by side only in a row.
+  const lying = place.kind === 'stack' || place.kind === 'row';
   // The ring is drawn inside the button (-outline-offset-2): the group clips what lies outside it.
-  const button =
-    'size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed [&:not(:first-child)]:border-t';
-  const group = 'flex flex-col overflow-hidden rounded-sm border border-border-strong shadow-pop';
+  const button = cx(
+    'size-11 place-items-center border-border-subtle bg-surface-1 text-fg hover:bg-surface-3 focus-visible:-outline-offset-2 active:bg-surface-pressed',
+    lying ? '[&:not(:first-child)]:border-l' : '[&:not(:first-child)]:border-t',
+  );
+  const group = cx('flex overflow-hidden rounded-sm border border-border-strong shadow-pop', lying ? 'flex-row' : 'flex-col');
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div role="group" aria-label="Canvas tools" className={group}>
-        <button type="button" className={cx(button, 'inline-grid')} aria-label="Center on selection" onClick={onCenter}>
-          <CenterIcon size={18} />
-        </button>
-        <button type="button" className={cx(button, 'hidden any-pointer-fine:inline-grid')} aria-label="Keyboard shortcuts" onClick={onHelp}>
-          <KeyboardIcon size={18} />
-        </button>
-      </div>
-      <div role="group" aria-label="Zoom" className={group}>
-        <button type="button" className={cx(button, 'inline-grid')} aria-label="Zoom in" onClick={buttons.zoomIn}>
-          <PlusIcon size={18} />
-        </button>
-        <button type="button" className={cx(button, 'inline-grid')} aria-label="Zoom out" onClick={buttons.zoomOut}>
-          <MinusIcon size={18} />
-        </button>
-        <button type="button" className={cx(button, 'inline-grid')} aria-label="Fit the whole view" onClick={buttons.fit}>
-          <FitIcon size={18} />
-        </button>
-      </div>
+    <div
+      ref={root}
+      // The first view and the moves of the view keep people clear of it (largeViewStart, wholeViewStart, ensureVisible).
+      data-canvas-overlay
+      data-controls={place.kind}
+      className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))]"
+      style={{ bottom: place.bottom }}
+    >
+      {place.kind === 'none' ? null : (
+        <div className={cx('flex items-end gap-2', place.kind === 'row' ? 'flex-row' : 'flex-col')}>
+          <div role="group" aria-label="Canvas tools" className={group}>
+            <button type="button" className={cx(button, 'inline-grid')} aria-label="Center on selection" onClick={onCenter}>
+              <CenterIcon size={18} />
+            </button>
+            <button type="button" className={cx(button, 'hidden any-pointer-fine:inline-grid')} aria-label="Keyboard shortcuts" onClick={onHelp}>
+              <KeyboardIcon size={18} />
+            </button>
+          </div>
+          <div role="group" aria-label="Zoom" className={group}>
+            <button type="button" className={cx(button, 'inline-grid')} aria-label="Zoom in" onClick={buttons.zoomIn}>
+              <PlusIcon size={18} />
+            </button>
+            <button type="button" className={cx(button, 'inline-grid')} aria-label="Zoom out" onClick={buttons.zoomOut}>
+              <MinusIcon size={18} />
+            </button>
+            <button type="button" className={cx(button, 'inline-grid')} aria-label="Fit the whole view" onClick={buttons.fit}>
+              <FitIcon size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1242,7 +1329,7 @@ function CanvasFrame({
   );
 
   // M06 seam: zoom-controls
-  const buttons = useViewButtons(moves);
+  const buttons = useViewButtons(moves, scene);
   const selectedId = all.find((n) => n.selected && !n.hidden)?.id ?? null;
   const centerOnSelection = () => {
     const target = selectedId ?? active;
@@ -1323,9 +1410,8 @@ function CanvasFrame({
         </FocusGuard.Provider>
       </div>
       <div className="pointer-events-none absolute inset-0 z-10">
-        <div data-canvas-overlay className="pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] bottom-7">
-          <ZoomControls buttons={buttons} onCenter={centerOnSelection} onHelp={keys.showHelp} />
-        </div>
+        {/* M06 seam: zoom-controls (its own place over the frame: ZoomControls) */}
+        <ZoomControls buttons={buttons} onCenter={centerOnSelection} onHelp={keys.showHelp} />
         {children}
       </div>
       {/* M06 seam: live-region */}
