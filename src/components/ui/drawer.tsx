@@ -33,7 +33,18 @@
 // in progress (that would restyle the page on every frame); it catches up when the drag settles.
 
 import { Drawer as BaseDrawer } from '@base-ui/react/drawer';
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type FocusEvent, type ReactElement, type ReactNode } from 'react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FocusEvent,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { useBackToClose } from './use-back-to-close';
@@ -51,11 +62,21 @@ export const PEEK_SNAP_POINTS: SnapPoint[] = [PEEK, 0.5, 1];
 /** From this width the sheet is a side panel (the lg breakpoint). */
 const SIDE_PANEL = '(min-width: 64rem)';
 
+/** Why the sheet opens or closes (Base UI's event details); `cancel()` keeps it as it is. */
+export type DrawerChangeDetails = Parameters<NonNullable<ComponentProps<typeof BaseDrawer.Root>['onOpenChange']>>[1];
+
+/** What a caller can do to an open sheet (milestone M06: Esc in the explorer's graph). */
+export interface DrawerActions {
+  /** Lowers a bottom sheet above its first snap point to it; false when it was not above it (or is closed, or a side panel). */
+  collapse(): boolean;
+}
+
 export interface DrawerProps {
   /** The element that opens the sheet. */
   trigger?: ReactElement;
   open?: boolean;
-  onOpenChange?: (open: boolean) => void;
+  /** The sheet opens or closes; without `details` when Back closed it (the history layer). */
+  onOpenChange?: (open: boolean, details?: DrawerChangeDetails) => void;
   title: ReactNode;
   /** A line under the title, visible at the peek. */
   description?: ReactNode;
@@ -79,6 +100,10 @@ export interface DrawerProps {
   headerActions?: ReactNode;
   /** Keeps the sheet's elements mounted while it is closed (Base UI Portal). */
   keepMounted?: boolean;
+  /** Data attributes for the popup (the sheet's element), such as a test id. */
+  popupAttributes?: { [name: `data-${string}`]: string | undefined };
+  /** The sheet's actions (DrawerActions). */
+  actions?: Ref<DrawerActions>;
 }
 
 // 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
@@ -100,6 +125,8 @@ export function Drawer({
   onSnapPointChange,
   headerActions,
   keepMounted,
+  popupAttributes,
+  actions,
 }: DrawerProps) {
   const side = useMediaQuery(SIDE_PANEL);
   const [openState, setOpenState] = useState(false);
@@ -147,14 +174,24 @@ export function Drawer({
     setWasOpen(open);
     if (open) setSnapIndex(0);
   }
-  const setOpen = (next: boolean) => {
+  const setOpen = (next: boolean, details?: DrawerChangeDetails) => {
+    onOpenChange?.(next, details);
+    // The caller kept the sheet as it is (details.cancel()): Base UI does not change it either.
+    if (details?.isCanceled) return;
     if (openProp === undefined) setOpenState(next);
-    onOpenChange?.(next);
   };
   useBackToClose(open, () => setOpen(false));
 
   const expanded = snapIndex === lastIndex;
   const peeking = !side && snapIndex === peekIndex;
+  useImperativeHandle(actions, () => ({
+    collapse: () => {
+      const first = Math.max(peekIndex, 0);
+      if (!open || side || !snapPoints || snapIndex <= first) return false;
+      setSnapIndex(first);
+      return true;
+    },
+  }));
 
   // The snap point the sheet rests at, as given (a fraction stays a fraction), for the caller.
   const restsAt = useRef<number | null>(null);
@@ -228,6 +265,7 @@ export function Drawer({
           )}
         >
           <BaseDrawer.Popup
+            {...popupAttributes}
             ref={setPopup}
             initialFocus={initialFocus}
             finalFocus={finalFocus}

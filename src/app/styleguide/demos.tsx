@@ -2,12 +2,12 @@
 
 // Interactive specimens of the style guide: dialog, bottom sheet, menu, toast and tabs.
 
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { ArrowRightIcon, ChevronDownIcon } from '@/components/icons';
 import { Legend } from '@/components/ink/legend';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose } from '@/components/ui/dialog';
-import { Drawer, PEEK } from '@/components/ui/drawer';
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Tab, Tabs, TabsList, TabsPanel } from '@/components/ui/tabs';
@@ -15,6 +15,13 @@ import { ToastProvider, useToast } from '@/components/ui/toast';
 import { TrailChip } from '@/components/ui/trail-chip';
 import { DEMO_LINE } from '@/components/home/demo-lineage';
 import { Name, PersonName } from '@/components/home/names';
+
+// The sheets load after the page (JS budget): the explorer's panel uses the Drawer too (milestone
+// M06), so its code is a chunk of its own, which this page would otherwise load at once. Closed,
+// a sheet renders nothing, so the page looks the same before and after.
+const Drawer = dynamic(() => import('@/components/ui/drawer').then((m) => m.Drawer), { ssr: false });
+/** drawer.tsx PEEK (not imported: that would bring the Drawer's code into this page's first JavaScript). */
+const PEEK = '96px';
 
 /** The toast provider lives with the components that toast (not in the root layout: JS budget). */
 export function OverlayDemos() {
