@@ -104,7 +104,8 @@ export function StudentsList({ slug, name }: StudentsListProps): ReactNode {
       onClick={() => {
         if (enabled) setPage(to);
       }}
-      className={cx('link inline-flex min-h-11 items-center text-ui', !enabled && 'cursor-default text-fg-subtle no-underline')}
+      // At least 44x44 px (plan §5.8): "Next" alone is narrower; the word keeps its place at the start.
+      className={cx('link inline-flex min-h-11 min-w-11 items-center text-ui', !enabled && 'cursor-default text-fg-subtle no-underline')}
     >
       {label}
     </button>
