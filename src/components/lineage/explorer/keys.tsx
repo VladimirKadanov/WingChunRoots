@@ -130,6 +130,8 @@ export function keyHandlers(deps: KeyDeps): Record<GraphAction, KeyHandler> {
       return true;
     },
     escape: () => {
+      // As the help says: a list closes first (the selection stays), then a raised sheet is lowered.
+      if (context.closeList()) return true;
       if (context.collapseSheet()) return true;
       if (context.selectedId === null) return false;
       context.select(null);

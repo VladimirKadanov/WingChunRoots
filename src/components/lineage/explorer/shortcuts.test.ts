@@ -107,7 +107,7 @@ const line = (teacher: string, student: string): LineageEdge => ({
   data: { stroke: 'verified', kind: 'primary', lineageId: 'l', routedBy: 'elk', path: { type: 'orthogonal', points: [] }, label: null, historical: false, ends: { teacher: boxes, student: boxes } },
 });
 
-function setup(options: { selectedId?: string | null; collapses?: boolean } = {}) {
+function setup(options: { selectedId?: string | null; collapses?: boolean; list?: boolean } = {}) {
   // t teaches s; u and v both teach w; r has no teacher.
   const nodes: FlowNode[] = [person('t', 0, 0), person('s', 1, 0), summary, person('u', 0, 1000), person('v', 0, 1300), person('w', 1, 1100), person('r', 0, 2000)];
   const flow: FlowApi = {
@@ -129,6 +129,7 @@ function setup(options: { selectedId?: string | null; collapses?: boolean } = {}
     selectedId: options.selectedId ?? null,
     select: vi.fn(),
     openStudents: vi.fn(),
+    closeList: vi.fn(() => options.list ?? false),
     say: vi.fn(),
     collapseSheet: vi.fn(() => options.collapses ?? false),
   };
@@ -205,5 +206,15 @@ describe('keyHandlers', () => {
     const idle = setup();
     expect(idle.handlers.escape('s')).toBe(false);
     expect(idle.context.select).not.toHaveBeenCalled();
+  });
+
+  it('closes a list of students with Esc first, with or without a selection, and keeps the selection', () => {
+    for (const selectedId of [null, 's']) {
+      const listed = setup({ selectedId, list: true, collapses: true });
+      expect(listed.handlers.escape('more:t')).toBe(true);
+      expect(listed.context.closeList).toHaveBeenCalledOnce();
+      expect(listed.context.collapseSheet).not.toHaveBeenCalled();
+      expect(listed.context.select).not.toHaveBeenCalled();
+    }
   });
 });

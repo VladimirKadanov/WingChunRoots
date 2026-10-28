@@ -163,6 +163,10 @@ export default function ExplorerPanel(props: PanelProps) {
   // its history entry) follows in a deferred render. It closes at once.
   const opening = useDeferredValue(live);
   const sheetOpen = live && opening;
+  // Every opening starts at the peek (the Drawer's first snap point), not where the last one rested.
+  useEffect(() => {
+    if (!sheetOpen) restedAt.current = 0;
+  }, [sheetOpen]);
   const keepAbove = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
   useRevealFocused(live && overlay, canvas, live ? `${mode?.kind}:${(person ?? teacher)?.id}` : null);
 
@@ -174,7 +178,19 @@ export default function ExplorerPanel(props: PanelProps) {
     if (!live) return null;
     if (teacher) {
       return (
-        <section aria-labelledby="explorer-students-heading" data-testid="explorer-panel" data-canvas-cover="" className={STUDENTS_PANEL}>
+        <section
+          aria-labelledby="explorer-students-heading"
+          data-testid="explorer-panel"
+          data-canvas-cover=""
+          className={STUDENTS_PANEL}
+          onKeyDown={(event) => {
+            // Esc in the list closes it, as in the graph (keys.tsx), and the focus goes back to the graph.
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            event.preventDefault();
+            props.actions.closeStudents();
+            canvas.current?.focusActive();
+          }}
+        >
           <div className="flex items-start justify-between gap-2">
             <h2 id="explorer-students-heading" className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
               Students of <LatinName name={teacher.displayName} />

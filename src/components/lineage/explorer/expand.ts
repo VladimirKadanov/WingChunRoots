@@ -21,7 +21,7 @@ import { orpc } from '@/lib/rpc-client';
 import type { LineageGraphDto } from '@/server/dto/public';
 
 import type { Arrived } from './expand-engine';
-import { counting, EXPLORER_LAYOUT, fresh, NOBODY, notice, provideStudents, type State } from './expand-state';
+import { counting, EXPLORER_LAYOUT, fresh, NOBODY, notice, provideStudents, type State, withoutFailedView } from './expand-state';
 import type { ExpandDirection, Notice } from './graph-api';
 
 export interface Expansions {
@@ -38,6 +38,8 @@ export interface Expansions {
   pending: ReadonlySet<string>;
   /** Said in the live region when an expansion is drawn. */
   notice: Notice | null;
+  /** The layout of `view` failed: when it is the expansions' view, they are taken out again (stable). */
+  layoutFailed: (view: LineageGraphDto) => void;
 }
 
 /** The read of an expansion: the person and their direct students, or their direct teachers. */
@@ -159,6 +161,9 @@ export function useExpansions(answer: LineageGraphDto | null, key: string, scene
     );
   };
 
+  // One function for the hook's life, so the explorer's layout effect does not run again for it.
+  const [layoutFailed] = useState(() => (view: LineageGraphDto) => setState((before) => withoutFailedView(before, view)));
+
   return {
     graph,
     pinned: own ? s.pinned : NOBODY,
@@ -167,5 +172,6 @@ export function useExpansions(answer: LineageGraphDto | null, key: string, scene
     onExpand,
     pending: s.pending,
     notice: s.notice,
+    layoutFailed,
   };
 }

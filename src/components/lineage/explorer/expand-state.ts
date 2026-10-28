@@ -64,6 +64,16 @@ export function counting(s: State): State {
 /** A notice with a new key, so the same words are said again. */
 export const notice = (s: State, text: string): Notice => ({ key: (s.notice?.key ?? 0) + 1, text });
 
+/**
+ * The state once the layout of `view` failed (explorer.tsx): when `view` is the expansions' view,
+ * the expansions are taken out again, so the canvas lays out the answer as read instead of giving
+ * way to an error, and the live region says so. Another view's failure leaves the state as it is.
+ */
+export function withoutFailedView(s: State, view: LineageGraphDto): State {
+  if (s.graph !== view) return s;
+  return fresh(s.key, notice(s, 'The people just added could not be drawn, so the view is back as it was read.'));
+}
+
 /** A page of a teacher's students, as people.students answers it. */
 export type StudentsInput = { slug: string; page: number; pageSize: number };
 type StudentsReader = (input: StudentsInput) => Promise<StudentsPageDto>;

@@ -63,6 +63,8 @@ export interface GraphContext {
   select(id: string | null): void;
   /** Opens the panel's list of a teacher's students (the summary node). */
   openStudents(teacherId: string): void;
+  /** Closes the panel's list of students, keeping the selection; true when a list was open (Esc). */
+  closeList(): boolean;
   /** Speaks these words in the live region now (no wait): a move that has no target says why. */
   say(text: string): void;
   /** Collapses a phone's sheet that is above its peek; true when it did (Esc, package A and B). */
@@ -104,11 +106,13 @@ export interface NodeActions {
   pending: ReadonlySet<string>;
   /** Opens the panel's list of a teacher's students (a summary node, or "+N students" at the cap). */
   openStudents(teacherId: string): void;
+  /** Closes the panel's list of students and keeps the selection; false when no list was open (Esc). */
+  closeStudents(): boolean;
 }
 
 const NOBODY: ReadonlySet<string> = new Set();
 /** No actions: before package C fills them in, and outside the canvas. */
-export const NO_NODE_ACTIONS: NodeActions = { expand: () => undefined, pending: NOBODY, openStudents: () => undefined };
+export const NO_NODE_ACTIONS: NodeActions = { expand: () => undefined, pending: NOBODY, openStudents: () => undefined, closeStudents: () => false };
 
 /** The node actions for the nodes React Flow draws (a context: React Flow renders the nodes, not the canvas). */
 export const NodeActionsContext = createContext<NodeActions>(NO_NODE_ACTIONS);

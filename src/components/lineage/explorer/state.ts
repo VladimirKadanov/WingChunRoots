@@ -265,7 +265,8 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
 // M06 seam: withSummaryNodes (F wires the signature, C fills)
 /**
  * The layout graph with a summary node `more:<teacherId>` and its pseudo-edge for every teacher
- * whose drawn students reached the cap (FANOUT_SHOWN) and who has students not drawn (`more`),
+ * whose drawn lines to students reached the cap (FANOUT_SHOWN, counted as capFanout counts them)
+ * and who has students not drawn (`more`),
  * for the real layout only: the skeleton's toLayoutGraph stays as it is (milestone M06 In scope 4).
  *
  * The pseudo-edge ranks the summary node one row below its teacher (computeRanks), in the lineage
@@ -277,17 +278,18 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
 export function withSummaryNodes(graph: LineageGraph, more: ReadonlyMap<string, number>): LineageGraph {
   if (more.size === 0) return graph;
   const people = new Set(graph.nodes.map((n) => n.id));
-  const students = new Map<string, Set<string>>();
+  // Lines, not people, as capFanout caps them: a student with a line in two lineages takes two places.
+  const lines = new Map<string, number>();
   const lineageOf = new Map<string, string>();
   for (const e of graph.edges) {
-    students.set(e.teacherId, (students.get(e.teacherId) ?? new Set()).add(e.studentId));
+    lines.set(e.teacherId, (lines.get(e.teacherId) ?? 0) + 1);
     if (!lineageOf.has(e.teacherId)) lineageOf.set(e.teacherId, e.lineageId);
   }
   const nodes: LineageGraph['nodes'] = [];
   const edges: LineageGraph['edges'] = [];
   for (const [teacherId, count] of more) {
     const lineageId = lineageOf.get(teacherId);
-    if (count <= 0 || !people.has(teacherId) || lineageId === undefined || (students.get(teacherId)?.size ?? 0) < FANOUT_SHOWN) continue;
+    if (count <= 0 || !people.has(teacherId) || lineageId === undefined || (lines.get(teacherId) ?? 0) < FANOUT_SHOWN) continue;
     const id = summaryIdOf(teacherId);
     nodes.push({
       id,

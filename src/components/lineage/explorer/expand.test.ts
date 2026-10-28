@@ -9,7 +9,7 @@ import type { LineageGraphDto } from '@/server/dto/public';
 
 import { anchoredScene as anchoredOnScreen, expandInput, expandLayout, keepsExpansions, type Latest, positionsOf, type Work } from './expand';
 import { anchoredScene, arrived, drawn, expansionWords, mergeExpansion, RELAYOUT_DEBOUNCE_MS, sameRecord } from './expand-engine';
-import { counting, fresh, provideStudents, readStudents, type State } from './expand-state';
+import { counting, fresh, provideStudents, readStudents, type State, withoutFailedView } from './expand-state';
 import { capFanout, FANOUT_SHOWN, summaryIdOf } from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -351,6 +351,24 @@ describe('the expansions\' state (expand-state.ts)', () => {
     const laying = counting({ ...reading, loading: new Set(), laying: { scene: null, done: [{ id: id(2), direction: 'students', name: 'Demo Person 002' }] } });
     expect([...laying.pending]).toEqual([id(2)]);
     expect(counting({ ...laying, laying: null }).pending.size).toBe(0);
+  });
+
+  it('takes the expansions out when their view cannot be laid out, and says so', () => {
+    const view = { nodes: [], edges: [] } as never;
+    const expanded: State = counting({
+      ...fresh('read'),
+      version: 'v1',
+      graph: view,
+      pinned: new Set([id(2)]),
+      anchorId: id(1),
+      laying: { scene: null, done: [{ id: id(1), direction: 'students', name: 'Demo Person 001' }] },
+      notice: { key: 3, text: 'Added 12 students of Demo Person 001.' },
+    });
+    const back = withoutFailedView(expanded, view);
+    expect(back).toEqual({ ...fresh('read'), notice: { key: 4, text: 'The people just added could not be drawn, so the view is back as it was read.' } });
+    expect(back.pending.size).toBe(0);
+    // Another view's failure (the answer's own, or a view already replaced) changes nothing.
+    expect(withoutFailedView(expanded, { nodes: [], edges: [] } as never)).toBe(expanded);
   });
 
   it('reads a page of students through the explorer\'s reader, and fails without one', async () => {

@@ -619,6 +619,35 @@ test.describe('expansion (C)', () => {
     await settledView(page);
     expect(await wholeAndUncovered(summaryNodeOf(page, hub)), 'and stays so').toBe(true);
   });
+
+  test('@M06 Esc closes a list of students with nobody selected, from the graph and from the list', async ({ page }) => {
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    const summary = summaryIdOf(hub);
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await walkToSummary(page, hub);
+    const panel = page.getByTestId('explorer-panel');
+    const heading = panel.getByRole('heading', { name: /^Students of / });
+
+    // In the graph: Enter opens the list and Esc closes it; the focus stays on the summary node.
+    await page.keyboard.press('Enter');
+    await expect(heading).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'Esc in the graph closes the list').toBeHidden();
+    expect(await focusedNodeId(page), 'the focus stays on the summary node').toBe(summary);
+
+    // In the list: Esc closes it and the focus goes back to the summary node.
+    await page.keyboard.press('Enter');
+    await expect(heading).toBeVisible();
+    const row = panel.getByRole('link', { name: /^Explore from here: / }).first();
+    await expect(row).toBeVisible();
+    await row.focus();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'Esc in the list closes it').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'the focus is back on the summary node').toBe(summary);
+  });
 });
 
 test.describe('touch and motion (D)', () => {

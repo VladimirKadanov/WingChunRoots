@@ -328,7 +328,7 @@ export function summaryNodes(scene: Scene, people: readonly PersonNode[]): Summa
       draggable: false,
       selectable: false,
       ariaRole: 'button',
-      ariaLabel: `and ${more} more students of ${teacher?.name ?? ''}`,
+      ariaLabel: `and ${more} more ${more === 1 ? 'student' : 'students'} of ${teacher?.name ?? ''}`,
       // One of the graph's many stops (roving tabindex), and a plain button: no "node" role description.
       domAttributes: { tabIndex: -1, 'aria-roledescription': undefined },
       data: { teacherId, name: teacher?.name ?? '', slug: teacher?.slug ?? '', more, rank: sn.rank, slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height }, boxes: sn.boxes },
@@ -1394,8 +1394,13 @@ function CanvasFrame({
   // The same words twice change nothing in the DOM, and would not be spoken again: a no-break space tells them apart.
   const [announcer] = useState(() => createAnnouncer((text) => setSpoken((before) => (before === text ? `${text} ` : text))));
   useEffect(() => () => announcer.dispose(), [announcer]);
+  // Each notice is spoken once: the graph shown again after List (<Activity> re-runs the effects)
+  // keeps the last notice, which is old news by then.
+  const said = useRef<Notice | null>(null);
   useEffect(() => {
-    if (notice) announcer.notice(notice.text);
+    if (!notice || said.current === notice) return;
+    said.current = notice;
+    announcer.notice(notice.text);
   }, [notice, announcer]);
   const speak = (node: FlowNode) => announcer.move(announce(node));
 
@@ -1471,6 +1476,7 @@ function CanvasFrame({
     selectedId,
     select: onSelect,
     openStudents: actions.openStudents,
+    closeList: actions.closeStudents,
     say: (text) => announcer.notice(text),
     collapseSheet: () => panel?.current?.collapse() ?? false,
   };

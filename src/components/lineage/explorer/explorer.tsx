@@ -498,7 +498,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // drew merged in (package C), laid out with the expand preset and kept where they were.
   const expansions = useExpansions(answer, key, laidOut?.scene ?? null);
   const view = expansions.graph;
-  const { pinned, layoutOptions, anchorId } = expansions;
+  const { pinned, layoutOptions, anchorId, layoutFailed } = expansions;
   useEffect(() => {
     if (!view) return;
     let current = true;
@@ -508,12 +508,16 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
         if (current && result) setLaidOut((prev) => ({ source: view, graph: capped.graph, more: capped.more, scene: anchoredScene(result.scene, prev?.scene ?? null, anchorId), anchorId }));
       })
       .catch(() => {
-        if (current) setFailed(view);
+        if (!current) return;
+        // An expanded view that cannot be laid out goes back to the answer (expand-state.ts
+        // withoutFailedView), which stays drawn; only the answer's own failure is an error.
+        if (layoutOptions.preset === 'expand') layoutFailed(view);
+        else setFailed(view);
       });
     return () => {
       current = false;
     };
-  }, [view, layout, pinned, layoutOptions, anchorId]);
+  }, [view, layout, pinned, layoutOptions, anchorId, layoutFailed]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // M06 seam: panel. The teacher whose students the panel lists (the summary node), or null.
@@ -523,6 +527,11 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
     setStudentsOf(null);
   };
   const openStudents = (teacherId: string) => setStudentsOf(teacherId);
+  const closeStudents = () => {
+    if (studentsOf === null) return false;
+    setStudentsOf(null);
+    return true;
+  };
   const panelHandle = useRef<PanelHandle>(null);
   const canvasHandle = useRef<CanvasHandle>(null);
   const [flowOf, setFlowOf] = useState<{ laidOut: LaidOut; showHistorical: boolean; base: FlowBase } | null>(null);
@@ -579,7 +588,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
     studentsOf !== null ? { kind: 'students', teacherId: studentsOf } : selected ? { kind: 'person', id: selected.id } : null;
   const panelOpen = panelMode !== null && params.view === 'graph' && canvasShown;
   // M06 seam: node-slot (the buttons inside a node and the summary node; package C fills onExpand and pending).
-  const actions: NodeActions = { expand: expansions.onExpand, pending: expansions.pending, openStudents };
+  const actions: NodeActions = { expand: expansions.onExpand, pending: expansions.pending, openStudents, closeStudents };
 
   return (
     <div className="flex h-full min-h-0 flex-col">

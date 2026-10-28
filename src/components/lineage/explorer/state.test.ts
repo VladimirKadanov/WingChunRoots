@@ -289,4 +289,19 @@ describe('withSummaryNodes (milestone M06: the summary node "and N more")', () =
     expect(withSummaryNodes(layout, new Map([[id(77), 5]]))).toBe(layout);
     expect(withSummaryNodes(layout, new Map([[id(1), 0]]))).toBe(layout);
   });
+
+  it('counts the lines capFanout kept, so a student with a line in two lineages still leaves the node', () => {
+    const second = { id: id(901), slug: 'demo-lineage-two', name: 'Demo Lineage Two', rootPersonId: id(1) };
+    const twice: LineageGraphDto = {
+      ...graph,
+      lineages: [...graph.lineages, second],
+      edges: [{ ...edge(1, 2), id: id(5000), lineageId: second.id }, ...graph.edges],
+    };
+    const { graph: capped, more } = capFanout(twice);
+    const layout = toLayoutGraph(capped);
+    // Twelve lines, eleven people: the cap is reached and students are left out.
+    expect(new Set(layout.edges.filter((e) => e.teacherId === id(1)).map((e) => e.studentId)).size).toBeLessThan(FANOUT_SHOWN);
+    expect(more.get(id(1))).toBeGreaterThan(0);
+    expect(withSummaryNodes(layout, more).nodes.map((n) => n.id)).toContain(summaryIdOf(id(1)));
+  });
 });

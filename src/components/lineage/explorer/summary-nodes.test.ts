@@ -31,6 +31,12 @@ describe('summaryNodes', () => {
     expect(more!.domAttributes).toEqual({ tabIndex: -1, 'aria-roledescription': undefined });
   });
 
+  it('says "student" for one left out', () => {
+    const scene = { focusId: 't', dataVersion: 'test', nodes: [sceneNode('t'), sceneNode('more:t')], edges: [] } as unknown as Scene;
+    const one = { id: 't', data: { name: 'Demo Teacher', slug: 'demo-teacher', more: 1 } } as unknown as PersonNode;
+    expect(summaryNodes(scene, [one])[0]!.ariaLabel).toBe('and 1 more student of Demo Teacher');
+  });
+
   it('is empty for a scene without summary nodes', () => {
     expect(summaryNodes({ focusId: 't', dataVersion: 'test', nodes: [sceneNode('t')], edges: [] } as unknown as Scene, [teacher])).toEqual([]);
   });
