@@ -303,6 +303,14 @@
   }
 }
 /* M06 keyboard (A): the keyboard focus ring on a node, told apart from the selection (WCAG 2.4.7). */
+/* The standard focus ring around the node's slot, a gap clear of the card: the selected card's own
+   ring lies 2 px off the card (canvas.tsx), so a focused, selected person shows both, apart. Only
+   for the keyboard (:focus-visible): a click or a tap focuses the node without it. */
+.explorer-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 6px;
+  border-radius: var(--radius-sm, 3px);
+}
 /* end M06 keyboard (A) */
 /* The edges and their labels are drawn at their new places at once: they are hidden while the
    people slide there (canvas.tsx sets data-moving for --duration-slow; never under reduced motion). */

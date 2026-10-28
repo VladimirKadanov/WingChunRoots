@@ -6,7 +6,7 @@
 // stay inside a landmark (a menu is not a dialog; WCAG 1.3.1, axe "region").
 
 import { Menu as BaseMenu } from '@base-ui/react/menu';
-import { useSyncExternalStore, type ComponentProps, type ReactElement, type ReactNode } from 'react';
+import { useSyncExternalStore, type ComponentProps, type ReactElement, type ReactNode, type RefObject } from 'react';
 import { CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
@@ -28,18 +28,34 @@ export function MenuContent({
   align = 'start',
   side = 'bottom',
   sideOffset = 6,
+  anchor,
+  label,
+  initialFocus,
+  finalFocus,
 }: {
   children: ReactNode;
   className?: string;
   align?: 'start' | 'center' | 'end';
   side?: 'top' | 'bottom' | 'left' | 'right';
   sideOffset?: number;
+  /** What the menu is placed against when no trigger opens it (a menu its parent opens, e.g. from a key); default: the trigger. */
+  anchor?: ComponentProps<typeof BaseMenu.Positioner>['anchor'];
+  /** The menu's name (aria-label), for a menu without a trigger that names it. */
+  label?: string;
+  /** What takes the focus when the menu opens (e.g. its first item, which is then highlighted, for a menu opened from a key); default: the menu. */
+  initialFocus?: RefObject<HTMLElement | null>;
+  /** Where the focus goes when the menu closes; default: the trigger, or the element focused before it opened. */
+  finalFocus?: ComponentProps<typeof BaseMenu.Popup>['finalFocus'];
 }) {
   const main = useSyncExternalStore(subscribeNever, mainElement, noElement);
   return (
     <BaseMenu.Portal container={main}>
-      <BaseMenu.Positioner className="z-50 outline-none" align={align} side={side} sideOffset={sideOffset} collisionPadding={12}>
+      <BaseMenu.Positioner className="z-50 outline-none" align={align} side={side} sideOffset={sideOffset} collisionPadding={12} anchor={anchor}>
         <BaseMenu.Popup
+          aria-label={label}
+          finalFocus={finalFocus}
+          // Base UI's Popup hands initialFocus to its focus manager but does not declare it.
+          {...(initialFocus ? ({ initialFocus } as object) : {})}
           className={cn(
             'min-w-48 origin-(--transform-origin) rounded-md border border-border-subtle bg-surface-2 p-1 text-fg shadow-pop outline-none [--seal-ground:var(--surface-2)]',
             'transition-[opacity,scale] duration-(--duration-fast) ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0',
