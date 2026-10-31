@@ -113,6 +113,23 @@ describe('ink along a route (the explorer, owner decision 2026-10-31)', () => {
     expect(long.kind === 'fill' && width(long.d, 1)).toBeGreaterThan(width(long.kind === 'fill' ? long.d : '', 2));
   });
 
+  it('keeps the dots of an unconfirmed link apart where the stroke is widest, at both levels of the explorer', () => {
+    // The explorer's widths (CANVAS_INK): the full cards, and the compact ones drawn wider.
+    for (const options of [
+      { w0: 5.6, w1: 1.4, reach: 90 },
+      { w0: 9, w1: 2.8, reach: 90, pattern: 1.6 },
+    ]) {
+      const shape = inkAlong(roundedRoute(route, 24), 'unconfirmed', options);
+      if (shape.kind !== 'dots') throw new Error(shape.kind);
+      expect(shape.circles.length).toBeGreaterThan(10);
+      for (let i = 1; i < shape.circles.length; i++) {
+        const [a, b] = [shape.circles[i - 1]!, shape.circles[i]!];
+        // A gap of at least the smaller dot's radius between two dots in a row.
+        expect(Math.hypot(b.cx - a.cx, b.cy - a.cy) - a.r - b.r).toBeGreaterThanOrEqual(Math.min(a.r, b.r) - 0.25);
+      }
+    }
+  });
+
   it('draws dots as one path of circles', () => {
     expect(dotsD([{ cx: 10, cy: 5, r: 2 }])).toBe('M8,5a2,2 0 1,0 4,0a2,2 0 1,0 -4,0');
   });

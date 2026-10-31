@@ -24,12 +24,12 @@ const SAMPLE_ROUTE: Route = { start: SAMPLE[0], pieces: [{ kind: 'cubic', c1: SA
 
 /**
  * The explorer's ink at the two levels of detail that draw it (plan §4.8): the compact chips are
- * drawn at a smaller zoom, so their ink is wider. The width falls with the distance from the
+ * drawn at a smaller zoom, so their ink is wider and its dashes and dots longer apart. The width falls with the distance from the
  * teacher (`reach`), so the links of one teacher share their trunk at one width (b5).
  */
 export const CANVAS_INK = {
   full: { w0: 5.6, w1: 1.4, reach: 90, doubleOffset: 2.6 },
-  compact: { w0: 9, w1: 2.8, reach: 90, doubleOffset: 4.5 },
+  compact: { w0: 9, w1: 2.8, reach: 90, doubleOffset: 4.5, pattern: 1.6 },
 } as const;
 
 /**

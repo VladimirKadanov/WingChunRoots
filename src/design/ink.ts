@@ -276,6 +276,11 @@ export interface RouteInkOptions {
   crossLineage?: { dash: string | null };
   /** Half the distance between the two lines of the state in arbitration. */
   doubleOffset?: number;
+  /**
+   * The length of the dashes under review and of the step between dots, as a multiple of the
+   * full cards' (1): the compact cards are drawn at a smaller zoom, so their pattern is longer.
+   */
+  pattern?: number;
 }
 
 /** The brush touches down: half its width at the teacher's end, all of it this far along. */
@@ -333,22 +338,28 @@ export function inkAlong(route: Route, state: VerificationState, options: RouteI
     case 'verified':
       return { kind: 'fill', d: ribbonOf(s, width) };
     case 'under_review': {
+      const k = options.pattern ?? 1;
       let d = '';
       let from = 0;
-      for (let at = 0; at < total; at += 11 + 6) {
-        const part = stretch(s, at, Math.min(total, at + 11), from);
+      for (let at = 0; at < total; at += (11 + 6) * k) {
+        const part = stretch(s, at, Math.min(total, at + 11 * k), from);
         from = part.next;
         if (part.points.length >= 2) d += ribbonOf(part.points, width);
       }
       return { kind: 'fill', d };
     }
     case 'unconfirmed': {
+      // The step grows with the dot, so dots never touch where the stroke is wide (by the teacher):
+      // a dotted link always reads as dots, never as a solid stroke (status never by colour alone).
+      const step = 6.5 * (options.pattern ?? 1);
       const circles: { cx: number; cy: number; r: number }[] = [];
       let from = 0;
-      for (let at = 2; at < total - 1; at += 6.5) {
+      for (let at = 2; at < total - 1; ) {
         const { sample, index } = sampleAt(s, at, from);
         from = index;
-        circles.push({ cx: r1(sample.x), cy: r1(sample.y), r: r1(Math.max(1, width(sample) * 0.46)) });
+        const r = Math.max(1, width(sample) * 0.46);
+        circles.push({ cx: r1(sample.x), cy: r1(sample.y), r: r1(r) });
+        at += Math.max(step, 3.2 * r);
       }
       return { kind: 'dots', circles };
     }
