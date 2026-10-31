@@ -78,3 +78,8 @@ M07, M08.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-10-31 16:21 — схемата (`prefers_display_primary`, школа на периода, ключ за идемпотентност; `status_reason` пази кода на причината за отказ), задачата `lineage.recompute`, вътрешният маршрут `POST /api/internal/revalidate` и шаблоните на писмата и известията; lint, typecheck и unit тестовете минават (5eccdab)
+- 2026-10-31 16:42 — услугата за връзки (`relationships.*`: request, resubmit, approve, reject, withdraw, end и четенията), процедурите в `/api/rpc` и `/api/v1`, интеграционните тестове (`relationships.int.test.ts` с матрицата, `cycle.int.test.ts`, `revalidate.int.test.ts`, `relationships.api.int.test.ts`) минават (9867ee8)
+- 2026-10-31 17:01 — страниците `/dashboard/teachers`, `/dashboard/teachers/new` и `/dashboard/students/requests` с тънки Server Actions, палитрата в режим на избор, таблото и матрицата на плановете без `opens` (`2026-10-31.1`); lint, typecheck и unit тестовете минават (246d8bc)
+- 2026-10-31 17:18 — `e2e/m09-requests.spec.ts` с 11-те заглавия в проекта `exclusive` (`PUBLIC_WRITE_SPECS`), връзката за повторно подаване в писмото за отказ; `PW_EXCLUSIVE=1 pnpm e2e --grep @M09` минава (6d6fb65)
