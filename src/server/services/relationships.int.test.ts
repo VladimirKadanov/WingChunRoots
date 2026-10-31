@@ -12,11 +12,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, emailDelivery, lineageMembership, notification, person, relationshipEvent, teachingRelationship, trainingPeriod } from '../db/schema';
+import { auditLog, authUser, consentRecord, emailDelivery, lineageMembership, notification, person, relationshipEvent, teachingRelationship, trainingPeriod } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { listNotifications } from './notifications';
 import { personProfile, personStudents } from './lineage';
+import { consentWithdraw } from './privacy';
+import { profileUpdate } from './profile';
 import {
   approveRelationship,
   endRelationship,
@@ -91,6 +93,21 @@ async function statusOf(id: string) {
 async function request(student: Member, teacher: Member, extra: Record<string, unknown> = {}) {
   const result = await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key(), ...extra }, meta);
   return result.relationship.id;
+}
+
+async function visibilityOf(personId: string) {
+  const [row] = await getDb().select({ visibility: person.visibility }).from(person).where(eq(person.id, personId));
+  return row!.visibility;
+}
+
+/** The account's publication consent records, oldest first. */
+async function publicationActions(userId: string) {
+  const rows = await getDb()
+    .select({ action: consentRecord.action })
+    .from(consentRecord)
+    .where(and(eq(consentRecord.userId, userId), eq(consentRecord.kind, 'publication')))
+    .orderBy(asc(consentRecord.occurredAt), asc(consentRecord.id));
+  return rows.map((r) => r.action);
 }
 
 async function refusal(promise: Promise<unknown>): Promise<string> {
@@ -467,6 +484,50 @@ describe('approval: the plan, the display preference and the people', () => {
     const [row] = await getDb().select({ visibility: person.visibility }).from(person).where(eq(person.id, student.personId));
     expect(row!.visibility).toBe('involved_only');
     expect(await statusOf(id)).toEqual({ status: 'verified', visibility: 'public' });
+  });
+
+  // M09 review, code-1 and security-1: the owner never granted publication (onboarding with the box
+  // unticked), an approval made the profile public, and the owner then hid it. The hide must survive
+  // the next approval on both paths: the profile editor and /account/privacy.
+  const OWNER_NAMES = [{ value: 'Demo Hidden Owner', script: 'Latn', lang: 'en', isPrimary: true }];
+  const hideAfterApproval = async (label: string, hide: (owner: Member) => Promise<unknown>) => {
+    const first = await member(`${label}-first`, { sifu: true });
+    const second = await member(`${label}-second`, { sifu: true });
+    const owner = await member(`${label}-owner`, { hidden: true });
+    await approveRelationship(first.principal, { relationshipId: await request(owner, first), idempotencyKey: key() }, meta);
+    expect(await visibilityOf(owner.personId)).toBe('public');
+    expect(await publicationActions(owner.account.id)).toEqual([]);
+    // A student finds the owner while the profile is public and sends a request.
+    const student = await member(`${label}-student`);
+    const toOwner = await request(student, owner);
+    await hide(owner);
+    expect(await visibilityOf(owner.personId)).toBe('involved_only');
+    // The hide is on record as the owner's refusal of publication.
+    expect(await publicationActions(owner.account.id)).toEqual(['withdrawn']);
+    const next = await request(owner, second, { lineageId: await newLineage(`${label}-next`) });
+    await approveRelationship(second.principal, { relationshipId: next, idempotencyKey: key() }, meta);
+    expect(await statusOf(next)).toEqual({ status: 'verified', visibility: 'public' });
+    expect(await visibilityOf(owner.personId)).toBe('involved_only');
+    // And when the owner is the teacher: approving that request does not publish them either.
+    await getDb().update(authUser).set({ accountType: 'sifu' }).where(eq(authUser.id, owner.account.id));
+    await approveRelationship(owner.principal, { relationshipId: toOwner, idempotencyKey: key() }, meta);
+    expect(await statusOf(toOwner)).toEqual({ status: 'verified', visibility: 'public' });
+    expect(await visibilityOf(owner.personId)).toBe('involved_only');
+    // Ticking the box again publishes the profile, with a grant: approvals publish it again.
+    await profileUpdate(owner.principal, { names: OWNER_NAMES, showPublicly: true }, meta);
+    expect(await publicationActions(owner.account.id)).toEqual(['withdrawn', 'granted']);
+  };
+
+  it('a profile that an approval made public and its owner then hid in the profile editor stays hidden after the next approval (DEFAULT D03)', async () => {
+    await hideAfterApproval('m09-hide-editor', (owner) =>
+      profileUpdate(owner.principal, { names: OWNER_NAMES, showPublicly: false }, meta),
+    );
+  });
+
+  it('a profile that an approval made public and its owner then hid on /account/privacy stays hidden after the next approval (DEFAULT D03)', async () => {
+    await hideAfterApproval('m09-hide-privacy', async (owner) => {
+      expect(await consentWithdraw(owner.principal, { kinds: ['publication'] }, meta)).toEqual({ withdrawn: ['publication'], profileHidden: true });
+    });
   });
 });
 

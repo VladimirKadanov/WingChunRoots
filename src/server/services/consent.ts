@@ -82,7 +82,10 @@ export async function grantConsents(
 /**
  * Records `kinds` as withdrawn (a new consent_record row each, with the current document version),
  * with one audit entry `consent.withdraw` (milestone M07). Every kind whose latest record is a
- * grant is recorded, of the current document version or an older one. Returns the kinds recorded.
+ * grant is recorded, of the current document version or an older one. A kind in
+ * `options.evenIfNotGiven` is recorded also when it was never granted (unless its latest record is
+ * a withdrawal already): the owner's explicit refusal of `publication` when an approval, not a
+ * grant, made the profile public (M09 review, code-1; DEFAULT D03). Returns the kinds recorded.
  */
 export async function withdrawConsents(
   tx: Database | Transaction,
@@ -90,9 +93,12 @@ export async function withdrawConsents(
   actorRole: string | null,
   kinds: readonly ConsentKind[],
   meta: RequestMeta,
+  options: { evenIfNotGiven?: readonly ConsentKind[] } = {},
 ): Promise<ConsentKind[]> {
-  const granted = await grantedConsents(tx, userId);
-  const given = [...new Set(kinds)].filter((kind) => granted.has(kind));
+  const latest = await latestConsentActions(tx, userId);
+  const granted = [...new Set(kinds)].filter((kind) => latest.get(kind) === 'granted');
+  const refused = [...new Set(kinds)].filter((kind) => options.evenIfNotGiven?.includes(kind) && latest.get(kind) === undefined);
+  const given = [...granted, ...refused];
   if (given.length === 0) return [];
   const occurredAt = new Date();
   await tx.insert(consentRecord).values(
@@ -104,7 +110,8 @@ export async function withdrawConsents(
     actorRole,
     subjectType: 'user',
     subjectId: userId,
-    before: { kinds: given },
+    // `kinds`: the consents that were given; `withdrawn` also lists a refusal never given before.
+    before: { kinds: granted },
     after: { withdrawn: given, versions: Object.fromEntries(given.map((kind) => [kind, consentVersion(kind)])) },
     requestId: meta.requestId,
     ipHmac: meta.ipHmac,
@@ -112,21 +119,22 @@ export async function withdrawConsents(
   return given;
 }
 
-/** The kinds whose latest record is a grant, of whatever document version (milestone M07). */
-export async function grantedConsents(db: Database | Transaction, userId: string): Promise<Set<ConsentKind>> {
+/** The action of the latest record of each kind the account has a record of. */
+async function latestConsentActions(db: Database | Transaction, userId: string): Promise<Map<ConsentKind, 'granted' | 'withdrawn'>> {
   const rows = await db
     .select({ kind: consentRecord.kind, action: consentRecord.action })
     .from(consentRecord)
     .where(eq(consentRecord.userId, userId))
     .orderBy(desc(consentRecord.occurredAt), desc(consentRecord.id));
-  const seen = new Set<ConsentKind>();
-  const granted = new Set<ConsentKind>();
-  for (const row of rows) {
-    if (seen.has(row.kind)) continue;
-    seen.add(row.kind);
-    if (row.action === 'granted') granted.add(row.kind);
-  }
-  return granted;
+  const latest = new Map<ConsentKind, 'granted' | 'withdrawn'>();
+  for (const row of rows) if (!latest.has(row.kind)) latest.set(row.kind, row.action);
+  return latest;
+}
+
+/** The kinds whose latest record is a grant, of whatever document version (milestone M07). */
+export async function grantedConsents(db: Database | Transaction, userId: string): Promise<Set<ConsentKind>> {
+  const latest = await latestConsentActions(db, userId);
+  return new Set([...latest].filter(([, action]) => action === 'granted').map(([kind]) => kind));
 }
 
 /** The kinds whose latest record is a grant of the current document version. */

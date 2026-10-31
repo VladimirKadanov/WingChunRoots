@@ -285,6 +285,11 @@ SELECT id::text AS id FROM (SELECT id FROM a LIMIT ${ANCESTORS_CAP + 1}) x`);
  * Sets whether the own person is public, inside `tx`, and records the publication consent that
  * goes with it: granted when it becomes public, withdrawn when it stops being public. Only a
  * self-stewarded record follows its owner's choice (plan §6.2). Returns whether it changed.
+ *
+ * Hiding a public profile always leaves a `withdrawn` publication record, also when no grant was
+ * ever on record (a profile that an approval made public, plan §6.2): an approval keeps a
+ * self-stewarded profile hidden only while that record is the latest (relationships.ts
+ * applyApproval), so the owner's choice survives every later approval (M09 review, code-1).
  */
 export async function setOwnVisibility(
   tx: Executor,
@@ -296,8 +301,12 @@ export async function setOwnVisibility(
   const visibility = showPublicly ? ('public' as const) : ('involved_only' as const);
   const consents = await currentConsents(tx, p.user.id);
   if (showPublicly && !consents.has('publication')) await grantConsents(tx, p.user.id, p.user.role, ['publication'], meta);
-  // Withdraws a grant of any version (withdrawConsents records only what is still granted).
-  if (!showPublicly) await withdrawConsents(tx, p.user.id, p.user.role, ['publication'], meta);
+  // Withdraws a grant of any version (withdrawConsents records only what is still granted), and
+  // records the refusal of a public profile that was never granted (DEFAULT D03: the owner's choice
+  // wins over a later approval).
+  if (!showPublicly) {
+    await withdrawConsents(tx, p.user.id, p.user.role, ['publication'], meta, own.visibility === 'public' ? { evenIfNotGiven: ['publication'] } : {});
+  }
   if (own.visibility === visibility) return false;
   // DEFAULT D03: a self-stewarded record is public only while its owner keeps it so; unticking hides
   // it even when it has verified relationships (docs/plan/questions/M07.md, question 2).

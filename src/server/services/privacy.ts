@@ -131,7 +131,10 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
     if (!(await lockAccount(tx, { id: p.user.id }))) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
     // One withdrawal, one audit entry, for every kind still granted (of any document version);
     // hiding the profile below then finds publication withdrawn and records nothing twice.
-    const withdrawn = (await withdrawConsents(tx, p.user.id, p.user.role, kinds, meta)) as OptionalConsent[];
+    // Withdrawing publication is always recorded, also when it was never given (a profile an
+    // approval made public): a later approval then keeps the profile hidden (DEFAULT D03; M09
+    // review, code-1).
+    const withdrawn = (await withdrawConsents(tx, p.user.id, p.user.role, kinds, meta, { evenIfNotGiven: ['publication'] })) as OptionalConsent[];
     let profileHidden = false;
     let personId: string | null = null;
     if (kinds.includes('publication')) {

@@ -1001,6 +1001,8 @@ async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: st
     .where(eq(teachingRelationship.id, row.id));
   // Both people become public (plan §6.2), except a self-stewarded profile whose owner withdrew
   // the publication consent: DEFAULT D03, the owner's choice wins (docs/plan/questions/M07.md).
+  // Hiding a profile always leaves that withdrawal as the latest record, also when publication was
+  // never granted (profile.ts setOwnVisibility, privacy.ts consentWithdraw; M09 review, code-1).
   const published = await tx.execute<{ id: string }>(sql`
 UPDATE person p SET visibility = 'public', updated_at = now()
  WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
