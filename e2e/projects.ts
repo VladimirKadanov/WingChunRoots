@@ -23,8 +23,8 @@ export interface ProjectOptions {
    */
   screenshots?: boolean;
   /**
-   * Builds only the `exclusive` project (M08 final check): the specs that lock a whole table, in a
-   * run of their own after the other one (PW_EXCLUSIVE=1; scripts/verify.sh does both). Within one
+   * Builds only the `exclusive` project (M08 final check): the specs that lock a whole table, and
+   * (M09) those that make links public, in a run of their own after the other one (PW_EXCLUSIVE=1; scripts/verify.sh does both). Within one
    * run Playwright cannot hold them back until the others have finished without running every
    * other project in full whatever the filter (`dependencies` ignore --grep).
    */
@@ -41,6 +41,14 @@ export const SCREENSHOTS_SPEC = '**/screenshots.spec.ts';
  * (PW_EXCLUSIVE=1) after the others, one test at a time.
  */
 export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
+/**
+ * Specs that make links public (M09: teacher requests and approvals). A new public link changes
+ * the explorer's start list and counts, and the public pages other specs and the visual regression
+ * compare, so they run with the exclusive specs, after the ordinary run.
+ */
+export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts'] as const;
+/** Everything the `exclusive` project runs, and the ordinary projects leave out. */
+export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
 
 /**
  * Where a run's web server writes its log, and where its artifacts go: the exclusive run keeps
@@ -57,7 +65,7 @@ export function runPaths(exclusive: boolean) {
  * Playwright projects (plan §5.8 (d)): desktop-chromium (1440x900) and mobile-chromium
  * (Pixel class) everywhere, mobile-webkit (iPhone) only in CI, on request the Chromium-only
  * `visual` and `screenshots` projects, which set their own viewports. With `exclusive`, only the
- * `exclusive` project (Chromium, 1440x900, one test at a time; EXCLUSIVE_SPEC).
+ * `exclusive` project (Chromium, 1440x900, one test at a time; EXCLUSIVE_SPECS).
  */
 export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false, exclusive = false }: ProjectOptions): Project[] {
   const chromiumLaunch = chromiumExecutable
@@ -68,7 +76,7 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
     return [
       {
         name: 'exclusive',
-        testMatch: EXCLUSIVE_SPEC,
+        testMatch: EXCLUSIVE_SPECS,
         fullyParallel: false,
         workers: 1,
         use: {
@@ -79,7 +87,7 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
       },
     ];
   }
-  const testIgnore = [VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC];
+  const testIgnore = [VISUAL_SPEC, SCREENSHOTS_SPEC, ...EXCLUSIVE_SPECS];
 
   const projects: Project[] = [
     {

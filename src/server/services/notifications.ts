@@ -2,16 +2,17 @@
 // notifications, rendered from src/server/templates/notifications.ts, and marking them read. Marking
 // read is the small, reversible personal action the dashboard shows optimistically (useOptimistic).
 
-import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import * as z from 'zod';
 
+import { formatPartialDate, toPrefix } from '../../lib/partial-date';
 import { hasStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
-import { notification, person, personName, pilotAccessRequest } from '../db/schema';
+import { lineage, notification, person, personName, pilotAccessRequest, teachingRelationship, trainingPeriod } from '../db/schema';
 import type { Executor } from '../entitlements/access';
 import type { NameData } from '../templates/email/types';
-import { type NotificationSegment, renderNotification } from '../templates/notifications';
+import { type NotificationSegment, RELATIONSHIP_NOTIFICATIONS, renderNotification } from '../templates/notifications';
 import { ServiceError } from './errors';
 
 export const NOTIFICATION_PAGE_SIZE = 20;
@@ -95,6 +96,92 @@ async function withPilotRequesters(rows: NotificationRow[], staff: boolean): Pro
   });
 }
 
+const RELATIONSHIP_TEMPLATES: ReadonlySet<string> = new Set(RELATIONSHIP_NOTIFICATIONS);
+
+/** The relationship id of a teacher-request notification payload (M09), or null. */
+function relationshipIdOf(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const id = (payload as { relationshipId?: unknown }).relationshipId;
+  return z.uuid().safeParse(id).success ? (id as string) : null;
+}
+
+/**
+ * Adds to each teacher-request notification (M09) what it shows when the list is read: the other
+ * person's current primary name (never a copy kept in the payload: a renamed profile shows its new
+ * name, a removed one none), the lineage and the relationship's status now, so a request that was
+ * answered or withdrawn since no longer offers to answer it, and a request corrected since no
+ * longer offers to correct it. Only for a relationship of the account's own person: anything else
+ * shows no name (the notification was written for this account, so that never happens).
+ */
+async function withRelationships(rows: NotificationRow[], userId: string): Promise<NotificationRow[]> {
+  const ids = [...new Set(rows.filter((row) => RELATIONSHIP_TEMPLATES.has(row.template)).map((row) => relationshipIdOf(row.payload)))].filter(
+    (id): id is string => id !== null,
+  );
+  if (ids.length === 0) return rows;
+  const db = getDb();
+  const [own] = await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, userId), isNull(person.deletedAt)));
+  const found = await db
+    .select({
+      id: teachingRelationship.id,
+      teacher: teachingRelationship.teacherPersonId,
+      student: teachingRelationship.studentPersonId,
+      status: teachingRelationship.status,
+      lineageName: lineage.name,
+    })
+    .from(teachingRelationship)
+    .innerJoin(lineage, eq(lineage.id, teachingRelationship.lineageId))
+    .where(inArray(teachingRelationship.id, ids));
+  const mine = found.filter((r) => own && (r.teacher === own.id || r.student === own.id));
+  const otherOf = new Map(mine.map((r) => [r.id, r.teacher === own!.id ? r.student : r.teacher]));
+  const others = [...new Set(otherOf.values())];
+  const names =
+    others.length === 0
+      ? []
+      : await db
+          .select({ personId: personName.personId, value: personName.value, lang: personName.lang })
+          .from(personName)
+          .innerJoin(person, and(eq(person.id, personName.personId), isNull(person.deletedAt)))
+          .where(and(inArray(personName.personId, others), eq(personName.isPrimary, true)));
+  const nameOf = new Map<string, NameData>(names.map((n) => [n.personId, { value: n.value, lang: n.lang }]));
+  const byId = new Map(mine.map((r) => [r.id, r]));
+  // The training start of each request (In scope 2 of M09): the earliest recorded start of its periods.
+  const requested = mine.filter((r) => rows.some((row) => row.template === 'relationship.requested' && relationshipIdOf(row.payload) === r.id)).map((r) => r.id);
+  const periods =
+    requested.length === 0
+      ? []
+      : await db
+          .select({ relationshipId: trainingPeriod.relationshipId, startsOn: trainingPeriod.startsOn, precision: trainingPeriod.precision })
+          .from(trainingPeriod)
+          .where(and(inArray(trainingPeriod.relationshipId, requested), isNotNull(trainingPeriod.startsOn), ne(trainingPeriod.precision, 'unknown')));
+  const earliest = new Map<string, { startsOn: string; precision: 'year' | 'month' | 'day' }>();
+  for (const p of periods) {
+    const current = earliest.get(p.relationshipId);
+    if (p.startsOn && p.precision !== 'unknown' && (!current || p.startsOn < current.startsOn)) earliest.set(p.relationshipId, { startsOn: p.startsOn, precision: p.precision });
+  }
+  return rows.map((row) => {
+    const id = RELATIONSHIP_TEMPLATES.has(row.template) ? relationshipIdOf(row.payload) : null;
+    if (id === null) return row;
+    const r = byId.get(id);
+    const other = otherOf.get(id);
+    return {
+      ...row,
+      payload: {
+        ...(row.payload as Record<string, unknown>),
+        other: other ? (nameOf.get(other) ?? null) : null,
+        lineageName: r?.lineageName ?? null,
+        // A relationship this account can no longer see reads as answered: nothing to act on.
+        status: r?.status ?? 'withdrawn',
+        ...(row.template === 'relationship.requested' ? { trainingStart: startOf(earliest.get(id)) } : {}),
+      },
+    };
+  });
+}
+
+/** "April 2019" for a recorded start, or null. */
+function startOf(start: { startsOn: string; precision: 'year' | 'month' | 'day' } | undefined): string | null {
+  return start ? formatPartialDate(toPrefix(start.startsOn, start.precision)) : null;
+}
+
 /** A rendered notification; one whose template or data no longer fits says so instead of failing. */
 function view(row: NotificationRow): NotificationView {
   let rendered: ReturnType<typeof renderNotification>;
@@ -133,7 +220,8 @@ export async function listNotifications(principal: Principal | null): Promise<No
     .where(eq(notification.userId, p.user.id))
     .orderBy(desc(notification.createdAt), desc(notification.id))
     .limit(NOTIFICATION_PAGE_SIZE);
-  return { unread: await unreadCount(p.user.id), items: (await withPilotRequesters(rows, hasStaff2FA(p, ['admin']))).map(view) };
+  const enriched = await withRelationships(await withPilotRequesters(rows, hasStaff2FA(p, ['admin'])), p.user.id);
+  return { unread: await unreadCount(p.user.id), items: enriched.map(view) };
 }
 
 export const markReadInput = z.union([

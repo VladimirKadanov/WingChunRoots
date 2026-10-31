@@ -23,7 +23,7 @@ import {
   schoolInstructor,
   teachingRelationship,
 } from '../db/schema';
-import { effectivePlan, requireEntitlement } from '../entitlements/access';
+import { effectivePlan, type Executor, requireEntitlement } from '../entitlements/access';
 import { feature, type Benefit, type FeatureKey, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from '../templates/email/types';
 import { listNotifications, type NotificationList } from './notifications';
@@ -145,7 +145,7 @@ const SCHOOL_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'In
  * A removed profile (deleted_at set) gets an anonymous ref: no slug, REMOVED_PROFILE_NAME and no
  * original name (final check, security-2); its names are not even read.
  */
-async function peopleRefs(ids: string[]): Promise<Map<string, PersonRef>> {
+export async function peopleRefs(ids: string[]): Promise<Map<string, PersonRef>> {
   const refs = new Map<string, PersonRef>();
   if (ids.length === 0) return refs;
   const db = getDb();
@@ -174,6 +174,63 @@ async function peopleRefs(ids: string[]): Promise<Map<string, PersonRef>> {
     });
   }
   return refs;
+}
+
+/**
+ * How many student requests the approval limit holds back for this teacher (the own person): every
+ * pending request, except one of a student who already counts (approving it would not grow the
+ * count: withQuota's `unit`) and one of a removed profile, which waits for no one (final check,
+ * security-2). Shared by the dashboard and the student requests page (M09).
+ */
+export async function waitingRequests(db: Executor, ownPersonId: string): Promise<number> {
+  const established = db
+    .select({ id: teachingRelationship.studentPersonId })
+    .from(teachingRelationship)
+    .where(and(eq(teachingRelationship.teacherPersonId, ownPersonId), inArray(teachingRelationship.status, [...PUBLIC_RELATIONSHIP_STATUSES])));
+  const [pending] = await db
+    .select({ n: count() })
+    .from(teachingRelationship)
+    .innerJoin(person, and(eq(person.id, teachingRelationship.studentPersonId), isNull(person.deletedAt)))
+    .where(
+      and(
+        eq(teachingRelationship.teacherPersonId, ownPersonId),
+        eq(teachingRelationship.status, 'pending_teacher'),
+        notInArray(teachingRelationship.studentPersonId, established),
+      ),
+    );
+  return pending?.n ?? 0;
+}
+
+/**
+ * The approval allowance of an account and, only at a real limit where `waiting` requests wait
+ * because of it (plan §5.6), the upgrade offer, built only from requireEntitlement()'s refusal and
+ * the matrix (plan §6.5). Shared by the dashboard and the student requests page (M09).
+ */
+export async function approvalOffer(
+  db: Executor,
+  userId: string,
+  waiting: number,
+): Promise<{ approved: number; limit: number | null; upgrade: UpgradeOffer | null }> {
+  const decision = await requireEntitlement({ kind: 'user', userId }, 'approve_students', { db });
+  const limit = decision.limit;
+  let upgrade: UpgradeOffer | null = null;
+  if (!decision.ok && decision.code === 'quota' && decision.grantedBy && waiting > 0 && limit !== null) {
+    const from = planSummary(decision.plan);
+    const to = planSummary(decision.grantedBy);
+    const text = offerText('approve_students', decision.current, limit, from, to);
+    upgrade = {
+      feature: 'approve_students',
+      heading: text.heading,
+      allowance: { current: decision.current, limit, sentence: text.sentence },
+      from,
+      to,
+      benefits: upgradeBenefits(decision.plan, decision.grantedBy),
+      // No promise of when they can be approved: only that they stay pending and visible.
+      waiting: { count: waiting, sentence: waiting === 1 ? 'One student request waits below. It stays pending and visible.' : `${waiting} student requests wait below. They stay pending and visible.` },
+      pilotRequest: await openPilotRequest(db, userId),
+    };
+  }
+  return { approved: decision.current, limit, upgrade };
 }
 
 export async function dashboardOverview(principal: Principal | null): Promise<DashboardOverview> {
@@ -269,25 +326,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       .where(and(eq(teachingRelationship.teacherPersonId, own.id), eq(teachingRelationship.status, 'pending_teacher')))
       .orderBy(asc(teachingRelationship.createdAt), asc(teachingRelationship.id))
       .limit(50);
-    // The list shows the oldest 50; the upgrade prompt counts every request the limit holds back:
-    // a request of a student who already counts would not grow the count (withQuota's `unit`).
-    const established = db
-      .select({ id: teachingRelationship.studentPersonId })
-      .from(teachingRelationship)
-      .where(and(eq(teachingRelationship.teacherPersonId, own.id), inArray(teachingRelationship.status, [...PUBLIC_RELATIONSHIP_STATUSES])));
-    // A removed profile's request waits for no one (final check, security-2): it is not counted.
-    const [pending] = await db
-      .select({ n: count() })
-      .from(teachingRelationship)
-      .innerJoin(person, and(eq(person.id, teachingRelationship.studentPersonId), isNull(person.deletedAt)))
-      .where(
-        and(
-          eq(teachingRelationship.teacherPersonId, own.id),
-          eq(teachingRelationship.status, 'pending_teacher'),
-          notInArray(teachingRelationship.studentPersonId, established),
-        ),
-      );
-    waiting = pending?.n ?? 0;
+    waiting = await waitingRequests(db, own.id);
     const refs = await peopleRefs(rows.map((r) => r.studentId));
     requests = rows.map((r) => ({ relationshipId: r.id, student: refs.get(r.studentId)!, lineage: r.lineage, createdAt: r.createdAt.toISOString() }));
     const schoolRows = await db
@@ -317,25 +356,6 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
     }));
   }
 
-  const decision = await requireEntitlement(subject, 'approve_students', { db });
-  const limit = decision.limit;
-  let upgrade: UpgradeOffer | null = null;
-  // Plan §5.6: only at a real limit, where a request waits because of it.
-  if (!decision.ok && decision.code === 'quota' && decision.grantedBy && waiting > 0 && limit !== null) {
-    const from = planSummary(decision.plan);
-    const to = planSummary(decision.grantedBy);
-    const text = offerText('approve_students', decision.current, limit, from, to);
-    upgrade = {
-      feature: 'approve_students',
-      heading: text.heading,
-      allowance: { current: decision.current, limit, sentence: text.sentence },
-      from,
-      to,
-      benefits: upgradeBenefits(decision.plan, decision.grantedBy),
-      // No promise of when they can be approved: approving opens later in the pilot (M09).
-      waiting: { count: waiting, sentence: waiting === 1 ? 'One student request waits below. It stays pending and visible.' : `${waiting} student requests wait below. They stay pending and visible.` },
-      pilotRequest: await openPilotRequest(db, p.user.id),
-    };
-  }
-  return { ...base, student: null, sifu: { requests, students: { approved: decision.current, limit }, schools, upgrade } };
+  const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
+  return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade } };
 }

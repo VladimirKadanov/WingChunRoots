@@ -157,7 +157,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-10-19.2', digest: '7ef2546c9a0c70e691402b161c4947c827ab8654ece0d7c874cca10dcb0ca868' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-10-31.1', digest: '6dddb9f81b7fdaa9b371f2963681eef4db30afd7dd34ddf3efd8f532e4ed4640' });
   });
 });
 
@@ -182,16 +182,13 @@ describe('how /plans marks a value (review round 1, design-4)', () => {
 describe('features of the pilot that are not built yet (review round 1, requirements-1, design-1)', () => {
   it('say when they open, and only features of the pilot do', () => {
     const opening = FEATURES.filter((f) => f.opens !== undefined);
-    expect(opening.map((f) => [f.key, f.opens])).toEqual([
-      ['claim_teachers', 'Opens with teacher requests'],
-      ['approve_students', 'Opens with teacher requests'],
-      ['school_map', 'Opens with schools and the map'],
-    ]);
+    // M09 built teacher requests: naming teachers and approving students work now.
+    expect(opening.map((f) => [f.key, f.opens])).toEqual([['school_map', 'Opens with schools and the map']]);
     for (const f of opening) expect(f.availability, f.key).toBe('now');
   });
 
   it('every benefit of an upgrade carries its opening note', () => {
-    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual(['Opens with teacher requests', 'Opens with schools and the map']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, 'Opens with schools and the map']);
   });
 
   it('Premium Student gives nothing of the pilot over Free Student; the grant form says so (requirements-2)', () => {
@@ -204,7 +201,7 @@ describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
   it('Free Sifu to Professional Sifu: no student limit and a school pin, nothing planned', () => {
     const benefits = upgradeBenefits('free_sifu', 'pro_sifu');
     expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map']);
-    expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: 'Opens with teacher requests' });
+    expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: null });
   });
 
   it('never lists a planned feature, for any pair of plans', () => {

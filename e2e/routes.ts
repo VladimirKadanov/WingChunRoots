@@ -72,6 +72,12 @@ export const ROUTES: readonly AppRoute[] = [
   // screen state (e2e/screenshots.spec.ts, e2e/visual.spec.ts, e2e/m07-search.spec.ts).
   { path: '/dashboard/profile', name: 'profile', status: 200, milestone: 'M07', key: true, signInAs: 'demo-pending' },
   { path: '/account/privacy', name: 'account-privacy', status: 200, milestone: 'M07', key: true, signInAs: 'demo-pending' },
+  // Teacher requests (M09): demo accounts that no test changes. demo-pending has one request
+  // waiting; demo-free-sifu-5 has five students, one request at its limit and the upgrade prompt
+  // (its approval is refused, so nothing changes). The tests that approve use accounts of their own.
+  { path: '/dashboard/teachers', name: 'teachers', status: 200, milestone: 'M09', key: true, signInAs: 'demo-pending' },
+  { path: '/dashboard/teachers/new', name: 'teachers-new', status: 200, milestone: 'M09', key: true, signInAs: 'demo-pending' },
+  { path: '/dashboard/students/requests', name: 'student-requests', status: 200, milestone: 'M09', key: true, signInAs: 'demo-free-sifu-5' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

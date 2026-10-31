@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-10-19.2';
+export const PLAN_MATRIX_VERSION = '2026-10-31.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -176,7 +176,7 @@ export interface FeatureDefinition {
   enforced: boolean;
   /**
    * For a feature of the pilot (availability 'now') whose screens are not built yet: when it opens,
-   * in the words the app shows beside it ("Opens with teacher requests"). An upgrade prompt and
+   * in the words the app shows beside it ("Opens with schools and the map"). An upgrade prompt and
    * /plans show it, so nothing reads as usable before it is (review round 1, requirements-1,
    * design-1). Removed by the milestone that builds the feature (M09, M11).
    */
@@ -285,7 +285,6 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: false,
-    opens: 'Opens with teacher requests',
     values: {
       free_student: yes(),
       premium_student: yes(),
@@ -301,7 +300,6 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: true,
-    opens: 'Opens with teacher requests',
     unit: { one: 'student', many: 'students', verb: 'approved' },
     upgradeHeading: 'More students with {plan}',
     // DEFAULT D06: up to 5 approved students on Free Sifu; "unlimited" means no limit in the pilot.

@@ -15,6 +15,7 @@ import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
 import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from '../services/retention';
 import { TemplateDataError } from '../templates/email';
+import { lineageRecomputeHandler } from './lineage-recompute';
 import { jobTemplateData } from './outbox';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
@@ -172,6 +173,8 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   await boss.work(QUEUE.emailSendFailed, work, emailSendFailedHandler(mailer, log));
   await boss.work(QUEUE.retentionPurge, work, retentionPurgeHandler(db, log));
   await boss.work(QUEUE.searchKeysRebuild, work, searchKeysRebuildHandler(db, log));
+  // M09: lineage_membership and the public cache after an approval.
+  await boss.work(QUEUE.lineageRecompute, work, lineageRecomputeHandler(db, log));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

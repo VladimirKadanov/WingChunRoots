@@ -4,11 +4,15 @@
 // relationship. This module reads them from app_rw for the signed-in account's own person only,
 // per request, and its result never enters a 'use cache' function.
 //
-// Staff (reviewers) see these in the review queue from M09; the public pages of M04 give them no
-// extra visibility.
+// M09: reviewers (staff whose session proved the second factor, hasStaff2FA) also see them, on the
+// pages of the person they open (`focus`): DEFAULT D03 keeps a request visible to the people
+// involved and the reviewers. For a reviewer the focus person's own active relationships that
+// v_public_edge leaves out are added, with the full records at both ends, and the focus person
+// itself when it is not public.
 
 import { sql } from 'drizzle-orm';
 
+import { hasStaff2FA } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { ACTIVE_RELATIONSHIP_STATUSES } from '../db/schema/common';
@@ -44,8 +48,12 @@ export const ANONYMOUS_VIEWER: Viewer = { extras: NO_EXTRAS, ownPersonHidden: fa
 
 /** True when the answer for this viewer differs from the public one, so it must not be cached. */
 export function isPersonalised(viewer: Viewer): boolean {
-  return viewer.extras.edges.length > 0 || viewer.ownPersonHidden;
+  // A hidden node without an edge: the focus person a reviewer opened (M09).
+  return viewer.extras.edges.length > 0 || viewer.ownPersonHidden || Object.keys(viewer.extras.nodes).length > 0;
 }
+
+/** The person a page or read is about, by id or slug: what a reviewer's extra visibility covers (M09). */
+export type ViewerFocus = { id: string } | { slug: string };
 
 /** True when the viewer may see this person although it is not public (their own, or the other end of an own edge). */
 export function mayViewHidden(viewer: Viewer, personId: string): boolean {
@@ -56,15 +64,24 @@ export function mayViewHidden(viewer: Viewer, personId: string): boolean {
  * The viewer's own person, their active relationships that v_public_edge leaves out, and the
  * hidden people at the other end of those. Anonymous, or an account without a person: nothing.
  */
-export async function loadViewer(principal: Principal | null, deadline: ReadDeadline = readDeadline()): Promise<Viewer> {
+export async function loadViewer(principal: Principal | null, deadline: ReadDeadline = readDeadline(), focus?: ViewerFocus): Promise<Viewer> {
   if (!principal) return ANONYMOUS_VIEWER;
+  const reviewer = focus !== undefined && hasStaff2FA(principal);
   return readTransaction(getDb(), async (tx) => {
     const [own] = await rows<{ id: string; is_public: boolean }>(
       tx,
       sql`SELECT p.id::text AS id, EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = p.id) AS is_public
             FROM person p WHERE p.claimed_by_user_id = ${principal.user.id}::uuid AND p.deleted_at IS NULL`,
     );
-    if (!own) return ANONYMOUS_VIEWER;
+    // M09: the person a reviewer opened (DEFAULT D03: visible to the reviewers too).
+    let focusId: string | null = null;
+    if (reviewer) {
+      const where = 'id' in focus ? sql`p.id = ${focus.id}::uuid` : sql`p.slug = ${focus.slug}`;
+      const [found] = await rows<{ id: string }>(tx, sql`SELECT p.id::text AS id FROM person p WHERE ${where} AND p.deleted_at IS NULL`);
+      focusId = found?.id ?? null;
+    }
+    if (!own && !focusId) return ANONYMOUS_VIEWER;
+    const anchors = [own?.id, focusId].filter((id): id is string => Boolean(id));
 
     const edgeRows = await rows<{
       id: string;
@@ -97,7 +114,7 @@ SELECT r.id::text AS id, r.teacher_person_id::text AS teacher_id, r.student_pers
   JOIN lineage l ON l.id = r.lineage_id AND l.deleted_at IS NULL
   JOIN person t ON t.id = r.teacher_person_id AND t.deleted_at IS NULL
   JOIN person s ON s.id = r.student_person_id AND s.deleted_at IS NULL
- WHERE (r.teacher_person_id = ${own.id}::uuid OR r.student_person_id = ${own.id}::uuid)
+ WHERE (r.teacher_person_id = ANY(${`{${anchors.join(',')}}`}::uuid[]) OR r.student_person_id = ANY(${`{${anchors.join(',')}}`}::uuid[]))
    AND r.status IN (${ACTIVE})
    AND NOT EXISTS (SELECT 1 FROM v_public_edge pe WHERE pe.id = r.id)
  ORDER BY r.created_at, r.id`,
@@ -105,7 +122,7 @@ SELECT r.id::text AS id, r.teacher_person_id::text AS teacher_id, r.student_pers
 
     // The people the viewer may see although they are not public: their own person and the other
     // end of each own edge (with a primary name, as the public views require).
-    const involved = [...new Set([own.id, ...edgeRows.flatMap((e) => [e.teacher_id, e.student_id])])];
+    const involved = [...new Set([...anchors, ...edgeRows.flatMap((e) => [e.teacher_id, e.student_id])])];
     const nodeRows = await rows<{
       id: string;
       slug: string;
@@ -146,13 +163,20 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
     // names that label the edge, unless the viewer wrote that record themselves.
     const answered = new Set<string>();
     for (const e of edgeRows) {
+      if (!own || (e.teacher_id !== own.id && e.student_id !== own.id)) continue;
       const unanswered = UNANSWERED.has(e.status) && e.requested_by_viewer;
       if (!unanswered) answered.add(e.teacher_id === own.id ? e.student_id : e.teacher_id);
+    }
+    // A reviewer sees the full records of the focus person and of both ends of its relationships.
+    const reviewed = new Set<string>();
+    if (focusId) {
+      reviewed.add(focusId);
+      for (const e of edgeRows) if (e.teacher_id === focusId || e.student_id === focusId) reviewed.add(e.teacher_id).add(e.student_id);
     }
     const nodes: Record<string, OwnNode> = {};
     for (const n of nodeRows) {
       if (n.is_public) continue;
-      const full = n.id === own.id || n.created_by_viewer || answered.has(n.id);
+      const full = n.id === own?.id || n.created_by_viewer || answered.has(n.id) || reviewed.has(n.id);
       nodes[n.id] = {
         id: n.id,
         slug: n.slug,
@@ -181,6 +205,6 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
         isDisplayPrimary: e.is_display_primary,
         periods: e.periods,
       }));
-    return { extras: { personId: own.id, edges, nodes }, ownPersonHidden: !own.is_public };
+    return { extras: { personId: own?.id ?? null, edges, nodes }, ownPersonHidden: own ? !own.is_public : false };
   }, deadline);
 }

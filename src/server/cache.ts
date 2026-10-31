@@ -11,18 +11,21 @@
 //   explore-start  the explorer's start list (M05): every lineage with its public root and its
 //                  number of public people, so any change to whether a person or a relationship
 //                  is public drops it.
+//   lineage-membership:<lineage id>
+//                  an answer read from lineage_membership (none yet; the school finder in a lineage
+//                  will be one). The only tag the worker drops, after it recomputes that table
+//                  (M09): every other tag of a change is dropped by the procedure that made it,
+//                  at once, so nothing a page reads right after a change waits for the worker.
 //
 // The services that change these records (M09 onwards) call invalidatePublic(). Answers for a
 // signed-in participant with their own involved_only relationships are never cached.
 
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
+export { EXPLORE_START_TAG, lineageMembershipTag, lineageTag, personTag } from './cache-tags';
+
 /** Next.js takes at most 128 tags per cacheTag() call (later calls append). */
 const MAX_TAGS_PER_CALL = 128;
-
-export const personTag = (personId: string) => `person:${personId}`;
-export const lineageTag = (id: string) => `lineage:${id}`;
-export const EXPLORE_START_TAG = 'explore-start';
 
 /** Tags the current 'use cache' entry. Only inside a 'use cache' function. */
 export function tagCacheEntry(tags: Iterable<string>): void {
@@ -35,8 +38,8 @@ export function tagCacheEntry(tags: Iterable<string>): void {
 /**
  * Drops the cached public answers with these tags. From a Server Action it uses updateTag (the
  * next request reads fresh data); from an oRPC procedure, revalidateTag with expire 0, since
- * updateTag works only in Server Actions (plan §6.4). The worker, a separate process, will call
- * POST /api/internal/revalidate instead (M11).
+ * updateTag works only in Server Actions (plan §6.4). The worker, a separate process, calls
+ * POST /api/internal/revalidate instead (M09, src/server/revalidate.ts).
  */
 export function invalidatePublic(tags: Iterable<string>, caller: 'server-action' | 'procedure'): void {
   for (const tag of new Set(tags)) {

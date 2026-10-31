@@ -104,6 +104,25 @@ describe('e-mail templates', () => {
   });
 });
 
+describe('teacher request e-mails (M09)', () => {
+  it('relationship-rejected links to the request form for that request, and to nothing else', async () => {
+    const template = EMAIL_TEMPLATES['relationship-rejected'];
+    const sample = { ...template.sample };
+    const { text } = await renderEmail('relationship-rejected', sample);
+    expect(text).toContain('/dashboard/teachers/new?resubmit=0190a5c0-0000-7000-8000-000000000005');
+    for (const url of [
+      'http://localhost:3000/dashboard/teachers',
+      'http://localhost:3000/dashboard/teachers/new',
+      'http://localhost:3000/dashboard/teachers/new?resubmit=not-an-id',
+      'http://localhost:3000/dashboard/teachers/new?resubmit=0190a5c0-0000-7000-8000-000000000005&next=//evil.example',
+      'http://localhost:3000/elsewhere?resubmit=0190a5c0-0000-7000-8000-000000000005',
+      'javascript:alert(1)',
+    ]) {
+      expect(() => template.parse({ ...sample, url }), url).toThrow(TemplateDataError);
+    }
+  });
+});
+
 describe('account e-mails (M02)', () => {
   const cases = [
     { name: 'verify-email', path: '/verify-email', subject: /Confirm your e-mail address/ },
@@ -189,6 +208,18 @@ describe('notification templates', () => {
     expect(() => renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: 'tomorrow' })).toThrow(NotificationDataError);
     expect(() => renderNotification('plan.granted', { planCode: 'pro_sifu', startsAt: 'soon', endsAt: null })).toThrow(NotificationDataError);
     expect(() => renderNotification('plan.revoked', null)).toThrow(NotificationDataError);
+  });
+
+  it('a waiting teacher request says when the training started, and leaves it out when no start is recorded (M09 review, requirements-3)', () => {
+    const sample = NOTIFICATION_TEMPLATES['relationship.requested'].sample;
+    const text = (data: unknown) =>
+      renderNotification('relationship.requested', data)
+        .body.map((segment) => ('text' in segment ? segment.text : segment.name.value))
+        .join('');
+    expect(text(sample)).toBe('Demo Student asks you to confirm that you taught them in Demo Lineage A. Training started: April 2019.');
+    expect(text({ ...sample, resubmitted: true })).toBe('Demo Student corrected their request and asks again to confirm that you taught them in Demo Lineage A. Training started: April 2019.');
+    expect(text({ ...sample, trainingStart: null })).toBe('Demo Student asks you to confirm that you taught them in Demo Lineage A.');
+    expect(text({ ...sample, trainingStart: 'x'.repeat(41) })).toBe('Demo Student asks you to confirm that you taught them in Demo Lineage A.');
   });
 
   it('an answered pilot access request says so and offers no review (final check, screens-4)', () => {

@@ -678,7 +678,7 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await labelsAreUnique('no profile');
 
   // With a profile: the real next step for teachers (how your name reads, which they search for),
-  // and requests say honestly when they open.
+  // and for requests the request form (M09).
   const onboard = await apiPost(page, '/account/onboard', { primaryName: 'Demo Empty Dashboard' });
   expect(onboard.status(), await onboard.text()).toBe(200);
   await page.reload();
@@ -688,8 +688,10 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await expect(page.getByTestId('empty-teachers')).toContainText('No confirmed teachers yet.');
   await expect(link('empty-teachers')).toHaveText('See how your name reads');
   await expect(link('empty-teachers')).toHaveAttribute('href', '/account');
-  await expect(page.getByTestId('empty-requests')).toContainText('No open requests. Requests to teachers open later in the pilot');
-  await expect(link('empty-requests')).toHaveCount(0);
+  // M09: requests to teachers are open; the empty state leads to the request form.
+  await expect(page.getByTestId('empty-requests')).toContainText('No open requests. Name a teacher');
+  await expect(link('empty-requests')).toHaveText('Name a teacher');
+  await expect(link('empty-requests')).toHaveAttribute('href', '/dashboard/teachers/new');
   await expect(page.getByRole('main').getByRole('link', { name: 'Set up your profile' })).toHaveCount(0);
   await labelsAreUnique('student with a profile');
 
@@ -748,7 +750,13 @@ test('@M08 notifications: marking one read updates the count at once, and markin
   // A polite announcement, and the focus moves on to the next unread item (a11y-webview-3).
   await expect(page.getByTestId('notifications-status')).toHaveText('Marked as read. 1 unread.');
   await expect(page.getByRole('button', { name: 'Mark as read (Pilot plan ended: Professional Sifu)' })).toBeFocused();
+  // The optimistic count already reads "1 unread", so it cannot tell that the write landed: wait
+  // for the Server Action's answer before reloading, or the reload can cancel it or beat it.
+  const answered = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && Boolean(response.request().headers()['next-action']),
+  );
   release();
+  expect((await answered).ok(), 'the Server Action answered').toBe(true);
   await expect(count).toHaveText('1 unread');
   await page.unroute('**/dashboard');
   await page.reload();

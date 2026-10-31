@@ -308,8 +308,9 @@ run_e2e() {
     export DATABASE_URL="$TEST_DATABASE_URL"
   fi
   pnpm e2e "$@" || return 1
-  # Then the specs that lock a whole table (M08 final check; e2e/projects.ts, EXCLUSIVE_SPEC), in
-  # a run of their own with the same filter: nothing else may run while a table is locked.
+  # Then the specs that lock a whole table (M08 final check) and those that make links public (M09;
+  # e2e/projects.ts, EXCLUSIVE_SPECS), in a run of their own with the same filter: nothing else may
+  # run while a table is locked or while the public graph changes under it.
   PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests "$@"
 }
 

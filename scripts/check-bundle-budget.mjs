@@ -65,10 +65,14 @@ export function budgetFor(route) {
   return ROUTE_BUDGETS[route] ?? DEFAULT_BUDGET;
 }
 
-/** `/page` -> `/`, `/legal/licenses/page` -> `/legal/licenses`; null for route handlers. */
+/**
+ * `/page` -> `/`, `/legal/licenses/page` -> `/legal/licenses`; null for route handlers. Route groups
+ * are not part of the URL, so they are dropped (`/dashboard/teachers/(list)/page` ->
+ * `/dashboard/teachers`): the budget and the prerendered output are the URL's (M09).
+ */
 export function routeOfEntry(entry) {
   if (!entry.endsWith('/page')) return null;
-  return entry.slice(0, -'/page'.length) || '/';
+  return entry.slice(0, -'/page'.length).replace(/\/\([^/)]+\)(?=\/|$)/g, '') || '/';
 }
 
 /** Evaluates a `*_client-reference-manifest.js` file and returns the manifest of `entry`. */

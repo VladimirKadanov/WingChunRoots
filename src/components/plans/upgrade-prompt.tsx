@@ -9,8 +9,10 @@
 // features with availability 'now', through upgradeBenefits(); a benefit whose screens open later
 // in the pilot says when, review round 1, design-1), the working price with "Proposed price (not
 // final)" (DEFAULT D09), and two equally prominent actions: "Request pilot access" and "Not now",
-// which closes it again. It never opens by itself, so it needs no stored dismissal. No countdown,
-// no scarcity, nothing ticked in advance; the waiting requests stay pending and visible.
+// which closes it again. It never opens by itself, so it needs no stored dismissal: only a link
+// that asks for the benefits opens it (`expanded`, the page's ?upgrade=open: "See what a higher
+// plan adds" of an approval refused at the limit, M09 review screens-6). No countdown, no
+// scarcity, nothing ticked in advance; the waiting requests stay pending and visible.
 //
 // Once the account has asked (now or earlier), only the allowance and the state of the request
 // remain: no price, no benefits, no buttons (design-2). Works without JavaScript: <details> opens
@@ -32,7 +34,7 @@ import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
 import { IDLE, type FormState } from '@/lib/form-state';
 import type { UpgradeOffer } from '@/server/services/dashboard';
-import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM } from './form-ids';
+import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM, UPGRADE_SUMMARY_ID } from './form-ids';
 
 const actionClass = cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'w-full');
 
@@ -41,6 +43,7 @@ export function UpgradePrompt({
   requestAction,
   notNowAction,
   closedByChoice = false,
+  expanded = false,
   initial,
 }: {
   offer: UpgradeOffer;
@@ -52,6 +55,8 @@ export function UpgradePrompt({
   notNowAction: string;
   /** The page was loaded by "Not now" without JavaScript: the prompt is closed and its line takes the focus. */
   closedByChoice?: boolean;
+  /** The page was asked for with UPGRADE_OPEN_PARAM (./form-ids.ts): open, with the benefits shown. */
+  expanded?: boolean;
   /** The outcome of a post without JavaScript (src/server/forms/flash.ts). */
   initial?: FormState | null;
 }) {
@@ -63,8 +68,8 @@ export function UpgradePrompt({
   const details = useRef<HTMLDetailsElement>(null);
   const summary = useRef<HTMLElement>(null);
   const asked = state.status === 'done' || offer.pilotRequest !== null;
-  // Open only to show the outcome of a post that failed (the prompt never opens by itself).
-  const openAtFirst = initial?.status === 'error';
+  // Open only to show the outcome of a post that failed, or when a link asked for it (`expanded`).
+  const openAtFirst = initial?.status === 'error' || expanded;
   const to = offer.to;
 
   if (asked) {
@@ -100,9 +105,11 @@ export function UpgradePrompt({
     >
       <summary
         ref={summary}
+        id={UPGRADE_SUMMARY_ID}
         autoFocus={(closedByChoice && !openAtFirst) || undefined}
         data-testid="upgrade-summary"
-        className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-sm px-4 py-3 outline-offset-2 [&::-webkit-details-marker]:hidden"
+        // Opened at it (#upgrade-summary), it stops a little below the phone's top bar, focus ring included.
+        className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 scroll-mt-3 rounded-sm px-4 py-3 outline-offset-2 [&::-webkit-details-marker]:hidden"
       >
         <span data-testid="upgrade-allowance" className="text-ui font-semibold">
           {offer.allowance.sentence}

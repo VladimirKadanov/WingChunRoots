@@ -13,6 +13,12 @@ export const QUEUE = {
   retentionPurge: 'retention.purge',
   /** Rewrite the search keys of every person (src/server/search/store.ts; M07): after db:seed, or a change to the key rules. */
   searchKeysRebuild: 'search.keys.rebuild',
+  /**
+   * M09 (plan §6.3, §6.4): after a change to the verified edges, recompute lineage_membership of the
+   * lineages it touched (from v_public_edge only), then drop the cache of that derived data
+   * (lineage-membership:<id>) through POST /api/internal/revalidate (src/server/jobs/lineage-recompute.ts).
+   */
+  lineageRecompute: 'lineage.recompute',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -26,11 +32,22 @@ export interface EmailSendJob {
   sealed?: string;
 }
 
+/**
+ * The payload of lineage.recompute: ids only, never a name (plan §6.4). The worker revalidates only
+ * lineage-membership:<id> of these lineages; the change's own person and lineage tags were expired
+ * by the procedure that made it (M09 review, requirements-1). A job queued before that carries a
+ * `tags` field too, which the handler ignores.
+ */
+export interface LineageRecomputeJob {
+  lineageIds: string[];
+}
+
 export interface JobData {
   [QUEUE.emailSend]: EmailSendJob;
   [QUEUE.emailSendFailed]: EmailSendJob;
   [QUEUE.retentionPurge]: Record<string, never>;
   [QUEUE.searchKeysRebuild]: Record<string, never>;
+  [QUEUE.lineageRecompute]: LineageRecomputeJob;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -64,6 +81,8 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
   [QUEUE.retentionPurge, { retryLimit: 3, retryDelay: 300, expireInSeconds: 600, deleteAfterSeconds: 30 * DAY }],
   // M07: one job rewrites every person's keys in batches; its payload is empty, so nothing personal stays behind.
   [QUEUE.searchKeysRebuild, { retryLimit: 3, retryDelay: 60, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
+  // M09: a few seconds of work per job; retried briefly when the web process does not answer yet.
+  [QUEUE.lineageRecompute, { retryLimit: 5, retryDelay: 10, retryBackoff: true, retryDelayMax: 300, expireInSeconds: 120, deleteAfterSeconds: DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */

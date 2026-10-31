@@ -132,8 +132,11 @@ refute "no 'use cache' anywhere else in the lineage service, DTOs or person page
   grep_code "^[[:space:]]*['\"]use cache['\"]" src/server/services/lineage.ts src/server/services/lineage-graph.ts src/server/services/lineage-viewer.ts src/server/dto/public.ts "${PEOPLE_UI[@]}"
 refute "the cached reads never touch the session, cookies, headers or roles" \
   grep_code "next/headers|cookies\(|headers\(|[Pp]rincipal|[Ss]ession|\brole" src/server/services/lineage-public.ts
+# The tag helpers moved to src/server/cache-tags.ts in M09 (the worker needs them without next/cache);
+# src/server/cache.ts re-exports them.
 check "cache tags are person:<id> and lineage:<id>" bash -c '
-  grep -q "\`person:\${personId}\`" src/server/cache.ts && grep -q "\`lineage:\${id}\`" src/server/cache.ts'
+  grep -q "\`person:\${personId}\`" src/server/cache-tags.ts && grep -q "\`lineage:\${id}\`" src/server/cache-tags.ts &&
+  grep -qE "^export \{[^}]*\blineageTag\b[^}]*\bpersonTag\b[^}]*\} from '\''\./cache-tags'\'';" src/server/cache.ts'
 refute "no school location, point or coordinate in the lineage service, DTOs or person pages" \
   grep_code "public_point|private_location|latitude|longitude|ST_[A-Za-z]+\(|\blat\b|\blng\b|coordinates" "${LINEAGE_SERVER[@]}" "${PEOPLE_UI[@]}"
 check "a hidden and a missing person get the same NOT_FOUND (one helper, one message)" bash -c '
@@ -184,7 +187,7 @@ check "the proxy's person check has a deadline of at most 500 ms, and passes the
   budget=$(grep -oE "^export const PERSON_CHECK_BUDGET_MS = [0-9_]+;" src/server/services/lineage.ts | grep -oE "[0-9_]+;" | tr -d "_;") &&
   [ -n "$budget" ] && [ "$budget" -le 500 ] &&
   grep -q "readDeadline(budgetMs)" src/server/services/lineage.ts &&
-  grep -q "loadViewer(principal, deadline)" <(awk "/^export async function personPageVisible/,/^}/" src/server/services/lineage.ts) &&
+  grep -qE "loadViewer\(principal, deadline[,)]" <(awk "/^export async function personPageVisible/,/^}/" src/server/services/lineage.ts) &&
   grep -q "withinDeadline(check, PERSON_CHECK_BUDGET_MS)" src/proxy.ts &&
   [ "$(grep -c "return NextResponse.next();" src/proxy.ts)" -eq 2 ] &&
   grep -q "a check that never answers (a stalled database) lets the page through after the budget" src/proxy.test.ts &&

@@ -23,6 +23,9 @@
 //   a result is never cancelled: WebKit's GTK and WPE ports send no click after one); Back closes it.
 //   The sheet and the keyboard hints need room in both directions (SHEET_QUERY): a phone in
 //   landscape keeps the full screen.
+// - Select mode (M09: choosing a teacher in /dashboard/teachers/new): people only, no pages and no
+//   recent searches (the history is for finding pages again); Enter or a tap hands the person to
+//   `onSelect` and closes the palette, without navigating and without remembering the query.
 
 import { Autocomplete } from '@base-ui/react/autocomplete';
 import { Dialog } from '@base-ui/react/dialog';
@@ -60,8 +63,11 @@ interface SearchAnswer {
   lineages: { id: string; slug: string; name: string; root: { slug: string; displayName: SearchName } }[];
 }
 
+/** A person result, as select mode hands it over (M09). */
+export type PersonHit = SearchAnswer['people'][number];
+
 type Item =
-  | { kind: 'person'; key: string; label: string; href: string; explore: string; hit: SearchAnswer['people'][number] }
+  | { kind: 'person'; key: string; label: string; href: string; explore: string; hit: PersonHit }
   | { kind: 'school'; key: string; label: string; href: string; hit: SearchAnswer['schools'][number] }
   | { kind: 'lineage'; key: string; label: string; href: string; hit: SearchAnswer['lineages'][number] }
   | { kind: 'page'; key: string; label: string; href: string }
@@ -91,6 +97,10 @@ const PAGES: readonly { label: string; href: string }[] = [
   { label: 'Explore', href: '/' },
   { label: 'Plans', href: '/plans' },
   { label: 'Your dashboard', href: '/dashboard' },
+  // M09: teacher requests.
+  { label: 'Your teachers', href: '/dashboard/teachers' },
+  { label: 'Name a teacher', href: '/dashboard/teachers/new' },
+  { label: 'Student requests', href: '/dashboard/students/requests' },
   { label: 'Your profile', href: '/dashboard/profile' },
   { label: 'Account type and plan', href: '/dashboard/settings' },
   { label: 'Your account', href: '/account' },
@@ -125,9 +135,9 @@ function Name({ name, className }: { name: SearchName; className?: string }) {
   );
 }
 
-function groupsOf(answer: SearchAnswer | null, query: string): Group[] {
+function groupsOf(answer: SearchAnswer | null, query: string, select = false): Group[] {
   const groups: Group[] = [];
-  const pages = pagesFor(query);
+  const pages = select ? [] : pagesFor(query);
   if (!answer) return pages.length > 0 ? [{ value: 'Pages', items: pages }] : [];
   if (answer.people.length > 0) {
     groups.push({
@@ -142,7 +152,7 @@ function groupsOf(answer: SearchAnswer | null, query: string): Group[] {
       })),
     });
   }
-  if (answer.schools.length > 0) {
+  if (!select && answer.schools.length > 0) {
     groups.push({
       value: 'Schools',
       // Until the school pages open (M11), a school leads to its instructor's profile.
@@ -151,7 +161,7 @@ function groupsOf(answer: SearchAnswer | null, query: string): Group[] {
         .map((hit) => ({ kind: 'school' as const, key: `school:${hit.id}`, label: hit.name, href: `/people/${hit.instructor!.slug}`, hit })),
     });
   }
-  if (answer.lineages.length > 0) {
+  if (!select && answer.lineages.length > 0) {
     groups.push({
       value: 'Lineages',
       items: answer.lineages.map((hit) => ({ kind: 'lineage' as const, key: `lineage:${hit.id}`, label: hit.name, href: `/people/${hit.root.slug}/lineage`, hit })),
@@ -234,16 +244,22 @@ function ItemBody({ item }: { item: Item }) {
 export interface SearchPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** M09: select mode. People only; choosing one calls this instead of opening its profile. */
+  onSelect?: (person: PersonHit) => void;
+  /** The dialog's name and the field's label in select mode. */
+  selectLabel?: string;
 }
 
-export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps) {
+export default function SearchPalette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person' }: SearchPaletteProps) {
+  const select = onSelect !== undefined;
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
-  // The palette loads only in the browser, on first use: the history can be read at once.
-  const [recent, setRecent] = useState<string[]>(readRecentSearches);
+  // The palette loads only in the browser, on first use: the history can be read at once. Select
+  // mode shows no history (it is for finding pages again).
+  const [recent, setRecent] = useState<string[]>(() => (select ? [] : readRecentSearches()));
   // Every opening starts afresh: an empty field, and the history as storage has it now (cleared on
   // sign-out, or by another tab), never the last query and results kept in memory.
   const [wasOpen, setWasOpen] = useState(open);
@@ -253,7 +269,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
       setQuery('');
       setAnswer(null);
       setFailed(false);
-      setRecent(readRecentSearches());
+      setRecent(select ? [] : readRecentSearches());
     }
   }
   const composing = useRef(false);
@@ -358,6 +374,13 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
   };
 
   const choose = (item: Item, explore = false) => {
+    if (select) {
+      // Select mode: the person goes to the form; the palette closes where it was opened.
+      if (item.kind !== 'person') return;
+      close();
+      onSelect(item.hit);
+      return;
+    }
     if (item.kind === 'recent') {
       setQuery(item.label);
       void run(item.label);
@@ -368,7 +391,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
 
   const trimmed = query.trim();
   const groups: Group[] = trimmed
-    ? groupsOf(answer, trimmed)
+    ? groupsOf(answer, trimmed, select)
     : recent.length > 0
       ? [{ value: 'Recent searches', items: recent.map((r) => ({ kind: 'recent' as const, key: `recent:${r}`, label: r })) }]
       : [];
@@ -403,13 +426,13 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
       void run(query).then((fresh) => {
         if (!fresh || opening.current !== wait) return;
         opening.current = null;
-        const first = groupsOf(fresh, trimmed)[0]?.items[0];
+        const first = groupsOf(fresh, trimmed, select)[0]?.items[0];
         if (first) choose(first, explore);
       });
       return;
     }
     // Ctrl/⌘+Enter: the highlighted person in the explorer (plan §5.6), before Autocomplete's own Enter.
-    if (explore) {
+    if (explore && !select) {
       const item = highlighted.current;
       if (item && item.kind !== 'recent') {
         event.preventDefault();
@@ -436,7 +459,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
               'transition-[opacity,transform] duration-(--duration-base) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0 sheet:data-ending-style:-translate-y-2 sheet:data-starting-style:-translate-y-2',
             )}
           >
-            <Dialog.Title className="sr-only">Search</Dialog.Title>
+            <Dialog.Title className="sr-only">{select ? selectLabel : 'Search'}</Dialog.Title>
             <Autocomplete.Root
               open
               inline
@@ -468,7 +491,7 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                 <SearchIcon size={20} className="shrink-0 text-fg-subtle" />
                 <Autocomplete.Input
                   ref={input}
-                  aria-label="Search people, schools and lineages"
+                  aria-label={select ? selectLabel : 'Search people, schools and lineages'}
                   placeholder="Any name, any script"
                   autoComplete="off"
                   autoCorrect="off"
@@ -515,7 +538,13 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                     Kong spelling or Cyrillic.
                   </p>
                 ) : null}
-                {!trimmed && recent.length === 0 ? (
+                {!trimmed && recent.length === 0 && select ? (
+                  <p className="px-4 py-4 text-sm text-fg-muted">
+                    Type your teacher&apos;s name in any spelling. Only public profiles are found; a teacher appears here once their
+                    profile is public.
+                  </p>
+                ) : null}
+                {!trimmed && recent.length === 0 && !select ? (
                   <p className="px-4 py-4 text-sm text-fg-muted">
                     Search by any spelling: <span translate="no">So Ching Laam</span>,{' '}
                     <span lang="zh-Hant" translate="no" className="cjk">
@@ -579,12 +608,14 @@ export default function SearchPalette({ open, onOpenChange }: SearchPaletteProps
                   <kbd className="font-sans font-semibold">↑</kbd> <kbd className="font-sans font-semibold">↓</kbd> to move
                 </span>
                 <span>
-                  <kbd className="font-sans font-semibold">Enter</kbd> to open
+                  <kbd className="font-sans font-semibold">Enter</kbd> {select ? 'to choose' : 'to open'}
                 </span>
-                <span>
-                  <kbd className="font-sans font-semibold">Ctrl</kbd>/<kbd className="font-sans font-semibold">⌘</kbd>+
-                  <kbd className="font-sans font-semibold">Enter</kbd> to open a person in the explorer
-                </span>
+                {select ? null : (
+                  <span>
+                    <kbd className="font-sans font-semibold">Ctrl</kbd>/<kbd className="font-sans font-semibold">⌘</kbd>+
+                    <kbd className="font-sans font-semibold">Enter</kbd> to open a person in the explorer
+                  </span>
+                )}
                 <span>
                   <kbd className="font-sans font-semibold">Esc</kbd> to close
                 </span>

@@ -284,6 +284,11 @@ describe('findFomo()', () => {
       'Opens with teacher requests',
       'Opens with schools and the map',
       'Requests to teachers open later in the pilot; a request you send then waits here until the teacher answers it.',
+      // M09: teacher requests.
+      'No open requests. Name a teacher and ask them to confirm that they taught you; the request waits here until they answer it.',
+      'You have approved 5 of 5 students on Free Sifu. The request stays pending.',
+      'Some details need correcting. Check the request and send it again.',
+      'Training with Demo Teacher is marked as ended. The link stays on both profiles, shown as historical.',
       'You can change the type up to five times in 24 hours.',
       'You have changed your account type several times today. Try again tomorrow.',
       'There are no payments during the pilot. Request pilot access and an administrator can give you Professional Sifu as a test plan.',

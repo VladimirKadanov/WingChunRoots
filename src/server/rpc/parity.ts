@@ -40,4 +40,11 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/profile/actions.ts#saveProfileAction': { rpc: ['profile.update'] },
   'src/app/account/privacy/actions.ts#withdrawConsentAction': { rpc: ['consent.withdraw'] },
   'src/app/account/privacy/actions.ts#requestDeletionAction': { rpc: ['account.requestDeletion'] },
+  // M09: teacher requests and independent approvals.
+  'src/app/dashboard/teachers/actions.ts#requestTeacherAction': { rpc: ['relationships.request'] },
+  'src/app/dashboard/teachers/actions.ts#resubmitRequestAction': { rpc: ['relationships.resubmit'] },
+  'src/app/dashboard/teachers/actions.ts#withdrawRequestAction': { rpc: ['relationships.withdraw'] },
+  'src/app/dashboard/teachers/actions.ts#endTrainingAction': { rpc: ['relationships.end'] },
+  'src/app/dashboard/students/requests/actions.ts#approveRequestAction': { rpc: ['relationships.approve'] },
+  'src/app/dashboard/students/requests/actions.ts#rejectRequestAction': { rpc: ['relationships.reject'] },
 };

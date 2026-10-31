@@ -2,10 +2,11 @@
 // where signing in lands (review round 1, design-7).
 //   Staff:   their work first: for an administrator, the open pilot access requests (design-8),
 //            once the session has passed the second factor (review round 2, recheck-1).
-//   Student: "My teachers" and "My requests".
+//   Student: "My teachers" and "My requests", with "Name a teacher" (/dashboard/teachers/new, M09).
 //   Sifu:    "Student requests" with the approval allowance, and "My schools"; at a real limit,
 //            where a request waits because of it, the upgrade prompt (<UpgradePrompt>) at the top
-//            of "Student requests".
+//            of "Student requests". The requests are answered on /dashboard/students/requests (M09).
+//   Both:    "Your teachers" (/dashboard/teachers) in the header: a Sifu has teachers too.
 // Every list has an empty state that says why it is empty and what comes next, honestly: a link
 // only where there is a real next step, and never the same label twice on one screen (design-9).
 // The notifications sit beside the lists (below them on a phone) with the unread count, which the
@@ -77,8 +78,10 @@ function Empty({ testId, children, action }: { testId: string; children: ReactNo
   );
 }
 
-/** The one real step for an account with a profile while requests are not open yet (M09). */
+/** The one real step for a teacher's account with a profile before anyone names them. */
 const NAME_CHECK = { href: '/account', label: 'See how your name reads' };
+/** The student's next step: a request to a teacher (M09). */
+const NAME_TEACHER = { href: '/dashboard/teachers/new', label: 'Name a teacher' };
 
 function Person({ person }: { person: PersonRef }) {
   // A removed profile keeps its row, anonymous (final check, security-2): a UI text, not a name.
@@ -125,10 +128,10 @@ function StudentLists({ overview }: { overview: DashboardOverview }) {
       </Section>
       <Section id="requests" title="My requests">
         {requests.length === 0 ? (
-          <Empty testId="empty-requests">
+          <Empty testId="empty-requests" action={overview.hasProfile ? NAME_TEACHER : undefined}>
             {overview.hasProfile
-              ? 'No open requests. Requests to teachers open later in the pilot; a request you send then waits here until the teacher answers it.'
-              : 'No requests yet. With a profile, you will be able to ask your teachers to confirm you once requests open later in the pilot.'}
+              ? 'No open requests. Name a teacher and ask them to confirm that they taught you; the request waits here until they answer it.'
+              : 'No requests yet. With a profile, you can ask your teachers to confirm that they taught you.'}
           </Empty>
         ) : (
           <ul data-testid="requests" className="grid">
@@ -191,7 +194,12 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
                 />
               ))}
             </ul>
-            <p className="text-sm text-fg-muted">Approving and declining requests opens with teacher requests, later in the pilot. Until then they stay here.</p>
+            <p>
+              <Link href="/dashboard/students/requests" className={buttonVariants({ variant: 'secondary' })}>
+                Answer them in Student requests
+                <ArrowRightIcon />
+              </Link>
+            </p>
           </>
         )}
       </Section>
@@ -329,6 +337,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             </div>
           </dl>
           <p className="mt-4 flex flex-wrap gap-x-5 text-sm">
+            {staffOnly ? null : (
+              <Link href="/dashboard/teachers" className="link inline-flex min-h-11 items-center">
+                Your teachers
+              </Link>
+            )}
             <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
               Account type and plan
             </Link>
