@@ -374,6 +374,72 @@ describe('requests: checks and idempotency', () => {
     expect(await fields({})).toEqual({ code: 'CONFLICT', fields: ['teacherId'] });
   });
 
+  it('one submit names every field to correct: the teacher, the lineage and every period (M09 review, screens-4)', async () => {
+    const student = await member('m09-all-fields-student');
+    const hidden = await member('m09-all-fields-hidden', { sifu: true, hidden: true });
+    const lonely = await member('m09-all-fields-lonely', { sifu: true });
+    const fields = async (input: Record<string, unknown>) => {
+      const error = (await requestTeacher(student.principal, { idempotencyKey: key(), ...input } as never, meta).catch((e: unknown) => e)) as { code: string; fields: Record<string, string> };
+      return { code: error.code, fields: Object.keys(error.fields ?? {}).sort() };
+    };
+    // An empty form: no teacher, the teacher's own lineage, a period without its start.
+    expect(await fields({ teacherId: '', lineageId: null, periods: [{ from: null, to: null, ongoing: true }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.from', 'teacherId'] });
+    // No teacher, a lineage that does not exist, an end before the start.
+    expect(await fields({ teacherId: '', lineageId: uuidv7(), periods: [{ from: '2020', to: '2019', ongoing: false }] })).toEqual({
+      code: 'BAD_REQUEST',
+      fields: ['lineageId', 'periods.0.to', 'teacherId'],
+    });
+    // A teacher without a lineage of their own, five periods without a start: all six at once.
+    const empty = Array.from({ length: 5 }, () => ({ from: null, to: null, ongoing: true }));
+    expect(await fields({ teacherId: lonely.personId, lineageId: null, periods: empty })).toEqual({
+      code: 'BAD_REQUEST',
+      fields: ['lineageId', 'periods.0.from', 'periods.1.from', 'periods.2.from', 'periods.3.from', 'periods.4.from'],
+    });
+    // A teacher who cannot be found, a lineage that does not exist and a period ending in the future.
+    expect(await fields({ teacherId: hidden.personId, lineageId: uuidv7(), periods: [{ from: '2020', to: `${new Date().getUTCFullYear() + 1}`, ongoing: false }] })).toEqual({
+      code: 'BAD_REQUEST',
+      fields: ['lineageId', 'periods.0.to', 'teacherId'],
+    });
+    // Nothing was recorded.
+    expect(await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).where(eq(teachingRelationship.studentPersonId, student.personId))).toEqual([]);
+  });
+
+  it('a corrected request to a teacher who can no longer answer is refused like a new request; a hidden teacher can still be asked again (M09 review, code-4)', async () => {
+    const declined = async (label: string) => {
+      const teacher = await member(`${label}-teacher`, { sifu: true });
+      const student = await member(`${label}-student`);
+      const id = await request(student, teacher);
+      await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+      return { teacher, student, id };
+    };
+    const resubmitFields = async (student: Member, id: string) => {
+      const error = (await resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom('2018'), idempotencyKey: key() }, meta).catch((e: unknown) => e)) as {
+        code: string;
+        fields: Record<string, string>;
+      };
+      return { code: error.code, fields: error.fields };
+    };
+    // The teacher's account was deleted: the person stays as an unclaimed record (M07).
+    const unclaimed = await declined('m09-resubmit-unclaimed');
+    await getDb().update(person).set({ claimedByUserId: null, stewardship: 'unclaimed' }).where(eq(person.id, unclaimed.teacher.personId));
+    expect(await resubmitFields(unclaimed.student, unclaimed.id)).toEqual({
+      code: 'BAD_REQUEST',
+      fields: { teacherId: 'This teacher has no account yet. Requests to teachers without an account open later in the pilot.' },
+    });
+    expect(await statusOf(unclaimed.id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
+    // The teacher's profile was removed.
+    const removed = await declined('m09-resubmit-removed');
+    await getDb().update(person).set({ deletedAt: new Date() }).where(eq(person.id, removed.teacher.personId));
+    expect(await resubmitFields(removed.student, removed.id)).toEqual({ code: 'BAD_REQUEST', fields: { teacherId: 'Choose your teacher from the search.' } });
+    expect(await statusOf(removed.id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
+    expect(await notificationsOf(removed.teacher.account.id, 'relationship.requested')).toHaveLength(1);
+    // A teacher who hid their profile still has an account and can answer: the student knows them.
+    const hidden = await declined('m09-resubmit-hidden');
+    await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, hidden.teacher.personId));
+    await resubmitRelationship(hidden.student.principal, { relationshipId: hidden.id, periods: ongoingFrom('2018'), idempotencyKey: key() }, meta);
+    expect(await statusOf(hidden.id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+  });
+
   it('the same idempotency key replays the request: one row, one event, one e-mail', async () => {
     const teacher = await member('m09-replay-teacher', { sifu: true });
     const student = await member('m09-replay-student');

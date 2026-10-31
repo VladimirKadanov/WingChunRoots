@@ -775,7 +775,7 @@ function periodShape(rows: PeriodRow[]) {
 export async function requestTeacher(principal: Principal | null, raw: RequestInput, meta: RequestMeta): Promise<RelationshipResult> {
   const p = requireUser(principal);
   const parsed = requestInput.safeParse(raw);
-  if (!parsed.success) throw fieldErrors(parsed.error);
+  if (!parsed.success) throw await withFormChecks(fieldErrors(parsed.error), raw);
   const input = parsed.data;
   const db = getDb();
   const viewer = await viewerOf(db, p);
@@ -800,37 +800,21 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         return { id: replay.relationshipId, replayed: true };
       }
 
-      const [teacher] = await tx
-        .select({ id: person.id, claimedBy: person.claimedByUserId, kind: person.kind, isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${input.teacherId}::uuid)` })
-        .from(person)
-        .where(and(eq(person.id, input.teacherId), isNull(person.deletedAt)));
-      if (!teacher || !teacher.isPublic) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { teacherId: 'Choose your teacher from the search.' });
-      if (teacher.id === studentId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { teacherId: 'You can’t name yourself as your teacher.' });
-      // Out of scope for M09: teachers without an account and historical teachers (the review path, plan §6.7).
-      if (!teacher.claimedBy || teacher.kind !== 'living') {
-        throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', {
-          teacherId: 'This teacher has no account yet. Requests to teachers without an account open later in the pilot.',
-        });
-      }
-
-      let lineageId = input.lineageId ?? null;
-      if (lineageId && !(await lineageExists(tx, lineageId))) {
-        throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose a lineage from the list.' });
-      }
-      lineageId ??= await lineageFor(tx, teacher.id);
-      if (!lineageId) {
-        throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose the lineage this training belongs to.' });
-      }
-
-      const { rows, fields } = await checkPeriods(tx, input.periods);
-      if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
+      // Every field error of the submit at once (M09 review, screens-4): the teacher, the lineage
+      // (inferred only from a teacher who can be asked) and the periods.
+      const teacherId = input.teacherId;
+      const teacherError = await teacherRefusal(tx, teacherId, studentId, { mustBePublic: true });
+      const { lineageId, fields: lineageFields } = await checkLineage(tx, input.lineageId ?? null, teacherError ? null : teacherId);
+      const { rows, fields: periodFields } = await checkPeriods(tx, input.periods);
+      const fields = { ...(teacherError ? { teacherId: teacherError } : {}), ...lineageFields, ...periodFields };
+      if (Object.keys(fields).length > 0 || !lineageId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
 
       const [duplicate] = await tx
         .select({ id: teachingRelationship.id })
         .from(teachingRelationship)
         .where(
           and(
-            eq(teachingRelationship.teacherPersonId, teacher.id),
+            eq(teachingRelationship.teacherPersonId, teacherId),
             eq(teachingRelationship.studentPersonId, studentId),
             eq(teachingRelationship.lineageId, lineageId),
             inArray(teachingRelationship.status, ['pending_teacher', 'awaiting_claim', 'under_review', 'verified', 'in_arbitration']),
@@ -839,16 +823,16 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
       if (duplicate) throw new ServiceError('CONFLICT', DUPLICATE_MESSAGE, { teacherId: DUPLICATE_MESSAGE });
 
       await checkPendingCap(tx, studentId);
-      const window = await checkRequestWindow(tx, p.user.id, teacher.id);
+      const window = await checkRequestWindow(tx, p.user.id, teacherId);
 
       // Early, so the student learns it now; the approval checks it again under the global lock.
-      if (await closesCycle(tx, teacher.id, studentId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE, { teacherId: CYCLE_MESSAGE });
+      if (await closesCycle(tx, teacherId, studentId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE, { teacherId: CYCLE_MESSAGE });
 
       const id = uuidv7();
       // DEFAULT D03: pending requests are involved_only.
       await tx.insert(teachingRelationship).values({
         id,
-        teacherPersonId: teacher.id,
+        teacherPersonId: teacherId,
         studentPersonId: studentId,
         lineageId,
         status: 'pending_teacher',
@@ -866,12 +850,12 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         actorRole: p.user.role,
         subjectType: 'teaching_relationship',
         subjectId: id,
-        after: { status: 'pending_teacher', visibility: 'involved_only', teacherPersonId: teacher.id, studentPersonId: studentId, lineageId, periods: periodShape(rows), prefersDisplayPrimary: input.displayPrimary, lineageInferred: !input.lineageId },
+        after: { status: 'pending_teacher', visibility: 'involved_only', teacherPersonId: teacherId, studentPersonId: studentId, lineageId, periods: periodShape(rows), prefersDisplayPrimary: input.displayPrimary, lineageInferred: !input.lineageId },
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });
       const [l] = await tx.select({ name: lineage.name }).from(lineage).where(eq(lineage.id, lineageId));
-      await tellTeacher(tx, { id, teacherPersonId: teacher.id, studentPersonId: studentId, lineageName: l!.name }, rows, eventId, false, window.toTeacher === 0);
+      await tellTeacher(tx, { id, teacherPersonId: teacherId, studentPersonId: studentId, lineageName: l!.name }, rows, eventId, false, window.toTeacher === 0);
       return { id, replayed: false };
     });
     return { relationship: await viewOf(db, outcome.id, viewer), replayed: outcome.replayed };
@@ -889,6 +873,58 @@ function fieldErrors(error: z.ZodError): ServiceError {
     fields[key] ??= issue.message;
   }
   return new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
+}
+
+/**
+ * The schema's refusal of a request or a corrected request, with the field errors of the parts
+ * that are well formed themselves: the periods (checkPeriods) and a lineage that does not exist. So
+ * one submit names every field to correct (M09 review, screens-4), even when the teacher is missing.
+ */
+async function withFormChecks(error: ServiceError, raw: unknown): Promise<ServiceError> {
+  const fields: Record<string, string> = { ...error.fields };
+  const body = raw !== null && typeof raw === 'object' ? (raw as { periods?: unknown; lineageId?: unknown }) : {};
+  const db = getDb();
+  const given = periods.safeParse(body.periods);
+  if (given.success && !Object.keys(fields).some((key) => key === 'periods' || key.startsWith('periods.'))) {
+    for (const [key, message] of Object.entries((await checkPeriods(db, given.data)).fields)) fields[key] ??= message;
+  }
+  const lineageId = z.uuid().safeParse(body.lineageId);
+  if (lineageId.success && !fields.lineageId && !(await lineageExists(db, lineageId.data))) fields.lineageId = LINEAGE_UNKNOWN;
+  return new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
+}
+
+const NO_ACCOUNT_MESSAGE = 'This teacher has no account yet. Requests to teachers without an account open later in the pilot.';
+const LINEAGE_UNKNOWN = 'Choose a lineage from the list.';
+
+/**
+ * Why `teacherId` cannot be asked to confirm `studentId`'s training, as the field error of
+ * `teacherId`, or null when they can: the profile exists (not removed), is not the student's own, has
+ * an account and is a living person. Out of scope for M09: teachers without an account and
+ * historical teachers (the review path, plan §6.7). A new request also needs the teacher to be public
+ * (`mustBePublic`: the student found them in search); a corrected one does not, the student knows
+ * them already (M09 review, code-4).
+ */
+async function teacherRefusal(db: Executor, teacherId: string, studentId: string, options: { mustBePublic: boolean }): Promise<string | null> {
+  const [teacher] = await db
+    .select({ id: person.id, claimedBy: person.claimedByUserId, kind: person.kind, isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${teacherId}::uuid)` })
+    .from(person)
+    .where(and(eq(person.id, teacherId), isNull(person.deletedAt)));
+  if (!teacher || (options.mustBePublic && !teacher.isPublic)) return 'Choose your teacher from the search.';
+  if (teacher.id === studentId) return 'You can’t name yourself as your teacher.';
+  if (!teacher.claimedBy || teacher.kind !== 'living') return NO_ACCOUNT_MESSAGE;
+  return null;
+}
+
+/**
+ * The lineage of a request: the one asked for when it exists, else the teacher's own (lineageFor),
+ * with the field error of `lineageId` when neither fits. `teacherId` is null when the teacher cannot
+ * be asked: no lineage is inferred from them, and no lineage error is given for it.
+ */
+async function checkLineage(db: Executor, asked: string | null, teacherId: string | null): Promise<{ lineageId: string | null; fields: Record<string, string> }> {
+  if (asked) return (await lineageExists(db, asked)) ? { lineageId: asked, fields: {} } : { lineageId: null, fields: { lineageId: LINEAGE_UNKNOWN } };
+  if (!teacherId) return { lineageId: null, fields: {} };
+  const own = await lineageFor(db, teacherId);
+  return own ? { lineageId: own, fields: {} } : { lineageId: null, fields: { lineageId: 'Choose the lineage this training belongs to.' } };
 }
 
 // --- Transitions on an existing relationship ---------------------------------------------------
@@ -1231,7 +1267,7 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
 export async function resubmitRelationship(principal: Principal | null, raw: z.input<typeof resubmitInput>, meta: RequestMeta): Promise<RelationshipResult> {
   const p = requireUser(principal);
   const parsed = resubmitInput.safeParse(raw);
-  if (!parsed.success) throw fieldErrors(parsed.error);
+  if (!parsed.success) throw await withFormChecks(fieldErrors(parsed.error), raw);
   const input = parsed.data;
   const db = getDb();
   const viewer = await viewerOf(db, p);
@@ -1248,14 +1284,17 @@ export async function resubmitRelationship(principal: Principal | null, raw: z.i
       if (row.status !== 'rejected') throw new ServiceError('CONFLICT', 'Only a declined request can be corrected and sent again.');
       await checkPendingCap(tx, row.studentPersonId);
       await checkRequestWindow(tx, p.user.id, row.teacherPersonId);
+      // The teacher must still be able to answer, as for a new request (M09 review, code-4): a
+      // removed profile, one without an account or a historical person would leave it waiting forever.
+      const teacherError = await teacherRefusal(tx, row.teacherPersonId, row.studentPersonId, { mustBePublic: false });
       // Left out: the request keeps its lineage. null: the teacher's own, as for a request (the
       // form's "The teacher's own lineage"). An id: that lineage.
-      let lineageId = input.lineageId === undefined ? row.lineageId : input.lineageId;
-      if (lineageId && !(await lineageExists(tx, lineageId))) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose a lineage from the list.' });
-      lineageId ??= await lineageFor(tx, row.teacherPersonId);
-      if (!lineageId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose the lineage this training belongs to.' });
-      const { rows, fields } = await checkPeriods(tx, input.periods);
-      if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
+      const asked = input.lineageId === undefined ? row.lineageId : input.lineageId;
+      const { lineageId, fields: lineageFields } = await checkLineage(tx, asked, teacherError ? null : row.teacherPersonId);
+      const { rows, fields: periodFields } = await checkPeriods(tx, input.periods);
+      // Every field error at once, as for a request (M09 review, screens-4).
+      const fields = { ...(teacherError ? { teacherId: teacherError } : {}), ...lineageFields, ...periodFields };
+      if (Object.keys(fields).length > 0 || !lineageId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
       if (await closesCycle(tx, row.teacherPersonId, row.studentPersonId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE);
       await tx
         .update(teachingRelationship)
