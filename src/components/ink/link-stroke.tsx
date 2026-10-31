@@ -1,11 +1,12 @@
 // A short sample of a link's stroke for legends and badges, in the state's colour. The states
 // have three renderings (ADR 0006): the ink geometry of src/design/ink.ts that the home page and
-// the lineage pages draw; the explorer's ink along its routes (canvasInk, InkPaths: owner decision
-// 2026-10-31, "Ink restyle"), from the compact cards up; and the plain strokes of the explorer's
-// canvas zoomed out to the dots (StrokePaths). A legend draws its samples the way its screen draws
-// the links (`variant`), so the sample and the drawing never differ (plan §4.6: never colour alone).
+// the lineage pages draw; the explorer's ink along its routes (canvasInk in canvas-ink.ts, drawn by
+// InkPaths: owner decision 2026-10-31, "Ink restyle"), from the compact cards up; and the plain
+// strokes of the explorer's canvas zoomed out to the dots (StrokePaths). A legend draws its
+// samples the way its screen draws the links (`variant`), so the sample and the drawing never
+// differ (plan §4.6: never colour alone).
 
-import { dotsD, inkAlong, inkShapes, type Cubic, type InkShape, type Route } from '@/design/ink';
+import { dotsD, inkShapes, type Cubic, type InkShape } from '@/design/ink';
 import { linkStyles, type VerificationState } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 
@@ -19,30 +20,6 @@ const SAMPLE: Cubic = [
 ];
 /** The same curve as a path, for the canvas strokes. */
 const SAMPLE_PATH = `M${SAMPLE[0].join(' ')}C${SAMPLE.slice(1).flat().join(' ')}`;
-/** The same curve as a route, for the canvas's ink. */
-const SAMPLE_ROUTE: Route = { start: SAMPLE[0], pieces: [{ kind: 'cubic', c1: SAMPLE[1], c2: SAMPLE[2], to: SAMPLE[3] }] };
-
-/**
- * The explorer's ink at the two levels of detail that draw it (plan §4.8): the compact chips are
- * drawn at a smaller zoom, so their ink is wider and its dashes and dots longer apart. The width falls with the distance from the
- * teacher (`reach`), so the links of one teacher share their trunk at one width (b5).
- */
-export const CANVAS_INK = {
-  full: { w0: 5.6, w1: 1.4, reach: 90, doubleOffset: 2.6 },
-  compact: { w0: 9, w1: 2.8, reach: 90, doubleOffset: 4.5, pattern: 1.6 },
-} as const;
-
-/**
- * A link of the explorer in ink along its route: the state's shape (inkAlong), a thin ribbon for
- * ended training, and for a teacher of another lineage a hollow ribbon with the long dash of the
- * cross-lineage stroke (plan §4.6: long-dashed), tapering over its whole length.
- */
-export function canvasInk(kind: LinkKind, route: Route, lod: keyof typeof CANVAS_INK): InkShape {
-  const o = CANVAS_INK[lod];
-  if (kind === 'cross_lineage') return inkAlong(route, 'verified', { w0: o.w0, w1: o.w1, crossLineage: { dash: linkStyles.cross_lineage.dash } });
-  if (kind === 'historical') return inkAlong(route, 'verified', { w0: o.w0 * 0.36, w1: o.w1 * 0.7, reach: o.reach });
-  return inkAlong(route, kind, o);
-}
 
 /**
  * One ink shape of the explorer as a single path in the stroke's colour: the dots as one path of
@@ -140,6 +117,17 @@ function shapeFor(kind: LinkKind): InkShape {
   return inkShapes(SAMPLE, kind, { w0: 4.8, w1: 1.3, n: 30 });
 }
 
+/**
+ * The legend's sample of the explorer's ink: the shape of the state along the sample curve, drawn
+ * as the canvas draws its ink (InkPaths), the hollow ribbon with the long dash of the canvas's
+ * cross-lineage stroke (canvas-ink.ts). The canvas's own ink geometry stays out of the page's
+ * first JavaScript: it comes with the canvas.
+ */
+function canvasSample(kind: LinkKind): InkShape {
+  const shape = shapeFor(kind);
+  return shape.kind === 'hollow' ? { ...shape, dash: linkStyles.cross_lineage.dash } : shape;
+}
+
 export function LinkStroke({
   kind,
   variant = 'ink',
@@ -149,7 +137,7 @@ export function LinkStroke({
   kind: LinkKind;
   /**
    * 'canvas': the explorer's strokes zoomed out to the dots (StrokePaths), on the ground of
-   * --seal-ground or the page; 'canvas-ink': the explorer's ink from the compact cards up (canvasInk).
+   * --seal-ground or the page; 'canvas-ink': the explorer's ink from the compact cards up (InkPaths).
    */
   variant?: 'ink' | 'canvas' | 'canvas-ink';
   className?: string;
@@ -170,7 +158,7 @@ export function LinkStroke({
       {variant === 'canvas' ? (
         <StrokePaths d={SAMPLE_PATH} kind={kind} ground="var(--seal-ground, var(--bg))" />
       ) : variant === 'canvas-ink' ? (
-        <InkPaths shape={canvasInk(kind, SAMPLE_ROUTE, 'full')} kind={kind} />
+        <InkPaths shape={canvasSample(kind)} kind={kind} />
       ) : (
         <InkShapeSvg shape={shapeFor(kind)} />
       )}

@@ -65,9 +65,11 @@ import {
 } from 'react';
 
 import { FitIcon, MinusIcon, PlusIcon } from '@/components/icons';
-import { canvasInk, InkPaths, type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
+import { canvasInk } from '@/components/ink/canvas-ink';
+import { InkPaths, type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
-import { type InkShape, type Point as InkPoint, type Route, roundedRoute, routeD } from '@/design/ink';
+import { type InkShape, type Point as InkPoint } from '@/design/ink';
+import { type Route, roundedRoute, routeD } from '@/design/ink-route';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
@@ -601,7 +603,7 @@ function ColumnMarksView({ marks }: { marks: ColumnMarks }) {
               className="absolute origin-top-left rounded-xs bg-bg px-0.5 text-right text-caption leading-4 font-semibold tracking-normal text-fg-subtle tabular"
               style={{ left: rail.x - 8, top: row.y, transform: `${scale} translate(-100%, -50%)` }}
             >
-              {i === 0 ? <span className="block text-[0.625rem] leading-3 font-normal tracking-normal">Gen</span> : null}
+              {i === 0 ? <span className="block text-caption leading-3 font-normal tracking-normal">Gen</span> : null}
               {row.generation}
             </div>
           )),
@@ -1025,22 +1027,30 @@ function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { sta
   const fitTop = Math.floor((pane.height - pane.height / (1 + FIT_OPTIONS.padding)) / 2);
   if (fitTop >= topRoom && !people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
   const margin = marginOf(pane);
-  const above = Math.max(margin.y, topRoom);
   const centre = pane.width / 2;
-  // The widths to try: as wide as the pane and React Flow's fit allow, and the widest that passes
-  // beside each overlay off the centre (a hair narrower, so rounding never puts it under).
-  const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - margin.y - above) / bounds.height);
-  const widths = [widest];
-  for (const o of overlays) {
-    const beside = o.x >= centre ? 2 * (o.x - centre) : o.x + o.width <= centre ? 2 * (centre - o.x - o.width) : 0;
-    if (beside > 0 && beside < widest) widths.push(beside - 1e-6);
-  }
-  const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - above) / bounds.height)));
-  if (!(zoom > 0)) return { start: null, zoom: fit.zoom };
-  // A frame narrower than the width tried reaches at least as low: it is centred in the room it has.
-  const height = bounds.height * zoom;
-  const top = above + (floorOf(pane, margin.y, bounds.width * zoom) - above - height) / 2;
-  return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
+  // The frame with `above` pixels kept above its top row.
+  const frame = (above: number): { start: ViewStart | null; zoom: number } => {
+    // The widths to try: as wide as the pane and React Flow's fit allow, and the widest that passes
+    // beside each overlay off the centre (a hair narrower, so rounding never puts it under).
+    const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - margin.y - above) / bounds.height);
+    const widths = [widest];
+    for (const o of overlays) {
+      const beside = o.x >= centre ? 2 * (o.x - centre) : o.x + o.width <= centre ? 2 * (centre - o.x - o.width) : 0;
+      if (beside > 0 && beside < widest) widths.push(beside - 1e-6);
+    }
+    const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - above) / bounds.height)));
+    if (!(zoom > 0)) return { start: null, zoom: fit.zoom };
+    // A frame narrower than the width tried reaches at least as low: it is centred in the room it has.
+    const height = bounds.height * zoom;
+    const top = above + (floorOf(pane, margin.y, bounds.width * zoom) - above - height) / 2;
+    return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
+  };
+  // Readable cards come before the headers' room: where keeping it would take the view below the
+  // readable zoom that the margin alone keeps, the headers may be cut at the top of the pane.
+  const withRoom = frame(Math.max(margin.y, topRoom));
+  if (topRoom <= margin.y || withRoom.zoom >= READABLE_ZOOM) return withRoom;
+  const plain = frame(margin.y);
+  return plain.zoom >= READABLE_ZOOM ? plain : withRoom;
 }
 
 /**

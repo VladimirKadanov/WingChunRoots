@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { brushWidth, dotsD, inkAlong, inkShapes, roundedRoute, routeD, sampleRoute, type Cubic, type Point } from './ink';
+import { brushWidth, dotsD, inkShapes, type Cubic, type Point } from './ink';
+import { inkAlong, roundedRoute, routeD, sampleRoute } from './ink-route';
 import { VERIFICATION_STATES } from './tokens';
 
 const curve: Cubic = [
