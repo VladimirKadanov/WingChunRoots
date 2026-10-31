@@ -23,7 +23,7 @@ import { LoadError } from '@/components/account/load-error';
 import { LOAD_ERRORS } from '@/components/account/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
-import { UPGRADE_CLOSED_PARAM } from '@/components/plans/form-ids';
+import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM, UPGRADE_SUMMARY_ID } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { ApproveForm, DeclineForm, EndTrainingForm } from '@/components/relationships/forms';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
@@ -98,6 +98,11 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
   const approved = incoming.students.find((view) => view.id === one(query.approved));
   const ended = incoming.students.find((view) => view.id === one(query.ended));
   const declined = one(query.declined);
+  // A refusal at the limit links to what a higher plan adds (M09 review, screens-6): this page with
+  // the prompt open at its summary, or the plans page once the account has asked for pilot access
+  // (the prompt then lists no benefits).
+  const upgradeHref =
+    incoming.upgrade && !incoming.upgrade.pilotRequest ? `${PAGE}?${UPGRADE_OPEN_PARAM.name}=${UPGRADE_OPEN_PARAM.value}#${UPGRADE_SUMMARY_ID}` : '/plans';
   const allowanceText =
     allowance.limit === null ? `${allowance.approved} approved, no limit on ${allowance.planName}` : `${allowance.approved} of ${allowance.limit} approved on ${allowance.planName}`;
 
@@ -153,6 +158,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                 requestAction={requestPilotAccessAction}
                 notNowAction={PAGE}
                 closedByChoice={query[UPGRADE_CLOSED_PARAM.name] === UPGRADE_CLOSED_PARAM.value}
+                expanded={query[UPGRADE_OPEN_PARAM.name] === UPGRADE_OPEN_PARAM.value}
                 initial={pilotOutcome}
               />
             ) : null}
@@ -214,6 +220,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                                 idempotencyKey={randomUUID()}
                                 who={who}
                                 fixedId={approveForm(view.id)}
+                                upgradeHref={upgradeHref}
                                 initial={approveResult?.values?.relationshipId === view.id ? approveResult : null}
                               />
                             ) : null}

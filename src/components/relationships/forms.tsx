@@ -35,7 +35,10 @@ function RowButton({ pending, label, pendingLabel, who, variant = 'secondary' }:
 
 /**
  * "Approve" of a waiting request. A refusal (the plan's limit, a cycle, a request answered in
- * another tab) shows as the row's message; at the limit it points to the upgrade prompt above.
+ * another tab) shows as the row's message; at the limit it links to what a higher plan adds
+ * (`upgradeHref`, M09 review screens-6): the page again with the upgrade prompt open at its
+ * summary (src/components/plans/form-ids.ts, UPGRADE_OPEN_PARAM), or the plans page when the
+ * prompt lists no benefits (the account has asked for pilot access already).
  */
 export function ApproveForm({
   action,
@@ -43,6 +46,7 @@ export function ApproveForm({
   idempotencyKey,
   who,
   fixedId,
+  upgradeHref,
   initial,
 }: {
   action: Action;
@@ -50,6 +54,8 @@ export function ApproveForm({
   idempotencyKey: string;
   /** The student's name, for the button's accessible name. */
   who: string;
+  /** Where "See what a higher plan adds" leads after a refusal at the limit. */
+  upgradeHref: string;
   /** The row's fixed form id, for the outcome of a post without JavaScript. */
   fixedId: string;
   initial?: FormState | null;
@@ -63,7 +69,7 @@ export function ApproveForm({
       <FormMessage form={formId} state={state} single />
       {state.status === 'error' && state.values?.limit === 'reached' ? (
         <p className="text-sm">
-          <a href="#upgrade" className="link inline-flex min-h-11 items-center">
+          <a href={upgradeHref} className="link inline-flex min-h-11 items-center">
             See what a higher plan adds
           </a>
         </p>
