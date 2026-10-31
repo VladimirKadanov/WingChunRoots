@@ -1301,6 +1301,11 @@ export async function endRelationship(principal: Principal | null, raw: z.input<
   const ended = parsePartialDate(input.endedOn);
   const today = todayUtc();
   if (!ended) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { endedOn: 'Write the end as a year (2021), a month (2021-06) or a date (2021-06-30).' });
+  // As for a period's start (checkPeriods): no training date before EARLIEST_TRAINING_YEAR, also
+  // when the period has no recorded start to compare with (M09 review, code-6).
+  if (Number(ended.firstDay.slice(0, 4)) < EARLIEST_TRAINING_YEAR) {
+    throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { endedOn: `The end can't be before ${EARLIEST_TRAINING_YEAR}.` });
+  }
   if (ended.firstDay > today) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { endedOn: "The end can't be in the future." });
   const db = getDb();
   const viewer = await viewerOf(db, p);

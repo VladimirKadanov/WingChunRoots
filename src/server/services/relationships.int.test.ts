@@ -212,7 +212,11 @@ describe('every transition writes relationship_event and audit_log', () => {
     const student = await member('m09-ended');
     const id = await request(student, teacher, { periods: [{ from: '2019-04', to: null, ongoing: true }] });
     await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    cache.revalidated = [];
     const ended = await endRelationship(teacher.principal, { relationshipId: id, endedOn: '2024', idempotencyKey: key() }, meta);
+    // The public cache of both people and their lineage is dropped at once (plan §6.4, docs/api/lineage.md
+    // §6.1): no counters job follows an end, so nothing else would drop it (M09 review, requirements-2).
+    expect(cache.revalidated).toEqual(expect.arrayContaining([`person:${teacher.personId}`, `person:${student.personId}`, `lineage:${lineageId}`]));
     expect(ended.relationship).toMatchObject({ status: 'verified', visibility: 'public', historical: true, statusLabel: 'Verified · training ended', can: { end: false } });
     // The end keeps the coarser precision of the two: the period becomes 2019–2024.
     expect(ended.relationship.periods).toEqual([{ from: '2019', to: '2024', ongoing: false, precision: 'year', school: null }]);
@@ -220,6 +224,37 @@ describe('every transition writes relationship_event and audit_log', () => {
     expect((await audits(id)).at(-1)).toMatchObject({ action: 'relationship.end', reason: 'training_ended' });
     expect(await notificationsOf(student.account.id, 'relationship.ended')).toEqual([{ payload: { relationshipId: id, by: 'teacher' } }]);
     expect(await refusal(endRelationship(student.principal, { relationshipId: id, endedOn: '2024', idempotencyKey: key() }, meta))).toBe('CONFLICT');
+  });
+});
+
+describe('end: the end date (M09 review, code-6)', () => {
+  it('refuses an end before 1900 (also without a recorded start), in the future or before the period’s start, and changes nothing', async () => {
+    const teacher = await member('m09-end-dates-teacher', { sifu: true });
+    const student = await member('m09-end-dates-student');
+    const id = await request(student, teacher, { periods: [{ from: '2019-04', to: null, ongoing: true }] });
+    await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    const refused = async (endedOn: string) => {
+      const error = (await endRelationship(student.principal, { relationshipId: id, endedOn, idempotencyKey: key() }, meta).catch((e: unknown) => e)) as {
+        code: string;
+        fields: Record<string, string>;
+      };
+      return { code: error.code, fields: error.fields };
+    };
+    // A period with no recorded start, as some archive records have: only the bound of 1900 applies.
+    await getDb().update(trainingPeriod).set({ startsOn: null, precision: 'unknown' }).where(eq(trainingPeriod.relationshipId, id));
+    expect(await refused('0001')).toEqual({ code: 'BAD_REQUEST', fields: { endedOn: "The end can't be before 1900." } });
+    expect(await refused('1899-12')).toEqual({ code: 'BAD_REQUEST', fields: { endedOn: "The end can't be before 1900." } });
+    expect(await refused(`${new Date().getUTCFullYear() + 1}`)).toEqual({ code: 'BAD_REQUEST', fields: { endedOn: "The end can't be in the future." } });
+    // With a recorded start: not before it.
+    await getDb().update(trainingPeriod).set({ startsOn: '2019-04-01', precision: 'month' }).where(eq(trainingPeriod.relationshipId, id));
+    expect(await refused('2018')).toEqual({ code: 'BAD_REQUEST', fields: { endedOn: "The end can't be before the start (2019)." } });
+    const periods = await getDb().select({ ongoing: trainingPeriod.ongoing, endsOn: trainingPeriod.endsOn }).from(trainingPeriod).where(eq(trainingPeriod.relationshipId, id));
+    expect(periods).toEqual([{ ongoing: true, endsOn: null }]);
+    expect((await events(id)).filter((e) => e.reason === 'training_ended')).toEqual([]);
+    // 1900 itself is a valid end of a period without a recorded start.
+    await getDb().update(trainingPeriod).set({ startsOn: null, precision: 'unknown' }).where(eq(trainingPeriod.relationshipId, id));
+    const ended = await endRelationship(student.principal, { relationshipId: id, endedOn: '1900', idempotencyKey: key() }, meta);
+    expect(ended.relationship.periods).toEqual([{ from: null, to: '1900', ongoing: false, precision: 'year', school: null }]);
   });
 });
 
