@@ -134,16 +134,33 @@ function outsideTheirTeachers(scene: Scene) {
 /**
  * Sideways travel of an edge into such a student beyond the distance between its ends:
  * how far its route goes out of its way (review of M05, round 2).
+ *
+ * The edges of a teacher leave its card by one trunk at the middle of its bottom side (b5 of
+ * the M06 design review), so the first horizontal run of a route starts under the middle of
+ * the card; the part of that run under the teacher's own card is the trunk shared by all its
+ * students, not a detour of this edge. The route is measured from where that run leaves the
+ * card's width, which is where its own port stood when every edge had one along that side.
  */
 function detours(scene: Scene): { edge: string; detour: number }[] {
   const students = new Set(convergingStudents(scene).map((g) => g.student));
+  const byId = new Map(scene.nodes.map((n) => [n.id, n]));
   const out: { edge: string; detour: number }[] = [];
   for (const e of scene.edges) {
     if (!students.has(e.studentId) || e.path.type !== 'orthogonal') continue;
     const points = e.path.points;
-    let travel = 0;
-    for (let i = 1; i < points.length; i++) travel += Math.abs(points[i]!.x - points[i - 1]!.x);
-    out.push({ edge: e.id, detour: travel - Math.abs(points[points.length - 1]!.x - points[0]!.x) });
+    const teacher = byId.get(e.teacherId)!;
+    // The end of the first horizontal run (after the drop out of the teacher's card).
+    let i = 1;
+    while (i < points.length && points[i]!.x === points[0]!.x) i++;
+    if (i === points.length) {
+      out.push({ edge: e.id, detour: 0 });
+      continue;
+    }
+    while (i + 1 < points.length && points[i + 1]!.y === points[i]!.y) i++;
+    const start = Math.min(teacher.x + teacher.width, Math.max(teacher.x, points[i]!.x));
+    let travel = Math.abs(points[i]!.x - start);
+    for (let j = i + 1; j < points.length; j++) travel += Math.abs(points[j]!.x - points[j - 1]!.x);
+    out.push({ edge: e.id, detour: travel - Math.abs(points[points.length - 1]!.x - start) });
   }
   return out;
 }

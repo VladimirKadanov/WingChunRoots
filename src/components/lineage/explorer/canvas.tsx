@@ -68,7 +68,7 @@ import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
-import { bezierLabelPoint } from '@/lib/lineage-layout/scene';
+import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 
 import { type GenerationLabel } from '../generation';
@@ -905,9 +905,10 @@ export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pa
  * The view starts at the focus, or the first person of the top row when the focus is not drawn,
  * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
  * (the Lineage view opens on its root with a student of the root, not with the root alone above
- * the grand-students). When none fits beside them, the person alone at the pane's zoom. With
- * nobody drawn above the start's row, the view starts at the top of the pane, so the rows below
- * fill the rest; any other is centred. Null for a small scene, which is shown whole
+ * the grand-students). When none fits beside them, the person alone at the pane's zoom. The frame
+ * is centred on the pane, but rises until the top of the view meets the pane's margin where
+ * centring would leave empty canvas above it (with nobody drawn above the start's row, it starts
+ * at the top of the pane, so the rows below fill the rest). Null for a small scene, which is shown whole
  * (wholeViewStart): one whose drawn people the pane shows whole at READABLE_ZOOM or more.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
@@ -945,9 +946,12 @@ export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
     if (!fits(box, scale)) scale = Math.max(FULL_CARDS, (floor(box.width * scale) - margin.y) / box.height);
   }
   const height = box.height * scale;
-  // The frame's top on the pane: with nobody drawn above the start's row, the frame starts at the top.
-  const topRow = !people.some((n) => n.rank < start.rank);
-  const top = Math.min(topRow ? margin.y : (pane.height - height) / 2, floor(box.width * scale) - height);
+  // The frame's top on the pane: centred, but never below the point where the top of the view (its
+  // top row, and the lineage headers above it in a view of two or more columns) meets the margin,
+  // so no empty canvas shows above it (b7 of the M06 design review); with nobody drawn above the
+  // start's row the frame starts at the top.
+  const viewTop = Math.min(...people.map((n) => n.y)) - (scene.bands.length >= 2 ? COLUMN_HEADER_SPACE : 0);
+  const top = Math.min((pane.height - height) / 2, margin.y + (box.y - viewTop) * scale, floor(box.width * scale) - height);
   return { x: box.x + box.width / 2, y: box.y + (pane.height / 2 - top) / scale, zoom: scale };
 }
 

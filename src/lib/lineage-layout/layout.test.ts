@@ -4,6 +4,7 @@ import { LineageCycleError, LineageInputError } from './errors.ts';
 import { indexGraph } from './graph.ts';
 import { createElkEngine, layoutLineage, layoutLineageWithStats } from './layout.ts';
 import { CHOSEN_NODE_PLACEMENT, NODE_SIZES } from './presets.ts';
+import { COLUMN_GAP, COLUMN_HEADER_SPACE } from './scene.ts';
 import { computeRanks, computeRanksIndexed } from './ranks.ts';
 import { demoGraph } from './testing/build.ts';
 import {
@@ -95,6 +96,73 @@ describe('why the ranks are handed to ELK (plan §4.4)', () => {
   });
 });
 
+/** The index of the column (scene.bands) whose width holds the node's card, or -1. */
+function columnOf(scene: Scene, id: string): number {
+  const node = scene.nodes.find((n) => n.id === id)!;
+  return scene.bands.findIndex((b) => node.x >= b.x && node.x + node.width <= b.x + b.width);
+}
+
+describe('layoutLineage: lineage columns (Ink Lineage direction, owner decision 2026-10-31)', () => {
+  it('stands the lineages of a view side by side, every row at one height across them', async () => {
+    const scene = await layoutLineage(sharedAncestorView(dataset));
+    expect(scene.bands.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < scene.bands.length; i++) {
+      expect(scene.bands[i]!.x).toBeGreaterThanOrEqual(scene.bands[i - 1]!.x + scene.bands[i - 1]!.width + COLUMN_GAP);
+    }
+    for (const node of scene.nodes) expect(columnOf(scene, node.id), node.id).not.toBe(-1);
+    expect(scene.bands.reduce((sum, b) => sum + b.nodes, 0)).toBe(scene.nodes.length);
+    expect(ranksWithSeveralY(scene)).toEqual([]);
+    expect(rowsIncrease(scene)).toBe(true);
+    // Headers above the top row fit in the bounds.
+    expect(scene.bounds.y).toBeLessThanOrEqual(scene.rowY[0]! - COLUMN_HEADER_SPACE);
+  });
+
+  it('puts a founder at the head of the column of the lineage it founded when the view names the lineages', async () => {
+    // b learned from a in lineage x and founded lineage z, where c and d learned from b.
+    const graph = demoGraph(['a', 'b', 'c', 'd'], [['a', 'b'], ['b', 'c', 'primary', 'demo-lineage-z'], ['b', 'd', 'primary', 'demo-lineage-z']]);
+    const plain = await layoutLineage(graph);
+    // Without the lineages, b stands with its teacher and its students' edges cross to their column.
+    expect(plain.bands.map((b) => b.lineageId)).toEqual(['demo-lineage-x', 'demo-lineage-z']);
+    expect(columnOf(plain, 'b')).toBe(columnOf(plain, 'a'));
+    const named = await layoutLineage({ ...graph, lineages: [{ id: 'demo-lineage-z', rootPersonId: 'b' }] });
+    expect(named.bands.map((b) => [b.lineageId, b.nodes])).toEqual([
+      ['demo-lineage-x', 1],
+      ['demo-lineage-z', 3],
+    ]);
+    expect(columnOf(named, 'b')).toBe(columnOf(named, 'c'));
+    const kinds = new Map(named.edges.map((e) => [e.studentId, e.path.type]));
+    expect(kinds.get('b')).toBe('bezier');
+    expect(kinds.get('c')).toBe('orthogonal');
+    expect(kinds.get('d')).toBe('orthogonal');
+    expect(ranksWithSeveralY(named)).toEqual([]);
+  });
+
+  it('keeps the focus spine in the column of the focus, straight', async () => {
+    // f learned from t in lineage z; t and its teacher r are of lineage x.
+    const graph = demoGraph(
+      ['r', 't', 'f', 'g', 's'],
+      [['r', 't'], ['r', 's'], ['t', 'f', 'primary', 'demo-lineage-z'], ['f', 'g', 'primary', 'demo-lineage-z']],
+      { focusId: 'f' },
+    );
+    const scene = await layoutLineage(graph);
+    expect(scene.bands.length).toBe(2);
+    expect(new Set(['r', 't', 'f', 'g'].map((id) => columnOf(scene, id))).size).toBe(1);
+    expect(scene.spine.length).toBe(2);
+    expect(spineBends(scene)).toBe(0);
+    // Without a focus, t stays with its own lineage and the edge to f crosses to the column of z.
+    const loose = await layoutLineage({ ...graph, focusId: null });
+    expect(columnOf(loose, 't')).not.toBe(columnOf(loose, 'f'));
+    expect(loose.edges.find((e) => e.studentId === 'f')!.path.type).toBe('bezier');
+  });
+
+  it('rejects malformed lineages', async () => {
+    const graph = demoGraph(['a', 'b'], [['a', 'b']]);
+    await expect(layoutLineage({ ...graph, lineages: 'x' as never })).rejects.toBeInstanceOf(LineageInputError);
+    await expect(layoutLineage({ ...graph, lineages: [{ id: 3 }] as never })).rejects.toBeInstanceOf(LineageInputError);
+    await expect(layoutLineage({ ...graph, lineages: [{ id: 'l', rootPersonId: 3 }] as never })).rejects.toBeInstanceOf(LineageInputError);
+  });
+});
+
 describe('layoutLineage: edges', () => {
   it('draws edges to a teacher from another lineage as Bézier curves, not routed by ELK', async () => {
     const graph = sharedAncestorView(dataset);
@@ -117,7 +185,19 @@ describe('layoutLineage: edges', () => {
       expect(edge.path.midpoint.y).toBeGreaterThan(edge.path.start.y);
       expect(edge.path.midpoint.y).toBeLessThan(edge.path.end.y);
     }
+    // The lineage columns (Ink Lineage direction, owner decision 2026-10-31): an edge between
+    // two columns is a curve as well; every other edge is routed by ELK.
+    const column = (id: string) => {
+      const node = byId.get(id)!;
+      return scene.bands.findIndex((b) => node.x >= b.x && node.x + node.width <= b.x + b.width);
+    };
     for (const edge of scene.edges.filter((e) => e.kind !== 'crossLineage')) {
+      expect(column(edge.teacherId)).not.toBe(-1);
+      if (column(edge.teacherId) !== column(edge.studentId)) {
+        expect(edge.routedBy).toBe('scene');
+        expect(edge.path.type).toBe('bezier');
+        continue;
+      }
       expect(edge.routedBy).toBe('elk');
       expect(edge.path.type).toBe('orthogonal');
       if (edge.path.type !== 'orthogonal') continue;
@@ -131,7 +211,7 @@ describe('layoutLineage: edges', () => {
       }
     }
     // The scene bounds contain every curve.
-    for (const edge of cross) {
+    for (const edge of scene.edges.filter((e) => e.routedBy === 'scene')) {
       if (edge.path.type !== 'bezier') continue;
       for (const p of [edge.path.control1, edge.path.control2]) {
         expect(p.x).toBeGreaterThanOrEqual(scene.bounds.x);

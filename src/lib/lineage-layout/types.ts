@@ -85,6 +85,12 @@ export interface HiddenCount {
   students: number;
 }
 
+/** A lineage of the view: its id and its founder, as recorded (plan §6.3). */
+export interface LineageRef {
+  id: string;
+  rootPersonId?: string | null;
+}
+
 /** The graph returned by every explorer query (plan §6.3). */
 export interface LineageGraph {
   focusId: string | null;
@@ -92,6 +98,11 @@ export interface LineageGraph {
   nodes: LineageNode[];
   edges: LineageEdge[];
   hiddenCounts: Record<string, HiddenCount>;
+  /**
+   * The lineages of the view. Optional: without it every person stands in the column of the
+   * lineage it is ordered by (see `lineageBands`), and a founder is not told apart.
+   */
+  lineages?: readonly LineageRef[];
 }
 
 // ---------------------------------------------------------------------------------------
@@ -211,6 +222,21 @@ export interface SceneEdge {
   path: OrthogonalPath | BezierPath;
 }
 
+/**
+ * A column of the scene: the people of one lineage (plan §4.6, the Ink Lineage direction). The
+ * lineages of a view stand side by side, every row of generations at one height across them,
+ * and an edge between two columns is a Bézier curve in the gap between them.
+ */
+export interface SceneBand {
+  /** The lineage of the column; '' for people without a lineage. */
+  lineageId: string;
+  /** Left side and width of the column (its cards and routes, with ELK's padding). */
+  x: number;
+  width: number;
+  /** Number of people in the column. */
+  nodes: number;
+}
+
 export interface Scene {
   /** Format version of the scene object. */
   version: 1;
@@ -219,7 +245,7 @@ export interface Scene {
   preset: PresetName;
   nodePlacement: NodePlacement;
   nodeSize: DetailLevel;
-  /** Size of ELK's canvas; nodes and orthogonal routes lie inside it. */
+  /** Size of the canvas (ELK's canvas of every column, side by side); nodes and orthogonal routes lie inside it. */
   width: number;
   height: number;
   /** Bounding box of everything drawn, including Bézier curves that bulge outside the canvas. */
@@ -232,6 +258,11 @@ export interface Scene {
   edges: SceneEdge[];
   /** Ids of the focus spine edges, from the focus upwards. */
   spine: string[];
+  /**
+   * The lineage columns, left to right; one column when the view shows one lineage. With two or
+   * more, the explorer draws a header with the lineage's name above each.
+   */
+  bands: SceneBand[];
 }
 
 export interface LayoutStats {

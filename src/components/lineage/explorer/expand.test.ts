@@ -287,6 +287,7 @@ describe('anchoredScene', () => {
     nodes,
     edges,
     spine: [],
+    bands: [{ lineageId: 'demo-lineage', x: 0, width: 1000, nodes: nodes.length }],
   });
 
   // On screen: the teacher above the hub. The expansion's layout centres the hub over its new students.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildElkGraph } from './elk-graph.ts';
+import { buildElkGraph, inPortId, outPortId } from './elk-graph.ts';
 import { indexGraph } from './graph.ts';
 import { createElkEngine } from './layout.ts';
 import { CHOSEN_NODE_PLACEMENT, NODE_SIZES, RANK_PSEUDO_Y, SPINE_STRAIGHTNESS, layoutPresets } from './presets.ts';
@@ -104,6 +104,23 @@ describe('buildElkGraph (plan §4.5)', () => {
     expect(a.layoutOptions?.['elk.position']).toBe(`(300, ${RANK_PSEUDO_Y})`);
     expect(a.x).toBe(300);
     const explorer = build(graph, { preset: 'explorer', previousPositions });
-    expect(explorer.elkGraph.children!.every((c) => c.layoutOptions === undefined)).toBe(true);
+    expect(explorer.elkGraph.children!.every((c) => c.layoutOptions?.['elk.position'] === undefined)).toBe(true);
+  });
+
+  it('gives every card one port in the middle of its top side and one in the middle of its bottom side (b5)', () => {
+    const graph = demoGraph(['r', 'a', 'b'], [['r', 'a'], ['r', 'b']]);
+    const { elkGraph } = build(graph);
+    for (const child of elkGraph.children!) {
+      expect(child.layoutOptions?.['elk.portConstraints']).toBe('FIXED_POS');
+      expect(child.ports!.map((p) => [p.id, p.x, p.y])).toEqual([
+        [inPortId(child.id), child.width! / 2, 0],
+        [outPortId(child.id), child.width! / 2, child.height!],
+      ]);
+    }
+    // Both students hang from the one trunk port of their teacher.
+    expect(elkGraph.edges!.map((e) => [e.sources, e.targets])).toEqual([
+      [[outPortId('r')], [inPortId('a')]],
+      [[outPortId('r')], [inPortId('b')]],
+    ]);
   });
 });

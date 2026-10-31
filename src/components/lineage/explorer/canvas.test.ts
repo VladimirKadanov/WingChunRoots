@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
+import { COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
 
@@ -60,6 +61,7 @@ function sceneOf(people: readonly { id: string; rank: number; x: number; y?: num
     nodes,
     edges,
     spine: [],
+    bands: [{ lineageId: 'demo-lineage', x: 0, width, nodes: nodes.length }],
   };
 }
 
@@ -188,6 +190,21 @@ describe('the first view of a scene', () => {
     expect(students.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('leaves no empty canvas above the top row when the view starts at a person below it (b7)', () => {
+    // On a tall phone the frame of the hub, its teacher and two students is shorter than the pane:
+    // centred, it would leave the canvas above the teacher's row empty.
+    const tall = { width: 390, height: 844 };
+    const scene = hub(12);
+    const start = largeViewStart(scene, new Set(), tall)!;
+    expect(onScreen(scene, 'teacher', start, tall)).toBe(true);
+    // The teacher's row, the top of the view, meets the pane's margin (OVERLAY_GAP on a phone).
+    expect(paneBox(scene, 'teacher', start, tall).y).toBeCloseTo(12, 0);
+    // With two lineage columns, the room for their headers stays above it.
+    const columns: Scene = { ...scene, bands: [scene.bands[0]!, { lineageId: 'demo-lineage-2', x: 9000, width: 448, nodes: 0 }] };
+    const withHeaders = largeViewStart(columns, new Set(), tall)!;
+    expect(paneBox(columns, 'teacher', withHeaders, tall).y).toBeCloseTo(12 + COLUMN_HEADER_SPACE * withHeaders.zoom, 0);
+  });
+
   it('decides by the pane: the same view is fitted whole on a desktop and starts at the focus on a phone', () => {
     // Ten people, 1768 px wide: 0.60 on the desktop pane (compact chips), 0.19 at 390 px.
     const scene = hub(8);
@@ -278,7 +295,11 @@ describe('the first view of a scene', () => {
         for (const overlay of pane.overlays) expect(overlap(paneBox(scene, id, start, pane), overlay), `${id} under an overlay`).toBe(false);
       }
       const bottom = paneBox(scene, 's1g4', start, pane);
-      expect(bottom.y + bottom.height).toBeCloseTo(buttons.y - 12, 6);
+      expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons.y - 12 + 1e-6);
+      // Moved up past the inset until the top row meets the pane's margin, with no empty canvas
+      // above it (b7 of the M06 design review): 3 px higher than the inset alone would put it.
+      expect(paneBox(scene, 'root', start, pane).y).toBeCloseTo(12, 6);
+      expect(buttons.y - 12 - (bottom.y + bottom.height)).toBeCloseTo(3, 0);
     });
   });
 
