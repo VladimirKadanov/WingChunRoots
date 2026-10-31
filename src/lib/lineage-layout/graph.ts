@@ -28,6 +28,19 @@ export function indexGraph(graph: LineageGraph): GraphIndex {
   if (graph.hiddenCounts != null && !isObject(graph.hiddenCounts)) {
     throw new LineageInputError('`hiddenCounts` must be an object keyed by node id (plan §6.3).');
   }
+  if (graph.lineages != null) {
+    if (!Array.isArray(graph.lineages)) {
+      throw new LineageInputError('`lineages` must be an array (plan §6.3).');
+    }
+    for (const lineage of graph.lineages as unknown[]) {
+      if (!isObject(lineage) || typeof lineage.id !== 'string') {
+        throw new LineageInputError('Every lineage needs a string id.');
+      }
+      if (lineage.rootPersonId != null && typeof lineage.rootPersonId !== 'string') {
+        throw new LineageInputError(`The founder of lineage ${lineage.id} must be a person id.`);
+      }
+    }
+  }
   const nodes = new Map<string, LineageNode>();
   const teacherEdges = new Map<string, LineageEdge[]>();
   const studentEdges = new Map<string, LineageEdge[]>();
@@ -175,6 +188,30 @@ export function orderLineage(
   primary: LineageEdge | undefined = displayPrimaryTeacherEdge(index, nodeId),
 ): string {
   return primary?.lineageId ?? [...(index.nodes.get(nodeId)!.lineageIds ?? [])].sort(compareStrings)[0] ?? '';
+}
+
+/**
+ * The lineage columns of a view (plan §4.6, the Ink Lineage direction): every person stands in
+ * the column of the lineage it founded, when that lineage is in the view (the one with the
+ * smallest id when it founded several), otherwise in the column of the lineage it is ordered by
+ * (`orderLineage`). The focus spine (`spine`: the focus, then its teachers upwards) stands in
+ * the focus's column, so that it stays one straight route (plan §4.5); a teacher on it from
+ * another lineage joins that column. Columns go left to right by lineage id, like the model order.
+ */
+export function lineageBands(index: GraphIndex, spine: readonly string[] = []): { keys: string[]; bandOf: Map<string, string> } {
+  const founded = new Map<string, string>();
+  for (const lineage of index.graph.lineages ?? []) {
+    const root = lineage.rootPersonId;
+    if (!root || !index.nodes.has(root)) continue;
+    const before = founded.get(root);
+    if (before === undefined || compareStrings(lineage.id, before) < 0) founded.set(root, lineage.id);
+  }
+  const bandOf = new Map<string, string>();
+  for (const node of index.graph.nodes) bandOf.set(node.id, founded.get(node.id) ?? orderLineage(index, node.id));
+  const focusBand = spine.length > 0 ? bandOf.get(spine[0]!) : undefined;
+  if (focusBand !== undefined) for (const id of spine) bandOf.set(id, focusBand);
+  const keys = [...new Set(bandOf.values())].sort(compareStrings);
+  return { keys, bandOf };
 }
 
 /**

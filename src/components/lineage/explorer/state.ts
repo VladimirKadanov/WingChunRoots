@@ -259,6 +259,8 @@ export function toLayoutGraph(graph: LineageGraphDto): LineageGraph {
       periods: e.periods,
     })),
     hiddenCounts: graph.hiddenCounts,
+    // The lineage columns: a founder heads the column of the lineage it founded (lineageBands).
+    lineages: graph.lineages.map((l) => ({ id: l.id, rootPersonId: l.rootPersonId })),
   };
 }
 

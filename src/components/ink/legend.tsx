@@ -2,8 +2,9 @@
 // its seal and its name, so the drawing never depends on colour (plan §4.6). Shared by the home
 // page, the lineage screens (M04) and the explorer (M05); a screen may name a state in its own
 // words (`labels`), never draw it differently: its samples are drawn the way the screen draws its
-// links, in ink (the home page, the lineage screens) or as the explorer's canvas strokes
-// (`strokes="canvas"`).
+// links, in ink (the home page, the lineage screens) or as the explorer's canvas draws them at
+// its level of detail (`strokes="canvas"`: both of its samples, ink and plain stroke, and the
+// canvas shows the one it draws at its zoom: globals.css, Ink restyle).
 
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
@@ -38,7 +39,10 @@ export function Legend({
   descriptions?: boolean | 'xl';
   /** A screen's own words for a state (the lineage screens call the dotted state "Pending"). */
   labels?: Partial<Record<LinkKind, LegendWording>>;
-  /** How the screen draws its links: in ink, or as the explorer's canvas strokes. */
+  /**
+   * How the screen draws its links: in ink, or as the explorer's canvas does (its ink and its plain
+   * strokes, of which the canvas frame shows the one its level of detail draws).
+   */
   strokes?: 'ink' | 'canvas';
   className?: string;
 }) {
@@ -60,7 +64,14 @@ export function Legend({
             key={kind}
             className={cx('flex gap-2', descriptions === true && 'items-start', !descriptions && 'items-center', descriptions === 'xl' && 'items-center xl:items-start')}
           >
-            <LinkStroke kind={kind} variant={strokes} width={34} className={cx(descriptions === true && 'mt-1', descriptions === 'xl' && 'xl:mt-1')} />
+            {strokes === 'canvas' ? (
+              <>
+                <LinkStroke kind={kind} variant="canvas-ink" width={34} />
+                <LinkStroke kind={kind} variant="canvas" width={34} />
+              </>
+            ) : (
+              <LinkStroke kind={kind} variant={strokes} width={34} className={cx(descriptions === true && 'mt-1', descriptions === 'xl' && 'xl:mt-1')} />
+            )}
             <Seal kind={style.seal} size={15} className={cx(descriptions === true && 'mt-0.5', descriptions === 'xl' && 'xl:mt-0.5')} />
             <span className="text-sm text-fg">
               <span className="font-semibold">{words.label}</span>

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
+import { COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
 
@@ -60,6 +61,7 @@ function sceneOf(people: readonly { id: string; rank: number; x: number; y?: num
     nodes,
     edges,
     spine: [],
+    bands: [{ lineageId: 'demo-lineage', x: 0, width, nodes: nodes.length }],
   };
 }
 
@@ -188,6 +190,36 @@ describe('the first view of a scene', () => {
     expect(students.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('leaves no empty canvas above the top row when the view starts at a person below it (b7)', () => {
+    // On a tall phone the frame of the hub, its teacher and two students is shorter than the pane:
+    // centred, it would leave the canvas above the teacher's row empty.
+    const tall = { width: 390, height: 844 };
+    const scene = hub(12);
+    const start = largeViewStart(scene, new Set(), tall)!;
+    expect(onScreen(scene, 'teacher', start, tall)).toBe(true);
+    // The teacher's row, the top of the view, meets the pane's margin (OVERLAY_GAP on a phone).
+    expect(paneBox(scene, 'teacher', start, tall).y).toBeCloseTo(12, 0);
+    // With two lineage columns, the room for their headers stays above it.
+    const columns: Scene = { ...scene, bands: [scene.bands[0]!, { lineageId: 'demo-lineage-2', x: 9000, width: 448, nodes: 0 }] };
+    const withHeaders = largeViewStart(columns, new Set(), tall)!;
+    expect(paneBox(columns, 'teacher', withHeaders, tall).y).toBeCloseTo(12 + COLUMN_HEADER_SPACE * withHeaders.zoom, 0);
+  });
+
+  it('fits a view of two or more lineage columns whole with room for their headers above the top row', () => {
+    // React Flow's fit keeps 15 % of the pane as padding, room enough on a tall phone.
+    const scene = hub(12);
+    const columns: Scene = { ...scene, bands: [scene.bands[0]!, { lineageId: 'demo-lineage-2', x: 9000, width: 448, nodes: 0 }] };
+    expect(fitViewStart(columns, new Set(), { width: 390, height: 844 })).toBeNull();
+    // A phone on its side: that padding is narrower than a header, so the fit leaves the room itself.
+    const side = { width: 600, height: 390 };
+    expect(fitViewStart(scene, new Set(), side)).toBeNull();
+    const start = fitViewStart(columns, new Set(), side)!;
+    const top = Math.min(...columns.nodes.map((n) => paneBox(columns, n.id, start, side).y));
+    expect(top).toBeGreaterThanOrEqual(36 - 0.5);
+    const bottom = Math.max(...columns.nodes.map((n) => paneBox(columns, n.id, start, side).y + n.height * start.zoom));
+    expect(bottom).toBeLessThanOrEqual(side.height - 12 + 0.5);
+  });
+
   it('decides by the pane: the same view is fitted whole on a desktop and starts at the focus on a phone', () => {
     // Ten people, 1768 px wide: 0.60 on the desktop pane (compact chips), 0.19 at 390 px.
     const scene = hub(8);
@@ -278,7 +310,11 @@ describe('the first view of a scene', () => {
         for (const overlay of pane.overlays) expect(overlap(paneBox(scene, id, start, pane), overlay), `${id} under an overlay`).toBe(false);
       }
       const bottom = paneBox(scene, 's1g4', start, pane);
-      expect(bottom.y + bottom.height).toBeCloseTo(buttons.y - 12, 6);
+      expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons.y - 12 + 1e-6);
+      // Moved up past the inset until the top row meets the pane's margin, with no empty canvas
+      // above it (b7 of the M06 design review): 3 px higher than the inset alone would put it.
+      expect(paneBox(scene, 'root', start, pane).y).toBeCloseTo(12, 6);
+      expect(buttons.y - 12 - (bottom.y + bottom.height)).toBeCloseTo(3, 0);
     });
   });
 
@@ -365,6 +401,41 @@ describe('the first view of a scene', () => {
       }
       const bottom = paneBox(scene, 'student-b', start, tall);
       expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons412.y - 12 + 1e-6);
+    });
+
+    it('raises React Flow\'s fit, at its zoom, where the legend would cover its bottom row and the room above it is empty', () => {
+      // The Generations view of demo-converging after "Fewer generations" at 393x659, 298 px high
+      // under the steppers: its two teachers side by side, the focus below the first. The legend on
+      // three lines (two link states and the people's marks) would cover the focus in the centred
+      // fit, and a frame clear of the zoom buttons would make the cards smaller than full.
+      const scene = sceneOf(
+        [
+          { id: 'teacher-a', rank: 0, x: 12, y: 12 },
+          { id: 'teacher-b', rank: 0, x: 236, y: 12 },
+          { id: 'focus', rank: 1, x: 12, y: 136 },
+        ],
+        [
+          ['teacher-a', 'focus'],
+          ['teacher-b', 'focus'],
+        ],
+        'focus',
+      );
+      const legend3 = { x: 12, y: 196, width: 305, height: 90 };
+      const buttons298 = { x: 335, y: 152, width: 46, height: 134 };
+      const pane = { width: 393, height: 298, overlays: [legend3, buttons298] };
+      const fit = wholeFitZoom(scene.nodes, pane);
+      expect(fit).toBeGreaterThanOrEqual(DETAIL_ZOOM.full);
+      const centred = { x: 12 + 424 / 2, y: 12 + 188 / 2, zoom: fit };
+      expect(overlap(drawnBox(scene, 'focus', centred, pane), legend3)).toBe(true);
+      const start = wholeViewStart(scene, new Set(), pane)!;
+      expect(start).not.toBeNull();
+      expect(start.zoom).toBeCloseTo(fit, 9);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, start, pane), n.id).toBe(true);
+        for (const overlay of pane.overlays) expect(overlap(paneBox(scene, n.id, start, pane), overlay), `${n.id} under an overlay`).toBe(false);
+      }
+      // The top row at the pane's top margin on a phone (the overlays' inset): no empty canvas above it.
+      expect(paneBox(scene, 'teacher-a', start, pane).y).toBeCloseTo(12, 6);
     });
 
     it('opens it like a large view when the fit clear of the overlays would make every person a dot', () => {

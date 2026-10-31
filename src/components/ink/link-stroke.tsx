@@ -1,10 +1,12 @@
 // A short sample of a link's stroke for legends and badges, in the state's colour. The states
-// have two renderings (ADR 0006): the ink geometry of src/design/ink.ts that the home page and
-// the lineage pages draw, and the plain strokes of the explorer's canvas (M05), whose routes and
-// curves are drawn by StrokePaths below. A legend draws its samples the way its screen draws the
-// links (`variant`), so the sample and the drawing never differ (plan §4.6: never colour alone).
+// have three renderings (ADR 0006): the ink geometry of src/design/ink.ts that the home page and
+// the lineage pages draw; the explorer's ink along its routes (canvasInk in canvas-ink.ts, drawn by
+// InkPaths: owner decision 2026-10-31, "Ink restyle"), from the compact cards up; and the plain
+// strokes of the explorer's canvas zoomed out to the dots (StrokePaths). A legend draws its
+// samples the way its screen draws the links (`variant`), so the sample and the drawing never
+// differ (plan §4.6: never colour alone).
 
-import { inkShapes, type Cubic, type InkShape } from '@/design/ink';
+import { dotsD, inkShapes, type Cubic, type InkShape } from '@/design/ink';
 import { linkStyles, type VerificationState } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 
@@ -18,6 +20,26 @@ const SAMPLE: Cubic = [
 ];
 /** The same curve as a path, for the canvas strokes. */
 const SAMPLE_PATH = `M${SAMPLE[0].join(' ')}C${SAMPLE.slice(1).flat().join(' ')}`;
+
+/**
+ * One ink shape of the explorer as a single path in the stroke's colour: the dots as one path of
+ * circles, the two lines in arbitration as one path of two. The outline of a stroked shape, and
+ * the edge a lit link adds (globals.css), stay in screen pixels at every zoom. `color` is a
+ * presentation attribute, so the canvas's dimming (a CSS rule) overrides it.
+ */
+export function InkPaths({ shape, kind, attributes }: { shape: InkShape; kind: LinkKind; attributes?: { [name: `data-${string}`]: string } }) {
+  const common = { ...attributes, 'data-ink': shape.kind, color: `var(--${linkStyles[kind].strokeColor})`, vectorEffect: 'non-scaling-stroke' } as const;
+  switch (shape.kind) {
+    case 'fill':
+      return <path {...common} d={shape.d} fill="currentColor" />;
+    case 'dots':
+      return <path {...common} d={dotsD(shape.circles)} fill="currentColor" />;
+    case 'double':
+      return <path {...common} d={shape.d.join('')} fill="none" stroke="currentColor" strokeWidth={1.4} strokeDasharray="6 4" />;
+    case 'hollow':
+      return <path {...common} d={shape.d} fill="none" stroke="currentColor" strokeWidth={1.3} strokeDasharray={shape.dash ?? undefined} />;
+  }
+}
 
 /**
  * A link as the explorer's canvas strokes it (plan §4.6): one line with the state's width and
@@ -95,6 +117,17 @@ function shapeFor(kind: LinkKind): InkShape {
   return inkShapes(SAMPLE, kind, { w0: 4.8, w1: 1.3, n: 30 });
 }
 
+/**
+ * The legend's sample of the explorer's ink: the shape of the state along the sample curve, drawn
+ * as the canvas draws its ink (InkPaths), the hollow ribbon with the long dash of the canvas's
+ * cross-lineage stroke (canvas-ink.ts). The canvas's own ink geometry stays out of the page's
+ * first JavaScript: it comes with the canvas.
+ */
+function canvasSample(kind: LinkKind): InkShape {
+  const shape = shapeFor(kind);
+  return shape.kind === 'hollow' ? { ...shape, dash: linkStyles.cross_lineage.dash } : shape;
+}
+
 export function LinkStroke({
   kind,
   variant = 'ink',
@@ -102,8 +135,11 @@ export function LinkStroke({
   width = 62,
 }: {
   kind: LinkKind;
-  /** 'canvas': the explorer's strokes (StrokePaths), on the ground of --seal-ground or the page. */
-  variant?: 'ink' | 'canvas';
+  /**
+   * 'canvas': the explorer's strokes zoomed out to the dots (StrokePaths), on the ground of
+   * --seal-ground or the page; 'canvas-ink': the explorer's ink from the compact cards up (InkPaths).
+   */
+  variant?: 'ink' | 'canvas' | 'canvas-ink';
   className?: string;
   width?: number;
 }) {
@@ -121,6 +157,8 @@ export function LinkStroke({
     >
       {variant === 'canvas' ? (
         <StrokePaths d={SAMPLE_PATH} kind={kind} ground="var(--seal-ground, var(--bg))" />
+      ) : variant === 'canvas-ink' ? (
+        <InkPaths shape={canvasSample(kind)} kind={kind} />
       ) : (
         <InkShapeSvg shape={shapeFor(kind)} />
       )}

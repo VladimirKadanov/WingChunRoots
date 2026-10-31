@@ -157,6 +157,68 @@ function placeOnLine(items: Item[], chain: readonly number[], from: number, to: 
   }
 }
 
+/**
+ * Step (c) for one chain: each waypoint goes to a gap of its row (with the spacing on both sides
+ * where the gap has room, else to its middle, and the cards then make room), choosing between
+ * the nearest place left of the straight line between the chain's ends and the nearest one right
+ * of it so that the route's sideways run is the shortest over all its rows. The gap nearest to
+ * the line in each row on its own can send the route round a card on the right in one row and
+ * round the next card on the left in the row below.
+ */
+function placeInGaps(
+  items: Item[],
+  rows: readonly (number[] | undefined)[],
+  chain: readonly number[],
+  at: (item: number) => number,
+  spacing: number,
+): void {
+  const from = at(chain[0]!);
+  const to = at(chain[chain.length - 1]!);
+  const span = chain.length - 1;
+  const options: number[][] = [];
+  for (let j = 1; j < span; j++) {
+    const line = from + ((to - from) * j) / span;
+    const cards = (rows[items[chain[j]!]!.rank] ?? [])
+      .filter((i) => items[i]!.node !== -1)
+      .map((i) => ({ left: at(i) - items[i]!.width / 2, right: at(i) + items[i]!.width / 2 }))
+      .sort((a, b) => a.left - b.left);
+    const places: number[] = [];
+    if (cards.length === 0) places.push(line);
+    else {
+      places.push(Math.min(line, cards[0]!.left - spacing), Math.max(line, cards[cards.length - 1]!.right + spacing));
+      for (let c = 1; c < cards.length; c++) {
+        const lo = cards[c - 1]!.right + spacing;
+        const hi = cards[c]!.left - spacing;
+        places.push(lo <= hi ? Math.min(hi, Math.max(lo, line)) : (cards[c - 1]!.right + cards[c]!.left) / 2);
+      }
+    }
+    const left = places.filter((x) => x <= line).reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
+    const right = places.filter((x) => x >= line).reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
+    options.push([...new Set([left, right].filter(Number.isFinite))]);
+  }
+  // The shortest sideways run through one place per row (a small dynamic programme).
+  let cost = [0];
+  let xs = [from];
+  const choice: number[][] = [];
+  for (const row of options) {
+    const next = row.map((x) => {
+      let best = 0;
+      for (let p = 1; p < xs.length; p++) if (cost[p]! + Math.abs(x - xs[p]!) < cost[best]! + Math.abs(x - xs[best]!)) best = p;
+      return { cost: cost[best]! + Math.abs(x - xs[best]!), from: best };
+    });
+    choice.push(next.map((n) => n.from));
+    cost = next.map((n) => n.cost);
+    xs = row;
+  }
+  let pick = 0;
+  for (let p = 1; p < xs.length; p++) if (cost[p]! + Math.abs(to - xs[p]!) < cost[pick]! + Math.abs(to - xs[pick]!)) pick = p;
+  for (let j = options.length - 1; j >= 0; j--) {
+    const item = items[chain[j + 1]!]!;
+    item.x = item.key = item.tie = options[j]![pick]!;
+    pick = choice[j]![pick]!;
+  }
+}
+
 /** Sideways travel of a chain beyond the distance between its ends, for the given centres. */
 function detour(chain: readonly number[], centre: (item: number) => number): number {
   let travel = 0;
@@ -441,8 +503,9 @@ export function convergingPass(
   let solved = solve(attempt.graph);
 
   // (c) The waypoints of a deferred edge, of an edge with a moved end, and of an edge that
-  // would go far sideways and back (more than a card) go to the straight line between its
-  // ends as placed in (b), in the gap of their row nearest to it. The cards keep their places
+  // would go far sideways and back (more than a card) go to gaps of their rows near the
+  // straight line between its ends as placed in (b): in each row the nearest place left or
+  // right of the line, whichever makes the shortest sideways run (placeInGaps). The cards keep their places
   // of (b) unless a waypoint needs more room, and every constraint of (b) is kept (the order
   // of the cards is that of (b), so the system still has a solution).
   const rerouted = new Set<number>();
@@ -459,10 +522,7 @@ export function convergingPass(
       item.x = item.key = item.tie = at(i);
       if (item.node !== -1 && item.weight > 0) item.weight = PLACED_CARD_WEIGHT;
     });
-    for (const k of rerouted) {
-      const chain = chains[k]!;
-      placeOnLine(items, chain, at(chain[0]!), at(chain[chain.length - 1]!));
-    }
+    for (const k of rerouted) placeInGaps(items, rows, chains[k]!, at, spacing);
     const graph = rowConstraints();
     for (const b of attempt.between) {
       if (!graph.add(b.left, b.right, 0)) attempt.refused.push(groups.find((g) => g.student === b.student)!);
@@ -480,67 +540,58 @@ export function convergingPass(
     .sort((a, b) => items[a]!.node - items[b]!.node)
     .map((i) => build.order[items[i]!.node]!);
 
-  // Ports. Incoming: one port at the middle of the top side. Outgoing: where the first pass
-  // put them; an edge placed anew in (b) or (c) between its neighbours in the order of the
-  // next row; the spine edge at the middle, with the others spread evenly on both sides of it.
-  const outgoing: { k: number; next: number }[][] = items.map(() => []);
-  build.elkEdges.forEach((_, k) => {
-    const chain = chains[k]!;
-    for (let j = 0; j + 1 < chain.length; j++) outgoing[chain[j]!]!.push({ k, next: chain[j + 1]! });
-  });
-  const anew = (k: number) =>
-    deferred.has(build.elkEdges[k]!.id) || rerouted.has(k) || attempt.moved.has(chains[k]![chains[k]!.length - 1]!);
-  const portOffset = new Map<string, number>();
+  // Ports. Outgoing: one trunk port at the middle of the bottom side of a card, shared by all
+  // its outgoing edges, so that ELK routes the edges of one teacher as one hyperedge with a
+  // common trunk (b5 of the M06 design review); a waypoint has one port per edge. Incoming:
+  // one port at the middle of the top side, except for a student with two or more incoming
+  // edges, which gets one port per edge, spread along the top side in the order of the x of
+  // the item each edge comes from (b6, ADR 0005 item 10): the edges then no longer share one
+  // vertical, so the edge of one teacher cannot run to the vertical of another and back, and
+  // the trunks of its teachers do not become one hyperedge through it.
   const segmentId = (k: number, j: number) => `e${k}.${j}`;
-  items.forEach((item, i) => {
-    const outs = outgoing[i]!;
-    if (outs.length === 0) return;
-    if (item.node === -1) {
-      for (const o of outs) portOffset.set(segmentId(o.k, chains[o.k]!.indexOf(i)), 0);
-      return;
+  const incoming: { k: number; j: number; from: number }[][] = items.map(() => []);
+  const outgoing: { k: number; j: number }[][] = items.map(() => []);
+  chains.forEach((chain, k) => {
+    for (let j = 0; j + 1 < chain.length; j++) {
+      outgoing[chain[j]!]!.push({ k, j });
+      incoming[chain[j + 1]!]!.push({ k, j, from: chain[j]! });
     }
-    const byNext = [...outs].sort((a, b) => items[a.next]!.final - items[b.next]!.final || a.k - b.k);
-    const spineAt = byNext.findIndex((o) => spineEdges.has(build.elkEdges[o.k]!.id));
-    const w = item.width;
-    if (spineAt !== -1) {
-      const after = byNext.length - spineAt - 1;
-      byNext.forEach((o, j) => {
-        const offset =
-          j < spineAt ? ((j + 1) * w) / 2 / (spineAt + 1) : j === spineAt ? w / 2 : w / 2 + ((j - spineAt) * w) / 2 / (after + 1);
-        portOffset.set(segmentId(o.k, 0), offset);
-      });
-      return;
-    }
-    const startOf = (k: number) => routes.get(build.elkEdges[k]!.id)?.sections?.[0]?.startPoint.x;
-    const left = children.get(build.order[item.node]!)?.x ?? 0;
-    const kept = byNext
-      .filter((o) => !anew(o.k) && startOf(o.k) !== undefined)
-      .map((o) => ({ ...o, offset: Math.min(w, Math.max(0, startOf(o.k)! - left)) }))
-      .sort((a, b) => a.offset - b.offset || a.k - b.k);
-    for (const o of kept) portOffset.set(segmentId(o.k, 0), o.offset);
-    const slots: { k: number; next: number }[][] = Array.from({ length: kept.length + 1 }, () => []);
-    for (const o of byNext) {
-      if (portOffset.has(segmentId(o.k, 0))) continue;
-      const x = items[o.next]!.final;
-      slots[kept.filter((p) => items[p.next]!.final < x).length]!.push(o);
-    }
-    slots.forEach((slot, s) => {
-      const from = s === 0 ? 0 : kept[s - 1]!.offset;
-      const to = s === kept.length ? w : kept[s]!.offset;
-      slot.forEach((o, j) => portOffset.set(segmentId(o.k, 0), from + ((j + 1) * (to - from)) / (slot.length + 1)));
-    });
   });
-
-  const hasIncoming = new Set<number>();
-  for (const chain of chains) for (let j = 1; j < chain.length; j++) hasIncoming.add(chain[j]!);
+  const sourcePort = new Map<string, string>();
+  const targetPort = new Map<string, string>();
   const elkChildren: ElkNode[] = items.map((item, i) => {
     const ports: ElkPort[] = [];
-    if (hasIncoming.has(i)) {
+    const ins = incoming[i]!;
+    if (ins.length >= 2 && item.node !== -1) {
+      const byFrom = [...ins].sort((a, b) => items[a.from]!.final - items[b.from]!.final || a.k - b.k);
+      // The spine edge keeps the middle, so the spine stays straight; the others spread evenly
+      // on both sides of it.
+      const spineAt = byFrom.findIndex((o) => spineEdges.has(build.elkEdges[o.k]!.id));
+      const w = item.width;
+      byFrom.forEach((o, n) => {
+        const id = `p${i}.${n}`;
+        let x = ((n + 1) * w) / (byFrom.length + 1);
+        if (spineAt !== -1) {
+          const after = byFrom.length - spineAt - 1;
+          x = n < spineAt ? ((n + 1) * w) / 2 / (spineAt + 1) : n === spineAt ? w / 2 : w / 2 + ((n - spineAt) * w) / 2 / (after + 1);
+        }
+        ports.push({ id, x, y: 0, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'NORTH' } });
+        targetPort.set(segmentId(o.k, o.j), id);
+      });
+    } else if (ins.length > 0) {
       ports.push({ id: `p${i}`, x: item.width / 2, y: 0, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'NORTH' } });
+      for (const o of ins) targetPort.set(segmentId(o.k, o.j), `p${i}`);
     }
-    for (const o of outgoing[i]!) {
-      const id = segmentId(o.k, chains[o.k]!.indexOf(i));
-      ports.push({ id: `${id}.out`, x: portOffset.get(id)!, y: height, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'SOUTH' } });
+    const outs = outgoing[i]!;
+    if (outs.length > 0 && item.node !== -1) {
+      ports.push({ id: `n${i}.trunk`, x: item.width / 2, y: height, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'SOUTH' } });
+      for (const o of outs) sourcePort.set(segmentId(o.k, o.j), `n${i}.trunk`);
+    } else {
+      for (const o of outs) {
+        const id = `${segmentId(o.k, o.j)}.out`;
+        ports.push({ id, x: 0, y: height, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'SOUTH' } });
+        sourcePort.set(segmentId(o.k, o.j), id);
+      }
     }
     return {
       id: `n${i}`,
@@ -556,7 +607,7 @@ export function convergingPass(
   chains.forEach((chain, k) => {
     for (let j = 0; j + 1 < chain.length; j++) {
       const id = segmentId(k, j);
-      elkEdges.push({ id, sources: [`${id}.out`], targets: [`p${chain[j + 1]!}`] });
+      elkEdges.push({ id, sources: [sourcePort.get(id)!], targets: [targetPort.get(id)!] });
     }
   });
   const layoutOptions: Record<string, string> = {

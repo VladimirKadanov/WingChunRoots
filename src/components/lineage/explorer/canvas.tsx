@@ -48,6 +48,7 @@ import {
   useStore,
   useStoreApi,
   type Viewport,
+  ViewportPortal,
 } from '@xyflow/react';
 import {
   createContext,
@@ -64,15 +65,19 @@ import {
 } from 'react';
 
 import { FitIcon, MinusIcon, PlusIcon } from '@/components/icons';
-import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
+import { canvasInk } from '@/components/ink/canvas-ink';
+import { InkPaths, type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
+import { type InkShape, type Point as InkPoint } from '@/design/ink';
+import { type Route, roundedRoute, routeD } from '@/design/ink-route';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
-import { bezierLabelPoint } from '@/lib/lineage-layout/scene';
+import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 
 import { type GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
+import { ROUTE_MARK_LABELS, RouteMark, type RouteMarkKind } from '../route-mark';
 import { announce, createAnnouncer, SELECTION_CLEARED, selectedWords, studentsOpenWords } from './announce';
 import {
   type ActiveOptions,
@@ -116,6 +121,8 @@ export interface PersonNodeData extends Record<string, unknown> {
   rank: number;
   focus: boolean;
   root: boolean;
+  /** The person's mark on the card's top edge, where the links arrive: founder, living, or not recorded as living. */
+  mark: RouteMarkKind;
   slot: Box;
   boxes: Record<DetailLevel, Box>;
   // M06 seam: node-data (built by explorer.tsx flowBase)
@@ -223,9 +230,13 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
       <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
       {/* M06 seam: node-data. The relationships in words: the node's aria-describedby (plan §4.9). */}
       <span id={relationsId(id)} hidden>
+        {data.mark === 'other' ? '' : `${ROUTE_MARK_LABELS[data.mark]}. `}
         {relationsText(data.teacherNames, data.totals, data.drawn)}
       </span>
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
+        {/* The mark on the top edge, where the ink arrives (owner decision 2026-10-31, as the home
+            page draws a person: a square for a founder, a dot for the living, a ring otherwise). */}
+        {lod !== 'dot' ? <RouteMark mark={data.mark} className="absolute -top-[5px] left-1/2 z-10 -translate-x-1/2" /> : null}
         {lod === 'full' && data.disputed ? (
           // On the card's top edge, at the right: the name starts at the left and its line keeps its room.
           <span
@@ -393,38 +404,94 @@ function labelPoint(path: SceneEdge['path']): Point {
   return best.at;
 }
 
+/** The radius of a route's rounded corners: the links are drawn as curves (owner decision 2026-10-31). */
+const CORNER_RADIUS = 24;
+
+/**
+ * The route as drawn: the corners of an orthogonal route rounded, a curve between lineages as it
+ * is; `from` and `to` join it to the boxes drawn (pathD).
+ */
+function routeOf(path: SceneEdge['path'], from: Point[], to: Point[]): Route {
+  const pt = (q: Point): InkPoint => [q.x, q.y];
+  const tail = [...to].reverse();
+  if (path.type === 'bezier') {
+    const head = [...from, path.start];
+    return {
+      start: pt(head[0]!),
+      pieces: [
+        ...head.slice(1).map((q) => ({ kind: 'line' as const, to: pt(q) })),
+        { kind: 'cubic' as const, c1: pt(path.control1), c2: pt(path.control2), to: pt(path.end) },
+        ...tail.map((q) => ({ kind: 'line' as const, to: pt(q) })),
+      ],
+    };
+  }
+  return roundedRoute([...from, ...path.points, ...tail].map(pt), CORNER_RADIUS);
+}
+
+interface DrawnEdge {
+  /** The route laid out, joined to the boxes drawn: data-route. */
+  route: string;
+  /** The route as drawn (rounded), for the strokes at the dot level. */
+  d: string;
+  /** The ink along it, from the compact cards up. */
+  ink: InkShape | null;
+}
+
+/**
+ * The drawing of an edge at a level of detail, made once per route: a selection gives an edge new
+ * data with the same route (litFlow), and a zoom within a level of detail draws nothing new.
+ */
+const drawnEdges = new WeakMap<SceneEdge['path'], Map<string, DrawnEdge>>();
+
+function drawnEdge(data: LineageEdgeData, lod: DetailLevel): DrawnEdge {
+  let made = drawnEdges.get(data.path);
+  if (!made) drawnEdges.set(data.path, (made = new Map()));
+  const key = `${lod}:${data.stroke}`;
+  const known = made.get(key);
+  if (known) return known;
+  // A compact or dot box is smaller than the slot the route was laid out for (plan §4.8): the
+  // route is joined to the box drawn, so no edge stops short of its person.
+  const ends = routeEnds(data.path);
+  const from = lod === 'full' ? [] : joinToBox(ends.start, data.ends.teacher[lod]);
+  const to = lod === 'full' ? [] : joinToBox(ends.end, data.ends.student[lod]);
+  const route = routeOf(data.path, from, to);
+  const drawn = { route: pathD(data.path, from, to), d: routeD(route), ink: lod === 'dot' ? null : canvasInk(data.stroke, route, lod) };
+  made.set(key, drawn);
+  return drawn;
+}
+
 function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
   const lod = useStore(lodOf);
   if (!data) return null;
   const style = linkStyles[data.stroke];
-  // A compact or dot box is smaller than the slot the route was laid out for (plan §4.8): the
-  // route is joined to the box drawn, so no edge stops short of its person.
-  const ends = routeEnds(data.path);
-  const d = lod === 'full' ? pathD(data.path, [], []) : pathD(data.path, joinToBox(ends.start, data.ends.teacher[lod]), joinToBox(ends.end, data.ends.student[lod]));
+  const drawn = drawnEdge(data, lod);
   const at = labelPoint(data.path);
   return (
     <>
-      {/* The stroke of the explorer legend's sample (Legend strokes="canvas"), so the key decodes
-          the drawing without colour; a double stroke adds its knocked-out ground ([data-edge-core]).
-          Width and dashes stay in screen pixels at every zoom: scaled with the view, zoomed out
-          to the dots, they fell below a pixel and every state looked like a solid line. */}
-      <StrokePaths
-        d={d}
-        kind={data.stroke}
-        ground="var(--bg)"
-        attributes={{
-          'data-edge': id,
-          'data-teacher': source,
-          'data-student': target,
-          'data-kind': data.kind,
-          'data-lineage': data.lineageId,
-          'data-stroke': data.stroke,
-          'data-routed': data.routedBy,
-          // M06 seam: lit-attrs
-          ...(data.lit ? { 'data-lit': '' } : {}),
-        }}
-        coreAttributes={{ 'data-edge-core': id }}
-      />
+      {/* One group per edge with its facts (data-route: the route laid out). From the compact cards
+          up, the state's ink along the route, its corners rounded (owner decision 2026-10-31, "Ink
+          restyle"): the shape of the legend's ink sample, so the key decodes the drawing without
+          colour. Zoomed out to the dots, the plain stroke of the legend's other sample, whose width
+          and dashes stay in screen pixels (scaled with the view they fell below a pixel); a double
+          stroke adds its knocked-out ground ([data-edge-core]). */}
+      <g
+        data-edge={id}
+        data-teacher={source}
+        data-student={target}
+        data-kind={data.kind}
+        data-lineage={data.lineageId}
+        data-stroke={data.stroke}
+        data-routed={data.routedBy}
+        data-route={drawn.route}
+        // M06 seam: lit-attrs
+        data-lit={data.lit ? '' : undefined}
+      >
+        {drawn.ink ? (
+          <InkPaths shape={drawn.ink} kind={data.stroke} attributes={{ 'data-edge-ink': id }} />
+        ) : (
+          <StrokePaths d={drawn.d} kind={data.stroke} ground="var(--bg)" attributes={{ 'data-edge-line': id }} coreAttributes={{ 'data-edge-core': id }} />
+        )}
+      </g>
       {data.label ? (
         <EdgeLabelRenderer>
           <span
@@ -440,6 +507,111 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
         </EdgeLabelRenderer>
       ) : null}
     </>
+  );
+}
+
+/** The level of detail on the canvas frame (data-lod): the legend over it shows the samples the canvas draws at it. */
+function LodOnFrame() {
+  const lod = useStore(lodOf);
+  const domNode = useStore((s) => s.domNode);
+  useLayoutEffect(() => {
+    const frame = domNode?.closest<HTMLElement>('[data-canvas-frame]');
+    if (frame) frame.dataset.lod = lod;
+  }, [lod, domNode]);
+  return null;
+}
+
+/** A column's rows by their generation in its lineage, where the row agrees on one (columnMarks). */
+export interface ColumnMarks {
+  headers: { lineageId: string; name: string; x: number; y: number; width: number }[];
+  rails: { lineageId: string; x: number; rows: { y: number; generation: number }[] }[];
+}
+
+/**
+ * What the canvas writes beside its columns (owner decision 2026-10-31, the Ink Lineage
+ * direction): the name of each lineage above its column when the view has two or more, and beside
+ * each column the generation of every row in which all the people drawn in that column have one,
+ * the same one, counted from the same recorded root (their cards' generation labels: D22, read from
+ * the view, never stored; the root itself is generation 1). A row that does not agree shows none.
+ */
+export function columnMarks(scene: Scene, nodes: readonly PersonNode[], names: ReadonlyMap<string, string>): ColumnMarks {
+  const people = nodes.filter((n) => !n.hidden);
+  if (people.length === 0) return { headers: [], rails: [] };
+  const top = Math.min(...people.map((n) => n.position.y));
+  const inBand = (b: Scene['bands'][number], n: PersonNode) => n.position.x >= b.x - 0.5 && n.position.x <= b.x + b.width + 0.5;
+  // A column whose people are all folded away keeps no header over the empty canvas.
+  const headers =
+    scene.bands.length >= 2
+      ? scene.bands.flatMap((b) => {
+          const name = names.get(b.lineageId);
+          return name && people.some((n) => inBand(b, n)) ? [{ lineageId: b.lineageId, name, x: b.x, y: top, width: b.width }] : [];
+        })
+      : [];
+  const rails = scene.bands.map((b) => {
+    const rows = new Map<number, { y: number; keys: Set<string> }>();
+    for (const n of people) {
+      if (!inBand(b, n)) continue;
+      const label = n.data.generation;
+      const key =
+        label?.kind === 'lineage' ? `${label.rootId}:${label.generation}` : n.data.root && n.data.mark === 'founder' ? `${n.id}:1` : 'none';
+      const row = rows.get(n.data.rank) ?? { y: n.position.y + n.data.slot.height / 2, keys: new Set<string>() };
+      row.keys.add(key);
+      rows.set(n.data.rank, row);
+    }
+    const agreed = [...rows.values()].flatMap((row) => {
+      const [only] = row.keys;
+      if (row.keys.size !== 1 || only === undefined || only === 'none') return [];
+      return [{ y: row.y, generation: Number(only.slice(only.lastIndexOf(':') + 1)), root: only.slice(0, only.lastIndexOf(':')) }];
+    });
+    // One root per column: rows counted from another root (a teacher of another lineage) stay blank.
+    const roots = new Set(agreed.map((r) => r.root));
+    return { lineageId: b.lineageId, x: b.x, rows: roots.size === 1 ? agreed.map(({ y, generation }) => ({ y, generation })).sort((a, c) => a.y - c.y) : [] };
+  });
+  return { headers, rails: rails.filter((r) => r.rows.length > 0) };
+}
+
+/**
+ * The lineage names and the generation rails (columnMarks), in the view's coordinates and at a
+ * constant size on screen. Words for the eye only: each card names its generation, and the list
+ * view names every lineage.
+ */
+function ColumnMarksView({ marks }: { marks: ColumnMarks }) {
+  const zoom = useStore((s) => s.transform[2]);
+  if (marks.headers.length === 0 && marks.rails.length === 0) return null;
+  const scale = `scale(${1 / zoom})`;
+  return (
+    <ViewportPortal>
+      <div data-column-marks="" aria-hidden="true" className="pointer-events-none">
+        {marks.headers.map((h) => (
+          <div
+            key={h.lineageId}
+            data-column-header={h.lineageId}
+            className="absolute origin-top-left border-b border-border-strong pb-0.5 font-display text-sm leading-5 whitespace-nowrap text-fg"
+            style={{ left: h.x, top: h.y - 10, width: h.width * zoom, transform: `${scale} translateY(-100%)` }}
+          >
+            <span lang="und-Latn" translate="no" className="block truncate">
+              {h.name}
+            </span>
+          </div>
+        ))}
+        {marks.rails.map((rail) =>
+          rail.rows.map((row, i) => (
+            <div
+              key={`${rail.lineageId}:${row.y}`}
+              data-generation-rail={rail.lineageId}
+              // On the ground, so a curve between the columns passes behind it.
+              className="absolute origin-top-left rounded-xs bg-bg px-0.5 text-right text-caption leading-4 font-semibold tracking-normal text-fg-subtle tabular"
+              // 8 px left of the column's cards (rail.x is ELK's padding, 12 px, before them): the gap
+              // between two columns is narrow (COLUMN_GAP), so the rail keeps close to its own column.
+              style={{ left: rail.x + 4, top: row.y, transform: `${scale} translate(-100%, -50%)` }}
+            >
+              {i === 0 ? <span className="block text-caption leading-3 font-normal tracking-normal">Gen</span> : null}
+              {row.generation}
+            </div>
+          )),
+        )}
+      </div>
+    </ViewportPortal>
   );
 }
 
@@ -842,7 +1014,7 @@ function floorOf(pane: Pane, margin: number, width: number): number {
  * overlay off the pane's centre (the zoom buttons above the legend's right end) reaches lower than
  * a wide one: the larger zoom wins.
  */
-function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart | null; zoom: number } {
+function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { start: ViewStart | null; zoom: number } {
   const bounds = people.map(boxOf).reduce(union);
   const fit = reactFlowFit(bounds, pane);
   const overlays = (pane.overlays ?? []).filter((o) => o.width > 0 && o.height > 0);
@@ -852,24 +1024,56 @@ function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart
     const box = n.boxes[level];
     return { x: fit.x + box.x * fit.zoom, y: fit.y + box.y * fit.zoom, width: box.width * fit.zoom, height: box.height * fit.zoom };
   };
-  if (!people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
+  // React Flow's fit keeps its padding above the top row, room enough for the lineage headers
+  // unless the pane is short (topRoom: the headers of a view of two or more columns).
+  const fitTop = Math.floor((pane.height - pane.height / (1 + FIT_OPTIONS.padding)) / 2);
+  if (fitTop >= topRoom && !people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
   const margin = marginOf(pane);
-  const centre = pane.width / 2;
-  // The widths to try: as wide as the pane and React Flow's fit allow, and the widest that passes
-  // beside each overlay off the centre (a hair narrower, so rounding never puts it under).
-  const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - 2 * margin.y) / bounds.height);
-  const widths = [widest];
-  for (const o of overlays) {
-    const beside = o.x >= centre ? 2 * (o.x - centre) : o.x + o.width <= centre ? 2 * (centre - o.x - o.width) : 0;
-    if (beside > 0 && beside < widest) widths.push(beside - 1e-6);
+  // React Flow's fit raised to the pane's top margin (and the headers' room): where the fit leaves
+  // empty canvas above the top row (a view wider than tall), the legend may cover the bottom row of
+  // the centred fit and none of the raised one, which keeps the fit's zoom (b7: no empty canvas above).
+  const top = Math.max(margin.y, topRoom);
+  const shift = top - (fit.y + bounds.y * fit.zoom);
+  const raised = (n: SceneNode): Box => {
+    const box = drawn(n);
+    return { ...box, y: box.y + shift };
+  };
+  if (shift < 0 && !people.some((n) => overlays.some((o) => overlap(raised(n), o)))) {
+    return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / fit.zoom, zoom: fit.zoom }, zoom: fit.zoom };
   }
-  const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - margin.y) / bounds.height)));
-  if (!(zoom > 0)) return { start: null, zoom: fit.zoom };
-  // A frame narrower than the width tried reaches at least as low: it is centred in the room it has.
-  const height = bounds.height * zoom;
-  const top = margin.y + (floorOf(pane, margin.y, bounds.width * zoom) - margin.y - height) / 2;
-  return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
+  const centre = pane.width / 2;
+  // The frame with `above` pixels kept above its top row.
+  const frame = (above: number): { start: ViewStart | null; zoom: number } => {
+    // The widths to try: as wide as the pane and React Flow's fit allow, and the widest that passes
+    // beside each overlay off the centre (a hair narrower, so rounding never puts it under).
+    const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - margin.y - above) / bounds.height);
+    const widths = [widest];
+    for (const o of overlays) {
+      const beside = o.x >= centre ? 2 * (o.x - centre) : o.x + o.width <= centre ? 2 * (centre - o.x - o.width) : 0;
+      if (beside > 0 && beside < widest) widths.push(beside - 1e-6);
+    }
+    const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - above) / bounds.height)));
+    if (!(zoom > 0)) return { start: null, zoom: fit.zoom };
+    // A frame narrower than the width tried reaches at least as low: it is centred in the room it has.
+    const height = bounds.height * zoom;
+    const top = above + (floorOf(pane, margin.y, bounds.width * zoom) - above - height) / 2;
+    return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
+  };
+  // The cards come before the headers' room: where keeping it would cost the cards the level of
+  // detail that the margin alone keeps (full cards on a short phone, or readable ones), the headers
+  // may be cut at the top of the pane.
+  const withRoom = frame(Math.max(margin.y, topRoom));
+  if (topRoom <= margin.y) return withRoom;
+  const plain = frame(margin.y);
+  return detailAt(withRoom.zoom) === detailAt(plain.zoom) ? withRoom : plain;
 }
+
+/**
+ * The pixels a whole view keeps above its top row for the lineage headers of a view of two or more
+ * columns (ColumnMarksView): a line of text-sm, its rule and the 10 units between it and the row.
+ */
+const COLUMN_HEADER_ROOM = 36;
+const headerRoom = (scene: Scene) => (scene.bands.length >= 2 ? COLUMN_HEADER_ROOM : 0);
 
 /**
  * Where the first view of a small scene starts: null for React Flow's fit of the whole view, or
@@ -879,7 +1083,7 @@ function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart
 export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
   if (people.length === 0) return null;
-  const whole = wholeView(people, pane);
+  const whole = wholeView(people, pane, headerRoom(scene));
   return whole.zoom >= READABLE_ZOOM ? whole.start : null;
 }
 
@@ -895,7 +1099,7 @@ export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
 export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
   if (people.length === 0) return null;
-  return wholeView(people, pane).start;
+  return wholeView(people, pane, headerRoom(scene)).start;
 }
 
 /**
@@ -905,9 +1109,10 @@ export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pa
  * The view starts at the focus, or the first person of the top row when the focus is not drawn,
  * with as many of their drawn teachers and students as fit at a zoom with full cards, nearest first
  * (the Lineage view opens on its root with a student of the root, not with the root alone above
- * the grand-students). When none fits beside them, the person alone at the pane's zoom. With
- * nobody drawn above the start's row, the view starts at the top of the pane, so the rows below
- * fill the rest; any other is centred. Null for a small scene, which is shown whole
+ * the grand-students). When none fits beside them, the person alone at the pane's zoom. The frame
+ * is centred on the pane, but rises until the top of the view meets the pane's margin where
+ * centring would leave empty canvas above it (with nobody drawn above the start's row, it starts
+ * at the top of the pane, so the rows below fill the rest). Null for a small scene, which is shown whole
  * (wholeViewStart): one whose drawn people the pane shows whole at READABLE_ZOOM or more.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
@@ -918,7 +1123,7 @@ export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pa
  */
 export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
-  if (people.length === 0 || wholeView(people, pane).zoom >= READABLE_ZOOM) return null;
+  if (people.length === 0 || wholeView(people, pane, headerRoom(scene)).zoom >= READABLE_ZOOM) return null;
   const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
   const narrow = pane.width < NARROW_PANE;
   const zoom = narrow ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
@@ -945,9 +1150,12 @@ export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
     if (!fits(box, scale)) scale = Math.max(FULL_CARDS, (floor(box.width * scale) - margin.y) / box.height);
   }
   const height = box.height * scale;
-  // The frame's top on the pane: with nobody drawn above the start's row, the frame starts at the top.
-  const topRow = !people.some((n) => n.rank < start.rank);
-  const top = Math.min(topRow ? margin.y : (pane.height - height) / 2, floor(box.width * scale) - height);
+  // The frame's top on the pane: centred, but never below the point where the top of the view (its
+  // top row, and the lineage headers above it in a view of two or more columns) meets the margin,
+  // so no empty canvas shows above it (b7 of the M06 design review); with nobody drawn above the
+  // start's row the frame starts at the top.
+  const viewTop = Math.min(...people.map((n) => n.y)) - (scene.bands.length >= 2 ? COLUMN_HEADER_SPACE : 0);
+  const top = Math.min((pane.height - height) / 2, margin.y + (box.y - viewTop) * scale, floor(box.width * scale) - height);
   return { x: box.x + box.width / 2, y: box.y + (pane.height / 2 - top) / scale, zoom: scale };
 }
 
@@ -1060,6 +1268,8 @@ export interface CanvasProps {
   onMount?: () => void;
   /** Overlays over the canvas frame: the legend, the relayout notice. */
   children?: ReactNode;
+  /** The lineages' names by id, for the column headers (columnMarks). */
+  lineageNames?: ReadonlyMap<string, string>;
   // M06 seams (package F wires them all; the packages named fill them in elsewhere).
   /** node-slot: what the buttons inside a node and the summary node do (package C). */
   actions?: NodeActions;
@@ -1540,6 +1750,8 @@ export default function ExplorerCanvas(props: CanvasProps) {
   );
 }
 
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
+
 function CanvasFrame({
   scene,
   nodes,
@@ -1547,6 +1759,7 @@ function CanvasFrame({
   onSelect,
   onMount,
   children,
+  lineageNames = NO_NAMES,
   actions = NO_NODE_ACTIONS,
   notice = null,
   anchorId = null,
@@ -1683,6 +1896,7 @@ function CanvasFrame({
     collapseSheet: () => panel?.current?.collapse() ?? false,
   };
   const keys = useGraphKeys(flowApi, context);
+  const marks = columnMarks(scene, nodes, lineageNames);
 
   return (
     // M06 seam: lit-attrs (data-highlighting: a selection lights its routes, the rest is dimmed)
@@ -1729,6 +1943,8 @@ function CanvasFrame({
               aria-describedby={KEYS_HELP_ID}
             >
               <FitOnScene scene={scene} nodes={all} edges={edges} moves={moves} anchorId={anchorId} />
+              <LodOnFrame />
+              <ColumnMarksView marks={marks} />
             </ReactFlow>
           </NodeActionsContext.Provider>
         </FocusGuard.Provider>
