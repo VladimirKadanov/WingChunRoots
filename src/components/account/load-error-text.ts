@@ -35,4 +35,23 @@ export const LOAD_ERRORS = {
     message: "We couldn't load the plan grants. Nothing was changed.",
     back: { href: '/admin', label: 'Back to administration' },
   },
+  // M09: teacher requests.
+  teachers: {
+    eyebrow: 'Dashboard',
+    title: 'Your teachers',
+    message: "We couldn't load your teachers and requests. Nothing was changed.",
+    back: { href: '/dashboard', label: 'Back to the dashboard' },
+  },
+  newTeacher: {
+    eyebrow: 'Your teachers',
+    title: 'Name a teacher',
+    message: "We couldn't load the request form. Nothing was sent.",
+    back: { href: '/dashboard/teachers', label: 'Back to your teachers' },
+  },
+  studentRequests: {
+    eyebrow: 'Dashboard',
+    title: 'Student requests',
+    message: "We couldn't load your student requests. Nothing was changed.",
+    back: { href: '/dashboard', label: 'Back to the dashboard' },
+  },
 } as const;

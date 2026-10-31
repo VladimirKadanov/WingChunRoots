@@ -87,7 +87,7 @@ export interface PlanCatalog {
     availability: 'now' | 'planned';
     phase: number | null;
     enforced: boolean;
-    /** When a feature of the pilot opens, while it is not built yet ("Opens with teacher requests"). */
+    /** When a feature of the pilot opens, while it is not built yet ("Opens with schools and the map"). */
     opens: string | null;
     note: string | null;
     values: Record<PlanCode, { label: string; included: boolean; mark: ValueMark }>;

@@ -419,6 +419,8 @@ export interface StudentRequests {
   /** Established students, the current before the historical. */
   students: RelationshipView[];
   allowance: { approved: number; limit: number | null; planName: string };
+  /** A Student account's plan approves no one: the page says how to switch to Sifu. */
+  accountType: 'student' | 'sifu';
   /** Only at a real limit, where a request waits because of it (plan §5.6). */
   upgrade: UpgradeOffer | null;
 }
@@ -431,7 +433,8 @@ export async function studentRequests(principal: Principal | null): Promise<Stud
   const offer = await approvalOffer(db, p.user.id, viewer.personId ? await waitingRequests(db, viewer.personId) : 0);
   const plan = await effectivePlan({ kind: 'user', userId: p.user.id }, { db });
   const allowance = { approved: offer.approved, limit: offer.limit, planName: planSummary(plan.plan).name };
-  if (!viewer.personId) return { hasProfile: false, requests: [], students: [], allowance, upgrade: null };
+  const accountType = plan.accountType;
+  if (!viewer.personId) return { hasProfile: false, requests: [], students: [], allowance, accountType, upgrade: null };
   const rows = await db
     .select(relColumns)
     .from(teachingRelationship)
@@ -449,7 +452,7 @@ export async function studentRequests(principal: Principal | null): Promise<Stud
   const students = views
     .filter((v) => v.status !== 'pending_teacher')
     .sort((a, b) => Number(a.historical) - Number(b.historical) || a.student.name.value.localeCompare(b.student.name.value, 'en'));
-  return { hasProfile: true, requests: views.filter((v) => v.status === 'pending_teacher'), students, allowance, upgrade: offer.upgrade };
+  return { hasProfile: true, requests: views.filter((v) => v.status === 'pending_teacher'), students, allowance, accountType, upgrade: offer.upgrade };
 }
 
 export interface RequestOptions {

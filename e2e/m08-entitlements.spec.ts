@@ -678,7 +678,7 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await labelsAreUnique('no profile');
 
   // With a profile: the real next step for teachers (how your name reads, which they search for),
-  // and requests say honestly when they open.
+  // and for requests the request form (M09).
   const onboard = await apiPost(page, '/account/onboard', { primaryName: 'Demo Empty Dashboard' });
   expect(onboard.status(), await onboard.text()).toBe(200);
   await page.reload();
@@ -688,8 +688,10 @@ test('@M08 student and Sifu dashboards render empty states with a next action', 
   await expect(page.getByTestId('empty-teachers')).toContainText('No confirmed teachers yet.');
   await expect(link('empty-teachers')).toHaveText('See how your name reads');
   await expect(link('empty-teachers')).toHaveAttribute('href', '/account');
-  await expect(page.getByTestId('empty-requests')).toContainText('No open requests. Requests to teachers open later in the pilot');
-  await expect(link('empty-requests')).toHaveCount(0);
+  // M09: requests to teachers are open; the empty state leads to the request form.
+  await expect(page.getByTestId('empty-requests')).toContainText('No open requests. Name a teacher');
+  await expect(link('empty-requests')).toHaveText('Name a teacher');
+  await expect(link('empty-requests')).toHaveAttribute('href', '/dashboard/teachers/new');
   await expect(page.getByRole('main').getByRole('link', { name: 'Set up your profile' })).toHaveCount(0);
   await labelsAreUnique('student with a profile');
 
