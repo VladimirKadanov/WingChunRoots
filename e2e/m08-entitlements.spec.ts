@@ -750,7 +750,13 @@ test('@M08 notifications: marking one read updates the count at once, and markin
   // A polite announcement, and the focus moves on to the next unread item (a11y-webview-3).
   await expect(page.getByTestId('notifications-status')).toHaveText('Marked as read. 1 unread.');
   await expect(page.getByRole('button', { name: 'Mark as read (Pilot plan ended: Professional Sifu)' })).toBeFocused();
+  // The optimistic count already reads "1 unread", so it cannot tell that the write landed: wait
+  // for the Server Action's answer before reloading, or the reload can cancel it or beat it.
+  const answered = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && Boolean(response.request().headers()['next-action']),
+  );
   release();
+  expect((await answered).ok(), 'the Server Action answered').toBe(true);
   await expect(count).toHaveText('1 unread');
   await page.unroute('**/dashboard');
   await page.reload();
