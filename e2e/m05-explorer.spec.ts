@@ -59,15 +59,18 @@ test('@M05 cross-lineage teacher edge is curved, long-dashed and labelled with t
   await openExplorer(page, { focus: id });
   const cross = page.locator(`[data-edge][data-student="${id}"][data-kind="crossLineage"]`);
   await expect(cross).toHaveCount(1);
-  // A cubic Bézier curve, not an orthogonal route (plan §4.6).
+  // A cubic Bézier curve, not an orthogonal route (plan §4.6): the route laid out (data-route).
   await expect(cross).toHaveAttribute('data-routed', 'scene');
-  expect(await cross.getAttribute('d')).toMatch(/ C /);
+  expect(await cross.getAttribute('data-route')).toMatch(/ C /);
   // Drawn as the cross-lineage stroke (plan §4.6), not as one of the states.
   await expect(cross).toHaveAttribute('data-stroke', 'cross_lineage');
   // Long dashes: the longest dash is at least twice the longest gap, which a dotted line (a dot of
   // 0.1 and gaps of 4) and the dashes of "Under review" (7 and 4) are not. As drawn, from the
-  // computed style; an odd-length list repeats (SVG), so dashes and gaps alternate from the start.
-  const listed = (await cross.evaluate((p) => getComputedStyle(p).strokeDasharray)).split(/[\s,]+/).map((v) => Number.parseFloat(v));
+  // computed style of what is drawn (its ink, or its plain stroke at the dots: owner decision
+  // 2026-10-31); an odd-length list repeats (SVG), so dashes and gaps alternate from the start.
+  const drawn = cross.locator('[data-edge-ink], [data-edge-line]');
+  await expect(drawn).toHaveCount(1);
+  const listed = (await drawn.evaluate((p) => getComputedStyle(p).strokeDasharray)).split(/[\s,]+/).map((v) => Number.parseFloat(v));
   expect(listed.every(Number.isFinite) && listed.length > 0, `stroke-dasharray ${listed.join(' ')}`).toBe(true);
   const pattern = listed.length % 2 === 0 ? listed : [...listed, ...listed];
   const dashes = pattern.filter((_, i) => i % 2 === 0);
@@ -89,7 +92,8 @@ test('@M05 demo-converging shows two same-lineage incoming edges, routed orthogo
       kind: p.getAttribute('data-kind'),
       lineage: p.getAttribute('data-lineage'),
       routed: p.getAttribute('data-routed'),
-      d: p.getAttribute('d') ?? '',
+      // The route laid out; the canvas draws it in ink with its corners rounded (owner decision 2026-10-31).
+      d: p.getAttribute('data-route') ?? '',
       teacher: p.getAttribute('data-teacher')!,
     })),
   );
@@ -643,6 +647,48 @@ test.describe('M05 fixes a1', () => {
   });
 });
 
+test.describe('Ink restyle (owner decision 2026-10-31)', () => {
+  test('@M05 the person view of demo-two-lineages stands its lineages side by side, named over their columns, with the marks and the generations', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const id = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: id });
+    await settledView(page);
+    // Two columns, each named above its people (the Ink Lineage direction).
+    const headers = page.locator('[data-column-header]');
+    await expect(headers).toHaveCount(2);
+    const named = await headers.evaluateAll((els) => els.map((el) => ({ text: el.textContent, box: el.getBoundingClientRect().toJSON() as DOMRect })));
+    for (const h of named) expect(h.text).toMatch(/^Demo Lineage [A-C]$/);
+    expect(named[0]!.text).not.toBe(named[1]!.text);
+    const [left, right] = [...named].sort((a, b) => a.box.x - b.box.x);
+    expect(left!.box.x + left!.box.width).toBeLessThanOrEqual(right!.box.x);
+    // The cross-lineage teacher stands in the other column than the focus, under its lineage's name.
+    const cross = page.locator(`[data-edge][data-student="${id}"][data-kind="crossLineage"]`);
+    const teacher = (await cross.getAttribute('data-teacher'))!;
+    const columnOf = async (nodeId: string) => {
+      const b = (await nodeOf(page, nodeId).boundingBox())!;
+      const centre = b.x + b.width / 2;
+      return named.find((h) => centre >= h.box.x - 1 && centre <= h.box.x + h.box.width + 1)?.text;
+    };
+    const [teacherColumn, focusColumn] = [await columnOf(teacher), await columnOf(id)];
+    expect(teacherColumn).toBeTruthy();
+    expect(focusColumn).toBeTruthy();
+    expect(teacherColumn).not.toBe(focusColumn);
+    // Every card has its mark on its top edge, where the links arrive; the roots theirs as founders.
+    const cards = personNodes(page);
+    const count = await cards.count();
+    expect(count).toBeGreaterThan(3);
+    await expect(page.locator('[data-person-node] [data-mark]')).toHaveCount(count);
+    expect(await page.locator('[data-person-node] [data-mark="founder"]').count()).toBeGreaterThanOrEqual(2);
+    const key = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: people' });
+    await expect(key.getByText('Founder, as recorded')).toBeVisible();
+    // The generations beside the columns, from the founders (generation 1) down to the focus's row.
+    const rails = await page.locator('[data-generation-rail]').allTextContents();
+    expect(rails.map((t) => t.replace('Gen', '').trim())).toEqual(expect.arrayContaining(['1', '2', '3']));
+    // The focus's row says the generation its card names.
+    await expect(nodeOf(page, id)).toContainText('Generation 3 from');
+  });
+});
+
 test.describe('M05 fixes a2', () => {
   const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'In arbitration' };
 
@@ -657,40 +703,68 @@ test.describe('M05 fixes a2', () => {
   }
 
   test('@M05 every legend sample is drawn with the stroke of the edges it explains: the same width, dash and lines', async ({ page }) => {
-    const checked = new Set<string>();
+    // The canvas draws each link in ink from the compact cards up and as a plain stroke at the dots
+    // (owner decision 2026-10-31): the legend shows the sample of what is drawn at each, and the
+    // sample has the shape, width, dash and lines of the edges it explains.
+    const checked = { ink: new Set<string>(), dots: new Set<string>() };
+    const frame = page.locator('[data-canvas-frame]');
+    // A drawn shape without its colour and its geometry: its kind of ink, fill, width, dash, caps
+    // (the same list in both page functions below).
+    const ATTRIBUTES = ['data-ink', 'fill', 'stroke-width', 'stroke-dasharray', 'stroke-linecap', 'vector-effect'];
     // The person views with a teacher from another lineage and with a relationship in arbitration.
     for (const slug of ['demo-two-lineages', 'demo-arbitration']) {
       await openExplorer(page, { focus: await personIdOf(slug) });
-      const drawn = await page.locator('[data-edge]').evaluateAll((paths) =>
-        paths.map((p) => {
-          // A stroke without its colour and its shape: width, dash, caps, and the ground between two lines.
-          const stroke = (el: Element | null) =>
-            el ? ['stroke-width', 'stroke-dasharray', 'stroke-linecap', 'vector-effect'].map((a) => `${a}=${el.getAttribute(a)}`).join(' ') : 'none';
-          const core = document.querySelector(`[data-edge-core="${CSS.escape(p.getAttribute('data-edge')!)}"]`);
-          return { kind: p.getAttribute('data-stroke')!, stroke: `${stroke(p)} | ${stroke(core)}` };
-        }),
-      );
-      const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
-      for (const { kind, stroke } of new Map(drawn.map((d) => [d.kind, d])).values()) {
-        const sample = legend.getByRole('listitem').filter({ hasText: words[kind]! }).locator('svg[data-stroke]');
-        const inLegend = await sample.evaluate((svg) => {
-          const stroke = (el: Element | null) =>
-            el ? ['stroke-width', 'stroke-dasharray', 'stroke-linecap', 'vector-effect'].map((a) => `${a}=${el.getAttribute(a)}`).join(' ') : 'none';
-          const [outer = null, core = null] = svg.querySelectorAll('path');
-          return `${stroke(outer)} | ${stroke(core)}`;
-        });
-        expect(inLegend, `${slug}: the legend's sample for ${kind}`).toBe(stroke);
-        checked.add(kind);
+      for (const level of ['ink', 'dots'] as const) {
+        if (level === 'dots') {
+          for (let clicks = 0; (await frame.getAttribute('data-lod')) !== 'dot'; clicks++) {
+            expect(clicks, 'zooms out to the dots').toBeLessThan(12);
+            await page.getByRole('button', { name: 'Zoom out' }).click();
+            await settledView(page);
+          }
+        } else {
+          await expect(frame).not.toHaveAttribute('data-lod', 'dot');
+        }
+        const drawn = await page.locator('[data-edge]').evaluateAll(
+          (groups, attributes) =>
+            groups.map((g) => {
+              const describe = (el: Element | null) => (el ? attributes.map((a) => `${a}=${el.getAttribute(a)}`).join(' ') : 'none');
+              const id = CSS.escape(g.getAttribute('data-edge')!);
+              const outer = g.querySelector('[data-edge-ink], [data-edge-line]');
+              const core = g.querySelector(`[data-edge-core="${id}"]`);
+              return { kind: g.getAttribute('data-stroke')!, ink: g.querySelector('[data-edge-ink]') !== null, stroke: `${describe(outer)} | ${describe(core)}` };
+            }),
+          ATTRIBUTES,
+        );
+        // Ink from the compact cards up, plain strokes at the dots: nothing else.
+        expect(drawn.every((d) => d.ink === (level === 'ink')), `${slug}: drawn as ${level}`).toBe(true);
+        const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
+        for (const { kind, stroke } of new Map(drawn.map((d) => [d.kind, d])).values()) {
+          const item = legend.getByRole('listitem').filter({ hasText: words[kind]! });
+          const [shown, other] = level === 'ink' ? ['canvas-ink', 'canvas'] : ['canvas', 'canvas-ink'];
+          await expect(item.locator(`svg[data-variant="${other}"]`), `${slug}: the other sample of ${kind} is not shown`).toBeHidden();
+          const sample = item.locator(`svg[data-variant="${shown}"]`);
+          await expect(sample).toBeVisible();
+          const inLegend = await sample.evaluate((svg, attributes) => {
+            const describe = (el: Element | null) => (el ? attributes.map((a) => `${a}=${el.getAttribute(a)}`).join(' ') : 'none');
+            const [outer = null, core = null] = svg.querySelectorAll('path');
+            return `${describe(outer)} | ${describe(core)}`;
+          }, ATTRIBUTES);
+          expect(inLegend, `${slug}: the legend's ${level} sample for ${kind}`).toBe(stroke);
+          checked[level].add(kind);
+        }
       }
     }
-    // Among them the two states whose samples once differed from the canvas.
-    expect([...checked]).toEqual(expect.arrayContaining(['cross_lineage', 'arbitration', 'verified']));
+    // Among them the two states whose samples once differed from the canvas, at both levels.
+    for (const level of ['ink', 'dots'] as const) expect([...checked[level]]).toEqual(expect.arrayContaining(['cross_lineage', 'arbitration', 'verified']));
   });
 
   test('@M05 zoomed out to dots, every edge keeps its width and its pattern at least a pixel wide on screen', async ({ page }) => {
     await wholeLineageB(page);
-    const strokes = await page.locator('[data-edge]').evaluateAll((paths) =>
-      paths.map((p) => {
+    // At the dots the canvas draws plain strokes, no ink (owner decision 2026-10-31).
+    await expect(page.locator('[data-edge-ink]')).toHaveCount(0);
+    const strokes = await page.locator('[data-edge]').evaluateAll((groups) =>
+      groups.map((g) => {
+        const p = g.querySelector('[data-edge-line]')!;
         const onScreen = (el: Element) => {
           const path = el as SVGPathElement;
           const scale = getComputedStyle(path).vectorEffect === 'non-scaling-stroke' ? 1 : (path.getScreenCTM()?.a ?? 1);
@@ -700,8 +774,8 @@ test.describe('M05 fixes a2', () => {
             dash: (path.getAttribute('stroke-dasharray') ?? '').split(/[\s,]+/).filter(Boolean).map(Number).filter((n) => n >= 1).map((n) => n * scale),
           };
         };
-        const core = document.querySelector(`[data-edge-core="${CSS.escape(p.getAttribute('data-edge')!)}"]`);
-        return { id: p.getAttribute('data-edge'), outer: onScreen(p), core: core ? onScreen(core) : null, zoom: (p as SVGPathElement).getScreenCTM()?.a ?? 1 };
+        const core = g.querySelector(`[data-edge-core="${CSS.escape(g.getAttribute('data-edge')!)}"]`);
+        return { id: g.getAttribute('data-edge'), outer: onScreen(p), core: core ? onScreen(core) : null, zoom: (p as SVGPathElement).getScreenCTM()?.a ?? 1 };
       }),
     );
     expect(strokes.length).toBeGreaterThan(20);
@@ -717,8 +791,10 @@ test.describe('M05 fixes a2', () => {
 
   test('@M05 in the Lineage view a long cross-lineage curve runs between the rows, not behind the cards, and is labelled beside its student', async ({ page }) => {
     // A phone stops at the least zoom with a part of lineage B on screen, and only what is on screen
-    // is drawn; the curves are the same on every screen, so they are checked on a wide one.
-    await page.setViewportSize({ width: 1440, height: 900 });
+    // is drawn; the curves are the same on every screen, so they are checked on a wide one. Lineage
+    // B's view stands its students from other lineages in their own columns beside it (owner decision
+    // 2026-10-31), wider than 1440 px shows at the least zoom: the screen shows the whole view.
+    await page.setViewportSize({ width: 2560, height: 1440 });
     await wholeLineageB(page);
     // The cards drawn, and the curves drawn whose student is drawn, as the label goes beside the student.
     const drawn = await page.evaluate(() => {
@@ -730,7 +806,7 @@ test.describe('M05 fixes a2', () => {
         const id = p.getAttribute('data-edge')!;
         const label = document.querySelector<HTMLElement>(`[data-edge-label="${CSS.escape(id)}"]`);
         const [, lx, ly] = /translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)\s*$/.exec(label?.style.transform ?? '') ?? [];
-        return { id, student: p.getAttribute('data-student')!, d: p.getAttribute('d') ?? '', label: label ? { x: Number(lx), y: Number(ly), text: label.textContent } : null };
+        return { id, student: p.getAttribute('data-student')!, d: p.getAttribute('data-route') ?? '', label: label ? { x: Number(lx), y: Number(ly), text: label.textContent } : null };
       });
       return { nodes, curves };
     });
@@ -1257,7 +1333,7 @@ test.describe('M05 fixes I', () => {
     const mark = () =>
       page.evaluate(() => {
         const ids: string[] = [];
-        for (const el of document.querySelectorAll<SVGPathElement>('[data-edge]')) {
+        for (const el of document.querySelectorAll<SVGElement>('[data-edge]')) {
           (el as unknown as { __kept?: boolean }).__kept = true;
           ids.push(el.dataset.edge!);
         }
@@ -1265,7 +1341,7 @@ test.describe('M05 fixes I', () => {
       });
     const drawnAgain = (before: string[]) =>
       page.evaluate(
-        (ids) => [...document.querySelectorAll<SVGPathElement>('[data-edge]')].filter((el) => ids.includes(el.dataset.edge!) && !(el as unknown as { __kept?: boolean }).__kept).map((el) => el.dataset.edge!),
+        (ids) => [...document.querySelectorAll<SVGElement>('[data-edge]')].filter((el) => ids.includes(el.dataset.edge!) && !(el as unknown as { __kept?: boolean }).__kept).map((el) => el.dataset.edge!),
         before,
       );
     const selected: string[] = [];
