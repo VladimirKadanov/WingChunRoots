@@ -903,6 +903,9 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
       if (row.status !== 'pending_teacher') throw notWaiting(row.status);
 
       // 2. The plan's allowance (DEFAULT D06), with withQuota's own lock after the global one.
+      // DEFAULT D04/D13: a Sifu who chose the account type and is not verified yet ("Instructor
+      // (unverified)") may approve; verification is apart from the plan (D04). The relationship
+      // panel's "Approved by an unverified instructor" comes with instructor verification (M10b).
       const quota = await withQuota(
         tx,
         { kind: 'user', userId: p.user.id },
