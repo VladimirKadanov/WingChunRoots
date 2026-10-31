@@ -58,6 +58,14 @@ export interface RevalidateCall {
   (tags: string[]): Promise<void>;
 }
 
+/** The internal route answered with something other than 200: its status is safe to log. */
+export class RevalidateAnswerError extends Error {
+  constructor(readonly status: number) {
+    super(`revalidate answered ${status}`);
+    this.name = 'RevalidateAnswerError';
+  }
+}
+
 /** POSTs the tags to the web process's internal route; throws on any answer but 200. */
 export const postRevalidate: RevalidateCall = async (tags) => {
   if (tags.length === 0) return;
@@ -67,13 +75,21 @@ export const postRevalidate: RevalidateCall = async (tags) => {
     body: JSON.stringify({ tags }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new Error(`revalidate answered ${response.status}`);
+  if (!response.ok) throw new RevalidateAnswerError(response.status);
 };
 
-/** What a log line may say about an error: its SQLSTATE, or else the error's name (plan §6.4). */
-function failureCode(error: unknown): string {
+/**
+ * What a log line may say about an error (plan §6.4): its SQLSTATE, the status the internal route
+ * answered (401: the web process and the worker hold different secrets), the system code of a
+ * failed connection (ECONNREFUSED: the web process is not reachable at the address), or else the
+ * error's name. Never a message, which could carry data.
+ */
+export function failureCode(error: unknown): string {
+  if (error instanceof RevalidateAnswerError) return `revalidate answered ${error.status}`;
   const code = (error as { code?: unknown } | null)?.code;
   if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return `database error ${code}`;
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
+  if (typeof cause === 'string' && /^E[A-Z_]{2,30}$/.test(cause)) return `revalidate unreachable (${cause})`;
   return error instanceof Error ? error.name : 'unknown error';
 }
 
