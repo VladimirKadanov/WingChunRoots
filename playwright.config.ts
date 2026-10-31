@@ -18,8 +18,9 @@ const serverEnv = { APP_URL: baseURL, WCR_TEST_FAULTS: 'lineage-once,person-once
 // Listing the tests starts no server and needs no build.
 const buildProblem = process.argv.includes('--list') ? null : e2eBuildProblem(process.env.WCR_DIST_DIR || '.next');
 if (buildProblem) throw new Error(buildProblem);
-// The specs that lock a whole table run alone, in a run of their own (e2e/projects.ts,
-// EXCLUSIVE_SPEC): PW_EXCLUSIVE=1, after the ordinary run (scripts/verify.sh does both).
+// The specs that lock a whole table, and (M09) those that make links public, run alone, in a run
+// of their own (e2e/projects.ts, EXCLUSIVE_SPECS): PW_EXCLUSIVE=1, after the ordinary run
+// (scripts/verify.sh does both).
 const exclusive = process.env.PW_EXCLUSIVE === '1';
 const paths = runPaths(exclusive);
 // Fewer parallel workers on a slower machine (PW_WORKERS=2): unset keeps Playwright's default.

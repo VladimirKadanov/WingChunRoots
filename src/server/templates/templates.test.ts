@@ -104,6 +104,25 @@ describe('e-mail templates', () => {
   });
 });
 
+describe('teacher request e-mails (M09)', () => {
+  it('relationship-rejected links to the request form for that request, and to nothing else', async () => {
+    const template = EMAIL_TEMPLATES['relationship-rejected'];
+    const sample = { ...template.sample };
+    const { text } = await renderEmail('relationship-rejected', sample);
+    expect(text).toContain('/dashboard/teachers/new?resubmit=0190a5c0-0000-7000-8000-000000000005');
+    for (const url of [
+      'http://localhost:3000/dashboard/teachers',
+      'http://localhost:3000/dashboard/teachers/new',
+      'http://localhost:3000/dashboard/teachers/new?resubmit=not-an-id',
+      'http://localhost:3000/dashboard/teachers/new?resubmit=0190a5c0-0000-7000-8000-000000000005&next=//evil.example',
+      'http://localhost:3000/elsewhere?resubmit=0190a5c0-0000-7000-8000-000000000005',
+      'javascript:alert(1)',
+    ]) {
+      expect(() => template.parse({ ...sample, url }), url).toThrow(TemplateDataError);
+    }
+  });
+});
+
 describe('account e-mails (M02)', () => {
   const cases = [
     { name: 'verify-email', path: '/verify-email', subject: /Confirm your e-mail address/ },

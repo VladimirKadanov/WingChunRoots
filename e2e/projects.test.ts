@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EXCLUSIVE_SPEC, SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects, runPaths } from './projects';
+import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects, runPaths } from './projects';
 
 describe('buildProjects', () => {
   it('runs desktop and mobile Chromium outside CI, without WebKit', () => {
@@ -73,7 +73,7 @@ describe('buildProjects: visual and screenshots (M00b)', () => {
 
   it('keeps the visual, screenshot and exclusive specs out of the other projects', () => {
     for (const project of buildProjects({ ci: true })) {
-      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC]);
+      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS]);
     }
   });
 });
@@ -85,7 +85,9 @@ describe('buildProjects: exclusive (M08 final check)', () => {
       const projects = buildProjects({ ...options, exclusive: true, chromiumExecutable: executablePath });
       expect(projects.map((p) => p.name)).toEqual(['exclusive']);
       const [exclusive] = projects;
-      expect(exclusive?.testMatch).toBe(EXCLUSIVE_SPEC);
+      expect(exclusive?.testMatch).toEqual(EXCLUSIVE_SPECS);
+      // The table-locking specs (M08) and the specs that make links public (M09).
+      expect(exclusive?.testMatch).toEqual([EXCLUSIVE_SPEC, '**/m09-requests.spec.ts']);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);
       // No dependencies: they would run every other project in full, whatever --grep says.

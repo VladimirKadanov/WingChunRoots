@@ -1080,7 +1080,8 @@ export async function rejectRelationship(principal: Principal | null, raw: z.inp
               teacherNames,
               reason: rejectionReasonText(input.reason),
               lineageName: row.lineageName,
-              url: url('/dashboard/teachers'),
+              // The form, filled in with the request as it was sent (the notification links there too).
+              url: url(`/dashboard/teachers/new?resubmit=${row.id}`),
               ...(studentNames.length > 0 ? { recipientNames: studentNames } : {}),
             },
           });
