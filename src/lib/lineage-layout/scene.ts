@@ -414,7 +414,7 @@ export const COLUMN_HEADER_SPACE = 40;
  */
 export const CURVE_RUN_EXTRA = 40;
 
-/** How many times the gap of a curve that still runs behind a card grows (by half each time). */
+/** How many rounds the gaps of curves that still run behind a card grow (by half each time). */
 const CURVE_ROOM_ROUNDS = 6;
 
 /** Points a curve is checked at for cards it runs behind (curveClear): 1/2 px steps on a 1000 px curve. */
@@ -671,21 +671,43 @@ export function buildScene(
     }
     return { rows, placed, sceneWidth, sceneHeight, childOf, nodes, edges, rowY };
   };
+  // A gap with a curve that still runs behind a card grows, by half each round, and keeps the
+  // height with the fewest such curves (the lowest of equals): a curve beside its two people
+  // is not shaped by the gap, and a growth that does not help it is undone.
   let attempt = place();
-  for (let round = 0; round < CURVE_ROOM_ROUNDS; round++) {
+  const best = new Map<number, { gap: number; cramped: number }>();
+  for (let round = 0; round <= CURVE_ROOM_ROUNDS; round++) {
     const byId = new Map(attempt.nodes.map((n) => [n.id, n]));
-    const cramped = new Set<number>();
+    const cramped = new Map<number, number>();
     for (const edge of attempt.edges) {
       if (edge.path.type !== 'bezier') continue;
       const student = byId.get(edge.studentId)!;
-      if (runGaps.has(student.rank - 1) && !curveClear(edge.path, byId.get(edge.teacherId)!, student, attempt.nodes)) {
-        cramped.add(student.rank - 1);
+      if (!runGaps.has(student.rank - 1)) continue;
+      if (!curveClear(edge.path, byId.get(edge.teacherId)!, student, attempt.nodes)) {
+        cramped.set(student.rank - 1, (cramped.get(student.rank - 1) ?? 0) + 1);
       }
     }
-    if (cramped.size === 0) break;
-    for (const rank of cramped) runGaps.set(rank, Math.min(CURVE_RUN_MAX_GAP, runGaps.get(rank)! * 1.5));
+    let grown = false;
+    for (const [rank, gap] of runGaps) {
+      const count = cramped.get(rank) ?? 0;
+      const kept = best.get(rank);
+      if (!kept || count < kept.cramped) best.set(rank, { gap, cramped: count });
+      if (count > 0 && round < CURVE_ROOM_ROUNDS && gap < CURVE_RUN_MAX_GAP) {
+        runGaps.set(rank, Math.min(CURVE_RUN_MAX_GAP, gap * 1.5));
+        grown = true;
+      }
+    }
+    if (!grown) break;
     attempt = place();
   }
+  let undone = false;
+  for (const [rank, { gap }] of best) {
+    if (runGaps.get(rank) !== gap) {
+      runGaps.set(rank, gap);
+      undone = true;
+    }
+  }
+  if (undone) attempt = place();
   const { rows, placed, sceneWidth, sceneHeight, childOf, nodes, edges, rowY } = attempt;
   const position = new Map(view.order.map((id, i) => [id, i]));
   edges.sort(
