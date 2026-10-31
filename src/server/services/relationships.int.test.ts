@@ -7,7 +7,7 @@
 // and the lineage.recompute job.
 
 import { and, asc, count, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
@@ -24,10 +24,14 @@ import {
   endRelationship,
   getRelationship,
   myTeachers,
+  REQUEST_LIMIT_MESSAGE,
+  REQUESTS_PER_WINDOW,
+  REQUESTS_TO_ONE_TEACHER_PER_WINDOW,
   rejectRelationship,
   requestTeacher,
   resubmitRelationship,
   studentRequests,
+  TEACHER_REQUEST_LIMIT_MESSAGE,
   withdrawRelationship,
 } from './relationships';
 import { key, type Member, member, meta, newLineage, ongoingFrom, staff } from './relationships.test-support';
@@ -220,7 +224,9 @@ describe('the authorization matrix (role × ownership)', () => {
   type Who = 'student' | 'teacher' | 'stranger' | 'reviewer' | 'unverifiedStaff';
   const people = {} as Record<Who, { principal: Member['principal'] }>;
 
-  beforeAll(async () => {
+  // New people for every case: the request window counts each student's requests to one teacher
+  // (REQUESTS_TO_ONE_TEACHER_PER_WINDOW), and the cases are about who may act, not about the window.
+  beforeEach(async () => {
     people.teacher = await member('m09-matrix-teacher', { sifu: true });
     people.student = await member('m09-matrix-student');
     people.stranger = await member('m09-matrix-stranger', { sifu: true });
@@ -373,6 +379,49 @@ describe('requests: checks and idempotency', () => {
     const toSecond = await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).where(eq(teachingRelationship.teacherPersonId, second.personId));
     expect(toSecond).toEqual([]);
     expect(await emailsTo(second.account.email, 'relationship-requested')).toBe(0);
+  });
+
+  it('a request → withdraw loop stops at the request window, and the teacher gets one request e-mail a day (M09 review, code-2)', async () => {
+    const teacher = await member('m09-loop-teacher', { sifu: true });
+    const student = await member('m09-loop-student');
+    for (let i = 0; i < REQUESTS_TO_ONE_TEACHER_PER_WINDOW; i += 1) {
+      const id = await request(student, teacher);
+      await withdrawRelationship(student.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    }
+    const error = (await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta).catch((e: unknown) => e)) as {
+      code: string;
+      message: string;
+    };
+    expect(error).toMatchObject({ code: 'TOO_MANY_REQUESTS', message: TEACHER_REQUEST_LIMIT_MESSAGE });
+    // Every request reached the dashboard, the first one only by e-mail; the refused one nowhere.
+    expect(await notificationsOf(teacher.account.id, 'relationship.requested')).toHaveLength(REQUESTS_TO_ONE_TEACHER_PER_WINDOW);
+    expect(await emailsTo(teacher.account.email, 'relationship-requested')).toBe(1);
+    const rows = await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).where(eq(teachingRelationship.studentPersonId, student.personId));
+    expect(rows).toHaveLength(REQUESTS_TO_ONE_TEACHER_PER_WINDOW);
+
+    // Other teachers: the account's own window, REQUESTS_PER_WINDOW requests in all.
+    for (let i = REQUESTS_TO_ONE_TEACHER_PER_WINDOW; i < REQUESTS_PER_WINDOW; i += 1) await request(student, await member(`m09-loop-other-${i}`));
+    const last = await member('m09-loop-last');
+    const over = (await requestTeacher(student.principal, { teacherId: last.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta).catch((e: unknown) => e)) as {
+      code: string;
+      message: string;
+    };
+    expect(over).toMatchObject({ code: 'TOO_MANY_REQUESTS', message: REQUEST_LIMIT_MESSAGE });
+    expect(await notificationsOf(last.account.id, 'relationship.requested')).toEqual([]);
+  });
+
+  it('a corrected request counts in the window, and is e-mailed to the teacher who declined it (M09 review, code-2)', async () => {
+    const teacher = await member('m09-window-teacher', { sifu: true });
+    const student = await member('m09-window-student');
+    const id = await request(student, teacher);
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    await resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom('2018'), idempotencyKey: key() }, meta);
+    expect(await emailsTo(teacher.account.email, 'relationship-requested')).toBe(2);
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    await resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom('2017'), idempotencyKey: key() }, meta);
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    expect(await refusal(resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom('2016'), idempotencyKey: key() }, meta))).toBe('TOO_MANY_REQUESTS');
+    expect(await statusOf(id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
   });
 
   it('a resubmit counts against the pending requests cap like a new request (code review)', async () => {

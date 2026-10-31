@@ -16,7 +16,9 @@
 // Every transition writes a relationship_event and an audit_log row in its own transaction, with the
 // notification rows and the queued e-mails, so all of it commits or none does. Every mutation takes
 // an idempotency key (plan §5.6): the same key from the same account replays the stored outcome and
-// changes nothing (a double click, a retried request).
+// changes nothing (a double click, a retried request). New and corrected requests are limited per
+// account and per teacher in a 24-hour window, and a teacher gets at most one new-request e-mail a
+// day from one student (checkRequestWindow, tellTeacher; docs/adr/0011-teacher-requests.md).
 //
 // Approval order (plan §6.3), in one READ COMMITTED transaction:
 //   1. pg_advisory_xact_lock(hashtext('teaching_relationship.verify')): one approval at a time;
@@ -80,6 +82,19 @@ export const VERIFY_LOCK = 'teaching_relationship.verify';
 const REQUEST_LOCK_SPACE = 9;
 /** At most this many requests of one student wait for an answer at once (a limit against floods). */
 export const MAX_PENDING_REQUESTS = 20;
+/**
+ * The request window (M09 review, code-2 and security-2): every request and every corrected request
+ * notifies the teacher, and a withdrawal frees its pending slot at once, so the pending cap alone
+ * does not stop a request → withdraw loop. At most REQUESTS_PER_WINDOW requests of one account in
+ * REQUEST_WINDOW_HOURS, and REQUESTS_TO_ONE_TEACHER_PER_WINDOW to one teacher, counted from the
+ * account's relationship_event rows into pending_teacher (new and corrected requests) under the
+ * student's request lock; 429 after that. A default with no D number (docs/adr/0011-teacher-requests.md).
+ */
+export const REQUEST_WINDOW_HOURS = 24;
+export const REQUESTS_PER_WINDOW = 10;
+export const REQUESTS_TO_ONE_TEACHER_PER_WINDOW = 3;
+export const REQUEST_LIMIT_MESSAGE = 'You have sent many teacher requests today. You can send more tomorrow.';
+export const TEACHER_REQUEST_LIMIT_MESSAGE = 'You have sent this teacher several requests today. You can send another one tomorrow.';
 export const MAX_PERIODS = 5;
 /** A bound on the teachers above one person the cycle check walks: it only stops bad data. */
 const CYCLE_WALK_CAP = 10_000;
@@ -683,11 +698,44 @@ async function checkPendingCap(tx: Transaction, studentId: string): Promise<void
   }
 }
 
-/** Notifies the teacher of a new or corrected request: a dashboard notification and an e-mail. */
-async function tellTeacher(tx: Transaction, rel: { id: string; teacherPersonId: string; studentPersonId: string; lineageName: string }, rows: PeriodRow[], eventId: string, resubmitted: boolean) {
+/**
+ * Refuses one more request (new or corrected) above the request window (REQUESTS_PER_WINDOW,
+ * REQUESTS_TO_ONE_TEACHER_PER_WINDOW). Returns how many requests to this teacher the account sent in
+ * the window before this one. Under the student's request lock, so parallel requests count each other.
+ */
+async function checkRequestWindow(tx: Transaction, userId: string, teacherId: string): Promise<{ toTeacher: number }> {
+  const result = await tx.execute<{ total: number; to_teacher: number }>(sql`
+SELECT count(*)::int AS total, (count(*) FILTER (WHERE tr.teacher_person_id = ${teacherId}::uuid))::int AS to_teacher
+  FROM relationship_event e
+  JOIN teaching_relationship tr ON tr.id = e.relationship_id
+ WHERE e.actor_user_id = ${userId}::uuid
+   AND e.to_status = 'pending_teacher'
+   AND e.created_at > now() - make_interval(hours => ${REQUEST_WINDOW_HOURS}::int)`);
+  const counts = result.rows[0] ?? { total: 0, to_teacher: 0 };
+  if (counts.to_teacher >= REQUESTS_TO_ONE_TEACHER_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', TEACHER_REQUEST_LIMIT_MESSAGE);
+  if (counts.total >= REQUESTS_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', REQUEST_LIMIT_MESSAGE);
+  return { toTeacher: counts.to_teacher };
+}
+
+/**
+ * Notifies the teacher of a new or corrected request: a dashboard notification and, when `email`,
+ * an e-mail. A new request is e-mailed only when the student sent this teacher no other request in
+ * the window (at most one request e-mail per student and teacher a day; M09 review, security-2). A
+ * corrected request is always e-mailed: it answers the teacher's own decline, so it cannot loop
+ * without the teacher, and the request window bounds it.
+ */
+async function tellTeacher(
+  tx: Transaction,
+  rel: { id: string; teacherPersonId: string; studentPersonId: string; lineageName: string },
+  rows: PeriodRow[],
+  eventId: string,
+  resubmitted: boolean,
+  email: boolean,
+) {
   const teacher = await accountOf(tx, rel.teacherPersonId);
   if (!teacher) return;
   await tx.insert(notification).values({ userId: teacher.id, template: 'relationship.requested', payload: { relationshipId: rel.id, resubmitted } });
+  if (!email) return;
   // As for an approval: no e-mail without the student's name, and no greeting without the teacher's.
   const studentNames = await namesFor(tx, rel.studentPersonId);
   if (studentNames.length === 0) return;
@@ -790,6 +838,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
       if (duplicate) throw new ServiceError('CONFLICT', DUPLICATE_MESSAGE, { teacherId: DUPLICATE_MESSAGE });
 
       await checkPendingCap(tx, studentId);
+      const window = await checkRequestWindow(tx, p.user.id, teacher.id);
 
       // Early, so the student learns it now; the approval checks it again under the global lock.
       if (await closesCycle(tx, teacher.id, studentId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE, { teacherId: CYCLE_MESSAGE });
@@ -821,7 +870,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         ipHmac: meta.ipHmac,
       });
       const [l] = await tx.select({ name: lineage.name }).from(lineage).where(eq(lineage.id, lineageId));
-      await tellTeacher(tx, { id, teacherPersonId: teacher.id, studentPersonId: studentId, lineageName: l!.name }, rows, eventId, false);
+      await tellTeacher(tx, { id, teacherPersonId: teacher.id, studentPersonId: studentId, lineageName: l!.name }, rows, eventId, false, window.toTeacher === 0);
       return { id, replayed: false };
     });
     return { relationship: await viewOf(db, outcome.id, viewer), replayed: outcome.replayed };
@@ -1197,6 +1246,7 @@ export async function resubmitRelationship(principal: Principal | null, raw: z.i
       if (replay) return replay;
       if (row.status !== 'rejected') throw new ServiceError('CONFLICT', 'Only a declined request can be corrected and sent again.');
       await checkPendingCap(tx, row.studentPersonId);
+      await checkRequestWindow(tx, p.user.id, row.teacherPersonId);
       // Left out: the request keeps its lineage. null: the teacher's own, as for a request (the
       // form's "The teacher's own lineage"). An id: that lineage.
       let lineageId = input.lineageId === undefined ? row.lineageId : input.lineageId;
@@ -1224,7 +1274,7 @@ export async function resubmitRelationship(principal: Principal | null, raw: z.i
         ipHmac: meta.ipHmac,
       });
       const [l] = await tx.select({ name: lineage.name }).from(lineage).where(eq(lineage.id, lineageId));
-      await tellTeacher(tx, { id: row.id, teacherPersonId: row.teacherPersonId, studentPersonId: row.studentPersonId, lineageName: l!.name }, rows, eventId, true);
+      await tellTeacher(tx, { id: row.id, teacherPersonId: row.teacherPersonId, studentPersonId: row.studentPersonId, lineageName: l!.name }, rows, eventId, true, true);
       return { id: row.id, replayed: false };
     });
     return { relationship: await viewOf(db, outcome.id, viewer), replayed: outcome.replayed };
