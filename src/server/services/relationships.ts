@@ -34,7 +34,7 @@
 //   - the student cannot answer their own request (403), the teacher cannot withdraw or resubmit it (403).
 // Logs and audit rows carry ids and codes, never a name (plan §6.4).
 
-import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { atPrecision, coarser, EARLIEST_TRAINING_YEAR, formatPartialDate, type PartialDate, parsePartialDate, todayUtc, toPrefix } from '../../lib/partial-date';
@@ -124,6 +124,7 @@ export type RequestInput = z.input<typeof requestInput>;
 
 export const resubmitInput = z.object({
   relationshipId: z.uuid({ error: 'Choose a request.' }),
+  /** Left out: the request keeps its lineage; null: the teacher's own, as for a request (lineageFor). */
   lineageId: z.uuid({ error: 'Choose a lineage from the list.' }).nullish(),
   periods,
   displayPrimary: z.boolean().default(false),
@@ -596,7 +597,7 @@ async function lineageExists(db: Executor, id: string): Promise<boolean> {
 /** The event an idempotency key already recorded for this account, if any. */
 async function replayOf(db: Executor, userId: string, key: string) {
   const [row] = await db
-    .select({ relationshipId: relationshipEvent.relationshipId, toStatus: relationshipEvent.toStatus, reason: relationshipEvent.reason })
+    .select({ relationshipId: relationshipEvent.relationshipId, fromStatus: relationshipEvent.fromStatus, toStatus: relationshipEvent.toStatus, reason: relationshipEvent.reason })
     .from(relationshipEvent)
     .where(and(eq(relationshipEvent.actorUserId, userId), eq(relationshipEvent.idempotencyKey, key)));
   return row ?? null;
@@ -666,11 +667,31 @@ function isActiveConflict(error: unknown): boolean {
 
 const DUPLICATE_MESSAGE = 'You already have a request or a confirmed link with this teacher in this lineage. See My teachers.';
 
+/** Takes the per-student request lock: a student's requests and resubmits see each other's checks. */
+async function lockStudentRequests(tx: Transaction, studentId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${REQUEST_LOCK_SPACE}::int, hashtext(${studentId}::text))`);
+}
+
+/** Refuses one more pending request when the student already has MAX_PENDING_REQUESTS waiting. */
+async function checkPendingCap(tx: Transaction, studentId: string): Promise<void> {
+  const [pending] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(teachingRelationship)
+    .where(and(eq(teachingRelationship.studentPersonId, studentId), eq(teachingRelationship.status, 'pending_teacher')));
+  if ((pending?.n ?? 0) >= MAX_PENDING_REQUESTS) {
+    throw new ServiceError('TOO_MANY_REQUESTS', `You have ${MAX_PENDING_REQUESTS} requests waiting for an answer. Wait for some of them, or withdraw one, before you send another.`);
+  }
+}
+
 /** Notifies the teacher of a new or corrected request: a dashboard notification and an e-mail. */
 async function tellTeacher(tx: Transaction, rel: { id: string; teacherPersonId: string; studentPersonId: string; lineageName: string }, rows: PeriodRow[], eventId: string, resubmitted: boolean) {
   const teacher = await accountOf(tx, rel.teacherPersonId);
   if (!teacher) return;
   await tx.insert(notification).values({ userId: teacher.id, template: 'relationship.requested', payload: { relationshipId: rel.id, resubmitted } });
+  // As for an approval: no e-mail without the student's name, and no greeting without the teacher's.
+  const studentNames = await namesFor(tx, rel.studentPersonId);
+  if (studentNames.length === 0) return;
+  const recipientNames = await namesFor(tx, rel.teacherPersonId);
   const starts = rows.map((r) => (r.startsOn ? toPrefix(r.startsOn, r.precision as 'year' | 'month' | 'day') : null)).filter((s): s is string => s !== null);
   const first = starts.sort((a, b) => `${a}-01-01`.slice(0, 10).localeCompare(`${b}-01-01`.slice(0, 10)))[0];
   await queueEmail(tx, {
@@ -679,12 +700,12 @@ async function tellTeacher(tx: Transaction, rel: { id: string; teacherPersonId: 
     userId: teacher.id,
     idempotencyKey: `relationship-requested:${eventId}`,
     data: {
-      studentNames: await namesFor(tx, rel.studentPersonId),
+      studentNames,
       trainingStart: first ? formatPartialDate(first) : 'Dates not given',
       lineageName: rel.lineageName,
       resubmitted,
       queueUrl: url('/dashboard/students/requests'),
-      recipientNames: await namesFor(tx, rel.teacherPersonId),
+      ...(recipientNames.length > 0 ? { recipientNames } : {}),
     },
   });
 }
@@ -715,10 +736,18 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
   try {
     const outcome = await db.transaction(async (tx) => {
       // One request of a student at a time: the duplicate, pending and cycle checks see each other.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${REQUEST_LOCK_SPACE}::int, hashtext(${studentId}::text))`);
+      await lockStudentRequests(tx, studentId);
       const replay = await replayOf(tx, p.user.id, input.idempotencyKey);
       if (replay) {
-        if (replay.toStatus !== 'pending_teacher') throw keyReused();
+        // The same key replays only the same request: a request event (not a resubmit) to the same
+        // teacher, in the lineage asked for. A key sent again with another teacher (a form brought
+        // back by the browser's Back button, an API retry with a corrected body) is refused.
+        if (replay.fromStatus !== null || replay.toStatus !== 'pending_teacher') throw keyReused();
+        const [earlier] = await tx
+          .select({ teacherId: teachingRelationship.teacherPersonId, lineageId: teachingRelationship.lineageId })
+          .from(teachingRelationship)
+          .where(eq(teachingRelationship.id, replay.relationshipId));
+        if (!earlier || earlier.teacherId !== input.teacherId || (input.lineageId && earlier.lineageId !== input.lineageId)) throw keyReused();
         return { id: replay.relationshipId, replayed: true };
       }
 
@@ -760,13 +789,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
         );
       if (duplicate) throw new ServiceError('CONFLICT', DUPLICATE_MESSAGE, { teacherId: DUPLICATE_MESSAGE });
 
-      const [pending] = await tx
-        .select({ n: sql<number>`count(*)::int` })
-        .from(teachingRelationship)
-        .where(and(eq(teachingRelationship.studentPersonId, studentId), eq(teachingRelationship.status, 'pending_teacher')));
-      if ((pending?.n ?? 0) >= MAX_PENDING_REQUESTS) {
-        throw new ServiceError('TOO_MANY_REQUESTS', `You have ${MAX_PENDING_REQUESTS} requests waiting for an answer. Wait for some of them, or withdraw one, before you send another.`);
-      }
+      await checkPendingCap(tx, studentId);
 
       // Early, so the student learns it now; the approval checks it again under the global lock.
       if (await closesCycle(tx, teacher.id, studentId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE, { teacherId: CYCLE_MESSAGE });
@@ -901,6 +924,12 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
       // Approved already (another tab, a retry with a new key): the same answer, nothing new.
       if (row.status === 'verified' || row.status === 'in_arbitration') return { id: row.id, replayed: true, tags: [] as string[] };
       if (row.status !== 'pending_teacher') throw notWaiting(row.status);
+      // A removed profile's request waits for nobody (as in the dashboards): it is never approved.
+      const [removed] = await tx
+        .select({ id: person.id })
+        .from(person)
+        .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), isNotNull(person.deletedAt)));
+      if (removed) throw new ServiceError('CONFLICT', 'This request can no longer be answered: the profile was removed.');
 
       // 2. The plan's allowance (DEFAULT D06), with withQuota's own lock after the global one.
       // DEFAULT D04/D13: a Sifu who chose the account type and is not verified yet ("Instructor
@@ -1156,14 +1185,22 @@ export async function resubmitRelationship(principal: Principal | null, raw: z.i
   const viewer = await viewerOf(db, p);
   try {
     const outcome = await db.transaction(async (tx) => {
+      // The student's request lock first, as in requestTeacher (the same order: no deadlock), so the
+      // pending cap holds against a new request sent at the same time.
+      if (viewer.personId) await lockStudentRequests(tx, viewer.personId);
       const row = await rowById(tx, input.relationshipId, true);
       if (!row) throw notFound();
       authorize(row, viewer, 'resubmit');
       const replay = await replayFor(tx, p, input.idempotencyKey, row.id, { to: 'pending_teacher', reason: 'resubmitted' });
       if (replay) return replay;
       if (row.status !== 'rejected') throw new ServiceError('CONFLICT', 'Only a declined request can be corrected and sent again.');
-      const lineageId = input.lineageId ?? row.lineageId;
-      if (!(await lineageExists(tx, lineageId))) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose a lineage from the list.' });
+      await checkPendingCap(tx, row.studentPersonId);
+      // Left out: the request keeps its lineage. null: the teacher's own, as for a request (the
+      // form's "The teacher's own lineage"). An id: that lineage.
+      let lineageId = input.lineageId === undefined ? row.lineageId : input.lineageId;
+      if (lineageId && !(await lineageExists(tx, lineageId))) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose a lineage from the list.' });
+      lineageId ??= await lineageFor(tx, row.teacherPersonId);
+      if (!lineageId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lineageId: 'Choose the lineage this training belongs to.' });
       const { rows, fields } = await checkPeriods(tx, input.periods);
       if (Object.keys(fields).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
       if (await closesCycle(tx, row.teacherPersonId, row.studentPersonId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE);

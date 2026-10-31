@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 import type { JobWithMetadata } from 'pg-boss';
 
 import type { Database } from '../db';
-import { revalidateUrl, revalidateSecret } from '../revalidate';
+import { MAX_TAGS, revalidateUrl, revalidateSecret } from '../revalidate';
 import { lineageTag } from '../cache-tags';
 import { type LineageRecomputeJob, QUEUE } from './queues';
 
@@ -66,17 +66,27 @@ export class RevalidateAnswerError extends Error {
   }
 }
 
-/** POSTs the tags to the web process's internal route; throws on any answer but 200. */
-export const postRevalidate: RevalidateCall = async (tags) => {
-  if (tags.length === 0) return;
-  const response = await fetch(revalidateUrl(), {
-    method: 'POST',
-    headers: { authorization: `Bearer ${revalidateSecret()}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ tags }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new RevalidateAnswerError(response.status);
-};
+/**
+ * A RevalidateCall that POSTs the tags to the web process's internal route, at most MAX_TAGS per
+ * request (the route's own limit: a well-connected teacher's change can name more); it throws on
+ * any answer but 200. `send` and `env` are parameters for the unit test.
+ */
+export function revalidatePoster(send: typeof fetch = (input, init) => fetch(input, init), env: Record<string, string | undefined> = process.env): RevalidateCall {
+  return async (tags) => {
+    for (let start = 0; start < tags.length; start += MAX_TAGS) {
+      const response = await send(revalidateUrl(env), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${revalidateSecret(env)}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ tags: tags.slice(start, start + MAX_TAGS) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new RevalidateAnswerError(response.status);
+    }
+  };
+}
+
+/** The worker's RevalidateCall: the internal route at INTERNAL_APP_URL or APP_URL. */
+export const postRevalidate: RevalidateCall = revalidatePoster();
 
 /**
  * What a log line may say about an error (plan §6.4): its SQLSTATE, the status the internal route

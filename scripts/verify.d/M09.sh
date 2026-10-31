@@ -175,7 +175,7 @@ check "POST /api/internal/revalidate calls revalidateTag(tag, 'max') behind the 
   grep -q "if (!hasRevalidateSecret(request, env)) return json(401" src/server/revalidate.ts && grep -q "timingSafeEqual" src/server/revalidate.ts'
 check "the worker handles lineage.recompute and calls the internal route after each recompute" bash -c '
   grep -q "boss.work(QUEUE.lineageRecompute, work, lineageRecomputeHandler(db, log))" src/server/jobs/worker.ts &&
-  grep -q "await revalidate(tags);" src/server/jobs/lineage-recompute.ts && grep -q "revalidateUrl()" src/server/jobs/lineage-recompute.ts'
+  grep -q "await revalidate(tags);" src/server/jobs/lineage-recompute.ts && grep -q "revalidateUrl(env)" src/server/jobs/lineage-recompute.ts'
 check "lineage_membership is recomputed from the public views only" bash -c '
   body="$(awk "/^export async function recomputeLineageMembership\\(/{on=1} on{print} on&&/^}/{exit}" src/server/jobs/lineage-recompute.ts)"
   printf "%s\n" "$body" | grep -q "v_public_edge" && ! printf "%s\n" "$body" | grep -q "teaching_relationship"'

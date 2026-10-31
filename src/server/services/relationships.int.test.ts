@@ -341,6 +341,39 @@ describe('requests: checks and idempotency', () => {
     expect(await refusal(approveRelationship(teacher.principal, { relationshipId: other, idempotencyKey: reused }, meta))).toBe('NOT_FOUND');
     expect(await refusal(approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: reused }, meta))).toBe('CONFLICT');
   });
+
+  it('a request key sent again with another teacher or lineage is refused, and nothing is sent to that teacher (code review)', async () => {
+    const first = await member('m09-rekey-first', { sifu: true });
+    const second = await member('m09-rekey-second', { sifu: true });
+    const student = await member('m09-rekey-student');
+    const otherLineage = await newLineage('m09-rekey');
+    const reused = key();
+    const id = (await requestTeacher(student.principal, { teacherId: first.personId, lineageId, periods: ongoingFrom(), idempotencyKey: reused }, meta)).relationship.id;
+    // The same request again (a double click): the replay.
+    expect((await requestTeacher(student.principal, { teacherId: first.personId, lineageId, periods: ongoingFrom(), idempotencyKey: reused }, meta)).relationship.id).toBe(id);
+    expect(await refusal(requestTeacher(student.principal, { teacherId: second.personId, lineageId, periods: ongoingFrom(), idempotencyKey: reused }, meta))).toBe('CONFLICT');
+    expect(await refusal(requestTeacher(student.principal, { teacherId: first.personId, lineageId: otherLineage, periods: ongoingFrom(), idempotencyKey: reused }, meta))).toBe('CONFLICT');
+    const toSecond = await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).where(eq(teachingRelationship.teacherPersonId, second.personId));
+    expect(toSecond).toEqual([]);
+    expect(await emailsTo(second.account.email, 'relationship-requested')).toBe(0);
+  });
+
+  it('a resubmit counts against the pending requests cap like a new request (code review)', async () => {
+    const teacher = await member('m09-cap-teacher', { sifu: true });
+    const student = await member('m09-cap-student');
+    const id = await request(student, teacher);
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    // Twenty other requests wait (MAX_PENDING_REQUESTS), written directly: the cap is the point here.
+    for (let i = 0; i < 20; i += 1) {
+      const other = uuidv7();
+      await getDb().insert(person).values({ id: other, slug: `demo-m09-cap-${other.slice(-12)}`, kind: 'living', stewardship: 'unclaimed', visibility: 'public' });
+      await getDb()
+        .insert(teachingRelationship)
+        .values({ id: uuidv7(), teacherPersonId: other, studentPersonId: student.personId, lineageId, status: 'pending_teacher', visibility: 'involved_only', verificationPath: 'teacher_approval' });
+    }
+    expect(await refusal(resubmitRelationship(student.principal, { relationshipId: id, periods: ongoingFrom('2018'), idempotencyKey: key() }, meta))).toBe('TOO_MANY_REQUESTS');
+    expect(await statusOf(id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
+  });
 });
 
 describe('approval: the plan, the display preference and the people', () => {
@@ -378,6 +411,31 @@ describe('approval: the plan, the display preference and the people', () => {
     expect(error.code).toBe('ENTITLEMENT_REQUIRED');
     expect(error.details.entitlement.code).toBe('plan');
     expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+  });
+
+  it('a resubmit without a lineage goes to the teacher’s own lineage, as the form’s "The teacher’s own lineage" says (code review)', async () => {
+    const own = await newLineage('m09-own');
+    const grand = await member('m09-own-grand', { sifu: true });
+    const teacher = await member('m09-own-teacher', { sifu: true });
+    const student = await member('m09-own-student');
+    // The teacher's own public line: a student of `grand` in `own`.
+    const line = await request(teacher, grand, { lineageId: own });
+    await approveRelationship(grand.principal, { relationshipId: line, idempotencyKey: key() }, meta);
+    const id = await request(student, teacher);
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'lineage', idempotencyKey: key() }, meta);
+    await resubmitRelationship(student.principal, { relationshipId: id, lineageId: null, periods: ongoingFrom(), idempotencyKey: key() }, meta);
+    const [row] = await getDb().select({ lineageId: teachingRelationship.lineageId, status: teachingRelationship.status }).from(teachingRelationship).where(eq(teachingRelationship.id, id));
+    expect(row).toEqual({ lineageId: own, status: 'pending_teacher' });
+  });
+
+  it('a request whose student profile was removed is never approved and stays pending (code review)', async () => {
+    const teacher = await member('m09-removed-teacher', { sifu: true });
+    const student = await member('m09-removed-student');
+    const id = await request(student, teacher);
+    await getDb().update(person).set({ deletedAt: new Date() }).where(eq(person.id, student.personId));
+    expect(await refusal(approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta))).toBe('CONFLICT');
+    expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    expect((await events(id)).filter((e) => e.to === 'verified')).toEqual([]);
   });
 
   it('two teachers in two lineages are approved independently; the display preference moves the primary line (DEFAULT D05)', async () => {

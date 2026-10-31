@@ -6,7 +6,8 @@ import type { JobWithMetadata } from 'pg-boss';
 import { describe, expect, it } from 'vitest';
 
 import type { Database } from '../db';
-import { failureCode, lineageRecomputeHandler, RevalidateAnswerError } from './lineage-recompute';
+import { MAX_TAGS } from '../revalidate';
+import { failureCode, lineageRecomputeHandler, RevalidateAnswerError, revalidatePoster } from './lineage-recompute';
 import type { LineageRecomputeJob } from './queues';
 
 const job = (retryCount: number, retryLimit = 5) =>
@@ -47,5 +48,35 @@ describe('failureCode', () => {
     expect(failureCode(Object.assign(new Error('canceling statement: demo@wingchunroots.test'), { code: '57014' }))).toBe('database error 57014');
     expect(failureCode(new RangeError('Demo Person'))).toBe('RangeError');
     expect(failureCode('Demo Person')).toBe('unknown error');
+  });
+});
+
+describe('revalidatePoster', () => {
+  const env = { APP_URL: 'http://localhost:3109', MAIL_SEAL_KEY: 'k'.repeat(64) };
+
+  it('sends the tags in requests of at most MAX_TAGS, with the secret, to the internal route', async () => {
+    const sent: { url: string; auth: string | null; tags: string[] }[] = [];
+    const send = (async (url: string | URL | Request, init?: RequestInit) => {
+      sent.push({ url: String(url), auth: new Headers(init?.headers).get('authorization'), tags: JSON.parse(String(init?.body)).tags });
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+    const tags = Array.from({ length: MAX_TAGS + 1 }, (_, i) => `person:00000000-0000-7000-8000-${String(i).padStart(12, '0')}`);
+    await revalidatePoster(send, env)(tags);
+    expect(sent.map((s) => s.tags.length)).toEqual([MAX_TAGS, 1]);
+    expect(sent.flatMap((s) => s.tags)).toEqual(tags);
+    expect(new Set(sent.map((s) => s.url))).toEqual(new Set(['http://localhost:3109/api/internal/revalidate']));
+    expect(sent.every((s) => /^Bearer [0-9a-f]{64}$/.test(s.auth ?? ''))).toBe(true);
+  });
+
+  it('sends nothing for no tags, and throws the status of a refused request', async () => {
+    let calls = 0;
+    const refuse = (async () => {
+      calls += 1;
+      return new Response('{}', { status: 401 });
+    }) as typeof fetch;
+    await revalidatePoster(refuse, env)([]);
+    expect(calls).toBe(0);
+    await expect(revalidatePoster(refuse, env)(['explore-start'])).rejects.toThrow(RevalidateAnswerError);
+    expect(calls).toBe(1);
   });
 });
