@@ -7,13 +7,15 @@
 // round 2, recheck-2): the form shows the procedure's answer, or one calm message.
 //
 // Success goes to the page that shows the outcome, by the relationship's id only (never a name in
-// an address): /dashboard/teachers?sent=<id>, ?withdrawn=<id> or ?ended=<id>. A failure comes back
-// to the form, with JavaScript as the action's state and without as a kept result
-// (src/server/forms/flash.ts).
+// an address): /dashboard/teachers?sent=<id>, ?withdrawn=<id> or ?ended=<id>, opened at the note
+// that says it (#outcome, which takes the focus: OutcomeNote in
+// src/components/relationships/parts.tsx). A failure comes back to the form, with JavaScript as the
+// action's state and without as a kept result (src/server/forms/flash.ts).
 
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
+import { atOutcome } from '@/components/relationships/outcome-id';
 import { textValue, ticked } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
@@ -116,7 +118,7 @@ export async function requestTeacherAction(_previous: FormState, form: FormData)
     const state = formFields(formStateFromFailure(error, values));
     return formResult({ form: REQUEST_FORM, page: NEW, anchor: outcomeTarget(REQUEST_FORM, state, false) }, state);
   }
-  redirect(`${TEACHERS}?sent=${sent}#requests`);
+  redirect(atOutcome(`${TEACHERS}?sent=${sent}`));
 }
 
 /** "Send it again" of /dashboard/teachers/new?resubmit=<id> (relationships.resubmit). */
@@ -140,7 +142,7 @@ export async function resubmitRequestAction(_previous: FormState, form: FormData
     const state = formFields(formStateFromFailure(error, { ...values, relationshipId }));
     return formResult({ form: REQUEST_FORM, page, anchor: outcomeTarget(REQUEST_FORM, state, false) }, state);
   }
-  redirect(`${TEACHERS}?sent=${sent}#requests`);
+  redirect(atOutcome(`${TEACHERS}?sent=${sent}`));
 }
 
 /** "Withdraw" of a request on /dashboard/teachers (relationships.withdraw). */
@@ -154,7 +156,7 @@ export async function withdrawRequestAction(_previous: FormState, form: FormData
     const state = formStateFromFailure(error, { relationshipId });
     return formResult({ form: WITHDRAW_FORM, page: TEACHERS, anchor: outcomeTarget(withdrawForm(relationshipId), state, true) }, state);
   }
-  redirect(`${TEACHERS}?withdrawn=${relationshipId}#requests`);
+  redirect(atOutcome(`${TEACHERS}?withdrawn=${relationshipId}`));
 }
 
 /**
@@ -182,5 +184,5 @@ export async function endTrainingAction(_previous: FormState, form: FormData): P
         : state;
     return formResult({ form: END_FORM, page, anchor: outcomeTarget(endForm(relationshipId), shown, true) }, shown);
   }
-  redirect(`${page}?ended=${relationshipId}#${page === TEACHERS ? 'teachers' : 'students'}`);
+  redirect(atOutcome(`${page}?ended=${relationshipId}`));
 }

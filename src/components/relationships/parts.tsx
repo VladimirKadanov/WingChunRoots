@@ -12,6 +12,8 @@ import { periodText } from '@/components/lineage/status';
 import { StatusBadge } from '@/components/ui/status-badge';
 import type { PersonRef } from '@/server/services/dashboard';
 import type { RelationshipView } from '@/server/services/relationships';
+import { FocusOnShow } from './focus-on-show';
+import { OUTCOME_ID } from './outcome-id';
 
 /** The seal of a link's state: an ended training is historical; a request is unconfirmed. */
 export function badgeOf(view: Pick<RelationshipView, 'status' | 'historical'>): LinkKind {
@@ -48,8 +50,10 @@ export function PersonName({ person, link = false, className = 'font-display tex
   return (
     <span className={`inline-flex flex-wrap items-baseline gap-x-[0.42em] [overflow-wrap:anywhere] ${className}`}>
       {link && person.slug ? (
-        <Link href={`/people/${person.slug}`} className="link inline-flex flex-wrap items-baseline gap-x-[0.42em]">
-          {names}
+        // A tap target of at least 44 px (CLAUDE.md §10, M09 review screens-5): the link is the
+        // row's own control, not a link inside running text. The names keep their shared baseline.
+        <Link href={`/people/${person.slug}`} className="link inline-flex min-h-11 items-center">
+          <span className="inline-flex flex-wrap items-baseline gap-x-[0.42em]">{names}</span>
         </Link>
       ) : (
         names
@@ -73,11 +77,17 @@ export function PeriodLines({ periods }: { periods: RelationshipView['periods'] 
   );
 }
 
-/** A status line after a change, which takes the focus once (with or without JavaScript). */
-export function OutcomeNote({ id, testId, children }: { id: string; testId: string; children: ReactNode }) {
+/**
+ * The line that says what a change did ("Your request was sent…"). It takes the focus, so a screen
+ * reader reads it and a phone shows it (M09 review, screens-1). Without JavaScript the action's
+ * redirect names it (`#outcome`): the browser opens the page at it and focuses it, and `autofocus`
+ * covers a load without that fragment. With JavaScript FocusOnShow focuses it once the router
+ * shows the page.
+ */
+export function OutcomeNote({ testId, children }: { testId: string; children: ReactNode }) {
   return (
-    <div
-      id={id}
+    <FocusOnShow
+      id={OUTCOME_ID}
       data-testid={testId}
       role="status"
       tabIndex={-1}
@@ -85,6 +95,6 @@ export function OutcomeNote({ id, testId, children }: { id: string; testId: stri
       className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm text-fg outline-offset-4"
     >
       {children}
-    </div>
+    </FocusOnShow>
   );
 }

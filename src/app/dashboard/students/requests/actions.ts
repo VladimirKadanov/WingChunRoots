@@ -8,13 +8,15 @@
 // shows the procedure's answer, or one calm message.
 //
 // Success goes back to the page by the relationship's id only (never a name in an address):
-// ?approved=<id> opens it at the students, ?declined=<id> at the requests. A failure comes back to
-// the row, with JavaScript as the action's state and without as a kept result opened at the row's
-// message (src/server/forms/flash.ts).
+// ?approved=<id> or ?declined=<id>, opened at the note that says it (#outcome, which takes the
+// focus: OutcomeNote in src/components/relationships/parts.tsx). A failure comes back to the row,
+// with JavaScript as the action's state and without as a kept result opened at the row's message
+// (src/server/forms/flash.ts).
 
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
+import { atOutcome } from '@/components/relationships/outcome-id';
 import { textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
@@ -51,7 +53,7 @@ export async function approveRequestAction(_previous: FormState, form: FormData)
     const shown: FormState = field ? { status: 'error', message: field, values } : state;
     return formResult({ form: APPROVE_FORM, page: PAGE, anchor: outcomeTarget(approveForm(relationshipId), shown, true) }, shown);
   }
-  redirect(`${PAGE}?approved=${approved}#students`);
+  redirect(atOutcome(`${PAGE}?approved=${approved}`));
 }
 
 /** "Decline" of a request, with a neutral reason (relationships.reject). */
@@ -79,5 +81,5 @@ export async function rejectRequestAction(_previous: FormState, form: FormData):
         : { status: 'error', message: Object.values(fields)[0], values: state.values };
     return formResult({ form: REJECT_FORM, page: PAGE, anchor: outcomeTarget(rejectForm(relationshipId), shown, true) }, shown);
   }
-  redirect(`${PAGE}?declined=${declined}#requests`);
+  redirect(atOutcome(`${PAGE}?declined=${declined}`));
 }

@@ -79,7 +79,7 @@ function Shell({ children, lead }: { children: ReactNode; lead: ReactNode }) {
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[46rem]">
         <p className="eyebrow">
-          <Link href="/dashboard/teachers" className="link">
+          <Link href="/dashboard/teachers" className="link inline-flex min-h-11 items-center">
             Your teachers
           </Link>
         </p>

@@ -110,7 +110,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[52rem]">
         <p className="eyebrow">
-          <Link href="/dashboard" className="link">
+          <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
             Dashboard
           </Link>
         </p>
@@ -130,7 +130,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
 
         <div className="mt-8 grid gap-10">
           {sent ? (
-            <OutcomeNote id="outcome" testId="request-sent">
+            <OutcomeNote testId="request-sent">
               {sent.status === 'pending_teacher' ? (
                 <>
                   Your request was sent to <NameText name={sent.teacher.name} />. It waits below until they answer, and they get a notification and an
@@ -144,12 +144,12 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
             </OutcomeNote>
           ) : null}
           {withdrawn && !byId(withdrawn) ? (
-            <OutcomeNote id="outcome" testId="request-withdrawn">
+            <OutcomeNote testId="request-withdrawn">
               The request was withdrawn. Nothing about it is shown to anyone; you can send a new one at any time.
             </OutcomeNote>
           ) : null}
           {ended ? (
-            <OutcomeNote id="outcome" testId="training-ended">
+            <OutcomeNote testId="training-ended">
               Training with <NameText name={ended.teacher.name} /> is marked as ended. The link stays on both profiles, shown as historical.
             </OutcomeNote>
           ) : null}

@@ -105,7 +105,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[60rem]">
         <p className="eyebrow">
-          <Link href="/dashboard" className="link">
+          <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
             Dashboard
           </Link>
         </p>
@@ -120,18 +120,18 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
 
         <div className="mt-8 grid gap-10">
           {approved ? (
-            <OutcomeNote id="outcome" testId="request-approved">
+            <OutcomeNote testId="request-approved">
               You confirmed <NameText name={approved.student.name} /> as your student. The link is now shown publicly, and both of you got a notification
               and an e-mail.
             </OutcomeNote>
           ) : null}
           {declined && !incoming.requests.some((view) => view.id === declined) ? (
-            <OutcomeNote id="outcome" testId="request-declined">
+            <OutcomeNote testId="request-declined">
               The request was declined. The student was told the reason and can correct the request and send it again.
             </OutcomeNote>
           ) : null}
           {ended ? (
-            <OutcomeNote id="outcome" testId="training-ended">
+            <OutcomeNote testId="training-ended">
               Training with <NameText name={ended.student.name} /> is marked as ended. The link stays on both profiles, shown as historical.
             </OutcomeNote>
           ) : null}
