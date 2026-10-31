@@ -674,19 +674,29 @@ export function buildScene(
   // A gap with a curve that still runs behind a card grows, by half each round, and keeps the
   // height with the fewest such curves (the lowest of equals): a curve beside its two people
   // is not shaped by the gap, and a growth that does not help it is undone.
-  let attempt = place();
-  const best = new Map<number, { gap: number; cramped: number }>();
-  for (let round = 0; round <= CURVE_ROOM_ROUNDS; round++) {
-    const byId = new Map(attempt.nodes.map((n) => [n.id, n]));
+  // The curves still behind a card, by the gap above their student's row.
+  const crampedIn = (placed: ReturnType<typeof place>) => {
+    const byId = new Map(placed.nodes.map((n) => [n.id, n]));
     const cramped = new Map<number, number>();
-    for (const edge of attempt.edges) {
+    for (const edge of placed.edges) {
       if (edge.path.type !== 'bezier') continue;
       const student = byId.get(edge.studentId)!;
       if (!runGaps.has(student.rank - 1)) continue;
-      if (!curveClear(edge.path, byId.get(edge.teacherId)!, student, attempt.nodes)) {
+      if (!curveClear(edge.path, byId.get(edge.teacherId)!, student, placed.nodes)) {
         cramped.set(student.rank - 1, (cramped.get(student.rank - 1) ?? 0) + 1);
       }
     }
+    return cramped;
+  };
+  const sum = (counts: ReadonlyMap<number, number>) => [...counts.values()].reduce((a, b) => a + b, 0);
+  let attempt = place();
+  const best = new Map<number, { gap: number; cramped: number }>();
+  // The round with the fewest such curves in all, for a curve whose ends are more than a row
+  // apart, which the heights of more than one gap shape.
+  let bestRound = { gaps: new Map(runGaps), cramped: Number.POSITIVE_INFINITY };
+  for (let round = 0; round <= CURVE_ROOM_ROUNDS; round++) {
+    const cramped = crampedIn(attempt);
+    if (sum(cramped) < bestRound.cramped) bestRound = { gaps: new Map(runGaps), cramped: sum(cramped) };
     let grown = false;
     for (const [rank, gap] of runGaps) {
       const count = cramped.get(rank) ?? 0;
@@ -707,7 +717,15 @@ export function buildScene(
       undone = true;
     }
   }
-  if (undone) attempt = place();
+  if (undone) {
+    attempt = place();
+    // The heights kept gap by gap were each measured with the other gaps of their round: where
+    // together they leave more curves behind a card than one round did, that round's heights stand.
+    if (sum(crampedIn(attempt)) > bestRound.cramped) {
+      for (const [rank, gap] of bestRound.gaps) runGaps.set(rank, gap);
+      attempt = place();
+    }
+  }
   const { rows, placed, sceneWidth, sceneHeight, childOf, nodes, edges, rowY } = attempt;
   const position = new Map(view.order.map((id, i) => [id, i]));
   edges.sort(
