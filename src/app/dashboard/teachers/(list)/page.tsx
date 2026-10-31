@@ -29,8 +29,8 @@ import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { RelationshipView } from '@/server/services/relationships';
-import { endTrainingAction, withdrawRequestAction } from './actions';
-import { END_FORM, endForm, WITHDRAW_FORM, withdrawForm } from './form-ids';
+import { endTrainingAction, withdrawRequestAction } from '../actions';
+import { END_FORM, endForm, WITHDRAW_FORM, withdrawForm } from '../form-ids';
 
 export const instant = false;
 

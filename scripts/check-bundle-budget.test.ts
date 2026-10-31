@@ -149,6 +149,12 @@ describe('check-bundle-budget', () => {
     expect(routeOfEntry('/api/rpc/[[...rest]]/route')).toBeNull();
   });
 
+  it('drops route groups, which are not part of the URL', () => {
+    expect(routeOfEntry('/dashboard/teachers/(list)/page')).toBe('/dashboard/teachers');
+    expect(routeOfEntry('/(marketing)/page')).toBe('/');
+    expect(routeOfEntry('/(a)/b/(c)/d/page')).toBe('/b/d');
+  });
+
   it('counts the root main files and every client entry except the global error page', () => {
     expect(
       initialChunks(['static/chunks/runtime.js'], {

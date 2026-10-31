@@ -79,7 +79,7 @@ required=(
   src/lib/partial-date.ts src/lib/partial-date.test.ts src/server/templates/relationships.ts
   src/server/templates/email/relationship-requested.tsx src/server/templates/email/relationship-approved.tsx
   src/server/templates/email/relationship-rejected.tsx src/server/templates/email/relationship-link.tsx
-  src/app/dashboard/teachers/page.tsx src/app/dashboard/teachers/actions.ts src/app/dashboard/teachers/error.tsx
+  'src/app/dashboard/teachers/(list)/page.tsx' src/app/dashboard/teachers/actions.ts 'src/app/dashboard/teachers/(list)/error.tsx'
   src/app/dashboard/teachers/new/page.tsx src/app/dashboard/teachers/new/request-form.tsx src/app/dashboard/teachers/new/error.tsx
   src/app/dashboard/students/requests/page.tsx src/app/dashboard/students/requests/actions.ts src/app/dashboard/students/requests/error.tsx
   src/components/relationships/forms.tsx src/components/relationships/parts.tsx
