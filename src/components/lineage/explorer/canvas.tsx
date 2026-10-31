@@ -534,18 +534,21 @@ export interface ColumnMarks {
  */
 export function columnMarks(scene: Scene, nodes: readonly PersonNode[], names: ReadonlyMap<string, string>): ColumnMarks {
   const people = nodes.filter((n) => !n.hidden);
+  if (people.length === 0) return { headers: [], rails: [] };
   const top = Math.min(...people.map((n) => n.position.y));
+  const inBand = (b: Scene['bands'][number], n: PersonNode) => n.position.x >= b.x - 0.5 && n.position.x <= b.x + b.width + 0.5;
+  // A column whose people are all folded away keeps no header over the empty canvas.
   const headers =
     scene.bands.length >= 2
       ? scene.bands.flatMap((b) => {
           const name = names.get(b.lineageId);
-          return name ? [{ lineageId: b.lineageId, name, x: b.x, y: top, width: b.width }] : [];
+          return name && people.some((n) => inBand(b, n)) ? [{ lineageId: b.lineageId, name, x: b.x, y: top, width: b.width }] : [];
         })
       : [];
   const rails = scene.bands.map((b) => {
     const rows = new Map<number, { y: number; keys: Set<string> }>();
     for (const n of people) {
-      if (n.position.x < b.x - 0.5 || n.position.x > b.x + b.width + 0.5) continue;
+      if (!inBand(b, n)) continue;
       const label = n.data.generation;
       const key =
         label?.kind === 'lineage' ? `${label.rootId}:${label.generation}` : n.data.root && n.data.mark === 'founder' ? `${n.id}:1` : 'none';
@@ -1007,7 +1010,7 @@ function floorOf(pane: Pane, margin: number, width: number): number {
  * overlay off the pane's centre (the zoom buttons above the legend's right end) reaches lower than
  * a wide one: the larger zoom wins.
  */
-function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart | null; zoom: number } {
+function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { start: ViewStart | null; zoom: number } {
   const bounds = people.map(boxOf).reduce(union);
   const fit = reactFlowFit(bounds, pane);
   const overlays = (pane.overlays ?? []).filter((o) => o.width > 0 && o.height > 0);
@@ -1017,24 +1020,35 @@ function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart
     const box = n.boxes[level];
     return { x: fit.x + box.x * fit.zoom, y: fit.y + box.y * fit.zoom, width: box.width * fit.zoom, height: box.height * fit.zoom };
   };
-  if (!people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
+  // React Flow's fit keeps its padding above the top row, room enough for the lineage headers
+  // unless the pane is short (topRoom: the headers of a view of two or more columns).
+  const fitTop = Math.floor((pane.height - pane.height / (1 + FIT_OPTIONS.padding)) / 2);
+  if (fitTop >= topRoom && !people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
   const margin = marginOf(pane);
+  const above = Math.max(margin.y, topRoom);
   const centre = pane.width / 2;
   // The widths to try: as wide as the pane and React Flow's fit allow, and the widest that passes
   // beside each overlay off the centre (a hair narrower, so rounding never puts it under).
-  const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - 2 * margin.y) / bounds.height);
+  const widest = bounds.width * Math.min(fit.zoom, (pane.width - 2 * margin.x) / bounds.width, (pane.height - margin.y - above) / bounds.height);
   const widths = [widest];
   for (const o of overlays) {
     const beside = o.x >= centre ? 2 * (o.x - centre) : o.x + o.width <= centre ? 2 * (centre - o.x - o.width) : 0;
     if (beside > 0 && beside < widest) widths.push(beside - 1e-6);
   }
-  const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - margin.y) / bounds.height)));
+  const zoom = Math.max(...widths.map((width) => Math.min(width / bounds.width, (floorOf(pane, margin.y, width) - above) / bounds.height)));
   if (!(zoom > 0)) return { start: null, zoom: fit.zoom };
   // A frame narrower than the width tried reaches at least as low: it is centred in the room it has.
   const height = bounds.height * zoom;
-  const top = margin.y + (floorOf(pane, margin.y, bounds.width * zoom) - margin.y - height) / 2;
+  const top = above + (floorOf(pane, margin.y, bounds.width * zoom) - above - height) / 2;
   return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
 }
+
+/**
+ * The pixels a whole view keeps above its top row for the lineage headers of a view of two or more
+ * columns (ColumnMarksView): a line of text-sm, its rule and the 10 units between it and the row.
+ */
+const COLUMN_HEADER_ROOM = 36;
+const headerRoom = (scene: Scene) => (scene.bands.length >= 2 ? COLUMN_HEADER_ROOM : 0);
 
 /**
  * Where the first view of a small scene starts: null for React Flow's fit of the whole view, or
@@ -1044,7 +1058,7 @@ function wholeView(people: readonly SceneNode[], pane: Pane): { start: ViewStart
 export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
   if (people.length === 0) return null;
-  const whole = wholeView(people, pane);
+  const whole = wholeView(people, pane, headerRoom(scene));
   return whole.zoom >= READABLE_ZOOM ? whole.start : null;
 }
 
@@ -1060,7 +1074,7 @@ export function wholeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
 export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
   if (people.length === 0) return null;
-  return wholeView(people, pane).start;
+  return wholeView(people, pane, headerRoom(scene)).start;
 }
 
 /**
@@ -1084,7 +1098,7 @@ export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pa
  */
 export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pane): ViewStart | null {
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
-  if (people.length === 0 || wholeView(people, pane).zoom >= READABLE_ZOOM) return null;
+  if (people.length === 0 || wholeView(people, pane, headerRoom(scene)).zoom >= READABLE_ZOOM) return null;
   const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
   const narrow = pane.width < NARROW_PANE;
   const zoom = narrow ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;

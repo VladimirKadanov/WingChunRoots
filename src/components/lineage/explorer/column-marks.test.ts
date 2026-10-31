@@ -103,4 +103,10 @@ describe('columnMarks', () => {
     expect(marks.headers.map((h) => h.lineageId)).toEqual(['lb']);
     expect(marks.rails).toEqual([{ lineageId: 'lb', x: 520, rows: [{ y: 192, generation: 5 }] }]);
   });
+
+  it('names no column whose people are all folded away, and draws nothing with nobody drawn', () => {
+    const nodes = [person('ra', 0, 0, { root: true }), person('rb', 0, 520, { root: true, hidden: true }), person('b1', 1, 520, { generation: gen(2, 'rb'), hidden: true })];
+    expect(columnMarks(scene(bands), nodes, names).headers.map((h) => h.lineageId)).toEqual(['la']);
+    expect(columnMarks(scene(bands), nodes.map((n) => ({ ...n, hidden: true })), names)).toEqual({ headers: [], rails: [] });
+  });
 });

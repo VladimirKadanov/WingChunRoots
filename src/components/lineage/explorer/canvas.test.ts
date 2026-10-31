@@ -205,6 +205,21 @@ describe('the first view of a scene', () => {
     expect(paneBox(columns, 'teacher', withHeaders, tall).y).toBeCloseTo(12 + COLUMN_HEADER_SPACE * withHeaders.zoom, 0);
   });
 
+  it('fits a view of two or more lineage columns whole with room for their headers above the top row', () => {
+    // React Flow's fit keeps 15 % of the pane as padding, room enough on a tall phone.
+    const scene = hub(12);
+    const columns: Scene = { ...scene, bands: [scene.bands[0]!, { lineageId: 'demo-lineage-2', x: 9000, width: 448, nodes: 0 }] };
+    expect(fitViewStart(columns, new Set(), { width: 390, height: 844 })).toBeNull();
+    // A phone on its side: that padding is narrower than a header, so the fit leaves the room itself.
+    const side = { width: 600, height: 390 };
+    expect(fitViewStart(scene, new Set(), side)).toBeNull();
+    const start = fitViewStart(columns, new Set(), side)!;
+    const top = Math.min(...columns.nodes.map((n) => paneBox(columns, n.id, start, side).y));
+    expect(top).toBeGreaterThanOrEqual(36 - 0.5);
+    const bottom = Math.max(...columns.nodes.map((n) => paneBox(columns, n.id, start, side).y + n.height * start.zoom));
+    expect(bottom).toBeLessThanOrEqual(side.height - 12 + 0.5);
+  });
+
   it('decides by the pane: the same view is fitted whole on a desktop and starts at the focus on a phone', () => {
     // Ten people, 1768 px wide: 0.60 on the desktop pane (compact chips), 0.19 at 390 px.
     const scene = hub(8);
