@@ -601,7 +601,9 @@ function ColumnMarksView({ marks }: { marks: ColumnMarks }) {
               data-generation-rail={rail.lineageId}
               // On the ground, so a curve between the columns passes behind it.
               className="absolute origin-top-left rounded-xs bg-bg px-0.5 text-right text-caption leading-4 font-semibold tracking-normal text-fg-subtle tabular"
-              style={{ left: rail.x - 8, top: row.y, transform: `${scale} translate(-100%, -50%)` }}
+              // 8 px left of the column's cards (rail.x is ELK's padding, 12 px, before them): the gap
+              // between two columns is narrow (COLUMN_GAP), so the rail keeps close to its own column.
+              style={{ left: rail.x + 4, top: row.y, transform: `${scale} translate(-100%, -50%)` }}
             >
               {i === 0 ? <span className="block text-caption leading-3 font-normal tracking-normal">Gen</span> : null}
               {row.generation}
@@ -1027,6 +1029,18 @@ function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { sta
   const fitTop = Math.floor((pane.height - pane.height / (1 + FIT_OPTIONS.padding)) / 2);
   if (fitTop >= topRoom && !people.some((n) => overlays.some((o) => overlap(drawn(n), o)))) return { start: null, zoom: fit.zoom };
   const margin = marginOf(pane);
+  // React Flow's fit raised to the pane's top margin (and the headers' room): where the fit leaves
+  // empty canvas above the top row (a view wider than tall), the legend may cover the bottom row of
+  // the centred fit and none of the raised one, which keeps the fit's zoom (b7: no empty canvas above).
+  const top = Math.max(margin.y, topRoom);
+  const shift = top - (fit.y + bounds.y * fit.zoom);
+  const raised = (n: SceneNode): Box => {
+    const box = drawn(n);
+    return { ...box, y: box.y + shift };
+  };
+  if (shift < 0 && !people.some((n) => overlays.some((o) => overlap(raised(n), o)))) {
+    return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / fit.zoom, zoom: fit.zoom }, zoom: fit.zoom };
+  }
   const centre = pane.width / 2;
   // The frame with `above` pixels kept above its top row.
   const frame = (above: number): { start: ViewStart | null; zoom: number } => {
@@ -1045,12 +1059,13 @@ function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { sta
     const top = above + (floorOf(pane, margin.y, bounds.width * zoom) - above - height) / 2;
     return { start: { x: bounds.x + bounds.width / 2, y: bounds.y + (pane.height / 2 - top) / zoom, zoom }, zoom };
   };
-  // Readable cards come before the headers' room: where keeping it would take the view below the
-  // readable zoom that the margin alone keeps, the headers may be cut at the top of the pane.
+  // The cards come before the headers' room: where keeping it would cost the cards the level of
+  // detail that the margin alone keeps (full cards on a short phone, or readable ones), the headers
+  // may be cut at the top of the pane.
   const withRoom = frame(Math.max(margin.y, topRoom));
-  if (topRoom <= margin.y || withRoom.zoom >= READABLE_ZOOM) return withRoom;
+  if (topRoom <= margin.y) return withRoom;
   const plain = frame(margin.y);
-  return plain.zoom >= READABLE_ZOOM ? plain : withRoom;
+  return detailAt(withRoom.zoom) === detailAt(plain.zoom) ? withRoom : plain;
 }
 
 /**

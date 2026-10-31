@@ -403,6 +403,41 @@ describe('the first view of a scene', () => {
       expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons412.y - 12 + 1e-6);
     });
 
+    it('raises React Flow\'s fit, at its zoom, where the legend would cover its bottom row and the room above it is empty', () => {
+      // The Generations view of demo-converging after "Fewer generations" at 393x659, 298 px high
+      // under the steppers: its two teachers side by side, the focus below the first. The legend on
+      // three lines (two link states and the people's marks) would cover the focus in the centred
+      // fit, and a frame clear of the zoom buttons would make the cards smaller than full.
+      const scene = sceneOf(
+        [
+          { id: 'teacher-a', rank: 0, x: 12, y: 12 },
+          { id: 'teacher-b', rank: 0, x: 236, y: 12 },
+          { id: 'focus', rank: 1, x: 12, y: 136 },
+        ],
+        [
+          ['teacher-a', 'focus'],
+          ['teacher-b', 'focus'],
+        ],
+        'focus',
+      );
+      const legend3 = { x: 12, y: 196, width: 305, height: 90 };
+      const buttons298 = { x: 335, y: 152, width: 46, height: 134 };
+      const pane = { width: 393, height: 298, overlays: [legend3, buttons298] };
+      const fit = wholeFitZoom(scene.nodes, pane);
+      expect(fit).toBeGreaterThanOrEqual(DETAIL_ZOOM.full);
+      const centred = { x: 12 + 424 / 2, y: 12 + 188 / 2, zoom: fit };
+      expect(overlap(drawnBox(scene, 'focus', centred, pane), legend3)).toBe(true);
+      const start = wholeViewStart(scene, new Set(), pane)!;
+      expect(start).not.toBeNull();
+      expect(start.zoom).toBeCloseTo(fit, 9);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, start, pane), n.id).toBe(true);
+        for (const overlay of pane.overlays) expect(overlap(paneBox(scene, n.id, start, pane), overlay), `${n.id} under an overlay`).toBe(false);
+      }
+      // The top row at the pane's top margin on a phone (the overlays' inset): no empty canvas above it.
+      expect(paneBox(scene, 'teacher-a', start, pane).y).toBeCloseTo(12, 6);
+    });
+
     it('opens it like a large view when the fit clear of the overlays would make every person a dot', () => {
       // The legend as tall as most of the pane: whole, clear of it, the people would be dots.
       const scene = twoLineages();

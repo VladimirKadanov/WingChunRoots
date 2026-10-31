@@ -397,8 +397,13 @@ export function bezierLabelPoint(path: BezierPath): Point {
   return point(p.x, p.y);
 }
 
-/** The gap between two lineage columns, besides ELK's padding of each (12 px), in px. */
-export const COLUMN_GAP = 96;
+/**
+ * The gap between two lineage columns, besides ELK's padding of each (12 px), in px: twice the
+ * gap between two cards of a row. Two columns of one card each then fit side by side in full cards
+ * on a 390 px phone, as two cards of one row do (React Flow's fit there leaves (390 - 50) / 0.75 =
+ * 453 px for the cards; 2 x 200 + 24 + 2 x 12 = 448).
+ */
+export const COLUMN_GAP = 24;
 
 /**
  * Room above the top row for the headers of the lineage columns when a view has two or more,

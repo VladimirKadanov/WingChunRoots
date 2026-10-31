@@ -377,12 +377,11 @@ async function dragGraph(page: Page, dy: number): Promise<void> {
 }
 
 /**
- * Whether a person is drawn with the centre of its node on the pane and not covered (by the panel, the
- * legend or the zoom buttons): a tap there selects it. Read once the view has followed the pane: when a
- * selection changes the pane's height, the box React Flow fills takes the frame's height a task later
- * (useFollowFrame in canvas.tsx), and keepSelectionInView moves the view in that same task.
+ * Resolves once the view has followed the pane: when a selection changes the pane's height, the box
+ * React Flow fills takes the frame's height a task later (useFollowFrame in canvas.tsx), and
+ * keepSelectionInView moves the view in that same task.
  */
-async function tappable(page: Page, id: string): Promise<boolean> {
+async function viewFollowedPane(page: Page): Promise<void> {
   await expect
     .poll(
       () =>
@@ -394,6 +393,33 @@ async function tappable(page: Page, id: string): Promise<boolean> {
       'the view followed the pane',
     )
     .toBe(true);
+}
+
+/**
+ * A person on screen that the panel, the legend and the zoom buttons leave uncovered, other than
+ * `skip` (uncoveredNode), read once the view has followed the pane. On a short phone (an iPhone 15's
+ * 393x659) with the root of Demo Lineage A selected, the bottom sheet leaves the pane a strip whose
+ * lower half the legend covers, and its nearest student, right below it on the shared trunk (b5),
+ * sits behind the legend. A person drags the graph up to tap them; so does this, `step` px at a
+ * time, at most five times. On a taller pane a person is uncovered and nothing is dragged.
+ */
+async function reachableNode(page: Page, skip: readonly string[], step: number): Promise<string | null> {
+  for (let drags = 0; ; drags++) {
+    await viewFollowedPane(page);
+    const id = await uncoveredNode(page, skip);
+    if (id !== null || drags === 5) return id;
+    await dragGraph(page, -step);
+  }
+}
+
+/**
+ * Whether a person is drawn with the centre of its node on the pane and not covered (by the panel, the
+ * legend or the zoom buttons): a tap there selects it. Read once the view has followed the pane: when a
+ * selection changes the pane's height, the box React Flow fills takes the frame's height a task later
+ * (useFollowFrame in canvas.tsx), and keepSelectionInView moves the view in that same task.
+ */
+async function tappable(page: Page, id: string): Promise<boolean> {
+  await viewFollowedPane(page);
   return page.evaluate((id) => {
     const el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`);
     if (!el) return false;
@@ -436,7 +462,7 @@ test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling'
   if ((await personNodes(page).count()) <= 3) await dragGraph(page, -halfCard);
   expect(await personNodes(page).count(), 'drawn on screen').toBeGreaterThan(3);
   const large = await selectionInp(page, browserName, 3, async (selected) => {
-    if (selected.length === 1) return uncoveredNode(page, selected);
+    if (selected.length === 1) return reachableNode(page, selected, halfCard);
     if (selected.length === 2) {
       // On the short phone the second person's panel is taller than the root's: the pane gets shorter
       // again and the view moves that person up clear of the legend (keepSelectionInView in
@@ -1354,7 +1380,7 @@ test.describe('M05 fixes I', () => {
         expect(drags, 'drags down to the root').toBeLessThan(6);
         await dragGraph(page, halfCard);
       }
-      const target = i === 1 ? await uncoveredNode(page, selected) : root;
+      const target = i === 1 ? await reachableNode(page, selected, halfCard) : root;
       expect(target, `a node to select (${i + 1} of 3)`).toBeTruthy();
       const before = await mark();
       expect(before.length, 'edges drawn').toBeGreaterThan(3);
