@@ -72,10 +72,11 @@ const base = os.$context<RpcContext>().use(async ({ next }) => {
       throw new ORPCError('BAD_REQUEST', { status: 400, message: 'Check the highlighted fields.', data: { fields } });
     }
     if (isServiceError(error)) {
+      const data = { ...(Object.keys(error.fields).length > 0 ? { fields: error.fields } : {}), ...error.details };
       throw new ORPCError(error.code, {
         status: error.status,
         message: error.message,
-        data: Object.keys(error.fields).length > 0 ? { fields: error.fields } : undefined,
+        data: Object.keys(data).length > 0 ? data : undefined,
       });
     }
     throw error;

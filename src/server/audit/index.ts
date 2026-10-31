@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02, M07 and M08; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07, M08 and M09; later milestones add theirs (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -25,7 +25,14 @@ export type AuditAction =
   | 'account.deletion_request'
   // pnpm account:delete (M07, until the review tool of M10a).
   | 'account.delete'
-  | 'account.deletion_cancel';
+  | 'account.deletion_cancel'
+  // M09: teacher requests and their answers (plan §6.6, §6.7).
+  | 'relationship.request'
+  | 'relationship.resubmit'
+  | 'relationship.approve'
+  | 'relationship.reject'
+  | 'relationship.withdraw'
+  | 'relationship.end';
 
 export interface AuditEntry {
   action: AuditAction;

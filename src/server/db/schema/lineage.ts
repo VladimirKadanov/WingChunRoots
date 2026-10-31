@@ -32,6 +32,7 @@ import {
   VISIBILITIES,
 } from './common';
 import { person, SLUG_PATTERN } from './persons';
+import { school } from './schools';
 
 export const lineage = pgTable(
   'lineage',
@@ -69,6 +70,10 @@ export const teachingRelationship = pgTable(
     verificationPath: text('verification_path', { enum: VERIFICATION_PATHS }).notNull().default('teacher_approval'),
     // DEFAULT D05: which teacher the explorer draws as the primary line; never hides the others.
     isDisplayPrimary: boolean('is_display_primary').notNull().default(false),
+    // DEFAULT D05 (M09): the student's wish, sent with the request, that this teacher be drawn as
+    // the primary line. Applied when the teacher approves (is_display_primary is only for links
+    // that were verified); visual only, it never hides another teacher.
+    prefersDisplayPrimary: boolean('prefers_display_primary').notNull().default(false),
     // DEFAULT D03: private to the people involved and the reviewers until verified.
     visibility: text('visibility', { enum: VISIBILITIES }).notNull().default('involved_only'),
     requestedByUserId: uuid('requested_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
@@ -124,10 +129,13 @@ export const trainingPeriod = pgTable(
     precision: text('precision', { enum: DATE_PRECISIONS }).notNull().default('unknown'),
     ongoing: boolean('ongoing').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(0),
+    // M09: where the training took place, when the student names a school (optional).
+    schoolId: uuid('school_id').references(() => school.id, { onDelete: 'set null' }),
     ...timestamps(),
   },
   (t) => [
     index('training_period_relationship_id_idx').on(t.relationshipId),
+    index('training_period_school_id_idx').on(t.schoolId),
     check('training_period_precision_check', inList(t.precision.name, DATE_PRECISIONS)),
     check('training_period_ongoing_has_no_end', sql`NOT ${t.ongoing} OR ${t.endsOn} IS NULL`),
     check(
@@ -159,11 +167,18 @@ export const relationshipEvent = pgTable(
     actorUserId: uuid('actor_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     actorRole: text('actor_role'),
     reason: text('reason'),
+    // M09 (plan §5.6): the idempotency key the client sent with the change. A second call with the
+    // same key from the same account finds this event and changes nothing (a double click).
+    idempotencyKey: text('idempotency_key'),
     ...timestamps(),
   },
   (t) => [
     index('relationship_event_relationship_id_idx').on(t.relationshipId, t.createdAt),
     index('relationship_event_actor_user_id_idx').on(t.actorUserId),
+    uniqueIndex('relationship_event_idempotency_key')
+      .on(t.actorUserId, t.idempotencyKey)
+      .where(sql`${t.idempotencyKey} IS NOT NULL`),
+    check('relationship_event_idempotency_key_format', sql`${t.idempotencyKey} IS NULL OR ${t.idempotencyKey} ~ '^[A-Za-z0-9_-]{8,64}$'`),
     check(
       'relationship_event_from_status_check',
       sql`${t.fromStatus} IS NULL OR ${inList(t.fromStatus.name, RELATIONSHIP_STATUSES)}`,

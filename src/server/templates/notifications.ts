@@ -8,6 +8,7 @@
 import { formatDay, untilPlanEnd } from '../../lib/dates';
 import { GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
 import type { NameData } from './email/types';
+import { rejectionReasonText } from './relationships';
 
 export type NotificationSegment = { text: string } | { name: NameData };
 
@@ -280,6 +281,168 @@ const accountDeletionRequested: NotificationTemplate<{ caseId: string }> = {
   sample: { caseId: '0190a5c0-0000-7000-8000-000000000002' },
 };
 
+// --- Teacher requests (M09) ---------------------------------------------------------------------
+
+/**
+ * What every relationship notification knows when it is shown. The row stores only the
+ * relationship id (and the reason or role it was about); services/notifications.ts adds the rest
+ * when the list is read: the other person's current primary name (never a copy kept in the
+ * payload, so a renamed profile shows its new name and a removed one none), the lineage and the
+ * relationship's current status, so a request answered since no longer offers to answer it.
+ */
+interface RelationshipNotice {
+  relationshipId: string;
+  /** Not stored: the other person's display name, null when it can no longer be shown. */
+  other: NameData | null;
+  /** Not stored: the lineage's name, null when unknown. */
+  lineageName: string | null;
+  /** Not stored: the relationship's status now. */
+  status: string | null;
+}
+
+function relationshipNotice(template: string, payload: unknown): RelationshipNotice & { data: Record<string, unknown> } {
+  const data = payloadObject(template, payload);
+  if (typeof data.relationshipId !== 'string' || !UUID.test(data.relationshipId)) {
+    throw new NotificationDataError(template, 'relationshipId must be a UUID');
+  }
+  const other = data.other === undefined || data.other === null ? null : optionalName(template, data.other);
+  return {
+    relationshipId: data.relationshipId,
+    other,
+    lineageName: typeof data.lineageName === 'string' && data.lineageName.length <= 200 ? data.lineageName : null,
+    status: typeof data.status === 'string' ? data.status : null,
+    data,
+  };
+}
+
+/** The other person's name as a body segment, or a neutral stand-in. */
+const who = (other: NameData | null, fallback: string): NotificationSegment => (other ? { name: other } : { text: fallback });
+const inLineage = (lineageName: string | null) => (lineageName ? ` in ${lineageName}` : '');
+
+const STUDENT_QUEUE = '/dashboard/students/requests';
+const OWN_TEACHERS = '/dashboard/teachers';
+
+/** "relationship.requested": to the teacher, when a student sends a request or sends it again. */
+const relationshipRequested: NotificationTemplate<RelationshipNotice & { resubmitted: boolean }> = {
+  name: 'relationship.requested',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('relationship.requested', payload);
+    return { ...notice, resubmitted: data.resubmitted === true };
+  },
+  render: ({ other, lineageName, status, resubmitted }) =>
+    status === 'pending_teacher' || status === null
+      ? {
+          title: resubmitted ? 'Teacher request sent again' : 'New teacher request',
+          body: [
+            who(other, 'A student'),
+            { text: `${resubmitted ? ' corrected their request and asks again' : ' asks you'} to confirm that you taught them${inLineage(lineageName)}.` },
+          ],
+          action: { label: 'Answer the request', href: STUDENT_QUEUE },
+        }
+      : {
+          title: resubmitted ? 'Teacher request sent again' : 'New teacher request',
+          body: [
+            who(other, 'A student'),
+            {
+              text: ` asked you to confirm that you taught them${inLineage(lineageName)}. ${
+                status === 'withdrawn' ? 'They have since withdrawn the request.' : 'The request has already been answered.'
+              }`,
+            },
+          ],
+        },
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-000000000003',
+    other: { value: 'Demo Student', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'pending_teacher',
+    resubmitted: false,
+  },
+};
+
+/** "relationship.approved": to both people, when the teacher approves (the role says which side reads it). */
+const relationshipApproved: NotificationTemplate<RelationshipNotice & { role: 'student' | 'teacher' }> = {
+  name: 'relationship.approved',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('relationship.approved', payload);
+    if (data.role !== 'student' && data.role !== 'teacher') throw new NotificationDataError('relationship.approved', 'role must be student or teacher');
+    return { ...notice, role: data.role };
+  },
+  render: ({ other, lineageName, role }) =>
+    role === 'student'
+      ? {
+          title: 'Teacher confirmed',
+          body: [who(other, 'Your teacher'), { text: ` confirmed that they taught you${inLineage(lineageName)}. The link is now public.` }],
+          action: { label: 'See your teachers', href: OWN_TEACHERS },
+        }
+      : {
+          title: 'Student confirmed',
+          body: [{ text: 'You confirmed ' }, who(other, 'a student'), { text: ` as your student${inLineage(lineageName)}. The link is now public.` }],
+          action: { label: 'See your students', href: STUDENT_QUEUE },
+        },
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-000000000004',
+    other: { value: 'Demo Sifu', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'verified',
+    role: 'student',
+  },
+};
+
+/** "relationship.rejected": to the student, with the neutral reason and a link to correct and send again. */
+const relationshipRejected: NotificationTemplate<RelationshipNotice & { reason: string }> = {
+  name: 'relationship.rejected',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('relationship.rejected', payload);
+    return { ...notice, reason: typeof data.reason === 'string' ? data.reason : 'details' };
+  },
+  render: ({ relationshipId, other, lineageName, status, reason }) => ({
+    title: 'Teacher request not confirmed',
+    body: [
+      who(other, 'Your teacher'),
+      { text: ` did not confirm your request${inLineage(lineageName)} as it was sent. Reason: ${rejectionReasonText(reason)}` },
+      ...(status === 'rejected' || status === null ? [{ text: ' You can correct it and send it again.' }] : []),
+    ],
+    ...(status === 'rejected' || status === null
+      ? { action: { label: 'Correct and send again', href: `/dashboard/teachers/new?resubmit=${relationshipId}` } }
+      : {}),
+  }),
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-000000000005',
+    other: { value: 'Demo Sifu', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'rejected',
+    reason: 'dates',
+  },
+};
+
+/** "relationship.ended": to the other person, when the student or the teacher marks the training as ended. */
+const relationshipEnded: NotificationTemplate<RelationshipNotice & { by: 'student' | 'teacher' }> = {
+  name: 'relationship.ended',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('relationship.ended', payload);
+    if (data.by !== 'student' && data.by !== 'teacher') throw new NotificationDataError('relationship.ended', 'by must be student or teacher');
+    return { ...notice, by: data.by };
+  },
+  render: ({ other, lineageName, by }) => ({
+    title: 'Training marked as ended',
+    body: [
+      who(other, by === 'teacher' ? 'Your teacher' : 'Your student'),
+      { text: ` marked your training${inLineage(lineageName)} as ended. The link stays on the record as historical.` },
+    ],
+    action: by === 'teacher' ? { label: 'See your teachers', href: OWN_TEACHERS } : { label: 'See your students', href: STUDENT_QUEUE },
+  }),
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-000000000006',
+    other: { value: 'Demo Sifu', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'verified',
+    by: 'teacher',
+  },
+};
+
+/** The templates whose payload names a relationship (services/notifications.ts enriches them). */
+export const RELATIONSHIP_NOTIFICATIONS = ['relationship.requested', 'relationship.approved', 'relationship.rejected', 'relationship.ended'] as const;
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
@@ -288,6 +451,10 @@ export const NOTIFICATION_TEMPLATES = {
   'pilot-access.closed': pilotAccessClosed,
   'plan.granted': planGranted,
   'plan.revoked': planRevoked,
+  'relationship.requested': relationshipRequested,
+  'relationship.approved': relationshipApproved,
+  'relationship.rejected': relationshipRejected,
+  'relationship.ended': relationshipEnded,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

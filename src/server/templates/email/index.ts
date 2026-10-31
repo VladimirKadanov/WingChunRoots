@@ -7,6 +7,9 @@ import { render } from '@react-email/render';
 import { accountExists } from './account-exists';
 import { finishSignUp } from './finish-sign-up';
 import { mailCheck } from './mail-check';
+import { relationshipApproved } from './relationship-approved';
+import { relationshipRejected } from './relationship-rejected';
+import { relationshipRequested } from './relationship-requested';
 import { resetPassword } from './reset-password';
 import { type EmailTemplate, TemplateDataError } from './types';
 import { verifyEmail } from './verify-email';
@@ -16,6 +19,9 @@ export type { EmailTemplate, NameData } from './types';
 export type { AccountExistsData } from './account-exists';
 export type { FinishSignUpData } from './finish-sign-up';
 export type { MailCheckData } from './mail-check';
+export type { RelationshipApprovedData } from './relationship-approved';
+export type { RelationshipRejectedData } from './relationship-rejected';
+export type { RelationshipRequestedData } from './relationship-requested';
 export type { ResetPasswordData } from './reset-password';
 export type { VerifyEmailData } from './verify-email';
 
@@ -26,6 +32,10 @@ export const EMAIL_TEMPLATES = {
   'reset-password': resetPassword,
   'finish-sign-up': finishSignUp,
   'account-exists': accountExists,
+  // M09: teacher requests and their answers.
+  'relationship-requested': relationshipRequested,
+  'relationship-approved': relationshipApproved,
+  'relationship-rejected': relationshipRejected,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;

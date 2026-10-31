@@ -379,6 +379,7 @@ class Builder {
       status: opts.status,
       verificationPath: committee ? 'committee_review' : 'teacher_approval',
       isDisplayPrimary: opts.primary,
+      prefersDisplayPrimary: false,
       // DEFAULT D03: a relationship becomes public when it is verified; requests stay private.
       visibility: wasVerified ? 'public' : 'involved_only',
       requestedByUserId: null,
@@ -414,6 +415,7 @@ class Builder {
         precision,
         ongoing,
         sortOrder,
+        schoolId: null,
         createdAt: rel.createdAt,
         updatedAt: rel.createdAt,
       });
@@ -469,6 +471,7 @@ class Builder {
         actorUserId: null,
         actorRole: step.role,
         reason: step.reason,
+        idempotencyKey: null,
         createdAt: at,
         updatedAt: at,
       });

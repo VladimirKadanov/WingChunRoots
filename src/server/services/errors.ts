@@ -12,7 +12,8 @@ export type ServiceErrorCode =
   | 'CONFLICT'
   | 'TWO_FACTOR_REQUIRED'
   | 'CONSENT_REQUIRED'
-  | 'TOO_MANY_REQUESTS';
+  | 'TOO_MANY_REQUESTS'
+  | 'ENTITLEMENT_REQUIRED';
 
 export const SERVICE_ERROR_STATUS: Record<ServiceErrorCode, number> = {
   BAD_REQUEST: 400,
@@ -25,6 +26,8 @@ export const SERVICE_ERROR_STATUS: Record<ServiceErrorCode, number> = {
   TWO_FACTOR_REQUIRED: 409,
   // M08: a limit against floods (pilot access requests to the admins).
   TOO_MANY_REQUESTS: 429,
+  // M09: the plan does not allow one more (requireEntitlement's refusal travels in `data.entitlement`).
+  ENTITLEMENT_REQUIRED: 403,
 };
 
 export class ServiceError extends Error {
@@ -34,6 +37,11 @@ export class ServiceError extends Error {
     message: string,
     /** Field-level problems for a form: field name → message. */
     readonly fields: Readonly<Record<string, string>> = {},
+    /**
+     * Machine-readable details beside the message (M09): for ENTITLEMENT_REQUIRED, the refusal of
+     * requireEntitlement(), from which a client builds the upgrade prompt (plan §6.5). No personal data.
+     */
+    readonly details: Readonly<Record<string, unknown>> = {},
   ) {
     super(message);
     this.name = 'ServiceError';
