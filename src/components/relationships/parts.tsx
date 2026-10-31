@@ -82,7 +82,8 @@ export function PeriodLines({ periods }: { periods: RelationshipView['periods'] 
  * reader reads it and a phone shows it (M09 review, screens-1). Without JavaScript the action's
  * redirect names it (`#outcome`): the browser opens the page at it and focuses it, and `autofocus`
  * covers a load without that fragment. With JavaScript FocusOnShow focuses it once the router
- * shows the page.
+ * shows the page. Scrolled to, it stops a little below the phone's top bar (`scroll-mt-3`), so
+ * the bar's border covers neither the note nor its focus ring (WCAG 2.4.11).
  */
 export function OutcomeNote({ testId, children }: { testId: string; children: ReactNode }) {
   return (
@@ -92,7 +93,7 @@ export function OutcomeNote({ testId, children }: { testId: string; children: Re
       role="status"
       tabIndex={-1}
       autoFocus
-      className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm text-fg outline-offset-4"
+      className="scroll-mt-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm text-fg outline-offset-4"
     >
       {children}
     </FocusOnShow>

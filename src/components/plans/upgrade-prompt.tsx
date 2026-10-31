@@ -108,7 +108,8 @@ export function UpgradePrompt({
         id={UPGRADE_SUMMARY_ID}
         autoFocus={(closedByChoice && !openAtFirst) || undefined}
         data-testid="upgrade-summary"
-        className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-sm px-4 py-3 outline-offset-2 [&::-webkit-details-marker]:hidden"
+        // Opened at it (#upgrade-summary), it stops a little below the phone's top bar, focus ring included.
+        className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-4 gap-y-1 scroll-mt-3 rounded-sm px-4 py-3 outline-offset-2 [&::-webkit-details-marker]:hidden"
       >
         <span data-testid="upgrade-allowance" className="text-ui font-semibold">
           {offer.allowance.sentence}
