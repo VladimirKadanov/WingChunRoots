@@ -2,9 +2,13 @@
 
 // The request form of /dashboard/teachers/new (milestone M09, In scope 1): the teacher, chosen with
 // the search palette in select mode (people only, any spelling, public profiles); the lineage
-// (optional: the teacher's own when left empty); one or more training periods, each with a start
-// (a year, or a year and a month), an end or "I still train with this teacher", and a school
-// (optional); and the wish that this teacher be drawn as the main line (DEFAULT D05, visual only).
+// (optional: the teacher's own when left empty; asked for when the chosen teacher has no confirmed
+// link yet, so no lineage of their own, M09 review screens-7); one or more training periods, each
+// with a start (a year, or a year and a month), an end or "I still train with this teacher", and a
+// school (optional); and the wish that this teacher be drawn as the main line (DEFAULT D05, visual
+// only).
+// "Add another period" puts the focus on the new period's first field and "Remove" on "Add another
+// period", and a polite live region says what changed (M09 review, screens-3).
 //
 // The same form corrects a declined request and sends it again (`relationshipId`): the teacher is
 // fixed then. A plain form (no form library: the route's JavaScript stays inside the budget of
@@ -16,6 +20,7 @@
 // one (`<noscript>`), whose results choose the teacher through the address (?teacher=<slug>).
 
 import { lazy, Suspense, useActionState, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { NameText } from '@/components/account/person-names';
@@ -24,6 +29,7 @@ import { buttonVariants } from '@/components/ui/button-variants';
 import type { PersonHit } from '@/components/ui/search-palette';
 import { cx } from '@/lib/cx';
 import { fieldId, type FormState } from '@/lib/form-state';
+import { placeLine } from '@/lib/regions';
 import { REQUEST_FORM } from '../form-ids';
 import { requestTeacherAction, resubmitRequestAction } from '../actions';
 
@@ -39,27 +45,32 @@ export interface RequestFormOptions {
   maxPeriods: number;
 }
 
-/** The chosen teacher as the form shows it: the display name with its language, and where. */
+/**
+ * The chosen teacher as the form shows it: the display name with its language, where, and whether
+ * they have a lineage of their own (a confirmed teacher or student): without one the request names
+ * its lineage (relationships.request asks for it).
+ */
 interface ChosenTeacher {
   id: string;
   name: string;
   lang: string;
   where: string;
-}
-
-const regions = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
-
-function whereOf(hit: PersonHit): string {
-  const country = hit.countryCode ? (regions?.of(hit.countryCode) ?? hit.countryCode) : null;
-  return [hit.city, country, hit.lineageName].filter(Boolean).join(' · ');
+  hasLineage: boolean;
 }
 
 function teacherFrom(values: Record<string, string> | undefined): ChosenTeacher | null {
   if (!values?.teacherId || !values.teacherName) return null;
-  return { id: values.teacherId, name: values.teacherName, lang: values.teacherLang || 'und', where: values.teacherWhere ?? '' };
+  return { id: values.teacherId, name: values.teacherName, lang: values.teacherLang || 'und', where: values.teacherWhere ?? '', hasLineage: values.teacherHasLineage !== 'no' };
 }
 
 const SELECTS = ['fromMonth', 'toMonth', 'schoolId'] as const;
+
+/**
+ * A year and its month side by side while both fit at the text size in use, one above the other
+ * when not: at 200 % text on a phone a fixed first column pushed the month past the screen (M09
+ * review, screens-2; WCAG 1.4.10).
+ */
+const PERIOD_ROW = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-3 sm:max-w-[30rem]';
 
 function MonthOptions({ none }: { none: string }) {
   return (
@@ -107,6 +118,8 @@ export function RequestForm({
   const [paletteLoaded, setPaletteLoaded] = useState(false);
   const chooser = useRef<HTMLButtonElement>(null);
   const [count, setCount] = useState(() => Math.min(Math.max(Number((initial?.values ?? prefill).periodCount) || 1, 1), options.maxPeriods));
+  const [periodNote, setPeriodNote] = useState('');
+  const addPeriodButton = useRef<HTMLButtonElement>(null);
   // The selects are controlled: React resets the form after its action, which would drop a choice
   // made before a refused submit (finding H2 of M02).
   const [selects, setSelects] = useState<Record<string, string>>(() => {
@@ -121,11 +134,39 @@ export function RequestForm({
   const teacherFieldId = fieldId(formId, 'teacherId');
 
   function choose(hit: PersonHit) {
-    setTeacher({ id: hit.id, name: hit.displayName.value, lang: hit.displayName.lang, where: whereOf(hit) });
+    setTeacher({
+      id: hit.id,
+      name: hit.displayName.value,
+      lang: hit.displayName.lang,
+      where: placeLine({ city: hit.city, countryCode: hit.countryCode, lineage: hit.lineageName }),
+      hasLineage: hit.lineageName !== null,
+    });
     setAnnounce(`Chosen: ${hit.displayName.value}.`);
     // The palette gives the focus back to where it was opened from: the chooser, now "Choose another teacher".
     requestAnimationFrame(() => chooser.current?.focus());
   }
+
+  /** A new period below the others: its first field takes the focus, scrolled into view with its legend. */
+  function addPeriod() {
+    const added = count;
+    flushSync(() => setCount(count + 1));
+    setPeriodNote(`Period ${added + 1} added.`);
+    const year = document.getElementById(fieldId(formId, `periods.${added}.fromYear`));
+    if (!year) return;
+    year.focus({ preventScroll: true });
+    year.closest('fieldset')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** The last period goes; the focus goes to "Add another period", which is always there after it. */
+  function removePeriod() {
+    const removed = count;
+    flushSync(() => setCount(count - 1));
+    setPeriodNote(`Period ${removed} removed.`);
+    addPeriodButton.current?.focus();
+  }
+
+  // A teacher with no confirmed link has no lineage of their own: the request must name one.
+  const lineageNeeded = !resubmit && teacher !== null && !teacher.hasLineage;
 
   const labels: Record<string, string> = { teacherId: 'Teacher', lineageId: 'Lineage' };
   for (let i = 0; i < count; i += 1) {
@@ -160,6 +201,7 @@ export function RequestForm({
                 <input type="hidden" name="teacherName" value={teacher.name} />
                 <input type="hidden" name="teacherLang" value={teacher.lang} />
                 <input type="hidden" name="teacherWhere" value={teacher.where} />
+                <input type="hidden" name="teacherHasLineage" value={teacher.hasLineage ? 'yes' : 'no'} />
                 <p data-testid="chosen-teacher" className="grid gap-0.5">
                   <NameText name={{ value: teacher.name, lang: teacher.lang }} className="font-display text-xl" />
                   {teacher.where ? <span className="text-sm text-fg-muted">{teacher.where}</span> : null}
@@ -213,14 +255,24 @@ export function RequestForm({
           form={formId}
           name="lineageId"
           label="Lineage of this training"
-          optional
+          optional={!lineageNeeded}
           autoComplete="off"
-          hint="Leave it as the teacher’s own lineage unless you trained with them in another one."
+          hint={
+            lineageNeeded
+              ? 'This teacher has no confirmed teachers or students on WingChunRoots yet, so choose the lineage you trained in.'
+              : 'Leave it as the teacher’s own lineage unless you trained with them in another one.'
+          }
           state={state}
           className="max-w-[34rem]"
           {...select('lineageId')}
         >
-          <option value="">The teacher’s own lineage</option>
+          {lineageNeeded ? (
+            <option value="" disabled>
+              Choose a lineage
+            </option>
+          ) : (
+            <option value="">The teacher’s own lineage</option>
+          )}
           {options.lineages.map((lineage) => (
             <option key={lineage.id} value={lineage.id}>
               {lineage.name}
@@ -242,7 +294,7 @@ export function RequestForm({
           return (
             <fieldset key={i} data-testid="training-period" className="grid gap-4 rounded-sm border border-border-subtle p-4">
               <legend className="px-1 text-ui font-semibold">{count > 1 ? `Period ${i + 1}` : 'Training period'}</legend>
-              <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-3 sm:max-w-[30rem]">
+              <div className={PERIOD_ROW}>
                 <TextField
                   form={formId}
                   name={name('fromYear')}
@@ -257,7 +309,7 @@ export function RequestForm({
                 </SelectField>
               </div>
               <CheckboxField form={formId} name={name('ongoing')} label="I still train with this teacher" state={state} />
-              <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-3 sm:max-w-[30rem]">
+              <div className={PERIOD_ROW}>
                 <TextField
                   form={formId}
                   name={name('toYear')}
@@ -295,16 +347,19 @@ export function RequestForm({
         })}
         <div className="flex flex-wrap gap-3">
           {count < options.maxPeriods ? (
-            <button type="button" onClick={() => setCount(count + 1)} className={buttonVariants({ variant: 'secondary' })}>
+            <button ref={addPeriodButton} type="button" onClick={addPeriod} className={buttonVariants({ variant: 'secondary' })}>
               Add another period
             </button>
           ) : null}
           {count > 1 ? (
-            <button type="button" onClick={() => setCount(count - 1)} className={buttonVariants({ variant: 'ghost' })}>
+            <button type="button" onClick={removePeriod} className={buttonVariants({ variant: 'ghost' })}>
               Remove period {count}
             </button>
           ) : null}
         </div>
+        <p role="status" className="sr-only">
+          {periodNote}
+        </p>
       </section>
 
       {/* How the lineage is drawn (DEFAULT D05). */}

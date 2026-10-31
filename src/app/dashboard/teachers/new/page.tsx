@@ -24,6 +24,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { placeLine } from '@/lib/regions';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
@@ -182,7 +183,9 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
           teacherId: chosen.id,
           teacherName: chosen.displayName,
           teacherLang: 'und-Latn',
-          teacherWhere: [chosen.cityName, chosen.countryCode, chosen.lineages[0]?.name].filter(Boolean).join(' · '),
+          teacherWhere: placeLine({ city: chosen.cityName, countryCode: chosen.countryCode, lineage: chosen.lineages[0]?.name }),
+          // No confirmed link, no lineage of their own: the form asks for one (M09 review, screens-7).
+          teacherHasLineage: chosen.lineages.length > 0 ? 'yes' : 'no',
         }
       : {};
 
@@ -215,7 +218,7 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
                   <li key={hit.id}>
                     <a href={`${PAGE}?teacher=${encodeURIComponent(hit.slug)}`} className="link inline-flex min-h-11 items-center gap-2">
                       <NameText name={hit.displayName} />
-                      <span className="text-sm text-fg-muted">{[hit.city, hit.countryCode, hit.lineageName].filter(Boolean).join(' · ')}</span>
+                      <span className="text-sm text-fg-muted">{placeLine({ city: hit.city, countryCode: hit.countryCode, lineage: hit.lineageName })}</span>
                     </a>
                   </li>
                 ))}

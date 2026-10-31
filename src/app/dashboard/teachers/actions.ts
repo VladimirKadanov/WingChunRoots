@@ -87,7 +87,7 @@ function requestInput(form: FormData) {
   const displayPrimary = ticked(form, 'displayPrimary');
   const key = textValue(form, 'idempotencyKey', 64);
   // The chosen teacher's name, as the form showed it: shown again after an error.
-  for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'lineageId', 'idempotencyKey'] as const) {
+  for (const name of ['teacherId', 'teacherName', 'teacherLang', 'teacherWhere', 'teacherHasLineage', 'lineageId', 'idempotencyKey'] as const) {
     const value = textValue(form, name, 300);
     if (value) values[name] = value;
   }

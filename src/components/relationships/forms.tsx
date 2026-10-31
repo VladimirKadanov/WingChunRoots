@@ -219,7 +219,8 @@ export function EndTrainingForm({
         <input type="hidden" name="relationshipId" value={relationshipId} />
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
         <input type="hidden" name="page" value={page} />
-        <div className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-3">
+        {/* Side by side while both fit, stacked at a large text size (WCAG 1.4.10; M09 review, screens-2). */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-3">
           <TextField
             form={formId}
             name="endYear"
