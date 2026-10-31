@@ -511,7 +511,22 @@ test("@M09 after an approval the teacher's public descendant count updates witho
   await profile.goto(`/people/${grand.slug}`);
 
   // One more generation below the teacher: both counts move at once, the teacher above too.
-  await approve(teacher, await requestTeacher(student, teacher, { lineage: LINEAGE_B, fromYear: '2015' }));
+  const below = await requestTeacher(student, teacher, { lineage: LINEAGE_B, fromYear: '2015' });
+  await approve(teacher, below);
+  // The worker's lineage.recompute of this approval has run, and posted its revalidation to the
+  // internal route, before the first public read (M09 review, requirements-1): the read must show
+  // the approval whichever came first, so the test does not depend on that order. Every recompute
+  // of the lineage queued since the approval has completed (expect.poll stays far below cacheLife).
+  const lineageB = await lineageIdOf(LINEAGE_B);
+  const recomputes = async () => {
+    const rows = await getDb().execute<{ done: number; open: number }>(sql`
+      SELECT count(*) FILTER (WHERE j.state::text = 'completed')::int AS done, count(*) FILTER (WHERE j.state::text <> 'completed')::int AS open
+        FROM pgboss.job j
+       WHERE j.name = 'lineage.recompute' AND (j.data -> 'lineageIds') @> jsonb_build_array(${lineageB}::text)
+         AND j.created_on >= (SELECT e.created_at FROM relationship_event e WHERE e.relationship_id = ${below}::uuid AND e.to_status = 'verified')`);
+    return rows.rows[0]!;
+  };
+  await expect.poll(async () => recomputes().then((r) => r.open === 0 && r.done >= 1), { timeout: 30_000 }).toBe(true);
   expect((await publicProfile(request, teacher.slug)).counts.descendants).toBe(1);
   expect((await publicProfile(request, grand.slug)).counts.descendants).toBe(2);
   await profile.goto(`/people/${teacher.slug}`);
