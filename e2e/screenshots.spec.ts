@@ -200,6 +200,45 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByTestId('request-answered')).toBeVisible();
     },
   },
+  {
+    // M09: the request form with a teacher chosen (as the search without JavaScript leaves it).
+    name: 'teachers-new-chosen',
+    milestone: 'M09',
+    async reach(page) {
+      await signInAs(page, 'demo-pending');
+      await page.goto('/dashboard/teachers/new?teacher=demo-hub-a');
+      await expect(page.getByTestId('chosen-teacher').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M09: the palette in select mode, choosing a teacher.
+    name: 'teachers-new-palette',
+    milestone: 'M09',
+    async reach(page) {
+      await waitForSearchKeys();
+      await signInAs(page, 'demo-pending');
+      await page.goto('/dashboard/teachers/new');
+      const input = page.getByRole('combobox', { name: 'Choose your teacher' });
+      await expect(async () => {
+        await page.getByRole('button', { name: 'Find your teacher' }).filter({ visible: true }).click();
+        await expect(input).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 30_000 });
+      await input.fill('Demo');
+      await expect(page.getByTestId('search-palette').getByRole('option').first()).toBeVisible();
+    },
+  },
+  {
+    // M09: Free Sifu's approval at its limit, refused in the row; the request stays pending.
+    name: 'student-requests-limit',
+    milestone: 'M09',
+    async reach(page) {
+      await signInAs(page, 'demo-free-sifu-5');
+      await page.goto('/dashboard/students/requests');
+      const row = page.getByTestId('student-request').filter({ visible: true });
+      await row.getByRole('button', { name: /^Approve/ }).click();
+      await expect(row.getByRole('alert')).toContainText('The request stays pending.');
+    },
+  },
   ...EXPLORER_VIEWS.map(
     (view): ScreenState => ({
       // M05: the explorer's three views (plan §4.3), drawn by the layout worker.

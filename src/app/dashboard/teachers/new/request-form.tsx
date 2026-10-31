@@ -242,7 +242,7 @@ export function RequestForm({
           return (
             <fieldset key={i} data-testid="training-period" className="grid gap-4 rounded-sm border border-border-subtle p-4">
               <legend className="px-1 text-ui font-semibold">{count > 1 ? `Period ${i + 1}` : 'Training period'}</legend>
-              <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-3 sm:max-w-[30rem]">
+              <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-3 sm:max-w-[30rem]">
                 <TextField
                   form={formId}
                   name={name('fromYear')}
@@ -257,7 +257,7 @@ export function RequestForm({
                 </SelectField>
               </div>
               <CheckboxField form={formId} name={name('ongoing')} label="I still train with this teacher" state={state} />
-              <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-3 sm:max-w-[30rem]">
+              <div className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-3 sm:max-w-[30rem]">
                 <TextField
                   form={formId}
                   name={name('toYear')}

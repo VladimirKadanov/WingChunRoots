@@ -27,6 +27,7 @@ import { UPGRADE_CLOSED_PARAM } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { ApproveForm, DeclineForm, EndTrainingForm } from '@/components/relationships/forms';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -193,7 +194,8 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                             <PersonName person={view.student} />
                             <span className="text-sm text-fg-muted">Sent {formatDay(view.createdAt)}</span>
                             <span className="mt-1">
-                              <RelationshipBadge view={view} />
+                              {/* The teacher's side of "Waiting for the teacher", as on the dashboard. */}
+                              <StatusBadge state="unconfirmed" label="Sent to you" />
                             </span>
                           </span>
                         </td>
