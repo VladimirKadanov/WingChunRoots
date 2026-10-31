@@ -210,6 +210,18 @@ describe('notification templates', () => {
     expect(() => renderNotification('plan.revoked', null)).toThrow(NotificationDataError);
   });
 
+  it('a waiting teacher request says when the training started, and leaves it out when no start is recorded (M09 review, requirements-3)', () => {
+    const sample = NOTIFICATION_TEMPLATES['relationship.requested'].sample;
+    const text = (data: unknown) =>
+      renderNotification('relationship.requested', data)
+        .body.map((segment) => ('text' in segment ? segment.text : segment.name.value))
+        .join('');
+    expect(text(sample)).toBe('Demo Student asks you to confirm that you taught them in Demo Lineage A. Training started: April 2019.');
+    expect(text({ ...sample, resubmitted: true })).toBe('Demo Student corrected their request and asks again to confirm that you taught them in Demo Lineage A. Training started: April 2019.');
+    expect(text({ ...sample, trainingStart: null })).toBe('Demo Student asks you to confirm that you taught them in Demo Lineage A.');
+    expect(text({ ...sample, trainingStart: 'x'.repeat(41) })).toBe('Demo Student asks you to confirm that you taught them in Demo Lineage A.');
+  });
+
   it('an answered pilot access request says so and offers no review (final check, screens-4)', () => {
     const sample = NOTIFICATION_TEMPLATES['pilot-access.requested'].sample;
     const open = renderNotification('pilot-access.requested', sample);

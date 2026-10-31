@@ -2,13 +2,14 @@
 // notifications, rendered from src/server/templates/notifications.ts, and marking them read. Marking
 // read is the small, reversible personal action the dashboard shows optimistically (useOptimistic).
 
-import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { hasStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
+import { formatPartialDate, toPrefix } from '../../lib/partial-date';
 import { getDb } from '../db';
-import { lineage, notification, person, personName, pilotAccessRequest, teachingRelationship } from '../db/schema';
+import { lineage, notification, person, personName, pilotAccessRequest, teachingRelationship, trainingPeriod } from '../db/schema';
 import type { Executor } from '../entitlements/access';
 import type { NameData } from '../templates/email/types';
 import { type NotificationSegment, RELATIONSHIP_NOTIFICATIONS, renderNotification } from '../templates/notifications';
@@ -143,6 +144,20 @@ async function withRelationships(rows: NotificationRow[], userId: string): Promi
           .where(and(inArray(personName.personId, others), eq(personName.isPrimary, true)));
   const nameOf = new Map<string, NameData>(names.map((n) => [n.personId, { value: n.value, lang: n.lang }]));
   const byId = new Map(mine.map((r) => [r.id, r]));
+  // The training start of each request (In scope 2 of M09): the earliest recorded start of its periods.
+  const requested = mine.filter((r) => rows.some((row) => row.template === 'relationship.requested' && relationshipIdOf(row.payload) === r.id)).map((r) => r.id);
+  const periods =
+    requested.length === 0
+      ? []
+      : await db
+          .select({ relationshipId: trainingPeriod.relationshipId, startsOn: trainingPeriod.startsOn, precision: trainingPeriod.precision })
+          .from(trainingPeriod)
+          .where(and(inArray(trainingPeriod.relationshipId, requested), isNotNull(trainingPeriod.startsOn), ne(trainingPeriod.precision, 'unknown')));
+  const earliest = new Map<string, { startsOn: string; precision: 'year' | 'month' | 'day' }>();
+  for (const p of periods) {
+    const current = earliest.get(p.relationshipId);
+    if (p.startsOn && p.precision !== 'unknown' && (!current || p.startsOn < current.startsOn)) earliest.set(p.relationshipId, { startsOn: p.startsOn, precision: p.precision });
+  }
   return rows.map((row) => {
     const id = RELATIONSHIP_TEMPLATES.has(row.template) ? relationshipIdOf(row.payload) : null;
     if (id === null) return row;
@@ -156,9 +171,15 @@ async function withRelationships(rows: NotificationRow[], userId: string): Promi
         lineageName: r?.lineageName ?? null,
         // A relationship this account can no longer see reads as answered: nothing to act on.
         status: r?.status ?? 'withdrawn',
+        ...(row.template === 'relationship.requested' ? { trainingStart: startOf(earliest.get(id)) } : {}),
       },
     };
   });
+}
+
+/** "April 2019" for a recorded start, or null. */
+function startOf(start: { startsOn: string; precision: 'year' | 'month' | 'day' } | undefined): string | null {
+  return start ? formatPartialDate(toPrefix(start.startsOn, start.precision)) : null;
 }
 
 /** A rendered notification; one whose template or data no longer fits says so instead of failing. */

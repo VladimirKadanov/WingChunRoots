@@ -322,20 +322,30 @@ const inLineage = (lineageName: string | null) => (lineageName ? ` in ${lineageN
 const STUDENT_QUEUE = '/dashboard/students/requests';
 const OWN_TEACHERS = '/dashboard/teachers';
 
-/** "relationship.requested": to the teacher, when a student sends a request or sends it again. */
-const relationshipRequested: NotificationTemplate<RelationshipNotice & { resubmitted: boolean }> = {
+/**
+ * "relationship.requested": to the teacher, when a student sends a request or sends it again. While
+ * it waits it says when the training started (In scope 2 of M09): `trainingStart` is not stored
+ * either, but read from the request's periods when the list is read ("April 2019"), so a corrected
+ * request shows its corrected start; null when no start is recorded.
+ */
+const relationshipRequested: NotificationTemplate<RelationshipNotice & { resubmitted: boolean; trainingStart: string | null }> = {
   name: 'relationship.requested',
   parse(payload) {
     const { data, ...notice } = relationshipNotice('relationship.requested', payload);
-    return { ...notice, resubmitted: data.resubmitted === true };
+    const trainingStart = typeof data.trainingStart === 'string' && data.trainingStart.length > 0 && data.trainingStart.length <= 40 ? data.trainingStart : null;
+    return { ...notice, resubmitted: data.resubmitted === true, trainingStart };
   },
-  render: ({ other, lineageName, status, resubmitted }) =>
+  render: ({ other, lineageName, status, resubmitted, trainingStart }) =>
     status === 'pending_teacher' || status === null
       ? {
           title: resubmitted ? 'Teacher request sent again' : 'New teacher request',
           body: [
             who(other, 'A student'),
-            { text: `${resubmitted ? ' corrected their request and asks again' : ' asks you'} to confirm that you taught them${inLineage(lineageName)}.` },
+            {
+              text: `${resubmitted ? ' corrected their request and asks again' : ' asks you'} to confirm that you taught them${inLineage(lineageName)}.${
+                trainingStart ? ` Training started: ${trainingStart}.` : ''
+              }`,
+            },
           ],
           action: { label: 'Answer the request', href: STUDENT_QUEUE },
         }
@@ -356,6 +366,7 @@ const relationshipRequested: NotificationTemplate<RelationshipNotice & { resubmi
     lineageName: 'Demo Lineage A',
     status: 'pending_teacher',
     resubmitted: false,
+    trainingStart: 'April 2019',
   },
 };
 

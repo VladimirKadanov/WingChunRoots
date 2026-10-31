@@ -136,6 +136,10 @@ describe('every transition writes relationship_event and audit_log', () => {
     expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
     expect(await notificationsOf(teacher.account.id, 'relationship.requested')).toEqual([{ payload: { relationshipId: id, resubmitted: false } }]);
     expect(await emailsTo(teacher.account.email, 'relationship-requested')).toBe(1);
+    // The teacher's dashboard notification names the student and the training start (In scope 2;
+    // M09 review, requirements-3), read from the request when the list is read.
+    const requestedNote = (await listNotifications(teacher.principal)).items.find((n) => n.template === 'relationship.requested')!;
+    expect(requestedNote.body).toEqual([{ name: { value: 'Demo m09 student', lang: 'en' } }, { text: ` asks you to confirm that you taught them in Demo m09 Lineage. Training started: April 2019.` }]);
 
     cache.revalidated = [];
     const approved = await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
@@ -186,6 +190,9 @@ describe('every transition writes relationship_event and audit_log', () => {
 
     await resubmitRelationship(student.principal, { relationshipId: id, periods: [{ from: '2018', to: '2021', ongoing: false }], idempotencyKey: key() }, meta);
     expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    // The corrected request's notification shows the corrected start.
+    const corrected = (await listNotifications(teacher.principal)).items.find((n) => n.template === 'relationship.requested' && n.title === 'Teacher request sent again')!;
+    expect(corrected.body.at(-1)).toEqual({ text: ' corrected their request and asks again to confirm that you taught them in Demo m09 Lineage. Training started: 2018.' });
     const periods = await getDb().select({ startsOn: trainingPeriod.startsOn, endsOn: trainingPeriod.endsOn, precision: trainingPeriod.precision }).from(trainingPeriod).where(eq(trainingPeriod.relationshipId, id));
     expect(periods).toEqual([{ startsOn: '2018-01-01', endsOn: '2021-01-01', precision: 'year' }]);
     expect(await notificationsOf(teacher.account.id, 'relationship.requested')).toHaveLength(2);
