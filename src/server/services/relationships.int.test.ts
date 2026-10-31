@@ -1,0 +1,460 @@
+// Teacher requests and independent approvals (milestone M09, Done when: "every transition writes
+// relationship_event and audit_log, and the authorization matrix passes"), against a migrated
+// throwaway database: request, approve, reject, resubmit, withdraw and end through the services,
+// each with its event, its audit row, its notifications and its queued e-mails; who may do what
+// (student, teacher, stranger, reviewer, staff without the second factor); idempotency; the Free
+// Sifu limit (DEFAULT D06); the display preference (DEFAULT D05); reviewer visibility (DEFAULT D03);
+// and the lineage.recompute job.
+
+import { and, asc, count, eq, sql } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
+import { getDb } from '../db';
+import { uuidv7 } from '../db/ids';
+import { auditLog, emailDelivery, lineageMembership, notification, person, relationshipEvent, teachingRelationship, trainingPeriod } from '../db/schema';
+import type { TestDatabase } from '../db/testing';
+import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
+import { listNotifications } from './notifications';
+import { personProfile, personStudents } from './lineage';
+import {
+  approveRelationship,
+  endRelationship,
+  getRelationship,
+  myTeachers,
+  rejectRelationship,
+  requestTeacher,
+  resubmitRelationship,
+  studentRequests,
+  withdrawRelationship,
+} from './relationships';
+import { key, type Member, member, meta, newLineage, ongoingFrom, staff } from './relationships.test-support';
+
+const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
+vi.mock('next/cache', () => ({
+  cacheTag: () => undefined,
+  cacheLife: () => undefined,
+  revalidateTag: (tag: string) => {
+    cache.revalidated.push(tag);
+  },
+  updateTag: () => undefined,
+}));
+
+let testDb: TestDatabase | undefined;
+let lineageId: string;
+
+beforeAll(async () => {
+  testDb = await startAuthTestDatabase();
+  lineageId = await newLineage();
+});
+
+afterAll(async () => {
+  await stopAuthTestDatabase(testDb);
+});
+
+async function events(relationshipId: string) {
+  return getDb()
+    .select({ from: relationshipEvent.fromStatus, to: relationshipEvent.toStatus, actor: relationshipEvent.actorUserId, role: relationshipEvent.actorRole, reason: relationshipEvent.reason })
+    .from(relationshipEvent)
+    .where(eq(relationshipEvent.relationshipId, relationshipId))
+    .orderBy(asc(relationshipEvent.createdAt), asc(relationshipEvent.id));
+}
+
+async function audits(relationshipId: string) {
+  return getDb()
+    .select({ action: auditLog.action, actor: auditLog.actorUserId, before: auditLog.before, after: auditLog.after, reason: auditLog.reason })
+    .from(auditLog)
+    .where(and(eq(auditLog.subjectType, 'teaching_relationship'), eq(auditLog.subjectId, relationshipId)))
+    .orderBy(asc(auditLog.createdAt), asc(auditLog.id));
+}
+
+async function notificationsOf(userId: string, template: string) {
+  return getDb()
+    .select({ payload: notification.payload })
+    .from(notification)
+    .where(and(eq(notification.userId, userId), eq(notification.template, template)));
+}
+
+async function emailsTo(to: string, template: string) {
+  const [row] = await getDb()
+    .select({ n: count() })
+    .from(emailDelivery)
+    .where(and(eq(emailDelivery.toEmail, to), eq(emailDelivery.template, template)));
+  return row!.n;
+}
+
+async function statusOf(id: string) {
+  const [row] = await getDb().select({ status: teachingRelationship.status, visibility: teachingRelationship.visibility }).from(teachingRelationship).where(eq(teachingRelationship.id, id));
+  return row!;
+}
+
+async function request(student: Member, teacher: Member, extra: Record<string, unknown> = {}) {
+  const result = await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key(), ...extra }, meta);
+  return result.relationship.id;
+}
+
+async function refusal(promise: Promise<unknown>): Promise<string> {
+  const error = (await promise.then(
+    () => null,
+    (e: unknown) => e,
+  )) as { code?: string } | null;
+  return error?.code ?? 'OK';
+}
+
+describe('every transition writes relationship_event and audit_log', () => {
+  it('request → approve: pending and involved_only, then verified and public with both people public, both told by notification and e-mail, the counters job queued', async () => {
+    const teacher = await member('m09-teacher', { sifu: true });
+    const student = await member('m09-student', { hidden: true });
+    const result = await requestTeacher(
+      student.principal,
+      { teacherId: teacher.personId, lineageId, periods: [{ from: '2019-04', to: null, ongoing: true }], displayPrimary: false, idempotencyKey: key() },
+      meta,
+    );
+    const id = result.relationship.id;
+    expect(result.relationship).toMatchObject({ status: 'pending_teacher', visibility: 'involved_only', viewerRole: 'student', trainingStart: 'April 2019' });
+    expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    expect(await notificationsOf(teacher.account.id, 'relationship.requested')).toEqual([{ payload: { relationshipId: id, resubmitted: false } }]);
+    expect(await emailsTo(teacher.account.email, 'relationship-requested')).toBe(1);
+
+    cache.revalidated = [];
+    const approved = await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    expect(approved).toMatchObject({ replayed: false, relationship: { status: 'verified', visibility: 'public', isDisplayPrimary: true, viewerRole: 'teacher' } });
+    expect(await events(id)).toEqual([
+      { from: null, to: 'pending_teacher', actor: student.account.id, role: 'student', reason: null },
+      { from: 'pending_teacher', to: 'verified', actor: teacher.account.id, role: 'teacher', reason: null },
+    ]);
+    const rows = await audits(id);
+    expect(rows.map((r) => [r.action, r.actor])).toEqual([
+      ['relationship.request', student.account.id],
+      ['relationship.approve', teacher.account.id],
+    ]);
+    expect(rows[1]!.after).toMatchObject({ status: 'verified', visibility: 'public', publishedPersonIds: [student.personId] });
+    // No name in the audit log (plan §6.4).
+    expect(JSON.stringify(rows)).not.toContain('Demo');
+    const [studentRow] = await getDb().select({ visibility: person.visibility }).from(person).where(eq(person.id, student.personId));
+    expect(studentRow!.visibility).toBe('public');
+    expect(await notificationsOf(student.account.id, 'relationship.approved')).toEqual([{ payload: { relationshipId: id, role: 'student' } }]);
+    expect(await notificationsOf(teacher.account.id, 'relationship.approved')).toEqual([{ payload: { relationshipId: id, role: 'teacher' } }]);
+    expect(await emailsTo(student.account.email, 'relationship-approved')).toBe(1);
+    expect(await emailsTo(teacher.account.email, 'relationship-approved')).toBe(1);
+    const jobs = await getDb().execute<{ data: { lineageIds: string[]; tags: string[] } }>(sql`SELECT data FROM pgboss.job WHERE name = 'lineage.recompute'`);
+    expect(jobs.rows.some((j) => j.data.lineageIds.includes(lineageId) && j.data.tags.includes(`person:${teacher.personId}`))).toBe(true);
+    // The public cache of both people, their lineage and the explorer's start list is dropped.
+    expect(cache.revalidated).toEqual(expect.arrayContaining([`person:${teacher.personId}`, `person:${student.personId}`, `lineage:${lineageId}`, 'explore-start']));
+    // The notification names the other person when it is read.
+    const list = await listNotifications(student.principal);
+    const approvedNote = list.items.find((n) => n.template === 'relationship.approved')!;
+    expect(approvedNote.body[0]).toEqual({ name: { value: 'Demo m09 teacher', lang: 'en' } });
+  });
+
+  it('reject → resubmit → withdraw, each with its event and audit row; the reason is neutral and the student is told', async () => {
+    const teacher = await member('m09-rejecting', { sifu: true });
+    const student = await member('m09-corrected');
+    const id = await request(student, teacher);
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: key() }, meta);
+    expect(await statusOf(id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
+    expect(await notificationsOf(student.account.id, 'relationship.rejected')).toEqual([{ payload: { relationshipId: id, reason: 'dates' } }]);
+    expect(await emailsTo(student.account.email, 'relationship-rejected')).toBe(1);
+    const mine = await myTeachers(student.principal);
+    expect(mine.requests.find((r) => r.id === id)).toMatchObject({ status: 'rejected', rejection: { reason: 'dates', text: 'The training dates need correcting.' }, can: { resubmit: true, withdraw: true } });
+    const note = (await listNotifications(student.principal)).items.find((n) => n.template === 'relationship.rejected')!;
+    expect(note.action).toEqual({ label: 'Correct and send again', href: `/dashboard/teachers/new?resubmit=${id}` });
+
+    await resubmitRelationship(student.principal, { relationshipId: id, periods: [{ from: '2018', to: '2021', ongoing: false }], idempotencyKey: key() }, meta);
+    expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    const periods = await getDb().select({ startsOn: trainingPeriod.startsOn, endsOn: trainingPeriod.endsOn, precision: trainingPeriod.precision }).from(trainingPeriod).where(eq(trainingPeriod.relationshipId, id));
+    expect(periods).toEqual([{ startsOn: '2018-01-01', endsOn: '2021-01-01', precision: 'year' }]);
+    expect(await notificationsOf(teacher.account.id, 'relationship.requested')).toHaveLength(2);
+    expect(await emailsTo(teacher.account.email, 'relationship-requested')).toBe(2);
+    // The rejection notification no longer offers to correct a request that waits again.
+    expect((await listNotifications(student.principal)).items.find((n) => n.template === 'relationship.rejected')!.action).toBeNull();
+
+    await withdrawRelationship(student.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    expect(await statusOf(id)).toEqual({ status: 'withdrawn', visibility: 'involved_only' });
+    expect((await events(id)).map((e) => [e.from, e.to, e.reason])).toEqual([
+      [null, 'pending_teacher', null],
+      ['pending_teacher', 'rejected', 'dates'],
+      ['rejected', 'pending_teacher', 'resubmitted'],
+      ['pending_teacher', 'withdrawn', null],
+    ]);
+    expect((await audits(id)).map((a) => a.action)).toEqual(['relationship.request', 'relationship.reject', 'relationship.resubmit', 'relationship.withdraw']);
+    // The teacher's request notification says it was withdrawn and offers nothing.
+    const teacherNote = (await listNotifications(teacher.principal)).items.find((n) => n.template === 'relationship.requested')!;
+    expect(teacherNote.action).toBeNull();
+  });
+
+  it('end: the teacher marks the training as ended; the link stays verified and public, historical, and the student is told', async () => {
+    const teacher = await member('m09-ending', { sifu: true });
+    const student = await member('m09-ended');
+    const id = await request(student, teacher, { periods: [{ from: '2019-04', to: null, ongoing: true }] });
+    await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    const ended = await endRelationship(teacher.principal, { relationshipId: id, endedOn: '2024', idempotencyKey: key() }, meta);
+    expect(ended.relationship).toMatchObject({ status: 'verified', visibility: 'public', historical: true, statusLabel: 'Verified · training ended', can: { end: false } });
+    // The end keeps the coarser precision of the two: the period becomes 2019–2024.
+    expect(ended.relationship.periods).toEqual([{ from: '2019', to: '2024', ongoing: false, precision: 'year', school: null }]);
+    expect((await events(id)).at(-1)).toEqual({ from: 'verified', to: 'verified', actor: teacher.account.id, role: 'teacher', reason: 'training_ended' });
+    expect((await audits(id)).at(-1)).toMatchObject({ action: 'relationship.end', reason: 'training_ended' });
+    expect(await notificationsOf(student.account.id, 'relationship.ended')).toEqual([{ payload: { relationshipId: id, by: 'teacher' } }]);
+    expect(await refusal(endRelationship(student.principal, { relationshipId: id, endedOn: '2024', idempotencyKey: key() }, meta))).toBe('CONFLICT');
+  });
+});
+
+describe('the authorization matrix (role × ownership)', () => {
+  type Who = 'student' | 'teacher' | 'stranger' | 'reviewer' | 'unverifiedStaff';
+  const people = {} as Record<Who, { principal: Member['principal'] }>;
+
+  beforeAll(async () => {
+    people.teacher = await member('m09-matrix-teacher', { sifu: true });
+    people.student = await member('m09-matrix-student');
+    people.stranger = await member('m09-matrix-stranger', { sifu: true });
+    people.reviewer = await staff('m09-matrix-reviewer', 'moderator');
+    people.unverifiedStaff = await staff('m09-matrix-staff', 'admin', { unverified: true });
+  });
+
+  // A lineage of its own per case: one active request per (teacher, student, lineage).
+  const pending = async () => request(people.student as Member, people.teacher as Member, { lineageId: await newLineage('m09-matrix') });
+  const rejected = async () => {
+    const id = await pending();
+    await rejectRelationship(people.teacher.principal, { relationshipId: id, reason: 'details', idempotencyKey: key() }, meta);
+    return id;
+  };
+  const verified = async () => {
+    const id = await pending();
+    await approveRelationship(people.teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    return id;
+  };
+
+  const actions = {
+    approve: { setup: pending, run: (who: Who, id: string) => approveRelationship(people[who].principal, { relationshipId: id, idempotencyKey: key() }, meta) },
+    reject: { setup: pending, run: (who: Who, id: string) => rejectRelationship(people[who].principal, { relationshipId: id, reason: 'lineage', idempotencyKey: key() }, meta) },
+    withdraw: { setup: pending, run: (who: Who, id: string) => withdrawRelationship(people[who].principal, { relationshipId: id, idempotencyKey: key() }, meta) },
+    resubmit: { setup: rejected, run: (who: Who, id: string) => resubmitRelationship(people[who].principal, { relationshipId: id, periods: ongoingFrom('2020'), idempotencyKey: key() }, meta) },
+    end: { setup: verified, run: (who: Who, id: string) => endRelationship(people[who].principal, { relationshipId: id, endedOn: '2025', idempotencyKey: key() }, meta) },
+    get: { setup: pending, run: (who: Who, id: string) => getRelationship(people[who].principal, { id }) },
+  } as const;
+
+  // OK: allowed. 404: a stranger learns nothing, not even that the request exists (plan §6.4).
+  // 403: a participant or a reviewer whose side may not do this. Reviewers read, never act.
+  const matrix: Record<keyof typeof actions, Record<Who, 'OK' | 'FORBIDDEN' | 'NOT_FOUND'>> = {
+    approve: { teacher: 'OK', student: 'FORBIDDEN', stranger: 'NOT_FOUND', reviewer: 'FORBIDDEN', unverifiedStaff: 'NOT_FOUND' },
+    reject: { teacher: 'OK', student: 'FORBIDDEN', stranger: 'NOT_FOUND', reviewer: 'FORBIDDEN', unverifiedStaff: 'NOT_FOUND' },
+    withdraw: { teacher: 'FORBIDDEN', student: 'OK', stranger: 'NOT_FOUND', reviewer: 'FORBIDDEN', unverifiedStaff: 'NOT_FOUND' },
+    resubmit: { teacher: 'FORBIDDEN', student: 'OK', stranger: 'NOT_FOUND', reviewer: 'FORBIDDEN', unverifiedStaff: 'NOT_FOUND' },
+    end: { teacher: 'OK', student: 'OK', stranger: 'NOT_FOUND', reviewer: 'FORBIDDEN', unverifiedStaff: 'NOT_FOUND' },
+    get: { teacher: 'OK', student: 'OK', stranger: 'NOT_FOUND', reviewer: 'OK', unverifiedStaff: 'NOT_FOUND' },
+  };
+
+  for (const [action, row] of Object.entries(matrix) as [keyof typeof actions, Record<Who, string>][]) {
+    for (const [who, expected] of Object.entries(row) as [Who, string][]) {
+      it(`${action} by the ${who}: ${expected}`, async () => {
+        const id = await actions[action].setup();
+        const before = { status: await statusOf(id), events: (await events(id)).length, audits: (await audits(id)).length };
+        expect(await refusal(actions[action].run(who, id))).toBe(expected);
+        if (expected !== 'OK' || action === 'get') {
+          // A refusal (or a read) changes nothing and writes nothing.
+          expect({ status: await statusOf(id), events: (await events(id)).length, audits: (await audits(id)).length }).toEqual(before);
+        } else {
+          expect((await events(id)).length).toBe(before.events + 1);
+          expect((await audits(id)).length).toBe(before.audits + 1);
+        }
+      });
+    }
+  }
+
+  it('a request for an id that does not exist is 404, like one the caller may not see', async () => {
+    expect(await refusal(approveRelationship(people.teacher.principal, { relationshipId: uuidv7(), idempotencyKey: key() }, meta))).toBe('NOT_FOUND');
+    expect(await refusal(getRelationship(people.reviewer.principal, { id: uuidv7() }))).toBe('NOT_FOUND');
+  });
+
+  it('without a session every procedure refuses with 401', async () => {
+    expect(await refusal(requestTeacher(null, { teacherId: uuidv7(), periods: ongoingFrom(), idempotencyKey: key() }, meta))).toBe('UNAUTHORIZED');
+    expect(await refusal(approveRelationship(null, { relationshipId: uuidv7(), idempotencyKey: key() }, meta))).toBe('UNAUTHORIZED');
+    expect(await refusal(myTeachers(null))).toBe('UNAUTHORIZED');
+  });
+});
+
+describe('requests: checks and idempotency', () => {
+  it('refuses yourself, a hidden or unknown teacher, a teacher without an account, bad periods and a duplicate', async () => {
+    const teacher = await member('m09-checks-teacher', { sifu: true });
+    const student = await member('m09-checks-student');
+    const hidden = await member('m09-checks-hidden', { hidden: true });
+    const fields = async (input: Record<string, unknown>) => {
+      const error = (await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key(), ...input } as never, meta).catch((e: unknown) => e)) as {
+        code: string;
+        fields: Record<string, string>;
+      };
+      return { code: error.code, fields: Object.keys(error.fields ?? {}) };
+    };
+    expect(await fields({ teacherId: student.personId })).toEqual({ code: 'BAD_REQUEST', fields: ['teacherId'] });
+    expect(await fields({ teacherId: hidden.personId })).toEqual({ code: 'BAD_REQUEST', fields: ['teacherId'] });
+    expect(await fields({ teacherId: uuidv7() })).toEqual({ code: 'BAD_REQUEST', fields: ['teacherId'] });
+    expect(await fields({ periods: [{ from: null, to: null, ongoing: true }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.from'] });
+    expect(await fields({ periods: [{ from: '2020', to: null, ongoing: false }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.to'] });
+    expect(await fields({ periods: [{ from: '2020', to: '2019', ongoing: false }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.to'] });
+    expect(await fields({ periods: [{ from: '1899', to: null, ongoing: true }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.from'] });
+    expect(await fields({ periods: [{ from: `${new Date().getUTCFullYear() + 1}`, to: null, ongoing: true }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.from'] });
+    expect(await fields({ periods: [{ from: '2020-13', to: null, ongoing: true }] })).toEqual({ code: 'BAD_REQUEST', fields: ['periods.0.from'] });
+    // A teacher with no lineage of their own: the student has to choose one.
+    expect(await fields({ lineageId: null })).toEqual({ code: 'BAD_REQUEST', fields: ['lineageId'] });
+
+    const unclaimed = uuidv7();
+    await getDb().insert(person).values({ id: unclaimed, slug: `demo-m09-unclaimed-${unclaimed.slice(-6)}`, kind: 'living', stewardship: 'unclaimed', visibility: 'public' });
+    await getDb().execute(sql`INSERT INTO person_name (person_id, value, script, lang, is_primary) VALUES (${unclaimed}::uuid, 'Demo Unclaimed', 'Latn', 'en', true)`);
+    expect(await fields({ teacherId: unclaimed })).toEqual({ code: 'BAD_REQUEST', fields: ['teacherId'] });
+
+    await request(student, teacher);
+    expect(await fields({})).toEqual({ code: 'CONFLICT', fields: ['teacherId'] });
+  });
+
+  it('the same idempotency key replays the request: one row, one event, one e-mail', async () => {
+    const teacher = await member('m09-replay-teacher', { sifu: true });
+    const student = await member('m09-replay-student');
+    const input = { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() };
+    const [a, b] = await Promise.all([requestTeacher(student.principal, input, meta), requestTeacher(student.principal, input, meta)]);
+    expect(a.relationship.id).toBe(b.relationship.id);
+    expect([a.replayed, b.replayed].sort()).toEqual([false, true]);
+    expect(await events(a.relationship.id)).toHaveLength(1);
+    expect(await emailsTo(teacher.account.email, 'relationship-requested')).toBe(1);
+  });
+
+  it('a double approval (the same key twice at once, then a new key) records one approval and sends one e-mail each', async () => {
+    const teacher = await member('m09-double-teacher', { sifu: true });
+    const student = await member('m09-double-student');
+    const id = await request(student, teacher);
+    const same = { relationshipId: id, idempotencyKey: key() };
+    const outcomes = await Promise.all([approveRelationship(teacher.principal, same, meta), approveRelationship(teacher.principal, same, meta)]);
+    expect(outcomes.map((o) => o.replayed).sort()).toEqual([false, true]);
+    expect((await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta)).replayed).toBe(true);
+    expect((await events(id)).filter((e) => e.to === 'verified')).toHaveLength(1);
+    expect((await audits(id)).filter((a) => a.action === 'relationship.approve')).toHaveLength(1);
+    expect(await emailsTo(student.account.email, 'relationship-approved')).toBe(1);
+    expect(await emailsTo(teacher.account.email, 'relationship-approved')).toBe(1);
+  });
+
+  it('a key reused for another change is refused', async () => {
+    const teacher = await member('m09-reuse-teacher', { sifu: true });
+    const student = await member('m09-reuse-student');
+    const id = await request(student, teacher);
+    const reused = key();
+    await rejectRelationship(teacher.principal, { relationshipId: id, reason: 'dates', idempotencyKey: reused }, meta);
+    const other = await request(student, await member('m09-reuse-other', { sifu: true }));
+    expect(await refusal(approveRelationship(teacher.principal, { relationshipId: other, idempotencyKey: reused }, meta))).toBe('NOT_FOUND');
+    expect(await refusal(approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: reused }, meta))).toBe('CONFLICT');
+  });
+});
+
+describe('approval: the plan, the display preference and the people', () => {
+  it('Free Sifu with five students: the sixth approval is refused with the entitlement refusal and the request stays pending (DEFAULT D06)', async () => {
+    const teacher = await member('m09-limit-teacher', { sifu: true });
+    for (let i = 0; i < 5; i++) {
+      const s = await member(`m09-limit-student-${i}`);
+      await approveRelationship(teacher.principal, { relationshipId: await request(s, teacher), idempotencyKey: key() }, meta);
+    }
+    const sixth = await member('m09-limit-sixth');
+    const id = await request(sixth, teacher);
+    const error = (await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta).catch((e: unknown) => e)) as {
+      code: string;
+      message: string;
+      details: { entitlement: unknown };
+    };
+    expect(error.code).toBe('ENTITLEMENT_REQUIRED');
+    expect(error.message).toBe('You have approved 5 of 5 students on Free Sifu. The request stays pending.');
+    expect(error.details.entitlement).toEqual({ ok: false, code: 'quota', plan: 'free_sifu', limit: 5, current: 5, grantedBy: 'pro_sifu' });
+    expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    expect(await events(id)).toHaveLength(1);
+    const queue = await studentRequests(teacher.principal);
+    expect(queue.allowance).toEqual({ approved: 5, limit: 5, planName: 'Free Sifu' });
+    expect(queue.upgrade).toMatchObject({ feature: 'approve_students', allowance: { current: 5, limit: 5 }, to: { code: 'pro_sifu' } });
+  });
+
+  it('a Student account cannot approve: the refusal names the plan, and the request stays pending', async () => {
+    const teacher = await member('m09-student-type-teacher');
+    const student = await member('m09-student-type-student');
+    const id = await request(student, teacher);
+    const error = (await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta).catch((e: unknown) => e)) as {
+      code: string;
+      details: { entitlement: { code: string } };
+    };
+    expect(error.code).toBe('ENTITLEMENT_REQUIRED');
+    expect(error.details.entitlement.code).toBe('plan');
+    expect(await statusOf(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+  });
+
+  it('two teachers in two lineages are approved independently; the display preference moves the primary line (DEFAULT D05)', async () => {
+    const otherLineage = await newLineage('m09-second');
+    const first = await member('m09-first-teacher', { sifu: true });
+    const second = await member('m09-second-teacher', { sifu: true });
+    const student = await member('m09-two-teachers');
+    const a = await request(student, first);
+    const b = await request(student, second, { lineageId: otherLineage, displayPrimary: true });
+    await approveRelationship(first.principal, { relationshipId: a, idempotencyKey: key() }, meta);
+    expect(await statusOf(b)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+    await approveRelationship(second.principal, { relationshipId: b, idempotencyKey: key() }, meta);
+    const rows = await getDb()
+      .select({ id: teachingRelationship.id, primary: teachingRelationship.isDisplayPrimary, status: teachingRelationship.status })
+      .from(teachingRelationship)
+      .where(eq(teachingRelationship.studentPersonId, student.personId));
+    expect(rows.find((r) => r.id === a)).toMatchObject({ status: 'verified', primary: false });
+    expect(rows.find((r) => r.id === b)).toMatchObject({ status: 'verified', primary: true });
+  });
+
+  it('a profile whose owner withdrew its publication stays hidden after an approval (DEFAULT D03)', async () => {
+    const teacher = await member('m09-consent-teacher', { sifu: true });
+    const student = await member('m09-consent-student', { hidden: true });
+    await getDb().execute(sql`INSERT INTO consent_record (user_id, kind, document_version, action, occurred_at)
+      VALUES (${student.account.id}::uuid, 'publication', 'v1', 'granted', now() - interval '1 hour'),
+             (${student.account.id}::uuid, 'publication', 'v1', 'withdrawn', now())`);
+    const id = await request(student, teacher);
+    await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    const [row] = await getDb().select({ visibility: person.visibility }).from(person).where(eq(person.id, student.personId));
+    expect(row!.visibility).toBe('involved_only');
+    expect(await statusOf(id)).toEqual({ status: 'verified', visibility: 'public' });
+  });
+});
+
+describe('a pending request is visible only to its people and the reviewers (DEFAULT D03)', () => {
+  it('the teacher’s list of students shows it to the student, the teacher and a reviewer, never to a stranger or anonymously', async () => {
+    const teacher = await member('m09-visible-teacher', { sifu: true });
+    const student = await member('m09-visible-student', { hidden: true });
+    const stranger = await member('m09-visible-stranger');
+    const reviewer = await staff('m09-visible-reviewer', 'archivist');
+    const unverified = await staff('m09-visible-unverified', 'moderator', { unverified: true });
+    await request(student, teacher);
+    const students = async (principal: Member['principal'] | null) =>
+      (await personStudents(principal, { slug: teacher.slug, page: 1, pageSize: 12, order: 'name' })).own.map((s) => s.person.id);
+    expect(await students(student.principal)).toEqual([student.personId]);
+    expect(await students(teacher.principal)).toEqual([student.personId]);
+    expect(await students(reviewer.principal)).toEqual([student.personId]);
+    expect(await students(stranger.principal)).toEqual([]);
+    expect(await students(unverified.principal)).toEqual([]);
+    expect(await students(null)).toEqual([]);
+    // The hidden student's own profile: the reviewer may open it, a stranger gets the 404 of a missing person.
+    expect((await personProfile(reviewer.principal, { slug: student.slug })).id).toBe(student.personId);
+    expect(await refusal(personProfile(stranger.principal, { slug: student.slug }))).toBe('NOT_FOUND');
+  });
+});
+
+describe('lineage.recompute', () => {
+  it('rewrites lineage_membership from the public views only and revalidates the tags through the internal route', async () => {
+    const recomputed = await newLineage('m09-recompute');
+    const teacher = await member('m09-recompute-teacher', { sifu: true });
+    const student = await member('m09-recompute-student');
+    const hiddenStudent = await member('m09-recompute-hidden');
+    const id = await request(student, teacher, { lineageId: recomputed });
+    await request(hiddenStudent, teacher, { lineageId: recomputed });
+    await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    expect(await recomputeLineageMembership(getDb(), recomputed)).toBe(2);
+    const members = await getDb().select({ personId: lineageMembership.personId }).from(lineageMembership).where(eq(lineageMembership.lineageId, recomputed));
+    // The pending request is not counted (plan §6.2).
+    expect(members.map((m) => m.personId).sort()).toEqual([teacher.personId, student.personId].sort());
+
+    const posted: string[][] = [];
+    const lines: string[] = [];
+    const handler = lineageRecomputeHandler(getDb(), (line) => lines.push(line), async (tags) => {
+      posted.push(tags);
+    });
+    await handler([{ id: 'job-1', data: { lineageIds: [recomputed], tags: [`person:${teacher.personId}`] }, retryCount: 0, retryLimit: 5 } as never]);
+    expect(posted).toEqual([[`person:${teacher.personId}`, `lineage:${recomputed}`]]);
+    expect(lines.join('\n')).not.toContain('Demo');
+  });
+});

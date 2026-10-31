@@ -140,7 +140,7 @@ export async function lineageEgo(principal: Principal | null, input: EgoInput, m
   // One budget for the whole procedure: its own reads share it, and a cached read is raced
   // against what is left of it (withinBudget, lineage-graph.ts).
   const deadline = readDeadline();
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { id: args.focusId });
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
@@ -155,7 +155,7 @@ export async function lineageEgo(principal: Principal | null, input: EgoInput, m
 export async function lineageAncestors(principal: Principal | null, input: AncestorsInput, meta?: RequestMeta): Promise<LineageGraphDto> {
   failOnce(meta?.testFault, 'lineage-once');
   const deadline = readDeadline();
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { id: input.focusId });
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
@@ -171,7 +171,7 @@ export async function lineageSubtree(principal: Principal | null, input: Subtree
   failOnce(meta?.testFault, 'lineage-once');
   const args = { rootId: input.rootId, lineageId: input.lineageId ?? null, depth: input.depth };
   const deadline = readDeadline();
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { id: args.rootId });
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
@@ -187,7 +187,7 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
   failOnce(meta?.testFault, 'lineage-once');
   const args = { focusId: input.focusId, limit: input.limit };
   const deadline = readDeadline();
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { id: args.focusId });
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
@@ -205,7 +205,7 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
 export async function personProfile(principal: Principal | null, input: PersonInput, meta?: RequestMeta): Promise<PersonProfileDto> {
   failOnce(meta?.testFault, 'person-once');
   const deadline = readDeadline();
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { slug: input.slug });
   const id = await resolveSlug(viewer, input.slug, deadline);
   if (!id) throw notFound();
   const hidden = viewer.extras.nodes[id];
@@ -278,7 +278,7 @@ export async function personPageVisible(
   if (await readTransaction(getPublicDb(), (tx) => publicPersonIdBySlug(tx, parsed.data.slug), deadline)) return true;
   const principal = await principalOf();
   if (!principal) return false;
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { slug: parsed.data.slug });
   return Object.values(viewer.extras.nodes).some((n) => n.slug === parsed.data.slug);
 }
 
@@ -286,7 +286,7 @@ export async function personPageVisible(
 export async function personStudents(principal: Principal | null, input: StudentsInput, meta?: RequestMeta): Promise<StudentsPageDto> {
   failOnce(meta?.testFault, 'lineage-once');
   const deadline = readDeadline();
-  const viewer = await loadViewer(principal, deadline);
+  const viewer = await loadViewer(principal, deadline, { slug: input.slug });
   const id = await resolveSlug(viewer, input.slug, deadline);
   if (!id) throw notFound();
   const options = { page: input.page, pageSize: input.pageSize, order: input.order };

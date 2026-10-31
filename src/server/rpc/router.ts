@@ -29,6 +29,24 @@ import {
 } from '../services/grants';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
+import {
+  approveRelationship,
+  endInput,
+  endRelationship,
+  getRelationship,
+  myTeachers,
+  rejectInput,
+  rejectRelationship,
+  relationshipActionInput,
+  relationshipIdInput,
+  requestInput,
+  requestOptions,
+  requestTeacher,
+  resubmitInput,
+  resubmitRelationship,
+  studentRequests,
+  withdrawRelationship,
+} from '../services/relationships';
 import { setRoleInput, setUserRole } from '../services/roles';
 import { twoFactorOverview } from '../services/two-factor';
 import { profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
@@ -248,6 +266,47 @@ export const router = {
       .route({ method: 'POST', path: '/notifications/mark-read', summary: 'Mark own notifications read: some by id, or all' })
       .input(markReadInput)
       .handler(({ context, input }) => markNotificationsRead(context.principal, input)),
+  },
+  // M09: teacher requests and independent approvals (plan §6.3, §6.7). Every mutation takes an
+  // idempotency key; the services check who may do what (relationships.ts, the authorization matrix).
+  relationships: {
+    request: signedIn
+      .route({ method: 'POST', path: '/relationships/request', summary: 'Ask a teacher to confirm that they taught you: pending, visible only to the two of you and the reviewers' })
+      .input(requestInput)
+      .handler(({ context, input }) => requestTeacher(context.principal, input, context.meta)),
+    resubmit: signedIn
+      .route({ method: 'POST', path: '/relationships/resubmit', summary: 'Correct a declined request and send it again (the student)' })
+      .input(resubmitInput)
+      .handler(({ context, input }) => resubmitRelationship(context.principal, input, context.meta)),
+    approve: signedIn
+      .route({ method: 'POST', path: '/relationships/approve', summary: "Approve a student's request (the teacher): verified and public; refused at the plan's limit" })
+      .input(relationshipActionInput)
+      .handler(({ context, input }) => approveRelationship(context.principal, input, context.meta)),
+    reject: signedIn
+      .route({ method: 'POST', path: '/relationships/reject', summary: "Decline a student's request with a neutral reason (the teacher); the student can correct it" })
+      .input(rejectInput)
+      .handler(({ context, input }) => rejectRelationship(context.principal, input, context.meta)),
+    withdraw: signedIn
+      .route({ method: 'POST', path: '/relationships/withdraw', summary: 'Withdraw a request that waits or was declined (the student)' })
+      .input(relationshipActionInput)
+      .handler(({ context, input }) => withdrawRelationship(context.principal, input, context.meta)),
+    end: signedIn
+      .route({ method: 'POST', path: '/relationships/end', summary: 'Mark the training as ended (the student or the teacher): the link stays, as historical' })
+      .input(endInput)
+      .handler(({ context, input }) => endRelationship(context.principal, input, context.meta)),
+    mine: base
+      .route({ method: 'GET', path: '/relationships/mine', summary: "The signed-in account's teachers and its requests to teachers" })
+      .handler(({ context }) => myTeachers(context.principal)),
+    incoming: base
+      .route({ method: 'GET', path: '/relationships/incoming', summary: 'Requests waiting for the signed-in teacher, their students and the approval allowance' })
+      .handler(({ context }) => studentRequests(context.principal)),
+    options: base
+      .route({ method: 'GET', path: '/relationships/options', summary: 'The lineages and schools the request form offers' })
+      .handler(({ context }) => requestOptions(context.principal)),
+    get: base
+      .route({ method: 'GET', path: '/relationships/{id}', summary: 'One relationship, for its student, its teacher or a reviewer (404 for anyone else)' })
+      .input(relationshipIdInput)
+      .handler(({ context, input }) => getRelationship(context.principal, input)),
   },
   dashboard: {
     overview: base
