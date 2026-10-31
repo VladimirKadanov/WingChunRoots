@@ -48,6 +48,7 @@ import {
   useStore,
   useStoreApi,
   type Viewport,
+  ViewportPortal,
 } from '@xyflow/react';
 import {
   createContext,
@@ -64,8 +65,9 @@ import {
 } from 'react';
 
 import { FitIcon, MinusIcon, PlusIcon } from '@/components/icons';
-import { type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
+import { canvasInk, InkPaths, type LinkKind, StrokePaths } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
+import { type InkShape, type Point as InkPoint, type Route, roundedRoute, routeD } from '@/design/ink';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
@@ -73,6 +75,7 @@ import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib
 
 import { type GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
+import { ROUTE_MARK_LABELS, RouteMark, type RouteMarkKind } from '../route-mark';
 import { announce, createAnnouncer, SELECTION_CLEARED, selectedWords, studentsOpenWords } from './announce';
 import {
   type ActiveOptions,
@@ -116,6 +119,8 @@ export interface PersonNodeData extends Record<string, unknown> {
   rank: number;
   focus: boolean;
   root: boolean;
+  /** The person's mark on the card's top edge, where the links arrive: founder, living, or not recorded as living. */
+  mark: RouteMarkKind;
   slot: Box;
   boxes: Record<DetailLevel, Box>;
   // M06 seam: node-data (built by explorer.tsx flowBase)
@@ -223,9 +228,13 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
       <Handle type="target" position={Position.Top} isConnectable={false} className="!invisible" />
       {/* M06 seam: node-data. The relationships in words: the node's aria-describedby (plan §4.9). */}
       <span id={relationsId(id)} hidden>
+        {data.mark === 'other' ? '' : `${ROUTE_MARK_LABELS[data.mark]}. `}
         {relationsText(data.teacherNames, data.totals, data.drawn)}
       </span>
       <div className="absolute" style={{ ...offset, width: box.width, height: box.height }}>
+        {/* The mark on the top edge, where the ink arrives (owner decision 2026-10-31, as the home
+            page draws a person: a square for a founder, a dot for the living, a ring otherwise). */}
+        {lod !== 'dot' ? <RouteMark mark={data.mark} className="absolute -top-[5px] left-1/2 z-10 -translate-x-1/2" /> : null}
         {lod === 'full' && data.disputed ? (
           // On the card's top edge, at the right: the name starts at the left and its line keeps its room.
           <span
@@ -393,38 +402,94 @@ function labelPoint(path: SceneEdge['path']): Point {
   return best.at;
 }
 
+/** The radius of a route's rounded corners: the links are drawn as curves (owner decision 2026-10-31). */
+const CORNER_RADIUS = 24;
+
+/**
+ * The route as drawn: the corners of an orthogonal route rounded, a curve between lineages as it
+ * is; `from` and `to` join it to the boxes drawn (pathD).
+ */
+function routeOf(path: SceneEdge['path'], from: Point[], to: Point[]): Route {
+  const pt = (q: Point): InkPoint => [q.x, q.y];
+  const tail = [...to].reverse();
+  if (path.type === 'bezier') {
+    const head = [...from, path.start];
+    return {
+      start: pt(head[0]!),
+      pieces: [
+        ...head.slice(1).map((q) => ({ kind: 'line' as const, to: pt(q) })),
+        { kind: 'cubic' as const, c1: pt(path.control1), c2: pt(path.control2), to: pt(path.end) },
+        ...tail.map((q) => ({ kind: 'line' as const, to: pt(q) })),
+      ],
+    };
+  }
+  return roundedRoute([...from, ...path.points, ...tail].map(pt), CORNER_RADIUS);
+}
+
+interface DrawnEdge {
+  /** The route laid out, joined to the boxes drawn: data-route. */
+  route: string;
+  /** The route as drawn (rounded), for the strokes at the dot level. */
+  d: string;
+  /** The ink along it, from the compact cards up. */
+  ink: InkShape | null;
+}
+
+/**
+ * The drawing of an edge at a level of detail, made once per route: a selection gives an edge new
+ * data with the same route (litFlow), and a zoom within a level of detail draws nothing new.
+ */
+const drawnEdges = new WeakMap<SceneEdge['path'], Map<string, DrawnEdge>>();
+
+function drawnEdge(data: LineageEdgeData, lod: DetailLevel): DrawnEdge {
+  let made = drawnEdges.get(data.path);
+  if (!made) drawnEdges.set(data.path, (made = new Map()));
+  const key = `${lod}:${data.stroke}`;
+  const known = made.get(key);
+  if (known) return known;
+  // A compact or dot box is smaller than the slot the route was laid out for (plan §4.8): the
+  // route is joined to the box drawn, so no edge stops short of its person.
+  const ends = routeEnds(data.path);
+  const from = lod === 'full' ? [] : joinToBox(ends.start, data.ends.teacher[lod]);
+  const to = lod === 'full' ? [] : joinToBox(ends.end, data.ends.student[lod]);
+  const route = routeOf(data.path, from, to);
+  const drawn = { route: pathD(data.path, from, to), d: routeD(route), ink: lod === 'dot' ? null : canvasInk(data.stroke, route, lod) };
+  made.set(key, drawn);
+  return drawn;
+}
+
 function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
   const lod = useStore(lodOf);
   if (!data) return null;
   const style = linkStyles[data.stroke];
-  // A compact or dot box is smaller than the slot the route was laid out for (plan §4.8): the
-  // route is joined to the box drawn, so no edge stops short of its person.
-  const ends = routeEnds(data.path);
-  const d = lod === 'full' ? pathD(data.path, [], []) : pathD(data.path, joinToBox(ends.start, data.ends.teacher[lod]), joinToBox(ends.end, data.ends.student[lod]));
+  const drawn = drawnEdge(data, lod);
   const at = labelPoint(data.path);
   return (
     <>
-      {/* The stroke of the explorer legend's sample (Legend strokes="canvas"), so the key decodes
-          the drawing without colour; a double stroke adds its knocked-out ground ([data-edge-core]).
-          Width and dashes stay in screen pixels at every zoom: scaled with the view, zoomed out
-          to the dots, they fell below a pixel and every state looked like a solid line. */}
-      <StrokePaths
-        d={d}
-        kind={data.stroke}
-        ground="var(--bg)"
-        attributes={{
-          'data-edge': id,
-          'data-teacher': source,
-          'data-student': target,
-          'data-kind': data.kind,
-          'data-lineage': data.lineageId,
-          'data-stroke': data.stroke,
-          'data-routed': data.routedBy,
-          // M06 seam: lit-attrs
-          ...(data.lit ? { 'data-lit': '' } : {}),
-        }}
-        coreAttributes={{ 'data-edge-core': id }}
-      />
+      {/* One group per edge with its facts (data-route: the route laid out). From the compact cards
+          up, the state's ink along the route, its corners rounded (owner decision 2026-10-31, "Ink
+          restyle"): the shape of the legend's ink sample, so the key decodes the drawing without
+          colour. Zoomed out to the dots, the plain stroke of the legend's other sample, whose width
+          and dashes stay in screen pixels (scaled with the view they fell below a pixel); a double
+          stroke adds its knocked-out ground ([data-edge-core]). */}
+      <g
+        data-edge={id}
+        data-teacher={source}
+        data-student={target}
+        data-kind={data.kind}
+        data-lineage={data.lineageId}
+        data-stroke={data.stroke}
+        data-routed={data.routedBy}
+        data-route={drawn.route}
+        // M06 seam: lit-attrs
+        data-lit={data.lit ? '' : undefined}
+      >
+        {drawn.ink ? (
+          <InkPaths shape={drawn.ink} kind={data.stroke} attributes={{ 'data-edge-ink': id }} />
+        ) : (
+          <StrokePaths d={drawn.d} kind={data.stroke} ground="var(--bg)" attributes={{ 'data-edge-line': id }} coreAttributes={{ 'data-edge-core': id }} />
+        )}
+      </g>
       {data.label ? (
         <EdgeLabelRenderer>
           <span
@@ -440,6 +505,106 @@ function LineageEdgeView({ id, source, target, data }: EdgeProps<LineageEdge>) {
         </EdgeLabelRenderer>
       ) : null}
     </>
+  );
+}
+
+/** The level of detail on the canvas frame (data-lod): the legend over it shows the samples the canvas draws at it. */
+function LodOnFrame() {
+  const lod = useStore(lodOf);
+  const domNode = useStore((s) => s.domNode);
+  useLayoutEffect(() => {
+    const frame = domNode?.closest<HTMLElement>('[data-canvas-frame]');
+    if (frame) frame.dataset.lod = lod;
+  }, [lod, domNode]);
+  return null;
+}
+
+/** A column's rows by their generation in its lineage, where the row agrees on one (columnMarks). */
+export interface ColumnMarks {
+  headers: { lineageId: string; name: string; x: number; y: number; width: number }[];
+  rails: { lineageId: string; x: number; rows: { y: number; generation: number }[] }[];
+}
+
+/**
+ * What the canvas writes beside its columns (owner decision 2026-10-31, the Ink Lineage
+ * direction): the name of each lineage above its column when the view has two or more, and beside
+ * each column the generation of every row in which all the people drawn in that column have one,
+ * the same one, counted from the same recorded root (their cards' generation labels: D22, read from
+ * the view, never stored; the root itself is generation 1). A row that does not agree shows none.
+ */
+export function columnMarks(scene: Scene, nodes: readonly PersonNode[], names: ReadonlyMap<string, string>): ColumnMarks {
+  const people = nodes.filter((n) => !n.hidden);
+  const top = Math.min(...people.map((n) => n.position.y));
+  const headers =
+    scene.bands.length >= 2
+      ? scene.bands.flatMap((b) => {
+          const name = names.get(b.lineageId);
+          return name ? [{ lineageId: b.lineageId, name, x: b.x, y: top, width: b.width }] : [];
+        })
+      : [];
+  const rails = scene.bands.map((b) => {
+    const rows = new Map<number, { y: number; keys: Set<string> }>();
+    for (const n of people) {
+      if (n.position.x < b.x - 0.5 || n.position.x > b.x + b.width + 0.5) continue;
+      const label = n.data.generation;
+      const key =
+        label?.kind === 'lineage' ? `${label.rootId}:${label.generation}` : n.data.root && n.data.mark === 'founder' ? `${n.id}:1` : 'none';
+      const row = rows.get(n.data.rank) ?? { y: n.position.y + n.data.slot.height / 2, keys: new Set<string>() };
+      row.keys.add(key);
+      rows.set(n.data.rank, row);
+    }
+    const agreed = [...rows.values()].flatMap((row) => {
+      const [only] = row.keys;
+      if (row.keys.size !== 1 || only === undefined || only === 'none') return [];
+      return [{ y: row.y, generation: Number(only.slice(only.lastIndexOf(':') + 1)), root: only.slice(0, only.lastIndexOf(':')) }];
+    });
+    // One root per column: rows counted from another root (a teacher of another lineage) stay blank.
+    const roots = new Set(agreed.map((r) => r.root));
+    return { lineageId: b.lineageId, x: b.x, rows: roots.size === 1 ? agreed.map(({ y, generation }) => ({ y, generation })).sort((a, c) => a.y - c.y) : [] };
+  });
+  return { headers, rails: rails.filter((r) => r.rows.length > 0) };
+}
+
+/**
+ * The lineage names and the generation rails (columnMarks), in the view's coordinates and at a
+ * constant size on screen. Words for the eye only: each card names its generation, and the list
+ * view names every lineage.
+ */
+function ColumnMarksView({ marks }: { marks: ColumnMarks }) {
+  const zoom = useStore((s) => s.transform[2]);
+  if (marks.headers.length === 0 && marks.rails.length === 0) return null;
+  const scale = `scale(${1 / zoom})`;
+  return (
+    <ViewportPortal>
+      <div data-column-marks="" aria-hidden="true" className="pointer-events-none">
+        {marks.headers.map((h) => (
+          <div
+            key={h.lineageId}
+            data-column-header={h.lineageId}
+            className="absolute origin-top-left border-b border-border-strong pb-0.5 font-display text-sm leading-5 whitespace-nowrap text-fg"
+            style={{ left: h.x, top: h.y - 10, width: h.width * zoom, transform: `${scale} translateY(-100%)` }}
+          >
+            <span lang="und-Latn" translate="no" className="block truncate">
+              {h.name}
+            </span>
+          </div>
+        ))}
+        {marks.rails.map((rail) =>
+          rail.rows.map((row, i) => (
+            <div
+              key={`${rail.lineageId}:${row.y}`}
+              data-generation-rail={rail.lineageId}
+              // On the ground, so a curve between the columns passes behind it.
+              className="absolute origin-top-left rounded-xs bg-bg px-0.5 text-right text-caption leading-4 font-semibold tracking-normal text-fg-subtle tabular"
+              style={{ left: rail.x - 8, top: row.y, transform: `${scale} translate(-100%, -50%)` }}
+            >
+              {i === 0 ? <span className="block text-[0.625rem] leading-3 font-normal tracking-normal">Gen</span> : null}
+              {row.generation}
+            </div>
+          )),
+        )}
+      </div>
+    </ViewportPortal>
   );
 }
 
@@ -1064,6 +1229,8 @@ export interface CanvasProps {
   onMount?: () => void;
   /** Overlays over the canvas frame: the legend, the relayout notice. */
   children?: ReactNode;
+  /** The lineages' names by id, for the column headers (columnMarks). */
+  lineageNames?: ReadonlyMap<string, string>;
   // M06 seams (package F wires them all; the packages named fill them in elsewhere).
   /** node-slot: what the buttons inside a node and the summary node do (package C). */
   actions?: NodeActions;
@@ -1544,6 +1711,8 @@ export default function ExplorerCanvas(props: CanvasProps) {
   );
 }
 
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
+
 function CanvasFrame({
   scene,
   nodes,
@@ -1551,6 +1720,7 @@ function CanvasFrame({
   onSelect,
   onMount,
   children,
+  lineageNames = NO_NAMES,
   actions = NO_NODE_ACTIONS,
   notice = null,
   anchorId = null,
@@ -1687,6 +1857,7 @@ function CanvasFrame({
     collapseSheet: () => panel?.current?.collapse() ?? false,
   };
   const keys = useGraphKeys(flowApi, context);
+  const marks = columnMarks(scene, nodes, lineageNames);
 
   return (
     // M06 seam: lit-attrs (data-highlighting: a selection lights its routes, the rest is dimmed)
@@ -1733,6 +1904,8 @@ function CanvasFrame({
               aria-describedby={KEYS_HELP_ID}
             >
               <FitOnScene scene={scene} nodes={all} edges={edges} moves={moves} anchorId={anchorId} />
+              <LodOnFrame />
+              <ColumnMarksView marks={marks} />
             </ReactFlow>
           </NodeActionsContext.Provider>
         </FocusGuard.Provider>

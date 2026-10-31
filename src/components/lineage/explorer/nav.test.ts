@@ -33,6 +33,7 @@ function person(id: string, rank: number, x: number, options: { hidden?: boolean
       rank,
       focus: false,
       root: false,
+      mark: 'other',
       slot,
       boxes: { full: slot, compact: slot, dot: slot },
       slug: `demo-${id}`,

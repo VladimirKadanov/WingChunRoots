@@ -34,6 +34,7 @@ import { orpc } from '@/lib/rpc-client';
 import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageEdgeDto, LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
+import { MarkKey, markKinds } from '../route-mark';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -236,6 +237,8 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
         rank: sn.rank,
         focus: sn.id === graph.focusId,
         root: roots.has(sn.id),
+        // DEFAULT D22: a founder only as recorded (the lineage's root), as the routes of descent mark one.
+        mark: roots.has(sn.id) ? 'founder' : person.lifeStatus === 'living' ? 'living' : 'other',
         slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height },
         boxes: sn.boxes,
         slug: person.slug,
@@ -706,6 +709,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   edges={flow.edges}
                   onSelect={select}
                   onMount={() => setCanvasMounted(true)}
+                  lineageNames={new Map(laidOut.graph.lineages.map((l) => [l.id, l.name]))}
                   // M06 seams (canvas.tsx CanvasProps)
                   actions={actions}
                   notice={expansions.notice}
@@ -731,6 +735,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
                   >
                     <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
+                    {/* The marks on the cards (not on the dots: globals.css, Ink restyle). */}
+                    <MarkKey marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))} className="mt-2" />
                   </div>
                 </ExplorerCanvas>
               ) : null}

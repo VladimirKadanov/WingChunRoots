@@ -80,6 +80,7 @@ function person(id: string, rank: number, x: number): PersonNode {
       rank,
       focus: false,
       root: false,
+      mark: 'other',
       slot,
       boxes,
       slug: `demo-${id}`,

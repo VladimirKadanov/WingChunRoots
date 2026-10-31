@@ -20,12 +20,14 @@ import { InkShapeSvg, type LinkKind } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { inkShapes, type Cubic } from '@/design/ink';
 import { linkStyles } from '@/design/tokens';
-import { cx } from '@/lib/cx';
 import type { LineageEdgeDto, LineageNodeDto, LineagePathsDto, LineageRefDto } from '@/server/dto/public';
 import { LatinName, LineageName, PersonLink, PersonName } from './person-name';
 import { Sep } from './relation-list';
 import { EmptyState } from './states';
+import { MARK_ORDER, ROUTE_MARK_LABELS, RouteMark, type RouteMarkKind } from './route-mark';
 import { relationStatus, startYear, strokeOf } from './status';
+
+export { ROUTE_MARK_LABELS, RouteMark, type RouteMarkKind };
 
 /** The vertical stroke of one link, 100 units long in a 28-unit column (stretched by the row). */
 const DOWN: Cubic = [
@@ -77,36 +79,6 @@ function LinkSegment({ kind }: { kind: LinkKind }) {
         {shape}
       </svg>
       <Seal kind={style.seal} size={13} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-    </span>
-  );
-}
-
-/**
- * The mark of a person on a route: a square on its point for a recorded founder (DEFAULT D22), a
- * filled dot for the living, a ring otherwise. The key explains them where routes are drawn
- * (LineageKey `marks`), and a screen reader hears "Founder of …, as recorded" or "Living" in the
- * step's text (final check, screens-4).
- */
-export type RouteMarkKind = 'founder' | 'living' | 'other';
-
-export const ROUTE_MARK_LABELS: Record<RouteMarkKind, string> = {
-  founder: 'Founder, as recorded',
-  living: 'Living',
-  other: 'Not recorded as living',
-};
-
-const MARK_ORDER: RouteMarkKind[] = ['founder', 'living', 'other'];
-
-export function RouteMark({ mark, className }: { mark: RouteMarkKind; className?: string }) {
-  return (
-    <span aria-hidden="true" data-mark={mark} className={cx('block size-2.5', className)}>
-      {mark === 'founder' ? (
-        <span className="block size-full rotate-45 bg-fg" />
-      ) : mark === 'living' ? (
-        <span className="block size-full rounded-full bg-fg" />
-      ) : (
-        <span className="block size-full rounded-full border-[1.5px] border-fg bg-bg" />
-      )}
     </span>
   );
 }
