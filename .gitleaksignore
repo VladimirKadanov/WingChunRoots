@@ -4,3 +4,6 @@
 0c617dd52eec3ef090c7a8106abbacb867bec357:scripts/trace-summary.test.ts:generic-api-key:31
 0c617dd52eec3ef090c7a8106abbacb867bec357:scripts/trace-summary.test.ts:generic-api-key:32
 0c617dd52eec3ef090c7a8106abbacb867bec357:scripts/trace-summary.test.ts:generic-api-key:35
+# A placeholder secret ('a-dedicated-secret-of-at-least-32-chars') in the revalidate test as
+# first committed in 9867ee8; a test-only value, never a real secret.
+9867ee894c8feeaf6faa6785333f7d83c5aecf95:src/server/revalidate.int.test.ts:generic-api-key:78
