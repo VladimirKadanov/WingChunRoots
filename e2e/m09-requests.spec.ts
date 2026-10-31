@@ -41,6 +41,39 @@ function token(length = 6): string {
 const visible = (locator: Locator) => locator.filter({ visible: true });
 const field = (scope: Page | Locator, label: string | RegExp) => visible(scope.getByLabel(label, { exact: typeof label === 'string' }));
 
+/**
+ * The note that says what a change did (review screens-1): the redirect opens the page at it, and
+ * it has the focus and is on screen, with JavaScript (a ref callback) and without (the fragment).
+ * On a phone it is also clear of the sticky top bar.
+ */
+async function expectOutcome(page: Page, testId: string): Promise<Locator> {
+  const note = visible(page.getByTestId(testId));
+  await expect(note).toBeVisible();
+  expect(new URL(page.url()).hash, testId).toBe('#outcome');
+  await expect(note, testId).toBeFocused();
+  await expect(note, testId).toBeInViewport();
+  if ((page.viewportSize()?.width ?? 1024) < 768) {
+    const bar = (await page.getByRole('banner').boundingBox())!;
+    const box = (await note.boundingBox())!;
+    // The focus ring (outline-offset-4) shows too.
+    expect(box.y, `${testId}: below the top bar, with its focus ring`).toBeGreaterThanOrEqual(bar.y + bar.height + 4);
+  }
+  return note;
+}
+
+/** No sideways scroll: nothing is wider than the page. */
+async function expectNoHorizontalScroll(page: Page, label: string) {
+  const widths = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+  expect(widths.scroll, `${label}: no horizontal scroll (${JSON.stringify(widths)})`).toBeLessThanOrEqual(widths.client);
+}
+
+/** A control is a touch target of at least 44 x 44 px (CLAUDE.md §10; review screens-5). */
+async function expectTouchTarget(locator: Locator, label: string) {
+  const box = (await locator.boundingBox())!;
+  expect(box.height, `${label}: height`).toBeGreaterThanOrEqual(44);
+  expect(box.width, `${label}: width`).toBeGreaterThanOrEqual(44);
+}
+
 interface Member {
   context: BrowserContext;
   page: Page;
@@ -130,7 +163,7 @@ async function requestTeacher(student: Member, teacher: Member, options: Request
   await fillRequest(page, options);
   await visible(page.getByRole('button', { name: 'Send the request' })).click();
   await page.waitForURL(/\/dashboard\/teachers\?sent=/);
-  await expect(visible(page.getByTestId('request-sent'))).toContainText(teacher.name);
+  await expect(await expectOutcome(page, 'request-sent')).toContainText(teacher.name);
   return new URL(page.url()).searchParams.get('sent')!;
 }
 
@@ -143,7 +176,7 @@ async function approve(teacher: Member, relationshipId: string) {
   await page.goto('/dashboard/students/requests');
   await requestRow(page, relationshipId).getByRole('button', { name: /^Approve/ }).click();
   await page.waitForURL(/[?&]approved=/);
-  await expect(visible(page.getByTestId('request-approved'))).toBeVisible();
+  await expectOutcome(page, 'request-approved');
 }
 
 async function relationshipRow(id: string) {
@@ -336,7 +369,7 @@ test("@M09 an unrelated user's approve action is refused with no state change", 
   await Promise.all([teacher.context.close(), student.context.close(), stranger.context.close()]);
 });
 
-test("@M09 demo-free-sifu-5's sixth approval is blocked, the upgrade prompt appears and the request stays pending", async ({ page }) => {
+test("@M09 demo-free-sifu-5's sixth approval is blocked, the upgrade prompt appears and the request stays pending", async ({ page, browser }) => {
   await signInAs(page, 'demo-free-sifu-5');
   await page.goto('/dashboard/students/requests');
   await expect(visible(page.getByTestId('student-allowance'))).toHaveText('Students: 5 of 5 approved on Free Sifu');
@@ -348,7 +381,20 @@ test("@M09 demo-free-sifu-5's sixth approval is blocked, the upgrade prompt appe
   await rows.getByRole('button', { name: /^Approve/ }).click();
   const message = rows.getByRole('alert');
   await expect(message).toContainText('You have approved 5 of 5 students on Free Sifu. The request stays pending.');
-  await expect(rows.getByRole('link', { name: 'See what a higher plan adds' })).toHaveAttribute('href', '#upgrade');
+  // Review screens-6: the link opens the prompt at its summary, with the benefits shown.
+  const prompt = visible(page.getByTestId('upgrade-prompt'));
+  await expect(prompt).not.toHaveAttribute('open');
+  const more = rows.getByRole('link', { name: 'See what a higher plan adds' });
+  await expect(more).toHaveAttribute('href', '/dashboard/students/requests?upgrade=open#upgrade-summary');
+  await more.click();
+  await expect(page).toHaveURL(/\/dashboard\/students\/requests\?upgrade=open#upgrade-summary$/);
+  await expect(prompt).toHaveAttribute('open');
+  await expect(prompt.getByTestId('upgrade-summary')).toBeFocused();
+  await expect(prompt.getByTestId('upgrade-benefits')).toBeInViewport();
+  // "Not now" still closes it in place.
+  await prompt.getByTestId('upgrade-not-now').click();
+  await expect(prompt).not.toHaveAttribute('open');
+  await expect(prompt.getByTestId('upgrade-summary')).toBeFocused();
 
   // Nothing changed: still pending and private, no approval recorded; the API says the same.
   expect(await relationshipRow(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
@@ -359,6 +405,29 @@ test("@M09 demo-free-sifu-5's sixth approval is blocked, the upgrade prompt appe
   await page.reload();
   await expect(visible(page.getByTestId('student-request'))).toHaveCount(1);
   await expect(visible(page.getByTestId('upgrade-prompt'))).toBeVisible();
+
+  // Without JavaScript: the refusal comes back as the row's message, with the focus; the link
+  // opens the prompt and puts the focus on its summary, with the benefits below it.
+  const nojs = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, storageState: await page.context().storageState() });
+  try {
+    await giveOwnAddress(nojs);
+    const b = await nojs.newPage();
+    await b.goto('/dashboard/students/requests');
+    const row = b.locator(`tr[data-relationship="${id}"]`);
+    await row.getByRole('button', { name: /^Approve/ }).click();
+    await expect(b).toHaveURL(/\/dashboard\/students\/requests\?outcome=[\w-]+#approve-[\w-]+-message$/);
+    await expect(row.getByRole('alert')).toContainText('You have approved 5 of 5 students on Free Sifu. The request stays pending.');
+    await expect(row.getByRole('alert')).toBeFocused();
+    const shown = b.getByTestId('upgrade-prompt');
+    await expect(shown).not.toHaveAttribute('open');
+    await row.getByRole('link', { name: 'See what a higher plan adds' }).click();
+    await expect(shown).toHaveAttribute('open');
+    await expect(shown.getByTestId('upgrade-summary')).toBeFocused();
+    await expect(shown.getByTestId('upgrade-benefits')).toBeInViewport();
+    expect(await relationshipRow(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
+  } finally {
+    await nojs.close();
+  }
 });
 
 test('@M09 a rejection notifies the student with the neutral reason and a resubmit link; the student corrects and resubmits', async ({ browser }) => {
@@ -372,7 +441,7 @@ test('@M09 a rejection notifies the student with the neutral reason and a resubm
   await row.getByLabel('Reason').selectOption({ label: 'The training dates need correcting.' });
   await row.getByRole('button', { name: /^Decline the request/ }).click();
   await teacher.page.waitForURL(/[?&]declined=/);
-  await expect(visible(teacher.page.getByTestId('request-declined'))).toBeVisible();
+  await expectOutcome(teacher.page, 'request-declined');
   expect(await relationshipRow(id)).toEqual({ status: 'rejected', visibility: 'involved_only' });
 
   // The student is told why, on the dashboard and by e-mail, with the way to correct it.
@@ -395,7 +464,7 @@ test('@M09 a rejection notifies the student with the neutral reason and a resubm
   await year.fill('2014');
   await visible(student.page.getByRole('button', { name: 'Send the request again' })).click();
   await student.page.waitForURL(/\/dashboard\/teachers\?sent=/);
-  await expect(visible(student.page.getByTestId('request-sent'))).toContainText(teacher.name);
+  await expect(await expectOutcome(student.page, 'request-sent')).toContainText(teacher.name);
   expect(await relationshipRow(id)).toEqual({ status: 'pending_teacher', visibility: 'involved_only' });
   const start = await getDb().execute<{ starts_on: string }>(sql`SELECT starts_on::text FROM training_period WHERE relationship_id = ${id}::uuid`);
   expect(start.rows.map((r) => r.starts_on)).toEqual(['2014-01-01']);
@@ -430,7 +499,7 @@ test('@M09 double-clicking Approve records one approval and sends one email', as
   await teacher.page.goto('/dashboard/students/requests');
   await requestRow(teacher.page, id).getByRole('button', { name: /^Approve/ }).dblclick();
   await teacher.page.waitForURL(/[?&]approved=/);
-  await expect(visible(teacher.page.getByTestId('request-approved'))).toBeVisible();
+  await expectOutcome(teacher.page, 'request-approved');
 
   await openMailbox().waitFor(student.email, { subject: 'Your teacher confirmed you on WingChunRoots', timeoutMs: 30_000 });
   expect(await eventCount(id, 'verified')).toBe(1);
@@ -455,7 +524,7 @@ test('@M09 a teacher marks training as ended and the relationship stays visible 
   await row.getByLabel('Year ended').fill('2024');
   await row.getByRole('button', { name: /^Mark as ended/ }).click();
   await page.waitForURL(/[?&]ended=/);
-  await expect(visible(page.getByTestId('training-ended'))).toContainText(student.name);
+  await expect(await expectOutcome(page, 'training-ended')).toContainText(student.name);
   await expect(visible(page.locator(`li[data-testid="student"][data-relationship="${id}"]`))).toContainText('Verified · training ended');
 
   // Never deleted: still verified and public, now historical, on the public profile too.
@@ -470,6 +539,230 @@ test('@M09 a teacher marks training as ended and the relationship stays visible 
   await student.page.goto('/dashboard/teachers');
   await expect(visible(student.page.locator(`li[data-relationship="${id}"]`))).toContainText('Verified · training ended');
   await Promise.all([anonymous.close(), teacher.context.close(), student.context.close()]);
+});
+
+test("@M09 on a phone each change's note has the focus on screen, and the rows' and back links are 44 px touch targets", async ({ browser }) => {
+  // Review screens-1 and screens-5, at the reviewer's short phone.
+  const phone = { width: 393, height: 659 };
+  const [declining, approving, student] = await Promise.all([
+    member(browser, 'Sifu', { sifu: true, viewport: phone }),
+    member(browser, 'Sifu', { sifu: true, viewport: phone }),
+    member(browser, 'Student', { viewport: phone }),
+  ]);
+  // Sent: requestTeacher() checks the note.
+  const declined = await requestTeacher(student, declining, { lineage: LINEAGE_A, fromYear: '2012' });
+  const confirmed = await requestTeacher(student, approving, { lineage: LINEAGE_B, fromYear: '2016' });
+
+  // Declined, on the teacher's queue.
+  const queue = declining.page;
+  await queue.goto('/dashboard/students/requests');
+  await expectTouchTarget(queue.getByRole('main').getByRole('link', { name: 'Dashboard', exact: true }), 'Dashboard (back link)');
+  const row = requestRow(queue, declined);
+  await row.getByText('Decline…').click();
+  await row.getByLabel('Reason').selectOption({ label: 'The training dates need correcting.' });
+  await row.getByRole('button', { name: /^Decline the request/ }).click();
+  await queue.waitForURL(/[?&]declined=/);
+  await expectOutcome(queue, 'request-declined');
+
+  // Approved: approve() checks the note; the student's name then links to the profile.
+  await approve(approving, confirmed);
+  const students = approving.page;
+  await expectTouchTarget(visible(students.locator(`li[data-testid="student"][data-relationship="${confirmed}"]`)).getByRole('link', { name: student.name }), 'student name');
+
+  // On the student's side: the teacher's name, then "Mark training as ended" and "Withdraw".
+  const own = student.page;
+  await own.goto('/dashboard/teachers');
+  await expectTouchTarget(own.getByRole('main').getByRole('link', { name: 'Dashboard', exact: true }), 'Dashboard (back link)');
+  const teacherRow = visible(own.locator(`li[data-testid="teacher"][data-relationship="${confirmed}"]`));
+  await expectTouchTarget(teacherRow.getByRole('link', { name: approving.name }), 'teacher name');
+  await teacherRow.getByText('Mark training as ended…').click();
+  // The year and month of the end reflow at 200 % text too (screens-2): nothing past the form.
+  await own.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  const endForm = teacherRow.getByTestId('end-training-form');
+  const edge = (await endForm.boundingBox())!;
+  for (const control of await endForm.locator('input:not([type="hidden"]), select, label').all()) {
+    const box = (await control.boundingBox())!;
+    expect(box.x + box.width, 'the end form at 200 % text: inside the form').toBeLessThanOrEqual(edge.x + edge.width + 0.5);
+  }
+  await expectNoHorizontalScroll(own, 'Your teachers at 200 % text');
+  await own.reload();
+  await teacherRow.getByText('Mark training as ended…').click();
+  await teacherRow.getByLabel('Year ended').fill('2024');
+  await teacherRow.getByRole('button', { name: /^Mark as ended/ }).click();
+  await own.waitForURL(/[?&]ended=/);
+  await expect(await expectOutcome(own, 'training-ended')).toContainText(approving.name);
+
+  await visible(own.locator(`li[data-testid="request"][data-relationship="${declined}"]`)).getByRole('button', { name: /^Withdraw request/ }).click();
+  await own.waitForURL(/[?&]withdrawn=/);
+  await expectOutcome(own, 'request-withdrawn');
+  await Promise.all([declining.context.close(), approving.context.close(), student.context.close()]);
+});
+
+test('@M09 without JavaScript the note after a change opens with the focus, on screen', async ({ browser }) => {
+  // Review screens-1: the redirect names the note (#outcome), so the browser opens the page there
+  // and focuses it.
+  const [teacher, student] = await Promise.all([member(browser, 'Sifu', { sifu: true }), member(browser, 'Student')]);
+  const id = await requestTeacher(student, teacher, { lineage: LINEAGE_C, fromYear: '2018' });
+  const withoutScript = async (who: Member) => {
+    const context = await browser.newContext({
+      baseURL: BASE_URL,
+      javaScriptEnabled: false,
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      storageState: await who.context.storageState(),
+    });
+    await giveOwnAddress(context);
+    return context;
+  };
+  const [teacherNoScript, studentNoScript] = await Promise.all([withoutScript(teacher), withoutScript(student)]);
+  try {
+    const queue = await teacherNoScript.newPage();
+    await queue.goto('/dashboard/students/requests');
+    const row = queue.locator(`tr[data-relationship="${id}"]`);
+    await row.getByText('Decline…').click();
+    await row.getByLabel('Reason').selectOption({ label: 'The training dates need correcting.' });
+    await row.getByRole('button', { name: /^Decline the request/ }).click();
+    await queue.waitForURL(/[?&]declined=/);
+    await expectOutcome(queue, 'request-declined');
+
+    const own = await studentNoScript.newPage();
+    await own.goto('/dashboard/teachers');
+    await own.locator(`li[data-testid="request"][data-relationship="${id}"]`).getByRole('button', { name: /^Withdraw request/ }).click();
+    await own.waitForURL(/[?&]withdrawn=/);
+    await expectOutcome(own, 'request-withdrawn');
+  } finally {
+    await Promise.all([teacherNoScript.close(), studentNoScript.close(), teacher.context.close(), student.context.close()]);
+  }
+});
+
+test('@M09 adding or removing a period keeps the focus and says so, and the periods reflow at 200 % text on a phone', async ({ browser }) => {
+  // Review screens-3 (at 393x659), screens-2 (at 390 px) and screens-5 (the back link).
+  const student = await member(browser, 'Student', { viewport: { width: 393, height: 659 } });
+  const { page } = student;
+  await page.goto('/dashboard/teachers/new');
+  await expectTouchTarget(page.getByRole('main').getByRole('link', { name: 'Your teachers', exact: true }), 'Your teachers (back link)');
+  // The buttons need the form's island: the palette opens once it is there.
+  const palette = page.getByRole('combobox', { name: 'Choose your teacher' });
+  await expect(async () => {
+    await visible(page.getByRole('button', { name: 'Find your teacher' })).click();
+    await expect(palette).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await page.keyboard.press('Escape');
+  await expect(palette).toBeHidden();
+
+  const periods = visible(page.getByTestId('training-period'));
+  const add = visible(page.getByRole('button', { name: 'Add another period' }));
+  const said = (text: string) => page.getByRole('status').filter({ hasText: text });
+  for (let n = 2; n <= 5; n += 1) {
+    await add.focus();
+    await page.keyboard.press('Enter');
+    await expect(periods).toHaveCount(n);
+    // The new period's first field, on screen with its legend.
+    const year = field(page, 'Started (year)').nth(n - 1);
+    await expect(year, `period ${n}`).toBeFocused();
+    await expect(year).toBeInViewport();
+    await expect(periods.nth(n - 1).locator('legend')).toBeInViewport();
+    await expect(said(`Period ${n} added.`)).toHaveCount(1);
+  }
+  // At the maximum the button is gone, and the focus is on the period it added.
+  await expect(add).toHaveCount(0);
+  await expect(field(page, 'Started (year)').nth(4)).toBeFocused();
+
+  for (let n = 5; n >= 2; n -= 1) {
+    const remove = visible(page.getByRole('button', { name: `Remove period ${n}` }));
+    await remove.focus();
+    await page.keyboard.press('Enter');
+    await expect(periods).toHaveCount(n - 1);
+    await expect(add, `after removing period ${n}`).toBeFocused();
+    await expect(add).toBeInViewport();
+    await expect(said(`Period ${n} removed.`)).toHaveCount(1);
+  }
+  await expect(visible(page.getByRole('button', { name: /^Remove period/ }))).toHaveCount(0);
+
+  // Reflow (WCAG 1.4.10): two periods at 200 % text on a 390 px phone, each field on screen and the
+  // year and its month side by side only where both fit.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await add.click();
+  await expect(periods).toHaveCount(2);
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await expectNoHorizontalScroll(page, 'request form at 200 % text');
+  const right = await page.evaluate(() => document.documentElement.clientWidth);
+  for (const period of await periods.all()) {
+    for (const control of await period.locator('input:not([type="hidden"]), select, label').all()) {
+      const box = (await control.boundingBox())!;
+      expect(box.x + box.width, `${await control.evaluate((el) => el.outerHTML.slice(0, 80))}: inside the screen`).toBeLessThanOrEqual(right + 0.5);
+    }
+    const year = (await period.getByLabel('Started (year)', { exact: true }).boundingBox())!;
+    const month = (await period.getByRole('combobox', { name: 'Month' }).first().boundingBox())!;
+    const apart = month.y >= year.y + year.height || month.x >= year.x + year.width;
+    expect(apart, `the month does not overlap the year (${JSON.stringify({ year, month })})`).toBe(true);
+  }
+  await student.context.close();
+});
+
+test("@M09 the lineage field is asked for when the teacher has no lineage, and the teacher's country is named in full on every path", async ({ browser }) => {
+  // Review screens-7 and screens-8.
+  const [fresh, student] = await Promise.all([member(browser, 'Sifu', { sifu: true }), member(browser, 'Student')]);
+  const known = await getDb().execute<{ name: string; country: string }>(sql`
+    SELECT n.value AS name, p.country_code AS country FROM person p JOIN person_name n ON n.person_id = p.id AND n.is_primary
+     WHERE p.slug = 'demo-two-lineages'`);
+  const { name: knownName, country } = known.rows[0]!;
+  const countryName = new Intl.DisplayNames(['en'], { type: 'region' }).of(country)!;
+  expect(countryName).not.toBe(country);
+  const OPTIONAL = 'Lineage of this training (optional)';
+  const OWN_HINT = 'Leave it as the teacher’s own lineage unless you trained with them in another one.';
+  const REQUIRED = 'Lineage of this training';
+  const NONE_HINT = 'This teacher has no confirmed teachers or students on WingChunRoots yet, so choose the lineage you trained in.';
+  const lineageOf = (page: Page) => field(page, /^Lineage of this training/);
+
+  // With JavaScript, through the palette.
+  const { page } = student;
+  await page.goto('/dashboard/teachers/new');
+  await expect(lineageOf(page)).toHaveAccessibleName(OPTIONAL);
+  await chooseTeacher(page, fresh);
+  await expect(lineageOf(page)).toHaveAccessibleName(REQUIRED);
+  await expect(lineageOf(page)).toHaveAccessibleDescription(NONE_HINT);
+  await expect(lineageOf(page).locator('option').first()).toHaveText('Choose a lineage');
+  await expect(lineageOf(page).locator('option').first()).toBeDisabled();
+  await chooseTeacher(page, { name: knownName, find: knownName });
+  await expect(lineageOf(page)).toHaveAccessibleName(OPTIONAL);
+  await expect(lineageOf(page)).toHaveAccessibleDescription(OWN_HINT);
+  await expect(lineageOf(page).locator('option').first()).toHaveText('The teacher’s own lineage');
+  await expect(visible(page.getByTestId('chosen-teacher'))).toContainText(countryName);
+
+  // The ?teacher= start (a profile's link) names the country the same way.
+  await page.goto('/dashboard/teachers/new?teacher=demo-two-lineages');
+  await expect(visible(page.getByTestId('chosen-teacher'))).toContainText(countryName);
+  await expect(lineageOf(page)).toHaveAccessibleName(OPTIONAL);
+
+  // Without JavaScript: the page's own search, its ?teacher= start, and a refused submit.
+  const context = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false, storageState: await student.context.storageState() });
+  try {
+    await giveOwnAddress(context);
+    const b = await context.newPage();
+    await b.goto(`/dashboard/teachers/new?q=${encodeURIComponent(knownName)}`);
+    const hit = b.locator('a[href$="?teacher=demo-two-lineages"]');
+    await expect(hit).toContainText(countryName);
+    await hit.click();
+    await expect(b).toHaveURL(/\?teacher=demo-two-lineages$/);
+    await expect(b.getByTestId('chosen-teacher')).toContainText(countryName);
+    await expect(b.getByLabel(/^Lineage of this training/)).toHaveAccessibleName(OPTIONAL);
+
+    await b.goto(`/dashboard/teachers/new?teacher=${fresh.slug}`);
+    const lineage = b.getByLabel(/^Lineage of this training/);
+    await expect(lineage).toHaveAccessibleName(REQUIRED);
+    await expect(lineage).toHaveAccessibleDescription(NONE_HINT);
+    await b.getByLabel('Started (year)', { exact: true }).fill('2019');
+    await b.getByRole('checkbox', { name: 'I still train with this teacher' }).check();
+    await b.getByRole('button', { name: 'Send the request' }).click();
+    await expect(b).toHaveURL(/\/dashboard\/teachers\/new\?outcome=/);
+    await expect(b.getByRole('alert')).toContainText('Choose the lineage this training belongs to.');
+    // The refused submit comes back with the same label: the form keeps what it knew of the teacher.
+    await expect(b.getByLabel(/^Lineage of this training/)).toHaveAccessibleName(REQUIRED);
+  } finally {
+    await Promise.all([context.close(), fresh.context.close(), student.context.close()]);
+  }
 });
 
 test('@M09 request and approve a teacher at 390x844', async ({ browser }) => {
@@ -489,7 +782,7 @@ test('@M09 request and approve a teacher at 390x844', async ({ browser }) => {
   expect((await row.getByText('Decline…').boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await button.tap();
   await page.waitForURL(/[?&]approved=/);
-  await expect(visible(page.getByTestId('request-approved'))).toBeVisible();
+  await expectOutcome(page, 'request-approved');
   expect(await relationshipRow(id)).toEqual({ status: 'verified', visibility: 'public' });
 
   await student.page.goto('/dashboard/teachers');
