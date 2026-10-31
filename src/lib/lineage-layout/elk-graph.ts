@@ -14,6 +14,11 @@ import type { DetailLevel, LayoutOptions, LineageEdge, NodePlacement, Point, Pre
 /** Id of the ELK root node. Node ids of the view never collide with it: they are children. */
 export const ELK_ROOT_ID = '__lineage_root__';
 
+/** The port every incoming edge of a card enters by: the middle of its top side. */
+export const inPortId = (nodeId: string) => `${nodeId}.in`;
+/** The port every outgoing edge of a card leaves by (the teacher's trunk): the middle of its bottom side. */
+export const outPortId = (nodeId: string) => `${nodeId}.out`;
+
 export interface ElkGraphBuild {
   elkGraph: ElkNode;
   /** Node ids in model order (the order of `elkGraph.children`). */
@@ -43,8 +48,19 @@ export interface ElkGraphBuild {
  * - Focus spine edges get a higher `elk.layered.priority.straightness`;
  *   `elk.layered.priority.direction` is not used (plan §4.5).
  * - Children and edges follow the model order, which `considerModelOrder` keeps stable.
+ * - Every card has one port at the middle of its top side and one at the middle of its bottom
+ *   side: the students of a teacher share one trunk (b5 of ADR 0010).
  */
-export function buildElkGraph(index: GraphIndex, ranks: RankResult, options: LayoutOptions = {}): ElkGraphBuild {
+export function buildElkGraph(
+  index: GraphIndex,
+  ranks: RankResult,
+  options: LayoutOptions = {},
+  /**
+   * The spine edges of this graph when it is one lineage column of a larger view (layout.ts):
+   * the edges of the view's spine inside the column, instead of a spine of its own.
+   */
+  spineOfView?: LineageEdge[],
+): ElkGraphBuild {
   if (!isObject(options as unknown)) {
     throw new LineageInputError('The layout options must be an object.');
   }
@@ -69,23 +85,31 @@ export function buildElkGraph(index: GraphIndex, ranks: RankResult, options: Lay
   const order = modelOrder(index);
   const position = new Map(order.map((id, i) => [id, i]));
   const focusId = (options.focusId === undefined ? index.graph.focusId : options.focusId) ?? null;
-  const spine = focusSpine(index, focusId);
+  const spine = spineOfView ?? focusSpine(index, focusId);
   const spineIds = new Set(spine.map((e) => e.id));
   const previous = preset === 'expand' ? previousPositionsOf(options.previousPositions) : undefined;
 
   const children: ElkNode[] = order.map((id) => {
     const rank = ranks.ranks.get(id)!;
     const prev = previous?.get(id);
+    // One port at the middle of each side a card is linked by (b5 of ADR 0010): the students of a
+    // teacher share one trunk, so ELK routes them as one hyperedge and gives the gap below the
+    // teacher one track for all of them, not one per student.
     const node: ElkNode = {
       id,
       width: size.width,
       height: size.height,
       x: prev?.x ?? 0,
       y: rank * RANK_PSEUDO_Y,
+      layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
+      ports: [
+        { id: inPortId(id), x: size.width / 2, y: 0, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'NORTH' } },
+        { id: outPortId(id), x: size.width / 2, y: size.height, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'SOUTH' } },
+      ],
     };
     if (prev) {
       // Semi-interactive crossing minimization reads the desired order from elk.position.
-      node.layoutOptions = { 'elk.position': `(${prev.x}, ${rank * RANK_PSEUDO_Y})` };
+      node.layoutOptions!['elk.position'] = `(${prev.x}, ${rank * RANK_PSEUDO_Y})`;
     }
     return node;
   });
@@ -103,7 +127,7 @@ export function buildElkGraph(index: GraphIndex, ranks: RankResult, options: Lay
   }
 
   const edges: ElkExtendedEdge[] = elkEdges.map((edge) => {
-    const elkEdge: ElkExtendedEdge = { id: edge.id, sources: [edge.teacherId], targets: [edge.studentId] };
+    const elkEdge: ElkExtendedEdge = { id: edge.id, sources: [outPortId(edge.teacherId)], targets: [inPortId(edge.studentId)] };
     if (spineIds.has(edge.id)) {
       elkEdge.layoutOptions = { 'elk.layered.priority.straightness': String(SPINE_STRAIGHTNESS) };
     }

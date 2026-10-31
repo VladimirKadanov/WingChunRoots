@@ -29,6 +29,7 @@ function person(data: Partial<PersonNodeData>): PersonNode {
       rank: 0,
       focus: false,
       root: false,
+      mark: 'other',
       slot,
       boxes: { full: slot, compact: slot, dot: slot },
       slug: 'demo-person',

@@ -24,7 +24,7 @@ interface Sample {
   len: number;
 }
 
-const r1 = (n: number) => Math.round(n * 10) / 10;
+export const r1 = (n: number) => Math.round(n * 10) / 10;
 
 export function bezierPoint(p: Cubic, t: number): [number, number] {
   const u = 1 - t;
@@ -35,7 +35,7 @@ export function bezierPoint(p: Cubic, t: number): [number, number] {
   return [a * p[0][0] + b * p[1][0] + c * p[2][0] + d * p[3][0], a * p[0][1] + b * p[1][1] + c * p[2][1] + d * p[3][1]];
 }
 
-function tangent(p: Cubic, t: number): [number, number] {
+export function tangent(p: Cubic, t: number): [number, number] {
   const u = 1 - t;
   return [
     3 * u * u * (p[1][0] - p[0][0]) + 6 * u * t * (p[2][0] - p[1][0]) + 3 * t * t * (p[3][0] - p[2][0]),
@@ -141,4 +141,9 @@ export function inkShapes(p: Cubic, state: VerificationState, options: InkOption
     case 'arbitration':
       return { kind: 'double', d: [offset(s, 2.6), offset(s, -2.6)] };
   }
+}
+
+/** Dots as one path of circles (two arcs each): one element for a whole dotted link. */
+export function dotsD(circles: readonly { cx: number; cy: number; r: number }[]): string {
+  return circles.map((c) => `M${r1(c.cx - c.r)},${c.cy}a${c.r},${c.r} 0 1,0 ${r1(2 * c.r)},0a${c.r},${c.r} 0 1,0 ${r1(-2 * c.r)},0`).join('');
 }

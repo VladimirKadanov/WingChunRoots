@@ -1,11 +1,12 @@
 import type { ElkNode } from 'elkjs/lib/elk.bundled.js';
 import type { ElkGraphBuild } from './elk-graph.ts';
 import { ElkLayoutError } from './errors.ts';
-import { NODE_SIZES } from './presets.ts';
+import { NODE_SIZES, layoutPresets } from './presets.ts';
 import type {
   BezierPath,
   Box,
   DetailLevel,
+  LineageEdge,
   LineageGraph,
   OrthogonalPath,
   Point,
@@ -397,99 +398,341 @@ export function bezierLabelPoint(path: BezierPath): Point {
 }
 
 /**
- * Turns the ELK result into a scene: node slots with boxes for the three levels of detail,
- * orthogonal paths for the edges ELK routed and Bézier curves for edges to a teacher from
- * another lineage (plan §4.1, §4.6).
+ * The gap between two lineage columns, besides ELK's padding of each (12 px), in px: twice the
+ * gap between two cards of a row. Two columns of one card each then fit side by side in full cards
+ * on a 390 px phone, as two cards of one row do (React Flow's fit there leaves (390 - 50) / 0.75 =
+ * 453 px for the cards; 2 x 200 + 24 + 2 x 12 = 448).
  */
-export function buildScene(graph: LineageGraph, ranks: RankResult, build: ElkGraphBuild, laidOut: ElkNode): Scene {
-  const elkChildren = new Map((laidOut.children ?? []).map((c) => [c.id, c]));
-  const spineEdgeIds = new Set(build.spine.map((e) => e.id));
+export const COLUMN_GAP = 24;
+
+/**
+ * Room above the top row for the headers of the lineage columns when a view has two or more,
+ * in px: the scene's bounds include it, so a fitted view shows the headers.
+ */
+export const COLUMN_HEADER_SPACE = 40;
+
+/**
+ * How much higher than ELK's least gap between two rows (`nodeNodeBetweenLayers`) a gap is when
+ * a Bézier curve runs along it to a student of the lower row, in px. The shared trunks (b5)
+ * leave ELK's least gap between most rows, which is too low for a curve to turn into it and out
+ * again beside its two people.
+ */
+export const CURVE_RUN_EXTRA = 40;
+
+/** How many rounds the gaps of curves that still run behind a card grow (by half each time). */
+const CURVE_ROOM_ROUNDS = 6;
+
+/** Points a curve is checked at for cards it runs behind (curveClear): 1/2 px steps on a 1000 px curve. */
+const CURVE_CHECK_SAMPLES = 2048;
+
+/** The highest a gap grows for a curve, in px. */
+const CURVE_RUN_MAX_GAP = 600;
+
+/**
+ * Whether a curve passes behind no card of its teacher's row and its student's row (other than
+ * theirs), sampled at CURVE_CHECK_SAMPLES points: the property bezierBetween aims for, which a long curve in a
+ * low gap cannot always keep (runHeights).
+ */
+function curveClear(path: BezierPath, teacher: SceneNode, student: SceneNode, nodes: readonly SceneNode[]): boolean {
+  // Only cards within the hull of the control points can be behind the curve.
+  const xs = [path.start.x, path.control1.x, path.control2.x, path.end.x];
+  const ys = [path.start.y, path.control1.y, path.control2.y, path.end.y];
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const cards = nodes.filter(
+    (n) =>
+      (n.rank === teacher.rank || n.rank === student.rank) &&
+      n !== teacher &&
+      n !== student &&
+      n.x < maxX &&
+      n.x + n.width > minX &&
+      n.y < maxY &&
+      n.y + n.height > minY,
+  );
+  if (cards.length === 0) return true;
+  for (let i = 1; i < CURVE_CHECK_SAMPLES; i++) {
+    const t = i / CURVE_CHECK_SAMPLES;
+    const x = cubicAt(path.start.x, path.control1.x, path.control2.x, path.end.x, t);
+    const y = cubicAt(path.start.y, path.control1.y, path.control2.y, path.end.y, t);
+    for (const card of cards) if (x > card.x && x < card.x + card.width && y > card.y && y < card.y + card.height) return false;
+  }
+  return true;
+}
+
+/** One lineage column of a view, laid out by ELK on its own (layout.ts). */
+export interface LaidOutColumn {
+  /** The lineage of the column (`lineageBands`). */
+  key: string;
+  build: ElkGraphBuild;
+  laidOut: ElkNode;
+}
+
+/**
+ * Where each column's rows go: ELK lays out every column on its own, so a row of generations
+ * has its own height in each. The rows of the scene take the largest gap between two rows over
+ * the columns (the gap holds the horizontal runs of the routes), a column without people in
+ * some rows keeps at least the gap it had between the rows it has, and a gap that a curve runs
+ * along (`runGaps`, by the rank above it) is at least as high as given. Returns the top of every row.
+ */
+function sceneRows(
+  columns: { tops: Map<number, number> }[],
+  rankCount: number,
+  cardHeight: number,
+  defaultGap: number,
+  runGaps: ReadonlyMap<number, number>,
+): number[] {
+  const gap: number[] = Array.from({ length: rankCount }, () => Number.NEGATIVE_INFINITY);
+  const reach: { from: number; to: number; channel: number }[] = [];
+  let first = Number.POSITIVE_INFINITY;
+  for (const { tops } of columns) {
+    const present = [...tops.keys()].sort((a, b) => a - b);
+    if (present.length > 0) first = Math.min(first, tops.get(present[0]!)!);
+    for (let i = 1; i < present.length; i++) {
+      const from = present[i - 1]!;
+      const to = present[i]!;
+      const channel = tops.get(to)! - (tops.get(from)! + cardHeight);
+      if (to === from + 1) gap[from] = Math.max(gap[from]!, channel);
+      else reach.push({ from, to, channel });
+    }
+  }
+  const top: number[] = [];
+  for (let r = 0; r < rankCount; r++) {
+    if (r === 0) {
+      top.push(Number.isFinite(first) ? first : 0);
+      continue;
+    }
+    const before = gap[r - 1]!;
+    let y = top[r - 1]! + cardHeight + Math.max(Number.isFinite(before) ? before : defaultGap, runGaps.get(r - 1) ?? 0);
+    for (const span of reach) if (span.to === r) y = Math.max(y, top[span.from]! + cardHeight + span.channel);
+    top.push(y);
+  }
+  return top;
+}
+
+/**
+ * Maps a y of a column's own layout to the scene: inside a row it keeps its distance from the
+ * top of the row, and in the gap below a row it keeps its distance from the bottom of the row,
+ * so the horizontal runs of the routes stay right under their teachers and a route stays
+ * orthogonal (the map only moves rows and gaps apart).
+ */
+function columnY(tops: Map<number, number>, rows: readonly number[], cardHeight: number): (y: number) => number {
+  const present = [...tops.keys()].sort((a, b) => a - b);
+  return (y) => {
+    for (let i = 0; i < present.length; i++) {
+      const rank = present[i]!;
+      const top = tops.get(rank)!;
+      if (y < top) {
+        if (i === 0) return rows[rank]! - (top - y);
+        const above = present[i - 1]!;
+        return rows[above]! + cardHeight + (y - (tops.get(above)! + cardHeight));
+      }
+      if (y <= top + cardHeight) return rows[rank]! + (y - top);
+    }
+    const last = present[present.length - 1];
+    if (last === undefined) return y;
+    return rows[last]! + cardHeight + (y - (tops.get(last)! + cardHeight));
+  };
+}
+
+/**
+ * Turns the ELK results into a scene: node slots with boxes for the three levels of detail,
+ * orthogonal paths for the edges ELK routed and Bézier curves for the other edges (to a teacher
+ * from another lineage, or between two lineage columns) (plan §4.1, §4.6).
+ *
+ * `view` is the ELK graph of the whole view (model order, spine, focus, preset); `columns` are
+ * the lineage columns, each laid out on its own, left to right (one column: the whole view).
+ * The columns stand side by side, COLUMN_GAP apart, with every row of generations at one height
+ * across them; `curves` are the edges that no column routed.
+ */
+export function buildScene(
+  graph: LineageGraph,
+  ranks: RankResult,
+  view: ElkGraphBuild,
+  columns: readonly LaidOutColumn[],
+  curves: readonly LineageEdge[],
+): Scene {
+  const cardHeight = NODE_SIZES[view.nodeSize].height;
+  const spineEdgeIds = new Set(view.spine.map((e) => e.id));
   const spineNodeIds = new Set<string>();
-  for (const edge of build.spine) {
+  for (const edge of view.spine) {
     spineNodeIds.add(edge.studentId);
     spineNodeIds.add(edge.teacherId);
   }
-  const focusId = build.focusId;
-  if (focusId && elkChildren.has(focusId)) spineNodeIds.add(focusId);
+  const focusId = view.focusId;
 
-  const nodes: SceneNode[] = build.order.map((id) => {
-    const child = elkChildren.get(id);
-    if (!child) throw new ElkLayoutError(`no position for node ${id}`);
-    const x = roundCoord(child.x ?? 0);
-    const y = roundCoord(child.y ?? 0);
-    const width = child.width ?? NODE_SIZES[build.nodeSize].width;
-    const height = child.height ?? NODE_SIZES[build.nodeSize].height;
-    const center = point(x + width / 2, y + height / 2);
-    const boxes = Object.fromEntries(DETAIL_LEVELS.map((level) => [level, centredBox(center, level)])) as Record<
-      DetailLevel,
-      Box
-    >;
-    return {
-      id,
-      rank: ranks.ranks.get(id)!,
-      cutOff: ranks.cutOff.has(id),
-      onSpine: spineNodeIds.has(id),
-      x,
-      y,
-      width,
-      height,
-      center,
-      boxes,
-    };
+  // The columns: their rows, their place from the left and the map of their y.
+  const measured = columns.map((column) => {
+    const tops = new Map<number, number>();
+    for (const child of column.laidOut.children ?? []) {
+      const rank = ranks.ranks.get(child.id);
+      if (rank === undefined) continue;
+      const y = child.y ?? 0;
+      tops.set(rank, Math.min(tops.get(rank) ?? y, y));
+    }
+    return { column, tops };
   });
-  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const defaultGap = Number(layoutPresets[view.preset]['elk.layered.spacing.nodeNodeBetweenLayers'] ?? 60);
+  // The gap above the student's row of every curve: at least CURVE_RUN_EXTRA more than ELK's
+  // least gap, and more where a curve still runs behind a card of its two rows.
+  const runGaps = new Map<number, number>();
+  for (const edge of curves) {
+    const rank = ranks.ranks.get(edge.studentId);
+    if (rank !== undefined && rank > 0) runGaps.set(rank - 1, defaultGap + CURVE_RUN_EXTRA);
+  }
+  const place = () => {
+    const rows = sceneRows(measured, ranks.rankCount, cardHeight, defaultGap, runGaps);
+    let left = 0;
+    const placed = measured.map(({ column, tops }) => {
+      const width = column.laidOut.width ?? 0;
+      const at = { column, dx: left, width, mapY: columnY(tops, rows, cardHeight) };
+      left += width + COLUMN_GAP;
+      return at;
+    });
+    const sceneWidth = placed.length === 0 ? 0 : left - COLUMN_GAP;
+    let sceneHeight = 0;
+    for (const { column, mapY } of placed) sceneHeight = Math.max(sceneHeight, mapY(column.laidOut.height ?? 0));
 
-  const elkEdgeResults = new Map((laidOut.edges ?? []).map((e) => [e.id, e]));
-  const edges: SceneEdge[] = [];
-  for (const edge of build.elkEdges) {
-    const routed = elkEdgeResults.get(edge.id);
-    const sections = routed && 'sections' in routed ? (routed.sections ?? []) : [];
-    if (sections.length === 0) throw new ElkLayoutError(`no route for edge ${edge.id}`);
-    const points: Point[] = [];
-    for (const section of sections) {
-      for (const p of [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]) {
-        const next = point(p.x, p.y);
-        const last = points[points.length - 1];
-        if (!last || last.x !== next.x || last.y !== next.y) points.push(next);
+    const childOf = new Map<string, { child: ElkNode; at: (typeof placed)[number] }>();
+    for (const at of placed) for (const child of at.column.laidOut.children ?? []) childOf.set(child.id, { child, at });
+
+    const nodes: SceneNode[] = view.order.map((id) => {
+      const found = childOf.get(id);
+      if (!found) throw new ElkLayoutError(`no position for node ${id}`);
+      const { child, at } = found;
+      const width = child.width ?? NODE_SIZES[view.nodeSize].width;
+      const height = child.height ?? cardHeight;
+      const x = roundCoord((child.x ?? 0) + at.dx);
+      const y = roundCoord(at.mapY(child.y ?? 0));
+      const center = point(x + width / 2, y + height / 2);
+      const boxes = Object.fromEntries(DETAIL_LEVELS.map((level) => [level, centredBox(center, level)])) as Record<
+        DetailLevel,
+        Box
+      >;
+      return {
+        id,
+        rank: ranks.ranks.get(id)!,
+        cutOff: ranks.cutOff.has(id),
+        onSpine: spineNodeIds.has(id) || id === focusId,
+        x,
+        y,
+        width,
+        height,
+        center,
+        boxes,
+      };
+    });
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+
+    const edges: SceneEdge[] = [];
+    for (const { column, dx, mapY } of placed) {
+      const elkEdgeResults = new Map((column.laidOut.edges ?? []).map((e) => [e.id, e]));
+      for (const edge of column.build.elkEdges) {
+        const routed = elkEdgeResults.get(edge.id);
+        const sections = routed && 'sections' in routed ? (routed.sections ?? []) : [];
+        if (sections.length === 0) throw new ElkLayoutError(`no route for edge ${edge.id}`);
+        const points: Point[] = [];
+        for (const section of sections) {
+          for (const p of [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]) {
+            const next = point(p.x + dx, mapY(p.y));
+            const last = points[points.length - 1];
+            if (!last || last.x !== next.x || last.y !== next.y) points.push(next);
+          }
+        }
+        const path: OrthogonalPath = { type: 'orthogonal', points };
+        edges.push({
+          id: edge.id,
+          teacherId: edge.teacherId,
+          studentId: edge.studentId,
+          lineageId: edge.lineageId,
+          kind: edge.kind,
+          routedBy: 'elk',
+          onSpine: spineEdgeIds.has(edge.id),
+          bends: Math.max(0, points.length - 2),
+          path,
+        });
       }
     }
-    const path: OrthogonalPath = { type: 'orthogonal', points };
-    edges.push({
-      id: edge.id,
-      teacherId: edge.teacherId,
-      studentId: edge.studentId,
-      lineageId: edge.lineageId,
-      kind: edge.kind,
-      routedBy: 'elk',
-      onSpine: spineEdgeIds.has(edge.id),
-      bends: Math.max(0, points.length - 2),
-      path,
-    });
-  }
-  const rowY: number[] = [];
-  const rowBottom: number[] = [];
-  for (const node of nodes) {
-    const current = rowY[node.rank];
-    rowY[node.rank] = current === undefined ? node.y : Math.min(current, node.y);
-    rowBottom[node.rank] = Math.max(rowBottom[node.rank] ?? Number.NEGATIVE_INFINITY, node.y + node.height);
-  }
+    const rowY: number[] = [];
+    const rowBottom: number[] = [];
+    for (const node of nodes) {
+      const current = rowY[node.rank];
+      rowY[node.rank] = current === undefined ? node.y : Math.min(current, node.y);
+      rowBottom[node.rank] = Math.max(rowBottom[node.rank] ?? Number.NEGATIVE_INFINITY, node.y + node.height);
+    }
 
-  for (const edge of build.crossLineageEdges) {
-    const teacher = byId.get(edge.teacherId)!;
-    const student = byId.get(edge.studentId)!;
-    edges.push({
-      id: edge.id,
-      teacherId: edge.teacherId,
-      studentId: edge.studentId,
-      lineageId: edge.lineageId,
-      kind: edge.kind,
-      routedBy: 'scene',
-      onSpine: false,
-      bends: 0,
-      path: bezierBetween(teacher, student, runSpace(teacher, student, nodes, rowBottom)),
-    });
+    for (const edge of curves) {
+      const teacher = byId.get(edge.teacherId)!;
+      const student = byId.get(edge.studentId)!;
+      edges.push({
+        id: edge.id,
+        teacherId: edge.teacherId,
+        studentId: edge.studentId,
+        lineageId: edge.lineageId,
+        kind: edge.kind,
+        routedBy: 'scene',
+        onSpine: spineEdgeIds.has(edge.id),
+        bends: 0,
+        path: bezierBetween(teacher, student, runSpace(teacher, student, nodes, rowBottom)),
+      });
+    }
+    return { rows, placed, sceneWidth, sceneHeight, childOf, nodes, edges, rowY };
+  };
+  // A gap with a curve that still runs behind a card grows, by half each round, and keeps the
+  // height with the fewest such curves (the lowest of equals): a curve beside its two people
+  // is not shaped by the gap, and a growth that does not help it is undone.
+  // The curves still behind a card, by the gap above their student's row.
+  const crampedIn = (placed: ReturnType<typeof place>) => {
+    const byId = new Map(placed.nodes.map((n) => [n.id, n]));
+    const cramped = new Map<number, number>();
+    for (const edge of placed.edges) {
+      if (edge.path.type !== 'bezier') continue;
+      const student = byId.get(edge.studentId)!;
+      if (!runGaps.has(student.rank - 1)) continue;
+      if (!curveClear(edge.path, byId.get(edge.teacherId)!, student, placed.nodes)) {
+        cramped.set(student.rank - 1, (cramped.get(student.rank - 1) ?? 0) + 1);
+      }
+    }
+    return cramped;
+  };
+  const sum = (counts: ReadonlyMap<number, number>) => [...counts.values()].reduce((a, b) => a + b, 0);
+  let attempt = place();
+  const best = new Map<number, { gap: number; cramped: number }>();
+  // The round with the fewest such curves in all, for a curve whose ends are more than a row
+  // apart, which the heights of more than one gap shape.
+  let bestRound = { gaps: new Map(runGaps), cramped: Number.POSITIVE_INFINITY };
+  for (let round = 0; round <= CURVE_ROOM_ROUNDS; round++) {
+    const cramped = crampedIn(attempt);
+    if (sum(cramped) < bestRound.cramped) bestRound = { gaps: new Map(runGaps), cramped: sum(cramped) };
+    let grown = false;
+    for (const [rank, gap] of runGaps) {
+      const count = cramped.get(rank) ?? 0;
+      const kept = best.get(rank);
+      if (!kept || count < kept.cramped) best.set(rank, { gap, cramped: count });
+      if (count > 0 && round < CURVE_ROOM_ROUNDS && gap < CURVE_RUN_MAX_GAP) {
+        runGaps.set(rank, Math.min(CURVE_RUN_MAX_GAP, gap * 1.5));
+        grown = true;
+      }
+    }
+    if (!grown) break;
+    attempt = place();
   }
-  const position = new Map(build.order.map((id, i) => [id, i]));
+  let undone = false;
+  for (const [rank, { gap }] of best) {
+    if (runGaps.get(rank) !== gap) {
+      runGaps.set(rank, gap);
+      undone = true;
+    }
+  }
+  if (undone) {
+    attempt = place();
+    // The heights kept gap by gap were each measured with the other gaps of their round: where
+    // together they leave more curves behind a card than one round did, that round's heights stand.
+    if (sum(crampedIn(attempt)) > bestRound.cramped) {
+      for (const [rank, gap] of bestRound.gaps) runGaps.set(rank, gap);
+      attempt = place();
+    }
+  }
+  const { rows, placed, sceneWidth, sceneHeight, childOf, nodes, edges, rowY } = attempt;
+  const position = new Map(view.order.map((id, i) => [id, i]));
   edges.sort(
     (a, b) =>
       position.get(a.teacherId)! - position.get(b.teacherId)! ||
@@ -497,12 +740,13 @@ export function buildScene(graph: LineageGraph, ranks: RankResult, build: ElkGra
       (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
 
-  // Bounds of everything drawn: ELK's canvas, grown to include the Bézier curves (a cubic
-  // curve stays inside the convex hull of its control points, which may bulge left of 0).
+  // Bounds of everything drawn: the canvas, grown to include the Bézier curves (a cubic curve
+  // stays inside the convex hull of its control points, which may bulge left of 0) and the
+  // headers of the lineage columns.
   let minX = 0;
   let minY = 0;
-  let maxX = laidOut.width ?? 0;
-  let maxY = laidOut.height ?? 0;
+  let maxX = sceneWidth;
+  let maxY = sceneHeight;
   for (const edge of edges) {
     if (edge.path.type !== 'bezier') continue;
     for (const p of [edge.path.start, edge.path.control1, edge.path.control2, edge.path.end]) {
@@ -512,20 +756,29 @@ export function buildScene(graph: LineageGraph, ranks: RankResult, build: ElkGra
       maxY = Math.max(maxY, p.y);
     }
   }
+  if (placed.length >= 2 && rows.length > 0) minY = Math.min(minY, rows[0]! - COLUMN_HEADER_SPACE);
+  const columnPeople = new Map<LaidOutColumn, number>();
+  for (const { at } of childOf.values()) columnPeople.set(at.column, (columnPeople.get(at.column) ?? 0) + 1);
 
   return {
     version: 1,
     dataVersion: graph.dataVersion,
-    focusId: build.focusId,
-    preset: build.preset,
-    nodePlacement: build.nodePlacement,
-    nodeSize: build.nodeSize,
-    width: roundCoord(laidOut.width ?? 0),
-    height: roundCoord(laidOut.height ?? 0),
+    focusId,
+    preset: view.preset,
+    nodePlacement: view.nodePlacement,
+    nodeSize: view.nodeSize,
+    width: roundCoord(sceneWidth),
+    height: roundCoord(sceneHeight),
     bounds: { x: roundCoord(minX), y: roundCoord(minY), width: roundCoord(maxX - minX), height: roundCoord(maxY - minY) },
     rowY: Array.from(rowY, (y) => y ?? 0),
     nodes,
     edges,
-    spine: build.spine.map((e) => e.id),
+    spine: view.spine.map((e) => e.id),
+    bands: placed.map(({ column, dx, width }) => ({
+      lineageId: column.key,
+      x: roundCoord(dx),
+      width: roundCoord(width),
+      nodes: columnPeople.get(column) ?? 0,
+    })),
   };
 }
