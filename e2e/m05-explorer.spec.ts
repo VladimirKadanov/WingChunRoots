@@ -405,7 +405,10 @@ async function viewFollowedPane(page: Page): Promise<void> {
  */
 async function reachableNode(page: Page, skip: readonly string[], step: number): Promise<string | null> {
   for (let drags = 0; ; drags++) {
+    // On WebKit the click returns while the bottom sheet opens and the view follows the pane: a
+    // person read then may end under the legend. Read once the view has settled.
     await viewFollowedPane(page);
+    await settledView(page);
     const id = await uncoveredNode(page, skip);
     if (id !== null || drags === 5) return id;
     await dragGraph(page, -step);
