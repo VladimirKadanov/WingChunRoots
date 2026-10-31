@@ -275,15 +275,26 @@ export async function signInAs(page: Page, target: SignInTarget, options: { addr
 
 const signedInFor = new WeakMap<Page, SignInTarget>();
 
+/** The session cookies (Better Auth, prefix `wcr.`, COOKIE_PREFIX); not the theme cookie `wcr-theme`. */
+const AUTH_COOKIE = /^(__Secure-)?wcr\./;
+
 /**
- * Signs the page in as a route of e2e/routes.ts needs (`signInAs`), once per page and account
- * kind, so that a loop over the routes checks the guarded pages themselves, not the sign-in page
+ * Puts the page in the state a route of e2e/routes.ts declares, so that a loop over the routes
+ * checks each page as its `status` says. With `signInAs`: signed in as that account, once per
+ * page and account kind, so the loop checks the guarded pages themselves, not the sign-in page
  * they send an anonymous visitor to. A loop signs in as several accounts within seconds (M08 adds
  * four in a row), and sign-in allows 3 requests in 10 s per address: each sign-in comes from a
- * client address of its own.
+ * client address of its own. Without `signInAs`: signed out. A session kept from an earlier route
+ * changes what a page shows: since M09 a reviewer (the admin of /admin) sees a hidden person, so
+ * /people/demo-claim-only-teacher answered 200 where the route declares the visitor's 404.
  */
 export async function signInForRoute(page: Page, route: { signInAs?: SignInTarget }): Promise<void> {
-  if (!route.signInAs || signedInFor.get(page) === route.signInAs) return;
+  if (!route.signInAs) {
+    await page.context().clearCookies({ name: AUTH_COOKIE });
+    signedInFor.delete(page);
+    return;
+  }
+  if (signedInFor.get(page) === route.signInAs) return;
   await signInAs(page, route.signInAs, { address: clientAddress() });
   signedInFor.set(page, route.signInAs);
 }
