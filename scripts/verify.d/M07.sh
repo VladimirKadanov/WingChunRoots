@@ -137,10 +137,12 @@ check "search is limited per client (ip_hmac) and the palette sends the query in
 check "the web palette calls search.query through /api/rpc (plan §6.8; /api/v1 is the mobile contract)" grep -qF "fetch('/api/rpc/search/query'" src/components/ui/search-palette.tsx
 refute "no web component calls the mobile contract /api/v1" grep -rnF "/api/v1/" src/components src/app/dashboard src/app/account
 check "the recent searches are cleared on sign-out" grep -qF "writeRecentSearches([])" src/components/account/sign-out-form.tsx
+# M09 added the palette's select mode (choosing a teacher), which shows no history; every ordinary
+# opening still re-reads it.
 check "sign-out unmounts the palette (SEARCH_RESET_EVENT), and every opening starts with an empty field and re-reads the history" bash -c '
   grep -q "window.dispatchEvent(new Event(SEARCH_RESET_EVENT))" src/components/account/sign-out-form.tsx &&
   grep -q "window.addEventListener(SEARCH_RESET_EVENT, reset)" src/components/shell/search-trigger.tsx &&
-  grep -q "setRecent(readRecentSearches())" src/components/ui/search-palette.tsx'
+  grep -qF "setRecent(select ? [] : readRecentSearches())" src/components/ui/search-palette.tsx'
 refute "no name, key or query in a log line of the search, the store, the job or the profile" \
   grep_code "console\.(log|info|warn|error)\(" src/server/search/keys.ts src/server/search/store.ts src/server/search/query.ts src/server/services/search.ts src/server/services/profile.ts src/server/services/privacy.ts
 check "the job logs counts only" grep -q 'wrote ${result.keys} key(s) for ${result.persons} person(s)' src/server/jobs/worker.ts
