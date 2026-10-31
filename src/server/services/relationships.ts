@@ -27,8 +27,9 @@
 //      visibility (never v_public_edge: a hidden edge still closes a cycle);
 //   4. the duplicate and self checks; then the writes.
 // After the commit the public cache of both people, their neighbours, every teacher above them and
-// the explorer's start list is dropped, and a lineage.recompute job recomputes lineage_membership
-// and drops the cache once more from the worker (POST /api/internal/revalidate).
+// the explorer's start list is dropped at once (revalidateTag with expire 0), and a lineage.recompute
+// job recomputes lineage_membership and drops only that data's cache from the worker
+// (lineage-membership:<id>, POST /api/internal/revalidate).
 //
 // Who may do what (the authorization matrix, relationships.int.test.ts):
 //   - a person not involved and not a reviewer: 404, the same answer as for no such request (plan §6.4);
@@ -1105,10 +1106,10 @@ RETURNING p.id::text AS id`);
       },
     });
   }
-  const tags = await publicTags(tx, row);
-  // The counters (lineage_membership) and the cache once more, from the worker (plan §6.3, §6.4).
-  await enqueue(tx, QUEUE.lineageRecompute, { lineageIds: [row.lineageId], tags });
-  return tags;
+  // The derived lineage_membership, from the worker (plan §6.3, §6.4), which then drops only that
+  // data's cache: the public tags of this change are dropped by the procedure after the commit.
+  await enqueue(tx, QUEUE.lineageRecompute, { lineageIds: [row.lineageId] });
+  return publicTags(tx, row);
 }
 
 // --- reject ------------------------------------------------------------------------------------

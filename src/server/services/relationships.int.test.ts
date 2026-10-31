@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, authUser, consentRecord, emailDelivery, lineageMembership, notification, person, relationshipEvent, teachingRelationship, trainingPeriod } from '../db/schema';
+import { auditLog, authUser, consentRecord, emailDelivery, lineage, lineageMembership, notification, person, relationshipEvent, teachingRelationship, trainingPeriod } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { listNotifications } from './notifications';
@@ -158,8 +158,11 @@ describe('every transition writes relationship_event and audit_log', () => {
     expect(await notificationsOf(teacher.account.id, 'relationship.approved')).toEqual([{ payload: { relationshipId: id, role: 'teacher' } }]);
     expect(await emailsTo(student.account.email, 'relationship-approved')).toBe(1);
     expect(await emailsTo(teacher.account.email, 'relationship-approved')).toBe(1);
-    const jobs = await getDb().execute<{ data: { lineageIds: string[]; tags: string[] } }>(sql`SELECT data FROM pgboss.job WHERE name = 'lineage.recompute'`);
-    expect(jobs.rows.some((j) => j.data.lineageIds.includes(lineageId) && j.data.tags.includes(`person:${teacher.personId}`))).toBe(true);
+    // The counters job names the lineage only: the worker drops no tag the procedure drops below
+    // (M09 review, requirements-1).
+    const jobs = await getDb().execute<{ data: { lineageIds: string[] } }>(sql`SELECT data FROM pgboss.job WHERE name = 'lineage.recompute'`);
+    expect(jobs.rows.some((j) => j.data.lineageIds.includes(lineageId))).toBe(true);
+    expect(jobs.rows.map((j) => Object.keys(j.data))).toEqual(jobs.rows.map(() => ['lineageIds']));
     // The public cache of both people, their lineage and the explorer's start list is dropped.
     expect(cache.revalidated).toEqual(expect.arrayContaining([`person:${teacher.personId}`, `person:${student.personId}`, `lineage:${lineageId}`, 'explore-start']));
     // The notification names the other person when it is read.
@@ -603,7 +606,7 @@ describe('a pending request is visible only to its people and the reviewers (DEF
 });
 
 describe('lineage.recompute', () => {
-  it('rewrites lineage_membership from the public views only and revalidates the tags through the internal route', async () => {
+  it('rewrites lineage_membership from the public views only and revalidates only its own tag through the internal route', async () => {
     const recomputed = await newLineage('m09-recompute');
     const teacher = await member('m09-recompute-teacher', { sifu: true });
     const student = await member('m09-recompute-student');
@@ -615,14 +618,20 @@ describe('lineage.recompute', () => {
     const members = await getDb().select({ personId: lineageMembership.personId }).from(lineageMembership).where(eq(lineageMembership.lineageId, recomputed));
     // The pending request is not counted (plan §6.2).
     expect(members.map((m) => m.personId).sort()).toEqual([teacher.personId, student.personId].sort());
+    // With the teacher as the lineage's root: generations below the root (the smallest, GROUP BY min).
+    await getDb().update(lineage).set({ rootPersonId: teacher.personId }).where(eq(lineage.id, recomputed));
+    expect(await recomputeLineageMembership(getDb(), recomputed)).toBe(2);
+    const depths = await getDb().select({ personId: lineageMembership.personId, depth: lineageMembership.depth }).from(lineageMembership).where(eq(lineageMembership.lineageId, recomputed));
+    expect(Object.fromEntries(depths.map((d) => [d.personId, d.depth]))).toEqual({ [teacher.personId]: 0, [student.personId]: 1 });
 
     const posted: string[][] = [];
     const lines: string[] = [];
     const handler = lineageRecomputeHandler(getDb(), (line) => lines.push(line), async (tags) => {
       posted.push(tags);
     });
+    // A job queued before the M09 review also carries the change's tags: they are not posted again.
     await handler([{ id: 'job-1', data: { lineageIds: [recomputed], tags: [`person:${teacher.personId}`] }, retryCount: 0, retryLimit: 5 } as never]);
-    expect(posted).toEqual([[`person:${teacher.personId}`, `lineage:${recomputed}`]]);
+    expect(posted).toEqual([[`lineage-membership:${recomputed}`]]);
     expect(lines.join('\n')).not.toContain('Demo');
   });
 });

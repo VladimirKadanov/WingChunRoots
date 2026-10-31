@@ -10,21 +10,33 @@ import { MAX_TAGS } from '../revalidate';
 import { failureCode, lineageRecomputeHandler, RevalidateAnswerError, revalidatePoster } from './lineage-recompute';
 import type { LineageRecomputeJob } from './queues';
 
-const job = (retryCount: number, retryLimit = 5) =>
-  ({ id: 'job-1', name: 'lineage.recompute', data: { lineageIds: [], tags: ['explore-start'] }, retryCount, retryLimit }) as unknown as JobWithMetadata<LineageRecomputeJob>;
+const LINEAGE = '0190a5c0-0000-7000-8000-00000000000a';
+
+/** A job as an approval queues it; `tags` is the field of a job queued before the M09 review, ignored now. */
+const job = (retryCount: number, retryLimit = 5, lineageIds: string[] = []) =>
+  ({ id: 'job-1', name: 'lineage.recompute', data: { lineageIds, tags: ['explore-start'] }, retryCount, retryLimit }) as unknown as JobWithMetadata<LineageRecomputeJob>;
 
 /** No lineage to recompute: the handler never touches the database. */
 const noDb = {} as Database;
 
+/** A database whose recompute transaction returns `members`, or throws `error`. */
+const fakeDb = (outcome: { members: number } | { error: unknown }) =>
+  ({
+    transaction: async () => {
+      if ('error' in outcome) throw outcome.error;
+      return outcome.members;
+    },
+  }) as unknown as Database;
+
 describe('lineageRecomputeHandler', () => {
-  it('logs the counts after a revalidation', async () => {
+  it('logs the counts after a revalidation of only the lineage-membership tags, never the tags the procedure expired', async () => {
     const lines: string[] = [];
     const posted: string[][] = [];
-    await lineageRecomputeHandler(noDb, (line) => lines.push(line), async (tags) => {
+    await lineageRecomputeHandler(fakeDb({ members: 3 }), (line) => lines.push(line), async (tags) => {
       posted.push(tags);
-    })([job(0)]);
-    expect(posted).toEqual([['explore-start']]);
-    expect(lines).toEqual(['lineage.recompute: job job-1: 0 lineage(s), 0 member(s), 1 tag(s) revalidated']);
+    })([job(0, 5, [LINEAGE, LINEAGE])]);
+    expect(posted).toEqual([[`lineage-membership:${LINEAGE}`]]);
+    expect(lines).toEqual(['lineage.recompute: job job-1: 1 lineage(s), 3 member(s), 1 tag(s) revalidated']);
   });
 
   it('logs the status of a refused revalidation and rethrows it with that code only, so pg-boss retries', async () => {
@@ -38,6 +50,27 @@ describe('lineageRecomputeHandler', () => {
       'lineage.recompute: job job-1: attempt 1 of 6 failed (revalidate answered 401); will retry',
       'lineage.recompute: job job-1: attempt 6 of 6 failed (revalidate answered 401); no attempts left',
     ]);
+  });
+
+  it('a failed recompute still posts the tags, then rethrows the recompute’s code so pg-boss retries (M09 review, code-3)', async () => {
+    const lines: string[] = [];
+    const posted: string[][] = [];
+    const timeout = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+    const run = lineageRecomputeHandler(fakeDb({ error: timeout }), (line) => lines.push(line), async (tags) => {
+      posted.push(tags);
+    });
+    await expect(run([job(0, 5, [LINEAGE])])).rejects.toThrow(/^lineage\.recompute failed: database error 57014$/);
+    expect(posted).toEqual([[`lineage-membership:${LINEAGE}`]]);
+    expect(lines).toEqual(['lineage.recompute: job job-1: attempt 1 of 6 failed (database error 57014); will retry']);
+  });
+
+  it('when both fail, the recompute’s code is the one logged and rethrown', async () => {
+    const lines: string[] = [];
+    const run = lineageRecomputeHandler(fakeDb({ error: Object.assign(new Error('x'), { code: '57014' }) }), (line) => lines.push(line), async () => {
+      throw new RevalidateAnswerError(503);
+    });
+    await expect(run([job(1, 5, [LINEAGE])])).rejects.toThrow(/database error 57014/);
+    expect(lines).toEqual(['lineage.recompute: job job-1: attempt 2 of 6 failed (database error 57014); will retry']);
   });
 });
 

@@ -15,8 +15,8 @@ export const QUEUE = {
   searchKeysRebuild: 'search.keys.rebuild',
   /**
    * M09 (plan §6.3, §6.4): after a change to the verified edges, recompute lineage_membership of the
-   * lineages it touched (from v_public_edge only), then drop the public cache through
-   * POST /api/internal/revalidate (src/server/jobs/lineage-recompute.ts).
+   * lineages it touched (from v_public_edge only), then drop the cache of that derived data
+   * (lineage-membership:<id>) through POST /api/internal/revalidate (src/server/jobs/lineage-recompute.ts).
    */
   lineageRecompute: 'lineage.recompute',
 } as const;
@@ -33,12 +33,13 @@ export interface EmailSendJob {
 }
 
 /**
- * The payload of lineage.recompute: ids only, never a name (plan §6.4). `tags` are the cache tags
- * the change affects (src/server/cache.ts), revalidated after the recompute.
+ * The payload of lineage.recompute: ids only, never a name (plan §6.4). The worker revalidates only
+ * lineage-membership:<id> of these lineages; the change's own person and lineage tags were expired
+ * by the procedure that made it (M09 review, requirements-1). A job queued before that carries a
+ * `tags` field too, which the handler ignores.
  */
 export interface LineageRecomputeJob {
   lineageIds: string[];
-  tags: string[];
 }
 
 export interface JobData {

@@ -52,12 +52,14 @@ describe('POST /api/internal/revalidate', () => {
   it('with the secret: revalidates each known tag once with the max profile', async () => {
     process.env.MAIL_SEAL_KEY = SEAL;
     delete process.env.INTERNAL_REVALIDATE_SECRET;
-    const response = await POST(post({ tags: [TAG, TAG, 'explore-start'] }, `Bearer ${revalidateSecret()}`));
+    const membership = 'lineage-membership:0190a5c0-0000-7000-8000-00000000000a';
+    const response = await POST(post({ tags: [TAG, TAG, 'explore-start', membership] }, `Bearer ${revalidateSecret()}`));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ revalidated: 2 });
+    expect(await response.json()).toEqual({ revalidated: 3 });
     expect(calls.revalidated).toEqual([
       [TAG, 'max'],
       ['explore-start', 'max'],
+      [membership, 'max'],
     ]);
   });
 

@@ -3,4 +3,6 @@
 
 export const personTag = (personId: string) => `person:${personId}`;
 export const lineageTag = (id: string) => `lineage:${id}`;
+/** The derived lineage_membership rows of one lineage: the only tag the worker revalidates (M09). */
+export const lineageMembershipTag = (lineageId: string) => `lineage-membership:${lineageId}`;
 export const EXPLORE_START_TAG = 'explore-start';

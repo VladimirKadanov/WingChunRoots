@@ -10,7 +10,8 @@
 // - The secret travels as `Authorization: Bearer <secret>` and is compared in constant time; a
 //   request without it is refused with 401 before its body is read.
 // - The body is `{ "tags": [...] }`: only the tag shapes of src/server/cache.ts (person:<uuid>,
-//   lineage:<uuid>, explore-start), at most MAX_TAGS. Nothing else can be revalidated through it.
+//   lineage:<uuid>, lineage-membership:<uuid>, explore-start), at most MAX_TAGS. Nothing else can be
+//   revalidated through it. The worker sends only lineage-membership:<uuid> (M09 review, requirements-1).
 // - Reachable only on the Compose network once the app runs there (M12: the route is not exposed
 //   through the public proxy); in the tests on localhost (APP_URL).
 //
@@ -28,7 +29,7 @@ export const REVALIDATE_PATH = '/api/internal/revalidate';
 /** More than one change ever needs: a person with every teacher above them and the neighbours. */
 export const MAX_TAGS = 2000;
 const MIN_SECRET_LENGTH = 32;
-const TAG = /^(person|lineage):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const TAG = /^(person|lineage|lineage-membership):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export class RevalidateSecretError extends Error {
   constructor() {
