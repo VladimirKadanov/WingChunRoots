@@ -905,6 +905,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       status: 'pending',
       expiresAt: new Date(caseAt.getTime() + 30 * 86_400_000),
       acceptedAt: null,
+      acceptedByUserId: null,
+      idempotencyKey: null,
       createdAt: caseAt,
       updatedAt: caseAt,
     },

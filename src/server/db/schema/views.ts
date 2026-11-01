@@ -37,6 +37,9 @@ export const vPublicPerson = pgView('v_public_person', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   // M04: the city of residence or activity, at city level only (never a point).
   cityName: text('city_name'),
+  // M10b (plan §6.5, DEFAULT D04/D13): 'verified' or 'unverified' for the record of a Sifu account
+  // ("Instructor" or "Instructor (unverified)"), null for anyone else. Never the account itself.
+  instructorStatus: text('instructor_status'),
 }).existing();
 
 /**
@@ -62,6 +65,9 @@ export const vPublicEdge = pgView('v_public_edge', {
   lineageSlug: text('lineage_slug').notNull(),
   lineageName: text('lineage_name').notNull(),
   lineageRootPersonId: uuid('lineage_root_person_id'),
+  // M10b (DEFAULT D04/D13): the teacher approved it from their own account and no archivist has
+  // verified them as an instructor yet ("Approved by an unverified instructor").
+  approvedByUnverifiedInstructor: boolean('approved_by_unverified_instructor').notNull(),
 }).existing();
 
 /**
