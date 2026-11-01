@@ -69,7 +69,9 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
   const one = (key: string) => (typeof query[key] === 'string' ? query[key] : null);
   const review = editor.review;
   const draft = school.status === 'draft';
-  const needsInfo = school.status === 'pending_review' && review?.status === 'needs_info';
+  // A question on a new listing, or on a listed school's edit (schools.update reopens the review).
+  const needsInfo = (school.status === 'pending_review' || school.status === 'active') && review?.status === 'needs_info';
+  const editUnderReview = school.status === 'active' && (review?.status === 'open' || review?.status === 'in_review');
   const formLabel = new Map(editor.forms.map((f) => [f.key, f.label]));
   const instructorLabel = new Map(editor.instructorOptions.map((o) => [o.id, o.label]));
   const details: [string, string][] = [
@@ -87,7 +89,9 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
       {one('saved') ? (
         <OutcomeNote testId="school-saved">
           {school.status === 'active'
-            ? 'Saved. The school stays listed with the changes.'
+            ? editUnderReview
+              ? 'Saved. The school stays listed with the changes, and a moderator checks them again.'
+              : 'Saved. The school stays listed with the changes.'
             : school.status === 'pending_review'
               ? 'Saved. The reviewers see the changes with the listing.'
               : 'Saved. The school is a draft that only you see until you send it for review.'}

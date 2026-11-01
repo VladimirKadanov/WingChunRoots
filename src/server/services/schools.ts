@@ -30,7 +30,9 @@
 // The owner's side (a signed-in Sifu with their own profile):
 //   schools.mine, schools.edit       their schools, and one for the editor (the exact point too:
 //                                    it is theirs)
-//   schools.create, schools.update   a draft; edits of a listed school stay listed
+//   schools.create, schools.update   a draft; edits of a listed school stay listed, and an edit
+//                                    of what it is, where, its website or its instructors opens
+//                                    a school_listing case again (RE_REVIEWED_CHANGES)
 //   schools.submit                   draft -> pending_review, with one open school_listing case
 //                                    (M10a's queue); needs Professional Sifu (school_map, plan
 //                                    §6.5), otherwise ENTITLEMENT_REQUIRED and the upgrade prompt
@@ -980,9 +982,25 @@ export async function createSchool(principal: Principal | null, raw: z.input<typ
 const EDITABLE: readonly (typeof SCHOOL_STATUSES)[number][] = ['draft', 'pending_review', 'active'];
 
 /**
- * schools.update: edits the account's own school. A listed school stays listed (the pin follows
- * the edit at once); a school waiting for review waits on with the new details. last_activity_at
- * moves (D17).
+ * The edits of a listed school that a reviewer checks again (M11 review, code-4): what the school
+ * is and where, its website and who teaches there. Contacts, the description and the forms do not
+ * reopen the review. `point` counts for an exact location only (a city-only school's point stays
+ * private).
+ */
+export const RE_REVIEWED_CHANGES = ['name', 'city', 'locationPrivacy', 'point', 'websiteUrl', 'instructors'] as const;
+
+/**
+ * schools.update: edits the account's own school. last_activity_at moves (D17), and updated_at
+ * moves on every edit (the version a listing decision carries, school-review.ts: a reviewer never
+ * approves details they did not see).
+ *
+ * - A draft stays a draft.
+ * - A school waiting for review waits on with the new details; a reviewer who opened the listing
+ *   before the edit must reload it before deciding.
+ * - A listed school stays listed with the edit (the pin follows at once). DEFAULT (no D number;
+ *   docs/plan/questions/M11.md): an edit of RE_REVIEWED_CHANGES opens a school_listing case for
+ *   the edited listing (one open case per school: a second edit joins it); the reviewer approves
+ *   it (the school stays listed) or returns it to draft with a reason, which takes it off the map.
  */
 export async function updateSchool(principal: Principal | null, raw: z.input<typeof schoolUpdateInput>, meta: RequestMeta): Promise<SchoolSaved> {
   const p = requireUser(principal);
@@ -1025,11 +1043,16 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
         description: input.description,
         formsTaught: input.formsTaught,
         lastActivityAt: now,
-        updatedAt: now,
+        // Always later than the version a reviewer may hold, also within one millisecond.
+        updatedAt: sql`greatest(now(), ${school.updatedAt} + interval '1 microsecond')`,
       })
       .where(eq(school.id, row.id));
     await writeLocation(tx, row.id, input);
     await writeInstructors(tx, row.id, ownId, instructorIds);
+    const reReview =
+      row.status === 'active' && changed.some((c) => (RE_REVIEWED_CHANGES as readonly string[]).includes(c) && (c !== 'point' || input.locationPrivacy === 'exact'))
+        ? await openReReview(tx, row.id, p.user.id)
+        : null;
     await writeAudit(tx, {
       action: 'school.update',
       actorUserId: p.user.id,
@@ -1037,7 +1060,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
       subjectType: 'school',
       subjectId: row.id,
       before: { status: row.status },
-      after: { status: row.status, changed },
+      after: { status: row.status, changed, ...(reReview ? { reviewCaseId: reReview } : {}) },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
@@ -1045,6 +1068,23 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
   });
   if (outcome.publicChange) invalidatePublic([SCHOOLS_TAG], 'procedure');
   return outcome.saved;
+}
+
+/**
+ * The school_listing case of an edited listed school (see updateSchool): the open one when there
+ * is one (a second edit joins it; the reviewer reloads the case and sees both), else a new one.
+ * The school is locked already, so the case's lock comes second, as in schools.submit.
+ */
+async function openReReview(tx: Executor, schoolId: string, userId: string): Promise<string> {
+  const [open] = await tx
+    .select({ id: reviewCase.id })
+    .from(reviewCase)
+    .where(and(eq(reviewCase.schoolId, schoolId), eq(reviewCase.kind, 'school_listing'), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])))
+    .for('update');
+  if (open) return open.id;
+  const [created] = await tx.insert(reviewCase).values({ kind: 'school_listing', status: 'open', schoolId, openedByUserId: userId }).returning({ id: reviewCase.id });
+  await tellListingReviewers(tx, created!.id, userId);
+  return created!.id;
 }
 
 /** Every moderator and administrator: they review listings (the queue's notification). */
@@ -1090,7 +1130,8 @@ export async function submitSchool(principal: Principal | null, raw: z.input<typ
         .from(reviewCase)
         .where(and(eq(reviewCase.schoolId, row.id), eq(reviewCase.kind, 'school_listing'), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])))
         .for('update');
-      if (row.status === 'pending_review' && open) {
+      // A listing under review, or a listed school whose edit is under review (updateSchool).
+      if ((row.status === 'pending_review' || row.status === 'active') && open) {
         if (open.status !== 'needs_info') return { id: row.id, slug: row.slug, status: row.status, caseId: open.id, replayed: true };
         // The answer to the reviewers' question: the case waits for them again.
         const status = open.assignedToUserId ? 'in_review' : 'open';

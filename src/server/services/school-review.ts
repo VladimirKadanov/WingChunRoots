@@ -4,9 +4,17 @@
 //
 //   verify      approve the listing: the school becomes active (its pin shows while the account
 //               that listed it holds Professional Sifu, DEFAULT D08/D18) and last_activity_at moves
-//               (D17); audit school.publish and review.resolve
-//   reject      return it to draft, with the reason the Sifu reads; audit school.return and review.resolve
+//               (D17); audit school.publish and review.resolve. On a listed school whose edit
+//               reopened the review (schools.update, RE_REVIEWED_CHANGES), the school stays as it
+//               is: listed with the edit.
+//   reject      return it to draft, with the reason the Sifu reads; audit school.return and
+//               review.resolve. On a listed school, this takes the listing off the map.
 //   needs_info  ask the Sifu a question; the case waits until they send the listing again
+//
+// The version (M11 review, code-4): the case card carries the school's version (its updated_at,
+// in microseconds), and a decision sends it back. A school edited since the reviewer loaded the
+// card is refused with CONFLICT: nobody approves details they did not see. An approval without a
+// version is refused too (BAD_REQUEST).
 //
 // Who: a moderator or an administrator approves or returns a listing (DEFAULT: listings are a
 // moderation task, plan §6.7 gives moderators the public content); any reviewer may take the case,
@@ -57,7 +65,12 @@ export interface SchoolCaseView {
   instructors: { person: PersonRef; roleLabel: string }[];
   /** Whether the account that listed it holds Professional Sifu now: the pin shows once approved. */
   pinAllowed: boolean;
+  /** The version of the details on the card (updated_at in microseconds): a decision sends it back. */
+  version: string;
 }
+
+/** A school's version: its updated_at in whole microseconds since 1970, as text (exact). */
+const VERSION = sql<string>`(extract(epoch from ${school.updatedAt}) * 1000000)::bigint::text`;
 
 /** The school of a listing case, as the case card shows it. */
 export async function schoolCaseView(db: Executor, schoolId: string): Promise<SchoolCaseView | null> {
@@ -79,6 +92,7 @@ export async function schoolCaseView(db: Executor, schoolId: string): Promise<Sc
       description: school.description,
       formsTaught: school.formsTaught,
       createdByUserId: school.createdByUserId,
+      version: VERSION,
     })
     .from(school)
     .innerJoin(place, eq(place.id, school.placeId))
@@ -109,6 +123,7 @@ export async function schoolCaseView(db: Executor, schoolId: string): Promise<Sc
       return person ? [{ person, roleLabel: SCHOOL_ROLE_LABELS[i.role] }] : [];
     }),
     pinAllowed,
+    version: row.version,
   };
 }
 
@@ -124,8 +139,8 @@ export async function schoolRowsOf(db: Executor, schoolIds: readonly string[]): 
 }
 
 /** Locks a listing case's school, then the case (the order schools.submit takes them). */
-export async function lockListing(tx: Executor, schoolId: string): Promise<{ status: string; createdByUserId: string | null } | null> {
-  const [row] = await tx.select({ status: school.status, createdByUserId: school.createdByUserId }).from(school).where(eq(school.id, schoolId)).for('update');
+export async function lockListing(tx: Executor, schoolId: string): Promise<{ status: string; createdByUserId: string | null; version: string } | null> {
+  const [row] = await tx.select({ status: school.status, createdByUserId: school.createdByUserId, version: VERSION }).from(school).where(eq(school.id, schoolId)).for('update');
   return row ?? null;
 }
 
@@ -134,7 +149,13 @@ export interface ListingDecision {
   decision: 'verify' | 'reject' | 'needs_info';
   reason: string | null;
   idempotencyKey: string;
+  /** The version of the school on the card the reviewer decided from (SchoolCaseView.version). */
+  schoolVersion?: string | null | undefined;
 }
+
+/** The school statuses a listing case is decided on: a new listing, or a listed school's edit. */
+const DECIDABLE = ['pending_review', 'active'];
+export const isDecidableListing = (schoolStatus: string | null | undefined) => schoolStatus != null && DECIDABLE.includes(schoolStatus);
 
 const isOpen = (status: string) => (OPEN_REVIEW_CASE_STATUSES as readonly string[]).includes(status);
 
@@ -168,7 +189,14 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
         throw new ServiceError('FORBIDDEN', 'A moderator or an administrator approves or returns a school listing.');
       }
       if (c.assignedToUserId !== p.user.id && !admin) throw new ServiceError('FORBIDDEN', 'Assign the case to yourself before you decide it.');
-      if (!isOpen(c.status) || listing.status !== 'pending_review') throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
+      if (!isOpen(c.status) || !isDecidableListing(listing.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
+      if (input.decision === 'verify' && !input.schoolVersion) {
+        throw new ServiceError('BAD_REQUEST', 'Open the case again and decide from the listing it shows.', { schoolVersion: 'Send the version of the listing you reviewed (the case card has it).' });
+      }
+      if (input.schoolVersion && input.schoolVersion !== listing.version) {
+        throw new ServiceError('CONFLICT', 'The Sifu changed this listing after you opened it. Open the case again and review the new details before you decide.');
+      }
+      const listed = listing.status === 'active';
       const now = new Date();
       const owner = listing.createdByUserId;
       const audit = (action: 'review.needs_info' | 'review.resolve' | 'school.publish' | 'school.return', subjectType: string, subjectId: string, before: Record<string, unknown>, after: Record<string, unknown>) =>
@@ -183,20 +211,24 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
       }
 
       const approve = input.decision === 'verify';
-      await tx
-        .update(school)
-        .set(approve ? { status: 'active', lastActivityAt: now, updatedAt: now } : { status: 'draft', updatedAt: now })
-        .where(eq(school.id, seen.schoolId));
+      // Approving a listed school's edit keeps it as it is (listed, with the edit).
+      if (!(approve && listed)) {
+        await tx
+          .update(school)
+          .set(approve ? { status: 'active', lastActivityAt: now, updatedAt: now } : { status: 'draft', updatedAt: now })
+          .where(eq(school.id, seen.schoolId));
+      }
       await tx
         .update(reviewCase)
         .set({ status: 'resolved', resolution: approve ? 'approved' : 'rejected', resolutionReason: input.reason, resolvedAt: now, updatedAt: now })
         .where(eq(reviewCase.id, c.id));
       // An approval's note is for the reviewers; a reason to return it is the Sifu's to read.
       await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: approve && input.reason === null, idempotencyKey: input.idempotencyKey });
-      await audit(approve ? 'school.publish' : 'school.return', 'school', seen.schoolId, { status: 'pending_review' }, { status: approve ? 'active' : 'draft', caseId: c.id });
+      await audit(approve ? 'school.publish' : 'school.return', 'school', seen.schoolId, { status: listing.status }, { status: approve ? 'active' : 'draft', caseId: c.id, ...(listed ? { edit: true } : {}) });
       await audit('review.resolve', 'review_case', c.id, { status: c.status }, { status: 'resolved', resolution: approve ? 'approved' : 'rejected', schoolId: seen.schoolId });
       if (owner) await tx.insert(notification).values({ userId: owner, template: 'school.reviewed', payload: { schoolId: seen.schoolId, decision: approve ? 'approved' : 'returned' } });
-      return { replayed: false, publicChange: approve };
+      // A new listing goes public when approved; a listed one leaves the map when returned.
+      return { replayed: false, publicChange: listed ? !approve : approve };
     });
     if (outcome.publicChange) invalidatePublic([SCHOOLS_TAG], 'procedure');
     return outcome.replayed;

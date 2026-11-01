@@ -61,7 +61,7 @@ import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ARCHIVAL_EVIDENCE_MESSAGE, type EvidenceFileView, fileView, filesOfCases, filesOfPerson, linkFilesToPerson, openableFiles } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
-import { decideSchoolListing, LISTING_DECIDE_ROLES, lockListing, type SchoolCaseView, schoolCaseView, schoolRowsOf } from './school-review';
+import { decideSchoolListing, isDecidableListing, LISTING_DECIDE_ROLES, lockListing, type SchoolCaseView, schoolCaseView, schoolRowsOf } from './school-review';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import {
@@ -140,6 +140,11 @@ export const reviewDecideInput = z
       .nullish()
       .transform((s) => (s ? s : null)),
     idempotencyKey,
+    /**
+     * M11 (school_listing): the version of the listing on the case card the reviewer decides from
+     * (review.get: school.version). Required to approve; a listing edited since is refused (CONFLICT).
+     */
+    schoolVersion: z.string().regex(/^[0-9]{1,20}$/, { error: 'Open the case again and decide from the listing it shows.' }).nullish(),
   })
   .superRefine((input, ctx) => {
     if (input.reason && input.reason.length > REVIEW_TEXT_MAX) ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${REVIEW_TEXT_MAX} characters.` });
@@ -351,7 +356,8 @@ function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: 
   const decider = hasStaff2FA(p, listing ? LISTING_DECIDE_ROLES : DECIDE_ROLES);
   const mine = c.assignedToUserId === p.user.id;
   const open = isOpen(c.status);
-  const decidable = listing ? subjectStatus === 'pending_review' : c.kind === 'historical_claim' && subjectStatus === 'under_review';
+  // M11: a new listing (pending_review), or a listed school whose edit reopened the review (active).
+  const decidable = listing ? isDecidableListing(subjectStatus) : c.kind === 'historical_claim' && subjectStatus === 'under_review';
   const may = !own && open;
   const decideNote = own
     ? listing

@@ -8,7 +8,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { generateFixtures } from '../../fixtures/generate';
@@ -20,8 +20,8 @@ import { PG, pgError } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { revokeGrant } from './grants';
 import { key, member, meta, principalOf, staff } from './relationships.test-support';
-import { assignReviewCase, decideReviewCase } from './review';
-import { confirmSchool, createSchool, mySchools, radiusQuery, schoolGet, schoolsInViewport, schoolsSearch, submitSchool, updateSchool } from './schools';
+import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
+import { confirmSchool, createSchool, mySchools, radiusQuery, schoolEditor, schoolGet, schoolsInViewport, schoolsSearch, submitSchool, updateSchool } from './schools';
 
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
@@ -195,7 +195,8 @@ describe('listing a school', () => {
 
     const moderator = await staff('m11-mod', 'moderator');
     await assignReviewCase(moderator.principal, { caseId: submitted.caseId, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
-    const decided = await decideReviewCase(moderator.principal, { caseId: submitted.caseId, decision: 'verify', reason: null, idempotencyKey: key() }, meta);
+    const schoolVersion = (await getReviewCase(moderator.principal, { id: submitted.caseId })).school!.version;
+    const decided = await decideReviewCase(moderator.principal, { caseId: submitted.caseId, decision: 'verify', reason: null, idempotencyKey: key(), schoolVersion }, meta);
     expect(decided.case).toMatchObject({ status: 'resolved', resolution: 'approved', school: { id: created.id, status: 'active', point: null } });
     expect(cache.revalidated).toContain('schools');
     const listed = (await schoolsSearch(null, {})).schools.find((s) => s.id === created.id);
@@ -276,6 +277,23 @@ async function sifuWithPlan(label: string, pro = true) {
   return m;
 }
 
+/** A moderator takes the case and approves the listing as the case card shows it (its version). */
+async function approveAsModerator(caseId: string, label: string) {
+  const moderator = await staff(label, 'moderator');
+  await assignReviewCase(moderator.principal, { caseId, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
+  const schoolVersion = (await getReviewCase(moderator.principal, { id: caseId })).school!.version;
+  await decideReviewCase(moderator.principal, { caseId, decision: 'verify', reason: null, idempotencyKey: key(), schoolVersion }, meta);
+  return moderator;
+}
+
+/** A listed (active, public) school of a Pro Sifu, approved through the review. */
+async function listedSchool(sifu: Awaited<ReturnType<typeof sifuWithPlan>>, fields: Record<string, unknown>, label: string) {
+  const created = await createSchool(sifu.principal, { ...(fields as never), idempotencyKey: key() }, meta);
+  const { caseId } = await submitSchool(sifu.principal, { id: created.id }, meta);
+  await approveAsModerator(caseId, `${label}-mod`);
+  return created;
+}
+
 /** A platform school (no listing account), listed, at an exact point (`place` only names its city). */
 async function platformSchoolAt(label: string, placeId: string, point: { lat: number; lng: number }): Promise<string> {
   const slug = `demo-m11-${label}-${randomBytes(3).toString('hex')}`;
@@ -341,5 +359,104 @@ describe('coordinates are JSON numbers (M11 review, code-5)', () => {
       createSchool(sifu.principal, { name: 'Demo Coerce Hall', placeId: sofia.id, locationPrivacy: 'exact', point: { lat: true, lng: true }, idempotencyKey: key() } as never, meta),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { point: expect.any(String) } });
     expect((await mySchools(sifu.principal)).schools).toEqual([]);
+  });
+});
+
+describe('the listing review cannot be bypassed (M11 review, code-4)', () => {
+  const exactFields = async (name: string) => {
+    const sofia = await cityOf('Sofia', 'BG');
+    return { name, placeId: sofia.id, locationPrivacy: 'exact' as const, point: { lat: sofia.lat + 0.01, lng: sofia.lng + 0.01 } };
+  };
+
+  it('a decision on a listing changed after the reviewer opened it is refused; an approval needs the version it was made from', async () => {
+    const sifu = await sifuWithPlan('m11-version');
+    const fields = await exactFields('Demo Version Hall');
+    const created = await createSchool(sifu.principal, { ...fields, idempotencyKey: key() }, meta);
+    const { caseId } = await submitSchool(sifu.principal, { id: created.id }, meta);
+    const moderator = await staff('m11-version-mod', 'moderator');
+    await assignReviewCase(moderator.principal, { caseId, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
+    const seen = (await getReviewCase(moderator.principal, { id: caseId })).school!;
+    expect(seen).toMatchObject({ name: 'Demo Version Hall', version: expect.stringMatching(/^\d+$/) });
+
+    // The Sifu changes the listing while the reviewer reads it: a new version.
+    await updateSchool(sifu.principal, { ...fields, id: created.id, name: 'Demo Version Hall Changed', websiteUrl: 'https://example.test/changed' }, meta);
+    for (const decision of ['verify', 'reject', 'needs_info'] as const) {
+      await expect(
+        decideReviewCase(moderator.principal, { caseId, decision, reason: decision === 'verify' ? null : 'Demo reason (fictional).', idempotencyKey: key(), schoolVersion: seen.version }, meta),
+      ).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('changed this listing after you opened it') });
+    }
+    await expect(decideReviewCase(moderator.principal, { caseId, decision: 'verify', reason: null, idempotencyKey: key() }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect((await getDb().select({ status: school.status }).from(school).where(eq(school.id, created.id)))[0]!.status).toBe('pending_review');
+    await expect(schoolGet(null, { slug: created.slug })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    // Opened again: the card shows the new details and their version, which the approval carries.
+    const fresh = (await getReviewCase(moderator.principal, { id: caseId })).school!;
+    expect(fresh).toMatchObject({ name: 'Demo Version Hall Changed', websiteUrl: 'https://example.test/changed' });
+    expect(fresh.version).not.toBe(seen.version);
+    await decideReviewCase(moderator.principal, { caseId, decision: 'verify', reason: null, idempotencyKey: key(), schoolVersion: fresh.version }, meta);
+    expect(await schoolGet(null, { slug: created.slug })).toMatchObject({ name: 'Demo Version Hall Changed' });
+  });
+
+  it('a listed school edited in what it is, where, its website or instructors stays listed and opens a review; returning it to draft takes it off the map', async () => {
+    const sifu = await sifuWithPlan('m11-edit');
+    const fields = await exactFields('Demo Edited Hall');
+    const listed = await listedSchool(sifu, fields, 'm11-edit');
+    const openCases = async () =>
+      getDb()
+        .select({ id: reviewCase.id, status: reviewCase.status })
+        .from(reviewCase)
+        .where(and(eq(reviewCase.schoolId, listed.id), eq(reviewCase.kind, 'school_listing'), inArray(reviewCase.status, ['open', 'in_review', 'needs_info'])));
+
+    // Contacts, the description and the forms: the school stays listed with them, no review.
+    await updateSchool(sifu.principal, { ...fields, id: listed.id, contactEmail: 'edited@example.test', description: 'A fictional description.', formsTaught: ['chum_kiu'] }, meta);
+    expect(await openCases()).toEqual([]);
+    expect(await schoolGet(null, { slug: listed.slug })).toMatchObject({ contactEmail: 'edited@example.test' });
+
+    // A new name, city, pin and website: public at once, and one review case for the edit.
+    const london = await cityOf('London', 'GB');
+    const moved = { name: 'Demo Totally Different Hall', placeId: london.id, locationPrivacy: 'exact' as const, point: { lat: london.lat + 0.01, lng: london.lng }, websiteUrl: 'https://example.test/anything' };
+    cache.revalidated.length = 0;
+    await updateSchool(sifu.principal, { ...moved, id: listed.id, contactEmail: 'edited@example.test', description: 'A fictional description.', formsTaught: ['chum_kiu'] }, meta);
+    expect(cache.revalidated).toContain('schools');
+    const [edit] = await openCases();
+    expect(edit).toMatchObject({ status: 'open' });
+    expect(await schoolGet(null, { slug: listed.slug })).toMatchObject({ name: 'Demo Totally Different Hall', city: 'London' });
+    const [row] = await getDb().select({ status: school.status }).from(school).where(eq(school.id, listed.id));
+    expect(row!.status).toBe('active');
+    // A second edit joins the open case.
+    await updateSchool(sifu.principal, { ...moved, name: 'Demo Totally Different Hall Two', id: listed.id }, meta);
+    expect(await openCases()).toEqual([edit]);
+    expect((await mySchools(sifu.principal)).schools[0]).toMatchObject({ status: 'active', pin: 'shown' });
+
+    // The reviewer declines the edit: the listing is a draft, off the public map, with the reason.
+    const moderator = await staff('m11-edit-mod2', 'moderator');
+    await assignReviewCase(moderator.principal, { caseId: edit!.id, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
+    const card = (await getReviewCase(moderator.principal, { id: edit!.id }));
+    expect(card).toMatchObject({ can: { verify: true, reject: true, needsInfo: true }, school: { status: 'active', name: 'Demo Totally Different Hall Two' } });
+    cache.revalidated.length = 0;
+    await decideReviewCase(moderator.principal, { caseId: edit!.id, decision: 'reject', reason: 'Demo: the new website is not this school (fictional).', idempotencyKey: key(), schoolVersion: card.school!.version }, meta);
+    expect(cache.revalidated).toContain('schools');
+    expect((await getDb().select({ status: school.status }).from(school).where(eq(school.id, listed.id)))[0]!.status).toBe('draft');
+    await expect(schoolGet(null, { slug: listed.slug })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await schoolsSearch(null, {})).schools.map((s) => s.id)).not.toContain(listed.id);
+    const view = await schoolEditor(sifu.principal, { id: listed.id });
+    expect(view).toMatchObject({ school: { status: 'draft' }, review: { statusLabel: 'Returned to draft', reason: 'Demo: the new website is not this school (fictional).' } });
+  });
+
+  it('approving the edit of a listed school keeps it listed with the edit', async () => {
+    const sifu = await sifuWithPlan('m11-edit-ok');
+    const fields = await exactFields('Demo Approved Edit Hall');
+    const listed = await listedSchool(sifu, fields, 'm11-edit-ok');
+    await updateSchool(sifu.principal, { ...fields, id: listed.id, name: 'Demo Approved Edit Hall Renamed' }, meta);
+    const [edit] = await getDb()
+      .select({ id: reviewCase.id })
+      .from(reviewCase)
+      .where(and(eq(reviewCase.schoolId, listed.id), eq(reviewCase.status, 'open')));
+    expect(edit).toBeDefined();
+    await approveAsModerator(edit!.id, 'm11-edit-ok-mod2');
+    const [c] = await getDb().select({ status: reviewCase.status, resolution: reviewCase.resolution }).from(reviewCase).where(eq(reviewCase.id, edit!.id));
+    expect(c).toEqual({ status: 'resolved', resolution: 'approved' });
+    expect((await getDb().select({ status: school.status }).from(school).where(eq(school.id, listed.id)))[0]!.status).toBe('active');
+    expect(await schoolGet(null, { slug: listed.slug })).toMatchObject({ name: 'Demo Approved Edit Hall Renamed' });
   });
 });

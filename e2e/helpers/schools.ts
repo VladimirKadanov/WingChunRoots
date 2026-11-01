@@ -126,7 +126,12 @@ export async function createSchool(page: Page, name = `Demo Kwoon Leipzig ${capi
 
 /** review.decide verify (approve the listing) by the seeded administrator, through the API. */
 export async function approveListing(admin: Page, schoolId: string) {
-  const decided = await apiPost(admin, '/review/decide', { caseId: await listingCaseOf(schoolId), decision: 'verify', reason: null, idempotencyKey: randomUUID() });
+  const caseId = await listingCaseOf(schoolId);
+  // A decision carries the version of the listing the reviewer saw (review.get), as the case card does.
+  const opened = await admin.request.get(`/api/v1/review/${caseId}`, { headers: { origin: BASE_URL } });
+  expect(opened.status(), await opened.text()).toBe(200);
+  const schoolVersion = ((await opened.json()) as { school: { version: string } }).school.version;
+  const decided = await apiPost(admin, '/review/decide', { caseId, decision: 'verify', reason: null, idempotencyKey: randomUUID(), schoolVersion });
   expect(decided.status(), await decided.text()).toBe(200);
 }
 

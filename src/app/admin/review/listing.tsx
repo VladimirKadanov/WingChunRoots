@@ -1,6 +1,8 @@
 // The school of a listing case on the case card (milestone M11, In scope 2): its name, city,
 // location mode, contacts, forms and instructors, and whether the account that listed it holds
 // Professional Sifu now (the pin shows once the listing is approved only then: DEFAULT D08/D18).
+// A listed school is on the card again when its Sifu changed what it is, where, its website or its
+// instructors (schools.update, RE_REVIEWED_CHANGES): the card says so.
 // The point is shown only for an exact location: a city-only school's private point never reaches
 // the card (school-review.ts).
 
@@ -19,6 +21,12 @@ export function ListingSection({ school, reason }: { school: SchoolCaseView; rea
       <h2 id="listing-heading" className="font-display text-2xl">
         The listing
       </h2>
+      {school.status === 'active' ? (
+        <p className="max-w-[60ch] rounded-sm border-l-4 border-fg bg-surface-2 px-3 py-2 text-sm" data-testid="listing-edited">
+          This school is listed. Its Sifu changed it after the approval, and the changes are public now. Approve them to keep the listing as it is, or return it to
+          draft with a reason to take it off the map.
+        </p>
+      ) : null}
       <p className="font-display text-xl [overflow-wrap:anywhere]">{school.name}</p>
       <p className="text-ui text-fg-muted">
         {school.city}, {school.countryCode} · {school.locationLabel}

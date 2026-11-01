@@ -240,9 +240,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} listing={!!view.school} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} listing={!!view.school} /> : null}
-            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} listing={!!view.school} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} listing={!!view.school} schoolVersion={view.school?.version ?? null} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} listing={!!view.school} schoolVersion={view.school?.version ?? null} /> : null}
+            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} listing={!!view.school} schoolVersion={view.school?.version ?? null} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
             <p className="text-ui text-fg-muted">This case is closed.</p>

@@ -141,19 +141,24 @@ const LISTING_DECISIONS: Record<keyof typeof DECISIONS, DecisionText> = {
   },
 };
 
-/** One decision on a case: verify, refuse with a reason, or ask for more information. `listing`: a school listing (M11). */
+/**
+ * One decision on a case: verify, refuse with a reason, or ask for more information. `listing`: a
+ * school listing (M11), decided from the version of the listing the card shows (`schoolVersion`).
+ */
 export function DecideForm({
   caseId,
   decision,
   idempotencyKey,
   initial,
   listing = false,
+  schoolVersion = null,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
   idempotencyKey: string;
   initial?: FormState | null;
   listing?: boolean;
+  schoolVersion?: string | null;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
@@ -172,6 +177,7 @@ export function DecideForm({
         <input type="hidden" name="caseId" value={caseId} />
         <input type="hidden" name="decision" value={decision} />
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+        {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         <TextAreaField form={formId} name="reason" label={text.reason} optional={text.optional} maxLength={2000} hint={text.hint} state={state} />
         <div>
           <Button pending={pending} label={text.label} pendingLabel={text.pending} variant={text.variant} />
