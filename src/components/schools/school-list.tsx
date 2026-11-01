@@ -60,9 +60,11 @@ export function SchoolList({ schools, selectedId = null, onShow, className }: Sc
             data-slug={school.slug}
             data-selected={selected ? 'true' : undefined}
             className={cx(
-              'grid gap-1 border-b border-border-subtle py-3 pl-3',
-              // The selected row: a solid ink bar and bold name, never colour alone.
-              selected ? 'border-l-4 border-l-fg' : 'border-l-4 border-l-transparent',
+              'grid gap-1 border-b border-border-subtle py-3',
+              // The selected row: a solid ink bar and bold name, never colour alone. Only that row has
+              // a left border (the others are padded by its width instead): forced colours draw every
+              // border, a transparent one too, in CanvasText (review screens-11).
+              selected ? 'border-l-4 border-l-fg pl-3' : 'pl-4',
             )}
           >
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
