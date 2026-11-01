@@ -13,6 +13,12 @@
 //   - `retry`: an error.tsx boundary for anything else, with the boundary's retry() (a button; the
 //     boundary exists only with JavaScript).
 // A link leads somewhere else in the meantime.
+//
+// What each page's state says lives in ./load-errors/, one module per page, so the page and its
+// boundary use the same words and a boundary loads only its own into the browser. One shared table
+// put every page's words into every boundary's chunk: Turbopack does not drop an object's unused
+// keys, and a route with two boundaries (the dashboard's and its own) carried it twice; M11's two
+// entries pushed /dashboard/students/requests over its 170 kB budget.
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

@@ -20,7 +20,7 @@ import type { ReactNode } from 'react';
 
 import { FormMessage } from '@/components/account/fields';
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { DASHBOARD_LOAD_ERROR } from '@/components/account/load-errors/dashboard';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, PinIcon } from '@/components/icons';
@@ -295,7 +295,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const client = serverClient(await headers(), guard.principal);
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
   const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me()]));
-  if (!loaded) return <LoadError {...LOAD_ERRORS.dashboard} retryHref="/dashboard" />;
+  if (!loaded) return <LoadError {...DASHBOARD_LOAD_ERROR} retryHref="/dashboard" />;
   const [overview, me] = loaded;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);

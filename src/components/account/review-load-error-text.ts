@@ -1,7 +1,7 @@
 // What the error state of the M10a and M10b pages says when their own read fails (rendered on the
 // server, with a "Try again" link): the historical teacher form, the review queue, the invitation
 // form and link, instructor verification, a party's case and "Report profile". Apart from
-// load-error-text.ts because the error.tsx boundaries of the dashboard import that module into the
+// ./load-errors/ because the error.tsx boundaries of the dashboard import those modules into the
 // browser, and these pages have no boundary of their own (M10a: the shared module stays as small
 // as the route budget needs).
 

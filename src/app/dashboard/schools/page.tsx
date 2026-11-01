@@ -9,7 +9,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { SCHOOLS_LOAD_ERROR } from '@/components/account/load-errors/schools';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { ArrowRightIcon, PlusIcon } from '@/components/icons';
 import { LocationTag } from '@/components/schools/school-list';
@@ -34,7 +34,7 @@ export default async function SchoolsDashboardPage() {
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const mine = await pageRead(serverClient(await headers(), guard.principal).schools.mine());
-  if (!mine) return <LoadError {...LOAD_ERRORS.schools} retryHref={PAGE} />;
+  if (!mine) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">

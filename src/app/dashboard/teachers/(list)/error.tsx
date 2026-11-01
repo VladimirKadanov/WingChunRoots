@@ -7,8 +7,8 @@
 // else, inside the app shell, with the boundary's retry().
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { TEACHERS_LOAD_ERROR } from '@/components/account/load-errors/teachers';
 
 export default function TeachersError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  return <LoadError {...LOAD_ERRORS.teachers} retry={retry} />;
+  return <LoadError {...TEACHERS_LOAD_ERROR} retry={retry} />;
 }

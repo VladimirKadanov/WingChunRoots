@@ -9,7 +9,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { SCHOOL_LOAD_ERROR } from '@/components/account/load-errors/school';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -55,7 +55,7 @@ export default async function SchoolEditPage({ params, searchParams }: Props) {
       )
     : null;
   if (missing || (editor && !editor.school)) return <SchoolNotFound />;
-  if (!editor) return <LoadError {...LOAD_ERRORS.school} retryHref={`${page}/edit`} />;
+  if (!editor) return <LoadError {...SCHOOL_LOAD_ERROR} retryHref={`${page}/edit`} />;
   const school = editor.school!;
   const formOutcome = await readFormResult(SCHOOL_FORM, query.outcome);
 

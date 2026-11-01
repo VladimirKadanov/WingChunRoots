@@ -10,7 +10,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { SCHOOLS_LOAD_ERROR } from '@/components/account/load-errors/schools';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { ArrowRightIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -42,7 +42,7 @@ export default async function NewSchoolPage({ searchParams }: { searchParams: Se
   const city = typeof query.city === 'string' ? query.city.trim().slice(0, 100) || null : null;
   const client = serverClient(await headers(), guard.principal);
   const mine = await pageRead(client.schools.mine());
-  if (!mine) return <LoadError {...LOAD_ERRORS.schools} retryHref={PAGE} />;
+  if (!mine) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
   const lead = 'A draft is seen only by you. Send it for review from its page; a moderator checks it before it is public.';
 
   if (mine.accountType !== 'sifu' || !mine.hasProfile) {
@@ -67,7 +67,7 @@ export default async function NewSchoolPage({ searchParams }: { searchParams: Se
   }
 
   const [editor, initial] = await Promise.all([pageRead(client.schools.options({ city })), readFormResult(SCHOOL_FORM, query.outcome)]);
-  if (!editor) return <LoadError {...LOAD_ERRORS.schools} retryHref={PAGE} />;
+  if (!editor) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
   return (
     <EditorShell title="List a school" lead={lead}>
       <CitySearch action={PAGE} query={city} />

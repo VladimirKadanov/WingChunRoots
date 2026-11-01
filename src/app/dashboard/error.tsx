@@ -6,8 +6,8 @@
 // /dashboard/settings has its own (./settings/error.tsx).
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { DASHBOARD_LOAD_ERROR } from '@/components/account/load-errors/dashboard';
 
 export default function DashboardError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  return <LoadError {...LOAD_ERRORS.dashboard} retry={retry} />;
+  return <LoadError {...DASHBOARD_LOAD_ERROR} retry={retry} />;
 }

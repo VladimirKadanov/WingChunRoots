@@ -11,7 +11,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { SETTINGS_LOAD_ERROR } from '@/components/account/load-errors/settings';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDay, untilPlanEnd } from '@/lib/dates';
@@ -49,7 +49,7 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
   const query = await searchParams;
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
   const mine = await pageRead(serverClient(await headers(), guard.principal).plans.mine());
-  if (!mine) return <LoadError {...LOAD_ERRORS.settings} retryHref="/dashboard/settings" />;
+  if (!mine) return <LoadError {...SETTINGS_LOAD_ERROR} retryHref="/dashboard/settings" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
 
   return (

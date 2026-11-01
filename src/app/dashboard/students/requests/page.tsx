@@ -20,7 +20,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { STUDENT_REQUESTS_LOAD_ERROR } from '@/components/account/load-errors/student-requests';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM, UPGRADE_SUMMARY_ID } from '@/components/plans/form-ids';
@@ -87,7 +87,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const incoming = await pageRead(serverClient(await headers(), guard.principal).relationships.incoming());
-  if (!incoming) return <LoadError {...LOAD_ERRORS.studentRequests} retryHref={PAGE} />;
+  if (!incoming) return <LoadError {...STUDENT_REQUESTS_LOAD_ERROR} retryHref={PAGE} />;
   const [approveResult, rejectResult, endResult, pilotOutcome] = await Promise.all([
     readFormResult(APPROVE_FORM, query.outcome),
     readFormResult(REJECT_FORM, query.outcome),

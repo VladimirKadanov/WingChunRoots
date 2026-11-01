@@ -12,7 +12,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { SCHOOL_LOAD_ERROR } from '@/components/account/load-errors/school';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM } from '@/components/plans/form-ids';
@@ -63,7 +63,7 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
       )
     : ((missing = true), null);
   if (missing || (editor && !editor.school)) return <SchoolNotFound />;
-  if (!editor) return <LoadError {...LOAD_ERRORS.school} retryHref={page} />;
+  if (!editor) return <LoadError {...SCHOOL_LOAD_ERROR} retryHref={page} />;
   const school = editor.school!;
   const listingOutcome = await readFormResult(SCHOOL_ACTION_FORM, query.outcome);
   const one = (key: string) => (typeof query[key] === 'string' ? query[key] : null);

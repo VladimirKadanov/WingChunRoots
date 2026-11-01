@@ -5,8 +5,8 @@
 // for anything else, inside the app shell, with the boundary's retry().
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { PRIVACY_LOAD_ERROR } from '@/components/account/load-errors/privacy';
 
 export default function PrivacyError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  return <LoadError {...LOAD_ERRORS.privacy} retry={retry} />;
+  return <LoadError {...PRIVACY_LOAD_ERROR} retry={retry} />;
 }
