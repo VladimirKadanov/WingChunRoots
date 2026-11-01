@@ -17,14 +17,14 @@ import type { ReactNode } from 'react';
 import { LoadError } from '@/components/account/load-error';
 import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
+import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { formatDay } from '@/lib/dates';
 import { formatSize } from '@/lib/file-size';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ASSIGN_FORM, DECIDE_FORM, NOTE_FORM } from '../form-ids';
+import { assignForm, DECIDE_FORM, NOTE_FORM } from '../form-ids';
 import { AssignForm, DecideForm, NoteForm } from '../forms';
 
 export const instant = false;
@@ -110,14 +110,18 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     );
   }
   if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
-  const [assignResult, noteResult, verifyResult, rejectResult, askResult] = await Promise.all([
-    readFormResult(ASSIGN_FORM, query.outcome),
+  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult] = await Promise.all([
+    readFormResult(assignForm('self'), query.outcome),
+    readFormResult(assignForm('none'), query.outcome),
+    readFormResult(assignForm('choose'), query.outcome),
     readFormResult(NOTE_FORM, query.outcome),
     readFormResult(`${DECIDE_FORM}-verify`, query.outcome),
     readFormResult(`${DECIDE_FORM}-reject`, query.outcome),
     readFormResult(`${DECIDE_FORM}-needs_info`, query.outcome),
   ]);
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
+  // New for every change (actions.ts doneAt): a new note mounts, so it takes the focus again.
+  const doneKey = `${String(query.done)}-${String(query.n)}`;
   const rel = view.relationship;
   const userId = guard.principal!.user.id;
 
@@ -131,10 +135,12 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         <span>Opened {formatDay(view.openedAt)}</span>
         <span>{view.assignee ? (view.assignee.me ? 'Assigned to you' : `Assigned to another reviewer${view.assignee.role ? ` (${view.assignee.role})` : ''}`) : 'Not assigned'}</span>
       </p>
-      {done ? (
-        <p id="case-outcome" role="status" tabIndex={-1} data-testid="case-outcome" className="mt-5 scroll-mt-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm">
-          {done}
-        </p>
+      {/* What a change did takes the focus (OutcomeNote, the M09 pattern; M10a review, screens-5).
+          A note's confirmation sits under the notes instead, where the reviewer is. */}
+      {done && query.done !== 'noted' ? (
+        <div key={doneKey} className="mt-5">
+          <OutcomeNote testId="case-outcome">{done}</OutcomeNote>
+        </div>
       ) : null}
 
       <div className="mt-8 grid gap-10">
@@ -210,13 +216,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
               {view.decideNote}
             </p>
           ) : null}
-          <div className="flex flex-wrap items-start gap-3">
+          {/* On a phone each form takes the full width, so its button does too (screens-10). */}
+          <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-start">
             {view.can.assignSelf ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'self', userId }} initial={assignResult} /> : null}
-            {view.can.unassign ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'none' }} /> : null}
+            {view.can.unassign ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'none' }} initial={unassignResult} /> : null}
           </div>
           {view.can.assignOthers ? (
             <div className="max-w-[34rem]">
-              <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'choose' }} reviewers={view.reviewers} />
+              <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'choose' }} reviewers={view.reviewers} initial={chooseResult} />
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
@@ -245,6 +252,11 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
               ))}
             </ul>
           )}
+          {done && query.done === 'noted' ? (
+            <OutcomeNote key={doneKey} testId="case-outcome">
+              {done}
+            </OutcomeNote>
+          ) : null}
           {view.can.note ? (
             <div className="max-w-[40rem]">
               <NoteForm caseId={view.id} idempotencyKey={randomUUID()} initial={noteResult} />

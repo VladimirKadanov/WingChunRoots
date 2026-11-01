@@ -14,6 +14,7 @@ import { NameText } from '@/components/account/person-names';
 import { LoadError } from '@/components/account/load-error';
 import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { OutcomeNote } from '@/components/relationships/parts';
 import { formatSize } from '@/lib/file-size';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -98,10 +99,12 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
         <span>Kept by {record.stewardship === 'self' ? 'its owner' : record.stewardship === 'platform' ? 'the platform' : 'nobody (unclaimed)'}</span>
         <span>{record.visibility === 'public' ? 'Public' : 'Not public'}</span>
       </p>
+      {/* It takes the focus (OutcomeNote, the M09 pattern; M10a review, screens-5). Keyed by `n`, new
+          for every save (actions.ts doneAt): a second save mounts a new note, which takes the focus. */}
       {done ? (
-        <p id="record-outcome" role="status" tabIndex={-1} data-testid="record-outcome" className="mt-5 scroll-mt-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm">
-          {done}
-        </p>
+        <div key={`${String(query.done)}-${String(query.n)}`} className="mt-5">
+          <OutcomeNote testId="record-outcome">{done}</OutcomeNote>
+        </div>
       ) : null}
       <div className="mt-8 grid gap-8">
         {record.files.length > 0 ? (

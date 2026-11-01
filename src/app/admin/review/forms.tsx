@@ -12,13 +12,14 @@ import { useActionState, useState } from 'react';
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
+import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { type FormState, IDLE } from '@/lib/form-state';
+import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
 import { addNoteAction, archiveUpdateAction, assignCaseAction, decideCaseAction } from './actions';
-import { ARCHIVE_FORM, ASSIGN_FORM, DECIDE_FORM, NOTE_FORM } from './form-ids';
+import { ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -28,14 +29,19 @@ function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pendi
       onClick={(event) => {
         if (pending) event.preventDefault();
       }}
-      className={cx(buttonVariants({ variant }), 'w-full sm:w-auto')}
+      // Full width on a phone, every decision button alike (M10a review, screens-10).
+      className={cx(buttonVariants({ variant }), 'w-full sm:w-auto sm:min-w-40')}
     >
       {pending ? pendingLabel : label}
     </button>
   );
 }
 
-/** "Assign to me", "Unassign", or an administrator's choice of reviewer. */
+/**
+ * "Assign to me", "Unassign", or an administrator's choice of reviewer. The form sends its `mode`,
+ * so only "Unassign" ever unassigns; "Assign" with no reviewer chosen is refused with the field's
+ * message (M10a review, screens-1).
+ */
 export function AssignForm({
   caseId,
   idempotencyKey,
@@ -51,8 +57,9 @@ export function AssignForm({
   initial?: FormState | null;
 }) {
   const [state, action, pending] = useActionState(assignCaseAction, initial ?? IDLE);
-  const generatedId = useFormId(ASSIGN_FORM);
-  const formId = initial ? ASSIGN_FORM : generatedId;
+  const fixedId = assignForm(mode.kind);
+  const generatedId = useFormId(fixedId);
+  const formId = initial ? fixedId : generatedId;
   useFocusOnError(formId, state);
   const [assignee, setAssignee] = useState(initial?.values?.assigneeId ?? '');
   return (
@@ -60,12 +67,12 @@ export function AssignForm({
       <FormMessage form={formId} state={state} single />
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <input type="hidden" name="mode" value={mode.kind} />
       {mode.kind === 'self' ? <input type="hidden" name="assigneeId" value={mode.userId} /> : null}
       {mode.kind === 'choose' ? (
         <SelectField form={formId} name="assigneeId" label="Give the case to" autoComplete="off" state={state} value={assignee} onValue={setAssignee}>
-          <option value="" disabled>
-            Choose a reviewer
-          </option>
+          {/* Not disabled: the select always sends a value, and an empty one is refused by name. */}
+          <option value="">Choose a reviewer</option>
           {reviewers.map((reviewer) => (
             <option key={reviewer.id} value={reviewer.id}>
               {reviewer.label}
@@ -120,8 +127,12 @@ export function DecideForm({ caseId, decision, idempotencyKey, initial }: { case
   useFocusOnError(formId, state);
   const text = DECISIONS[decision];
   return (
-    <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-subtle" data-testid={`decide-${decision}`}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center px-4 font-semibold [&::-webkit-details-marker]:hidden">{text.label}…</summary>
+    <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
+      {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-sm px-4 py-2 font-semibold hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
+        <span>{text.label}…</span>
+        <ChevronDownIcon size={18} className="shrink-0 text-fg-muted transition-transform duration-(--duration-fast) group-open:rotate-180" />
+      </summary>
       <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3 px-4 pt-1 pb-4">
         <FormMessage form={formId} state={state} single />
         <input type="hidden" name="caseId" value={caseId} />
@@ -205,7 +216,14 @@ export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; in
         <option value="living">Living</option>
       </SelectField>
       <TextAreaField form={formId} name="bio" label="Biography (English)" optional maxLength={1000} rows={5} lang="en" defaultValue={record.bio ?? undefined} state={state} className="max-w-[40rem]" />
-      <EvidenceUploader label="Link evidence" hint="Optional. JPEG, PNG, WebP or PDF, up to 20 MB each. Linked files stay with the record." discard={discardEvidenceAction} error={state.status === 'error' ? state.fields?.evidenceIds : undefined} />
+      <EvidenceUploader
+        label="Link evidence"
+        hint="Optional. JPEG, PNG, WebP or PDF, up to 20 MB each. Linked files stay with the record."
+        discard={discardEvidenceAction}
+        // The error summary's link and the focus after a refusal find the field by this id (screens-3).
+        inputId={fieldId(formId, 'evidenceIds')}
+        error={state.status === 'error' ? state.fields?.evidenceIds : undefined}
+      />
       <TextAreaField
         form={formId}
         name="reason"
