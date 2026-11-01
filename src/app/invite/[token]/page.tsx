@@ -6,9 +6,10 @@
 // decides; once approved the record becomes the account's profile and the student's request waits
 // for its answer (M09). Until then nothing about it is public.
 //
-// An unknown or malformed token gets the same "not found" as any other: nothing tells which
-// tokens exist. The page is never indexed and sends no referrer, so the token stays in the link.
-// Reads the session, so the page renders per request.
+// An unknown, malformed or revoked token, and one another account has used, gets the same "not
+// found" (invitations.get answers 404): nothing tells which tokens exist or existed. The page is
+// never indexed, and its address (with the token) goes to no other site. Reads the session, so
+// the page renders per request.
 
 import { randomUUID } from 'node:crypto';
 
@@ -34,7 +35,10 @@ export const instant = false;
 export const metadata: Metadata = {
   title: 'Claim your profile',
   robots: { index: false, follow: false },
-  referrer: 'no-referrer',
+  // The token is in the address: the Referer goes only to this site, never to another one. Not
+  // `no-referrer`: with it a browser sends `Origin: null` with the form's POST (no JavaScript, or
+  // before hydration), and Next.js refuses a Server Action without a matching origin.
+  referrer: 'same-origin',
 };
 
 type Params = Promise<{ token: string }>;
@@ -97,17 +101,12 @@ export default async function InvitationPage({ params, searchParams }: { params:
   const here = `/invite/${token}`;
   const initial = await readFormResult(ACCEPT_FORM, query.outcome);
 
-  if (view.state !== 'pending' && view.state !== 'yours') {
+  // A revoked link, and one another account has used, are "not found" above (ADR 0013 §2).
+  if (view.state === 'expired') {
     return (
       <Frame>
-        <h1 className="mt-2 font-display text-feature">{view.state === 'expired' ? 'Invitation expired' : view.state === 'used' ? 'Invitation used' : 'Invitation withdrawn'}</h1>
-        <Note testId="invitation-closed">
-          {view.state === 'expired'
-            ? 'This invitation has expired. Ask the person who invited you to send a new one.'
-            : view.state === 'used'
-              ? 'This invitation has been used already. Each invitation works only once.'
-              : 'This invitation no longer works: a newer one was sent, or the request was withdrawn. Ask the person who invited you to send a new one.'}
-        </Note>
+        <h1 className="mt-2 font-display text-feature">Invitation expired</h1>
+        <Note testId="invitation-closed">This invitation has expired. Ask the person who invited you to send a new one.</Note>
       </Frame>
     );
   }
@@ -152,12 +151,16 @@ export default async function InvitationPage({ params, searchParams }: { params:
           </p>
         ) : !view.viewer.signedIn ? (
           <div className="grid gap-3" data-testid="invitation-sign-in">
-            <p className="max-w-[60ch] text-ui">To claim the profile, sign in. If you have no account yet, create one, confirm your e-mail address, then open this link again.</p>
+            <p className="max-w-[60ch] text-ui">
+              To claim the profile, sign in. If you have no account yet, create one: once you have confirmed your e-mail address and signed in,
+              you come back here to claim it.
+            </p>
             <p className="flex flex-wrap gap-3">
               <Link href={`/sign-in?next=${encodeURIComponent(here)}`} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
                 Sign in to claim
               </Link>
-              <Link href="/sign-up" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+              {/* The invitation rides through sign-up, the confirmation e-mail and the sign-in (M10b review). */}
+              <Link href={`/sign-up?next=${encodeURIComponent(here)}`} className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
                 Create an account
               </Link>
             </p>

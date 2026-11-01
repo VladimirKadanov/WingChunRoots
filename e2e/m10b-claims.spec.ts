@@ -16,8 +16,9 @@ import { expect, test, type APIRequestContext, type Browser, type BrowserContext
 import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
-import { BASE_URL, closeHelpers, emailDataFromOutbox, emailLinkFromOutbox, giveOwnAddress, loadTestEnv, signInAs, uniqueEmail, userIdOf, type SignInTarget } from './helpers/auth';
+import { BASE_URL, closeHelpers, emailDataFromOutbox, emailLinkFromOutbox, giveOwnAddress, loadTestEnv, NEW_ACCOUNT_PASSWORD, signInAs, uniqueEmail, userIdOf, type SignInTarget } from './helpers/auth';
 import { CLAIM_LINEAGE, fictionalPdf, letters, lineageIdOf } from './helpers/evidence';
+import { nodeOf, openExplorer } from './helpers/explorer';
 import { apiPost } from './helpers/plans';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 
@@ -162,6 +163,15 @@ async function publicText(request: APIRequestContext, path: string): Promise<str
   return response.status() === 200 ? response.text() : `status ${response.status()}`;
 }
 
+/** The text of the explorer's panel of a person (/explore with them in focus, their node selected), once it lists their teacher. */
+async function explorerPanelText(page: Page, personId: string): Promise<string> {
+  await openExplorer(page, { focus: personId });
+  await nodeOf(page, personId).click();
+  const panel = visible(page.getByTestId('explorer-panel'));
+  await expect(panel.getByRole('heading', { name: /^Teachers?$/ })).toBeVisible();
+  return (await panel.textContent()) ?? '';
+}
+
 /** The people an anonymous search finds, as JSON text. */
 async function searchPeople(request: APIRequestContext, q: string): Promise<string> {
   const response = await request.post(`${BASE_URL}/api/v1/search`, { data: { q } });
@@ -241,6 +251,11 @@ test('@M10b a missing teacher gets an invitation, claims the profile after revie
   await expect(visible(invitee.page.getByTestId('claim-sent'))).toBeVisible();
   const caseId = new URL(invitee.page.url()).pathname.split('/').pop()!;
   await expect(visible(invitee.page.getByTestId('party-case-status'))).toHaveAttribute('data-status', 'open');
+  // The case page of a claim (a dynamic route, not in e2e/routes.ts): axe in both themes.
+  for (const theme of ['light', 'dark'] as const) {
+    await switchColorScheme(invitee.page, theme);
+    await expectNoAxeViolations(invitee.page, `the case page of a profile claim (${theme})`);
+  }
   // The link works once.
   await invitee.page.goto(invitePath);
   await expect(visible(invitee.page.getByTestId('invitation-yours'))).toBeVisible();
@@ -354,6 +369,8 @@ test('@M10b a self-declared Sifu is shown as unverified until an archivist appro
   await anonymous.page.goto(`/people/${sifu.slug}`);
   await expect(visible(anonymous.page.getByTestId('instructor-fact'))).toHaveText('Instructor (unverified)');
   await expect.poll(() => publicText(request, `/people/${student.slug}`), { timeout: 15_000 }).toContain('Approved by an unverified instructor');
+  // The explorer's panel of the student says so on the link too, as the profile does.
+  await expect.poll(() => explorerPanelText(anonymous.page, student.personId), { timeout: 30_000 }).toContain('Approved by an unverified instructor');
   const profile = await request.get(`${BASE_URL}/api/v1/people/${sifu.slug}`);
   expect(((await profile.json()) as { instructor: string | null }).instructor).toBe('unverified');
 
@@ -386,6 +403,7 @@ test('@M10b a self-declared Sifu is shown as unverified until an archivist appro
   await anonymous.page.goto(`/people/${sifu.slug}`);
   await expect(visible(anonymous.page.getByTestId('instructor-fact'))).toHaveText('Instructor');
   await expect.poll(() => publicText(request, `/people/${student.slug}`), { timeout: 15_000 }).not.toContain('Approved by an unverified instructor');
+  await expect.poll(() => explorerPanelText(anonymous.page, student.personId), { timeout: 30_000 }).not.toContain('Approved by an unverified instructor');
   expect(await isPublicEdge(relationshipId)).toBe(true);
   await sifu.page.goto('/dashboard/instructor');
   await expect(visible(sifu.page.getByTestId('instructor-status'))).toHaveAttribute('data-status', 'verified');
@@ -407,6 +425,11 @@ test('@M10b a moderator sets a relationship to in arbitration with a reason; pub
   await visible(moderator.page.getByRole('button', { name: 'Set in arbitration' })).click();
   await expect(form.getByLabel(/^Reason/)).toHaveAttribute('aria-invalid', 'true');
   expect((await relationshipRow(relationshipId)).status).toBe('verified');
+  // The arbitration form (a dynamic route, not in e2e/routes.ts), with its error: axe in both themes.
+  for (const theme of ['light', 'dark'] as const) {
+    await switchColorScheme(moderator.page, theme);
+    await expectNoAxeViolations(moderator.page, `the arbitration form with the reason missing (${theme})`);
+  }
   await form.getByLabel(/^Reason/).fill(reason);
   await visible(moderator.page.getByRole('button', { name: 'Set in arbitration' })).click();
   await moderator.page.waitForURL(/\/admin\/review\/[0-9a-f-]{36}\?done=arbitrated/);
@@ -439,6 +462,11 @@ test('@M10b a moderator sets a relationship to in arbitration with a reason; pub
   await student.page.goto(`/dashboard/cases/${caseId}`);
   await expect(visible(student.page.getByTestId('party-case-status'))).toHaveAttribute('data-status', 'needs_info');
   await expect(visible(student.page.getByTestId('party-case-messages'))).toContainText(reason);
+  // The case page of a dispute, with the evidence field and the answer form: axe in both themes.
+  for (const theme of ['light', 'dark'] as const) {
+    await switchColorScheme(student.page, theme);
+    await expectNoAxeViolations(student.page, `the case page of a dispute (${theme})`);
+  }
   await chooseFiles(student.page, [{ name: 'demo-training-card.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(20_000) }]);
   await visible(student.page.getByTestId('case-reply-form')).getByLabel('Your answer').fill('Fictional: my training card is attached.');
   await visible(student.page.getByRole('button', { name: /^Send/ })).click();
@@ -486,8 +514,143 @@ test('@M10b "Report profile" opens a review case and the same user cannot report
   // No automatic hiding: the profile is still public; the case waits in the moderators' queue.
   expect((await request.get(`${BASE_URL}/api/v1/people/${target.slug}`)).status()).toBe(200);
   const moderator = await signedIn(browser, 'moderator');
+  // In the queue the row names the reported profile, in its People column and in its link's name.
+  await moderator.page.goto('/admin/review?kind=profile_report&sort=newest');
+  await expect(visible(moderator.page.getByTestId('queue-intro'))).toContainText('profile reports');
+  const link = visible(moderator.page.locator(`a[href="/admin/review/${reviewCase.id}"]`));
+  await expect(link).toHaveAccessibleName(new RegExp(`reported profile ${target.name}`));
+  const row = visible(moderator.page.locator('tr').filter({ has: moderator.page.locator(`a[href="/admin/review/${reviewCase.id}"]`) }));
+  await expect(row.getByTestId('case-subject')).toHaveText(`Reported ${target.name}`);
   await moderator.page.goto(`/admin/review/${reviewCase.id}`);
   await expect(visible(moderator.page.getByTestId('case-status'))).toHaveAttribute('data-status', 'open');
   await expect(visible(moderator.page.getByRole('heading', { level: 1 }))).toHaveText('Profile report');
   await Promise.all([target.context.close(), reporter.context.close(), moderator.context.close()]);
+});
+
+test('@M10b the invitation page sends its address to no other site, and its claim works without JavaScript', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const student = await member(browser, 'Student');
+  const teacherEmail = uniqueEmail('no-script');
+  const relationshipId = await inviteThroughApi(student, `Demo Mentor ${capital(letters())}`, teacherEmail);
+  const invitePath = await invitationPath(teacherEmail);
+
+  // A signed-in account without a profile, in a browser that runs no JavaScript: the form posts
+  // itself, and the Server Action answers with a redirect (post/redirect/get, ADR 0004).
+  const context = await browser.newContext({ baseURL: BASE_URL, javaScriptEnabled: false });
+  await giveOwnAddress(context);
+  const page = await context.newPage();
+  const account = await signInAs(page, 'new');
+  const inviteeId = (await userIdOf(account.email))!;
+  await page.goto(invitePath);
+  const posted = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === invitePath);
+  await visible(page.getByTestId('accept-invitation-form')).getByLabel(/^Note for the reviewers/).fill('I am the fictional teacher of this demo student.');
+  await visible(page.getByRole('button', { name: 'Claim this profile' })).click();
+  // The browser names this site as the origin of the post, which Next.js requires of a Server Action.
+  expect((await posted).headers().origin).toBe(BASE_URL);
+  await page.waitForURL(/\/dashboard\/cases\/[0-9a-f-]{36}\?claimed=1/, { timeout: 15_000 });
+  await expect(visible(page.getByTestId('claim-sent'))).toBeVisible();
+  const caseId = new URL(page.url()).pathname.split('/').pop()!;
+  const claims = await getDb().execute<{ status: string; case_id: string }>(sql`
+    SELECT status, review_case_id::text AS case_id FROM person_claim WHERE user_id = ${inviteeId}::uuid`);
+  expect(claims.rows).toEqual([{ status: 'pending', case_id: caseId }]);
+  expect((await relationshipRow(relationshipId)).status).toBe('awaiting_claim');
+
+  // The token is in the page's address: the page tells the browser to send its address only to
+  // this site (its own requests and posts), and nothing at all to another one.
+  await page.goto(invitePath);
+  await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'same-origin');
+  await Promise.all([student.context.close(), context.close()]);
+});
+
+test('@M10b "Create an account" on an invitation keeps it through sign-up, the e-mail confirmation and sign-in, and the claim makes no profile of its own', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const student = await member(browser, 'Student');
+  const teacherName = `Demo Mentor ${capital(letters())}`;
+  const teacherEmail = uniqueEmail('signs-up');
+  const relationshipId = await inviteThroughApi(student, teacherName, teacherEmail);
+  const invitePath = await invitationPath(teacherEmail);
+
+  // The invited teacher has no account: the invitation's "Create an account".
+  const invitee = await newClient(browser);
+  const { page } = invitee;
+  await page.goto(invitePath);
+  await visible(page.getByRole('link', { name: 'Create an account' })).click();
+  await page.waitForURL((u) => u.pathname === '/sign-up' && u.searchParams.get('next') === invitePath, { timeout: 15_000 });
+  const email = uniqueEmail('invited-sign-up');
+  await visible(page.getByLabel('E-mail address')).fill(email);
+  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
+  for (const label of ['I am 18 or older.', 'I accept the terms of use.', /I will record only what I believe to be true/, /I have read the privacy notice\./]) {
+    await visible(page.getByLabel(label)).check();
+  }
+  await visible(page.getByRole('button', { name: 'Create account' })).click();
+  await expect(visible(page.getByRole('heading', { level: 1, name: 'Check your inbox' }))).toBeVisible();
+
+  // The confirmation link carries the invitation, and so does the sign-in it leads to.
+  const link = new URL(await emailLinkFromOutbox('verify-email', email));
+  expect(link.searchParams.get('next')).toBe(invitePath);
+  await page.goto(`${link.pathname}${link.search}`);
+  await visible(page.getByRole('button', { name: 'Confirm my address' })).click();
+  await page.waitForURL((u) => u.pathname === '/sign-in' && u.searchParams.get('verified') === '1' && u.searchParams.get('next') === invitePath, { timeout: 15_000 });
+  await visible(page.getByLabel('Password', { exact: true })).fill(NEW_ACCOUNT_PASSWORD);
+  await visible(page.getByRole('button', { name: 'Sign in' })).click();
+
+  // Signed in, the account is back on the invitation (no profile set-up on the way) and claims.
+  await page.waitForURL((u) => u.pathname === invitePath, { timeout: 15_000 });
+  await visible(page.getByRole('button', { name: 'Claim this profile' })).click();
+  await page.waitForURL(/\/dashboard\/cases\/[0-9a-f-]{36}\?claimed=1/);
+  const caseId = new URL(page.url()).pathname.split('/').pop()!;
+  const userId = (await userIdOf(email))!;
+  const own = await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM person WHERE claimed_by_user_id = ${userId}::uuid`);
+  expect(own.rows[0]!.n, 'the account made no profile of its own').toBe(0);
+  const claims = await getDb().execute<{ status: string; case_id: string; slug: string }>(sql`
+    SELECT c.status, c.review_case_id::text AS case_id, p.slug FROM person_claim c JOIN person p ON p.id = c.person_id WHERE c.user_id = ${userId}::uuid`);
+  expect(claims.rows).toEqual([{ status: 'pending', case_id: caseId, slug: (await relationshipRow(relationshipId)).slug }]);
+  await Promise.all([student.context.close(), invitee.context.close()]);
+});
+
+test('@M10b a revoked invitation link, and one another account has used, answer as a link that never existed', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const student = await member(browser, 'Student');
+  const teacherEmail = uniqueEmail('revoked');
+  const relationshipId = await inviteThroughApi(student, `Demo Mentor ${capital(letters())}`, teacherEmail);
+  const firstPath = await invitationPath(teacherEmail);
+  // A newer link revokes the first one (ADR 0013 §2: the same 404 as an unknown link).
+  const resent = await apiPost(student.page, '/invitations/send', { relationshipId, email: teacherEmail, idempotencyKey: randomUUID() });
+  expect(resent.status(), await resent.text()).toBe(200);
+  const invitePath = await invitationPath(teacherEmail);
+  expect(invitePath).not.toBe(firstPath);
+
+  const visitor = await newClient(browser);
+  const unknownPath = `/invite/${Buffer.alloc(32, 9).toString('base64url')}`;
+  const notFound = async (page: Page, path: string) => {
+    await page.goto(path);
+    await expect(visible(page.getByRole('heading', { level: 1 })), path).toHaveText('Invitation not found');
+    return (await visible(page.getByTestId('invitation-missing')).textContent()) ?? '';
+  };
+  const unknownText = await notFound(visitor.page, unknownPath);
+  expect(await notFound(visitor.page, firstPath)).toBe(unknownText);
+  const view = async (token: string) => {
+    const response = await apiPost(visitor.page, '/invitations/view', { token });
+    return { status: response.status(), body: await response.text() };
+  };
+  const unknownView = await view(unknownPath.split('/').pop()!);
+  expect(unknownView.status).toBe(404);
+  expect(await view(firstPath.split('/').pop()!)).toEqual(unknownView);
+
+  // Used by one account: to everyone else, signed in or not, the link no longer exists.
+  const claimant = await newClient(browser);
+  await signInAs(claimant.page, 'new');
+  const token = invitePath.split('/').pop()!;
+  const accepted = await apiPost(claimant.page, '/invitations/accept', { token, idempotencyKey: randomUUID() });
+  expect(accepted.status(), await accepted.text()).toBe(200);
+  await claimant.page.goto(invitePath);
+  await expect(visible(claimant.page.getByTestId('invitation-yours'))).toBeVisible();
+  expect(await notFound(visitor.page, invitePath)).toBe(unknownText);
+  expect(await view(token)).toEqual(unknownView);
+  const other = await newClient(browser);
+  await signInAs(other.page, 'new');
+  expect(await notFound(other.page, invitePath)).toBe(unknownText);
+  const again = await apiPost(other.page, '/invitations/accept', { token, idempotencyKey: randomUUID() });
+  expect(again.status()).toBe(404);
+  await Promise.all([student.context.close(), visitor.context.close(), claimant.context.close(), other.context.close()]);
 });

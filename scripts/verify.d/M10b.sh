@@ -145,7 +145,7 @@ check "the invitation e-mail links only the M02 drafts (terms and privacy notice
   f=src/server/templates/email/invitation.tsx
   grep -q "/legal/terms" "$f" && grep -q "/legal/privacy" "$f" && grep -q "DEFAULT D23" "$f"'
 refute "the invitation service never logs (no console.* in invitations.ts)" grep_code 'console\.' "$INVITATIONS"
-check "the invitation page sends no referrer, so the token stays in the link" grep -qF "referrer: 'no-referrer'," 'src/app/invite/[token]/page.tsx'
+check "the invitation page sends its address (the token) to no other site, and keeps the Origin of its own posts" grep -qF "referrer: 'same-origin'," 'src/app/invite/[token]/page.tsx'
 check "invitations are limited per relationship (3) and per account (10) in 24 hours" bash -c '
   f='"$INVITATIONS"'
   grep -qF "export const INVITATIONS_PER_RELATIONSHIP = 3;" "$f" && grep -qF "export const INVITATIONS_PER_ACCOUNT = 10;" "$f" && grep -qF "export const INVITATION_WINDOW_HOURS = 24;" "$f"'

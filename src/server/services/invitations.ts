@@ -10,7 +10,8 @@
 //     → with an e-mail address, an invitation (below).
 //   invitations.send (student): a new invitation for an awaiting_claim relationship (an address
 //     added later, or a new link after the old one expired); earlier links stop working.
-//   invitations.get (anyone with the link): what the invitation is about, never the evidence.
+//   invitations.get (anyone with the link): what the invitation is about, never the evidence; a
+//     revoked link, and one another account has used, answer as an unknown one (404).
 //   invitations.accept (a signed-in account without a profile of its own)
 //     → a person_claim and a review_case of kind person_claim (open), the invitation used; the
 //       relationship stays awaiting_claim and involved_only. An archivist or an administrator
@@ -19,7 +20,8 @@
 //
 // The invitation token (DEFAULT, the milestone's brief): 32 random bytes, sent only in the e-mail
 // (the outbox seals the link, src/server/mail/seal.ts); only its SHA-256 is stored; it works for
-// INVITATION_DAYS days and once. An unknown, malformed or revoked token gets the same 404. The
+// INVITATION_DAYS days and once. An unknown, malformed or revoked token, and one another account
+// has accepted, gets the same 404 (ADR 0013 §2), to read it and to accept it. The
 // address is kept until 30 days after the invitation ends (retention.purge, docs/data-model.md §7)
 // and is never written to a log or an audit row.
 //
@@ -443,12 +445,15 @@ export async function sendInvitation(principal: Principal | null, raw: z.input<t
 export interface InvitationView {
   /**
    * pending: it can be accepted; yours: this account accepted it (the claim is reviewed or was
-   * decided); used: another account accepted it; expired; revoked (a newer link was sent, or the
-   * student withdrew the request).
+   * decided); expired. A revoked link (a newer one was sent, or the student withdrew the request)
+   * and one another account accepted are never a view: they answer 404, as an unknown token does.
    */
-  state: 'pending' | 'yours' | 'used' | 'expired' | 'revoked';
+  state: 'pending' | 'yours' | 'expired';
   expiresAt: string | null;
-  /** The names of the record and of the student, and the lineage: only while it is pending or yours. */
+  /**
+   * The names of the record and of the student, and the lineage: while it is pending, and for the
+   * account that accepted it while its claim is pending or approved and the request stands.
+   */
   teacherNames: NameData[] | null;
   studentNames: NameData[] | null;
   lineageName: string | null;
@@ -510,8 +515,12 @@ async function refusalFor(db: Executor, p: Principal, inv: InvitationRow, studen
   return null;
 }
 
-/** The state of an invitation as the page and the API report it. */
-function stateOf(inv: InvitationRow, relationshipStatus: string | null, viewerId: string | null): InvitationView['state'] {
+/**
+ * The state of an invitation for `viewerId`: the view's states, and the two that answer as an
+ * unknown token (used: another account accepted it; revoked: a newer link, or the request left
+ * awaiting_claim).
+ */
+function stateOf(inv: InvitationRow, relationshipStatus: string | null, viewerId: string | null): InvitationView['state'] | 'used' | 'revoked' {
   if (inv.status === 'accepted') return viewerId !== null && inv.acceptedByUserId === viewerId ? 'yours' : 'used';
   if (inv.status === 'revoked' || relationshipStatus !== 'awaiting_claim') return 'revoked';
   if (inv.status === 'expired' || inv.expiresAt.getTime() <= Date.now()) return 'expired';
@@ -521,7 +530,9 @@ function stateOf(inv: InvitationRow, relationshipStatus: string | null, viewerId
 /**
  * invitations.get: what an invitation link is about, for anyone who holds the link (the token is
  * the secret; it travels in the request body, never in an API address). The names only while the
- * invitation can be accepted, or for the account that accepted it. Never the student's evidence.
+ * invitation can be accepted, or for the account that accepted it while its claim stands. A
+ * revoked link and one another account accepted answer 404, as an unknown token does. Never the
+ * student's evidence.
  */
 export async function getInvitation(principal: Principal | null, raw: z.input<typeof invitationTokenInput>): Promise<InvitationView> {
   const parsed = invitationTokenInput.safeParse(raw);
@@ -531,7 +542,8 @@ export async function getInvitation(principal: Principal | null, raw: z.input<ty
   const rel = inv.relationshipId ? await rowById(db, inv.relationshipId) : null;
   const viewerId = principal?.user.id ?? null;
   const state = stateOf(inv, rel?.status ?? null, viewerId);
-  const open = (state === 'pending' || state === 'yours') && rel !== null;
+  // ADR 0013 §2: a revoked link, and one another account has used, are not told from an unknown one.
+  if (state === 'used' || state === 'revoked') throw new ServiceError('NOT_FOUND', INVALID_LINK);
   const [claim] =
     state === 'yours' && viewerId
       ? await db
@@ -543,6 +555,10 @@ export async function getInvitation(principal: Principal | null, raw: z.input<ty
           .limit(1)
       : [];
   const refusal = principal && state === 'pending' && rel ? await refusalFor(db, principal, inv, rel.studentPersonId) : null;
+  // The names: while the link can be accepted, or for its acceptor while the claim is pending or
+  // approved and the request stands; never after a refused or closed claim (security-4).
+  const claimStands = claim !== undefined && (claim.status === 'pending' || claim.status === 'approved');
+  const open = rel !== null && (state === 'pending' || (state === 'yours' && claimStands && rel.status !== 'withdrawn'));
   return {
     state,
     expiresAt: state === 'pending' ? inv.expiresAt.toISOString() : null,
@@ -570,7 +586,8 @@ export interface AcceptResult {
 /**
  * invitations.accept: the signed-in invitee claims the record (see the top of this file). In one
  * transaction, the account's case lock, then the relationship (the lock order of every relationship
- * change), then the invitation: a second accept, by the same or another account, finds it used.
+ * change), then the invitation: a second accept by the same account finds it used; by another
+ * account, or with a revoked link, it is not found (404), as with an unknown token.
  */
 export async function acceptInvitation(principal: Principal | null, raw: z.input<typeof acceptInvitationInput>, meta: RequestMeta): Promise<AcceptResult> {
   const p = requireUser(principal);
@@ -595,9 +612,10 @@ export async function acceptInvitation(principal: Principal | null, raw: z.input
         return { caseId: replay.caseId, replayed: true };
       }
       const state = stateOf(inv, rel.status, p.user.id);
-      if (state === 'yours' || state === 'used') throw new ServiceError('CONFLICT', 'This invitation has been used already.');
+      // ADR 0013 §2: someone else's link and a revoked one answer as an unknown token.
+      if (state === 'used' || state === 'revoked') throw new ServiceError('NOT_FOUND', INVALID_LINK);
+      if (state === 'yours') throw new ServiceError('CONFLICT', 'This invitation has been used already.');
       if (state === 'expired') throw new ServiceError('CONFLICT', 'This invitation has expired. Ask the person who invited you to send a new one.');
-      if (state === 'revoked') throw new ServiceError('CONFLICT', 'This invitation no longer works. Ask the person who invited you to send a new one.');
       const refusal = await refusalFor(tx, p, inv, rel.studentPersonId);
       if (refusal) throw new ServiceError('CONFLICT', refusal);
       const [record] = await tx

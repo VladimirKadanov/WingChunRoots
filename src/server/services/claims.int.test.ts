@@ -1,7 +1,7 @@
 // Invitations, profile claims, instructor verification, profile reports and arbitration (milestone
 // M10b, In scope 1–5), against a migrated throwaway database:
-//   - the invitation token is kept only as its SHA-256, expires, works once, and an unknown or
-//     revoked one gets the same answer;
+//   - the invitation token is kept only as its SHA-256, expires, works once, and an unknown,
+//     malformed, revoked or someone else's one gets the same 404;
 //   - awaiting_claim → pending_teacher happens only after an approved person_claim; a refused claim
 //     leaves the request awaiting_claim; the invitee never opens the student's evidence before the
 //     approval, and the invited record stays out of v_public_person and search until a link with it
@@ -41,7 +41,7 @@ import { profileUpdate } from './profile';
 import { approveRelationship, getRelationship, withdrawRelationship } from './relationships';
 import { reportProfile, REPORTS_PER_DAY } from './reports';
 import { purgeExpiredEmailAddresses } from './retention';
-import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
+import { assignReviewCase, decideReviewCase, getReviewCase, listReviewCases } from './review';
 import { searchQuery } from './search';
 import { key, type Member, member, meta, newLineage, ongoingFrom, principalOf, staff } from './relationships.test-support';
 
@@ -224,14 +224,24 @@ describe('the invitation token', () => {
     expect(await refusal(acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta))).toBe('CONFLICT');
     expect((await relationship(relationshipId)).status).toBe('awaiting_claim');
 
-    // A new link: the old one is revoked, the new one works.
+    // A new link: the old one is revoked, and answers exactly as an unknown one (ADR 0013 §2); the new one works.
     await sendInvitation(student.principal, { relationshipId, email, idempotencyKey: key() }, meta);
     const fresh = await tokenSentTo(email);
     expect(fresh).not.toBe(token);
-    expect((await getInvitation(null, { token })).state).toBe('revoked');
+    const unknownAnswer = await getInvitation(null, { token: unknown }).catch((e: unknown) => e);
+    for (const viewer of [null, invitee.principal]) {
+      const revoked = await getInvitation(viewer, { token }).catch((e: unknown) => e);
+      expect(revoked).toEqual(unknownAnswer);
+    }
+    expect(await refusal(acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta))).toBe('NOT_FOUND');
     expect((await getInvitation(null, { token: fresh })).state).toBe('pending');
     const rows = await getDb().select({ status: invitation.status }).from(invitation).where(eq(invitation.relationshipId, relationshipId)).orderBy(asc(invitation.createdAt));
     expect(rows.map((r) => r.status)).toEqual(['revoked', 'pending']);
+
+    // The student withdraws the request: its pending link stops working the same way.
+    await withdrawRelationship(student.principal, { relationshipId, idempotencyKey: key() }, meta);
+    expect(await getInvitation(null, { token: fresh }).catch((e: unknown) => e)).toEqual(unknownAnswer);
+    expect(await refusal(acceptInvitation(invitee.principal, { token: fresh, idempotencyKey: key() }, meta))).toBe('NOT_FOUND');
   });
 
   it('keeps the address in the invitation e-mail no longer than the invitation’s own (retention.purge)', async () => {
@@ -251,7 +261,7 @@ describe('the invitation token', () => {
     expect(after).toEqual({ email: null, status: 'expired' });
   });
 
-  it('works once: a second account finds it used, and the student cannot accept their own invitation', async () => {
+  it('works once: a second account finds it used, answered as an unknown link (404), and the student cannot accept their own invitation', async () => {
     const { token, student } = await invite('once');
     expect(await refusal(acceptInvitation(student.principal, { token, idempotencyKey: key() }, meta))).toBe('CONFLICT');
     const first = await newcomer('once-a');
@@ -261,13 +271,14 @@ describe('the invitation token', () => {
     // The same call again replays; a new call, from anyone, is refused.
     expect(await acceptInvitation(first.principal, { token, idempotencyKey: k }, meta)).toEqual({ caseId: accepted.caseId, replayed: true });
     expect(await refusal(acceptInvitation(first.principal, { token, idempotencyKey: key() }, meta))).toBe('CONFLICT');
-    expect(await refusal(acceptInvitation(second.principal, { token, idempotencyKey: key() }, meta))).toBe('CONFLICT');
+    // Someone else's link: the same 404 as an unknown one, to read it or to accept it (ADR 0013 §2).
+    const unknownAnswer = await getInvitation(null, { token: Buffer.alloc(32, 8).toString('base64url') }).catch((e: unknown) => e);
+    expect(await refusal(acceptInvitation(second.principal, { token, idempotencyKey: key() }, meta))).toBe('NOT_FOUND');
+    expect(await getInvitation(second.principal, { token }).catch((e: unknown) => e)).toEqual(unknownAnswer);
+    expect(await getInvitation(null, { token }).catch((e: unknown) => e)).toEqual(unknownAnswer);
     expect((await getInvitation(first.principal, { token })).state).toBe('yours');
     expect((await getInvitation(first.principal, { token })).viewer.caseId).toBe(accepted.caseId);
-    const other = await getInvitation(second.principal, { token });
-    expect(other.state).toBe('used');
-    expect(other.teacherNames).toBeNull();
-    expect(other.studentNames).toBeNull();
+    expect((await getInvitation(first.principal, { token })).teacherNames).not.toBeNull();
   });
 
   it('refuses an account that has a profile of its own', async () => {
@@ -300,7 +311,9 @@ describe('the invitation token', () => {
     expect((await getInvitation(invitee.principal, { token })).viewer.claimStatus).toBe('pending');
     // The student withdraws the request: the claim closes, and its history keeps where it was.
     await withdrawRelationship(student.principal, { relationshipId, idempotencyKey: key() }, meta);
-    expect((await getInvitation(invitee.principal, { token })).viewer.claimStatus).toBe('withdrawn');
+    const closed = await getInvitation(invitee.principal, { token });
+    expect(closed.viewer.claimStatus).toBe('withdrawn');
+    expect(closed).toMatchObject({ teacherNames: null, studentNames: null, lineageName: null });
     expect((await caseEvents(caseId)).map((e) => [e.action, e.from, e.to])).toEqual([
       ['open', null, 'open'],
       ['withdraw', 'open', 'dismissed'],
@@ -321,7 +334,8 @@ describe('the invitation token', () => {
     const [pending] = await getDb().select({ id: invitation.id }).from(invitation).where(eq(invitation.relationshipId, relationshipId));
     await withdrawRelationship(student.principal, { relationshipId, idempotencyKey: key() }, meta);
     expect((await relationship(relationshipId)).status).toBe('withdrawn');
-    expect((await getInvitation(null, { token })).state).toBe('revoked');
+    // The revoked link now answers as an unknown one (ADR 0013 §2).
+    expect(await refusal(getInvitation(null, { token }))).toBe('NOT_FOUND');
     const [row] = await getDb().select({ status: invitation.status }).from(invitation).where(eq(invitation.id, pending!.id));
     expect(row!.status).toBe('revoked');
     expect((await events(relationshipId)).map((e) => [e.from, e.to, e.role])).toEqual([
@@ -451,8 +465,11 @@ describe('the profile claim', () => {
     expect(await refusal(openEvidence(invitee.principal, file!.id, meta, store))).toBe('NOT_FOUND');
     const [pc] = await getDb().select().from(personClaim).where(eq(personClaim.reviewCaseId, caseId));
     expect(pc!.status).toBe('rejected');
-    // The link the invitee opens again says the claim was refused, not that the profile is theirs.
-    expect((await getInvitation(invitee.principal, { token })).viewer).toMatchObject({ caseId, claimStatus: 'rejected' });
+    // The link the invitee opens again says the claim was refused, not that the profile is theirs,
+    // and no longer shows the record's or the student's names.
+    const refused = await getInvitation(invitee.principal, { token });
+    expect(refused.viewer).toMatchObject({ caseId, claimStatus: 'rejected' });
+    expect(refused).toMatchObject({ state: 'yours', teacherNames: null, studentNames: null, lineageName: null });
     // No relationship transition: only the student's request.
     expect((await events(relationshipId)).map((e) => e.to)).toEqual(['awaiting_claim']);
     const view = await getPartyCase(invitee.principal, { id: caseId });
@@ -536,6 +553,9 @@ describe('instructor verification', () => {
     const second = await upload(sifu, 'instructor-2');
     expect(await refusal(requestInstructorVerification(sifu.principal, { evidenceIds: [second.id], idempotencyKey: key() }, meta))).toBe('CONFLICT');
     expect(await status()).toBe('unverified');
+    // In the queue the case names the instructor, its subject.
+    const queue = await listReviewCases(archivist.principal, { kind: 'instructor_verification', sort: 'newest' });
+    expect(queue.rows.find((r) => r.id === caseId)).toMatchObject({ teacher: null, student: null, subject: { id: sifu.personId, name: { value: 'Demo m10b sifu' } } });
     // A moderator does not verify an instructor.
     const moderator = await staff('m10b-moderator-instructor', 'moderator');
     await assignReviewCase(moderator.principal, { caseId, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
@@ -628,6 +648,13 @@ describe('"Report profile"', () => {
     // No automatic hiding.
     expect(await isPublicPerson(target.personId)).toBe(true);
     expect((await auditsOf(target.personId)).map((a) => a.action)).toContain('report.create');
+    // In the queue the case names the reported profile, its subject (it has no relationship).
+    const queue = await listReviewCases(moderator.principal, { kind: 'profile_report', sort: 'newest' });
+    expect(queue.rows.find((r) => r.id === caseId)).toMatchObject({
+      teacher: null,
+      student: null,
+      subject: { id: target.personId, slug: target.slug, name: { value: 'Demo m10b reported' } },
+    });
     // A moderator upholds it: the report is resolved, the profile still public (put right by an edit).
     await decide(moderator, caseId, 'verify', 'Fictional: the advertising was removed with an edit.');
     const [report] = await getDb().select().from(contentReport).where(eq(contentReport.reviewCaseId, caseId));
