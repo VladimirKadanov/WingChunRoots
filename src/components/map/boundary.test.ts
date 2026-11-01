@@ -1,7 +1,9 @@
 // The ESLint boundary of the map library (milestone M11): only src/components/map imports MapLibre
 // (its islands load with next/dynamic, so no page loads it with its first JavaScript), and the map
 // module keeps the bans of every component (no database). Probe files show that the rules fire;
-// probes are git-ignored and removed again.
+// probes are git-ignored and removed again. The probe outside the map module is in
+// src/components/schools, not src/components: the entitlements boundary test writes its probes there
+// and removes every probe it finds, so the two files running in parallel removed each other's.
 
 import { randomUUID } from 'node:crypto';
 import { readdir, rm, writeFile } from 'node:fs/promises';
@@ -12,7 +14,7 @@ import { ESLint } from 'eslint';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const DIRS = ['src/components', 'src/components/map'];
+const DIRS = ['src/components/schools', 'src/components/map'];
 const PROBE_PREFIX = '__boundary-probe-';
 
 async function removeProbes(): Promise<void> {
@@ -41,7 +43,7 @@ const MAP_IMPORTS = ["import * as maplibre from 'maplibre-gl';", "import { Map }
 
 describe('module boundary of the map library (ESLint)', () => {
   it('refuses MapLibre outside src/components/map', async () => {
-    const rules = await lintProbe('src/components', MAP_IMPORTS);
+    const rules = await lintProbe('src/components/schools', MAP_IMPORTS);
     expect(rules.filter((r) => r === 'no-restricted-imports')).toHaveLength(2);
   }, 60_000);
 
