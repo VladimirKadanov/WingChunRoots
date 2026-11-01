@@ -78,7 +78,7 @@ check "scripts/verify.sh M13 includes everything of all (every check and the who
   grep -q 'if \[ "$target" = "all" \] || \[ "$target" = "M13" \]; then' scripts/verify.sh
 check "the leak scan reads the sitemap, Open Graph, JSON-LD, the city-only private points, the evidence key and the pilot server log" bash -c '
   f=e2e/pilot.spec.ts
-  grep -q "sitemap.xml" "$f" && grep -q "og:" "$f" && grep -q "application\\\\/ld+json" "$f" && grep -q "school_private_location" "$f" &&
+  grep -q "sitemap.xml" "$f" && grep -q "og:" "$f" && grep -qF "ld\\+json" "$f" && grep -q "school_private_location" "$f" &&
   grep -q "storage_key" "$f" && grep -q "runPaths('\''pilot'\'').serverLog" "$f"'
 
 # 3. The authorization matrix (In scope 3) ----------------------------------------------------------
