@@ -6,6 +6,7 @@
 #                           # then scripts/verify.d/M00.sh
 #   scripts/verify.sh all   # every step, the whole E2E suite and every scripts/verify.d/*.sh
 #                           # (CI and M13)
+#   scripts/verify.sh M13   # the same as all (pilot acceptance includes everything)
 #
 # The screen shows one line per step, "STEP <name>: ok (<s>s)". On failure it shows the last
 # 80 lines of the failed step and ends with "VERIFY <target>: FAIL at <step>" (exit 1).
@@ -53,7 +54,8 @@ fi
 
 # Milestone checks to run, in milestone order.
 checks=()
-if [ "$target" = "all" ]; then
+# M13 (pilot acceptance, Done when 1) includes everything of `all`: every check and the whole E2E suite.
+if [ "$target" = "all" ] || [ "$target" = "M13" ]; then
   for m in "${MILESTONES[@]}"; do
     [ -f "scripts/verify.d/$m.sh" ] && checks+=("$m")
   done
@@ -311,7 +313,10 @@ run_e2e() {
   # Then the specs that lock a whole table (M08 final check) and those that make links public (M09;
   # e2e/projects.ts, EXCLUSIVE_SPECS), in a run of their own with the same filter: nothing else may
   # run while a table is locked or while the public graph changes under it.
-  PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests "$@"
+  PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests "$@" || return 1
+  # Last, the pilot path of plan §2.2 (M13; e2e/projects.ts, PILOT_SPEC) on the three devices: it
+  # makes links public and changes seeded demo accounts, which no earlier spec may see.
+  PW_PILOT=1 pnpm e2e --pass-with-no-tests "$@"
 }
 
 run_checks() {

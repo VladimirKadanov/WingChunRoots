@@ -29,6 +29,13 @@ export interface ProjectOptions {
    * other project in full whatever the filter (`dependencies` ignore --grep).
    */
   exclusive?: boolean;
+  /**
+   * Builds only the pilot projects (M13): `pilot.spec.ts` on desktop-chromium, mobile-chromium and,
+   * in CI, mobile-webkit, in a run of its own after the exclusive one (PW_PILOT=1; scripts/verify.sh
+   * runs all three). The pilot path makes links public and changes seeded demo accounts, so it runs
+   * last, where no other spec or screenshot can see what it changed.
+   */
+  pilot?: boolean;
 }
 
 /** Spec files that only their own project runs. */
@@ -52,14 +59,18 @@ export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
 export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts'] as const;
 /** Everything the `exclusive` project runs, and the ordinary projects leave out. */
 export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
+/** The pilot path of plan §2.2 (M13): only the pilot run (PW_PILOT=1) runs it. */
+export const PILOT_SPEC = '**/pilot.spec.ts';
 
 /**
- * Where a run's web server writes its log, and where its artifacts go: the exclusive run keeps
- * its own, so it never empties or overwrites those of the run before it (the visual
- * screenshots that scripts/visual-baselines.sh prints, the server log in the CI artifact).
+ * Where a run's web server writes its log, and where its artifacts go: the exclusive run (`true`)
+ * and the pilot run (`'pilot'`, M13) keep their own, so neither empties or overwrites those of a
+ * run before it (the visual screenshots that scripts/visual-baselines.sh prints, the server log in
+ * the CI artifact).
  */
-export function runPaths(exclusive: boolean) {
-  return exclusive
+export function runPaths(run: boolean | 'pilot') {
+  if (run === 'pilot') return { serverLog: 'test-results/server-pilot.log', outputDir: './test-results/pilot', htmlReport: 'test-results/pilot-report' };
+  return run
     ? { serverLog: 'test-results/server-exclusive.log', outputDir: './test-results/exclusive', htmlReport: 'test-results/exclusive-report' }
     : { serverLog: 'test-results/server.log', outputDir: './test-results/artifacts', htmlReport: 'playwright-report' };
 }
@@ -68,9 +79,10 @@ export function runPaths(exclusive: boolean) {
  * Playwright projects (plan §5.8 (d)): desktop-chromium (1440x900) and mobile-chromium
  * (Pixel class) everywhere, mobile-webkit (iPhone) only in CI, on request the Chromium-only
  * `visual` and `screenshots` projects, which set their own viewports. With `exclusive`, only the
- * `exclusive` project (Chromium, 1440x900, one test at a time; EXCLUSIVE_SPECS).
+ * `exclusive` project (Chromium, 1440x900, one test at a time; EXCLUSIVE_SPECS). With `pilot`, only
+ * the three device projects, running PILOT_SPEC alone (M13).
  */
-export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false, exclusive = false }: ProjectOptions): Project[] {
+export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false, exclusive = false, pilot = false }: ProjectOptions): Project[] {
   const chromiumLaunch = chromiumExecutable
     ? { launchOptions: { executablePath: chromiumExecutable } }
     : {};
@@ -90,12 +102,13 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
       },
     ];
   }
-  const testIgnore = [VISUAL_SPEC, SCREENSHOTS_SPEC, ...EXCLUSIVE_SPECS];
+  // The pilot run: the same three devices as the ordinary run, with the pilot spec alone.
+  const select = pilot ? { testMatch: PILOT_SPEC } : { testIgnore: [VISUAL_SPEC, SCREENSHOTS_SPEC, ...EXCLUSIVE_SPECS, PILOT_SPEC] };
 
   const projects: Project[] = [
     {
       name: 'desktop-chromium',
-      testIgnore,
+      ...select,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
@@ -104,14 +117,15 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
     },
     {
       name: 'mobile-chromium',
-      testIgnore,
+      ...select,
       use: { ...devices['Pixel 7'], ...chromiumLaunch },
     },
   ];
 
   if (ci) {
-    projects.push({ name: 'mobile-webkit', testIgnore, use: { ...devices['iPhone 15'] } });
+    projects.push({ name: 'mobile-webkit', ...select, use: { ...devices['iPhone 15'] } });
   }
+  if (pilot) return projects;
 
   if (visual) {
     projects.push({
