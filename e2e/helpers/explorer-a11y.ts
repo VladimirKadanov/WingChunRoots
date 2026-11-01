@@ -57,6 +57,44 @@ export async function focusGraph(page: Page, limit = 40): Promise<string> {
   throw new Error(`Tab did not reach the graph in ${limit} presses.`);
 }
 
+/**
+ * Starts noting where the keyboard focus settles each time it moves or the element that had it
+ * leaves the DOM: `node:<id>` for a node of the graph, `body` when nothing holds it, else the
+ * element's role or tag. Read with focusTrail(). Each entry is taken a number of microtasks after
+ * the change, so a focus that a menu hands on in a microtask of its own (Base UI's return of the
+ * focus on close) counts where it lands, while one that waits for a later task (a timer, a frame)
+ * leaves `body` in the trail: the gap a screen reader or another task can see.
+ */
+export async function watchFocus(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const trail: string[] = [];
+    (window as unknown as { __focusTrail: string[] }).__focusTrail = trail;
+    const where = () => {
+      const focused = document.activeElement;
+      if (!focused || focused === document.body) return 'body';
+      const node = focused.closest<HTMLElement>('.react-flow__node');
+      return node ? `node:${node.dataset.id}` : (focused.getAttribute('role') ?? focused.tagName.toLowerCase());
+    };
+    const settle = (hops: number) => {
+      if (hops > 0) queueMicrotask(() => settle(hops - 1));
+      else trail.push(where());
+    };
+    document.addEventListener('focusin', () => settle(20), true);
+    document.addEventListener('focusout', () => settle(20), true);
+    // A focused element removed from the DOM may fire no focusout: the removal itself counts.
+    let before = document.activeElement;
+    new MutationObserver(() => {
+      if (document.activeElement !== before) settle(20);
+      before = document.activeElement;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+}
+
+/** Where the focus settled since watchFocus(), oldest first. */
+export function focusTrail(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __focusTrail?: string[] }).__focusTrail ?? []);
+}
+
 /** The words of the explorer's live region (aria-live="polite"), trimmed. */
 export async function announcement(page: Page): Promise<string> {
   return ((await page.getByTestId('explorer-announcement').textContent()) ?? '').replace(/\s+/g, ' ').trim();
