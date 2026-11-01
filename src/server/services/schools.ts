@@ -270,7 +270,13 @@ function lineageCondition(rootId: string | null | undefined) {
      WHERE l.root_person_id = ${rootId}::uuid AND lm.depth IS NOT NULL AND lm.person_id = ANY (v.instructor_person_ids))`;
 }
 
-/** The public instructors of these schools, the head instructor first. */
+/**
+ * The public instructors of these schools, the head instructor first. Another instructor shows
+ * only while the head instructor's teaching link to them is confirmed (verified or in arbitration):
+ * the rule schools.update checks on save, checked again on every read, so a link revoked or
+ * withdrawn later takes the person off the public school (M11 review, security-3), as in
+ * v_public_school.instructor_person_ids.
+ */
 async function instructorsOf(db: Executor, schoolIds: readonly string[]): Promise<Map<string, InstructorRow[]>> {
   const out = new Map<string, InstructorRow[]>();
   if (schoolIds.length === 0) return out;
@@ -280,6 +286,11 @@ async function instructorsOf(db: Executor, schoolIds: readonly string[]): Promis
       JOIN v_public_person p ON p.id = si.person_id
       LEFT JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
      WHERE si.school_id = ANY (${sql`ARRAY[${sql.join(schoolIds.map((id) => sql`${id}::uuid`), sql`, `)}]`})
+       AND (si.role = 'head_instructor' OR EXISTS (
+         SELECT 1 FROM school_instructor h
+           JOIN teaching_relationship r ON r.teacher_person_id = h.person_id AND r.student_person_id = si.person_id
+          WHERE h.school_id = si.school_id AND h.role = 'head_instructor'
+            AND r.status IN (${sql.join(PUBLIC_RELATIONSHIP_STATUSES.map((s) => sql`${s}`), sql`, `)})))
      ORDER BY CASE si.role WHEN 'head_instructor' THEN 0 WHEN 'instructor' THEN 1 ELSE 2 END, p.display_name, p.id`);
   for (const row of result.rows) {
     const list = out.get(row.school_id) ?? [];

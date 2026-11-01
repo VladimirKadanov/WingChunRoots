@@ -506,3 +506,55 @@ describe('the listing review cannot be bypassed (M11 review, code-4)', () => {
     expect(await schoolGet(null, { slug: listed.slug })).toMatchObject({ name: 'Demo Approved Edit Hall Renamed' });
   });
 });
+
+describe('an instructor whose teaching link ends (M11 review, security-3)', () => {
+  it('leaves the public school page and the lineage filter when the link is revoked or withdrawn, and comes back while it is confirmed', async () => {
+    const sifu = await sifuWithPlan('m11-instructors');
+    const revoked = await member('m11-instructor-revoked');
+    const withdrawn = await member('m11-instructor-withdrawn');
+    const lineageId = await newLineage('m11instructors');
+    await getDb().update(lineage).set({ rootPersonId: sifu.personId }).where(eq(lineage.id, lineageId));
+    const links = await getDb()
+      .insert(teachingRelationship)
+      .values([revoked, withdrawn].map((m) => ({ teacherPersonId: sifu.personId, studentPersonId: m.personId, lineageId, status: 'verified' as const, visibility: 'public' as const, confirmedAt: new Date() })))
+      .returning({ id: teachingRelationship.id, student: teachingRelationship.studentPersonId });
+    await recomputeLineageMembership(getDb(), lineageId);
+    // The student also descends from another root, in a lineage the Sifu is not in: the school is
+    // in that root's filter only through the student.
+    const otherRoot = await member('m11-instructor-other-root');
+    const otherLineage = await newLineage('m11instructors2');
+    await getDb().update(lineage).set({ rootPersonId: otherRoot.personId }).where(eq(lineage.id, otherLineage));
+    await getDb()
+      .insert(teachingRelationship)
+      .values({ teacherPersonId: otherRoot.personId, studentPersonId: revoked.personId, lineageId: otherLineage, status: 'verified', visibility: 'public', confirmedAt: new Date() });
+    await recomputeLineageMembership(getDb(), otherLineage);
+    const inOtherFilter = async () => (await schoolsSearch(null, { lineageRootId: otherRoot.personId })).schools.some((s) => s.slug === listed.slug);
+    const sofia = await cityOf('Sofia', 'BG');
+    const listed = await listedSchool(
+      sifu,
+      { name: 'Demo Instructors Hall', placeId: sofia.id, locationPrivacy: 'city_only', instructorIds: [revoked.personId, withdrawn.personId] },
+      'm11-instructors',
+    );
+    const pageSlugs = async () => (await schoolGet(null, { slug: listed.slug })).instructors.map((i) => i.slug).sort();
+    const pinSlugs = async () => ((await schoolsSearch(null, {})).schools.find((s) => s.id === listed.id)?.instructors ?? []).map((i) => i.slug).sort();
+    const viewIds = async () => (await getDb().execute<{ ids: string[] }>(sql`SELECT instructor_person_ids::text[] AS ids FROM v_public_school WHERE id = ${listed.id}::uuid`)).rows[0]!.ids.sort();
+    expect(await pageSlugs()).toEqual([sifu.slug, revoked.slug, withdrawn.slug].sort());
+    expect(await viewIds()).toEqual([sifu.personId, revoked.personId, withdrawn.personId].sort());
+    expect(await inOtherFilter()).toBe(true);
+
+    // A moderator's arbitration revokes one link (plan §6.7); the other is withdrawn.
+    const linkOf = (personId: string) => links.find((l) => l.student === personId)!.id;
+    await getDb().update(teachingRelationship).set({ status: 'revoked' }).where(eq(teachingRelationship.id, linkOf(revoked.personId)));
+    await getDb().update(teachingRelationship).set({ status: 'withdrawn', visibility: 'involved_only' }).where(eq(teachingRelationship.id, linkOf(withdrawn.personId)));
+    expect(await pageSlugs()).toEqual([sifu.slug]);
+    expect(await pinSlugs()).toEqual([sifu.slug]);
+    expect(await viewIds()).toEqual([sifu.personId]);
+    expect(await inOtherFilter()).toBe(false);
+
+    // While a link is in arbitration it is still confirmed (plan §6.7: it stays public).
+    await getDb().update(teachingRelationship).set({ status: 'in_arbitration' }).where(eq(teachingRelationship.id, linkOf(revoked.personId)));
+    expect(await pageSlugs()).toEqual([sifu.slug, revoked.slug].sort());
+    expect(await viewIds()).toEqual([sifu.personId, revoked.personId].sort());
+    expect(await inOtherFilter()).toBe(true);
+  });
+});

@@ -36,6 +36,10 @@ ALTER TABLE "school" ADD CONSTRAINT "school_status_check" CHECK ("status" IN ('d
 -- without a listing account is a record of the platform (the fictional demo schools of M01, D20):
 -- no paid pin is involved, so it is shown while active (docs/plan/questions/M11.md, question 2).
 -- D12: no pins through an organization before Phase 3.
+-- The instructors: the head instructor, and the others only while the head instructor's teaching
+-- link to them is confirmed (verified or in arbitration), the rule schools.update checks when the
+-- listing is saved; a link that is revoked or withdrawn later takes the person off the public
+-- school and out of the lineage filter at once (M11 review, security-3).
 CREATE OR REPLACE VIEW "v_public_school" WITH (security_barrier = true) AS
 SELECT
   s."id",
@@ -55,6 +59,11 @@ SELECT
       FROM "school_instructor" si
       JOIN "person" ip ON ip."id" = si."person_id" AND ip."visibility" = 'public' AND ip."deleted_at" IS NULL
      WHERE si."school_id" = s."id"
+       AND (si."role" = 'head_instructor' OR EXISTS (
+         SELECT 1
+           FROM "school_instructor" h
+           JOIN "teaching_relationship" r ON r."teacher_person_id" = h."person_id" AND r."student_person_id" = si."person_id"
+          WHERE h."school_id" = s."id" AND h."role" = 'head_instructor' AND r."status" IN ('verified', 'in_arbitration')))
      ORDER BY si."role", si."person_id") AS "instructor_person_ids",
   s."created_at",
   s."updated_at",
