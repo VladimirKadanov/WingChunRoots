@@ -1,13 +1,19 @@
 /*
  * The MapLibre controls (zoom, attribution) in the page's design (milestone M11): the theme's
- * tokens instead of MapLibre's white, the page's focus ring, and on a touch screen targets of
+ * tokens instead of MapLibre's white, the page's focus ring, square corners like paper
+ * (docs/design/direction.md, decision 7) instead of pills, and on a touch screen targets of
  * 44 x 44 CSS px (CLAUDE.md §10). Imported by the map islands only, after maplibre-gl.css, so it
  * loads with the map and never on another page.
  */
 
+/* The page's interface font, not MapLibre's Helvetica (docs/design/direction.md, decision 6). */
+.maplibregl-map {
+  font-family: var(--font-sans);
+}
+
 .maplibregl-ctrl-group {
   background: var(--surface-2);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
 }
 
 .maplibregl-ctrl-group:not(:empty) {
@@ -42,7 +48,10 @@
 }
 
 .maplibregl-ctrl.maplibregl-ctrl-attrib,
-.maplibregl-ctrl-attrib.maplibregl-compact {
+.maplibregl-ctrl-attrib.maplibregl-compact,
+.maplibregl-ctrl-top-left > .maplibregl-ctrl-attrib.maplibregl-compact-show,
+.maplibregl-ctrl-bottom-left > .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  border-radius: var(--radius-md);
   background-color: var(--surface-2);
   color: var(--fg);
   box-shadow: 0 0 0 1px var(--border-strong);
@@ -50,6 +59,7 @@
 
 .maplibregl-ctrl-attrib-button,
 .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+  border-radius: var(--radius-md);
   background-color: transparent;
   background-position: center;
   background-repeat: no-repeat;
@@ -71,7 +81,6 @@
   .maplibregl-ctrl-attrib.maplibregl-compact {
     min-height: 20px;
     padding: 12px 44px 12px 0;
-    border-radius: 22px;
   }
 
   .maplibregl-ctrl-attrib.maplibregl-compact-show {
@@ -81,6 +90,5 @@
   .maplibregl-ctrl-attrib-button {
     width: 44px;
     height: 44px;
-    border-radius: 22px;
   }
 }

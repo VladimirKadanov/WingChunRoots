@@ -253,7 +253,7 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
                 ref={showList}
                 type="button"
                 onClick={() => setSheetOpen(true)}
-                className="pointer-events-auto flex min-h-11 max-w-full items-center gap-2 rounded-sheet border border-border-strong bg-surface-2 px-4 py-2 text-left text-sm font-semibold shadow-sheet"
+                className="pointer-events-auto flex min-h-11 max-w-full items-center gap-2 rounded-md border border-border-strong bg-surface-2 px-4 py-2 text-left text-sm font-semibold shadow-sheet"
                 data-testid="show-list"
               >
                 <span className="[overflow-wrap:anywhere]">{summary}</span>
