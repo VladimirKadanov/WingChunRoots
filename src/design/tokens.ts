@@ -411,7 +411,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
     dash: null,
     width: 1.25,
     seal: 'scales',
-    description: 'Disputed; an independent panel is hearing both sides.',
+    description: 'Disputed; a moderator is asking both people for evidence before deciding.',
   },
   cross_lineage: {
     label: 'Cross-lineage',

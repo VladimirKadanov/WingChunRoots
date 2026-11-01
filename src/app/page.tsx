@@ -36,7 +36,8 @@ const OTHER_MARKS: { kind: LinkKind | 'private'; title: string; text: string }[]
   {
     kind: 'arbitration',
     title: 'Disputed',
-    text: 'When a claim is disputed, an independent panel hears both sides. The line splits in two until it decides.',
+    // DEFAULT D19: one moderator or administrator, never a party, asks both people for evidence and decides.
+    text: 'When a link is disputed, a moderator asks both people for evidence. The line stays, drawn split in two and marked Disputed, until the moderator decides.',
   },
   {
     kind: 'cross_lineage',
