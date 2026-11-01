@@ -558,8 +558,14 @@ test.describe('selection (B)', () => {
     await expect(panel.getByRole('button', { name: 'Collapse' })).toBeVisible();
     await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-explorer-sheet]')), 'the focus moved into the sheet').toBe(true);
 
-    // Back in the graph, Esc lowers the sheet to its peek and keeps the selection; Esc again clears it.
+    // Back in the graph, the focus stays there: the peek the sheet opened at, settling only after the
+    // sheet was raised, takes nothing back (checked across a second, the longest a settle waits).
     await nodeOf(page, id).focus();
+    for (let i = 0; i < 4; i++) {
+      await page.waitForTimeout(250);
+      expect(await focusedNodeId(page), 'the focus stays on the person in the graph').toBe(id);
+    }
+    // Esc lowers the sheet to its peek and keeps the selection; Esc again clears it.
     await page.keyboard.press('Escape');
     await expect(panel.getByRole('button', { name: 'Expand' }), 'the sheet is at its peek').toBeVisible();
     await expect(panel).toBeVisible();
