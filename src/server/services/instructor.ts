@@ -30,7 +30,7 @@ import { pgErrorOf, ServiceError } from './errors';
 import { type EvidenceFileView, fileView, filesOfCases, linkFilesToCase } from './evidence';
 import { INSTRUCTOR_LABELS, type InstructorStatus, instructorStatus } from './plans';
 import { fieldErrors, idempotencyKey, keyReused, viewerOf } from './relationships';
-import { caseReplayOf, isCaseKeyConflict, recordCaseEvent, tellStaff } from './review-core';
+import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 
 export const INSTRUCTOR_NOTE_MAX = 2000;
 /** At most this many instructor verification requests of one account in 24 hours. */
@@ -150,6 +150,9 @@ export async function requestInstructorVerification(principal: Principal | null,
   const personId = viewer.personId;
   try {
     return await db.transaction(async (tx) => {
+      // The account's case lock first: the open case and the requests of the day are counted one
+      // call after the other (the unique index stays the last word on one open case).
+      await lockAccountCases(tx, p.user.id);
       const replay = await caseReplayOf(tx, p.user.id, input.idempotencyKey);
       if (replay) {
         const [earlier] = await tx.select({ kind: reviewCase.kind }).from(reviewCase).where(eq(reviewCase.id, replay.caseId));

@@ -4,7 +4,8 @@
 // an administrator upholds or dismisses (review.decide, review-kinds.ts).
 //
 //   reports.mine    the account's own reports (which profiles, why, where each stands)
-//   reports.create  one report per account and profile, ever (a unique index); a few a day
+//   reports.create  one report per account and profile, ever (a unique index); a few a day,
+//                   counted under the account's case lock (review-core.ts lockAccountCases)
 //
 // No automatic hiding (the milestone's brief): a report changes nothing public by itself. Nobody
 // reports their own profile, and a profile that is not public is "not found", as everywhere.
@@ -23,7 +24,7 @@ import { REPORT_REASON_LABELS, type ReportReason } from '../templates/review';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 import { fieldErrors, idempotencyKey, keyReused, viewerOf } from './relationships';
-import { caseReplayOf, isCaseKeyConflict, recordCaseEvent, tellStaff } from './review-core';
+import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 
 /** At most this many reports of one account in 24 hours. */
 export const REPORTS_PER_DAY = 10;
@@ -77,6 +78,8 @@ export async function reportProfile(principal: Principal | null, raw: ReportInpu
   const db = getDb();
   try {
     return await db.transaction(async (tx) => {
+      // The account's case lock first: reports sent at the same time are counted one after the other.
+      await lockAccountCases(tx, p.user.id);
       const replay = await caseReplayOf(tx, p.user.id, input.idempotencyKey);
       if (replay) {
         const [earlier] = await tx.select({ kind: reviewCase.kind, personId: reviewCase.personId }).from(reviewCase).where(eq(reviewCase.id, replay.caseId));

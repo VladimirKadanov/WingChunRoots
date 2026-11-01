@@ -33,12 +33,12 @@ import { grantConsents, recordConsents, REQUIRED_SIGN_UP_CONSENTS } from './cons
 import { pgErrorOf } from './errors';
 import { openEvidence, uploadEvidence } from './evidence';
 import { instructorOverview, requestInstructorVerification } from './instructor';
-import { acceptInvitation, getInvitation, hashToken, INVITATION_DAYS, inviteTeacher, sendInvitation } from './invitations';
+import { acceptInvitation, getInvitation, hashToken, INVITATION_DAYS, INVITATIONS_PER_ACCOUNT, INVITATIONS_PER_RELATIONSHIP, inviteTeacher, sendInvitation } from './invitations';
 import { lineageEgo, personProfile } from './lineage';
 import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { profileUpdate } from './profile';
 import { approveRelationship, getRelationship, withdrawRelationship } from './relationships';
-import { reportProfile } from './reports';
+import { reportProfile, REPORTS_PER_DAY } from './reports';
 import { purgeExpiredEmailAddresses } from './retention';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
 import { searchQuery } from './search';
@@ -754,5 +754,83 @@ describe('account deletion (pnpm account:delete)', () => {
     // A deleted account's report keeps no reporter (content_report, ON DELETE SET NULL).
     const [report] = await getDb().select({ reporter: contentReport.reporterUserId, status: contentReport.status }).from(contentReport).where(eq(contentReport.reviewCaseId, reportCase));
     expect(report).toEqual({ reporter: null, status: 'dismissed' });
+  });
+});
+
+describe('limits under calls at the same time (M10b review, code-4)', () => {
+  /** Runs the calls at once and settles each: its error code, or OK. */
+  const outcomes = (calls: Promise<unknown>[]) => Promise.all(calls.map((call) => refusal(call)));
+  const tally = (codes: string[]) => codes.reduce<Record<string, number>>((all, code) => ({ ...all, [code]: (all[code] ?? 0) + 1 }), {});
+  const TREES = ['Alder', 'Birch', 'Cedar', 'Elm', 'Fir', 'Hazel', 'Larch', 'Maple', 'Oak', 'Rowan', 'Willow', 'Yew'];
+
+  /** An awaiting_claim request of `student` without an invitation yet. */
+  async function awaitingClaim(student: Member, name: string): Promise<string> {
+    const result = await inviteTeacher(student.principal, { teacherName: `Demo Race ${name}`, lineageId, periods: ongoingFrom('2015-01'), email: null, idempotencyKey: key() }, meta);
+    return result.relationship.id;
+  }
+
+  const invitationsOf = async (userId: string) =>
+    (await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM invitation WHERE invited_by_user_id = ${userId}::uuid AND created_at > now() - interval '24 hours'`)).rows[0]!.n;
+
+  it('invitations.send keeps the per-account cap of 10 a day', async () => {
+    const student = await member('m10b-race-account');
+    const links: string[] = [];
+    for (const name of TREES.slice(0, 10)) links.push(await awaitingClaim(student, name));
+    // Five invitations sent earlier today (to another teacher of the student's, since revoked).
+    for (let i = 0; i < INVITATIONS_PER_ACCOUNT / 2; i += 1) {
+      await getDb()
+        .insert(invitation)
+        .values({ personId: student.personId, invitedByUserId: student.account.id, email: teacherAddress('race-earlier'), tokenHash: hashToken(key()), status: 'revoked', expiresAt: new Date(Date.now() + 86_400_000) });
+    }
+    const codes = await outcomes(links.map((relationshipId) => sendInvitation(student.principal, { relationshipId, email: teacherAddress('race-account'), idempotencyKey: key() }, meta)));
+    expect(tally(codes)).toEqual({ OK: 5, TOO_MANY_REQUESTS: 5 });
+    expect(await invitationsOf(student.account.id)).toBe(INVITATIONS_PER_ACCOUNT);
+  });
+
+  it('invitations.send keeps the cap of 3 a day for one request', async () => {
+    const student = await member('m10b-race-link');
+    const relationshipId = await awaitingClaim(student, 'Linden');
+    const codes = await outcomes(TREES.slice(0, 6).map(() => sendInvitation(student.principal, { relationshipId, email: teacherAddress('race-link'), idempotencyKey: key() }, meta)));
+    expect(tally(codes)).toEqual({ OK: INVITATIONS_PER_RELATIONSHIP, TOO_MANY_REQUESTS: 6 - INVITATIONS_PER_RELATIONSHIP });
+    const rows = await getDb().select({ status: invitation.status }).from(invitation).where(eq(invitation.relationshipId, relationshipId));
+    expect(rows.filter((r) => r.status === 'pending')).toHaveLength(1);
+    expect(rows).toHaveLength(INVITATIONS_PER_RELATIONSHIP);
+  });
+
+  it('reports.create keeps the cap of 10 reports a day', async () => {
+    const reporter = await member('m10b-race-reporter');
+    const targets: Member[] = [];
+    for (const name of TREES) targets.push(await member(`m10b-race-reported-${name.toLowerCase()}`));
+    const codes = await outcomes(targets.map((t) => reportProfile(reporter.principal, { personId: t.personId, reason: 'spam', idempotencyKey: key() }, meta)));
+    expect(tally(codes)).toEqual({ OK: REPORTS_PER_DAY, TOO_MANY_REQUESTS: TREES.length - REPORTS_PER_DAY });
+    const [{ n } = { n: 0 }] = (
+      await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM content_report WHERE reporter_user_id = ${reporter.account.id}::uuid`)
+    ).rows;
+    expect(n).toBe(REPORTS_PER_DAY);
+  });
+
+  it('invitations.accept leaves one account with one pending profile claim', async () => {
+    const first = await invite('race-claim-a');
+    const second = await invite('race-claim-b');
+    const invitee = await newcomer('race-claim');
+    const codes = await outcomes([first.token, second.token].map((token) => acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta)));
+    expect(tally(codes)).toEqual({ OK: 1, CONFLICT: 1 });
+    const pending = await getDb().select({ id: personClaim.id }).from(personClaim).where(and(eq(personClaim.userId, invitee.account.id), eq(personClaim.status, 'pending')));
+    expect(pending).toHaveLength(1);
+    // The other student's request still waits for a claim, and its link still works for its teacher.
+    const states = await Promise.all([first.token, second.token].map(async (token) => (await getInvitation(null, { token })).state));
+    expect(states.sort()).toEqual(['pending', 'used']);
+  });
+
+  it('instructor.request opens one case at a time', async () => {
+    const sifu = await member('m10b-race-sifu', { sifu: true });
+    const files = [await upload(sifu, 'race-instructor-a'), await upload(sifu, 'race-instructor-b')];
+    const codes = await outcomes(files.map((f) => requestInstructorVerification(sifu.principal, { evidenceIds: [f.id], idempotencyKey: key() }, meta)));
+    expect(tally(codes)).toEqual({ OK: 1, CONFLICT: 1 });
+    const open = await getDb()
+      .select({ id: reviewCase.id })
+      .from(reviewCase)
+      .where(and(eq(reviewCase.personId, sifu.personId), eq(reviewCase.kind, 'instructor_verification')));
+    expect(open).toHaveLength(1);
   });
 });

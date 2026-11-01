@@ -10,7 +10,7 @@
 //
 // Logs and audit rows carry ids and codes, never a name or a reviewer's words (plan §6.4).
 
-import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Principal, StaffRole } from '../auth/principal';
 import { uuidv7 } from '../db/ids';
@@ -143,6 +143,21 @@ export async function recordCaseEvent(
     idempotencyKey: event.key,
   });
   return id;
+}
+
+/** The int4 namespace of the per-account case lock: pg_advisory_xact_lock(CASE_LOCK_SPACE, hashtext(user)). */
+const CASE_LOCK_SPACE = 11;
+
+/**
+ * Takes the account's case lock (M10b review, code-4): reports.create, instructor.request and
+ * invitations.accept count the account's own rows before they add one (reports a day, instructor
+ * requests a day, one pending profile claim), and calls at the same time would each count before
+ * the others commit. With the lock they run one after the other, and each count (a new snapshot
+ * per statement, READ COMMITTED) sees what the calls before it wrote. Taken first in the
+ * transaction, before any row lock, so a call never waits for it while holding one.
+ */
+export async function lockAccountCases(tx: Transaction, userId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${CASE_LOCK_SPACE}::int, hashtext(${userId}::text))`);
 }
 
 /** The case event an idempotency key of this account recorded already, or null. */

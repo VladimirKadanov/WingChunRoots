@@ -25,7 +25,8 @@
 //
 // The same locks and limits as a request (relationships.ts): the student's request lock, the
 // pending cap and the 24-hour request window; invitations are limited per relationship and per
-// account as well, since each sends an e-mail to someone who has no account.
+// account as well, since each sends an e-mail to someone who has no account. invitations.send takes
+// the same request lock, so the account's invitations are counted one call after the other.
 
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -70,7 +71,7 @@ import {
   viewOf,
   writePeriods,
 } from './relationships';
-import { caseReplayOf, isCaseKeyConflict, recordCaseEvent, tellStaff } from './review-core';
+import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 
 /** DEFAULT (the milestone's brief): an invitation link works for 14 days, once. */
 export const INVITATION_DAYS = 14;
@@ -405,6 +406,10 @@ export async function sendInvitation(principal: Principal | null, raw: z.input<t
   const viewer = await viewerOf(db, p);
   try {
     const outcome = await db.transaction(async (tx) => {
+      // The student's request lock first, as relationships.invite and resubmit take it (the same
+      // order: no deadlock), so the invitations of the account are counted one call after the other
+      // (M10b review, code-4); the relationship's row lock then orders the calls for one request.
+      if (viewer.personId) await lockStudentRequests(tx, viewer.personId);
       const row = await rowById(tx, input.relationshipId, true);
       if (!row || viewer.personId === null || row.studentPersonId !== viewer.personId) throw new ServiceError('NOT_FOUND', 'No such request.');
       const [earlier] = await tx
@@ -564,8 +569,8 @@ export interface AcceptResult {
 
 /**
  * invitations.accept: the signed-in invitee claims the record (see the top of this file). In one
- * transaction, the relationship first (the lock order of every relationship change), then the
- * invitation: a second accept, by the same or another account, finds it used.
+ * transaction, the account's case lock, then the relationship (the lock order of every relationship
+ * change), then the invitation: a second accept, by the same or another account, finds it used.
  */
 export async function acceptInvitation(principal: Principal | null, raw: z.input<typeof acceptInvitationInput>, meta: RequestMeta): Promise<AcceptResult> {
   const p = requireUser(principal);
@@ -577,6 +582,9 @@ export async function acceptInvitation(principal: Principal | null, raw: z.input
   if (!seen || !seen.relationshipId) throw new ServiceError('NOT_FOUND', INVALID_LINK);
   try {
     const outcome = await db.transaction(async (tx) => {
+      // The account's case lock before any row lock (review-core.ts): two invitations accepted at
+      // once by one account are checked one after the other, so it holds one pending claim.
+      await lockAccountCases(tx, p.user.id);
       const rel = await rowById(tx, seen.relationshipId!, true);
       const inv = await invitationByToken(tx, input.token, true);
       if (!rel || !inv) throw new ServiceError('NOT_FOUND', INVALID_LINK);
