@@ -43,6 +43,9 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
  */
 const FRAME = 'h-[calc(100dvh-var(--top-h)-1px-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] md:h-dvh';
 
+/** The note that a distance without a place limits nothing (the Distance select points to it). */
+const DISTANCE_NOTE = 'school-distance-note';
+
 const fieldClass = 'block min-h-12 w-full min-w-0 rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg hover:border-fg-muted focus-visible:border-fg';
 const selectClass = `${fieldClass} appearance-none pr-11`;
 
@@ -58,7 +61,7 @@ function lineageOptions(lineages: { name: string; root: { id: string } }[]): Lin
   return [...byRoot].map(([rootId, names]) => ({ rootId, label: names.join(' / ') })).sort((a, b) => a.label.localeCompare(b.label, 'en'));
 }
 
-function Filters({ params, lineages, compact }: { params: FinderParams; lineages: LineageOption[]; compact: boolean }) {
+function Filters({ params, lineages, compact, distanceNote }: { params: FinderParams; lineages: LineageOption[]; compact: boolean; distanceNote?: string }) {
   // Below 1024 px in the map view the select labels are for screen readers only (their options say
   // "Within 50 km" and "All lineages"): the map keeps its room. The place field keeps its label.
   const selectLabel = compact ? 'max-lg:sr-only' : '';
@@ -92,7 +95,7 @@ function Filters({ params, lineages, compact }: { params: FinderParams; lineages
           Distance
         </label>
         <div className="relative">
-          <select id="school-radius" name="radius" defaultValue={String(params.radius ?? DEFAULT_RADIUS_KM)} className={selectClass}>
+          <select id="school-radius" name="radius" defaultValue={String(params.radius ?? DEFAULT_RADIUS_KM)} aria-describedby={distanceNote} className={selectClass}>
             {RADIUS_CHOICES_KM.map((km) => (
               <option key={km} value={km}>
                 Within {km} km
@@ -189,11 +192,19 @@ export default async function SchoolsPage({ searchParams }: Props) {
   const summary = result ? summaryText(result.total, radiusKm, near ? near.name : null, lineageLabel) : '';
   const listHref = finderHref({ ...params, view: 'list' });
 
+  // A distance chosen without a place (Near left empty, no area searched) limits nothing: say so,
+  // in words beside the form, rather than show the same list as if it applied (review screens-10).
+  const distanceUnused = params.radius !== null && center === null && !nearMissing;
   const notice = nearMissing ? (
     <p role="status" className="mt-3 text-sm" data-testid="near-missing">
       No city or town called “{params.near}” is in the place list, so every school is shown. Try another spelling, or a larger city nearby.
     </p>
+  ) : distanceUnused ? (
+    <p id={DISTANCE_NOTE} role="status" className="mt-3 text-sm" data-testid="distance-unused">
+      The distance needs a place to measure from: enter a city or town in “Near”. Until then the schools are not limited by distance.
+    </p>
   ) : null;
+  const distanceNote = distanceUnused ? DISTANCE_NOTE : undefined;
   const failed = (
     <ErrorPanel title="The schools could not be loaded." className="mx-page my-6 lg:mx-6">
       <p className="text-sm text-fg-muted">Nothing was changed. Try again in a moment.</p>
@@ -214,7 +225,7 @@ export default async function SchoolsPage({ searchParams }: Props) {
             </div>
             <ViewSwitch params={params} />
           </div>
-          <Filters params={params} lineages={lineages} compact={false} />
+          <Filters params={params} lineages={lineages} compact={false} distanceNote={distanceNote} />
           {notice}
         </header>
         {result ? (
@@ -245,7 +256,7 @@ export default async function SchoolsPage({ searchParams }: Props) {
           <h1 className="font-display text-xl leading-tight lg:text-2xl">Find a school</h1>
           <ViewSwitch params={params} />
         </div>
-        <Filters params={params} lineages={lineages} compact />
+        <Filters params={params} lineages={lineages} compact distanceNote={distanceNote} />
         {notice}
       </header>
       {result ? (

@@ -108,6 +108,34 @@ async function leftBar(page: Page, row: Locator): Promise<number> {
 
 // --- The tests ---------------------------------------------------------------------------------
 
+test('@M11 a distance chosen without a place says that it limits nothing, in the list and the map view', async ({ page }) => {
+  const note = page.getByTestId('distance-unused');
+  for (const view of ['list', 'map'] as const) {
+    await page.goto(view === 'list' ? '/schools?view=list' : '/schools');
+    await expect(note).toHaveCount(0);
+    const form = finderSearch(page);
+    await expect(form.getByLabel('Near')).toHaveValue('');
+    await form.getByLabel('Distance').selectOption('10');
+    await visible(form.getByRole('button', { name: 'Search' })).click();
+    await page.waitForURL(/radius=10/);
+    // Said in words (never by colour alone), and the select points to it.
+    await expect(note).toBeVisible();
+    await expect(note).toHaveAttribute('role', 'status');
+    await expect(note).toHaveText('The distance needs a place to measure from: enter a city or town in “Near”. Until then the schools are not limited by distance.');
+    await expect(form.getByLabel('Distance')).toHaveAccessibleDescription(/The distance needs a place to measure from/);
+    if (view === 'list') await expect(page.getByTestId('school-summary')).not.toContainText('within');
+
+    // With a place the distance applies and the note goes.
+    await form.getByLabel('Near').fill('Sofia');
+    await visible(form.getByRole('button', { name: 'Search' })).click();
+    await page.waitForURL(/near=Sofia/);
+    await expect(note).toHaveCount(0);
+    await expect(form.getByLabel('Distance')).not.toHaveAttribute('aria-describedby', /.+/);
+    if (view === 'list') await expect(page.getByTestId('school-summary')).toContainText('within 10 km of Sofia');
+    else await expect(page.getByTestId(await narrow(page) ? 'show-list' : 'school-summary')).toContainText('within 10 km of Sofia');
+  }
+});
+
 test('@M11 in forced colours only the selected school of the list has the bar beside it', async ({ page }) => {
   // The list view: nothing is selected, so no row has a bar.
   await page.goto('/schools?view=list');
