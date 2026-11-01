@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02, M07, M08, M09 and M10a; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07, M08, M09, M10a and M11; later milestones add theirs (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -42,6 +42,13 @@ export type AuditAction =
   | 'review.needs_info'
   | 'review.note'
   | 'review.resolve'
+  // M11: schools (plan §6.6). The rows name the fields that changed, never a point or a contact.
+  | 'school.create'
+  | 'school.update'
+  | 'school.submit'
+  | 'school.confirm'
+  | 'school.publish'
+  | 'school.return'
   // M10b: invitations, profile claims, instructor verification, reports and arbitration (plan §6.6, §6.7).
   | 'invitation.create'
   | 'invitation.revoke'

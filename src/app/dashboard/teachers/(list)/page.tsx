@@ -24,7 +24,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { TEACHERS_LOAD_ERROR } from '@/components/account/load-errors/teachers';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
@@ -227,7 +227,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const mine = await pageRead(serverClient(await headers(), guard.principal).relationships.mine());
-  if (!mine) return <LoadError {...LOAD_ERRORS.teachers} retryHref={PAGE} />;
+  if (!mine) return <LoadError {...TEACHERS_LOAD_ERROR} retryHref={PAGE} />;
   const withdrawResult = await readFormResult(WITHDRAW_FORM, query.outcome);
   const endResult = await readFormResult(END_FORM, query.outcome);
   const all = [...mine.requests, ...mine.teachers];

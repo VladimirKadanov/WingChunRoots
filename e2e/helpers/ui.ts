@@ -59,8 +59,13 @@ export function resolvedTheme(page: Page): Promise<string> {
  * axe with every rule it enables by default (WCAG 2.x A and AA plus best practices). A contrast
  * violation names the colours axe measured, so a CI log tells a real token pair from a colour
  * caught mid-transition.
+ *
+ * After a soft navigation (a Server Action's redirect, say) the new <title> can arrive
+ * after the page's content, so axe runs once the document has a title again: a title that never
+ * comes still fails here (CI run 41323978929: document-title on /account/security?codes=new).
  */
 export async function expectNoAxeViolations(page: Page, label: string) {
+  await expect(page, `${label}: the document has its title`).toHaveTitle(/\S/);
   const results = await new AxeBuilder({ page }).analyze();
   type Node = (typeof results.violations)[number]['nodes'][number];
   const measured = (node: Node) => {

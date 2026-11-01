@@ -39,7 +39,7 @@ const GROUPS: readonly { id: string; title: string; lead: string; codes: readonl
     id: 'instructors',
     title: 'For instructors (Sifu)',
     // DEFAULT D06: the Free Sifu limit comes from the plan matrix (final check, code-3).
-    lead: `Free Sifu counts up to ${FREE_SIFU_STUDENT_LIMIT} approved students; Professional Sifu has no limit and a public pin for your school. Approvals open with teacher requests, and the pin with the map, later in the pilot.`,
+    lead: `Free Sifu counts up to ${FREE_SIFU_STUDENT_LIMIT} approved students; Professional Sifu has no limit and a public pin for your school on the school map.`,
     codes: ['free_sifu', 'pro_sifu'],
   },
 ];

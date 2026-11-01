@@ -14,6 +14,7 @@ import { formatDay } from '../../lib/dates';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
+import { invalidatePublic, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { auditLog, authUser, notification, person, pilotAccessRequest, reviewCase } from '../db/schema';
 import { ACCOUNT_TYPES } from '../db/schema/common';
@@ -33,7 +34,6 @@ import {
   valueMark,
   type ValueMark,
 } from '../entitlements/plans';
-import { invalidatePublic } from '../cache';
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
@@ -285,7 +285,9 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
     const tags = own ? await neighbourTags(tx, own.id) : [];
     return { result: { accountType: effective.accountType, plan: planSummary(effective.plan), instructor: { status, label: INSTRUCTOR_LABELS[status] }, changed }, tags };
   });
-  if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
+  // M11: a school pin needs a Sifu account (v_public_school), so a change of type shows or hides it.
+  const tags = outcome.result.changed ? [...outcome.tags, SCHOOLS_TAG] : outcome.tags;
+  if (tags.length > 0) invalidatePublic(tags, 'procedure');
   return outcome.result;
 }
 

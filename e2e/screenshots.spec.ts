@@ -18,6 +18,7 @@ import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from '.
 import { EXPLORER_STATES } from './helpers/m06-states';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
+import { createSchool, freshContext, pendingListing, SCHOOL_MAP_SCREENS, sifuAccount } from './helpers/schools';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -399,6 +400,46 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'admin');
       await page.goto(`/admin/review/${caseId}`);
       await expect(page.getByTestId('case-status').filter({ visible: true })).toHaveAttribute('data-status', 'open');
+    },
+  },
+  // M11: the finder's map view, all schools and one selected (on a phone, the sheet open).
+  ...SCHOOL_MAP_SCREENS.map((screen) => ({ ...screen, milestone: 'M11' })),
+  {
+    // M11: a Free Sifu's draft school: the listing with the upgrade prompt instead of "Send for review".
+    name: 'dashboard-school-upgrade',
+    milestone: 'M11',
+    async reach(page) {
+      await sifuAccount(page, 'Screenshot Sifu');
+      const { id } = await createSchool(page);
+      await page.goto(`/dashboard/schools/${id}`);
+      await expect(page.getByTestId('upgrade-prompt').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M11: a Professional Sifu's school after "Send for review": waiting for the listing review.
+    name: 'dashboard-school-sent',
+    milestone: 'M11',
+    async reach(page) {
+      const { school } = await pendingListing(page);
+      await page.goto(`/dashboard/schools/${school.id}?sent=1`);
+      await expect(page.getByTestId('school-sent').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M11: a listing case card as an administrator sees it: the school, the plan, the decisions.
+    name: 'review-listing',
+    milestone: 'M11',
+    async reach(page) {
+      // One staff sign-in (one TOTP code): the Sifu works in another context of the browser.
+      await signInAs(page, 'admin');
+      const sifu = await freshContext(page.context().browser()!);
+      try {
+        const { caseId } = await pendingListing(sifu.page, page);
+        await page.goto(`/admin/review/${caseId}`);
+      } finally {
+        await sifu.context.close();
+      }
+      await expect(page.getByTestId('case-listing').filter({ visible: true })).toBeVisible();
     },
   },
   {

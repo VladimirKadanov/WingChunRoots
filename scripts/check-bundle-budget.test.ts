@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import * as budget from './check-bundle-budget.mjs';
 
-const { DEFAULT_BUDGET, KB, budgetFor, checkBudgets, checkWorkerOnly, chunkPaths, htmlScripts, initialChunks, routeOfEntry } = budget as {
+const { DEFAULT_BUDGET, KB, budgetFor, checkBudgets, checkLazyOnly, checkWorkerOnly, chunkPaths, htmlScripts, initialChunks, routeOfEntry } = budget as {
   DEFAULT_BUDGET: number;
   KB: number;
   budgetFor: (route: string) => number;
@@ -19,6 +19,10 @@ const { DEFAULT_BUDGET, KB, budgetFor, checkBudgets, checkWorkerOnly, chunkPaths
     loaded: string[];
   };
   checkWorkerOnly: (
+    dir: string,
+    loaded: string[],
+  ) => { libraries: { name: string; chunks: string[]; bytes: number }[]; errors: string[] };
+  checkLazyOnly: (
     dir: string,
     loaded: string[],
   ) => { libraries: { name: string; chunks: string[]; bytes: number }[]; errors: string[] };
@@ -300,5 +304,39 @@ describe('check-bundle-budget: libraries only in a Web Worker (M05, plan §4.11)
     const other = workerBuild();
     writeFileSync(path.join(other.dir, 'static/chunks/lazy.js'), 'org.eclipse.elk in a chunk no worker loads');
     expect(checkWorkerOnly(other.dir, other.loaded).errors).toEqual(['ELK (static/chunks/lazy.js) is in no worker\'s chunk list']);
+  });
+});
+
+describe('check-bundle-budget: libraries only after a page (M11, MapLibre)', () => {
+  function lazyBuild(signature = 'maplibregl-canvas-container') {
+    const { dir, write } = tempDir();
+    write('static/chunks/runtime.js', 'runtime');
+    write('static/chunks/page.js', 'e.v(t=>Promise.all(["static/chunks/map.js"].map(t=>e.l(t))))');
+    write('static/chunks/map.js', `map ${signature} map`);
+    return { dir, loaded: ['static/chunks/runtime.js', 'static/chunks/page.js'] };
+  }
+
+  it('gives /schools its own budget', () => {
+    expect(budgetFor('/schools')).toBe(170 * KB);
+  });
+
+  it('passes when only a lazy import names the chunk that carries MapLibre', () => {
+    const { dir, loaded } = lazyBuild();
+    const { libraries, errors } = checkLazyOnly(dir, loaded);
+    expect(errors).toEqual([]);
+    expect(libraries).toMatchObject([{ name: 'MapLibre', chunks: ['static/chunks/map.js'] }]);
+    expect(libraries[0]!.bytes).toBeGreaterThan(0);
+  });
+
+  it('fails when a page loads the chunk with MapLibre initially', () => {
+    const { dir, loaded } = lazyBuild();
+    expect(checkLazyOnly(dir, [...loaded, 'static/chunks/map.js']).errors).toEqual([
+      'MapLibre (static/chunks/map.js) loads with a page: it must load only after it (next/dynamic)',
+    ]);
+  });
+
+  it('fails when no chunk carries MapLibre', () => {
+    const { dir, loaded } = lazyBuild('nothing here');
+    expect(checkLazyOnly(dir, loaded).errors).toEqual(['MapLibre: no built script carries its signature "maplibregl-canvas-container"']);
   });
 });

@@ -55,6 +55,8 @@ const columns = helper.columns([
                 <>
                   teacher <NameText name={row.teacher.name} />, student <NameText name={row.student.name} />,{' '}
                 </>
+              ) : row.school ? (
+                <>school {row.school.name}, </>
               ) : row.subject ? (
                 <>
                   {subjectRole(row).spoken} <NameText name={row.subject.name} />,{' '}
@@ -73,6 +75,20 @@ const columns = helper.columns([
     header: 'People',
     cell: (info) => {
       const row = info.row.original;
+      // M11: a school listing names the school and its city.
+      if (row.school) {
+        return (
+          <span className="grid gap-0.5" data-testid="case-school">
+            <span>
+              <span className="text-sm text-fg-muted">School </span>
+              {row.school.name}
+            </span>
+            <span className="text-sm text-fg-muted">
+              {row.school.city}, {row.school.countryCode}
+            </span>
+          </span>
+        );
+      }
       if ((!row.teacher || !row.student) && row.subject) {
         return (
           <span data-testid="case-subject">

@@ -12,6 +12,7 @@ import path from 'node:path';
 
 import { closeDb } from '../db';
 import { loadDotEnv } from '../db/dotenv';
+import { stopProducer } from '../jobs/boss';
 import { isServiceError } from '../services/errors';
 import { cancelDeletionFromCommandLine, carryOutDeletionFromCommandLine } from '../services/privacy';
 import { ACCOUNT_DELETE_NEXT_STEPS, ACCOUNT_DELETE_USAGE, accountDeleteArguments, assertAccountDeleteLocal } from './account-delete';
@@ -45,6 +46,8 @@ async function main(): Promise<number> {
     if (next) console.error(`account:delete: ${next}`);
     return 1;
   } finally {
+    // A deletion that hides a public profile queues lineage.recompute (src/server/services/lineage-membership.ts).
+    await stopProducer();
     await closeDb();
   }
 }

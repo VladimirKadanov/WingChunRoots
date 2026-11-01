@@ -5,7 +5,7 @@
 // city_only whoever writes the row, so the radius query of plan §6.3 can run on public_point.
 
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
 import {
@@ -13,12 +13,24 @@ import {
   idColumn,
   inList,
   LOCATION_PRIVACIES,
+  SCHOOL_FORMS,
   SCHOOL_INSTRUCTOR_ROLES,
   SCHOOL_STATUSES,
   timestamps,
 } from './common';
 import { geographyPoint } from './geography';
 import { person, SLUG_PATTERN } from './persons';
+
+/**
+ * An alternate name of a place (M11): used for search only, never shown. `lang` is the ISO 639
+ * code when the source names it (GeoNames alternateNamesV2), null when only the script is known
+ * (the `alternatenames` column of the cities files); `script` is ISO 15924 (Cyrl, Hani).
+ */
+export interface PlaceAltName {
+  value: string;
+  script: string;
+  lang: string | null;
+}
 
 /** Cities from GeoNames (CC BY 4.0, https://www.geonames.org/). */
 export const place = pgTable(
@@ -34,12 +46,17 @@ export const place = pgTable(
     population: integer('population'),
     timezone: text('timezone'),
     centroid: geographyPoint('centroid').notNull(),
+    // M11: the English name is shown; these serve the city search (src/server/geo/places.ts).
+    alternateNames: jsonb('alternate_names').$type<PlaceAltName[]>().notNull().default([]),
+    /** Every name of the place, folded for search (src/server/geo/places.ts), one per line. */
+    searchText: text('search_text').notNull().default(''),
     ...timestamps(),
   },
   (t) => [
     uniqueIndex('place_geonames_id_key').on(t.geonamesId),
     index('place_country_code_idx').on(t.countryCode),
     index('place_centroid_gist_idx').using('gist', t.centroid),
+    index('place_search_text_trgm_idx').using('gin', t.searchText.op('gin_trgm_ops')),
     check('place_country_code_format', sql`${t.countryCode} ~ '^[A-Z]{2}$'`),
   ],
 );
@@ -58,6 +75,10 @@ export const school = pgTable(
     status: text('status', { enum: SCHOOL_STATUSES }).notNull().default('draft'),
     description: text('description'),
     websiteUrl: text('website_url'),
+    // M11: the ways to get in touch that the listing shows (all optional) and the forms it teaches.
+    contactEmail: text('contact_email'),
+    contactPhone: text('contact_phone'),
+    formsTaught: text('forms_taught', { enum: SCHOOL_FORMS }).array().notNull().default([]),
     // DEFAULT D17: changes only when the school is edited or confirmed, never on sign-in.
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
@@ -73,6 +94,8 @@ export const school = pgTable(
     check('school_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
     check('school_location_privacy_check', inList(t.locationPrivacy.name, LOCATION_PRIVACIES)),
     check('school_status_check', inList(t.status.name, SCHOOL_STATUSES)),
+    check('school_name_length', sql`char_length(${t.name}) BETWEEN 2 AND 120`),
+    check('school_forms_taught_check', sql`${t.formsTaught} <@ ARRAY[${sql.raw(SCHOOL_FORMS.map((f) => `'${f}'`).join(', '))}]::text[]`),
   ],
 );
 

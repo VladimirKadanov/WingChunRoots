@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-10-31.1';
+export const PLAN_MATRIX_VERSION = '2026-11-01.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -318,8 +318,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: true,
-    opens: 'Opens with schools and the map',
-    note: 'When the map opens, anyone will be able to browse it. A public pin for a school will need an instructor with Professional Sifu.',
+    upgradeHeading: 'A public school pin with {plan}',
+    // M11 built the map: anyone browses it; the pin needs the listing account's Professional Sifu (DEFAULT D08/D18).
+    note: 'Anyone can browse the map. A public pin for a school needs the instructor who lists it to have Professional Sifu.',
     values: {
       free_student: { source: 'Browse only', label: 'Browse only', included: false, neutral: true },
       premium_student: { source: 'Browse only', label: 'Browse only', included: false, neutral: true },

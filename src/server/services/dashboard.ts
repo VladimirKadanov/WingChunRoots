@@ -20,6 +20,7 @@ import {
   pilotAccessRequest,
   place,
   PUBLIC_RELATIONSHIP_STATUSES,
+  type SCHOOL_STATUSES,
   school,
   schoolInstructor,
   teachingRelationship,
@@ -73,7 +74,7 @@ export interface SchoolItem {
   name: string;
   city: string;
   countryCode: string;
-  status: 'draft' | 'published' | 'hidden' | 'archived';
+  status: (typeof SCHOOL_STATUSES)[number];
   statusLabel: string;
   roleLabel: string;
 }
@@ -140,7 +141,8 @@ const REQUEST_LABELS = {
   under_review: 'Under review',
   rejected: 'Not confirmed: correct it and send it again',
 } as const;
-const SCHOOL_STATUS_LABELS = { draft: 'Draft', published: 'Published', hidden: 'Hidden', archived: 'Archived' } as const;
+/** M11: the listing's status in the owner's words; the public pin is a separate question (schools.ts). */
+export const SCHOOL_STATUS_LABELS = { draft: 'Draft', pending_review: 'Waiting for review', active: 'Listed', hidden: 'Hidden by a moderator', archived: 'Archived' } as const;
 const SCHOOL_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'Instructor', assistant: 'Assistant' } as const;
 
 /**

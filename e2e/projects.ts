@@ -44,11 +44,12 @@ export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
 /**
  * Specs that make links public (M09: teacher requests and approvals; M10a: verified historical
  * claims and the archival edit of demo-root-c; M10b: claimed invitations approved by the teacher,
- * arbitration). A new public link changes the explorer's start list and counts, and the public
- * pages other specs and the visual regression compare, so they run with the exclusive specs, after
- * the ordinary run.
+ * arbitration) or schools (M11: an approved listing, a pin hidden by a revoked plan). A new public
+ * link changes the explorer's start list and counts, a new school the finder's lists and the
+ * sitemap, and both the public pages other specs and the visual regression compare, so they run
+ * with the exclusive specs, after the ordinary run.
  */
-export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts'] as const;
+export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts'] as const;
 /** Everything the `exclusive` project runs, and the ordinary projects leave out. */
 export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
 

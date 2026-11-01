@@ -21,11 +21,14 @@ import { getDb } from '../db';
 import { lineage, person, personBio, personName, place, teachingRelationship } from '../db/schema';
 import { ROMANIZATIONS } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
+import { listedPlaces } from '../geo/places';
+import type { Transaction } from '../jobs/outbox';
 import { writePersonKeys } from '../search/store';
 import { type Country, COUNTRIES, fieldErrors, isCountryCode, type PlaceOption } from './account';
 import { currentConsents, grantConsents, withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { queueRecomputeForPerson } from './lineage-membership';
 import { cleanName, displayNameRefusal, LANG_TAG, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting, type NameWriting } from './names';
 
 export const MAX_NAMES = 10;
@@ -209,10 +212,11 @@ async function ownProfile(db: Executor, userId: string): Promise<OwnProfile | nu
   };
 }
 
-export async function profileOptions(db: Executor = getDb()): Promise<ProfileOptions> {
+/** The form's choices; the city list holds the large cities and the person's own (`currentPlaceId`). */
+export async function profileOptions(db: Executor = getDb(), currentPlaceId: string | null = null): Promise<ProfileOptions> {
   return {
     countries: COUNTRIES,
-    places: await db.select({ id: place.id, name: place.name, countryCode: place.countryCode }).from(place).orderBy(asc(place.countryCode), asc(place.name)),
+    places: await listedPlaces(db, currentPlaceId),
     writings: NAME_WRITINGS,
     bioLanguages: BIO_LANGUAGES,
     latestStartYear: new Date().getUTCFullYear(),
@@ -225,7 +229,8 @@ export async function profileOptions(db: Executor = getDb()): Promise<ProfileOpt
 export async function profileGet(principal: Principal | null): Promise<ProfileView> {
   const p = requireUser(principal);
   const db = getDb();
-  return { profile: await ownProfile(db, p.user.id), options: await profileOptions(db) };
+  const profile = await ownProfile(db, p.user.id);
+  return { profile, options: await profileOptions(db, profile?.placeId ?? null) };
 }
 
 // --- Update --------------------------------------------------------------------------------------
@@ -292,7 +297,7 @@ SELECT id::text AS id FROM (SELECT id FROM a LIMIT ${ANCESTORS_CAP + 1}) x`);
  * applyApproval), so the owner's choice survives every later approval (M09 review, code-1).
  */
 export async function setOwnVisibility(
-  tx: Executor,
+  tx: Transaction,
   p: Principal,
   own: { id: string; visibility: 'public' | 'involved_only' },
   showPublicly: boolean,
@@ -311,6 +316,8 @@ export async function setOwnVisibility(
   // DEFAULT D03: a self-stewarded record is public only while its owner keeps it so; unticking hides
   // it even when it has verified relationships (docs/plan/questions/M07.md, question 2).
   await tx.update(person).set({ visibility }).where(and(eq(person.id, own.id), eq(person.stewardship, 'self')));
+  // Every public edge of the person appears or goes: lineage_membership follows (M11 review, code-2).
+  await queueRecomputeForPerson(tx, own.id);
   return true;
 }
 

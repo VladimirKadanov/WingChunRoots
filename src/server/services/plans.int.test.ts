@@ -43,6 +43,8 @@ import {
   PROPOSED_PRICE_LABEL,
 } from './plans';
 
+// M11: grants and account type changes drop the cached school answers (revalidateTag), which
+// needs Next.js's request store; recorded here instead.
 // M10b: a change of account type drops the cached public pages of the account's profile and its
 // neighbours (services/plans.ts, the instructor label); outside a Next.js request the tags are
 // recorded here.
@@ -420,6 +422,8 @@ describe('grants.* (admin with a verified second factor)', () => {
     });
     expect(created.status).toBe(200);
     expect(created.data).toMatchObject({ email: sifu.account.email, planCode: 'pro_sifu', source: 'test_grant', state: 'active', inEffect: true, reason: 'Demo: pilot test of the student limit', grantedBy: admin.account.email });
+    // M11: the account's school pins appear with the plan (DEFAULT D08/D18).
+    expect(cache.revalidated).toContain('schools');
     const grantId = created.data.id as string;
 
     const [audit] = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'grant.create'), eq(auditLog.subjectId, grantId)));

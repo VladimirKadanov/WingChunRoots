@@ -126,7 +126,7 @@
 
 ### История и одит
 
-Всеки преход на връзка записва `relationship_event` и одит; всяка промяна на случай от видовете на M10b — ред в `review_event` (`open`, `assign`, `unassign`, `needs_info`, `evidence`, `approve`, `reject`) с ключа за идемпотентност. Одитът пази идентификатори, кодове и причината на арбитража (`relationship.arbitration`, `relationship.revoke`), никога имейл, токен или име.
+Всеки преход на връзка записва `relationship_event` и одит; всяка промяна на случай от видовете на M10b и на обявите на школи от M11 (`school_listing`) — ред в `review_event` (`open`, `assign`, `unassign`, `needs_info`, `evidence`, `approve`, `reject`) с ключа за идемпотентност. Одитът пази идентификатори, кодове и причината на арбитража (`relationship.arbitration`, `relationship.revoke`), никога имейл, токен или име.
 
 ## API
 

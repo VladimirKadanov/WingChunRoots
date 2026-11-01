@@ -299,6 +299,18 @@ describe('findFomo()', () => {
       'Mark all as read',
       'Students: 5 of 5 approved on Free Sifu',
       'An administrator ended your pilot plan Professional Sifu. Every confirmed link stays confirmed and public.',
+      // M11: schools, the map and the listing review.
+      '23 schools within 50 km of Sofia · Demo Lineage A',
+      'Private club, by invitation',
+      'Search this area',
+      'Not on the map: a public pin needs Professional Sifu',
+      'Not on the map until the listing is approved',
+      'A public pin needs Professional Sifu. Your school stays a draft that only you see.',
+      'Sent for review. A moderator checks the listing; you get a notification when it is decided.',
+      'Confirmed: the listing shows it was checked today.',
+      'The account that listed it does not hold Professional Sifu now: once approved, the school is listed but its pin does not show.',
+      'No public school matches this search. Try a larger radius, another place or all lineages.',
+      'This browser cannot draw the map (it needs WebGL 2), so the same schools are listed here.',
       // Values that are not a countdown: a quota as a fraction (the backup codes, M02), a count
       // before another word, a value after "left" (polish, note 3).
       `${VALUE} of ${VALUE} left`,
@@ -512,6 +524,13 @@ describe('the English copy of the app', () => {
         'src/server/forms/flash.ts',
         'src/server/rpc/form.ts',
         'src/lib/dates.ts',
+        // M11: the finder, the school page and the school dashboard.
+        'src/app/schools/page.tsx',
+        'src/app/schools/[slug]/page.tsx',
+        'src/components/schools/finder.tsx',
+        'src/components/schools/school-list.tsx',
+        'src/app/dashboard/schools/[id]/page.tsx',
+        'src/app/dashboard/schools/labels.ts',
       ]),
     );
     expect(names).not.toContain('src/lib/copy/no-fomo.ts');

@@ -30,6 +30,7 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { assignForm, DECIDE_FORM, NOTE_FORM } from '../form-ids';
 import { AssignForm, DecideForm, NoteForm } from '../forms';
+import { ListingSection } from '../listing';
 
 export const instant = false;
 
@@ -222,6 +223,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
           </Section>
         ) : null}
 
+        {view.school ? <ListingSection school={view.school} reason={view.resolutionReason} /> : null}
+
+        {view.school ? null : (
         <Section id="evidence" title="Evidence">
           {view.files.length === 0 ? (
             <p className="text-ui text-fg-muted">No files.</p>
@@ -249,6 +253,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             <p className="max-w-[60ch] text-sm text-fg-muted">The files open for the reviewer the case is assigned to and for the administrators.</p>
           ) : null}
         </Section>
+        )}
 
         <Section id="actions" title="Decision">
           {view.decideNote ? (
@@ -267,9 +272,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} /> : null}
-            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} /> : null}
+            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
             <p className="text-ui text-fg-muted">This case is closed.</p>

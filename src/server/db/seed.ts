@@ -11,13 +11,16 @@
 // with BETTER_AUTH_SECRET. Without them the accounts exist but nobody can sign in as them. The
 // content hash leaves out the columns that hold a random salt or nonce (HASH_EXCLUDED_COLUMNS).
 
-import { getTableName, type InferInsertModel } from 'drizzle-orm';
+import { getTableName, type InferInsertModel, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import type { Client } from 'pg';
 
 import { FIXTURE_SEED, generateFixtures, type Fixtures } from '../../fixtures/generate';
 import { encryptTotpSecret, generateBackupCodes, hashAccountPassword } from '../auth/credentials';
+import { readExtract } from '../geo/extract-file';
+import { loadPlaces } from '../geo/places';
+import { recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { contentHash, withClient } from './admin';
 import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
 import {
@@ -106,7 +109,13 @@ export const ALL_TABLE_NAMES: readonly string[] = [...RESETTABLE_TABLES, auditLo
 export const HASH_EXCLUDED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   auth_account: ['credential_hash'],
   auth_two_factor: ['secret', 'backup_codes'],
+  // M11: lineage_membership is computed after the load (the same job the worker runs); its rows
+  // are the same on every run, its timestamps are the time of the run.
+  lineage_membership: ['computed_at', 'created_at', 'updated_at'],
 };
+
+/** M11: the time written on the places of the GeoNames extract by db:seed (fixed, for the content hash). */
+const PLACES_LOADED_AT = new Date(Date.UTC(2026, 0, 1));
 
 const CHUNK = 500;
 
@@ -183,6 +192,10 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows): Promise
   await insert(trainingPeriod, f.trainingPeriods);
   await insert(relationshipEvent, f.relationshipEvents);
   await insert(place, f.places);
+  // M11: every city of the GeoNames extract (src/server/geo), beside the demo cities above, which
+  // keep their ids (the extract only adds their alternate names).
+  await loadPlaces(db, readExtract(), PLACES_LOADED_AT);
+  counts.place = (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM place`)).rows[0]!.n;
   await insert(school, f.schools);
   await insert(schoolPrivateLocation, f.schoolPrivateLocations);
   await insert(schoolInstructor, f.schoolInstructors);
@@ -228,6 +241,12 @@ export async function seedDatabase(
         await client.query('ROLLBACK');
         throw error;
       }
+      // M11: lineage_membership of every demo lineage, from the public views only, as the worker's
+      // lineage.recompute writes it after a change (src/server/jobs/lineage-recompute.ts).
+      const membershipDb = drizzle({ client });
+      let members = 0;
+      for (const l of fixtures.lineages) members += await recomputeLineageMembership(membershipDb as never, l.id);
+      counts.lineage_membership = members;
       // Fresh statistics for the planner after a bulk load.
       await client.query(`ANALYZE ${names}`);
       const hash = await contentHash(client, ALL_TABLE_NAMES, HASH_EXCLUDED_COLUMNS);

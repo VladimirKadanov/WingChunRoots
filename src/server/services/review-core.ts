@@ -40,7 +40,8 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
   instructor_verification: ['archivist', 'admin'],
   relationship_dispute: ['moderator', 'admin'],
   profile_report: ['moderator', 'admin'],
-  school_listing: ['archivist', 'admin'],
+  // M11: a listing is public content, so a moderation task (school-review.ts).
+  school_listing: ['moderator', 'admin'],
 };
 
 /**
@@ -62,6 +63,8 @@ export interface CaseRow {
   status: ReviewCaseStatus;
   relationshipId: string | null;
   personId: string | null;
+  /** M11: the school of a listing case. */
+  schoolId: string | null;
   openedByUserId: string | null;
   assignedToUserId: string | null;
   resolution: 'approved' | 'rejected' | null;
@@ -77,6 +80,7 @@ export const caseColumns = {
   status: reviewCase.status,
   relationshipId: reviewCase.relationshipId,
   personId: reviewCase.personId,
+  schoolId: reviewCase.schoolId,
   openedByUserId: reviewCase.openedByUserId,
   assignedToUserId: reviewCase.assignedToUserId,
   resolution: reviewCase.resolution,

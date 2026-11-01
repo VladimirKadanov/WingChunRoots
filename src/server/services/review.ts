@@ -43,6 +43,9 @@
 // reports), and their history is review_event. review.arbitrate (arbitration.ts) opens a dispute.
 // The archival record page lists a record's established links, each with "Set in arbitration".
 //
+// M11: school listings (school_listing) are listed, assigned and noted here and decided by
+// school-review.ts (a moderator or an administrator approves or returns them).
+//
 // Logs and audit rows carry ids and codes. A reviewer's reason or note is kept in the case
 // (review_case.resolution_reason, review_note), never in a log.
 
@@ -65,6 +68,7 @@ import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ARCHIVAL_EVIDENCE_MESSAGE, type EvidenceFileView, fileView, filesOfCases, filesOfPerson, linkFilesToPerson, openableFiles } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
+import { decideSchoolListing, isDecidableListing, lockListing, type SchoolCaseView, schoolCaseView, schoolRowsOf } from './school-review';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import { decideKind } from './review-kinds';
@@ -145,6 +149,11 @@ export const reviewDecideInput = z
       .nullish()
       .transform((s) => (s ? s : null)),
     idempotencyKey,
+    /**
+     * M11 (school_listing): the version of the listing on the case card the reviewer decides from
+     * (review.get: school.version). Required to approve; a listing edited since is refused (CONFLICT).
+     */
+    schoolVersion: z.string().regex(/^[0-9]{1,20}$/, { error: 'Open the case again and decide from the listing it shows.' }).nullish(),
   })
   .superRefine((input, ctx) => {
     if (input.reason && input.reason.length > REVIEW_TEXT_MAX) ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${REVIEW_TEXT_MAX} characters.` });
@@ -286,10 +295,30 @@ export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, 
     },
     needs_info: ASK,
   },
+  // M11: the listing review (school-review.ts).
   school_listing: {
-    verify: { ...ASK, label: 'Approve', done: '' },
-    reject: { ...ASK, label: 'Refuse', done: '' },
-    needs_info: ASK,
+    verify: {
+      label: 'Approve the listing',
+      pending: 'Approving…',
+      reason: 'Note on the decision',
+      hint: 'Optional. Kept with the case for the reviewers; the Sifu is told the listing was approved.',
+      optional: true,
+      done: 'The listing is approved. The school is listed, its pin shows while the Sifu holds Professional Sifu, and the Sifu was told.',
+    },
+    reject: {
+      label: 'Return it to draft',
+      pending: 'Returning…',
+      reason: 'Reason',
+      hint: 'Required. The Sifu reads it on the school’s page in the dashboard. Neutral and specific: what to correct.',
+      optional: false,
+      done: 'The listing is back in draft. The Sifu was told and can read your reason.',
+    },
+    needs_info: {
+      ...ASK,
+      reason: 'Question for the Sifu',
+      hint: 'Required. The Sifu reads it on the school’s page in the dashboard and sends the listing again.',
+      done: 'Your question was sent to the Sifu. The case waits for their answer.',
+    },
   },
 };
 
@@ -310,6 +339,8 @@ export interface ReviewListRow {
    * verification, the reported profile of a report), null for a relationship case.
    */
   subject: PersonRef | null;
+  /** M11: the school of a listing case, null for another kind. */
+  school: { name: string; city: string; countryCode: string } | null;
   lineageName: string | null;
   files: number;
 }
@@ -351,6 +382,8 @@ export interface ReviewCaseView {
   relationship: RelationshipView | null;
   /** The teacher's record: whether it is new (created with the claim), kept by the platform, public. */
   teacherRecord: { slug: string; kind: string; lifeStatus: string; stewardship: string; visibility: string; createdWithClaim: boolean } | null;
+  /** M11: the school of a listing case (never the exact point of a city-only school). */
+  school: SchoolCaseView | null;
   files: EvidenceFileView[];
   notes: ReviewNoteView[];
   /**
@@ -403,6 +436,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
   const subjectOf = (r: (typeof rows)[number]) => (r.relationshipId === null ? r.personId : null);
   const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId, subjectOf(r)]).filter((id): id is string => id !== null))]);
   const refOf = (id: string | null) => (id ? (refs.get(id) ?? null) : null);
+  const schools = await schoolRowsOf(db, [...new Set(rows.map((r) => r.schoolId).filter((id): id is string => id !== null))]);
   // A row of a case this reviewer is a party to counts only their own files, as review.get shows
   // them (its party view; the parties as review-core.ts partiesOf names them, read here for the
   // whole page at once from the records this account has claimed).
@@ -428,6 +462,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       teacher: r.teacherId ? (refs.get(r.teacherId) ?? null) : null,
       student: r.studentId ? (refs.get(r.studentId) ?? null) : null,
       subject: refOf(subjectOf(r)),
+      school: r.schoolId ? (schools.get(r.schoolId) ?? null) : null,
       lineageName: r.lineageName,
       files: partyView(r) ? r.ownFiles : r.files,
     })),
@@ -460,37 +495,41 @@ const DECIDER_TEXT: Partial<Record<ReviewCaseKind, string>> = {
   instructor_verification: 'An archivist or an administrator verifies an instructor. You can ask for more evidence and add notes.',
   relationship_dispute: 'A moderator or an administrator decides a dispute. You can add notes.',
   profile_report: 'A moderator or an administrator upholds or dismisses a report. You can add notes.',
+  school_listing: 'A moderator or an administrator approves or returns a school listing. You can ask the Sifu for more information and add notes.',
 };
 
-/** What this reviewer may do on a case, and why not. */
-function abilities(p: Principal, c: CaseRow, relStatus: string | null, own: boolean) {
+/** What this reviewer may do on a case, and why not. `subjectStatus`: the relationship's, or the listed school's (M11). */
+function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: boolean) {
   const admin = hasStaff2FA(p, ['admin']);
   const kind = c.kind as Exclude<ReviewCaseKind, 'deletion_request'>;
   const decider = hasStaff2FA(p, DECIDERS[kind] ?? ['admin']);
   const mine = c.assignedToUserId === p.user.id;
   const open = isOpen(c.status);
-  const known = kind !== 'school_listing';
+  const listing = kind === 'school_listing';
   const needed = DECIDABLE_IN[kind];
-  const decidable = known && (needed === undefined || relStatus === needed);
+  // M11: a new listing (pending_review), or a listed school whose edit reopened the review (active).
+  const decidable = listing ? isDecidableListing(subjectStatus) : needed === undefined || subjectStatus === needed;
   const may = !own && open;
   // A dispute or a report is taken only by its deciders (review-core.ts ASSIGNED_TO_DECIDERS).
   const takes = hasStaff2FA(p, assignableRoles(kind));
   const decideNote = own
-    ? 'This case is about you: another reviewer decides it.'
+    ? listing
+      ? 'This listing is yours: another reviewer decides it.'
+      : 'This case is about you: another reviewer decides it.'
     : !open
       ? null
-      : !known
-        ? 'Cases of this kind are decided from a later version of the review tool.'
-        : !decider
-          ? (DECIDER_TEXT[kind] ?? null)
-          : !mine && !admin
-            ? 'Assign the case to yourself to decide it and to open the evidence.'
-            : null;
+      : !decider
+        ? (DECIDER_TEXT[kind] ?? null)
+        : !mine && !admin
+          ? listing
+            ? 'Assign the case to yourself to decide it.'
+            : 'Assign the case to yourself to decide it and to open the evidence.'
+          : null;
   return {
     can: {
-      assignSelf: may && !mine && known && takes,
+      assignSelf: may && !mine && takes,
       unassign: may && c.assignedToUserId !== null && (mine || admin),
-      assignOthers: may && admin && known,
+      assignOthers: may && admin,
       verify: may && decidable && decider && (mine || admin),
       reject: may && decidable && decider && (mine || admin),
       // A report is upheld or dismissed; a dispute's parties are asked by its deciders.
@@ -555,7 +594,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       .where(inArray(person.id, [relationship.teacher.id, relationship.student.id]));
     for (const row of rows) if (row.userId) sides.set(row.userId, row.id === relationship.teacher.id ? 'teacher' : 'student');
   }
-  const { can, decideNote } = abilities(p, c, relationship?.status ?? null, own);
+  const schoolView = c.kind === 'school_listing' && c.schoolId ? await schoolCaseView(db, c.schoolId) : null;
+  const { can, decideNote } = abilities(p, c, relationship?.status ?? schoolView?.status ?? null, own);
   const facts = await subjectOf(db, c);
   const subject = facts && outsideParty ? { ...facts, facts: [] } : facts;
   const reviewers = can.assignOthers
@@ -584,6 +624,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: own ? null : (assignee?.role ?? null) } : null,
     relationship,
     teacherRecord,
+    school: schoolView,
     files: files.map((f) => fileView(f, opens.has(f.id))),
     notes: notes.map((n) => ({
       id: n.id,
@@ -699,13 +740,15 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
     const replayed = await db.transaction(async (tx) => {
       const seen = await caseById(tx, input.caseId);
       if (!seen) throw notFound();
-      if (seen.kind === 'school_listing' || (seen.kind === 'historical_claim' && !seen.relationshipId)) {
+      if ((seen.kind === 'school_listing' && !seen.schoolId) || (seen.kind === 'historical_claim' && !seen.relationshipId)) {
         throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
       }
       // The relationship, then its case: the order of review.decide and relationships.withdraw. The
       // relationship_event written below takes a KEY SHARE lock on the relationship (its foreign
-      // key), so taking the case first would deadlock against them (M10a review, code-1).
-      if (seen.relationshipId) await rowById(tx, seen.relationshipId, true);
+      // key), so taking the case first would deadlock against them (M10a review, code-1). A listing
+      // case (M11): its school, then the case (the order of schools.submit and school-review.ts).
+      if (seen.kind === 'school_listing') await lockListing(tx, seen.schoolId!);
+      else if (seen.relationshipId) await rowById(tx, seen.relationshipId, true);
       const c = await caseById(tx, input.caseId, true);
       if (!c || (c.kind === 'historical_claim' && !c.relationshipId)) throw notFound();
       const reason = input.assigneeId ? 'assigned' : 'unassigned';
@@ -801,6 +844,12 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
   }
   const input = parsed.data;
   const db = getDb();
+  // M11: a school listing is decided by school-review.ts (no relationship, no evidence).
+  const [kindOf] = await db.select({ kind: reviewCase.kind }).from(reviewCase).where(eq(reviewCase.id, input.caseId));
+  if (kindOf?.kind === 'school_listing') {
+    const replayed = await decideSchoolListing(p, input, meta);
+    return { case: await getReviewCase(p, { id: input.caseId }), replayed };
+  }
   const admin = hasStaff2FA(p, ['admin']);
   const to = input.decision === 'verify' ? 'verified' : input.decision === 'reject' ? 'rejected' : 'under_review';
   const reason = input.decision === 'needs_info' ? 'needs_info' : 'review';
@@ -962,7 +1011,8 @@ async function decideOtherKind(
   admin: boolean,
   meta: RequestMeta,
 ): Promise<{ replayed: boolean; tags: string[] }> {
-  if (seen.kind === 'school_listing') throw new ServiceError('CONFLICT', 'Cases of this kind are decided from a later version of the review tool.');
+  // M11: a school listing is decided by school-review.ts before this transaction (decideReviewCase).
+  if (seen.kind === 'school_listing') throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
   const row = seen.relationshipId ? await rowById(tx, seen.relationshipId, true) : null;
   const c = await caseById(tx, seen.id, true);
   if (!c) throw notFound();

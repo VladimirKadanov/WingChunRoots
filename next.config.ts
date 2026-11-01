@@ -32,6 +32,13 @@ const nextConfig: NextConfig = {
   // React Compiler is on from day one: no hand-written useMemo/useCallback (plan §3.1).
   reactCompiler: true,
   poweredByHeader: false,
+  turbopack: {
+    rules: {
+      // M11: `import url from '…/file.mjs?asset'` emits the file as published, under a hashed name
+      // in /_next/static/media/, and gives its URL (MapLibre's Web Worker: src/components/map/maplibre.ts).
+      '*.mjs': { condition: { query: '?asset' }, type: 'asset' },
+    },
+  },
   headers: async () => [{ source: '/:path*', headers: securityHeaders() }],
   experimental: {
     // DEFAULT (plan §10.2, row 10): agent feedback needs telemetry, so it stays off.

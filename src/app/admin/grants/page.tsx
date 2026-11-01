@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 
 import { FormMessage } from '@/components/account/fields';
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { GRANTS_LOAD_ERROR } from '@/components/account/load-errors/grants';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { isoDay } from '@/lib/dates';
@@ -101,7 +101,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
       request,
     }),
   );
-  if (!list) return <LoadError {...LOAD_ERRORS.grants} retryHref={returnPath(query)} />;
+  if (!list) return <LoadError {...GRANTS_LOAD_ERROR} retryHref={returnPath(query)} />;
   const [created, revoked, closedRequest] = await Promise.all([
     readFormResult('create-grant', query.outcome),
     readFormResult('revoke-grant', query.outcome),
