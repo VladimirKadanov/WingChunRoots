@@ -98,8 +98,9 @@ export const MAX_PENDING_REQUESTS = 20;
  * notifies the teacher, and a withdrawal frees its pending slot at once, so the pending cap alone
  * does not stop a request → withdraw loop. At most REQUESTS_PER_WINDOW requests of one account in
  * REQUEST_WINDOW_HOURS, and REQUESTS_TO_ONE_TEACHER_PER_WINDOW to one teacher, counted from the
- * account's relationship_event rows into pending_teacher (new and corrected requests) under the
- * student's request lock; 429 after that. A default with no D number (docs/adr/0011-teacher-requests.md).
+ * account's relationship_event rows of its own requests (new and corrected requests; M10a: and
+ * historical claims, never a reviewer's queue work) under the student's request lock; 429 after
+ * that. A default with no D number (docs/adr/0011-teacher-requests.md).
  */
 export const REQUEST_WINDOW_HOURS = 24;
 export const REQUESTS_PER_WINDOW = 10;
@@ -795,6 +796,10 @@ export async function checkPendingCap(tx: Transaction, studentId: string): Promi
  * Refuses one more request (new or corrected; M10a: or a historical claim, under_review) above the
  * request window (REQUESTS_PER_WINDOW, REQUESTS_TO_ONE_TEACHER_PER_WINDOW). Returns how many requests to this teacher the account sent in
  * the window before this one. Under the student's request lock, so parallel requests count each other.
+ *
+ * Only the account's own requests count: a new request or claim (from no status) and a corrected
+ * one (`resubmitted`). A reviewer's assign, unassign and needs_info events also lead into
+ * under_review with the reviewer as actor; they are not requests (M10a review, code-2).
  */
 export async function checkRequestWindow(tx: Transaction, userId: string, teacherId: string): Promise<{ toTeacher: number }> {
   const result = await tx.execute<{ total: number; to_teacher: number }>(sql`
@@ -803,6 +808,7 @@ SELECT count(*)::int AS total, (count(*) FILTER (WHERE tr.teacher_person_id = ${
   JOIN teaching_relationship tr ON tr.id = e.relationship_id
  WHERE e.actor_user_id = ${userId}::uuid
    AND e.to_status IN ('pending_teacher', 'under_review')
+   AND (e.from_status IS NULL OR e.reason = 'resubmitted')
    AND e.created_at > now() - make_interval(hours => ${REQUEST_WINDOW_HOURS}::int)`);
   const counts = result.rows[0] ?? { total: 0, to_teacher: 0 };
   if (counts.to_teacher >= REQUESTS_TO_ONE_TEACHER_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', TEACHER_REQUEST_LIMIT_MESSAGE);

@@ -22,7 +22,7 @@ import { filesystemStore } from '../storage/fs';
 import { pgErrorOf } from './errors';
 import { uploadEvidence } from './evidence';
 import { requestHistoricalTeacher } from './historical';
-import { myTeachers, withdrawRelationship } from './relationships';
+import { myTeachers, REQUESTS_PER_WINDOW, REQUESTS_TO_ONE_TEACHER_PER_WINDOW, withdrawRelationship } from './relationships';
 import { addReviewNote, assignReviewCase, decideReviewCase, getArchiveRecord, getReviewCase, listReviewCases, updateArchiveRecord } from './review';
 import { key, type Member, member, meta, newLineage, ongoingFrom, principalOf, staff } from './relationships.test-support';
 
@@ -463,5 +463,39 @@ describe('concurrent changes to one case', () => {
     }
     // The one that came second may be refused (the case is closed or decided), never failed.
     expect(outcomes.filter((o) => o !== 'OK' && o !== 'CONFLICT')).toEqual([]);
+  });
+});
+
+// M10a review, code-2: review.assign, unassign and needs_info write under_review -> under_review
+// events with the reviewer as actor, and the request window counted them as the reviewer's own
+// teacher requests: a reviewer who trains too was refused their own claim (429).
+describe('the request window of a reviewer who trains too', () => {
+  it(`a reviewer's queue work is not their own requests: after ${REQUESTS_PER_WINDOW} assign, unassign and needs_info events on claims about one teacher, they claim that teacher themselves`, async () => {
+    const reviewer = await member('rv-window-arch', { role: 'archivist' });
+    const [teacher] = await getDb()
+      .insert(person)
+      .values({ slug: `demo-rv-window-teacher-${key().slice(0, 8)}`, kind: 'historical', lifeStatus: 'deceased', stewardship: 'platform', visibility: 'public' })
+      .returning({ id: person.id });
+    await getDb().insert(personName).values({ personId: teacher!.id, value: 'Demo Window Teacher', script: 'Latn', lang: 'und-Latn', isPrimary: true });
+    const aboutTeacher = { teacherId: teacher!.id, teacherName: null };
+    const claims = [];
+    for (let i = 0; i < 5; i += 1) claims.push(await claim(`rv-window-student-${i}`, aboutTeacher));
+    // Four cases taken and released, one taken and sent back with a question: ten reviewer events.
+    for (const c of claims.slice(0, 4)) {
+      await assignReviewCase(reviewer.principal, { caseId: c.caseId, assigneeId: reviewer.account.id, idempotencyKey: key() }, meta);
+      await assignReviewCase(reviewer.principal, { caseId: c.caseId, assigneeId: null, idempotencyKey: key() }, meta);
+    }
+    await assignReviewCase(reviewer.principal, { caseId: claims[4]!.caseId, assigneeId: reviewer.account.id, idempotencyKey: key() }, meta);
+    await decideReviewCase(reviewer.principal, { caseId: claims[4]!.caseId, decision: 'needs_info', reason: 'Add the other page of the fictional certificate.', idempotencyKey: key() }, meta);
+    const reviewerEvents = await getDb()
+      .select({ id: relationshipEvent.id })
+      .from(relationshipEvent)
+      .where(and(eq(relationshipEvent.actorUserId, reviewer.account.id), eq(relationshipEvent.toStatus, 'under_review')));
+    expect(reviewerEvents.length).toBeGreaterThanOrEqual(Math.max(REQUESTS_PER_WINDOW, REQUESTS_TO_ONE_TEACHER_PER_WINDOW));
+
+    // Their own claim of the same teacher is their first request of the day (before the fix: 429).
+    const evidence = await upload(reviewer, 'rv-window-own');
+    const own = await requestHistoricalTeacher(reviewer.principal, { ...aboutTeacher, lineageId, periods: ongoingFrom('2001-09'), evidenceIds: [evidence.id], idempotencyKey: key() }, meta);
+    expect(own.relationship.status).toBe('under_review');
   });
 });
