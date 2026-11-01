@@ -16,7 +16,7 @@
 |---|---|---|
 | DEFAULT D08/D18 | Пинът се показва, докато акаунтът, обявил школата, има Professional Sifu; отнемането скрива пина (и публичната страница) и запазва школата | `v_public_school` в миграцията на M11, `src/server/services/schools.ts` |
 | DEFAULT D17 | `last_activity_at` се мести само при редакция или „Confirm it is current“, никога при вход | `src/server/services/schools.ts` |
-| D12 | Пинове чрез федерация няма до Фаза 3 | миграцията, ADR 0013 §3 |
+| DEFAULT D12 | Пинове чрез федерация няма до Фаза 3; брои се само акаунтът, обявил школата | `src/server/services/schools.ts`, миграцията на M11, ADR 0013 §3 |
 | DEFAULT (M11 In scope 1) | Извлечение от GeoNames за BG, GR, DE, GB, US, HK | `src/server/geo/geonames.ts` |
 | DEFAULT (без D номер) | Стиловете на OpenFreeMap: Positron (светла тема) и Dark (тъмна) | `src/server/geo/map-styles.ts` |
 | DEFAULT (без D номер) | Обявите се одобряват от модератор или администратор | `src/server/services/school-review.ts` |

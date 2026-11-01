@@ -37,8 +37,8 @@
 //   schools.confirm                  "This listing is current": last_activity_at (D17)
 // DEFAULT D17: last_activity_at changes only on an edit or a confirmation, never on sign-in.
 // DEFAULT D08/D18: the pin shows while the account that listed the school holds Professional Sifu;
-// revoking the grant hides the pin and keeps the school (v_public_school). D12: no pins through an
-// organization before Phase 3.
+// revoking the grant hides the pin and keeps the school (v_public_school).
+// DEFAULT D12: no pins through an organization before Phase 3; only the listing account counts.
 //
 // Audit rows name the fields that changed, never a point, an address or a contact (plan §6.4).
 
