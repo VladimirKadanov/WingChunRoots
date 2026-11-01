@@ -6,7 +6,8 @@
 import { loadDotEnv } from '../db/dotenv';
 import { closeDb, getDb } from '../db';
 import { GEONAMES_ATTRIBUTION } from './geonames';
-import { loadPlaces, readExtract } from './places';
+import { readExtract } from './extract-file';
+import { loadPlaces } from './places';
 
 async function main(): Promise<void> {
   loadDotEnv();

@@ -6747,6 +6747,40 @@
         }
       }
     },
+    "/sitemap/schools": {
+      "get": {
+        "operationId": "schools.sitemap",
+        "summary": "The addresses of the public schools and when each last changed (the sitemap)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "slug": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "slug",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/schools/mine": {
       "get": {
         "operationId": "schools.mine",
@@ -6773,7 +6807,7 @@
     "/schools/mine/{id}": {
       "get": {
         "operationId": "schools.edit",
-        "summary": "One of the account's own schools for the editor, with the review state and the upgrade offer",
+        "summary": "One of the account's own schools for the editor, with the review state, the upgrade offer and the cities (optionally those matching `city`)",
         "parameters": [
           {
             "name": "id",
@@ -6784,6 +6818,23 @@
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
             }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
           }
         ],
         "responses": {
@@ -6818,7 +6869,26 @@
     "/schools/mine/new": {
       "get": {
         "operationId": "schools.options",
-        "summary": "What the form for a new school offers: instructors, forms, and whether a pin can be sent for review",
+        "summary": "What the form for a new school offers: cities (optionally those matching `city`), instructors, forms, and whether a pin can be sent for review",
+        "parameters": [
+          {
+            "name": "city",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -6831,6 +6901,16 @@
                       "not": {}
                     }
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -7345,12 +7425,29 @@
                           },
                           "countryCode": {
                             "type": "string"
+                          },
+                          "point": {
+                            "type": "object",
+                            "properties": {
+                              "lat": {
+                                "type": "number"
+                              },
+                              "lng": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "lat",
+                              "lng"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "required": [
                           "id",
                           "name",
-                          "countryCode"
+                          "countryCode",
+                          "point"
                         ],
                         "additionalProperties": false
                       }

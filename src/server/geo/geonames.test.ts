@@ -18,7 +18,8 @@ import {
   placeFromRow,
   serializeExtract,
 } from './geonames';
-import { placeIdFor, placeSearchText, readExtract } from './places';
+import { readExtract } from './extract-file';
+import { placeIdFor, placeSearchText } from './places';
 
 /** A line of the official cities file: 19 tab-separated columns. */
 function citiesLine(over: Partial<Record<number, string>> = {}): string {

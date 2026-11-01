@@ -1,9 +1,11 @@
 // /dashboard/schools/[id] (milestone M11, In scope 2 and 3): one of the Sifu's schools. The listing
 // at the top: its status, whether its pin is on the public map, the reviewers' question or reason,
 // and the next step: "Send for review" (needs Professional Sifu; a Free Sifu sees <UpgradePrompt>
-// instead, DEFAULT D08/D18), or "Confirm it is current" for a listed school (D17). The school form
-// below (schools.update). Only the account that listed the school reaches it (404 otherwise).
-// Reads the session, so it renders per request.
+// instead, DEFAULT D08/D18), or "Confirm it is current" for a listed school (D17). Below, the
+// school's details with "Edit the details" (./edit: the school form, schools.update): a page of its
+// own, so neither page's first JavaScript carries both the form and the upgrade prompt (the route
+// budget, ADR 0013). Only the account that listed the school reaches it (404 otherwise). Reads the
+// session, so it renders per request.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -20,15 +22,13 @@ import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
-import { mapStyles } from '@/server/geo/map-styles';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { requestPilotAccessAction } from '../../actions';
-import { SCHOOL_ACTION_FORM, SCHOOL_FORM } from '../form-ids';
+import { SCHOOL_ACTION_FORM } from '../form-ids';
 import { PIN_TEXT } from '../labels';
 import { ListingAction } from '../listing-actions';
-import { CitySearch, EditorShell } from '../parts';
-import { SchoolForm } from '../school-form';
+import { EditorShell, SchoolNotFound } from '../parts';
 
 export const instant = false;
 
@@ -48,13 +48,12 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
-  const city = typeof query.city === 'string' ? query.city.trim().slice(0, 100) || null : null;
   const client = serverClient(await headers(), guard.principal);
 
   let missing = false;
   const editor = UUID.test(id)
     ? await pageRead(
-        client.schools.edit({ id, city }).catch((error: unknown) => {
+        client.schools.edit({ id }).catch((error: unknown) => {
           if (rpcErrorCode(error) === 'NOT_FOUND' || rpcErrorCode(error) === 'BAD_REQUEST') {
             missing = true;
             return null;
@@ -63,30 +62,35 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
         }),
       )
     : ((missing = true), null);
-  if (missing || (editor && !editor.school)) {
-    return (
-      <EditorShell title="School not found" lead="This school is not one you listed, or the address is mistyped.">
-        <p>
-          <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })}>
-            Your schools
-          </Link>
-        </p>
-      </EditorShell>
-    );
-  }
+  if (missing || (editor && !editor.school)) return <SchoolNotFound />;
   if (!editor) return <LoadError {...LOAD_ERRORS.school} retryHref={page} />;
   const school = editor.school!;
-  const [formOutcome, listingOutcome] = await Promise.all([readFormResult(SCHOOL_FORM, query.outcome), readFormResult(SCHOOL_ACTION_FORM, query.outcome)]);
+  const listingOutcome = await readFormResult(SCHOOL_ACTION_FORM, query.outcome);
   const one = (key: string) => (typeof query[key] === 'string' ? query[key] : null);
   const review = editor.review;
   const draft = school.status === 'draft';
   const needsInfo = school.status === 'pending_review' && review?.status === 'needs_info';
+  const formLabel = new Map(editor.forms.map((f) => [f.key, f.label]));
+  const instructorLabel = new Map(editor.instructorOptions.map((o) => [o.id, o.label]));
+  const details: [string, string][] = [
+    ['City', `${school.placeName}, ${school.countryCode}`],
+    ['Pin', school.point ? `${school.point.lat}, ${school.point.lng}${school.locationPrivacy === 'city_only' ? ' (private)' : ''}` : 'None'],
+    ['Website', school.websiteUrl ?? '—'],
+    ['E-mail', school.contactEmail ?? '—'],
+    ['Phone', school.contactPhone ?? '—'],
+    ['Forms', school.formsTaught.map((key) => formLabel.get(key) ?? key).join(', ') || '—'],
+    ['Instructors', ['You (head instructor)', ...school.instructorIds.map((personId) => instructorLabel.get(personId) ?? 'A confirmed student')].join(', ')],
+  ];
 
   return (
     <EditorShell title={school.name} lead={`${school.placeName}, ${school.countryCode} · ${school.statusLabel}`}>
       {one('saved') ? (
         <OutcomeNote testId="school-saved">
-          {school.status === 'active' ? 'Saved. The school stays listed with the changes.' : 'Saved. The school is a draft that only you see until you send it for review.'}
+          {school.status === 'active'
+            ? 'Saved. The school stays listed with the changes.'
+            : school.status === 'pending_review'
+              ? 'Saved. The reviewers see the changes with the listing.'
+              : 'Saved. The school is a draft that only you see until you send it for review.'}
         </OutcomeNote>
       ) : one('sent') ? (
         <OutcomeNote testId="school-sent">Sent for review. A moderator checks the listing; you get a notification when it is decided.</OutcomeNote>
@@ -152,33 +156,24 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
         ) : null}
       </section>
 
-      <section aria-labelledby="details-heading" className="grid gap-6">
+      <section aria-labelledby="details-heading" className="grid gap-3" data-testid="school-details">
         <h2 id="details-heading" className="font-display text-xl">
           Details
         </h2>
-        <CitySearch action={page} query={city} />
-        <SchoolForm
-          school={{
-            id: school.id,
-            name: school.name,
-            placeId: school.placeId,
-            locationPrivacy: school.locationPrivacy,
-            point: school.point,
-            websiteUrl: school.websiteUrl,
-            contactEmail: school.contactEmail,
-            contactPhone: school.contactPhone,
-            description: school.description,
-            formsTaught: school.formsTaught,
-            instructorIds: school.instructorIds,
-          }}
-          places={editor.places}
-          cityQuery={city}
-          forms={editor.forms}
-          instructorOptions={editor.instructorOptions}
-          styles={mapStyles()}
-          idempotencyKey={null}
-          initial={formOutcome}
-        />
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          {details.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="text-fg-muted">{label}</dt>
+              <dd className="min-w-0 [overflow-wrap:anywhere]">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        {school.description ? <p className="max-w-[60ch] text-ui whitespace-pre-line">{school.description}</p> : null}
+        <p>
+          <Link href={`${page}/edit`} className={buttonVariants({ variant: 'secondary' })} data-testid="edit-school">
+            Edit the details
+          </Link>
+        </p>
       </section>
     </EditorShell>
   );

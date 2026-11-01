@@ -46,8 +46,11 @@ const SNAP_POINTS = [0.15, 0.5, 0.92];
 const COVER_ALWAYS = Number.MAX_SAFE_INTEGER;
 /** The list beside the map from here (the Drawer's side-panel width). */
 const WIDE = '(min-width: 64rem)';
-/** Below this much map above the sheet, the map is out of reach (inert) until the sheet comes down. */
-const MAP_MIN_VISIBLE = 120;
+/**
+ * Below this much map above the sheet (two 44 px touch targets), the map is out of reach (inert)
+ * until the sheet comes down. A phone's half-open sheet leaves about 120 px of map, which stays usable.
+ */
+const MAP_MIN_VISIBLE = 88;
 
 export interface FinderProps {
   schools: SchoolPinDto[];

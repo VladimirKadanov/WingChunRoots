@@ -10,7 +10,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { AttributionControl, Map, Marker, NavigationControl } from '@vis.gl/react-maplibre';
 
-import { ExactPinMark } from '@/components/schools/school-list';
+import { ExactPinMark } from '@/components/schools/marks';
 import type { GeoPointDto } from '@/server/dto/schools';
 import { maplibregl } from './maplibre';
 import { usePageTheme } from './use-theme';

@@ -1,19 +1,18 @@
 // The cities of `place` (milestone M11, In scope 1; plan §6.2): loading the committed GeoNames
-// extract (./geonames.ts) and the city search of the school form. The English name is shown; the
-// alternate names (Chinese and Bulgarian, where GeoNames has them) only make a city findable:
+// extract (./geonames.ts; ./extract-file.ts reads it from disk) and the city search of the school
+// form. The English name is shown; the alternate names (Chinese and Bulgarian, where GeoNames has
+// them) only make a city findable:
 // `search_text` holds every name of the place folded the way the people search folds a query
 // (queryForms, src/server/search/keys.ts), one per line, under a trigram index.
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { Executor } from '../entitlements/access';
 import { queryForms } from '../search/keys';
-import { GEONAMES_EXTRACT_PATH, type GeoNamesPlace, parseExtract } from './geonames';
+import type { GeoNamesPlace } from './geonames';
 
 /** Places written per INSERT. */
 const CHUNK = 500;
@@ -38,11 +37,6 @@ export function placeSearchText(place: Pick<GeoNamesPlace, 'name' | 'asciiName' 
     for (const form of queryForms(name)) forms.add(form.text);
   }
   return [...forms].join('\n');
-}
-
-/** The committed extract, parsed. `root` is the repository (the working directory by default). */
-export function readExtract(root: string = process.cwd()): GeoNamesPlace[] {
-  return parseExtract(readFileSync(path.join(root, GEONAMES_EXTRACT_PATH), 'utf8'));
 }
 
 export interface LoadResult {

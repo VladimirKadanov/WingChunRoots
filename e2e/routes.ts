@@ -86,6 +86,18 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/teachers/historical', name: 'teachers-historical', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-pending' },
   { path: '/admin/review', name: 'review-queue', status: 200, milestone: 'M10a', key: true, signInAs: 'admin' },
   { path: '/admin/review/records/demo-root-c', name: 'review-record', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-archivist' },
+  // Schools and the map (M11). The finder's list view, a school with an exact location and a
+  // city-only one, the page of a school that is not public (a draft: the same page as a missing
+  // address, with noindex), and the school pages of the dashboard of a demo Sifu that no test
+  // changes (demo-free-sifu-5 lists no school; the tests that list use accounts of their own, in
+  // the exclusive run). The map view needs its map to settle: screen states
+  // (e2e/helpers/schools.ts SCHOOL_MAP_SCREENS), with axe in e2e/m11-schools.spec.ts.
+  { path: '/schools?view=list', name: 'schools-list', status: 200, milestone: 'M11', key: true },
+  { path: '/schools/demo-school-sofia', name: 'school', status: 200, milestone: 'M11', key: true },
+  { path: '/schools/demo-school-city-only', name: 'school-city-only', status: 200, milestone: 'M11', key: true },
+  { path: '/schools/demo-school-hamburg-draft', name: 'school-not-listed', status: 200, milestone: 'M11' },
+  { path: '/dashboard/schools', name: 'dashboard-schools', status: 200, milestone: 'M11', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/dashboard/schools/new', name: 'dashboard-school-new', status: 200, milestone: 'M11', key: true, signInAs: 'demo-free-sifu-5' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

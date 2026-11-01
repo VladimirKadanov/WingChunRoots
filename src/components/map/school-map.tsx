@@ -24,7 +24,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { AttributionControl, Map, type MapRef, Marker, NavigationControl } from '@vis.gl/react-maplibre';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 
-import { CityRingMark, ExactPinMark } from '@/components/schools/school-list';
+import { CityRingMark, ExactPinMark } from '@/components/schools/marks';
 import { cx } from '@/lib/cx';
 import { MAX_ZOOM, MIN_ZOOM } from '@/lib/school-finder';
 import type { SchoolPinDto } from '@/server/dto/schools';

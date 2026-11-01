@@ -8,12 +8,11 @@
 // Location (plan §6.4): "Exact pin" makes the point public; "City only" keeps any point private
 // (school_private_location) and the map shows the school at its city's centre.
 
-import dynamic from 'next/dynamic';
-import { useActionState, useState } from 'react';
+import { lazy, Suspense, useActionState, useState } from 'react';
 
 import { FieldError, FormMessage, SelectField, SubmitButton, TextField, describedBy, fieldClassName, useFocusOnError, useHydrated } from '@/components/account/fields';
 import { CheckIcon, PinIcon } from '@/components/icons';
-import { CityRingMark, ExactPinMark } from '@/components/schools/school-list';
+import { CityRingMark, ExactPinMark } from '@/components/schools/marks';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
@@ -21,10 +20,10 @@ import type { GeoPointDto } from '@/server/dto/schools';
 import { createSchoolAction, updateSchoolAction } from './actions';
 import { SCHOOL_FORM } from './form-ids';
 
-const PinPicker = dynamic(() => import('@/components/map/pin-picker'), {
-  ssr: false,
-  loading: () => <div className="h-72 animate-pulse rounded-sm bg-surface-1 motion-reduce:animate-none md:h-96" />,
-});
+// React.lazy rather than next/dynamic: the picker renders only after a click (never on the server),
+// and the page's first JavaScript stays without next/dynamic's loader (the route budget, ADR 0013).
+const PinPicker = lazy(() => import('@/components/map/pin-picker'));
+const pickerLoading = <div className="h-72 animate-pulse rounded-sm bg-surface-1 motion-reduce:animate-none md:h-96" />;
 
 export interface SchoolFormPlace {
   id: string;
@@ -241,15 +240,17 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         </div>
         {hydrated ? (
           picking && (city || typedPoint) ? (
-            <PinPicker
-              center={typedPoint ?? city!.point}
-              point={typedPoint}
-              styles={styles}
-              onPick={(p) => {
-                setLat(String(p.lat));
-                setLng(String(p.lng));
-              }}
-            />
+            <Suspense fallback={pickerLoading}>
+              <PinPicker
+                center={typedPoint ?? city!.point}
+                point={typedPoint}
+                styles={styles}
+                onPick={(p) => {
+                  setLat(String(p.lat));
+                  setLng(String(p.lng));
+                }}
+              />
+            </Suspense>
           ) : (
             <p>
               <button

@@ -27,6 +27,19 @@ export function EditorShell({ title, lead, children }: { title: string; lead: Re
   );
 }
 
+/** The answer for an address that is not one of the account's schools. */
+export function SchoolNotFound() {
+  return (
+    <EditorShell title="School not found" lead="This school is not one you listed, or the address is mistyped.">
+      <p>
+        <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })}>
+          Your schools
+        </Link>
+      </p>
+    </EditorShell>
+  );
+}
+
 /** "Find a city or town": reloads the editor with ?city=, which puts the matches first in the city list. */
 export function CitySearch({ action, query }: { action: string; query: string | null }) {
   return (

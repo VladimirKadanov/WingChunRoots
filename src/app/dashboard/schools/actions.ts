@@ -108,18 +108,19 @@ export async function createSchoolAction(_previous: FormState, form: FormData): 
   redirect(`${LIST}/${id}?saved=1#outcome`);
 }
 
-/** "Save changes" of /dashboard/schools/<id> (schools.update). */
+/** "Save changes" of /dashboard/schools/<id>/edit (schools.update): back to the school's page. */
 export async function updateSchoolAction(_previous: FormState, form: FormData): Promise<FormState> {
   const { input, values, badPoint } = readFields(form);
   const id = textValue(form, 'id', 40);
   const page = UUID.test(id) ? pageOf(id) : LIST;
+  const edit = UUID.test(id) ? `${page}/edit` : LIST;
   try {
     await serverClient(await headers(), await getRequestPrincipal()).schools.update({ ...input, id });
   } catch (error) {
     unstable_rethrow(error);
-    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(edit);
     const state = pointField(formStateFromFailure(error, { ...values, id }), badPoint);
-    return formResult({ form: SCHOOL_FORM, page, anchor: outcomeTarget(SCHOOL_FORM, state, false) }, state);
+    return formResult({ form: SCHOOL_FORM, page: edit, anchor: outcomeTarget(SCHOOL_FORM, state, false) }, state);
   }
   redirect(`${page}?saved=1#outcome`);
 }

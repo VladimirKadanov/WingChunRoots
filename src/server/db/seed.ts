@@ -18,7 +18,8 @@ import type { Client } from 'pg';
 
 import { FIXTURE_SEED, generateFixtures, type Fixtures } from '../../fixtures/generate';
 import { encryptTotpSecret, generateBackupCodes, hashAccountPassword } from '../auth/credentials';
-import { loadPlaces, readExtract } from '../geo/places';
+import { readExtract } from '../geo/extract-file';
+import { loadPlaces } from '../geo/places';
 import { recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { contentHash, withClient } from './admin';
 import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
