@@ -48,7 +48,7 @@ import { hasStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { evidenceFile, evidenceLink, notification, reviewCase } from '../db/schema';
+import { evidenceFile, evidenceLink, notification, reviewCase, reviewEvent } from '../db/schema';
 import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES_PER_CASE, EVIDENCE_NAME_MAX, OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
@@ -234,23 +234,41 @@ export async function readBody(body: ReadableStream<Uint8Array>, declared: numbe
 
 interface OpenCase {
   id: string;
+  kind: string;
   status: (typeof OPEN_REVIEW_CASE_STATUSES)[number];
   assignedToUserId: string | null;
 }
 
-/** The uploader's own open historical claim, or 404 (the same answer as for no such case). */
+/** The kinds whose claimant (the account that opened the case) adds files to it. */
+const CLAIMANT_KINDS: readonly string[] = ['historical_claim', 'person_claim', 'instructor_verification'];
+
+/**
+ * An open case the uploader may add files to, or 404 (the same answer as for no such case): their
+ * own historical claim, profile claim or instructor verification (M10b), or a relationship dispute
+ * whose relationship is theirs, as its student or its teacher (M10b: both parties of an arbitration
+ * send evidence, DEFAULT D19).
+ */
 async function ownOpenCase(db: Executor, userId: string, caseId: string, lock = false): Promise<OpenCase> {
   if (!z.uuid().safeParse(caseId).success) throw new ServiceError('NOT_FOUND', 'No such claim.');
   const query = db
-    .select({ id: reviewCase.id, status: reviewCase.status, openedBy: reviewCase.openedByUserId, kind: reviewCase.kind, assignedToUserId: reviewCase.assignedToUserId })
+    .select({
+      id: reviewCase.id,
+      status: reviewCase.status,
+      openedBy: reviewCase.openedByUserId,
+      kind: reviewCase.kind,
+      assignedToUserId: reviewCase.assignedToUserId,
+      party: sql<boolean>`EXISTS (SELECT 1 FROM teaching_relationship r JOIN person x ON x.id IN (r.teacher_person_id, r.student_person_id) AND x.deleted_at IS NULL
+                WHERE r.id = review_case.relationship_id AND x.claimed_by_user_id = ${userId}::uuid)`,
+    })
     .from(reviewCase)
     .where(eq(reviewCase.id, caseId));
-  const [row] = lock ? await query.for('update') : await query;
-  if (!row || row.openedBy !== userId || row.kind !== 'historical_claim') throw new ServiceError('NOT_FOUND', 'No such claim.');
+  const [row] = lock ? await query.for('update', { of: reviewCase }) : await query;
+  const allowed = row && ((CLAIMANT_KINDS.includes(row.kind) && row.openedBy === userId) || (row.kind === 'relationship_dispute' && row.party));
+  if (!row || !allowed) throw new ServiceError('NOT_FOUND', 'No such claim.');
   if (!(OPEN_REVIEW_CASE_STATUSES as readonly string[]).includes(row.status)) {
     throw new ServiceError('CONFLICT', 'This claim has been decided: no more files can be added to it.');
   }
-  return { id: row.id, status: row.status as OpenCase['status'], assignedToUserId: row.assignedToUserId };
+  return { id: row.id, kind: row.kind, status: row.status as OpenCase['status'], assignedToUserId: row.assignedToUserId };
 }
 
 async function filesInCase(db: Executor, caseId: string): Promise<number> {
@@ -354,7 +372,7 @@ export async function uploadEvidence(principal: Principal | null, input: UploadI
           uploadedByUserId: p.user.id,
         })
         .returning(fileColumns);
-      if (open) await attachToOpenCase(tx, open, id, p.user.id);
+      if (open) await attachToOpenCase(tx, open, id, p);
       await writeAudit(tx, {
         action: 'evidence.upload',
         actorUserId: p.user.id,
@@ -384,13 +402,17 @@ export async function uploadEvidence(principal: Principal | null, input: UploadI
  * Links a new file to the uploader's open case. A case waiting for more information goes back to
  * the reviewers (in review when someone has it, open otherwise), and its reviewer is told.
  */
-async function attachToOpenCase(tx: Transaction, open: OpenCase, fileId: string, userId: string): Promise<void> {
+async function attachToOpenCase(tx: Transaction, open: OpenCase, fileId: string, principal: Principal): Promise<void> {
+  const userId = principal.user.id;
   await tx.insert(evidenceLink).values({ evidenceFileId: fileId, reviewCaseId: open.id, createdByUserId: userId, note: 'added by the claimant' });
+  const status = open.status === 'needs_info' ? (open.assignedToUserId ? 'in_review' : 'open') : open.status;
   if (open.status === 'needs_info') {
-    await tx
-      .update(reviewCase)
-      .set({ status: open.assignedToUserId ? 'in_review' : 'open', updatedAt: new Date() })
-      .where(eq(reviewCase.id, open.id));
+    await tx.update(reviewCase).set({ status, updatedAt: new Date() }).where(eq(reviewCase.id, open.id));
+  }
+  // M10b: the case's own history (review-core.ts) records the evidence a party added; a historical
+  // claim keeps its history in relationship_event (M10a).
+  if (open.kind !== 'historical_claim') {
+    await tx.insert(reviewEvent).values({ reviewCaseId: open.id, action: 'evidence', fromStatus: open.status, toStatus: status, actorUserId: userId, actorRole: principal.user.role });
   }
   if (open.assignedToUserId) {
     await tx.insert(notification).values({ userId: open.assignedToUserId, template: 'review.updated', payload: { caseId: open.id, change: 'evidence' } });
@@ -403,8 +425,30 @@ async function attachToOpenCase(tx: Transaction, open: OpenCase, fileId: string,
  * Returns the field error of `evidenceIds`, or null once they are linked.
  */
 export async function linkFilesToCase(tx: Transaction, userId: string, caseId: string, fileIds: readonly string[]): Promise<string | null> {
+  return linkFiles(tx, userId, { reviewCaseId: caseId, note: 'sent with the claim' }, fileIds, true);
+}
+
+/**
+ * M10b: links the student's unattached files to the relationship of an invitation (invitations.ts),
+ * in its transaction; none is required. The same rules as linkFilesToCase. Such a file opens for
+ * the uploader, the administrators and the relationship's teacher (accessOfFiles), so for an
+ * invited teacher only once their profile claim is approved and the record is theirs: never for
+ * the invitee before that (the milestone's constraint).
+ */
+export async function linkFilesToRelationship(tx: Transaction, userId: string, relationshipId: string, fileIds: readonly string[]): Promise<string | null> {
+  if (fileIds.length === 0) return null;
+  return linkFiles(tx, userId, { relationshipId, note: 'sent with the invitation' }, fileIds, false);
+}
+
+async function linkFiles(
+  tx: Transaction,
+  userId: string,
+  target: { reviewCaseId: string; note: string } | { relationshipId: string; note: string },
+  fileIds: readonly string[],
+  required: boolean,
+): Promise<string | null> {
   const ids = [...new Set(fileIds)];
-  if (ids.length === 0) return 'Attach at least one file of evidence.';
+  if (ids.length === 0) return required ? 'Attach at least one file of evidence.' : null;
   if (ids.length > EVIDENCE_MAX_FILES_PER_CASE) return `Attach at most ${EVIDENCE_MAX_FILES_PER_CASE} files to one claim.`;
   const unavailable = 'Some of these files are no longer available. Remove them from the list and upload them again.';
   const rows = await tx
@@ -419,7 +463,7 @@ export async function linkFilesToCase(tx: Transaction, userId: string, caseId: s
   // file already in one claim could be sent with another.
   const [linked] = await tx.select({ id: evidenceLink.id }).from(evidenceLink).where(inArray(evidenceLink.evidenceFileId, ids)).limit(1);
   if (linked) return unavailable;
-  await tx.insert(evidenceLink).values(ids.map((id) => ({ evidenceFileId: id, reviewCaseId: caseId, createdByUserId: userId, note: 'sent with the claim' })));
+  await tx.insert(evidenceLink).values(ids.map((id) => ({ evidenceFileId: id, ...target, createdByUserId: userId })));
   return null;
 }
 
@@ -482,11 +526,14 @@ export async function accessOfFiles(db: Executor, principal: Principal, fileIds:
       uploader: sql<boolean>`evidence_file.uploaded_by_user_id IS NOT DISTINCT FROM ${userId}::uuid`,
       assigned: sql<boolean>`EXISTS (SELECT 1 FROM evidence_link l JOIN review_case c ON c.id = l.review_case_id
                 WHERE l.evidence_file_id = evidence_file.id AND c.assigned_to_user_id = ${userId}::uuid)`,
+      // M10b: never through a relationship dispute, where each party's files stay their own
+      // (DEFAULT D19), nor through a profile claim (the claimant's own files about themselves).
       teacher: sql<boolean>`EXISTS (SELECT 1 FROM evidence_link l
                  LEFT JOIN review_case c ON c.id = l.review_case_id
                  JOIN teaching_relationship r ON r.id = COALESCE(l.relationship_id, c.relationship_id)
                  JOIN person t ON t.id = r.teacher_person_id AND t.deleted_at IS NULL
-                WHERE l.evidence_file_id = evidence_file.id AND t.claimed_by_user_id = ${userId}::uuid)`,
+                WHERE l.evidence_file_id = evidence_file.id AND t.claimed_by_user_id = ${userId}::uuid
+                  AND (c.id IS NULL OR c.kind = 'historical_claim'))`,
     })
     .from(evidenceFile)
     .where(and(inArray(evidenceFile.id, ids), isNull(evidenceFile.deletedAt)));

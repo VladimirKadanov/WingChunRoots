@@ -15,6 +15,7 @@ import { getDb } from '../db';
 import {
   lineage,
   person,
+  personClaim,
   personName,
   pilotAccessRequest,
   place,
@@ -113,6 +114,8 @@ export interface DashboardOverview {
   plan: PlanSummary;
   until: string | null;
   hasProfile: boolean;
+  /** M10b: the review case of the account's claim of an invited teacher's profile, while it waits. */
+  pendingClaimCaseId: string | null;
   /**
    * Staff accounts (review round 1, design-8): their role, whether this session proved the second
    * factor, and, for an administrator whose session did, the number of open pilot access requests,
@@ -260,6 +263,15 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
     plan: planSummary(effective.plan),
     until: effective.until?.toISOString() ?? null,
     hasProfile: Boolean(own),
+    pendingClaimCaseId: own
+      ? null
+      : ((
+          await db
+            .select({ caseId: personClaim.reviewCaseId })
+            .from(personClaim)
+            .where(and(eq(personClaim.userId, p.user.id), eq(personClaim.status, 'pending')))
+            .limit(1)
+        )[0]?.caseId ?? null),
     staff,
     notifications,
   };
