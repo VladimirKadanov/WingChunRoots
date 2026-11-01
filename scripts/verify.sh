@@ -317,8 +317,11 @@ run_e2e() {
   # run while a table is locked or while the public graph changes under it.
   PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests "$@" || return 1
   # Last, the pilot path of plan §2.2 (M13; e2e/projects.ts, PILOT_SPEC) on the three devices: it
-  # makes links public and changes seeded demo accounts, which no earlier spec may see.
-  PW_PILOT=1 pnpm e2e --pass-with-no-tests "$@"
+  # makes links public and changes seeded demo accounts, which no earlier spec may see. Only for the
+  # whole suite (all, M13): a milestone's filter (@smoke|@Mxx) selects none of its tests.
+  if [ "$#" -eq 0 ]; then
+    PW_PILOT=1 pnpm e2e
+  fi
 }
 
 run_checks() {

@@ -54,6 +54,7 @@ vi.mock('next/cache', () => ({
   cacheLife: () => undefined,
   revalidateTag: () => undefined,
   updateTag: () => undefined,
+  refresh: () => undefined,
 }));
 
 // next/headers as a Server Action sees it: the request's headers (the session) and a cookie jar.
@@ -339,6 +340,8 @@ const ROWS: Row[] = [
   },
   { path: 'search.query', make: () => ({ input: { q: 'Demo' } }), expect: everyone },
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  // M12: /admin/system, any staff role with a verified second factor (requireStaff2FA).
+  { path: 'system.status', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {
     path: 'admin.setRole',
     // A staff account keeps its second factor (a member without one cannot become staff).
@@ -923,9 +926,10 @@ describe('Server Actions run the same checks (M13)', () => {
         request.cookies.clear();
         recorded.calls = [];
         let redirectedTo: string | null = null;
+        let state: unknown = null;
         try {
           const fn = mod[name] as ActionFn;
-          await (entry.call ? entry.call(fn, form, input ?? {}) : fn({ status: 'idle' }, form));
+          state = await (entry.call ? entry.call(fn, form, input ?? {}) : fn({ status: 'idle' }, form));
         } catch (error) {
           if (!(error instanceof Redirect)) throw error;
           redirectedTo = error.url;
@@ -940,6 +944,10 @@ describe('Server Actions run the same checks (M13)', () => {
           expect(redirectedTo ?? '', `${who}`).toMatch(/^\/sign-in/);
         } else {
           expect(calls.at(-1)!.code, `${entry.action} as ${who}`).toBe(expected);
+          // An allowed call ends as a success of the action too, not an error it caught afterwards.
+          if (expected === 'ok' && redirectedTo === null) {
+            expect((state as { status?: string } | null)?.status, `${entry.action} as ${who}: ${JSON.stringify(state)}`).not.toBe('error');
+          }
         }
       }
     });

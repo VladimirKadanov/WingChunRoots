@@ -392,8 +392,11 @@ test('@pilot a teacher with two active verified teachers in different lineages a
 const CRAWLED = /^\/(?:$|people\/|schools(?:\/|\?|$)|explore(?:\?|$)|plans$|legal\/)/;
 const CRAWL_LIMIT = 400;
 
-/** Every way a coordinate could be written with 4 or 5 decimals (about 10 m to 1 m). */
-const coordinateForms = (value: number) => [String(value), value.toFixed(5), value.toFixed(4), String(Number(value.toFixed(4)))];
+/**
+ * Every way a coordinate could be written with 4 or 5 decimals (about 10 m to 1 m). Only forms that
+ * keep at least 4 decimals: a shorter one ("42.7") also turns up in unrelated numbers of a page.
+ */
+const coordinateForms = (value: number) => [String(value), value.toFixed(5), value.toFixed(4), String(Number(value.toFixed(5)))].filter((form) => /\.\d{4,}$/.test(form));
 
 test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Open Graph and JSON-LD finds no private fields, pending edges, involved-only persons, city-only coordinates or evidence keys', async ({ page, browser, request }) => {
   test.setTimeout(300_000);

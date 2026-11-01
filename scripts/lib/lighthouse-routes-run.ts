@@ -154,7 +154,7 @@ async function cookies(): Promise<Map<Account, string>> {
 
 /** A fresh invitation's token: a new fictional account with a profile lists a teacher not here yet. */
 async function invitationToken(): Promise<string> {
-  const inviter = await member('perf-web-inviter');
+  const inviter = await member('perf-web-inviter', { hidden: true });
   const p = principal(inviter.account.id, inviter.account.email);
   await recordConsents(p, { kinds: [...SIGN_UP_CONSENTS] }, META);
   const lineage = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM lineage WHERE slug = 'demo-lineage-c'`);
@@ -215,6 +215,10 @@ export async function main(): Promise<void> {
   const base = (a.base ?? '').replace(/\/$/, '');
   if (!base) throw new Error('usage: pnpm perf:web --base=http://127.0.0.1:<port> [--chrome-path=<chrome>] [--stdout]');
   if (!process.env.BETTER_AUTH_SECRET) throw new Error('BETTER_AUTH_SECRET is not set (the session cookies are signed with it)');
+  // It writes sessions, an account and an invitation: only into the test database.
+  if (!process.env.TEST_DATABASE_URL || process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL) {
+    throw new Error('run it with DATABASE_URL set to TEST_DATABASE_URL: it adds sessions, an account and an invitation to the database it measures');
+  }
 
   const jar = await cookies();
   const focus = (await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM person WHERE slug = 'demo-two-lineages'`)).rows[0]?.id;

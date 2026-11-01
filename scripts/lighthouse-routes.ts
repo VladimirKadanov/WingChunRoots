@@ -6,7 +6,6 @@
 //
 //   pnpm perf:web --base=http://127.0.0.1:3103 [--chrome-path=<chrome>]   # writes its section of docs/perf/web-vitals.md
 //   pnpm perf:web --base=… --stdout                                       # prints the section instead
-//   pnpm perf:web --base=… --only=/schools                                # only the routes whose path contains it
 //
 // Exit status 1 when a route is over a threshold of lighthouserc.json or a run fails.
 

@@ -4,7 +4,7 @@
 
 | Показател | Бюджет | Как се мери | Резултат |
 |---|---|---|---|
-| LCP | < 2,5 s | Lighthouse в мобилен профил (4× по-бавен процесор, бавна 4G), всички основни маршрути от план §5.5 (`pnpm perf:web`) | всички 31 маршрута в бюджета; най-бавен 1905 ms (`/legal/licenses`) |
+| LCP | < 2,5 s | Lighthouse в мобилен профил (4× по-бавен процесор, бавна 4G), всички основни маршрути от план §5.5 (`pnpm perf:web`) | всички 32 маршрута в бюджета; най-бавен 2064 ms (`/styleguide`) |
 | CLS | < 0,1 | Lighthouse, същите маршрути | най-голям 0,050 (`/onboarding`) |
 | INP | < 200 ms | Playwright с `web-vitals` (onINP) при 4× забавяне на процесора, най-лошото от три взаимодействия | най-лош 184 ms (избор на възел в изгледа Lineage на телефон) |
 | JavaScript на маршрут | ≤ 170 kB gzip (отделни бюджети на `/explore` 200 kB, `/dashboard/profile` 195 kB, `/styleguide` 260 kB) | `scripts/check-bundle-budget.mjs` след `next build` | всички 45 маршрута в бюджета; `/` 168,1 kB |
@@ -42,38 +42,39 @@ Lighthouse 13.4.1, мобилен профил (4× по-бавен процес
 
 | Екран (план §5.5) | Адрес | LCP | CLS | TBT | FCP | Пускания | В бюджета |
 |---|---|---|---|---|---|---|---|
-| Home | `/` | 1809 ms | 0.001 | 232 ms | 1809 ms | 1 | да |
-| Style guide | `/styleguide` | 1755 ms | 0.000 | 511 ms | 1755 ms | 1 | да |
-| Sign up | `/sign-up` | 1666 ms | 0.000 | 158 ms | 1666 ms | 1 | да |
-| Sign in | `/sign-in` | 1642 ms | 0.000 | 217 ms | 1642 ms | 1 | да |
-| Reset password | `/reset-password` | 1621 ms | 0.000 | 210 ms | 1621 ms | 1 | да |
-| Verify e-mail | `/verify-email` | 1644 ms | 0.000 | 257 ms | 1644 ms | 1 | да |
-| Account security | `/account/security` (demo-pending) | 1648 ms | 0.029 | 27 ms | 1648 ms | 1 | да |
-| Account privacy | `/account/privacy` (demo-pending) | 1637 ms | 0.000 | 174 ms | 1637 ms | 1 | да |
-| Administration | `/admin` (admin) | 1616 ms | 0.000 | 170 ms | 1616 ms | 1 | да |
-| Onboarding | `/onboarding` (нов акаунт без профил) | 1667 ms | 0.050 | 168 ms | 1667 ms | 1 | да |
-| Person | `/people/demo-two-lineages` | 1705 ms | 0.004 | 150 ms | 1705 ms | 1 | да |
-| Lineage list view | `/people/demo-two-lineages/lineage` | 1736 ms | 0.002 | 220 ms | 1736 ms | 1 | да |
-| Explorer (start) | `/explore` | 1617 ms | 0.000 | 162 ms | 1617 ms | 1 | да |
-| Explorer (person view) | `/explore?focus={focus}` | 1892 ms | 0.000 | 593 ms | 1598 ms | 1 | да |
-| My profile | `/dashboard/profile` (demo-pending) | 1643 ms | 0.010 | 232 ms | 1643 ms | 1 | да |
-| Dashboard (student) | `/dashboard` (demo-pending) | 1657 ms | 0.000 | 57 ms | 1657 ms | 1 | да |
-| Dashboard (Sifu) | `/dashboard` (demo-free-sifu-5) | 1648 ms | 0.000 | 183 ms | 1648 ms | 1 | да |
-| Plans | `/plans` | 1681 ms | 0.000 | 173 ms | 1681 ms | 1 | да |
-| Add a teacher | `/dashboard/teachers/new` (demo-pending) | 1695 ms | 0.000 | 152 ms | 1695 ms | 1 | да |
-| Student requests | `/dashboard/students/requests` (demo-free-sifu-5) | 1705 ms | 0.000 | 137 ms | 1705 ms | 1 | да |
-| Historical teacher and evidence | `/dashboard/teachers/historical` (demo-pending) | 1682 ms | 0.000 | 170 ms | 1682 ms | 1 | да |
-| Review queue | `/admin/review` (admin) | 1730 ms | 0.000 | 242 ms | 1730 ms | 1 | да |
-| Invitation | `/invite/{invite}` | 1631 ms | 0.001 | 309 ms | 1631 ms | 1 | да |
-| Test grants | `/admin/grants` (admin) | 1645 ms | 0.000 | 176 ms | 1645 ms | 1 | да |
-| Schools (map) | `/schools` | 1626 ms | 0.026 | 702 ms | 1626 ms | 1 | да |
-| Schools (list) | `/schools?view=list` | 1645 ms | 0.000 | 192 ms | 1645 ms | 1 | да |
-| School | `/schools/demo-school-sofia` | 1644 ms | 0.000 | 348 ms | 1644 ms | 1 | да |
-| My schools | `/dashboard/schools` (demo-free-sifu-5) | 1599 ms | 0.000 | 166 ms | 1599 ms | 1 | да |
-| Terms | `/legal/terms` | 1446 ms | 0.001 | 131 ms | 1446 ms | 1 | да |
-| Privacy | `/legal/privacy` | 1512 ms | 0.002 | 175 ms | 1512 ms | 1 | да |
-| Licences | `/legal/licenses` | 1905 ms | 0.000 | 1201 ms | 1905 ms | 1 | да |
+| Home | `/` | 1751 ms | 0.001 | 238 ms | 1751 ms | 3 | да |
+| Style guide | `/styleguide` | 2064 ms | 0.000 | 623 ms | 2064 ms | 1 | да |
+| Sign up | `/sign-up` | 1652 ms | 0.000 | 162 ms | 1652 ms | 1 | да |
+| Sign in | `/sign-in` | 1633 ms | 0.000 | 201 ms | 1633 ms | 1 | да |
+| Reset password | `/reset-password` | 1623 ms | 0.000 | 239 ms | 1623 ms | 1 | да |
+| Verify e-mail | `/verify-email` | 1660 ms | 0.000 | 136 ms | 1660 ms | 1 | да |
+| Account security | `/account/security` (demo-pending) | 1615 ms | 0.029 | 147 ms | 1615 ms | 1 | да |
+| Account privacy | `/account/privacy` (demo-pending) | 1657 ms | 0.000 | 179 ms | 1657 ms | 1 | да |
+| Administration | `/admin` (admin) | 1618 ms | 0.000 | 157 ms | 1618 ms | 1 | да |
+| System status | `/admin/system` (admin) | 1675 ms | 0.000 | 151 ms | 1675 ms | 1 | да |
+| Onboarding | `/onboarding` (нов акаунт без профил) | 1693 ms | 0.050 | 180 ms | 1693 ms | 1 | да |
+| Person | `/people/demo-two-lineages` | 1676 ms | 0.004 | 358 ms | 1676 ms | 1 | да |
+| Lineage list view | `/people/demo-two-lineages/lineage` | 1712 ms | 0.002 | 164 ms | 1712 ms | 1 | да |
+| Explorer (start) | `/explore` | 1627 ms | 0.000 | 70 ms | 1627 ms | 1 | да |
+| Explorer (person view) | `/explore?focus={focus}` | 1860 ms | 0.000 | 519 ms | 1590 ms | 1 | да |
+| My profile | `/dashboard/profile` (demo-pending) | 1640 ms | 0.000 | 137 ms | 1640 ms | 1 | да |
+| Dashboard (student) | `/dashboard` (demo-pending) | 1663 ms | 0.000 | 150 ms | 1663 ms | 1 | да |
+| Dashboard (Sifu) | `/dashboard` (demo-free-sifu-5) | 1639 ms | 0.000 | 129 ms | 1639 ms | 1 | да |
+| Plans | `/plans` | 1646 ms | 0.000 | 163 ms | 1646 ms | 1 | да |
+| Add a teacher | `/dashboard/teachers/new` (demo-pending) | 1649 ms | 0.000 | 156 ms | 1649 ms | 1 | да |
+| Student requests | `/dashboard/students/requests` (demo-free-sifu-5) | 1658 ms | 0.000 | 270 ms | 1658 ms | 1 | да |
+| Historical teacher and evidence | `/dashboard/teachers/historical` (demo-pending) | 1633 ms | 0.000 | 163 ms | 1633 ms | 1 | да |
+| Review queue | `/admin/review` (admin) | 1661 ms | 0.000 | 185 ms | 1661 ms | 1 | да |
+| Invitation | `/invite/{invite}` | 1612 ms | 0.001 | 218 ms | 1612 ms | 1 | да |
+| Test grants | `/admin/grants` (admin) | 1622 ms | 0.000 | 155 ms | 1622 ms | 1 | да |
+| Schools (map) | `/schools` | 1615 ms | 0.026 | 741 ms | 1615 ms | 1 | да |
+| Schools (list) | `/schools?view=list` | 1635 ms | 0.000 | 208 ms | 1635 ms | 1 | да |
+| School | `/schools/demo-school-sofia` | 1613 ms | 0.000 | 159 ms | 1613 ms | 1 | да |
+| My schools | `/dashboard/schools` (demo-free-sifu-5) | 1609 ms | 0.000 | 100 ms | 1609 ms | 1 | да |
+| Terms | `/legal/terms` | 1656 ms | 0.001 | 147 ms | 1656 ms | 1 | да |
+| Privacy | `/legal/privacy` | 1665 ms | 0.002 | 185 ms | 1665 ms | 1 | да |
+| Licences | `/legal/licenses` | 1784 ms | 0.000 | 1251 ms | 1784 ms | 1 | да |
 
-Най-бавен LCP: Licences (`/legal/licenses`), 1905 ms. Най-голям CLS: Onboarding, 0.050.
+Най-бавен LCP: Style guide (`/styleguide`), 2064 ms. Най-голям CLS: Onboarding, 0.050.
 
 <!-- /perf:web -->

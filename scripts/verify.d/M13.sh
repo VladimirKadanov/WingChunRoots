@@ -73,7 +73,7 @@ check "scripts/verify.sh runs the pilot last, after the ordinary and the exclusi
   awk "/^run_e2e\\(\\) \\{/,/^\\}/" scripts/verify.sh > /tmp/m13-run-e2e.$$ &&
   grep -q "pnpm e2e \"\$@\" || return 1" /tmp/m13-run-e2e.$$ &&
   grep -q "PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests \"\$@\" || return 1" /tmp/m13-run-e2e.$$ &&
-  tail -n 2 /tmp/m13-run-e2e.$$ | grep -q "PW_PILOT=1 pnpm e2e --pass-with-no-tests \"\$@\""; rc=$?; rm -f /tmp/m13-run-e2e.$$; exit $rc'
+  tail -n 4 /tmp/m13-run-e2e.$$ | grep -q "PW_PILOT=1 pnpm e2e$"; rc=$?; rm -f /tmp/m13-run-e2e.$$; exit $rc'
 check "scripts/verify.sh M13 includes everything of all (every check and the whole E2E suite)" \
   grep -q 'if \[ "$target" = "all" \] || \[ "$target" = "M13" \]; then' scripts/verify.sh
 check "the leak scan reads the sitemap, Open Graph, JSON-LD, the city-only private points, the evidence key and the pilot server log" bash -c '
@@ -153,7 +153,7 @@ perf_web() {
   fi
   local log=.verify/M13-perf-web-server.log starter=() pid i ready=0 rc=1
   command -v setsid >/dev/null 2>&1 && starter=(setsid)
-  DATABASE_URL="$TEST_DATABASE_URL" APP_URL="http://127.0.0.1:$port" "${starter[@]}" node_modules/.bin/next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1 &
+  DATABASE_URL="$TEST_DATABASE_URL" APP_URL="http://127.0.0.1:$port" "${starter[@]}" pnpm --silent exec next start --hostname 127.0.0.1 --port "$port" > "$log" 2>&1 &
   pid=$!
   for i in $(seq 1 120); do
     kill -0 "$pid" 2>/dev/null || break
@@ -178,7 +178,7 @@ perf_web() {
   wait "$pid" 2>/dev/null
   return "$rc"
 }
-check_verbose "pnpm perf:web: LCP < 2.5 s and CLS < 0.1 on every main route in the mobile profile (lighthouserc.json)" perf_web
+check_verbose "pnpm perf:web: LCP <= 2.5 s and CLS <= 0.1 on every main route in the mobile profile (lighthouserc.json)" perf_web
 [ -f .verify/M13-perf-web.log ] && grep -E '^(ok  |FAIL|Lighthouse )' .verify/M13-perf-web.log | sed 's/^/     /'
 
 # 7. Final screenshots (In scope 6) -------------------------------------------------------------------
