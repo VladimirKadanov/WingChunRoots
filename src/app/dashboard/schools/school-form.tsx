@@ -105,14 +105,16 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
   // The city: the first match of a search, else the school's own, else none chosen yet.
   const firstFound = places.find((p) => p.found)?.id;
   const [placeId, setPlaceId] = useState(values?.placeId ?? firstFound ?? school?.placeId ?? '');
-  const [privacy, setPrivacy] = useState<'exact' | 'city_only'>((values?.locationPrivacy as 'exact' | 'city_only' | undefined) ?? school?.locationPrivacy ?? 'exact');
+  // Nothing is chosen in advance for a new school: the Sifu decides whether the address is public
+  // (privacy by default, as the M08 rule for choices); a saved school shows its own choice.
+  const [privacy, setPrivacy] = useState<'exact' | 'city_only' | null>((values?.locationPrivacy as 'exact' | 'city_only' | undefined) ?? school?.locationPrivacy ?? null);
   const [lat, setLat] = useState(values?.lat ?? (school?.point ? String(school.point.lat) : ''));
   const [lng, setLng] = useState(values?.lng ?? (school?.point ? String(school.point.lng) : ''));
   const [picking, setPicking] = useState(false);
   const city = places.find((p) => p.id === placeId) ?? null;
   const typedPoint = /^-?\d{1,3}(\.\d+)?$/.test(lat) && /^-?\d{1,3}(\.\d+)?$/.test(lng) ? { lat: Number(lat), lng: Number(lng) } : null;
 
-  const checked = (prefix: string, key: string, saved: string[] | undefined) => (values ? values[`${prefix}.${key}`] === 'on' : (saved ?? []).includes(key));
+  const saved = (prefix: string, key: string, kept: string[] | undefined) => (values ? values[`${prefix}.${key}`] === 'on' : (kept ?? []).includes(key));
   const found = places.filter((p) => p.found);
   const byCountry = new Map<string, SchoolFormPlace[]>();
   for (const p of places.filter((place) => !place.found)) byCountry.set(p.countryCode, [...(byCountry.get(p.countryCode) ?? []), p]);
@@ -177,7 +179,7 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
               type="radio"
               name="locationPrivacy"
               value={value}
-              checked={privacy === value}
+              defaultChecked={privacy === value}
               onChange={() => setPrivacy(value)}
               className={radioClass}
             />
@@ -198,9 +200,9 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
           {privacy === 'city_only' ? <span className="font-normal text-fg-muted"> (optional, kept private)</span> : null}
         </legend>
         <p id={pointHintId} className="text-sm text-fg-muted">
-          {privacy === 'exact'
-            ? 'Where the school is, within 50 km of the city. Type the latitude and longitude, or drop the pin on a map.'
-            : 'A city-only school can keep its exact point for itself: nobody else sees it.'}
+          {privacy === 'city_only'
+            ? 'A city-only school can keep its exact point for itself: nobody else sees it.'
+            : 'Where the school is, within 50 km of the city. Type the latitude and longitude, or drop the pin on a map.'}
         </p>
         <FieldError id={pointErrorId} error={error('lat')} />
         <div className="grid grid-cols-2 gap-3">
@@ -299,7 +301,7 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         </legend>
         <div className="grid sm:grid-cols-2">
           {forms.map((f) => (
-            <Check key={f.key} name="formsTaught" value={f.key} label={f.label} defaultChecked={checked('forms', f.key, school?.formsTaught)} />
+            <Check key={f.key} name="formsTaught" value={f.key} label={f.label} defaultChecked={saved('forms', f.key, school?.formsTaught)} />
           ))}
         </div>
       </fieldset>
@@ -309,7 +311,7 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         <p className="text-sm text-fg-muted">You are the head instructor. Others can be added from the students you confirmed.</p>
         <FieldError id={`${fieldId(form, 'instructorIds')}-error`} error={error('instructorIds')} />
         {others.length > 0 ? (
-          others.map((o) => <Check key={o.id} name="instructorIds" value={o.id} label={o.label} defaultChecked={checked('instructor', o.id, school?.instructorIds)} />)
+          others.map((o) => <Check key={o.id} name="instructorIds" value={o.id} label={o.label} defaultChecked={saved('instructor', o.id, school?.instructorIds)} />)
         ) : (
           <p className="text-sm text-fg-muted">None of your confirmed students can be added yet.</p>
         )}
