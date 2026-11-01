@@ -2,7 +2,8 @@
 
 // The sign-up form (milestone M02). It renders the page's heading too: once the account is made,
 // "Check your inbox" replaces "Create your account" and takes the focus. `initial` is the outcome
-// of a submit without JavaScript (src/server/forms/flash.ts).
+// of a submit without JavaScript (src/server/forms/flash.ts). `next` (M10b review): the page to open
+// after the first sign-in, kept by the form and by the links that lead on to the sign-in.
 
 import Link from 'next/link';
 import { type ReactNode, useActionState } from 'react';
@@ -47,18 +48,22 @@ export function SignUpForm({
   required,
   terms,
   privacy,
+  next = '',
   initial,
   footer,
 }: {
   required: readonly string[];
   terms: SignUpDocument;
   privacy: SignUpDocument;
+  /** The local page to open after the first sign-in (`?next=`), or "". */
+  next?: string;
   initial?: FormState | null;
   footer: ReactNode;
 }) {
   const [state, action, pending] = useActionState(signUpAction, initial ?? IDLE);
   const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
+  const withNext = (path: string) => (next ? `${path}?next=${encodeURIComponent(next)}` : path);
 
   if (state.status === 'done') {
     return (
@@ -76,10 +81,14 @@ export function SignUpForm({
             </p>
             <p>
               Nothing arrived after a few minutes? Look in the spam folder, or{' '}
-              <Link href="/verify-email" className="link">
+              <Link href={withNext('/verify-email')} className="link">
                 send the link again
               </Link>
-              . Already have an account? <Link href="/sign-in" className="link">Sign in</Link> or{' '}
+              . Already have an account?{' '}
+              <Link href={withNext('/sign-in')} className="link">
+                Sign in
+              </Link>{' '}
+              or{' '}
               <Link href="/reset-password" className="link">
                 reset your password
               </Link>
@@ -101,6 +110,7 @@ export function SignUpForm({
       />
       <FrameBody>
         <form id={FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6">
+          {next ? <input type="hidden" name="next" value={next} /> : null}
           <FormMessage form={FORM} state={state} labels={LABELS} />
           <TextField
             form={FORM}

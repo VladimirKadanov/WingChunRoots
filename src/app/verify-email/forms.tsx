@@ -3,7 +3,9 @@
 // The forms of /verify-email (milestone M02). Each renders the page's heading, so the heading
 // always says what the page shows now: the link's one button, "This link no longer works" (with a
 // form for a new link) once the link is refused, and "Check your inbox" once a new link is sent.
-// `initial` is the outcome of a submit without JavaScript (src/server/forms/flash.ts).
+// `initial` is the outcome of a submit without JavaScript (src/server/forms/flash.ts). `next` (M10b
+// review): the page the sign-in after the confirmation opens (an invitation link), kept by both
+// forms and by their links to the sign-in.
 
 import Link from 'next/link';
 import { type ReactNode, useActionState } from 'react';
@@ -28,12 +30,12 @@ import { CONFIRM, linkRefused } from './headings';
  * The line under the new-link form: the same with and without JavaScript, and on the page without
  * a link (fix round 3, screens-6).
  */
-export function AlreadyConfirmedFooter() {
+export function AlreadyConfirmedFooter({ next = '' }: { next?: string }) {
   return (
     <FormFooter>
       <p>
         Already confirmed?{' '}
-        <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
+        <Link href={signInHref(next)} className="link inline-flex min-h-11 items-center">
           Sign in
         </Link>
       </p>
@@ -41,12 +43,15 @@ export function AlreadyConfirmedFooter() {
   );
 }
 
-export function ConfirmEmailForm({ token, initial }: { token: string; initial?: FormState | null }) {
+/** The sign-in, with the page it opens afterwards. */
+const signInHref = (next: string) => (next ? `/sign-in?next=${encodeURIComponent(next)}` : '/sign-in');
+
+export function ConfirmEmailForm({ token, next = '', initial }: { token: string; next?: string; initial?: FormState | null }) {
   const [state, action, pending] = useActionState(confirmEmailAction, initial ?? IDLE);
   const form = useFormId('confirm-email');
   useFocusOnError(form, state);
   if (isRefusedLink(state)) {
-    return <ResendConfirmationForm heading={linkRefused(state)} headingId={messageId(form)} footer={<AlreadyConfirmedFooter />} />;
+    return <ResendConfirmationForm heading={linkRefused(state)} headingId={messageId(form)} next={next} footer={<AlreadyConfirmedFooter next={next} />} />;
   }
   return (
     <>
@@ -54,6 +59,7 @@ export function ConfirmEmailForm({ token, initial }: { token: string; initial?: 
       <FrameBody>
         <form id={form} action={action} aria-busy={pending || undefined} className="grid gap-6">
           <input type="hidden" name="token" value={token} />
+          {next ? <input type="hidden" name="next" value={next} /> : null}
           <FormMessage form={form} state={state} />
           <div>
             <SubmitButton pending={pending} pendingLabel="Confirming…">
@@ -69,12 +75,15 @@ export function ConfirmEmailForm({ token, initial }: { token: string; initial?: 
 export function ResendConfirmationForm({
   heading,
   headingId,
+  next = '',
   initial,
   footer,
 }: {
   heading: FrameHeading;
   /** Set when the heading is itself an outcome (a refused link): it then takes the focus. */
   headingId?: string;
+  /** The page the sign-in after the confirmation opens, or "". */
+  next?: string;
   initial?: FormState | null;
   footer?: ReactNode;
 }) {
@@ -95,7 +104,11 @@ export function ResendConfirmationForm({
               , if it belongs to an account that waits for confirmation. It works for 24 hours.
             </p>
             <p>
-              Already confirmed? <Link href="/sign-in" className="link">Sign in</Link>.
+              Already confirmed?{' '}
+              <Link href={signInHref(next)} className="link">
+                Sign in
+              </Link>
+              .
             </p>
           </DoneText>
         </FrameBody>
@@ -107,6 +120,7 @@ export function ResendConfirmationForm({
       <FrameHeader {...heading} id={headingId} focus={Boolean(headingId) && state.status === 'idle'} />
       <FrameBody>
         <form id={form} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6">
+          {next ? <input type="hidden" name="next" value={next} /> : null}
           <FormMessage form={form} state={state} single />
           <TextField
             form={form}

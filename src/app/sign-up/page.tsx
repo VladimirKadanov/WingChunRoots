@@ -2,11 +2,16 @@
 // them ticked in advance. The form posts to a Server Action and works before JavaScript loads; a
 // submit without JavaScript comes back as `?outcome=` (src/server/forms/flash.ts), so the page reads
 // the query string and renders per request (instant = false, docs/adr/0004-auth.md).
+// `?next=` (M10b review, requirements-2): the local page to open after the first sign-in. The path
+// of an invitation link also rides in the confirmation e-mail (src/server/auth/emails.ts), so an
+// invited teacher comes back to the claim instead of setting up a profile of their own.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AuthFrame, FormFooter } from '@/components/account/auth-frame';
+import { isInvitationPath } from '@/lib/invitation-path';
+import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult } from '@/server/forms/flash';
 import { LEGAL_DOCUMENTS, REQUIRED_SIGN_UP_CONSENTS } from '@/server/legal/documents';
 import { SignUpForm } from './sign-up-form';
@@ -18,18 +23,29 @@ export const metadata: Metadata = {
   description: 'Join the WingChunRoots pilot: record who taught you and whom you teach.',
 };
 
+const ADULTS = {
+  title: 'Adults only',
+  text: 'The pilot is open to people aged 18 or older. A tick confirms it; we never ask for a birth date.',
+};
+const CONFIRM = {
+  title: 'Confirm your address',
+  text: 'We e-mail you a link that works for 24 hours. You can sign in once the address is confirmed.',
+};
 const NOTES = [
-  {
-    title: 'Adults only',
-    text: 'The pilot is open to people aged 18 or older. A tick confirms it; we never ask for a birth date.',
-  },
-  {
-    title: 'Confirm your address',
-    text: 'We e-mail you a link that works for 24 hours. You can sign in once the address is confirmed.',
-  },
+  ADULTS,
+  CONFIRM,
   {
     title: 'Then your name',
     text: 'After signing in you add your name in Latin letters and, if you like, in its original script. Your profile stays private until you choose otherwise.',
+  },
+] as const;
+/** On the way to an invitation: the profile the student started is the one the account claims. */
+const INVITED_NOTES = [
+  ADULTS,
+  CONFIRM,
+  {
+    title: 'Then your claim',
+    text: 'After signing in you go back to the invitation and claim the profile the student started for you. You do not set up another one.',
   },
 ] as const;
 
@@ -39,19 +55,21 @@ const doc = ({ title, path, date }: { title: string; path: string; date: string 
 
 export default async function SignUpPage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
+  const next = safeNextPath(query.next, '');
   const initial = await readFormResult('sign-up', query.outcome);
   return (
-    <AuthFrame notes={NOTES} notesLabel="How joining works">
+    <AuthFrame notes={isInvitationPath(next) ? INVITED_NOTES : NOTES} notesLabel="How joining works">
       <SignUpForm
         required={REQUIRED_SIGN_UP_CONSENTS}
         terms={doc(LEGAL_DOCUMENTS.terms)}
         privacy={doc(LEGAL_DOCUMENTS.privacy)}
+        next={next}
         initial={initial}
         footer={
           <FormFooter>
             <p>
               Already have an account?{' '}
-              <Link href="/sign-in" className="link inline-flex min-h-11 items-center">
+              <Link href={next ? `/sign-in?next=${encodeURIComponent(next)}` : '/sign-in'} className="link inline-flex min-h-11 items-center">
                 Sign in
               </Link>
             </p>
