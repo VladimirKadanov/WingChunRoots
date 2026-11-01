@@ -16,6 +16,10 @@
 // - `paddingBottom`: the height of the phone's sheet over the map (MapLibre's padding), so the
 //   centre of the view, and a selected pin moved to it, stay in the part above the sheet; a marker
 //   reached with Tab under the sheet is brought into view (WCAG 2.4.11).
+// - The compact attribution opens as MapLibre opens it, as wide as a phone's map. MapLibre folds it
+//   to its button on a drag only; here any move of the reader's (keys, a wheel, the zoom buttons)
+//   and the choice of a school fold it too, so it never covers the selected pin or "Search this
+//   area" (both sit in the middle of the map, clear of the control column). Its button opens it again.
 // - data-moving says whether the view is moving (the tests wait for it to settle).
 // - Coordinates arrive only through the public DTO: a city-only school is at its city's centre.
 
@@ -77,6 +81,11 @@ function reducedMotion(): boolean {
 
 const padding = (bottom: number) => ({ top: 0, left: 0, right: 0, bottom });
 
+/** Folds the compact attribution to its button, as MapLibre does on a drag (AttributionControl._updateCompactMinimize). */
+function foldAttribution(container: HTMLElement) {
+  container.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
+}
+
 export default function SchoolMap({ schools, selectedId, onSelect, styles, initial, paddingBottom, onViewChange, onFail }: SchoolMapProps) {
   const theme = usePageTheme();
   const map = useRef<MapRef>(null);
@@ -107,6 +116,10 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
   useEffect(() => {
     place(true);
   }, [selectedId, paddingBottom]);
+  useEffect(() => {
+    const container = selectedId ? map.current?.getMap().getContainer() : null;
+    if (container) foldAttribution(container);
+  }, [selectedId]);
 
   // A marker reached with the keyboard under the sheet comes into view first (WCAG 2.4.11).
   const revealIfHidden = (element: HTMLElement, school: SchoolPinDto) => {
@@ -155,7 +168,10 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
           m.on('style.load', settle);
           settle();
         }}
-        onMoveStart={() => setMoving(true)}
+        onMoveStart={(event) => {
+          setMoving(true);
+          if (event.originalEvent) foldAttribution(event.target.getContainer());
+        }}
         onMoveEnd={(event) => {
           setMoving(false);
           const c = event.target.getCenter();

@@ -10,7 +10,7 @@
  * the 390 x 844 viewport of the milestone themselves.
  */
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { distanceKm } from '../src/lib/school-finder';
 import { closeHelpers, giveOwnAddress } from './helpers/auth';
@@ -25,8 +25,52 @@ test.beforeEach(async ({ context }) => {
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } as const;
 
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
 const marker = (page: Page, slug: string) => page.locator(`[data-testid="school-marker"][data-slug="${slug}"]`);
 const sheetOf = (page: Page) => page.getByTestId('school-sheet');
+
+/** The boxes of the map's controls that show (MapLibre's attribution and each zoom button). */
+async function shownControls(page: Page): Promise<(Box & { name: string })[]> {
+  return page.locator('.maplibregl-ctrl-attrib, .maplibregl-ctrl-group > button').evaluateAll((items) =>
+    items
+      .filter((item) => getComputedStyle(item).visibility === 'visible' && item.getClientRects().length > 0)
+      .map((item) => {
+        const r = item.getBoundingClientRect();
+        return { name: item.getAttribute('aria-label') ?? item.className, x: r.x, y: r.y, width: r.width, height: r.height };
+      }),
+  );
+}
+
+/**
+ * Whether `element` is what the window shows at its centre and near its four corners (nothing
+ * covers any part of it). The corner points sit 4 px in, inside the controls' rounded corners
+ * (--radius-md), which hit testing leaves to the element behind.
+ */
+function uncovered(element: Locator): Promise<boolean> {
+  return element.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const inset = 4;
+    const points = [
+      [r.x + r.width / 2, r.y + r.height / 2],
+      [r.x + inset, r.y + inset],
+      [r.right - inset, r.y + inset],
+      [r.x + inset, r.bottom - inset],
+      [r.right - inset, r.bottom - inset],
+    ];
+    return points.every(([x, y]) => {
+      const hit = document.elementFromPoint(x!, y!);
+      return !!hit && (hit === el || el.contains(hit));
+    });
+  });
+}
 
 /** The top of the sheet, once it has come to rest. */
 async function restingSheetTop(page: Page): Promise<number> {
@@ -141,6 +185,64 @@ test.describe('at 390x844', () => {
         `${slug} inside the map`,
       ).toEqual({ left: true, right: true, top: true, bottom: true });
     }
+  });
+
+  test('@M11 the selected pin stays above the sheet and clear of the map controls at the first and middle snap points (review screens-1)', async ({ page }) => {
+    /** The pin is inside the map, above the sheet, and no control that shows overlaps it. */
+    const pinClear = async (pin: Locator, label: string) => {
+      await restingSheetTop(page);
+      await mapSettled(page);
+      await expect
+        .poll(
+          async () => {
+            const frame = (await page.getByTestId('school-map-frame').boundingBox())!;
+            const top = (await sheetOf(page).boundingBox())!.y;
+            const box = (await pin.boundingBox())!;
+            const over = (await shownControls(page)).filter((control) => overlaps(box, control)).map((control) => control.name);
+            return { aboveSheet: box.y + box.height <= top, inFrame: box.y >= frame.y, under: over };
+          },
+          { message: label },
+        )
+        .toEqual({ aboveSheet: true, inFrame: true, under: [] });
+    };
+
+    // One school (a short list: the sheet is no taller than its content), as in the milestone's test.
+    await page.goto('/schools?near=Sofia&radius=50');
+    await mapSettled(page);
+    const sofia = marker(page, 'demo-school-sofia');
+    await sofia.tap();
+    await expect(sofia).toHaveAttribute('aria-pressed', 'true');
+    await pinClear(sofia, 'one school: the sheet at its first snap point');
+    await sheetOf(page).getByRole('button', { name: 'Expand' }).click();
+    await pinClear(sofia, 'one school: the sheet expanded');
+
+    // Every school (a list taller than half the window, so the sheet rests at its real 0.5 point), London in view.
+    await page.goto('/schools?lat=51.5074&lng=-0.1278&z=6');
+    await mapSettled(page);
+    const london = marker(page, 'demo-school-london');
+    await london.tap();
+    await expect(sheetOf(page)).toBeVisible();
+    await expect(london).toHaveAttribute('aria-pressed', 'true');
+    await pinClear(london, 'every school: the sheet at its first snap point');
+    await sheetOf(page).getByRole('button', { name: 'Expand' }).click();
+    expect(Math.abs((await sheetShare(page)) - 0.5), 'the sheet rests at its 0.5 snap point').toBeLessThan(0.02);
+    await pinClear(london, 'every school: the sheet at its middle snap point');
+  });
+
+  test('@M11 "Search this area" after a move with the keyboard is clear of the attribution (review screens-6)', async ({ page }) => {
+    await page.goto('/schools?near=Sofia&radius=50');
+    await mapSettled(page);
+    const searchArea = page.getByTestId('search-area');
+    for (let i = 0; i < 6 && !(await searchArea.isVisible()); i += 1) await pressOnMap(page, 'ArrowRight', 1);
+    await expect(searchArea).toBeVisible();
+    const box = (await searchArea.boundingBox())!;
+    expect((await shownControls(page)).filter((control) => overlaps(box, control)).map((control) => control.name)).toEqual([]);
+    expect(await uncovered(searchArea), 'nothing covers "Search this area"').toBe(true);
+    // The attribution is folded to its button, which opens it again.
+    const toggle = page.locator('.maplibregl-ctrl-attrib-button');
+    await expect(page.locator('.maplibregl-ctrl-attrib')).not.toHaveClass(/maplibregl-compact-show/);
+    await toggle.tap();
+    await expect(page.locator('.maplibregl-ctrl-attrib')).toHaveClass(/maplibregl-compact-show/);
   });
 
   test('@M11 the sheet steps through its snap points with Expand, and Esc lowers it one step before it closes (review screens-12)', async ({ page }) => {
