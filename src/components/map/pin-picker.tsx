@@ -18,6 +18,15 @@ import { usePageTheme } from './use-theme';
 
 const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
 
+/**
+ * Folds the attribution to its info button, as MapLibre does on a drag, once the Sifu acts on the
+ * map (a tap that drops the pin, a zoom, a move by keys): on a phone the open attribution would
+ * cover a pin dropped beneath it (review screens-7). It shows open until then, and the button opens it.
+ */
+function foldAttribution(map: HTMLElement) {
+  map.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
+}
+
 export interface PinPickerProps {
   /** Where the map opens when there is no pin yet: the city's centre. */
   center: GeoPointDto;
@@ -44,9 +53,17 @@ export default function PinPicker({ center, point, styles, onPick }: PinPickerPr
         style={{ width: '100%', height: '100%' }}
         cursor="crosshair"
         onLoad={(event) => event.target.getCanvas().setAttribute('aria-label', 'Map for the pin. Tap or click where the school is; the latitude and longitude fields fill in.')}
-        onClick={(event) => onPick({ lat: round5(event.lngLat.lat), lng: round5(event.lngLat.lng) })}
+        onClick={(event) => {
+          foldAttribution(event.target.getContainer());
+          onPick({ lat: round5(event.lngLat.lat), lng: round5(event.lngLat.lng) });
+        }}
+        onMoveStart={(event) => {
+          if (event.originalEvent) foldAttribution(event.target.getContainer());
+        }}
       >
-        <AttributionControl position="top-right" compact />
+        {/* The attribution at the bottom and the zoom at the top: on a phone's small map they do not
+            stack down one side over the pin. */}
+        <AttributionControl position="bottom-right" compact />
         <NavigationControl position="top-right" showCompass={false} />
         {point ? (
           <Marker

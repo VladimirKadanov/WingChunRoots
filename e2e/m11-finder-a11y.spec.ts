@@ -173,3 +173,45 @@ test('@M11 in forced colours a checked box of the school form looks checked, and
   }
   await page.emulateMedia({ forcedColors: 'none' });
 });
+
+test('@M11 "Drop the pin on a map" takes the focus into the map, "Hide the map" brings it back, and the controls leave the dropped pin in view', async ({ page }) => {
+  await freshAccount(page, { name: `Demo Pin Sifu ${letters()}`, sifu: true });
+  await page.goto('/dashboard/schools/new');
+  const form = visible(page.getByTestId('school-form'));
+  await form.getByLabel('City or town').selectOption({ label: 'Leipzig, DE' });
+  const dropPin = form.getByTestId('drop-pin');
+  const panel = form.getByTestId('pin-picker-panel');
+
+  // By keyboard: the focus goes into the map's panel (not to the page), then "Hide the map".
+  await dropPin.focus();
+  await page.keyboard.press('Enter');
+  await expect(panel).toBeFocused();
+  await expect(panel).toHaveAccessibleName('Tap or click the map where the school is: the latitude and longitude fill in.');
+  await expect(form.getByTestId('pin-picker')).toBeVisible();
+  await page.keyboard.press('Tab');
+  const hide = form.getByRole('button', { name: 'Hide the map' });
+  await expect(hide).toBeFocused();
+  const target = (await hide.boundingBox())!;
+  if (await narrow(page)) expect(target.height, 'a 44 px touch target').toBeGreaterThanOrEqual(44);
+  await page.keyboard.press('Enter');
+  await expect(form.getByTestId('pin-picker')).toHaveCount(0);
+  await expect(dropPin).toBeFocused();
+
+  // Open again; a pin dropped near the top right corner is covered by no map control.
+  await page.keyboard.press('Enter');
+  await expect(panel).toBeFocused();
+  const picker = form.getByTestId('pin-picker');
+  await expect(picker.locator('.maplibregl-ctrl-attrib-inner')).not.toBeEmpty();
+  const canvas = picker.locator('canvas.maplibregl-canvas');
+  const area = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: area.width - 130, y: 60 } });
+  await expect(form.getByLabel('Latitude', { exact: true })).not.toHaveValue('');
+  const pin = picker.locator('.maplibregl-marker');
+  await expect(pin).toBeVisible();
+  const pinBox = (await pin.boundingBox())!;
+  for (const control of await picker.locator('.maplibregl-ctrl').all()) {
+    const box = await control.boundingBox();
+    if (box && box.width > 0) expect(overlaps(pinBox, box), `the pin is clear of ${await control.getAttribute('class')}`).toBe(false);
+  }
+  await expectNoAxeViolations(page, 'the school form with the pin map open');
+});

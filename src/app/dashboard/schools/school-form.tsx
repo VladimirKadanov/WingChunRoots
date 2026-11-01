@@ -8,7 +8,7 @@
 // Location (plan §6.4): "Exact pin" makes the point public; "City only" keeps any point private
 // (school_private_location) and the map shows the school at its city's centre.
 
-import { lazy, Suspense, useActionState, useState } from 'react';
+import { lazy, Suspense, useActionState, useEffect, useRef, useState } from 'react';
 
 import { FieldError, FormMessage, SelectField, SubmitButton, TextField, describedBy, fieldClassName, useFocusOnError, useHydrated } from '@/components/account/fields';
 import { CheckIcon, PinIcon } from '@/components/icons';
@@ -115,6 +115,16 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
   const [lat, setLat] = useState(values?.lat ?? (school?.point ? String(school.point.lat) : ''));
   const [lng, setLng] = useState(values?.lng ?? (school?.point ? String(school.point.lng) : ''));
   const [picking, setPicking] = useState(false);
+  // "Drop the pin on a map" and "Hide the map" each take the place of the other, so the focus would
+  // fall to the page: it moves into the map's panel, and back to the button (WCAG 2.4.3; review screens-7).
+  const pickerPanel = useRef<HTMLDivElement>(null);
+  const dropPin = useRef<HTMLButtonElement>(null);
+  const focusAfterPicking = useRef<'panel' | 'button' | null>(null);
+  useEffect(() => {
+    const target = focusAfterPicking.current === 'panel' ? pickerPanel.current : focusAfterPicking.current === 'button' ? dropPin.current : null;
+    focusAfterPicking.current = null;
+    target?.focus();
+  }, [picking]);
   const city = places.find((p) => p.id === placeId) ?? null;
   const typedPoint = /^-?\d{1,3}(\.\d+)?$/.test(lat) && /^-?\d{1,3}(\.\d+)?$/.test(lng) ? { lat: Number(lat), lng: Number(lng) } : null;
 
@@ -126,6 +136,7 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
   const latId = fieldId(form, 'lat');
   const pointHintId = `${latId}-hint`;
   const pointErrorId = `${latId}-error`;
+  const pickerHintId = `${latId}-map-hint`;
 
   return (
     <form id={form} action={action} noValidate className="grid gap-6" data-testid="school-form">
@@ -246,23 +257,45 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         </div>
         {hydrated ? (
           picking && (city || typedPoint) ? (
-            <Suspense fallback={pickerLoading}>
-              <PinPicker
-                center={typedPoint ?? city!.point}
-                point={typedPoint}
-                styles={styles}
-                onPick={(p) => {
-                  setLat(String(p.lat));
-                  setLng(String(p.lng));
-                }}
-              />
-            </Suspense>
+            <div ref={pickerPanel} tabIndex={-1} role="group" aria-labelledby={pickerHintId} className="grid gap-2 rounded-sm" data-testid="pin-picker-panel">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <p id={pickerHintId} className="text-sm">
+                  Tap or click the map where the school is: the latitude and longitude fill in.
+                </p>
+                <button
+                  type="button"
+                  className={buttonVariants({ variant: 'secondary', size: 'sm' })}
+                  onClick={() => {
+                    focusAfterPicking.current = 'button';
+                    setPicking(false);
+                  }}
+                  data-testid="hide-pin-map"
+                >
+                  Hide the map
+                </button>
+              </div>
+              <Suspense fallback={pickerLoading}>
+                <PinPicker
+                  center={typedPoint ?? city!.point}
+                  point={typedPoint}
+                  styles={styles}
+                  onPick={(p) => {
+                    setLat(String(p.lat));
+                    setLng(String(p.lng));
+                  }}
+                />
+              </Suspense>
+            </div>
           ) : (
             <p>
               <button
+                ref={dropPin}
                 type="button"
                 className={buttonVariants({ variant: 'secondary' })}
-                onClick={() => setPicking(true)}
+                onClick={() => {
+                  focusAfterPicking.current = 'panel';
+                  setPicking(true);
+                }}
                 aria-disabled={!city && !typedPoint ? true : undefined}
                 disabled={!city && !typedPoint}
                 data-testid="drop-pin"
