@@ -6,12 +6,18 @@
 //   approve   (teacher)  pending_teacher → verified, public; both people public
 //   reject    (teacher)  pending_teacher → rejected, with a neutral reason
 //   resubmit  (student)  rejected → pending_teacher, with corrected periods or lineage
-//   withdraw  (student)  pending_teacher | rejected → withdrawn
+//   withdraw  (student)  pending_teacher | rejected | under_review → withdrawn (M10a: an open
+//             historical claim is closed with it)
 //   end       (student or teacher)  verified: the training ended; the link stays, historical
 //
 // DEFAULT (milestone stop-and-ask): the student proposes and the teacher approves or declines with
 // a reason; the teacher never edits the periods. A declined request is corrected and sent again by
 // the student (docs/adr/0011-teacher-requests.md).
+//
+// M10a: a historical or deceased teacher is confirmed by the review committee instead
+// (verification_path committee_review, historical.ts and review.ts): the request is under_review
+// with a review_case of kind historical_claim, and the verify decision writes through markVerified,
+// the same writes as an approval.
 //
 // Every transition writes a relationship_event and an audit_log row in its own transaction, with the
 // notification rows and the queued e-mails, so all of it commits or none does. Every mutation takes
@@ -56,19 +62,23 @@ import {
   personName,
   place,
   relationshipEvent,
+  reviewCase,
+  reviewNote,
   school,
   teachingRelationship,
   trainingPeriod,
 } from '../db/schema';
-import { PUBLIC_RELATIONSHIP_STATUSES, type RELATIONSHIP_STATUSES } from '../db/schema/common';
+import { EVIDENCE_MAX_FILES_PER_CASE, OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, type RELATIONSHIP_STATUSES } from '../db/schema/common';
 import { effectivePlan, type Executor } from '../entitlements/access';
 import { withQuota } from '../entitlements/quota';
 import { enqueue, queueEmail, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
 import type { NameData } from '../templates/email/types';
 import { REJECTION_REASON_CODES, type RejectionReason, rejectionReasonText, isRejectionReason } from '../templates/relationships';
+import { CLAIM_REFUSED_TEXT, CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { approvalOffer, peopleRefs, type PersonRef, type UpgradeOffer, waitingRequests } from './dashboard';
+import { type EvidenceFileView, fileView, filesOfCases } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
 import { planSummary } from './plans';
 import { neighbourTags } from './profile';
@@ -102,7 +112,7 @@ const CYCLE_WALK_CAP = 10_000;
 
 // --- Input -------------------------------------------------------------------------------------
 
-const idempotencyKey = z
+export const idempotencyKey = z
   .string({ error: 'Send a request key.' })
   .regex(/^[A-Za-z0-9_-]{8,64}$/, { error: 'Send a request key of 8 to 64 letters, digits, - or _.' });
 
@@ -122,7 +132,7 @@ export const periodInput = z.object({
 });
 export type PeriodInput = z.input<typeof periodInput>;
 
-const periods = z
+export const periods = z
   .array(periodInput, { error: 'Add at least one training period.' })
   .min(1, { error: 'Add at least one training period.' })
   .max(MAX_PERIODS, { error: `Add at most ${MAX_PERIODS} training periods.` });
@@ -198,6 +208,25 @@ export interface RelationshipView {
   confirmedAt: string | null;
   /** What the viewer may do now. */
   can: { approve: boolean; reject: boolean; withdraw: boolean; resubmit: boolean; end: boolean };
+  /** M10a: teacher_approval (the teacher answers) or committee_review (the review queue decides). */
+  verificationPath: 'teacher_approval' | 'committee_review';
+  /** M10a: the historical claim of a committee_review relationship, for its student and teacher; null otherwise. */
+  review: RelationshipReview | null;
+}
+
+/** M10a: what the student (and the teacher) of a historical claim see of its review case. */
+export interface RelationshipReview {
+  caseId: string;
+  status: ReviewCaseStatus;
+  statusLabel: string;
+  /** The notes the parties may read, oldest first: the claimant's own note and the reviewers' questions. */
+  messages: { fromClaimant: boolean; body: string; createdAt: string }[];
+  /** A refused claim: the neutral text, then the reviewers' reason. */
+  decision: { text: string; reason: string | null } | null;
+  /** The evidence of the claim; `href` only for a file this viewer uploaded (or the teacher's own request). */
+  files: EvidenceFileView[];
+  /** The claimant may add another file: the case waits for a decision and has room (DEFAULT D25). */
+  canAddFiles: boolean;
 }
 
 export interface RelationshipResult {
@@ -206,14 +235,14 @@ export interface RelationshipResult {
   replayed: boolean;
 }
 
-interface Viewer {
+export interface Viewer {
   userId: string;
   personId: string | null;
   /** Staff whose session proved the second factor: reviewers (plan §3.2, DEFAULT D03). */
   reviewer: boolean;
 }
 
-interface RelRow {
+export interface RelRow {
   id: string;
   teacherPersonId: string;
   studentPersonId: string;
@@ -221,6 +250,8 @@ interface RelRow {
   lineageSlug: string;
   lineageName: string;
   status: RelationshipStatus;
+  /** M10a: teacher_approval (M09) or committee_review (a historical teacher, the review queue). */
+  verificationPath: 'teacher_approval' | 'committee_review';
   visibility: 'public' | 'involved_only';
   isDisplayPrimary: boolean;
   prefersDisplayPrimary: boolean;
@@ -239,6 +270,7 @@ const relColumns = {
   lineageSlug: lineage.slug,
   lineageName: lineage.name,
   status: teachingRelationship.status,
+  verificationPath: teachingRelationship.verificationPath,
   visibility: teachingRelationship.visibility,
   isDisplayPrimary: teachingRelationship.isDisplayPrimary,
   prefersDisplayPrimary: teachingRelationship.prefersDisplayPrimary,
@@ -316,16 +348,70 @@ function earliestStart(periods: readonly RelationshipPeriodView[]): string | nul
   return formatPartialDate(first);
 }
 
+/**
+ * M10a: the latest historical claim of each committee_review relationship the viewer is a party to
+ * (student or teacher), with its public notes and its files. Reviewers read the case in
+ * /admin/review instead, so they get none here. Internal notes are never read here.
+ */
+async function reviewsOf(db: Executor, visible: { row: RelRow; role: RelationshipRole }[], viewer: Viewer): Promise<Map<string, RelationshipReview>> {
+  const out = new Map<string, RelationshipReview>();
+  const party = visible.filter((v) => v.row.verificationPath === 'committee_review' && v.role !== 'reviewer');
+  if (party.length === 0) return out;
+  const cases = await db
+    .selectDistinctOn([reviewCase.relationshipId], {
+      id: reviewCase.id,
+      relationshipId: reviewCase.relationshipId,
+      status: reviewCase.status,
+      openedBy: reviewCase.openedByUserId,
+      resolution: reviewCase.resolution,
+      resolutionReason: reviewCase.resolutionReason,
+    })
+    .from(reviewCase)
+    .where(and(inArray(reviewCase.relationshipId, party.map((v) => v.row.id)), eq(reviewCase.kind, 'historical_claim')))
+    .orderBy(reviewCase.relationshipId, desc(reviewCase.createdAt), desc(reviewCase.id));
+  if (cases.length === 0) return out;
+  const caseIds = cases.map((c) => c.id);
+  const notes = await db
+    .select({ caseId: reviewNote.reviewCaseId, author: reviewNote.authorUserId, body: reviewNote.body, createdAt: reviewNote.createdAt })
+    .from(reviewNote)
+    .where(and(inArray(reviewNote.reviewCaseId, caseIds), eq(reviewNote.isInternal, false)))
+    .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id));
+  const files = await filesOfCases(db, caseIds);
+  const roleOfRow = new Map(party.map((v) => [v.row.id, v.role]));
+  for (const c of cases) {
+    if (!c.relationshipId) continue;
+    const role = roleOfRow.get(c.relationshipId);
+    const own = files.get(c.id) ?? [];
+    const open = (OPEN_REVIEW_CASE_STATUSES as readonly string[]).includes(c.status);
+    out.set(c.relationshipId, {
+      caseId: c.id,
+      status: c.status,
+      statusLabel: CLAIM_STATUS_LABELS[c.status],
+      messages: notes
+        .filter((n) => n.caseId === c.id)
+        .map((n) => ({ fromClaimant: n.author !== null && n.author === c.openedBy, body: n.body, createdAt: n.createdAt.toISOString() })),
+      decision: c.resolution === 'rejected' ? { text: CLAIM_REFUSED_TEXT, reason: c.resolutionReason } : null,
+      // The same rule as the download (evidence.ts accessOf): the uploader, and the teacher of their own request.
+      files: own.map((f) => fileView(f, role === 'teacher' || f.uploadedByUserId === viewer.userId)),
+      canAddFiles: role === 'student' && c.openedBy === viewer.userId && open && own.length < EVIDENCE_MAX_FILES_PER_CASE,
+    });
+  }
+  return out;
+}
+
 async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<RelationshipView[]> {
   const visible = rows.map((row) => ({ row, role: roleOf(row, viewer) })).filter((v): v is { row: RelRow; role: RelationshipRole } => v.role !== null);
   if (visible.length === 0) return [];
   const periods = await periodsOf(db, visible.map((v) => v.row.id));
   const refs = await peopleRefs([...new Set(visible.flatMap((v) => [v.row.teacherPersonId, v.row.studentPersonId]))]);
+  const reviews = await reviewsOf(db, visible, viewer);
   return visible.map(({ row, role }) => {
     const own = periods.get(row.id) ?? [];
     const established = row.status === 'verified' || row.status === 'in_arbitration';
     const historical = established && isHistorical(own);
-    const reason = row.status === 'rejected' && isRejectionReason(row.statusReason) ? row.statusReason : row.status === 'rejected' ? 'details' : null;
+    const byTeacher = row.verificationPath === 'teacher_approval';
+    // A teacher's reason; a refused historical claim carries the reviewers' words in `review` (M10a).
+    const reason = row.status !== 'rejected' || !byTeacher ? null : isRejectionReason(row.statusReason) ? row.statusReason : 'details';
     return {
       id: row.id,
       status: row.status,
@@ -347,15 +433,18 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
       can: {
         approve: role === 'teacher' && row.status === 'pending_teacher',
         reject: role === 'teacher' && row.status === 'pending_teacher',
-        withdraw: role === 'student' && (row.status === 'pending_teacher' || row.status === 'rejected'),
-        resubmit: role === 'student' && row.status === 'rejected',
+        withdraw: role === 'student' && (row.status === 'pending_teacher' || row.status === 'rejected' || row.status === 'under_review'),
+        // A refused historical claim is not corrected: the student sends a new claim (M10a).
+        resubmit: role === 'student' && row.status === 'rejected' && byTeacher,
         end: (role === 'teacher' || role === 'student') && established && hasOngoing(own),
       },
+      verificationPath: row.verificationPath,
+      review: reviews.get(row.id) ?? null,
     };
   });
 }
 
-async function viewerOf(db: Executor, p: Principal): Promise<Viewer> {
+export async function viewerOf(db: Executor, p: Principal): Promise<Viewer> {
   const [own] = await db
     .select({ id: person.id })
     .from(person)
@@ -363,7 +452,7 @@ async function viewerOf(db: Executor, p: Principal): Promise<Viewer> {
   return { userId: p.user.id, personId: own?.id ?? null, reviewer: hasStaff2FA(p) };
 }
 
-async function rowById(db: Executor, id: string, lock = false): Promise<RelRow | null> {
+export async function rowById(db: Executor, id: string, lock = false): Promise<RelRow | null> {
   const query = db
     .select(relColumns)
     .from(teachingRelationship)
@@ -373,7 +462,7 @@ async function rowById(db: Executor, id: string, lock = false): Promise<RelRow |
   return row ?? null;
 }
 
-async function viewOf(db: Executor, id: string, viewer: Viewer): Promise<RelationshipView> {
+export async function viewOf(db: Executor, id: string, viewer: Viewer): Promise<RelationshipView> {
   const row = await rowById(db, id);
   const [view] = row ? await toViews(db, [row], viewer) : [];
   if (!view) throw notFound();
@@ -504,7 +593,7 @@ export async function requestOptions(principal: Principal | null): Promise<Reque
 
 // --- Shared checks -----------------------------------------------------------------------------
 
-interface PeriodRow {
+export interface PeriodRow {
   startsOn: string | null;
   endsOn: string | null;
   precision: Precision;
@@ -581,7 +670,7 @@ SELECT EXISTS (SELECT 1 FROM (SELECT id FROM up LIMIT ${CYCLE_WALK_CAP}) a WHERE
   return result.rows[0]?.cycle === true;
 }
 
-const CYCLE_MESSAGE =
+export const CYCLE_MESSAGE =
   'This would create a cycle: this teacher is already recorded below you in the lineage, as your student or your student’s student. A person can’t be their own teacher’s teacher.';
 
 /**
@@ -611,7 +700,7 @@ async function lineageExists(db: Executor, id: string): Promise<boolean> {
 }
 
 /** The event an idempotency key already recorded for this account, if any. */
-async function replayOf(db: Executor, userId: string, key: string) {
+export async function replayOf(db: Executor, userId: string, key: string) {
   const [row] = await db
     .select({ relationshipId: relationshipEvent.relationshipId, fromStatus: relationshipEvent.fromStatus, toStatus: relationshipEvent.toStatus, reason: relationshipEvent.reason })
     .from(relationshipEvent)
@@ -619,12 +708,12 @@ async function replayOf(db: Executor, userId: string, key: string) {
   return row ?? null;
 }
 
-function keyReused(): ServiceError {
+export function keyReused(): ServiceError {
   return new ServiceError('CONFLICT', 'This request key was already used for another change. Reload the page and try again.');
 }
 
 /** The person's names for an e-mail: the Latin-script display name, then the first name in its own script. */
-async function namesFor(db: Executor, personId: string): Promise<NameData[]> {
+export async function namesFor(db: Executor, personId: string): Promise<NameData[]> {
   const rows = await db
     .select({ value: personName.value, lang: personName.lang, kind: personName.kind, isPrimary: personName.isPrimary })
     .from(personName)
@@ -636,7 +725,7 @@ async function namesFor(db: Executor, personId: string): Promise<NameData[]> {
 }
 
 /** The account behind a person (the claimed owner), for notifications and e-mail. */
-async function accountOf(db: Executor, personId: string): Promise<{ id: string; email: string } | null> {
+export async function accountOf(db: Executor, personId: string): Promise<{ id: string; email: string } | null> {
   const [row] = await db
     .select({ id: authUser.id, email: authUser.email })
     .from(person)
@@ -645,14 +734,14 @@ async function accountOf(db: Executor, personId: string): Promise<{ id: string; 
   return row ?? null;
 }
 
-const url = (path: string) => new URL(path, appUrl()).toString();
+export const url = (path: string) => new URL(path, appUrl()).toString();
 
-async function writePeriods(tx: Transaction, relationshipId: string, rows: PeriodRow[]): Promise<void> {
+export async function writePeriods(tx: Transaction, relationshipId: string, rows: PeriodRow[]): Promise<void> {
   await tx.delete(trainingPeriod).where(eq(trainingPeriod.relationshipId, relationshipId));
   if (rows.length > 0) await tx.insert(trainingPeriod).values(rows.map((r) => ({ ...r, relationshipId })));
 }
 
-async function recordEvent(
+export async function recordEvent(
   tx: Transaction,
   event: { relationshipId: string; from: RelationshipStatus | null; to: RelationshipStatus; actor: Principal; role: string; reason?: string | null; key: string },
 ): Promise<string> {
@@ -671,46 +760,49 @@ async function recordEvent(
 }
 
 /** A unique violation of the idempotency key: another call with the key committed first. */
-function isKeyConflict(error: unknown): boolean {
+export function isKeyConflict(error: unknown): boolean {
   const pg = pgErrorOf(error);
   return pg?.code === '23505' && pg.constraint === 'relationship_event_idempotency_key';
 }
 
-function isActiveConflict(error: unknown): boolean {
+export function isActiveConflict(error: unknown): boolean {
   const pg = pgErrorOf(error);
   return pg?.code === '23505' && pg.constraint === 'teaching_relationship_active_key';
 }
 
-const DUPLICATE_MESSAGE = 'You already have a request or a confirmed link with this teacher in this lineage. See My teachers.';
+export const DUPLICATE_MESSAGE = 'You already have a request or a confirmed link with this teacher in this lineage. See My teachers.';
 
 /** Takes the per-student request lock: a student's requests and resubmits see each other's checks. */
-async function lockStudentRequests(tx: Transaction, studentId: string): Promise<void> {
+export async function lockStudentRequests(tx: Transaction, studentId: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${REQUEST_LOCK_SPACE}::int, hashtext(${studentId}::text))`);
 }
 
-/** Refuses one more pending request when the student already has MAX_PENDING_REQUESTS waiting. */
-async function checkPendingCap(tx: Transaction, studentId: string): Promise<void> {
+/**
+ * Refuses one more pending request when the student already has MAX_PENDING_REQUESTS waiting
+ * (M10a: requests to a teacher and historical claims under review together).
+ */
+export async function checkPendingCap(tx: Transaction, studentId: string): Promise<void> {
   const [pending] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(teachingRelationship)
-    .where(and(eq(teachingRelationship.studentPersonId, studentId), eq(teachingRelationship.status, 'pending_teacher')));
+    .where(and(eq(teachingRelationship.studentPersonId, studentId), inArray(teachingRelationship.status, ['pending_teacher', 'under_review'])));
   if ((pending?.n ?? 0) >= MAX_PENDING_REQUESTS) {
     throw new ServiceError('TOO_MANY_REQUESTS', `You have ${MAX_PENDING_REQUESTS} requests waiting for an answer. Wait for some of them, or withdraw one, before you send another.`);
   }
 }
 
 /**
- * Refuses one more request (new or corrected) above the request window (REQUESTS_PER_WINDOW,
- * REQUESTS_TO_ONE_TEACHER_PER_WINDOW). Returns how many requests to this teacher the account sent in
+ * Refuses one more request (new or corrected; M10a: or a historical claim, under_review) above the
+ * request window (REQUESTS_PER_WINDOW, REQUESTS_TO_ONE_TEACHER_PER_WINDOW). Returns how many requests to this teacher the account sent in
  * the window before this one. Under the student's request lock, so parallel requests count each other.
  */
-async function checkRequestWindow(tx: Transaction, userId: string, teacherId: string): Promise<{ toTeacher: number }> {
+export async function checkRequestWindow(tx: Transaction, userId: string, teacherId: string): Promise<{ toTeacher: number }> {
   const result = await tx.execute<{ total: number; to_teacher: number }>(sql`
 SELECT count(*)::int AS total, (count(*) FILTER (WHERE tr.teacher_person_id = ${teacherId}::uuid))::int AS to_teacher
   FROM relationship_event e
   JOIN teaching_relationship tr ON tr.id = e.relationship_id
  WHERE e.actor_user_id = ${userId}::uuid
-   AND e.to_status = 'pending_teacher'
+   AND e.to_status IN ('pending_teacher', 'under_review')
    AND e.created_at > now() - make_interval(hours => ${REQUEST_WINDOW_HOURS}::int)`);
   const counts = result.rows[0] ?? { total: 0, to_teacher: 0 };
   if (counts.to_teacher >= REQUESTS_TO_ONE_TEACHER_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', TEACHER_REQUEST_LIMIT_MESSAGE);
@@ -760,7 +852,7 @@ async function tellTeacher(
 }
 
 /** What the audit log keeps of periods: precisions and flags, no dates of a person's life beyond the year. */
-function periodShape(rows: PeriodRow[]) {
+export function periodShape(rows: PeriodRow[]) {
   return rows.map((r) => ({ precision: r.precision, ongoing: r.ongoing, startYear: r.startsOn?.slice(0, 4) ?? null, endYear: r.endsOn?.slice(0, 4) ?? null, school: r.schoolId !== null }));
 }
 
@@ -866,7 +958,7 @@ export async function requestTeacher(principal: Principal | null, raw: RequestIn
   }
 }
 
-function fieldErrors(error: z.ZodError): ServiceError {
+export function fieldErrors(error: z.ZodError): ServiceError {
   const fields: Record<string, string> = {};
   for (const issue of error.issues) {
     const key = issue.path.length > 0 ? issue.path.map(String).join('.') : 'form';
@@ -894,6 +986,9 @@ async function withFormChecks(error: ServiceError, raw: unknown): Promise<Servic
 }
 
 const NO_ACCOUNT_MESSAGE = 'This teacher has no account yet. Requests to teachers without an account open later in the pilot.';
+/** M10a: the field error of a historical or deceased teacher in the request form (they are confirmed by review). */
+export const HISTORICAL_TEACHER_MESSAGE =
+  'This teacher is a historical record: the review committee confirms training with them, from your evidence. Use “Name a historical teacher” instead.';
 const LINEAGE_UNKNOWN = 'Choose a lineage from the list.';
 
 /**
@@ -906,11 +1001,13 @@ const LINEAGE_UNKNOWN = 'Choose a lineage from the list.';
  */
 async function teacherRefusal(db: Executor, teacherId: string, studentId: string, options: { mustBePublic: boolean }): Promise<string | null> {
   const [teacher] = await db
-    .select({ id: person.id, claimedBy: person.claimedByUserId, kind: person.kind, isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${teacherId}::uuid)` })
+    .select({ id: person.id, claimedBy: person.claimedByUserId, kind: person.kind, lifeStatus: person.lifeStatus, isPublic: sql<boolean>`EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = ${teacherId}::uuid)` })
     .from(person)
     .where(and(eq(person.id, teacherId), isNull(person.deletedAt)));
   if (!teacher || (options.mustBePublic && !teacher.isPublic)) return 'Choose your teacher from the search.';
   if (teacher.id === studentId) return 'You can’t name yourself as your teacher.';
+  // M10a: a historical or deceased teacher is confirmed by the review committee, with evidence.
+  if (teacher.kind === 'historical' || teacher.lifeStatus === 'deceased') return HISTORICAL_TEACHER_MESSAGE;
   if (!teacher.claimedBy || teacher.kind !== 'living') return NO_ACCOUNT_MESSAGE;
   return null;
 }
@@ -920,7 +1017,7 @@ async function teacherRefusal(db: Executor, teacherId: string, studentId: string
  * with the field error of `lineageId` when neither fits. `teacherId` is null when the teacher cannot
  * be asked: no lineage is inferred from them, and no lineage error is given for it.
  */
-async function checkLineage(db: Executor, asked: string | null, teacherId: string | null): Promise<{ lineageId: string | null; fields: Record<string, string> }> {
+export async function checkLineage(db: Executor, asked: string | null, teacherId: string | null): Promise<{ lineageId: string | null; fields: Record<string, string> }> {
   if (asked) return (await lineageExists(db, asked)) ? { lineageId: asked, fields: {} } : { lineageId: null, fields: { lineageId: LINEAGE_UNKNOWN } };
   if (!teacherId) return { lineageId: null, fields: {} };
   const own = await lineageFor(db, teacherId);
@@ -976,7 +1073,7 @@ async function replayFor(tx: Transaction, p: Principal, key: string, relationshi
 }
 
 /** The tags the public cache of a relationship's two people carries, with every teacher above them. */
-async function publicTags(tx: Executor, row: Pick<RelRow, 'teacherPersonId' | 'studentPersonId'>): Promise<string[]> {
+export async function publicTags(tx: Executor, row: Pick<RelRow, 'teacherPersonId' | 'studentPersonId'>): Promise<string[]> {
   const tags = [...(await neighbourTags(tx, row.teacherPersonId, { ancestors: true })), ...(await neighbourTags(tx, row.studentPersonId, { ancestors: true }))];
   return [...new Set(tags)];
 }
@@ -1064,9 +1161,19 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
   }
 }
 
-/** The writes of an approval, inside the transaction that holds both locks. Returns the cache tags. */
-async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: string, meta: RequestMeta): Promise<string[]> {
-  const now = new Date();
+export interface VerifiedWrites {
+  isDisplayPrimary: boolean;
+  previousPrimaryId: string | null;
+  publishedPersonIds: string[];
+}
+
+/**
+ * The writes that make a relationship verified, shared by the teacher's approval (M09) and the
+ * review committee's verify decision (M10a, review.ts): the display-primary line, verified and
+ * public, both people public. The caller holds the global verify lock and has run the cycle,
+ * duplicate and self checks; it writes the event, the audit row and the notices.
+ */
+export async function markVerified(tx: Transaction, row: RelRow, confirmedByUserId: string, now = new Date()): Promise<VerifiedWrites> {
   // DEFAULT D05: the student's wish decides the primary line; without one, the first confirmed
   // teacher is drawn as it. Visual only: no other teacher is hidden.
   const [current] = await tx
@@ -1083,7 +1190,7 @@ async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: st
   if (primary && current) await tx.update(teachingRelationship).set({ isDisplayPrimary: false, updatedAt: now }).where(eq(teachingRelationship.id, current.id));
   await tx
     .update(teachingRelationship)
-    .set({ status: 'verified', visibility: 'public', isDisplayPrimary: primary, confirmedByUserId: p.user.id, confirmedAt: now, statusReason: null, updatedAt: now })
+    .set({ status: 'verified', visibility: 'public', isDisplayPrimary: primary, confirmedByUserId, confirmedAt: now, statusReason: null, updatedAt: now })
     .where(eq(teachingRelationship.id, row.id));
   // Both people become public (plan §6.2), except a self-stewarded profile whose owner withdrew
   // the publication consent: DEFAULT D03, the owner's choice wins (docs/plan/questions/M07.md).
@@ -1098,6 +1205,12 @@ UPDATE person p SET visibility = 'public', updated_at = now()
           WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
           ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')
 RETURNING p.id::text AS id`);
+  return { isDisplayPrimary: primary, previousPrimaryId: primary && current ? current.id : null, publishedPersonIds: published.rows.map((r) => r.id) };
+}
+
+/** The writes of an approval, inside the transaction that holds both locks. Returns the cache tags. */
+async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: string, meta: RequestMeta): Promise<string[]> {
+  const verified = await markVerified(tx, row, p.user.id);
   const eventId = await recordEvent(tx, { relationshipId: row.id, from: 'pending_teacher', to: 'verified', actor: p, role: 'teacher', key });
   await writeAudit(tx, {
     action: 'relationship.approve',
@@ -1106,14 +1219,7 @@ RETURNING p.id::text AS id`);
     subjectType: 'teaching_relationship',
     subjectId: row.id,
     before: { status: 'pending_teacher', visibility: row.visibility, isDisplayPrimary: row.isDisplayPrimary },
-    after: {
-      status: 'verified',
-      visibility: 'public',
-      isDisplayPrimary: primary,
-      previousPrimaryId: primary && current ? current.id : null,
-      publishedPersonIds: published.rows.map((r) => r.id),
-      lineageId: row.lineageId,
-    },
+    after: { status: 'verified', visibility: 'public', ...verified, lineageId: row.lineageId },
     requestId: meta.requestId,
     ipHmac: meta.ipHmac,
   });
@@ -1218,7 +1324,11 @@ export async function rejectRelationship(principal: Principal | null, raw: z.inp
 
 // --- withdraw ----------------------------------------------------------------------------------
 
-/** relationships.withdraw: the student takes back a request that waits or was declined. Nothing public changes. */
+/**
+ * relationships.withdraw: the student takes back a request that waits or was declined. Nothing
+ * public changes. M10a: a historical claim under review is withdrawn the same way; its open case is
+ * closed (dismissed) and its reviewer told. The evidence stays with the closed case.
+ */
 export async function withdrawRelationship(principal: Principal | null, raw: z.input<typeof relationshipActionInput>, meta: RequestMeta): Promise<RelationshipResult> {
   const p = requireUser(principal);
   const parsed = relationshipActionInput.safeParse(raw);
@@ -1233,10 +1343,22 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
       authorize(row, viewer, 'withdraw');
       const replay = await replayFor(tx, p, input.idempotencyKey, row.id, { to: 'withdrawn' });
       if (replay) return replay;
-      if (row.status !== 'pending_teacher' && row.status !== 'rejected') {
+      if (row.status !== 'pending_teacher' && row.status !== 'rejected' && row.status !== 'under_review') {
         throw new ServiceError('CONFLICT', row.status === 'withdrawn' ? 'This request was withdrawn already.' : 'Only a request that waits or was declined can be withdrawn.');
       }
-      await tx.update(teachingRelationship).set({ status: 'withdrawn', updatedAt: new Date() }).where(eq(teachingRelationship.id, row.id));
+      const now = new Date();
+      await tx.update(teachingRelationship).set({ status: 'withdrawn', updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+      const closed =
+        row.status === 'under_review'
+          ? await tx
+              .update(reviewCase)
+              .set({ status: 'dismissed', resolutionReason: 'Withdrawn by the claimant.', resolvedAt: now, updatedAt: now })
+              .where(and(eq(reviewCase.relationshipId, row.id), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])))
+              .returning({ id: reviewCase.id, assignedTo: reviewCase.assignedToUserId })
+          : [];
+      for (const c of closed) {
+        if (c.assignedTo) await tx.insert(notification).values({ userId: c.assignedTo, template: 'review.updated', payload: { caseId: c.id, change: 'withdrawn' } });
+      }
       await recordEvent(tx, { relationshipId: row.id, from: row.status, to: 'withdrawn', actor: p, role: 'student', key: input.idempotencyKey });
       await writeAudit(tx, {
         action: 'relationship.withdraw',
@@ -1245,7 +1367,7 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
         subjectType: 'teaching_relationship',
         subjectId: row.id,
         before: { status: row.status },
-        after: { status: 'withdrawn' },
+        after: { status: 'withdrawn', ...(closed.length > 0 ? { dismissedCaseIds: closed.map((c) => c.id) } : {}) },
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });
@@ -1282,6 +1404,9 @@ export async function resubmitRelationship(principal: Principal | null, raw: z.i
       const replay = await replayFor(tx, p, input.idempotencyKey, row.id, { to: 'pending_teacher', reason: 'resubmitted' });
       if (replay) return replay;
       if (row.status !== 'rejected') throw new ServiceError('CONFLICT', 'Only a declined request can be corrected and sent again.');
+      if (row.verificationPath !== 'teacher_approval') {
+        throw new ServiceError('CONFLICT', 'A historical claim the reviewers refused is not corrected: send a new claim with more evidence.');
+      }
       await checkPendingCap(tx, row.studentPersonId);
       await checkRequestWindow(tx, p.user.id, row.teacherPersonId);
       // The teacher must still be able to answer, as for a new request (M09 review, code-4): a

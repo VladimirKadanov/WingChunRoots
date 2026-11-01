@@ -451,8 +451,86 @@ const relationshipEnded: NotificationTemplate<RelationshipNotice & { by: 'studen
   },
 };
 
+// --- Historical teachers and the review queue (M10a) --------------------------------------------
+
+/**
+ * "review.decided": to the student of a historical teacher claim, when the reviewers verify it,
+ * refuse it or ask for more information. The reviewers' own words are on Your teachers.
+ */
+const reviewDecided: NotificationTemplate<RelationshipNotice & { decision: 'verified' | 'rejected' | 'needs_info' }> = {
+  name: 'review.decided',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('review.decided', payload);
+    if (data.decision !== 'verified' && data.decision !== 'rejected' && data.decision !== 'needs_info') {
+      throw new NotificationDataError('review.decided', 'decision must be verified, rejected or needs_info');
+    }
+    return { ...notice, decision: data.decision };
+  },
+  render: ({ other, lineageName, decision }) =>
+    decision === 'verified'
+      ? {
+          title: 'Historical teacher confirmed',
+          body: [{ text: 'The reviewers confirmed from your evidence that ' }, who(other, 'your teacher'), { text: ` taught you${inLineage(lineageName)}. The link is now public.` }],
+          action: { label: 'See your teachers', href: OWN_TEACHERS },
+        }
+      : decision === 'rejected'
+        ? {
+            title: 'Historical teacher claim not confirmed',
+            body: [{ text: 'The reviewers could not confirm your claim about ' }, who(other, 'your teacher'), { text: `${inLineage(lineageName)} from the evidence sent.` }],
+            action: { label: 'Read their reason', href: OWN_TEACHERS },
+          }
+        : {
+            title: 'More information needed',
+            body: [{ text: 'The reviewers of your claim about ' }, who(other, 'your teacher'), { text: `${inLineage(lineageName)} ask for more information.` }],
+            action: { label: 'Read their question', href: OWN_TEACHERS },
+          },
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-000000000007',
+    other: { value: 'Demo Historical Teacher', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'verified',
+    decision: 'verified',
+  },
+};
+
+function caseIdOf(template: string, payload: unknown): string {
+  const data = payloadObject(template, payload);
+  if (typeof data.caseId !== 'string' || !UUID.test(data.caseId)) throw new NotificationDataError(template, 'caseId must be a UUID');
+  return data.caseId;
+}
+
+/**
+ * "review.opened": to every archivist and administrator, when a student sends a historical teacher
+ * claim. No name: the case card shows the people to a session that proved the second factor.
+ */
+const reviewOpened: NotificationTemplate<{ caseId: string }> = {
+  name: 'review.opened',
+  parse: (payload) => ({ caseId: caseIdOf('review.opened', payload) }),
+  render: ({ caseId }) => ({
+    title: 'New historical teacher claim',
+    body: [{ text: 'A student sent a claim with evidence. It waits in the review queue.' }],
+    action: { label: 'Open the case', href: `/admin/review/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-000000000008' },
+};
+
+/** "review.updated": to the reviewer a case is assigned to, when the claimant adds evidence or withdraws the claim. */
+const reviewUpdated: NotificationTemplate<{ caseId: string; change: 'evidence' | 'withdrawn' }> = {
+  name: 'review.updated',
+  parse(payload) {
+    const caseId = caseIdOf('review.updated', payload);
+    return { caseId, change: payloadObject('review.updated', payload).change === 'withdrawn' ? 'withdrawn' : 'evidence' };
+  },
+  render: ({ caseId, change }) => ({
+    title: change === 'withdrawn' ? 'Claim withdrawn' : 'New evidence in your case',
+    body: [{ text: change === 'withdrawn' ? 'The student withdrew a claim assigned to you. The case is closed.' : 'The student added evidence to a claim assigned to you.' }],
+    action: { label: 'Open the case', href: `/admin/review/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-000000000009', change: 'evidence' },
+};
+
 /** The templates whose payload names a relationship (services/notifications.ts enriches them). */
-export const RELATIONSHIP_NOTIFICATIONS = ['relationship.requested', 'relationship.approved', 'relationship.rejected', 'relationship.ended'] as const;
+export const RELATIONSHIP_NOTIFICATIONS = ['relationship.requested', 'relationship.approved', 'relationship.rejected', 'relationship.ended', 'review.decided'] as const;
 
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
@@ -466,6 +544,9 @@ export const NOTIFICATION_TEMPLATES = {
   'relationship.approved': relationshipApproved,
   'relationship.rejected': relationshipRejected,
   'relationship.ended': relationshipEnded,
+  'review.decided': reviewDecided,
+  'review.opened': reviewOpened,
+  'review.updated': reviewUpdated,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;
