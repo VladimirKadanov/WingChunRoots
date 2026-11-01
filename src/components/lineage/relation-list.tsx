@@ -74,6 +74,18 @@ export function RelationBadges({ edge, role }: { edge: RelationEdge; role: 'teac
 }
 
 /**
+ * M10b (DEFAULT D04/D13): the note on a link approved by a teacher not yet verified as an
+ * instructor, on the profile's and the list view's relation lists and in the explorer's panel.
+ */
+export function UnverifiedApprovalNote({ edge, className }: { edge: Pick<RelationEdge, 'approvedByUnverifiedInstructor'>; className?: string }) {
+  return edge.approvedByUnverifiedInstructor ? (
+    <span data-unverified-approval className={className}>
+      Approved by an unverified instructor
+    </span>
+  ) : null;
+}
+
+/**
  * The note on a relationship only its two participants can see (DEFAULT D03): a request until
  * it is confirmed, or a confirmed link that is not on the public record (for example because
  * the other person's record is private).
@@ -155,7 +167,7 @@ function EdgeLine({
       {edge.approvedByUnverifiedInstructor ? (
         <>
           <Sep inFlex />
-          <span data-unverified-approval>Approved by an unverified instructor</span>
+          <UnverifiedApprovalNote edge={edge} />
         </>
       ) : null}
     </p>
