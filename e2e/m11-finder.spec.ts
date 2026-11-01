@@ -25,6 +25,34 @@ test.beforeEach(async ({ context }) => {
 
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } as const;
 
+const marker = (page: Page, slug: string) => page.locator(`[data-testid="school-marker"][data-slug="${slug}"]`);
+const sheetOf = (page: Page) => page.getByTestId('school-sheet');
+
+/** The top of the sheet, once it has come to rest. */
+async function restingSheetTop(page: Page): Promise<number> {
+  const sheet = sheetOf(page);
+  let last = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const top = Math.round((await sheet.boundingBox())!.y);
+        const same = top === last;
+        last = top;
+        return same;
+      },
+      { intervals: [300], message: 'the sheet comes to rest' },
+    )
+    .toBe(true);
+  return last;
+}
+
+/** The share of the sheet's viewport (the window above the tab bar) that the resting sheet covers. */
+async function sheetShare(page: Page): Promise<number> {
+  const top = await restingSheetTop(page);
+  const viewport = await sheetOf(page).evaluate((el) => el.parentElement!.getBoundingClientRect());
+  return (viewport.bottom - top) / viewport.height;
+}
+
 /** The address once the map has stopped and its last view write is in (VIEW_WRITE_MS). */
 async function settledAddress(page: Page): Promise<URLSearchParams> {
   const map = page.getByTestId('school-map');
@@ -115,4 +143,43 @@ test.describe('at 390x844', () => {
     }
   });
 
+  test('@M11 the sheet steps through its snap points with Expand, and Esc lowers it one step before it closes (review screens-12)', async ({ page }) => {
+    await page.goto('/schools?lat=51.5074&lng=-0.1278&z=6');
+    await mapSettled(page);
+    const london = marker(page, 'demo-school-london');
+    const sheet = sheetOf(page);
+    await london.tap();
+    await expect(sheet).toBeVisible();
+    const first = await restingSheetTop(page);
+
+    // Expand: the middle snap point, then the last; Collapse at the last goes back to the first.
+    await sheet.getByRole('button', { name: 'Expand' }).click();
+    expect(Math.abs((await sheetShare(page)) - 0.5), 'Expand: the 0.5 snap point').toBeLessThan(0.02);
+    const middle = await restingSheetTop(page);
+    expect(middle).toBeLessThan(first);
+    await sheet.getByRole('button', { name: 'Expand' }).click();
+    const last = await restingSheetTop(page);
+    expect(last, 'Expand again: the last snap point').toBeLessThan(middle);
+    await sheet.getByRole('button', { name: 'Collapse' }).click();
+    expect(await restingSheetTop(page)).toBe(first);
+
+    // Esc from the last point: the middle one, then the first, with the school still selected.
+    await sheet.getByRole('button', { name: 'Expand' }).click();
+    await sheet.getByRole('button', { name: 'Expand' }).click();
+    expect(await restingSheetTop(page)).toBe(last);
+    await page.keyboard.press('Escape');
+    expect(await restingSheetTop(page), 'Esc: one snap point down').toBe(middle);
+    await expect(sheet).toBeVisible();
+    await expect(london).toHaveAttribute('aria-pressed', 'true');
+    // Esc with the focus on the map lowers the sheet as well.
+    await london.focus();
+    await page.keyboard.press('Escape');
+    expect(await restingSheetTop(page), 'Esc: down to the first snap point').toBe(first);
+    await expect(london).toHaveAttribute('aria-pressed', 'true');
+    // From the first snap point Esc closes the sheet, and the selection with it.
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(london).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('show-list')).toBeVisible();
+  });
 });

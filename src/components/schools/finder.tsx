@@ -10,7 +10,8 @@
 // - From 1024 px: the list beside the map (an aside that scrolls on its own); a selected pin marks
 //   its row and scrolls it into view.
 // - Below 1024 px: the map fills the frame, and the list lives in a non-modal bottom sheet (the
-//   Drawer, snap points 0.15, 0.5 and 0.92) titled with the summary ("23 schools within 50 km ·
+//   Drawer, snap points 0.15, 0.5 and 0.92, stepped through by Expand; Esc lowers it one snap
+//   point, and closes it from the first) titled with the summary ("23 schools within 50 km ·
 //   Demo Lineage A"). Selecting a pin opens the sheet with that school under the title, and the
 //   map's bottom padding follows the sheet's height (the Drawer's --sheet-page-cover, which counts
 //   the tab bar and the home indicator's safe area), so the pin stays visible above the sheet. The
@@ -289,6 +290,8 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
           title={summary}
           description={selected ? `${selected.name} · ${locationText(selected)}` : 'Drag up or choose Expand for the list.'}
           snapPoints={SNAP_POINTS}
+          // Plan §5.6: Expand reaches every snap point without a drag, and Esc lowers the sheet.
+          stepSnapPoints
           modal={false}
           initialFocus={false}
           // Focus that was in the sheet goes to the button that opens it again.
