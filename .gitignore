@@ -22,6 +22,9 @@
 # e-mail of the file transport (MAIL_TRANSPORT=file; holds addresses, never committed)
 /.mail/
 
+# evidence of the filesystem store (M10a, EVIDENCE_STORAGE_DIR default; private files, never committed)
+/.storage/
+
 # next.js
 /.next/
 /out/

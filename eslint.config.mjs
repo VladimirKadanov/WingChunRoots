@@ -59,6 +59,12 @@ const modulePackages = [
     message: 'Only src/server/auth talks to Better Auth: use its guards, session and web helpers (milestone M02).',
   },
   {
+    // M10a: evidence objects are stored and images re-encoded in one place, behind ObjectStore.
+    module: 'src/server/storage',
+    group: ['aws4fetch', 'aws4fetch/*', 'sharp', 'sharp/*'],
+    message: 'Only src/server/storage talks to the object store and re-encodes images: use ObjectStore and sanitize.ts (src/server/storage).',
+  },
+  {
     module: 'src/server/rpc',
     group: ['@orpc/*', '!@orpc/client', '!@orpc/client/*', '!@orpc/tanstack-query'],
     message: 'Only src/server/rpc builds the oRPC router and handlers; Server Actions call serverClient() (plan §6.8).',
@@ -129,6 +135,12 @@ const routeBans = [
   {
     group: ['@/server/jobs', '@/server/jobs/*', '**/server/jobs', '**/server/jobs/*', '@/server/mail', '@/server/mail/*', '**/server/mail', '**/server/mail/*'],
     message: 'Routes and components never queue jobs or send e-mail: go through src/server/services (plan §6.1).',
+  },
+  // M10a: evidence goes through src/server/services/evidence.ts (and src/server/evidence-http.ts
+  // for the two route handlers), which checks who may store or read it; never the store itself.
+  {
+    group: ['@/server/storage', '@/server/storage/*', '**/server/storage', '**/server/storage/*'],
+    message: 'Routes and components never touch the evidence store: go through src/server/services/evidence.ts (plan §6.4).',
   },
   elkOnlyInLayoutModule,
   noLayoutInRequestPath,

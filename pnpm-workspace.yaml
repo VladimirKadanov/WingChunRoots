@@ -19,6 +19,9 @@ allowBuilds:
   cpu-features: false
   esbuild: false
   protobufjs: false
+  # M10a (docs/adr/0012-evidence-and-review.md): sharp 0.35 has no install script and loads the
+  # prebuilt @img/sharp-* binaries; false keeps a build from source from ever running.
+  sharp: false
   ssh2: false
   unrs-resolver: false
 # lighthouse 13.4.1 accepts puppeteer-core ^25.3.0; 25.13 and later pin chromium-bidi
