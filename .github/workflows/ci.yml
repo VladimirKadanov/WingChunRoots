@@ -134,6 +134,10 @@ jobs:
             echo "E2E_TOTP_SECRET=$totp_secret"
           } >> "$GITHUB_ENV"
       - name: scripts/verify.sh all
+        env:
+          # M12: the backup and the restore drill of checks:M12 run pg_dump and pg_restore inside the
+          # PostgreSQL 18 service container (the runner's client is older; scripts/lib/pg-run.sh).
+          PG_CONTAINER: ${{ job.services.postgres.id }}
         run: scripts/verify.sh all
       # verify.sh shows only the last 80 lines of a failed step; Playwright's numbered failure
       # reports come earlier. The artifact has the whole log, but the reports also belong here.
@@ -192,11 +196,91 @@ jobs:
       - name: pnpm audit (production dependencies, high and critical)
         run: pnpm audit --prod --audit-level=high
 
+  image:
+    # M12 (docs/operations/local-run.md): the application image (Dockerfile) built and started with
+    # the Compose profile `app` (PostgreSQL 18 + PostGIS, Mailpit, SeaweedFS, db-bootstrap, migrate,
+    # web, worker), exactly as on the owner's machine; then /healthz and the @smoke tests against the
+    # container. Throwaway local values from scripts/init-env.sh; no secret, nothing is published.
+    name: image (Dockerfile, Compose profile app)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm (exact version from packageManager, no Corepack)
+        run: npm install --global "pnpm@$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '')")"
+      - name: Install dependencies (the host seeds the demo data and runs Playwright)
+        run: pnpm install --frozen-lockfile
+      - name: Local settings (scripts/init-env.sh), with the address this job opens
+        run: |
+          scripts/init-env.sh
+          sed -i 's|^APP_URL=.*|APP_URL=http://127.0.0.1:3000|' .env
+          for name in POSTGRES_PASSWORD DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD \
+            S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+            value="$(sed -n "s/^${name}=//p" .env)"
+            [ -n "$value" ] && echo "::add-mask::$value"
+          done
+      - name: scripts/check-env.sh compose
+        run: scripts/check-env.sh compose
+      - name: Build the image and start the profile app
+        run: docker compose --profile app up -d --build
+      - name: Wait for /healthz
+        run: |
+          for attempt in $(seq 1 90); do
+            if [ "$(curl -fsS http://127.0.0.1:3000/healthz 2>/dev/null)" = '{"ok":true}' ]; then
+              docker compose --profile app ps -a
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --profile app ps -a
+          docker compose --profile app logs --no-color --tail 120 db-bootstrap migrate web worker
+          exit 1
+      - name: /healthz answers only {"ok":true}, and the processes do not run as root
+        run: |
+          body="$(curl -fsS -D headers.txt http://127.0.0.1:3000/healthz)"
+          test "$body" = '{"ok":true}'
+          grep -qi '^cache-control: no-store' headers.txt
+          for service in web worker; do
+            uid="$(docker compose --profile app exec -T "$service" id -u)"
+            echo "$service runs as uid $uid"
+            test "$uid" != 0
+          done
+          test "$(docker compose --profile app ps -a --format '{{.ExitCode}}' migrate)" = 0
+      - name: Demo data from the host (pnpm db:seed into the Compose database)
+        run: pnpm db:seed
+      - name: Install the Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: The @smoke tests against the container
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: pnpm e2e --grep '@smoke\b' --project desktop-chromium --project mobile-chromium
+      - name: Logs of the profile app
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail 300 db-bootstrap migrate web worker
+      - name: Upload the Playwright results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-test-results
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Stop the profile app
+        if: always()
+        run: docker compose --profile app down -v --remove-orphans
+
   ci:
     # The single required status check for main (plan §7.4).
     name: ci
     if: always()
-    needs: [verify, security]
+    needs: [verify, security, image]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -204,6 +288,7 @@ jobs:
         env:
           VERIFY: ${{ needs.verify.result }}
           SECURITY: ${{ needs.security.result }}
+          IMAGE: ${{ needs.image.result }}
         run: |
-          echo "verify=$VERIFY security=$SECURITY"
-          test "$VERIFY" = success && test "$SECURITY" = success
+          echo "verify=$VERIFY security=$SECURITY image=$IMAGE"
+          test "$VERIFY" = success && test "$SECURITY" = success && test "$IMAGE" = success
