@@ -105,6 +105,34 @@ describe('logger redaction (logger.redaction.test.ts)', () => {
     expect(out.lines.join('\n')).not.toContain('stack');
   });
 
+  it('an error logged without a message does not lend its message to msg', () => {
+    const out = capture();
+    const log = createLogger({ destination: out.destination });
+    const error = Object.assign(new Error(`duplicate key value (email)=(${EMAIL}) for ${NAME} at ${LAT}, ${LNG}`), { code: '23505' });
+    // pino copies err.message into msg when no message is given, before any formatter runs.
+    log.error({ err: error });
+    log.error({ nested: { err: error } });
+    expectClean(out.lines);
+    const [first] = out.parsed();
+    expect(first?.err).toEqual({ type: 'Error', code: '23505' });
+    expect(out.lines.join('\n')).not.toContain('duplicate key');
+  });
+
+  it('scrubs objects and errors passed as printf arguments (%o, %O, %j, %s)', () => {
+    const out = capture();
+    const log = createLogger({ destination: out.destination });
+    const error = new Error(`no row for ${EMAIL} (${NAME})`);
+    log.info('val %o', { email: EMAIL, lat: Number(LAT), lng: Number(LNG), user: { displayName: NAME } });
+    log.info('val %O', { ip: IPV4, note: `from ${IPV6}` });
+    log.info('val %j', { person: { name: NAME }, contact: [EMAIL] });
+    log.warn('failed: %s', error);
+    log.warn('failed: %o', error);
+    log.info('list %j', [{ email: EMAIL }, `${LAT}, ${LNG}`]);
+    expectClean(out.lines);
+    expect(out.lines.join('\n')).not.toContain('no row for');
+    expect(out.parsed()[0]?.msg).toContain('[redacted]');
+  });
+
   it('a request logger carries the request id; bindings are scrubbed like fields', () => {
     const out = capture();
     const previous = configureLogger({ destination: out.destination });

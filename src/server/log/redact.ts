@@ -101,6 +101,15 @@ function redactValue(value: unknown, depth: number, seen: WeakSet<object>): unkn
   }
 }
 
+/**
+ * Any value with personal data and secrets removed: a string is scrubbed, an Error becomes its type
+ * and code, an object or array is scrubbed at any depth (the logger runs every argument of a log
+ * call through it, printf arguments included).
+ */
+export function redactAny(value: unknown): unknown {
+  return redactValue(value, 0, new WeakSet());
+}
+
 /** The fields of a log line with personal data and secrets removed, at any depth. */
 export function redactFields(fields: Record<string, unknown>): Record<string, unknown> {
   return redactValue(fields, 0, new WeakSet()) as Record<string, unknown>;

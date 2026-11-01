@@ -17,7 +17,7 @@
 
 import pino, { type DestinationStream, type Logger, type LevelWithSilent } from 'pino';
 
-import { errorFields, redactFields, redactText } from './redact';
+import { redactAny, redactFields, redactText } from './redact';
 
 export type { Logger };
 export { REDACTED, redactFields, redactText } from './redact';
@@ -67,9 +67,11 @@ export function createLogger({ service = 'web', level = logLevel(), destination 
         log: (fields) => redactFields(fields),
       },
       hooks: {
-        // The message (and any printf-style argument) is scrubbed like a field.
+        // Every argument is scrubbed before pino sees it: the merging object (an Error, or an Error
+        // under `err`, becomes its type and code, so pino has no error message to copy into msg),
+        // the message and every printf-style argument (%s, %o, %O, %j of an object or an Error).
         logMethod(args, method) {
-          const scrubbed = args.map((arg) => (typeof arg === 'string' ? redactText(arg) : arg instanceof Error ? errorFields(arg) : arg));
+          const scrubbed = args.map((arg) => redactAny(arg));
           return method.apply(this, scrubbed as Parameters<typeof method>);
         },
       },
