@@ -134,13 +134,17 @@ case "$target" in
     fi
     image="${image:-$DEFAULT_DRILL_IMAGE}"
     drill_container="wcr-restore-drill-$$-$RANDOM"
+    # The source's superuser owns the extensions in the archive: the same name in the container.
+    drill_user="${PG_URL_USER:-postgres}"
+    platform=()
+    [ "$image" = "$DEFAULT_DRILL_IMAGE" ] && platform=(--platform linux/amd64)
     drill_password="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(18).toString("hex"))')"
-    POSTGRES_PASSWORD="$drill_password" docker run -d --rm --name "$drill_container" --platform linux/amd64 \
-      --shm-size 256m -e POSTGRES_PASSWORD -e POSTGRES_USER=postgres -e POSTGRES_DB=postgres \
+    POSTGRES_PASSWORD="$drill_password" POSTGRES_USER="$drill_user" docker run -d --rm --name "$drill_container" ${platform[@]+"${platform[@]}"} \
+      --shm-size 256m -e POSTGRES_PASSWORD -e POSTGRES_USER -e POSTGRES_DB=postgres \
       -e "POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C.UTF-8" "$image" >/dev/null
     ready=0
     for _ in $(seq 1 120); do
-      if docker exec "$drill_container" pg_isready -h 127.0.0.1 -U postgres -d postgres >/dev/null 2>&1; then
+      if docker exec "$drill_container" pg_isready -h 127.0.0.1 -U "$drill_user" -d postgres >/dev/null 2>&1; then
         ready=1
         break
       fi
@@ -149,7 +153,7 @@ case "$target" in
     [ "$ready" -eq 1 ] || fail "the temporary database container did not start"
     PG_MODE=container
     PG_CONTAINER_ID="$drill_container"
-    PG_URL_USER=postgres
+    PG_URL_USER="$drill_user"
     PG_URL_PASSWORD="$drill_password"
     admin_db=postgres
     ;;

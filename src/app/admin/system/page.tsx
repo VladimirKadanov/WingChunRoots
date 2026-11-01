@@ -96,7 +96,11 @@ function Summary({ status }: { status: SystemStatus }) {
       {cells.map((cell) => (
         <div key={cell.testId} className="grid content-start gap-1">
           <dt className="text-sm text-fg-muted">{cell.label}</dt>
-          <dd data-testid={cell.testId} data-volatile className="font-display text-feature leading-none tabular-nums">
+          <dd
+            data-testid={cell.testId}
+            data-volatile
+            className={cell.testId === 'last-backup' ? 'font-display text-2xl leading-tight' : 'font-display text-feature leading-none tabular-nums'}
+          >
             {cell.value}
           </dd>
           <dd data-volatile className="text-sm text-fg-muted [overflow-wrap:anywhere]">
@@ -212,10 +216,14 @@ function EmailSection({ status }: { status: SystemStatus }) {
   );
 }
 
+/** An archive older than this needs a look: the backup routine may have stopped. */
+const BACKUP_STALE_MS = 8 * 24 * 60 * 60 * 1000;
+
 function BackupSection({ status }: { status: SystemStatus }) {
   const { latest, count } = status.backup;
+  const stale = latest !== null && Date.parse(status.checkedAt) - Date.parse(latest.createdAt) > BACKUP_STALE_MS;
   return (
-    <Section id="backup" title="Local backup" verdict={<Verdict attention={!latest || !latest.hasChecksum} testId="backup-verdict" />}>
+    <Section id="backup" title="Local backup" verdict={<Verdict attention={!latest || !latest.hasChecksum || stale} testId="backup-verdict" />}>
       {latest ? (
         <dl className="grid gap-x-6 gap-y-3 text-ui sm:grid-cols-[max-content_1fr]">
           <dt className="text-fg-muted">Made</dt>
@@ -229,7 +237,15 @@ function BackupSection({ status }: { status: SystemStatus }) {
           <dt className="text-fg-muted">Checksum</dt>
           <dd data-volatile>{latest.hasChecksum ? 'SHA-256 file present' : 'SHA-256 file missing: make a new backup'}</dd>
           <dt className="text-fg-muted">Kept</dt>
-          <dd data-volatile>{plural(count, 'archive', 'archives')} of this database (the newest 14 are kept)</dd>
+          <dd data-volatile>
+            {plural(count, 'archive', 'archives')} of this database (backup-local.sh keeps the newest 14 unless BACKUP_KEEP says otherwise)
+          </dd>
+          {stale ? (
+            <>
+              <dt className="text-fg-muted">Age</dt>
+              <dd data-volatile data-testid="backup-stale">Older than a week: check that backups still run</dd>
+            </>
+          ) : null}
         </dl>
       ) : (
         <p className="max-w-[60ch] text-ui" data-testid="no-backup">

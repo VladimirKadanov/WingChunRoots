@@ -46,13 +46,12 @@ export async function checkHealth(timeoutMs = HEALTH_CHECK_TIMEOUT_MS): Promise<
       const { rows } = await getDb().execute<{ ok: number }>(sql`SELECT 1 AS ok`);
       return Number(rows[0]?.ok) === 1;
     },
-    queue: () => queueSchemaReady(getDb()),
+    queue: async () => queueSchemaReady(getDb()),
   };
-  const failed: HealthCheck[] = [];
-  for (const [name, check] of Object.entries(checks) as [HealthCheck, () => Promise<boolean>][]) {
-    const ok = await withinTime(check(), timeoutMs).catch(() => false);
-    if (!ok) failed.push(name);
-  }
+  // In parallel, so a stalled database answers within one timeout (the Compose probe allows 5 s).
+  const entries = Object.entries(checks) as [HealthCheck, () => Promise<boolean>][];
+  const results = await Promise.all(entries.map(([, check]) => withinTime(check(), timeoutMs).catch(() => false)));
+  const failed = entries.filter((_, i) => !results[i]).map(([name]) => name);
   return { ok: failed.length === 0, failed };
 }
 

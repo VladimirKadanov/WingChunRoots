@@ -55,6 +55,16 @@ pg_pick_mode() {
     PG_CONTAINER_ID="$PG_CONTAINER"
     return 0
   fi
+  # The Compose server only when the URL names it: a loopback host at its mapped port (POSTGRES_PORT).
+  local compose_port="${POSTGRES_PORT:-}"
+  if [ -z "$compose_port" ] && [ -f .env ]; then
+    compose_port="$(sed -n 's/^POSTGRES_PORT=//p' .env | tail -n 1 | tr -d '\r"'"'"'')"
+  fi
+  case "$PG_URL_HOST" in localhost | 127.0.0.1 | ::1) ;; *) PG_MODE=host; return 0 ;; esac
+  if [ "$PG_URL_PORT" != "${compose_port:-5432}" ]; then
+    PG_MODE=host
+    return 0
+  fi
   if command -v docker >/dev/null 2>&1; then
     local id
     id="$(docker compose ps -q postgres 2>/dev/null | head -n 1 || true)"

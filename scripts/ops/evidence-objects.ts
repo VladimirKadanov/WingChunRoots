@@ -10,6 +10,10 @@
 //       lines `<id>|<storage key>|<sha256>` on stdin (a sample of evidence_file from the restored
 //       copy): the SHA-256 of each stored object (from <dir> when given, else from the store) must
 //       be the row's sha256, the hash of the stored object
+//   tsx scripts/ops/evidence-objects.ts restore --objects <dir>
+//       lines `<storage key>|<mime>|<sha256>` on stdin (evidence_file of the restored database): puts each
+//       object of an archive's copy whose SHA-256 is the row's back into the evidence store (after a real restore that lost
+//       the store too; docs/operations/backup-and-restore.md)
 //   tsx scripts/ops/evidence-objects.ts fixture [--test-database]
 //       one clearly fictional demo PDF in the store and its evidence_file row, so that the drill
 //       has an object to check; a local database or TEST_DATABASE_URL only, never in production
@@ -119,6 +123,44 @@ async function verify(): Promise<void> {
   }
 }
 
+async function restore(): Promise<void> {
+  const dir = option('--objects');
+  if (!dir) throw new Error('restore needs --objects <dir>');
+  const rows = (await stdinLines()).map((line) => {
+    const [key = '', mime = '', sha256 = ''] = line.split('|');
+    return { key, mime, sha256 };
+  });
+  const store = getEvidenceStore();
+  let restored = 0;
+  const missing: number[] = [];
+  const differ: number[] = [];
+  for (const [index, row] of rows.entries()) {
+    let body: Buffer;
+    try {
+      body = await readFile(objectPath(dir, row.key));
+    } catch {
+      missing.push(index + 1);
+      continue;
+    }
+    const actual = createHash('sha256').update(body).digest('hex');
+    if (actual !== row.sha256) {
+      differ.push(index + 1);
+      continue;
+    }
+    await store.put(row.key, body, { contentType: row.mime, sha256: actual });
+    restored += 1;
+  }
+  if (differ.length > 0) {
+    say(`evidence objects: ${differ.length} refused, their SHA-256 is not evidence_file.sha256 (lines ${differ.slice(0, 10).join(', ')})`);
+    process.exitCode = 1;
+  }
+  say(`evidence objects: ${restored} of ${rows.length} put back into the ${store.driver} store`);
+  if (missing.length > 0) {
+    say(`evidence objects: ${missing.length} not in the archive copy (lines ${missing.slice(0, 10).join(', ')})`);
+    process.exitCode = 1;
+  }
+}
+
 /** A fictional one-page PDF: no person, no lineage, no real record (CLAUDE.md §7). */
 const FIXTURE_PDF = Buffer.from(
   [
@@ -159,8 +201,9 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (command === 'copy') return copy();
   if (command === 'verify') return verify();
+  if (command === 'restore') return restore();
   if (command === 'fixture') return fixture();
-  throw new Error('usage: evidence-objects.ts copy --out <dir> | verify [--objects <dir>] | fixture [--test-database]');
+  throw new Error('usage: evidence-objects.ts copy --out <dir> | verify [--objects <dir>] | restore --objects <dir> | fixture [--test-database]');
 }
 
 main().catch((error: unknown) => {
