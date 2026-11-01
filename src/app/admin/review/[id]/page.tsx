@@ -15,7 +15,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { formatDay } from '@/lib/dates';
@@ -109,7 +109,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
       </Frame>
     );
   }
-  if (!view) return <LoadError {...LOAD_ERRORS.review} retryHref={path} />;
+  if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
   const [assignResult, noteResult, verifyResult, rejectResult, askResult] = await Promise.all([
     readFormResult(ASSIGN_FORM, query.outcome),
     readFormResult(NOTE_FORM, query.outcome),

@@ -9,7 +9,8 @@
 
 import { useActionState, useState } from 'react';
 
-import { FormMessage, SelectField, SubmitButton, TextAreaField, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { TextAreaField } from '@/components/account/textarea-field';
 import { NameText } from '@/components/account/person-names';
 import { EvidenceUploader, type UploadedEvidenceItem } from '@/components/evidence/uploader';
 import { type FormState, IDLE } from '@/lib/form-state';

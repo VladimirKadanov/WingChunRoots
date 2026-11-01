@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 
 import { NameText } from '@/components/account/person-names';
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { formatSize } from '@/lib/file-size';
 import { guardRoute } from '@/server/auth/web';
@@ -84,7 +84,7 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
       </Frame>
     );
   }
-  if (!record) return <LoadError {...LOAD_ERRORS.review} retryHref={path} />;
+  if (!record) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
   const initial = await readFormResult(ARCHIVE_FORM, query.outcome);
   const done = query.done === 'saved' ? 'The record is saved. The change and its reason are in the audit log.' : query.done === 'unchanged' ? 'Nothing changed, so nothing was saved.' : null;
 

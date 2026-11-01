@@ -19,7 +19,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
@@ -98,7 +98,7 @@ export default async function HistoricalTeacherPage({ searchParams }: { searchPa
       q ? orNotFound(client.search.query({ q })) : Promise.resolve(null),
     ]),
   );
-  if (!loaded) return <LoadError {...LOAD_ERRORS.historicalTeacher} retryHref={PAGE} />;
+  if (!loaded) return <LoadError {...REVIEW_LOAD_ERRORS.historicalTeacher} retryHref={PAGE} />;
   const [options, mine, onboarding, chosen, found] = loaded;
 
   if (!mine.hasProfile) {

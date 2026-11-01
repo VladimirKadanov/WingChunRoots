@@ -13,7 +13,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
@@ -77,7 +77,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   } as ReviewListInput;
   const client = serverClient(await headers(), guard.principal);
   const list = await pageRead(client.review.list(input).catch(() => client.review.list({})));
-  if (!list) return <LoadError {...LOAD_ERRORS.review} retryHref={returnPath(query)} />;
+  if (!list) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={returnPath(query)} />;
   const archivist = guard.principal?.user.role === 'archivist';
 
   return (

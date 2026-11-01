@@ -9,7 +9,8 @@
 
 import { useActionState, useState } from 'react';
 
-import { FormMessage, SelectField, SubmitButton, TextAreaField, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
