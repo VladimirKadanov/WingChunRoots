@@ -15,7 +15,9 @@
 //   the selected one carries its name beside it. Shape and text, never colour alone.
 // - `paddingBottom`: the height of the phone's sheet over the map (MapLibre's padding), so the
 //   centre of the view, and a selected pin moved to it, stay in the part above the sheet; a marker
-//   reached with Tab under the sheet is brought into view (WCAG 2.4.11).
+//   reached with Tab under the sheet is brought into view, and a control (a zoom button, the
+//   attribution) that reaches under the sheet is hidden until the sheet comes down (WCAG 2.4.11:
+//   the sheet never covers the focused element, plan §5.6).
 // - The compact attribution opens as MapLibre opens it, as wide as a phone's map. MapLibre folds it
 //   to its button on a drag only; here any move of the reader's (keys, a wheel, the zoom buttons)
 //   and the choice of a school fold it too, so it never covers the selected pin or "Search this
@@ -81,6 +83,9 @@ function reducedMotion(): boolean {
 
 const padding = (bottom: number) => ({ top: 0, left: 0, right: 0, bottom });
 
+/** Air between a control's focus ring and the sheet's top edge (the Drawer's FOCUS_AIR). */
+const FOCUS_AIR = 8;
+
 /** Folds the compact attribution to its button, as MapLibre does on a drag (AttributionControl._updateCompactMinimize). */
 function foldAttribution(container: HTMLElement) {
   container.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
@@ -120,6 +125,32 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
     const container = selectedId ? map.current?.getMap().getContainer() : null;
     if (container) foldAttribution(container);
   }, [selectedId]);
+
+  // A control that reaches under the sheet (the zoom buttons each on their own, the attribution
+  // whole) is hidden, out of the tab order and out of reach, until the sheet comes down. Checked
+  // when the sheet changes height and when a corner of controls or the map changes size (the
+  // attribution opens or folds, the window turns).
+  const hideControlsUnderSheet = useEffectEvent(() => {
+    const container = map.current?.getMap().getContainer();
+    if (!container) return;
+    const edge = container.getBoundingClientRect().bottom - paddingBottom - FOCUS_AIR;
+    // A hidden control keeps its box (visibility), so it measures the same hidden or shown.
+    for (const control of container.querySelectorAll<HTMLElement>('.maplibregl-ctrl-group > button, .maplibregl-ctrl-attrib')) {
+      control.toggleAttribute('data-under-sheet', paddingBottom > 0 && control.getBoundingClientRect().bottom > edge);
+    }
+  });
+  useEffect(() => {
+    hideControlsUnderSheet();
+  }, [paddingBottom]);
+  const ready = loadedStyle !== null;
+  useEffect(() => {
+    const container = ready ? map.current?.getMap().getContainer() : null;
+    if (!container || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => hideControlsUnderSheet());
+    observer.observe(container);
+    for (const corner of container.querySelectorAll('.maplibregl-control-container > div')) observer.observe(corner);
+    return () => observer.disconnect();
+  }, [ready]);
 
   // A marker reached with the keyboard under the sheet comes into view first (WCAG 2.4.11).
   const revealIfHidden = (element: HTMLElement, school: SchoolPinDto) => {

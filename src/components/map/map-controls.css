@@ -30,6 +30,16 @@
   filter: invert(1);
 }
 
+/* A control that reaches under the phone's sheet (school-map.tsx): hidden, so focus never lands on one the sheet covers (WCAG 2.4.11). */
+.maplibregl-map [data-under-sheet] {
+  visibility: hidden;
+}
+
+/* A group whose every button is under the sheet goes with them: no empty box above the sheet's edge. */
+.maplibregl-map .maplibregl-ctrl-group:not(:has(> button:not([data-under-sheet]))) {
+  visibility: hidden;
+}
+
 /* A control that cannot act now (zoom out at the widest view) at the page's disabled strength. */
 .maplibregl-ctrl button:disabled .maplibregl-ctrl-icon {
   opacity: 0.6;

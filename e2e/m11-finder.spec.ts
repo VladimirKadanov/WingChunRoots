@@ -229,6 +229,42 @@ test.describe('at 390x844', () => {
     await pinClear(london, 'every school: the sheet at its middle snap point');
   });
 
+  test('@M11 with the sheet up, focus never lands on a map control the sheet covers (review screens-2)', async ({ page }) => {
+    /** Tabs from the selected pin until the focus enters the sheet: nothing focused on the way is covered. */
+    const tabFromPin = async (pin: Locator, label: string) => {
+      await restingSheetTop(page);
+      await mapSettled(page);
+      await pin.focus();
+      const reached: string[] = [];
+      for (let i = 0; i < 12; i += 1) {
+        await page.keyboard.press('Tab');
+        const focused = page.locator(':focus');
+        if ((await focused.count()) === 0 || (await focused.evaluate((el) => !!el.closest('[data-testid="school-sheet"]')))) break;
+        const name = await focused.evaluate((el) => el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? el.tagName);
+        reached.push(name);
+        expect(await uncovered(focused), `${label}: "${name}" has focus and nothing covers it`).toBe(true);
+      }
+      // The way went through the map's controls (the attribution's button is at the top of the map).
+      expect(reached, label).toContain('Toggle attribution');
+    };
+
+    await page.goto('/schools?near=Sofia&radius=50');
+    await mapSettled(page);
+    const sofia = marker(page, 'demo-school-sofia');
+    await sofia.tap();
+    await expect(sheetOf(page)).toBeVisible();
+    await sheetOf(page).getByRole('button', { name: 'Expand' }).click();
+    await tabFromPin(sofia, 'one school, the sheet expanded');
+
+    await page.goto('/schools?lat=51.5074&lng=-0.1278&z=6');
+    await mapSettled(page);
+    const london = marker(page, 'demo-school-london');
+    await london.tap();
+    await expect(sheetOf(page)).toBeVisible();
+    await sheetOf(page).getByRole('button', { name: 'Expand' }).click();
+    await tabFromPin(london, 'every school, the sheet at its middle snap point');
+  });
+
   test('@M11 "Search this area" after a move with the keyboard is clear of the attribution (review screens-6)', async ({ page }) => {
     await page.goto('/schools?near=Sofia&radius=50');
     await mapSettled(page);
