@@ -4,6 +4,9 @@
 // required reason and optional evidence, kept in the audit row person.update (reason, evidence_ids).
 // Other reviewers read the record and are told who edits it; a record kept by its owner is never
 // edited here. A non-staff account sees the explicit denied state. Reads the session.
+//
+// M10b: the record's established links, each with "Set in arbitration" for a moderator or an
+// administrator (/admin/review/arbitrate/<relationship id>; DEFAULT D19).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -125,6 +128,29 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
                   <span className="text-sm text-fg-muted">
                     {file.kindLabel} · {formatSize(file.sizeBytes)}
                   </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {record.relationships.length > 0 ? (
+          <section aria-labelledby="record-links" className="grid gap-2">
+            <h2 id="record-links" className="font-display text-2xl">
+              Established links
+            </h2>
+            <ul className="grid gap-1" data-testid="record-links">
+              {record.relationships.map((link) => (
+                <li key={link.id} data-relationship={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle py-2">
+                  <span className="text-sm text-fg-muted">{link.role === 'teacher' ? 'Student' : 'Teacher'}</span>
+                  <NameText name={link.other.name} />
+                  <span className="text-sm text-fg-muted">
+                    {link.lineageName} · {link.status === 'verified' ? 'Verified' : 'In arbitration'}
+                  </span>
+                  {record.canArbitrate && link.status === 'verified' ? (
+                    <Link href={`/admin/review/arbitrate/${link.id}`} className="link inline-flex min-h-11 items-center">
+                      Set in arbitration
+                    </Link>
+                  ) : null}
                 </li>
               ))}
             </ul>

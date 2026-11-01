@@ -16,7 +16,11 @@ import type { LineageEdgeDto, LineageRefDto, StudentEntryDto } from '@/server/dt
 import { LatinName, LineageName, type PersonNameData, PersonLink } from './person-name';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from './status';
 
-export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 'visibility' | 'periods'> & { kind?: LineageEdgeDto['kind'] };
+export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 'visibility' | 'periods'> & {
+  kind?: LineageEdgeDto['kind'];
+  /** M10b (DEFAULT D04/D13): approved by a teacher not yet verified as an instructor. */
+  approvedByUnverifiedInstructor?: boolean;
+};
 
 export interface RelationRow {
   person: PersonNameData & { id: string; visibility: 'public' | 'involved_only' };
@@ -148,6 +152,12 @@ function EdgeLine({
       ))}
       <Sep inFlex />
       <RelationBadges edge={edge} role={role} />
+      {edge.approvedByUnverifiedInstructor ? (
+        <>
+          <Sep inFlex />
+          <span data-unverified-approval>Approved by an unverified instructor</span>
+        </>
+      ) : null}
     </p>
   );
 }

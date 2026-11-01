@@ -13,3 +13,5 @@ export const assignForm = (mode: AssignMode) => (mode === 'self' ? ASSIGN_FORM :
 export const DECIDE_FORM = 'review-decide';
 export const NOTE_FORM = 'review-note';
 export const ARCHIVE_FORM = 'archive-edit';
+/** M10b: "Set in arbitration" (/admin/review/arbitrate/<relationship id>). */
+export const ARBITRATE_FORM = 'review-arbitrate';

@@ -158,6 +158,29 @@ export async function filesOfCases(db: Executor, caseIds: string[]): Promise<Map
   return out;
 }
 
+/**
+ * M10b: the files linked straight to each relationship (the evidence a student sent with an
+ * invitation), not through a case; not removed, oldest first. The caller decides who may open
+ * which (accessOfFiles: the uploader, an administrator, and the teacher once the record is theirs).
+ */
+export async function filesOfRelationships(db: Executor, relationshipIds: string[]): Promise<Map<string, FileRow[]>> {
+  const out = new Map<string, FileRow[]>();
+  if (relationshipIds.length === 0) return out;
+  const rows = await db
+    .select({ ...fileColumns, relationshipId: evidenceLink.relationshipId })
+    .from(evidenceLink)
+    .innerJoin(evidenceFile, and(eq(evidenceFile.id, evidenceLink.evidenceFileId), isNull(evidenceFile.deletedAt)))
+    .where(inArray(evidenceLink.relationshipId, relationshipIds))
+    .orderBy(asc(evidenceFile.createdAt), asc(evidenceFile.id));
+  for (const { relationshipId, ...row } of rows) {
+    if (!relationshipId) continue;
+    const list = out.get(relationshipId) ?? [];
+    list.push(row);
+    out.set(relationshipId, list);
+  }
+  return out;
+}
+
 /** The files linked straight to a person (archival edits), not removed, oldest first. */
 export async function filesOfPerson(db: Executor, personId: string): Promise<FileRow[]> {
   return db

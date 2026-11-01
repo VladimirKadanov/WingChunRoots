@@ -81,6 +81,15 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
               <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Shown as</dt>
               <dd data-testid="instructor-label" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
                 {badge ? <StatusBadge state={badge} label={mine.instructor.label} /> : mine.instructor.label}
+                {/* M10b: where an unverified Sifu sends instructor evidence (DEFAULT D04/D13). */}
+                {mine.instructor.status === 'unverified' ? (
+                  <>
+                    {' '}
+                    <Link href="/dashboard/instructor" className="link inline-flex min-h-11 items-center">
+                      Send instructor evidence
+                    </Link>
+                  </>
+                ) : null}
               </dd>
               <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Plan in effect</dt>
               <dd data-testid="settings-plan" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">

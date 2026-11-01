@@ -81,7 +81,7 @@ import { REJECTION_REASON_CODES, type RejectionReason, rejectionReasonText, isRe
 import { CLAIM_REFUSED_TEXT, CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { approvalOffer, peopleRefs, type PersonRef, type UpgradeOffer, waitingRequests } from './dashboard';
-import { type EvidenceFileView, fileView, filesOfCases } from './evidence';
+import { type EvidenceFileView, fileView, filesOfCases, filesOfRelationships } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
 import { planSummary } from './plans';
 import { neighbourTags } from './profile';
@@ -225,6 +225,12 @@ export interface RelationshipView {
   invitation: RelationshipInvitation | null;
   /** M10b (DEFAULT D04/D13): approved by a teacher whose instructor evidence is not verified. */
   approvedByUnverifiedInstructor: boolean;
+  /**
+   * M10b: the files the student sent with an invitation (linked to the relationship itself). Each
+   * opens for its uploader and, once the record is theirs, for the teacher (evidence.ts
+   * accessOfFiles); never for the invitee before the claim is approved, who is no party yet.
+   */
+  evidence: EvidenceFileView[];
 }
 
 /** M10b: where an invitation of a teacher who has no account stands, as its student reads it. */
@@ -479,6 +485,7 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
   const refs = await peopleRefs([...new Set(visible.flatMap((v) => [v.row.teacherPersonId, v.row.studentPersonId]))]);
   const reviews = await reviewsOf(db, visible, viewer);
   const facts = await inviteFactsOf(db, visible);
+  const sent = await filesOfRelationships(db, visible.map((v) => v.row.id));
   return visible.map(({ row, role }) => {
     const own = periods.get(row.id) ?? [];
     const established = row.status === 'verified' || row.status === 'in_arbitration';
@@ -518,6 +525,7 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
       unclaimedRecord: (role === 'student' || role === 'reviewer') && facts.get(row.id)?.unclaimed === true,
       invitation: role === 'student' && row.status === 'awaiting_claim' && facts.has(row.id) ? invitationOf(facts.get(row.id)!) : null,
       approvedByUnverifiedInstructor: facts.get(row.id)?.unverified === true,
+      evidence: (sent.get(row.id) ?? []).map((f) => fileView(f, f.uploadedByUserId === viewer.userId || role === 'teacher')),
     };
   });
 }

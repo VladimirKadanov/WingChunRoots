@@ -35,7 +35,7 @@ const STEPS: { state: VerificationState; text: string }[] = [
 const OTHER_MARKS: { kind: LinkKind | 'private'; title: string; text: string }[] = [
   {
     kind: 'arbitration',
-    title: 'In arbitration',
+    title: 'Disputed',
     text: 'When a claim is disputed, an independent panel hears both sides. The line splits in two until it decides.',
   },
   {

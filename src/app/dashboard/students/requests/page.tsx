@@ -209,6 +209,23 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                           <span className="grid gap-1">
                             <span className="text-fg-muted">{view.lineage.name}</span>
                             <PeriodLines periods={view.periods} />
+                            {/* M10b: the files a student sent with an invitation, once the profile is yours. */}
+                            {view.evidence.length > 0 ? (
+                              <span className="grid gap-0.5" data-testid="request-evidence">
+                                <span className="font-semibold">Evidence from the student</span>
+                                {view.evidence.map((file) =>
+                                  file.href ? (
+                                    <a key={file.id} href={file.href} className="link inline-flex min-h-11 items-center" translate="no">
+                                      {file.name ?? `${file.kindLabel} file`}
+                                    </a>
+                                  ) : (
+                                    <span key={file.id} translate="no">
+                                      {file.name ?? `${file.kindLabel} file`}
+                                    </span>
+                                  ),
+                                )}
+                              </span>
+                            ) : null}
                           </span>
                         </td>
                         <td role="cell" className={`${cell} sm:pr-0`}>
