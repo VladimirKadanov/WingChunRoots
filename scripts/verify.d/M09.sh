@@ -246,7 +246,7 @@ for title in "${titles[@]}"; do
   check "E2E test: $title" grep -qF "$title" e2e/m09-requests.spec.ts
 done
 check "the M09 spec runs in the exclusive run, after the others (PUBLIC_WRITE_SPECS)" bash -c '
-  grep -qF "export const PUBLIC_WRITE_SPECS = ['\''**/m09-requests.spec.ts'\''] as const;" e2e/projects.ts &&
+  grep -qE "^export const PUBLIC_WRITE_SPECS = \[.*'\''\*\*/m09-requests\.spec\.ts'\''.*\] as const;$" e2e/projects.ts &&
   grep -qF "export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];" e2e/projects.ts &&
   grep -q "PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests" scripts/verify.sh'
 
