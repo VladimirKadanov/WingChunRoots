@@ -15,12 +15,12 @@ import { generateFixtures } from '../../fixtures/generate';
 import { createAccount, signIn, setTestAuthEnv, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { withClient } from '../db/admin';
-import { authUser, entitlementGrant, lineage, person, personName, reviewCase, school, teachingRelationship } from '../db/schema';
+import { authUser, entitlementGrant, lineage, person, personName, reviewCase, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import { PG, pgError } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { revokeGrant } from './grants';
-import { consentWithdraw } from './privacy';
+import { carryOutDeletionFromCommandLine, consentWithdraw, requestAccountDeletion } from './privacy';
 import { profileUpdate } from './profile';
 import { key, member, meta, newLineage, principalOf, staff } from './relationships.test-support';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
@@ -504,6 +504,49 @@ describe('the listing review cannot be bypassed (M11 review, code-4)', () => {
     expect(c).toEqual({ status: 'resolved', resolution: 'approved' });
     expect((await getDb().select({ status: school.status }).from(school).where(eq(school.id, listed.id)))[0]!.status).toBe('active');
     expect(await schoolGet(null, { slug: listed.slug })).toMatchObject({ name: 'Demo Approved Edit Hall Renamed' });
+  });
+});
+
+describe('a deleted Sifu account and its schools (M11 review, security-1)', () => {
+  it('pnpm account:delete carries out the request of a Sifu with a draft and a listed school: both archived, nothing public or private left on them', async () => {
+    const sifu = await sifuWithPlan('m11-leaving');
+    const sofia = await cityOf('Sofia', 'BG');
+    const draft = await createSchool(
+      sifu.principal,
+      { name: 'Demo Leaving Draft Hall', placeId: sofia.id, locationPrivacy: 'exact', point: { lat: sofia.lat + 0.01, lng: sofia.lng + 0.01 }, contactEmail: 'draft@example.test', idempotencyKey: key() },
+      meta,
+    );
+    const listed = await listedSchool(
+      sifu,
+      { name: 'Demo Leaving Listed Hall', placeId: sofia.id, locationPrivacy: 'city_only', point: { lat: sofia.lat + 0.02, lng: sofia.lng }, contactEmail: 'listed@example.test', contactPhone: '+359 2 000 000' },
+      'm11-leaving',
+    );
+    const pending = await createSchool(sifu.principal, { name: 'Demo Leaving Pending Hall', placeId: sofia.id, locationPrivacy: 'city_only', idempotencyKey: key() }, meta);
+    const { caseId: pendingCase } = await submitSchool(sifu.principal, { id: pending.id }, meta);
+    expect(await schoolGet(null, { slug: listed.slug })).toMatchObject({ contactEmail: 'listed@example.test' });
+
+    const { request } = await requestAccountDeletion(sifu.principal, { confirm: true }, meta);
+    expect(await carryOutDeletionFromCommandLine(request.id)).toMatchObject({ personId: sifu.personId });
+    expect(await getDb().select({ id: authUser.id }).from(authUser).where(eq(authUser.id, sifu.account.id))).toEqual([]);
+
+    const ids = [draft.id, listed.id, pending.id];
+    const rows = await getDb()
+      .select({ status: school.status, deletedAt: school.deletedAt, createdBy: school.createdByUserId, email: school.contactEmail, phone: school.contactPhone, privacy: school.locationPrivacy })
+      .from(school)
+      .where(inArray(school.id, ids));
+    expect(rows).toHaveLength(3);
+    for (const r of rows) expect(r).toMatchObject({ status: 'archived', deletedAt: expect.any(Date), createdBy: null, email: null, phone: null, privacy: 'city_only' });
+    expect(await getDb().select().from(schoolPrivateLocation).where(inArray(schoolPrivateLocation.schoolId, ids))).toEqual([]);
+    expect(await getDb().select().from(schoolInstructor).where(inArray(schoolInstructor.schoolId, ids))).toEqual([]);
+    await expect(schoolGet(null, { slug: listed.slug })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect((await schoolsSearch(null, {})).schools.map((s) => s.id)).not.toContain(listed.id);
+    const visible = await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM v_public_school WHERE id = ANY (${sql`ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}]`})`);
+    expect(visible.rows[0]!.n).toBe(0);
+    // The draft's exact pin was never published: public_point is the city centre now.
+    const point = await getDb().execute<{ same: boolean }>(sql`SELECT ST_Equals(s.public_point::geometry, p.centroid::geometry) AS same FROM school s JOIN place p ON p.id = s.place_id WHERE s.id = ${draft.id}::uuid`);
+    expect(point.rows[0]!.same).toBe(true);
+    const [c] = await getDb().select({ status: reviewCase.status, openedBy: reviewCase.openedByUserId }).from(reviewCase).where(eq(reviewCase.id, pendingCase));
+    expect(c).toEqual({ status: 'dismissed', openedBy: null });
   });
 });
 
