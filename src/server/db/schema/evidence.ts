@@ -9,8 +9,11 @@ import { authUser } from './auth';
 import {
   deletedAt,
   EVIDENCE_MAX_BYTES,
+  EVIDENCE_MIME_TYPES,
+  EVIDENCE_NAME_MAX,
   idColumn,
   inList,
+  OPEN_REVIEW_CASE_STATUSES,
   REPORT_REASONS,
   REPORT_STATUSES,
   REPORT_SUBJECTS,
@@ -33,8 +36,11 @@ export const evidenceFile = pgTable(
     // re-encoded (plan §6.2).
     sha256: text('sha256').notNull(),
     originalSha256: text('original_sha256'),
-    mime: text('mime').notNull(),
+    mime: text('mime', { enum: EVIDENCE_MIME_TYPES }).notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    // M10a: the uploaded file's own name, cleaned (no path, no control characters, at most
+    // EVIDENCE_NAME_MAX characters), shown only to the people who may download the file.
+    originalName: text('original_name'),
     scanStatus: text('scan_status', { enum: SCAN_STATUSES }).notNull().default('pending'),
     retentionUntil: timestamp('retention_until', { withTimezone: true }),
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
@@ -48,6 +54,9 @@ export const evidenceFile = pgTable(
     check('evidence_file_scan_status_check', inList(t.scanStatus.name, SCAN_STATUSES)),
     check('evidence_file_sha256_format', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
     check('evidence_file_original_sha256_format', sql`${t.originalSha256} IS NULL OR ${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
+    // M10a: only the four types the upload accepts, by their magic bytes (plan §6.4).
+    check('evidence_file_mime_check', inList(t.mime.name, EVIDENCE_MIME_TYPES)),
+    check('evidence_file_original_name_length', sql`${t.originalName} IS NULL OR char_length(${t.originalName}) BETWEEN 1 AND ${sql.raw(String(EVIDENCE_NAME_MAX))}`),
     // DEFAULT D25: at most 20 MB per file.
     check('evidence_file_size_check', sql`${t.sizeBytes} > 0 AND ${t.sizeBytes} <= ${sql.raw(String(EVIDENCE_MAX_BYTES))}`),
   ],
@@ -76,6 +85,11 @@ export const reviewCase = pgTable(
     index('review_case_school_id_idx').on(t.schoolId),
     index('review_case_assigned_to_user_id_idx').on(t.assignedToUserId),
     index('review_case_opened_by_user_id_idx').on(t.openedByUserId),
+    // M10a: at most one case of a kind is open for a relationship at a time (a double submit of a
+    // historical claim cannot open two).
+    uniqueIndex('review_case_one_open_per_relationship_key')
+      .on(t.relationshipId, t.kind)
+      .where(sql`${t.relationshipId} IS NOT NULL AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
     check('review_case_kind_check', inList(t.kind.name, REVIEW_CASE_KINDS)),
     check('review_case_status_check', inList(t.status.name, REVIEW_CASE_STATUSES)),
     check('review_case_resolution_check', sql`${t.resolution} IS NULL OR ${inList(t.resolution.name, REVIEW_RESOLUTIONS)}`),
@@ -118,11 +132,19 @@ export const reviewNote = pgTable(
     body: text('body').notNull(),
     // Internal notes are for reviewers only; the others are shown to the parties (needs_info).
     isInternal: boolean('is_internal').notNull().default(true),
+    // M10a (plan §5.6): the idempotency key of the form that added the note; a second submit with
+    // the same key from the same account adds nothing.
+    idempotencyKey: text('idempotency_key'),
     ...timestamps(),
   },
   (t) => [
     index('review_note_review_case_id_idx').on(t.reviewCaseId, t.createdAt),
     index('review_note_author_user_id_idx').on(t.authorUserId),
+    uniqueIndex('review_note_idempotency_key')
+      .on(t.authorUserId, t.idempotencyKey)
+      .where(sql`${t.idempotencyKey} IS NOT NULL`),
+    check('review_note_idempotency_key_format', sql`${t.idempotencyKey} IS NULL OR ${t.idempotencyKey} ~ '^[A-Za-z0-9_-]{8,64}$'`),
+    check('review_note_body_not_blank', sql`btrim(${t.body}) <> ''`),
   ],
 );
 

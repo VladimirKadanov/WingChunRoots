@@ -13,7 +13,11 @@ export type ServiceErrorCode =
   | 'TWO_FACTOR_REQUIRED'
   | 'CONSENT_REQUIRED'
   | 'TOO_MANY_REQUESTS'
-  | 'ENTITLEMENT_REQUIRED';
+  | 'ENTITLEMENT_REQUIRED'
+  // M10a: the evidence upload (plan §6.4).
+  | 'LENGTH_REQUIRED'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'UNSUPPORTED_MEDIA_TYPE';
 
 export const SERVICE_ERROR_STATUS: Record<ServiceErrorCode, number> = {
   BAD_REQUEST: 400,
@@ -28,6 +32,10 @@ export const SERVICE_ERROR_STATUS: Record<ServiceErrorCode, number> = {
   TOO_MANY_REQUESTS: 429,
   // M09: the plan does not allow one more (requireEntitlement's refusal travels in `data.entitlement`).
   ENTITLEMENT_REQUIRED: 403,
+  // M10a: an upload without Content-Length, over 20 MB (DEFAULT D25), or not JPEG, PNG, WebP or PDF.
+  LENGTH_REQUIRED: 411,
+  PAYLOAD_TOO_LARGE: 413,
+  UNSUPPORTED_MEDIA_TYPE: 415,
 };
 
 export class ServiceError extends Error {

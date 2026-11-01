@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02, M07, M08 and M09; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07, M08, M09 and M10a; later milestones add theirs (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -32,7 +32,16 @@ export type AuditAction =
   | 'relationship.approve'
   | 'relationship.reject'
   | 'relationship.withdraw'
-  | 'relationship.end';
+  | 'relationship.end'
+  // M10a: evidence, historical teachers, the review queue and archival edits (plan §6.6).
+  | 'evidence.upload'
+  | 'evidence.view'
+  | 'evidence.discard'
+  | 'relationship.verify'
+  | 'review.assign'
+  | 'review.needs_info'
+  | 'review.note'
+  | 'review.resolve';
 
 export interface AuditEntry {
   action: AuditAction;
