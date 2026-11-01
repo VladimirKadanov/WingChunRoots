@@ -4,7 +4,8 @@
 // leak them:
 //
 //   - a field whose key names personal data or a secret (email, name, displayName, ip, address,
-//     lat, lng, coordinates, location, password, token, cookie, ...) becomes "[redacted]", at any
+//     teacherAddress, lat, lng, coordinates, location, addressLine, publicPoint, password, token,
+//     cookie, ...) becomes "[redacted]", at any
 //     depth of the logged object;
 //   - every other string has its e-mail addresses, IP addresses and coordinates replaced
 //     (`<address>`, `<ip>`, `<coordinates>`), and its control characters escaped;
@@ -23,12 +24,16 @@ const SENSITIVE_KEYS = new Set([
   // names
   'name', 'names', 'displayname', 'firstname', 'lastname', 'middlename', 'fullname', 'givenname', 'familyname',
   'personname', 'username', 'nickname', 'latinname', 'originalname', 'teachername', 'studentname',
+  // M10b and M11: an invitee, the root of a lineage (a person's name) and a Latin transliteration
+  'inviteename', 'lineagename', 'rootname', 'asciiname',
   // addresses of any kind
   'address', 'addresses', 'ip', 'ips', 'ipaddress', 'remoteaddress', 'clientip', 'clientaddress', 'xforwardedfor',
   'forwardedfor', 'xrealip', 'forwarded',
   // coordinates
   'lat', 'lng', 'lon', 'long', 'latitude', 'longitude', 'coords', 'coordinates', 'location', 'geo', 'geometry',
   'point', 'position', 'exactpoint', 'privatepoint', 'privatelocation',
+  // M11: a school's street address, its pin as shown and a city's centre
+  'addressline', 'streetaddress', 'publicpoint', 'centroid', 'pin',
   // secrets
   'authorization', 'cookie', 'cookies', 'setcookie', 'headers',
 ]);
@@ -36,12 +41,19 @@ const SENSITIVE_KEYS = new Set([
 /** Key fragments that mark personal data or a secret wherever they appear in a key. */
 const SENSITIVE_PARTS = ['email', 'password', 'secret', 'token', 'apikey', 'phone'];
 
+/** Key endings that mark an address of any kind (teacherAddress, ownAddress: an e-mail address in M10b). */
+const SENSITIVE_ENDINGS = ['address'];
+
 const MAX_DEPTH = 6;
 const MAX_ITEMS = 50;
 
 export function isSensitiveKey(key: string): boolean {
   const normal = key.toLowerCase().replace(/[-_\s]/g, '');
-  return SENSITIVE_KEYS.has(normal) || SENSITIVE_PARTS.some((part) => normal.includes(part));
+  return (
+    SENSITIVE_KEYS.has(normal) ||
+    SENSITIVE_PARTS.some((part) => normal.includes(part)) ||
+    SENSITIVE_ENDINGS.some((ending) => normal.endsWith(ending))
+  );
 }
 
 // A decimal latitude/longitude pair ("42.6977, 23.3219"), a WKT or PostGIS point

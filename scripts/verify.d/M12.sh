@@ -105,13 +105,14 @@ else
 fi
 check "the drill's RTO is 4 hours by default (DEFAULT D24)" bash -c '
   grep -qx "RTO_DEFAULT_SECONDS=14400" scripts/restore-drill.sh && grep -q "DEFAULT D24" scripts/restore-drill.sh'
-check "the drill checks amcheck, rows, foreign keys, cycles, self-links, ancestor paths, evidence hashes and the Better Auth tables" bash -c '
+check "the drill checks amcheck, rows, foreign keys, cycles, self-links, ancestor paths, evidence hashes, the Better Auth tables and the private tables" bash -c '
   f=scripts/restore-drill.sh
   grep -q "bt_index_check(index => oid, heapallindexed => true)" "$f" && grep -q "verify_heapam" "$f" &&
   grep -q "restored copy" "$f" && grep -q "FK CONSTRAINT" "$f" && grep -q "convalidated" "$f" &&
   grep -q "WHERE teacher = student" "$f" && grep -q "WHERE ancestor = person" "$f" && grep -q "lineage-digest.sql" "$f" &&
   grep -q "evidence-objects.ts verify" "$f" &&
-  grep -q "AUTH_TABLES=(auth_user auth_session auth_account auth_verification auth_two_factor auth_throttle)" "$f"'
+  grep -q "AUTH_TABLES=(auth_user auth_session auth_account auth_verification auth_two_factor auth_throttle)" "$f" &&
+  grep -q "PRIVATE_TABLES=(evidence_file evidence_link invitation person_claim content_report review_case review_event review_note school_private_location audit_log)" "$f"'
 check "the drill restores into a temporary database or container, from the pinned PostGIS 18 image" bash -c '
   grep -q "DEFAULT_DRILL_IMAGE=\"postgis/postgis:18-3.6@sha256:[0-9a-f]\{64\}\"" scripts/restore-drill.sh &&
   grep -q "DROP DATABASE IF EXISTS" scripts/restore-drill.sh && grep -q "docker rm -f" scripts/restore-drill.sh'

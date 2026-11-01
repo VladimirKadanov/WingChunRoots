@@ -26,7 +26,9 @@
 #   7. the ancestor paths are those recorded at the time of the dump (<file>.lineage);
 #   8. a sample of evidence objects has the SHA-256 in evidence_file.sha256 (the archive's copy in
 #      objects/ when there is one, else the evidence store);
-#   9. the Better Auth tables are there.
+#   9. the Better Auth tables are there;
+#  10. the private tables are there: the evidence records (M10a), the invitations, claims, reports
+#      and review history (M10b), the exact school locations (M11) and the audit log.
 #
 # Prints the restore time and ends with "RESTORE DRILL: PASS ..." or exits 1. Never prints a URL,
 # a password, a name or a storage key.
@@ -44,6 +46,9 @@ cd "$ROOT"
 RTO_DEFAULT_SECONDS=14400
 DEFAULT_DRILL_IMAGE="postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677"
 AUTH_TABLES=(auth_user auth_session auth_account auth_verification auth_two_factor auth_throttle)
+# Check 4 compares the rows of the tables the archive holds; this list proves the private ones are
+# in it at all (a table left out of the dump would have no COPY section to compare).
+PRIVATE_TABLES=(evidence_file evidence_link invitation person_claim content_report review_case review_event review_note school_private_location audit_log)
 
 use_test=0
 dump=""
@@ -350,5 +355,14 @@ for table in "${AUTH_TABLES[@]}"; do
 done
 [ "${#missing[@]}" -eq 0 ] || fail "Better Auth tables missing: ${missing[*]}"
 echo "restore-drill: Better Auth tables: ${#AUTH_TABLES[@]} present"
+
+# 10. The private tables ---------------------------------------------------------------------------
+missing=()
+for table in "${PRIVATE_TABLES[@]}"; do
+  present="$(on_drill -c "SELECT to_regclass('public.$table') IS NOT NULL")"
+  [ "$present" = t ] || missing+=("$table")
+done
+[ "${#missing[@]}" -eq 0 ] || fail "private tables missing: ${missing[*]}"
+echo "restore-drill: private tables (evidence, invitations, claims, reports, review history, school locations, audit): ${#PRIVATE_TABLES[@]} present"
 
 echo "RESTORE DRILL: PASS — $base restored in ${duration_s}s (RTO ${rto}s, DEFAULT D24); $table_count tables, $total_rows rows, $fks foreign keys, $edge_count verified edges"

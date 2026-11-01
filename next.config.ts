@@ -30,6 +30,12 @@ const nextConfig: NextConfig = {
   // (`node server.js`, Dockerfile). `next start` still serves the build itself (E2E, pnpm start);
   // it only warns that the standalone server exists.
   output: 'standalone',
+  // M11 + M12: the Open Graph image of a school reads its fonts with readFile from node_modules
+  // (src/app/schools/[slug]/opengraph-image.tsx), a path the trace cannot see; without this the
+  // standalone server of the Docker image has no fonts and the image fails.
+  outputFileTracingIncludes: {
+    '/schools/**': ['./node_modules/@fontsource/noto-serif-display/files/noto-serif-display-{latin,latin-ext,greek,cyrillic}-400-normal.woff'],
+  },
   // Explicit, opt-in caching with 'use cache' (plan §3.1, §6.4).
   cacheComponents: true,
   partialPrefetching: true,

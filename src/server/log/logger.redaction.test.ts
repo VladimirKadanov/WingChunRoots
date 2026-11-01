@@ -145,7 +145,11 @@ describe('logger redaction (logger.redaction.test.ts)', () => {
     for (const key of ['email', 'E-Mail', 'to_email', 'name', 'display_name', 'ip', 'X-Forwarded-For', 'lat', 'Longitude', 'coordinates', 'privateLocation', 'apiKey']) {
       expect(isSensitiveKey(key), key).toBe(true);
     }
-    for (const key of ['queue', 'requestId', 'count', 'status', 'procedure', 'code', 'type']) expect(isSensitiveKey(key), key).toBe(false);
+    // The fields of M10b (invitations, lineages) and M11 (schools, places).
+    for (const key of ['teacherAddress', 'ownAddress', 'inviteeName', 'lineageName', 'rootName', 'asciiName', 'contactEmail', 'contactPhone', 'addressLine', 'address_line', 'publicPoint', 'public_point', 'exactPoint', 'centroid', 'pin']) {
+      expect(isSensitiveKey(key), key).toBe(true);
+    }
+    for (const key of ['queue', 'requestId', 'count', 'status', 'procedure', 'code', 'type', 'schoolId', 'radiusKm', 'endpoint']) expect(isSensitiveKey(key), key).toBe(false);
     expect(redactText('rpc grants.create failed: DrizzleQueryError (postgres 57014) request 0190a5b2')).toBe(
       'rpc grants.create failed: DrizzleQueryError (postgres 57014) request 0190a5b2',
     );
