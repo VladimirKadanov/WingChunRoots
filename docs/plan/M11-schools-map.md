@@ -77,3 +77,11 @@ M08, M10a (опашката за преглед).
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-11-01 05:56 — миграцията `*_m11_schools_map` (статусите на школата, формите и контактите, `place.alternate_names` и `search_text`, един отворен случай на школа, `v_public_school` с правилото за пина, DEFAULT D08/D18), извлечението от GeoNames за BG, GR, DE, GB, US и HK (`scripts/geonames-extract.ts`, `pnpm geo:extract`, `pnpm geo:load`) и зареждането му от `db:seed` (f0c1d5e)
+- 2026-11-01 06:15 — услугите `schools.*` и `places.search` (радиус с `ST_DWithin` върху `geography`, цели километри, филтър по линия от `lineage_membership`), прегледът на обявите в опашката на M10a (`school_listing`), процедурите в `/api/rpc` и `/api/v1`, договорът OpenAPI и интеграционните тестове (c692f9d)
+- 2026-11-01 06:55 — `/schools` с картата (MapLibre 6.14 и `@vis.gl/react-maplibre` 8.1.3 с `next/dynamic`, работникът през `?asset`, долният лист `[0.15, 0.5, 0.92]`, адресът с `replaceState`, списък без WebGL 2), `/schools/[slug]` с Open Graph и JSON-LD, sitemap, таблото `/dashboard/schools` с тънки Server Actions; ADR 0001 и бюджетът на `/schools` с `LAZY_ONLY` (0a23d06)
+- 2026-11-01 07:20 — `e2e/m11-schools.spec.ts` с дванадесетте заглавия и записа на изгледа в адреса в проекта `exclusive` (`PUBLIC_WRITE_SPECS`), ключовите маршрути, състоянията на екраните, добавките за GeoNames и OpenStreetMap; редакторът на отделна страница, за да остане под 170 kB (373c077)
+- 2026-11-01 07:32 — ADR 0013, `docs/schools-and-map.md`, седемте въпроса към собственика (`docs/plan/questions/M11.md`), двете ръководства (0ff33e0, 1dddb36, f8ac913)
+- 2026-11-01 07:51 — снимките в `docs/screenshots/M11/` и първият кръг на прегледа на дизайна: списъкът встрани вече не удължава страницата, контролите на картата следват темата и са 44×44 px при докосване (2ce12d8, 56df402, 0c45d1c)
+- 2026-11-01 08:30 — ъглите на контролите и на бутона на списъка, празното търсене и страницата на непублична школа като ключови екрани, DEFAULT D12, моделът на данните, `scripts/verify.d/M11.sh` (5a35322…ebe7712); всеки `scripts/verify.d/*.sh` минава сам след поправката на формата (нищо не е избрано предварително за режима на местоположението)
