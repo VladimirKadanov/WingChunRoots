@@ -20,7 +20,7 @@ import type { ReactNode } from 'react';
 
 import { FormMessage } from '@/components/account/fields';
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { DASHBOARD_LOAD_ERROR } from '@/components/account/load-errors/dashboard';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameText } from '@/components/account/person-names';
 import { ArrowRightIcon, PinIcon } from '@/components/icons';
@@ -206,7 +206,7 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
       <Section id="schools" title="My schools">
         {schools.length === 0 ? (
           <Empty testId="empty-schools">
-            No school lists you as an instructor yet. Schools and the map open later in the pilot; a school that lists you then appears here.
+            No school lists you as an instructor yet. List your school, or ask its head instructor to add you; it appears here.
           </Empty>
         ) : (
           <ul data-testid="schools" className="grid">
@@ -224,6 +224,12 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
             ))}
           </ul>
         )}
+        <p>
+          <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })} data-testid="manage-schools">
+            {schools.length === 0 ? 'List a school' : 'Manage your schools'}
+            <ArrowRightIcon />
+          </Link>
+        </p>
       </Section>
     </>
   );
@@ -289,7 +295,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const client = serverClient(await headers(), guard.principal);
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
   const loaded = await pageRead(Promise.all([client.dashboard.overview(), client.account.me()]));
-  if (!loaded) return <LoadError {...LOAD_ERRORS.dashboard} retryHref="/dashboard" />;
+  if (!loaded) return <LoadError {...DASHBOARD_LOAD_ERROR} retryHref="/dashboard" />;
   const [overview, me] = loaded;
   const names = me.person?.names ?? [];
   const primary = names.find((name) => name.isPrimary);
@@ -345,6 +351,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
               Account type and plan
             </Link>
+            {/* M10b: a Sifu not verified yet sends instructor evidence here (DEFAULT D04/D13). */}
+            {sifu && overview.instructor.status !== 'verified' ? (
+              <Link href="/dashboard/instructor" className="link inline-flex min-h-11 items-center">
+                Instructor verification
+              </Link>
+            ) : null}
+            {/* M10b: the account's profile claims, instructor verifications and disputes (cases.mine). */}
+            {staffOnly ? null : (
+              <Link href="/dashboard/cases" className="link inline-flex min-h-11 items-center">
+                Your cases
+              </Link>
+            )}
             <Link href="/account" className="link inline-flex min-h-11 items-center">
               Account and security
             </Link>
@@ -368,7 +386,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                 </Link>{' '}
                 if you also train.
               </p>
-            ) : overview.hasProfile ? null : (
+            ) : overview.hasProfile ? null : overview.pendingClaimCaseId ? (
+              // M10b: an invited teacher's claim waits for the reviewers; the profile comes with it.
+              <div data-testid="pending-claim" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
+                <p className="text-ui">Your claim of the profile you were invited to is with the reviewers. When they approve it, the profile is yours.</p>
+                <Link href={`/dashboard/cases/${overview.pendingClaimCaseId}`} className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }))}>
+                  See your claim
+                </Link>
+              </div>
+            ) : (
               <div className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
                 <p className="text-ui">Your profile is not set up yet. Add your name so teachers and students can find and confirm you.</p>
                 <Link href={ONBOARDING} className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>

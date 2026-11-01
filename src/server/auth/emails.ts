@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import { generateRandomString } from 'better-auth/crypto';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 
+import { isInvitationPath } from '../../lib/invitation-path';
 import { getDb } from '../db';
 import { authAccount, person, personName } from '../db/schema';
 import { getProducer } from '../jobs/boss';
@@ -102,11 +103,33 @@ export async function hasPassword(userId: string): Promise<boolean> {
   return row !== undefined;
 }
 
-export async function sendVerificationEmail(user: Recipient, token: string): Promise<void> {
+/**
+ * The invitation a sign-up started from (M10b review, requirements-2): Better Auth puts the
+ * request's `callbackURL` (the sign-up, sign-in or new-link form's `next`) into the URL it hands to
+ * sendVerificationEmail. Only the path of an invitation link is kept; anything else, and Better
+ * Auth's default "/", gives "".
+ */
+export function invitationFromCallback(url: string | undefined): string {
+  if (!url) return '';
+  try {
+    const next = new URL(url).searchParams.get('callbackURL');
+    return isInvitationPath(next) ? next : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The confirmation e-mail. `next`, the path of an invitation link (invitationFromCallback), rides
+ * in the link: /verify-email hands it to the sign-in after the confirmation, and the sign-in goes
+ * back to the invitation (account.landing), on whatever device the e-mail is opened.
+ */
+export async function sendVerificationEmail(user: Recipient, token: string, next = ''): Promise<void> {
   // An unconfirmed account without a password (its password was wiped by a later sign-up) is
   // finished by choosing a password, never by confirming the address alone.
   if (!(await hasPassword(user.id))) return sendFinishSignUpEmail(user);
-  const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}`;
+  const invitation = isInvitationPath(next) ? `&next=${encodeURIComponent(next)}` : '';
+  const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}${invitation}`;
   const names = await recipientNames(user.id);
   await withinHourlyCap(user.id, 'verify-email', (tx, boss) =>
     queueEmail(tx, {

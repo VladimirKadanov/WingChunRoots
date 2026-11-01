@@ -6,6 +6,10 @@
 // assign, verify, refuse with a reason, ask for more information, add an internal note. The data
 // comes from review.get, the actions are thin Server Actions over review.assign, review.decide and
 // review.note. A non-staff account sees the explicit denied state. Reads the session.
+//
+// M10b: the other kinds (a profile claim, an instructor verification, a profile report, a
+// relationship dispute) show what the case is about (review.get `subject`) and the words of their
+// own decisions (`decisions`).
 
 import { randomUUID } from 'node:crypto';
 
@@ -26,6 +30,7 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { assignForm, DECIDE_FORM, NOTE_FORM } from '../form-ids';
 import { AssignForm, DecideForm, NoteForm } from '../forms';
+import { ListingSection } from '../listing';
 
 export const instant = false;
 
@@ -52,10 +57,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DONE: Record<string, string> = {
   assigned: 'The case is assigned. You can open its evidence and decide it.',
   unassigned: 'The case is unassigned and back in the queue.',
-  verified: 'The claim is verified. The link and both profiles are public now, and the student was told.',
-  refused: 'The claim is refused. The student was told and can read your reason.',
-  asked: 'Your question was sent to the student. The case waits for their answer.',
   noted: 'The note is added.',
+  // M10b: review.arbitrate opens the dispute here.
+  arbitrated: 'The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.',
+};
+/** What a decision did, in the words of the case's kind (review.get `decisions`). */
+const DECIDED = { verified: 'verify', refused: 'reject', asked: 'needs_info' } as const;
+
+/** M10b: the heading of a case's relationship, by kind. */
+const RELATIONSHIP_HEADING: Record<string, string> = {
+  person_claim: 'The request it answers',
+  relationship_dispute: 'The relationship',
 };
 
 function Frame({ children }: { children: ReactNode }) {
@@ -119,7 +131,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(`${DECIDE_FORM}-reject`, query.outcome),
     readFormResult(`${DECIDE_FORM}-needs_info`, query.outcome),
   ]);
-  const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
+  const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
+  const done = decided ? view.decisions[decided].done : typeof query.done === 'string' ? DONE[query.done] : undefined;
+  // In a dispute both people are parties; elsewhere the one who opened the case is the claimant.
+  // A reviewer's note in a dispute reaches both people; a party's reply only the reviewers (DEFAULT D19).
+  const party =
+    view.kind === 'relationship_dispute'
+      ? { author: 'A party', shown: 'shown to both people', reply: 'not shown to the other person' }
+      : { author: 'The claimant', shown: 'shown to the claimant', reply: 'shown to the claimant' };
   // New for every change (actions.ts doneAt): a new note mounts, so it takes the focus again.
   const doneKey = `${String(query.done)}-${String(query.n)}`;
   const rel = view.relationship;
@@ -144,8 +163,30 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
       ) : null}
 
       <div className="mt-8 grid gap-10">
+        {view.subject ? (
+          <Section id="subject" title={view.subject.label}>
+            {view.subject.person ? <PersonName person={view.subject.person} /> : null}
+            {view.subject.facts.length > 0 ? (
+              <dl className="grid gap-2 text-ui sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]" data-testid="subject-facts">
+                {view.subject.facts.map((fact) => (
+                  <div key={fact.label} className="contents">
+                    <dt className="text-fg-muted">{fact.label}</dt>
+                    <dd className="whitespace-pre-line">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {!rel && view.resolutionReason ? (
+              <p className="max-w-[60ch] text-sm whitespace-pre-line">
+                <span className="font-semibold">Decision note: </span>
+                {view.resolutionReason}
+              </p>
+            ) : null}
+          </Section>
+        ) : null}
+
         {rel ? (
-          <Section id="claim" title="The claim">
+          <Section id="claim" title={RELATIONSHIP_HEADING[view.kind] ?? 'The claim'}>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid content-start gap-1">
                 <span className="text-sm text-fg-muted">Teacher</span>
@@ -182,6 +223,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
           </Section>
         ) : null}
 
+        {view.school ? <ListingSection school={view.school} reason={view.resolutionReason} /> : null}
+
+        {view.school ? null : (
         <Section id="evidence" title="Evidence">
           {view.files.length === 0 ? (
             <p className="text-ui text-fg-muted">No files.</p>
@@ -209,6 +253,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             <p className="max-w-[60ch] text-sm text-fg-muted">The files open for the reviewer the case is assigned to and for the administrators.</p>
           ) : null}
         </Section>
+        )}
 
         <Section id="actions" title="Decision">
           {view.decideNote ? (
@@ -227,9 +272,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} /> : null}
-            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} /> : null}
+            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
             <p className="text-ui text-fg-muted">This case is closed.</p>
@@ -244,8 +289,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
               {view.notes.map((note) => (
                 <li key={note.id} data-testid="case-note" data-internal={note.internal ? 'yes' : 'no'} className="grid gap-1 rounded-sm bg-surface-2 px-4 py-3">
                   <span className="text-sm text-fg-muted">
-                    {note.author === 'claimant' ? 'The claimant' : note.author === 'you' ? 'You' : `A reviewer${note.authorRole ? ` (${note.authorRole})` : ''}`} ·{' '}
-                    {note.internal ? 'internal, reviewers only' : 'shown to the claimant'} · {formatDay(note.createdAt)}
+                    {note.author === 'claimant'
+                      ? note.authorSide
+                        ? `The ${note.authorSide}`
+                        : party.author
+                      : note.author === 'you'
+                        ? 'You'
+                        : `A reviewer${note.authorRole ? ` (${note.authorRole})` : ''}`}{' '}
+                    · {note.internal ? 'internal, reviewers only' : note.author === 'claimant' ? party.reply : party.shown} · {formatDay(note.createdAt)}
                   </span>
                   <span className="text-ui whitespace-pre-line">{note.body}</span>
                 </li>

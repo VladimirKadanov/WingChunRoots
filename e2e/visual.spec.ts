@@ -18,6 +18,7 @@ import { closeHelpers, signInAs } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
+import { SCHOOL_MAP_SCREENS } from './helpers/schools';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 test.afterAll(closeHelpers);
@@ -85,6 +86,23 @@ for (const size of SCREEN_SIZES) {
           await state.reach(page);
           await page.evaluate(() => document.fonts.ready.then(() => undefined));
           await expect(page).toHaveScreenshot(`${state.name}-${size.name}-${theme}.png`, { stylePath: resolve('e2e/visual.css') });
+        });
+      }
+    }
+
+    // M11: the finder's map view (screen states: the map settles first). The canvas is masked: it is
+    // drawn with WebGL, which a runner's graphics stack can change pixel by pixel without any change
+    // in the app; the markers, the list beside the map and the phone's sheet are compared.
+    for (const screen of SCHOOL_MAP_SCREENS) {
+      for (const theme of THEMES) {
+        test(`the school finder (${screen.name}) at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
+          await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+          await screen.reach(page);
+          await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          await expect(page).toHaveScreenshot(`${screen.name}-${size.name}-${theme}.png`, {
+            stylePath: resolve('e2e/visual.css'),
+            mask: [page.locator('canvas.maplibregl-canvas')],
+          });
         });
       }
     }

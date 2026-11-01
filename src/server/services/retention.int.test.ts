@@ -107,6 +107,64 @@ describe('purgeExpiredEmailAddresses', () => {
       expect(pending.constraint).toBe('invitation_pending_has_email');
     });
   });
+
+  it('erases the address in an invitation e-mail on the invitation’s schedule, not after 90 days (M10b)', async () => {
+    await withClient(testDb.url, async (c) => {
+      const [{ id: personId }] = (await c.query<{ id: string }>(`INSERT INTO person (slug, kind) VALUES ('demo-retention-invites', 'living') RETURNING id`)).rows as [
+        { id: string },
+      ];
+      // label, status, address, expires_at, accepted_at, updated_at (offsets from now), the delivery's status and age.
+      const invitations: [string, string, string | null, string, string | null, string, string, string][] = [
+        ['ignored-old', 'pending', 'ignored-old@wingchunroots.test', '-31 days', null, '-45 days', 'sent', '-45 days'],
+        ['accepted-old', 'accepted', 'accepted-old@wingchunroots.test', '-20 days', '-31 days', '-31 days', 'sent', '-40 days'],
+        ['revoked-old', 'revoked', 'revoked-old@wingchunroots.test', '+10 days', null, '-31 days', 'sent', '-35 days'],
+        ['never-sent', 'expired', 'never-sent@wingchunroots.test', '-31 days', null, '-31 days', 'queued', '-45 days'],
+        // Its own address went in an earlier run (which moved updated_at), while the Mailer held the delivery.
+        ['erased-earlier', 'revoked', null, '+10 days', null, '-1 day', 'sent', '-35 days'],
+        ['pending-new', 'pending', 'pending-new@wingchunroots.test', '+10 days', null, '-4 days', 'sent', '-4 days'],
+        ['expired-recent', 'pending', 'expired-recent@wingchunroots.test', '-29 days', null, '-43 days', 'sent', '-43 days'],
+      ];
+      let n = 10;
+      for (const [label, status, email, expires, accepted, updated, deliveryStatus, sentAt] of invitations) {
+        n += 1;
+        const [{ id }] = (
+          await c.query<{ id: string }>(
+            `INSERT INTO invitation (person_id, email, token_hash, status, expires_at, accepted_at, updated_at)
+             VALUES ($1, $2, $3, $4, now() + $5::interval, now() + $6::interval, now() + $7::interval) RETURNING id`,
+            [personId, email, hash(n), status, expires, accepted, updated],
+          )
+        ).rows as [{ id: string }];
+        await c.query(
+          `INSERT INTO email_delivery (idempotency_key, to_email, template, status, created_at)
+           VALUES ('invitation:' || $1, $2, 'invitation', $3, now() + $4::interval)`,
+          [id, `${label}@wingchunroots.test`, deliveryStatus, sentAt],
+        );
+      }
+    });
+
+    expect(await purgeExpiredEmailAddresses(db)).toEqual({ emailDeliveries: 5, invitations: 4 });
+    expect(await purgeExpiredEmailAddresses(db)).toEqual({ emailDeliveries: 0, invitations: 0 });
+
+    await withClient(testDb.url, async (c) => {
+      expect(
+        await rows(
+          c,
+          `SELECT split_part(d.to_email, '@', 1) AS kept, d.status, i.email IS NULL AS invitation_erased
+             FROM email_delivery d JOIN invitation i ON d.idempotency_key = 'invitation:' || i.id::text
+            WHERE i.person_id = (SELECT id FROM person WHERE slug = 'demo-retention-invites')
+            ORDER BY i.token_hash`,
+        ),
+      ).toEqual([
+        { kept: null, status: 'sent', invitation_erased: true },
+        { kept: null, status: 'sent', invitation_erased: true },
+        { kept: null, status: 'sent', invitation_erased: true },
+        { kept: null, status: 'failed', invitation_erased: true },
+        { kept: null, status: 'sent', invitation_erased: true },
+        { kept: 'pending-new', status: 'sent', invitation_erased: false },
+        { kept: 'expired-recent', status: 'sent', invitation_erased: false },
+      ]);
+    });
+  });
 });
 
 describe('purgeExpiredSessions', () => {

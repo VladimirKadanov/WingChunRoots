@@ -6,7 +6,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { and, count, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { signedSessionToken } from '../auth/credentials';
 import {
@@ -42,6 +42,21 @@ import {
   PLANS_BANNER,
   PROPOSED_PRICE_LABEL,
 } from './plans';
+
+// M11: grants and account type changes drop the cached school answers (revalidateTag), which
+// needs Next.js's request store; recorded here instead.
+// M10b: a change of account type drops the cached public pages of the account's profile and its
+// neighbours (services/plans.ts, the instructor label); outside a Next.js request the tags are
+// recorded here.
+const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
+vi.mock('next/cache', () => ({
+  cacheTag: () => undefined,
+  cacheLife: () => undefined,
+  revalidateTag: (tag: string) => {
+    cache.revalidated.push(tag);
+  },
+  updateTag: () => undefined,
+}));
 
 let testDb: TestDatabase | undefined;
 let admins: { account: TestAccount; token: string }[] = [];
@@ -151,6 +166,8 @@ describe('plans.catalog and plans.mine', () => {
     await getDb().insert(reviewCase).values({ kind: 'instructor_verification', status: 'resolved', personId, resolution: 'approved', resolvedAt: new Date() });
     expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({ accountType: 'student', instructor: { status: 'not_instructor' }, verifiedInstructor: true });
     expect((await v1(token, 'POST', '/account/type', { accountType: 'sifu' })).status).toBe(200);
+    // The public profile now says "Instructor": its cached page is dropped.
+    expect(cache.revalidated).toContain(`person:${personId}`);
     expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({
       accountType: 'sifu',
       instructor: { status: 'verified', label: 'Instructor' },
@@ -405,6 +422,8 @@ describe('grants.* (admin with a verified second factor)', () => {
     });
     expect(created.status).toBe(200);
     expect(created.data).toMatchObject({ email: sifu.account.email, planCode: 'pro_sifu', source: 'test_grant', state: 'active', inEffect: true, reason: 'Demo: pilot test of the student limit', grantedBy: admin.account.email });
+    // M11: the account's school pins appear with the plan (DEFAULT D08/D18).
+    expect(cache.revalidated).toContain('schools');
     const grantId = created.data.id as string;
 
     const [audit] = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'grant.create'), eq(auditLog.subjectId, grantId)));

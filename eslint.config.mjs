@@ -76,6 +76,13 @@ const modulePackages = [
     message: 'Only src/server/rpc builds the oRPC router and handlers; Server Actions call serverClient() (plan §6.8).',
   },
   {
+    // M11: the map library loads only through the map islands (next/dynamic), never with a page
+    // (scripts/check-bundle-budget.mjs, MAPLIBRE).
+    module: 'src/components/map',
+    group: ['maplibre-gl', 'maplibre-gl/*', '@vis.gl/react-maplibre', '@vis.gl/react-maplibre/*'],
+    message: 'Only src/components/map imports MapLibre; pages load its islands with next/dynamic (milestone M11).',
+  },
+  {
     // M05: the browser's client of /api/rpc and its TanStack Query helpers, in one place.
     module: 'src/lib/rpc-client',
     group: ['@orpc/client', '@orpc/client/*', '@orpc/tanstack-query'],
@@ -274,11 +281,16 @@ export default defineConfig([
   // Each module that owns a package may import it (see modulePackages). These blocks come after
   // the request-path block so they replace it for their own files; they keep its ELK and layout
   // bans, except that the background jobs may run layouts (plan §4.1).
+  // The map islands (M11) are components: they keep the bans of src/components.
   ...modulePackages.map(({ module }) => ({
     files: [`${module}/**/*.{ts,tsx}`],
     rules: {
       'no-restricted-imports': restrictImports(
-        module === 'src/server/jobs' ? [elkOnlyInLayoutModule] : [elkOnlyInLayoutModule, noLayoutInRequestPath],
+        module === 'src/server/jobs'
+          ? [elkOnlyInLayoutModule]
+          : module === 'src/components/map'
+            ? [...routeBans, baseUiOnlyInUi, noTailwindMerge]
+            : [elkOnlyInLayoutModule, noLayoutInRequestPath],
         { module },
       ),
     },

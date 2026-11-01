@@ -1,7 +1,8 @@
 'use server';
 
-// The Server Actions of the review queue (milestone M10a, In scope 4 and 5): thin wrappers over
-// review.assign, review.decide, review.note and archive.update (src/server/rpc/parity.ts), called
+// The Server Actions of the review queue (milestone M10a, In scope 4 and 5; M10b: arbitration):
+// thin wrappers over review.assign, review.decide, review.note, review.arbitrate and
+// archive.update (src/server/rpc/parity.ts), called
 // in-process with this request's session, so the forms and /api/v1 run the same checks (the
 // second factor, the roles, the assignment). Each mutation carries an idempotency key the page
 // made for it, except the archival edit, which writes nothing when nothing changed. A failure
@@ -20,7 +21,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -83,6 +84,8 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
   const caseId = textValue(form, 'caseId', 40);
   const decision = textValue(form, 'decision', 20);
   const reason = textValue(form, 'reason', 4000);
+  // M11: the version of the school listing the card showed (review.decide refuses a newer one).
+  const schoolVersion = textValue(form, 'schoolVersion', 24);
   const page = casePage(caseId);
   try {
     await (await client()).review.decide({
@@ -90,6 +93,7 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
       decision: decision === 'verify' || decision === 'reject' || decision === 'needs_info' ? decision : ('' as 'verify'),
       reason: reason || null,
       idempotencyKey: key(form),
+      ...(schoolVersion ? { schoolVersion } : {}),
     });
   } catch (error) {
     unstable_rethrow(error);
@@ -150,4 +154,25 @@ export async function archiveUpdateAction(_previous: FormState, form: FormData):
     return formResult({ form: ARCHIVE_FORM, page, anchor: outcomeTarget(ARCHIVE_FORM, state, false) }, state);
   }
   redirect(doneAt(page, changed ? 'saved' : 'unchanged'));
+}
+
+/**
+ * M10b: "Set in arbitration" (review.arbitrate; a moderator or an administrator, DEFAULT D19).
+ * Success opens the dispute's case card, which the moderator now holds.
+ */
+export async function arbitrateAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const relationshipId = textValue(form, 'relationshipId', 40);
+  const reason = textValue(form, 'reason', 4000);
+  const page = UUID.test(relationshipId) ? `/admin/review/arbitrate/${relationshipId}` : '/admin/review';
+  let caseId: string;
+  try {
+    const result = await (await client()).review.arbitrate({ relationshipId, reason, idempotencyKey: key(form) });
+    caseId = result.caseId;
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { relationshipId, reason });
+    return formResult({ form: ARBITRATE_FORM, page, anchor: outcomeTarget(ARBITRATE_FORM, state, true) }, state);
+  }
+  redirect(doneAt(casePage(caseId), 'arbitrated'));
 }

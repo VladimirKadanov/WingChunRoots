@@ -5,9 +5,13 @@
 import { render } from '@react-email/render';
 
 import { accountExists } from './account-exists';
+import { claimDecided } from './claim-decided';
 import { finishSignUp } from './finish-sign-up';
+import { instructorDecided } from './instructor-decided';
+import { invitation } from './invitation';
 import { mailCheck } from './mail-check';
 import { relationshipApproved } from './relationship-approved';
+import { relationshipArbitration } from './relationship-arbitration';
 import { relationshipRejected } from './relationship-rejected';
 import { relationshipRequested } from './relationship-requested';
 import { resetPassword } from './reset-password';
@@ -18,9 +22,13 @@ import { verifyEmail } from './verify-email';
 export { TemplateDataError } from './types';
 export type { EmailTemplate, NameData } from './types';
 export type { AccountExistsData } from './account-exists';
+export type { ClaimDecidedData } from './claim-decided';
 export type { FinishSignUpData } from './finish-sign-up';
+export type { InstructorDecidedData } from './instructor-decided';
+export type { InvitationData } from './invitation';
 export type { MailCheckData } from './mail-check';
 export type { RelationshipApprovedData } from './relationship-approved';
+export type { RelationshipArbitrationData } from './relationship-arbitration';
 export type { RelationshipRejectedData } from './relationship-rejected';
 export type { RelationshipRequestedData } from './relationship-requested';
 export type { ResetPasswordData } from './reset-password';
@@ -40,6 +48,11 @@ export const EMAIL_TEMPLATES = {
   'relationship-rejected': relationshipRejected,
   // M10a: the review committee's decision on a historical teacher claim.
   'review-decided': reviewDecided,
+  // M10b: invitations and profile claims, instructor verification, arbitration.
+  invitation,
+  'claim-decided': claimDecided,
+  'instructor-decided': instructorDecided,
+  'relationship-arbitration': relationshipArbitration,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;

@@ -124,3 +124,32 @@ export function parseHours(template: string, field: string, value: unknown): num
 export function parseOptionalNames(template: string, field: string, value: unknown): { recipientNames?: NameData[] } {
   return value === undefined ? {} : { recipientNames: parseNames(template, field, value) };
 }
+
+/**
+ * Checks a link to a page of the app whose path carries an id or a token (M10b): an absolute
+ * http(s) URL whose path matches `path` exactly, with no query and no fragment. `label` names the
+ * page in the error.
+ */
+export function parseAppPathUrl(template: string, field: string, value: unknown, path: RegExp, label: string): string {
+  if (typeof value !== 'string' || value.length > MAX_URL_LENGTH) throw new TemplateDataError(template, `${field} must be a URL`);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TemplateDataError(template, `${field} must be a URL`);
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new TemplateDataError(template, `${field} must be an http(s) URL`);
+  if (!path.test(url.pathname) || url.search || url.hash) throw new TemplateDataError(template, `${field} must point at ${label}`);
+  return value;
+}
+
+/** The page of one review case for its parties (M10b): APP_URL/dashboard/cases/<uuid>. */
+export const CASE_PAGE = /^\/dashboard\/cases\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** A reviewer's words for the parties (M10b: the reason of an arbitration), 1 to 2000 characters. */
+export function parseLongText(template: string, field: string, value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '' || value.length > 2000) {
+    throw new TemplateDataError(template, `${field} must be a text of 1 to 2000 characters`);
+  }
+  return value.trim();
+}

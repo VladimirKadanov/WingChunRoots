@@ -81,6 +81,12 @@ export const lineageEdgeSchema = z.object({
   /** involved_only: the signed-in participant's own relationship, not public (DEFAULT D03). */
   visibility: visibilitySchema,
   periods: z.array(periodSchema),
+  /**
+   * M10b (DEFAULT D04/D13): the teacher approved this link while their instructor evidence was not
+   * verified; the relationship panel says "Approved by an unverified instructor". The services
+   * always set it; absent (an older client's fixture) reads as false.
+   */
+  approvedByUnverifiedInstructor: z.boolean().optional(),
 });
 export type LineageEdgeDto = z.infer<typeof lineageEdgeSchema>;
 
@@ -146,6 +152,11 @@ export const personProfileSchema = z.object({
   /** City level only, never a point (plan §6.4). */
   cityName: z.string().nullable(),
   bio: z.string().nullable(),
+  /**
+   * M10b (DEFAULT D04/D13): a Sifu account's record is an instructor, "verified" once an archivist
+   * approved their evidence and "unverified" until then; null for anyone else.
+   */
+  instructor: z.enum(['verified', 'unverified']).nullable(),
   visibility: visibilitySchema,
   /** The signed-in account's own person. */
   isOwn: z.boolean(),

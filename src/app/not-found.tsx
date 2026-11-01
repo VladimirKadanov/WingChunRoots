@@ -1,5 +1,5 @@
-// The page for addresses that are not on the record (404). Until their milestones, the
-// Lineage, Schools and Me tabs land here too, so the copy says plainly what exists today.
+// The page for addresses that are not on the record (404): a mistyped address, or a page the
+// pilot has not opened, so the copy says plainly what exists today.
 //
 // A person's address that shows nobody to this viewer (missing, malformed or hidden) also lands
 // here: src/proxy.ts rewrites it to an address no route uses and marks the request
@@ -36,8 +36,8 @@ export default async function NotFound() {
       <p className="eyebrow">404 · Not on the record</p>
       <h1 className="max-w-[16ch] font-display text-section">This page is not drawn yet</h1>
       <p className="max-w-[56ch] text-fg-muted">
-        The address may be mistyped, or the page may open later in the pilot: the school finder is still being built. The home page
-        shows a demo lineage, and the lineage explorer draws the record.
+        The address may be mistyped, or the page may open later in the pilot. The home page shows a demo lineage, the lineage
+        explorer draws the record, and the school finder shows the schools on a map.
       </p>
       <div>
         <Link href="/" className={buttonVariants({ variant: 'secondary' })}>

@@ -29,6 +29,20 @@ import {
   revokeGrantInput,
 } from '../services/grants';
 import { historicalClaimInput, requestHistoricalTeacher } from '../services/historical';
+import { arbitrateInput, arbitrateRelationship } from '../services/arbitration';
+import { caseIdInput, caseReplyInput, getPartyCase, myCases, replyToCase } from '../services/cases';
+import { instructorOverview, instructorRequestInput, requestInstructorVerification } from '../services/instructor';
+import {
+  acceptInvitation,
+  acceptInvitationInput,
+  getInvitation,
+  invitationTokenInput,
+  inviteInput,
+  inviteTeacher,
+  sendInvitation,
+  sendInvitationInput,
+} from '../services/invitations';
+import { myReports, reportInput, reportProfile } from '../services/reports';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import {
@@ -72,6 +86,28 @@ import { profileGet, profileUpdate, profileUpdateInput } from '../services/profi
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
 import { searchInput, searchQuery } from '../services/search';
 import { searchResultSchema } from '../dto/search';
+import { placeSearchSchema, schoolPageSchema, schoolSearchSchema, schoolSitemapSchema } from '../dto/schools';
+import {
+  confirmSchool,
+  createSchool,
+  mySchools,
+  placeSearchInput,
+  placesSearch,
+  schoolCreateInput,
+  schoolEditor,
+  schoolEditorInput,
+  schoolGet,
+  schoolSitemap,
+  schoolIdInput,
+  schoolSearchInput,
+  schoolSlugInput,
+  schoolsInViewport,
+  schoolsSearch,
+  schoolUpdateInput,
+  schoolViewportInput,
+  submitSchool,
+  updateSchool,
+} from '../services/schools';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
@@ -341,6 +377,65 @@ export const router = {
       })
       .input(historicalClaimInput)
       .handler(({ context, input }) => requestHistoricalTeacher(context.principal, input, context.meta)),
+    // M10b: a living teacher who is not on WingChunRoots yet (plan §6.7).
+    invite: signedIn
+      .route({
+        method: 'POST',
+        path: '/relationships/invite',
+        summary: 'List a living teacher who is not here yet: an unclaimed record and a request awaiting their claim, with an optional e-mail invitation; visible only to you, them and the reviewers',
+      })
+      .input(inviteInput)
+      .handler(({ context, input }) => inviteTeacher(context.principal, input, context.meta)),
+  },
+  // M10b: invitation links (/invite/<token>). The token is the secret: it travels only in request
+  // bodies, never in an API address; only its SHA-256 hash is stored.
+  invitations: {
+    send: signedIn
+      .route({ method: 'POST', path: '/invitations/send', summary: 'Send (or send again) the e-mail invitation of a request awaiting the teacher’s claim (the student); an older link stops working' })
+      .input(sendInvitationInput)
+      .handler(({ context, input }) => sendInvitation(context.principal, input, context.meta)),
+    get: base
+      .route({ method: 'POST', path: '/invitations/view', summary: 'What an invitation link is about and whether the signed-in account can accept it (404 for an unknown link)' })
+      .input(invitationTokenInput)
+      .handler(({ context, input }) => getInvitation(context.principal, input)),
+    accept: signedIn
+      .route({ method: 'POST', path: '/invitations/accept', summary: 'Accept an invitation: claim the unclaimed record, reviewed by an archivist before it becomes yours; single use' })
+      .input(acceptInvitationInput)
+      .handler(({ context, input }) => acceptInvitation(context.principal, input, context.meta)),
+  },
+  // M10b: instructor verification of a Sifu (plan §6.5, DEFAULT D04/D13).
+  instructor: {
+    mine: base
+      .route({ method: 'GET', path: '/instructor', summary: "The signed-in account's instructor status (verified or unverified) and its newest verification case" })
+      .handler(({ context }) => instructorOverview(context.principal)),
+    request: signedIn
+      .route({ method: 'POST', path: '/instructor/request', summary: 'Send evidence that you are an instructor (a Sifu): a review case an archivist decides' })
+      .input(instructorRequestInput)
+      .handler(({ context, input }) => requestInstructorVerification(context.principal, input, context.meta)),
+  },
+  // M10b: "Report profile": one report per account and profile; no automatic hiding.
+  reports: {
+    mine: base
+      .route({ method: 'GET', path: '/reports/mine', summary: "The signed-in account's reports of profiles and where each stands" })
+      .handler(({ context }) => myReports(context.principal)),
+    create: signedIn
+      .route({ method: 'POST', path: '/reports/create', summary: 'Report a public profile (copyright, spam, inappropriate, misleading): a review case for the moderators; once per profile' })
+      .input(reportInput)
+      .handler(({ context, input }) => reportProfile(context.principal, input, context.meta)),
+  },
+  // M10b: a party's own review cases (profile claims, instructor verifications, disputes).
+  cases: {
+    mine: base
+      .route({ method: 'GET', path: '/cases', summary: "The signed-in account's own review cases: profile claims, instructor verifications and disputes about its relationships" })
+      .handler(({ context }) => myCases(context.principal)),
+    get: base
+      .route({ method: 'GET', path: '/cases/{id}', summary: "One of the account's own cases: status, the reviewers' notes, own replies and files, the decision (404 for anyone else)" })
+      .input(caseIdInput)
+      .handler(({ context, input }) => getPartyCase(context.principal, input)),
+    reply: signedIn
+      .route({ method: 'POST', path: '/cases/reply', summary: 'Answer the reviewers of an own open case; a case waiting for information goes back to them' })
+      .input(caseReplyInput)
+      .handler(({ context, input }) => replyToCase(context.principal, input, context.meta)),
   },
   // M10a: evidence files. The upload and the download are binary route handlers outside the router
   // (POST /api/evidence/upload, GET /api/evidence/{id}; documented in this contract as well).
@@ -368,10 +463,20 @@ export const router = {
       .route({
         method: 'POST',
         path: '/review/decide',
-        summary: 'Verify, refuse with a reason, or ask for more information on a historical claim (archivist or administrator to verify or refuse); audited',
+        summary:
+          'Decide a case: verify, refuse with a reason, or ask for more information (claims and instructors: an archivist or administrator; reports and disputes: a moderator or administrator); audited',
       })
       .input(reviewDecideInput)
       .handler(({ context, input }) => decideReviewCase(context.principal, input, context.meta)),
+    // M10b (DEFAULT D19): a verified relationship in arbitration, with a reason both parties read.
+    arbitrate: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/review/arbitrate',
+        summary: 'Set a verified relationship in arbitration with a reason (a moderator or administrator): public pages show "Disputed"; both parties are notified and asked for evidence; audited',
+      })
+      .input(arbitrateInput)
+      .handler(({ context, input }) => arbitrateRelationship(context.principal, input, context.meta)),
     note: staffWithSecondFactor
       .route({ method: 'POST', path: '/review/note', summary: 'Add an internal note to a case (reviewers only); audited' })
       .input(reviewNoteInput)
@@ -387,6 +492,63 @@ export const router = {
       .route({ method: 'POST', path: '/archive/update', summary: 'Edit a record kept by the platform or unclaimed with a required reason and optional evidence (archivist only); audited' })
       .input(archiveUpdateInput)
       .handler(({ context, input }) => updateArchiveRecord(context.principal, input, context.meta)),
+  },
+  // M11: schools, the map and the lineage filter (plan §6.4). The public reads are POST, so a
+  // visitor's search centre or map view stays out of URLs and proxy logs (as search.query).
+  schools: {
+    search: base
+      .route({ method: 'POST', path: '/schools/search', summary: 'Public schools within a radius of a centre (nearest first, whole kilometres), or all of them; optionally only those whose instructors descend from a lineage root' })
+      .input(schoolSearchInput)
+      .output(schoolSearchSchema)
+      .handler(({ context, input }) => schoolsSearch(context.principal, input)),
+    inViewport: base
+      .route({ method: 'POST', path: '/schools/in-viewport', summary: "Public schools inside the map's bounding box; city-only schools at their city's centre" })
+      .input(schoolViewportInput)
+      .output(schoolSearchSchema)
+      .handler(({ context, input }) => schoolsInViewport(context.principal, input)),
+    get: base
+      .route({ method: 'GET', path: '/schools/{slug}', summary: "A public school's page: instructors, contact, forms and its location (exact or city only); 404 when not public" })
+      .input(schoolSlugInput)
+      .output(schoolPageSchema)
+      .handler(({ context, input }) => schoolGet(context.principal, input)),
+    sitemap: base
+      .route({ method: 'GET', path: '/sitemap/schools', summary: 'The addresses of the public schools and when each last changed (the sitemap)' })
+      .output(schoolSitemapSchema)
+      .handler(() => schoolSitemap()),
+    mine: base
+      .route({ method: 'GET', path: '/schools/mine', summary: 'The schools the signed-in account listed, with their status and whether the pin shows' })
+      .handler(({ context }) => mySchools(context.principal)),
+    edit: base
+      .route({ method: 'GET', path: '/schools/mine/{id}', summary: "One of the account's own schools for the editor, with the review state, the upgrade offer and the cities (optionally those matching `city`)" })
+      .input(schoolIdInput.extend({ city: schoolEditorInput.shape.city }))
+      .handler(({ context, input }) => schoolEditor(context.principal, input)),
+    options: base
+      .route({ method: 'GET', path: '/schools/mine/new', summary: 'What the form for a new school offers: cities (optionally those matching `city`), instructors, forms, and whether a pin can be sent for review' })
+      .input(schoolEditorInput.pick({ city: true }).optional())
+      .handler(({ context, input }) => schoolEditor(context.principal, { city: input?.city })),
+    create: signedIn
+      .route({ method: 'POST', path: '/schools/create', summary: 'List a new school as a draft (a Sifu with a profile; the head instructor); only you see it' })
+      .input(schoolCreateInput)
+      .handler(({ context, input }) => createSchool(context.principal, input, context.meta)),
+    update: signedIn
+      .route({ method: 'POST', path: '/schools/update', summary: 'Edit your school; a listed school stays listed; last activity moves (D17)' })
+      .input(schoolUpdateInput)
+      .handler(({ context, input }) => updateSchool(context.principal, input, context.meta)),
+    submit: signedIn
+      .route({ method: 'POST', path: '/schools/submit', summary: 'Send a draft for the listing review (needs Professional Sifu, otherwise ENTITLEMENT_REQUIRED), or answer the reviewers' })
+      .input(schoolIdInput)
+      .handler(({ context, input }) => submitSchool(context.principal, input, context.meta)),
+    confirm: signedIn
+      .route({ method: 'POST', path: '/schools/confirm', summary: 'Confirm that a listed school is current (last activity, D17)' })
+      .input(schoolIdInput)
+      .handler(({ context, input }) => confirmSchool(context.principal, input, context.meta)),
+  },
+  places: {
+    search: base
+      .route({ method: 'GET', path: '/places/search', summary: 'Cities of the GeoNames extract (CC BY 4.0) by any spelling, the larger first' })
+      .input(placeSearchInput)
+      .output(placeSearchSchema)
+      .handler(({ context, input }) => placesSearch(context.principal, input)),
   },
   dashboard: {
     overview: base

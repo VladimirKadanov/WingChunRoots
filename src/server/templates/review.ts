@@ -3,10 +3,19 @@
 // only, and only here (CLAUDE.md §2). Neutral by design: a refusal asks for better evidence and
 // never judges the student (plan §5.6).
 
-import type { REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES } from '../db/schema/common';
+import type { REPORT_REASONS, REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES } from '../db/schema/common';
 
 export type ReviewCaseKind = (typeof REVIEW_CASE_KINDS)[number];
 export type ReviewCaseStatus = (typeof REVIEW_CASE_STATUSES)[number];
+export type ReportReason = (typeof REPORT_REASONS)[number];
+
+/** M10b: the reasons of "Report profile" (plan §6.2), as the form, the reporter and the reviewers read them. */
+export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
+  copyright: 'Copyright: it uses my text or photos without permission',
+  spam: 'Spam or advertising',
+  inappropriate: 'Inappropriate or offensive',
+  misleading: 'Misleading or false information',
+};
 
 export const REVIEW_KIND_LABELS: Record<ReviewCaseKind, string> = {
   historical_claim: 'Historical teacher',

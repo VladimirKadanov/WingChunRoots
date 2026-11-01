@@ -16,6 +16,11 @@
 // A fraction as its first snap point (the explorer's 0.15) is floored at that peek, and is the peek.
 // Below full height, a keyboard focus that lands under the bottom edge expands the sheet first
 // (WCAG 2.4.11).
+// With `stepSnapPoints` (the map sheet of plan §5.6, milestone M11), "Expand" raises the sheet one
+// snap point at a time, so a middle point is reached without a drag ("Collapse", at the last point,
+// lowers it to the first), and Esc lowers it one snap point, closing it only from the first
+// ("Esc collapses the panel"). Without it both stay as they were: Expand goes to the last point,
+// Esc closes.
 //
 // While a sheet is open it publishes how much room it takes on <html> (globals.css reads it):
 // - --sheet-clear: px from the bottom of the window to the top edge of a bottom sheet at its snap
@@ -65,6 +70,8 @@ const PEEK_PX = 96;
 export const MODAL_SNAP_POINTS: SnapPoint[] = [0.5, 1];
 /** Where a non-modal sheet can rest: the peek, half height and full height. */
 export const PEEK_SNAP_POINTS: SnapPoint[] = [PEEK, 0.5, 1];
+/** stepSnapPoints: a close-watcher request this soon after an Esc step is that same press (Android Chromium). */
+const ESCAPE_ECHO_MS = 500;
 /** From this width the sheet is a side panel (the lg breakpoint). */
 const SIDE_PANEL = '(min-width: 64rem)';
 
@@ -127,6 +134,12 @@ export interface DrawerProps {
    * over the peek). Never more than `keepAbove`, so a middle point lowered for that one keeps room.
    */
   coverAbove?: number | null;
+  /**
+   * A bottom sheet with three or more snap points (the finder's map sheet, plan §5.6): "Expand"
+   * raises it one snap point at a time and Esc lowers it one, closing it only from the first. Off
+   * by default (the explorer's sheet, M05/M06: Expand goes to the last point, Esc closes).
+   */
+  stepSnapPoints?: boolean;
 }
 
 // 44 px, not 2.75rem: at 150 % text two rem-sized buttons took 132 px from the title's column.
@@ -152,6 +165,7 @@ export function Drawer({
   actions,
   keepAbove = null,
   coverAbove = null,
+  stepSnapPoints = false,
 }: DrawerProps) {
   const side = useMediaQuery(SIDE_PANEL);
   const [openState, setOpenState] = useState(false);
@@ -205,7 +219,26 @@ export function Drawer({
     setWasOpen(open);
     if (open) setSnapIndex(0);
   }
+  // stepSnapPoints: a bottom sheet above its first snap point steps down one on Esc instead of
+  // closing (a side panel has no snap points, and closes). On Android, Chromium hands the same
+  // Esc press to Base UI's CloseWatcher as well, just after the key ('close-watcher'): that echo
+  // keeps the sheet where the key put it. A close-watcher request on its own is the back gesture,
+  // which closes the sheet, as Back does.
+  const restIndex = Math.min(snapIndex, lastIndex);
+  const steppedAt = useRef(Number.NEGATIVE_INFINITY);
   const setOpen = (next: boolean, details?: DrawerChangeDetails) => {
+    if (!next && stepSnapPoints && snapPoints && details) {
+      if (details.reason === 'escape-key' && restIndex > 0) {
+        details.cancel();
+        steppedAt.current = performance.now();
+        setSnapIndex(restIndex - 1);
+        return;
+      }
+      if (details.reason === 'close-watcher' && performance.now() - steppedAt.current < ESCAPE_ECHO_MS) {
+        details.cancel();
+        return;
+      }
+    }
     onOpenChange?.(next, details);
     // The caller kept the sheet as it is (details.cancel()): Base UI does not change it either.
     if (details?.isCanceled) return;
@@ -337,7 +370,7 @@ export function Drawer({
                 {snapPoints && snapPoints.length > 1 ? (
                   <button
                     type="button"
-                    onClick={() => setSnapIndex(expanded ? 0 : lastIndex)}
+                    onClick={() => setSnapIndex(expanded ? 0 : stepSnapPoints ? restIndex + 1 : lastIndex)}
                     aria-label={expanded ? 'Collapse' : 'Expand'}
                     className={iconButton}
                   >

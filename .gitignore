@@ -15,6 +15,8 @@
 /src/lib/lineage-layout/__boundary-probe-*
 # lint probes of src/server/entitlements/boundary.test.ts (M08)
 /src/components/__boundary-probe-*
+# lint probes of src/components/map/boundary.test.ts (M11)
+/src/components/map/__boundary-probe-*
 
 # verify logs (scripts/verify.sh)
 /.verify/

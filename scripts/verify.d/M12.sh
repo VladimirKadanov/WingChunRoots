@@ -53,7 +53,7 @@ required=(
   scripts/lib/pg-run.sh scripts/ops/lineage-digest.sql scripts/ops/evidence-objects.ts
   .github/workflows/restore-drill.yml
   docs/operations/local-run.md docs/operations/backup-and-restore.md docs/operations/incident.md
-  docs/guides/admin-guide.bg.md docs/adr/0013-local-ops.md
+  docs/guides/admin-guide.bg.md docs/adr/0015-local-ops.md
   src/server/log/index.ts src/server/log/redact.ts src/server/log/request-error.ts src/server/log/logger.redaction.test.ts
   src/app/healthz/route.ts src/app/admin/system/page.tsx src/server/services/system.ts src/server/jobs/stats.ts src/server/backups.ts
   src/server/services/system.int.test.ts e2e/ops.spec.ts
@@ -193,7 +193,7 @@ check "/healthz checks the database and the queue schema" bash -c '
   grep -q "SELECT 1 AS ok" src/server/services/system.ts && grep -q "queueSchemaReady(getDb())" src/server/services/system.ts'
 refute "the proxy's matcher never includes healthz, api or _next" grep -nE "matcher:.*(healthz|api|_next)" src/proxy.ts
 check "pino is pinned exactly, in the ADR and the notices, and only src/server/log imports it" bash -c '
-  grep -qE "^    \"pino\": \"[0-9]+\.[0-9]+\.[0-9]+\",$" package.json && grep -q "pino" docs/adr/0013-local-ops.md &&
+  grep -qE "^    \"pino\": \"[0-9]+\.[0-9]+\.[0-9]+\",$" package.json && grep -q "pino" docs/adr/0015-local-ops.md &&
   grep -qF "| [pino](https://getpino.io/) |" THIRD_PARTY_NOTICES.md'
 check "ESLint keeps pino inside src/server/log" bash -c '
   grep -A1 -F "module: '\''src/server/log'\''," eslint.config.mjs | grep -qF "group: ['\''pino'\'', '\''pino/*'\'']"'
@@ -253,8 +253,8 @@ check "the admin guide covers the production-like run, the archive, the restore 
   f=docs/guides/admin-guide.bg.md
   grep -q "(M12)" "$f" && grep -q "docker compose --profile app up --build" "$f" && grep -q "scripts/backup-local.sh" "$f" &&
   grep -q "scripts/restore-drill.sh" "$f" && grep -q "/admin/system" "$f"'
-check "docs/adr/0013-local-ops.md records the image, pino, the logging policy and the drill" bash -c '
-  f=docs/adr/0013-local-ops.md
+check "docs/adr/0015-local-ops.md records the image, pino, the logging policy and the drill" bash -c '
+  f=docs/adr/0015-local-ops.md
   grep -q "pino" "$f" && grep -q "standalone" "$f" && grep -q "tsx" "$f" && grep -q "restore-drill" "$f" && grep -q "D24" "$f"'
 check "docs/plan/README.md has a status for M12" bash -c '! grep -qE "^\| M12 .*\| не е започнат \|$" docs/plan/README.md'
 # The admin guide changes in the milestone's branch. Checkable while the branch is not merged and

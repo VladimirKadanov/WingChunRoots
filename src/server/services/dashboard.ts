@@ -15,10 +15,12 @@ import { getDb } from '../db';
 import {
   lineage,
   person,
+  personClaim,
   personName,
   pilotAccessRequest,
   place,
   PUBLIC_RELATIONSHIP_STATUSES,
+  type SCHOOL_STATUSES,
   school,
   schoolInstructor,
   teachingRelationship,
@@ -72,7 +74,7 @@ export interface SchoolItem {
   name: string;
   city: string;
   countryCode: string;
-  status: 'draft' | 'published' | 'hidden' | 'archived';
+  status: (typeof SCHOOL_STATUSES)[number];
   statusLabel: string;
   roleLabel: string;
 }
@@ -113,6 +115,8 @@ export interface DashboardOverview {
   plan: PlanSummary;
   until: string | null;
   hasProfile: boolean;
+  /** M10b: the review case of the account's claim of an invited teacher's profile, while it waits. */
+  pendingClaimCaseId: string | null;
   /**
    * Staff accounts (review round 1, design-8): their role, whether this session proved the second
    * factor, and, for an administrator whose session did, the number of open pilot access requests,
@@ -137,7 +141,8 @@ const REQUEST_LABELS = {
   under_review: 'Under review',
   rejected: 'Not confirmed: correct it and send it again',
 } as const;
-const SCHOOL_STATUS_LABELS = { draft: 'Draft', published: 'Published', hidden: 'Hidden', archived: 'Archived' } as const;
+/** M11: the listing's status in the owner's words; the public pin is a separate question (schools.ts). */
+export const SCHOOL_STATUS_LABELS = { draft: 'Draft', pending_review: 'Waiting for review', active: 'Listed', hidden: 'Hidden by a moderator', archived: 'Archived' } as const;
 const SCHOOL_ROLE_LABELS = { head_instructor: 'Head instructor', instructor: 'Instructor', assistant: 'Assistant' } as const;
 
 /**
@@ -260,6 +265,15 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
     plan: planSummary(effective.plan),
     until: effective.until?.toISOString() ?? null,
     hasProfile: Boolean(own),
+    pendingClaimCaseId: own
+      ? null
+      : ((
+          await db
+            .select({ caseId: personClaim.reviewCaseId })
+            .from(personClaim)
+            .where(and(eq(personClaim.userId, p.user.id), eq(personClaim.status, 'pending')))
+            .limit(1)
+        )[0]?.caseId ?? null),
     staff,
     notifications,
   };

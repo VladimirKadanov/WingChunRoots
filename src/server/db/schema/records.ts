@@ -50,8 +50,9 @@ export const notification = pgTable(
 /**
  * One row per e-mail; idempotent by key (plan §6.1, M01b). src/server/mail writes it: `attempts`
  * counts delivery attempts, `error` keeps the last failure (without addresses). `to_email` is
- * erased after 90 days by the retention job (docs/data-model.md, §7), so it may be null, but
- * never while the e-mail still waits to be sent.
+ * erased after 90 days by the retention job (docs/data-model.md, §7), an invitation e-mail's
+ * sooner, with its invitation's address (M10b), so it may be null, but never while the e-mail
+ * still waits to be sent.
  */
 export const emailDelivery = pgTable(
   'email_delivery',

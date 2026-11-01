@@ -18,13 +18,14 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
-import { authUser, consentRecord, notification, person, personBio, personName, reviewCase, teachingRelationship } from '../db/schema';
+import { authUser, consentRecord, notification, person, personBio, personName, reviewCase, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
 import { withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { queueRecomputeForPerson } from './lineage-membership';
 import { neighbourTags, setOwnVisibility } from './profile';
 import { isReferencedRowError } from './retention';
 
@@ -260,6 +261,46 @@ async function lockOpenDeletionCase(tx: Transaction, caseId: string): Promise<{ 
   return { id: found.id, userId: found.userId };
 }
 
+/**
+ * The schools an account listed, when the account is deleted (M11 review, security-1). The plan
+ * keeps no listing without its account, and school.created_by_user_id is ON DELETE RESTRICT, so
+ * each one (a draft, a listing under review, a listed or a hidden school) is archived and
+ * soft-deleted: off every public answer (v_public_school shows only active schools that are not
+ * deleted), its open listing review dismissed, and nothing of the Sifu's left on it: no contact,
+ * website or description, no private point (for an exact school, public_point goes back to the
+ * city centre too: a draft's pin was never published), no instructors. The reference is then
+ * cleared (ADR 0004: a reference that may outlive its author). The name, slug and city stay, so the
+ * review history still says which school a case was about. Returns the number archived.
+ */
+async function archiveListedSchools(tx: Transaction, userId: string): Promise<number> {
+  const listed = await tx.select({ id: school.id }).from(school).where(eq(school.createdByUserId, userId)).for('update');
+  if (listed.length === 0) return 0;
+  const ids = listed.map((r) => r.id);
+  const now = new Date();
+  await tx
+    .update(reviewCase)
+    .set({ status: 'dismissed', resolutionReason: 'The account that listed the school was deleted.', resolvedAt: now, updatedAt: now })
+    .where(and(inArray(reviewCase.schoolId, ids), eq(reviewCase.kind, 'school_listing'), inArray(reviewCase.status, [...OPEN_CASE_STATUSES])));
+  await tx.delete(schoolPrivateLocation).where(inArray(schoolPrivateLocation.schoolId, ids));
+  await tx.delete(schoolInstructor).where(inArray(schoolInstructor.schoolId, ids));
+  // city_only: the trigger school_city_only_point puts the city centre into public_point.
+  await tx
+    .update(school)
+    .set({
+      status: 'archived',
+      deletedAt: now,
+      locationPrivacy: 'city_only',
+      contactEmail: null,
+      contactPhone: null,
+      websiteUrl: null,
+      description: null,
+      createdByUserId: null,
+      updatedAt: now,
+    })
+    .where(inArray(school.id, ids));
+  return ids.length;
+}
+
 export interface DeletionCarriedOut {
   /** The profile that stays as an unclaimed record, or null when the account had none. */
   personId: string | null;
@@ -302,9 +343,12 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
           .update(person)
           .set({ claimedByUserId: null, stewardship: 'unclaimed', visibility, placeId: null, trainingStartYear: null, updatedAt: new Date() })
           .where(eq(person.id, own.id));
+        // A profile that stops being public takes its edges out of v_public_edge (M11 review, code-2).
+        if (visibility !== own.visibility) await queueRecomputeForPerson(tx, own.id);
       }
       // Records the account added for other people keep no link to it.
       await tx.update(person).set({ createdByUserId: null }).where(eq(person.createdByUserId, userId));
+      const schoolsArchived = await archiveListedSchools(tx, userId);
       const consentsRemoved = (await tx.delete(consentRecord).where(eq(consentRecord.userId, userId))).rowCount ?? 0;
       const now = new Date();
       await tx
@@ -319,7 +363,7 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
         subjectType: 'review_case',
         subjectId: request.id,
         before: { userId, personId: own?.id ?? null, visibility: own?.visibility ?? null },
-        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, consentsRemoved },
+        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, consentsRemoved, schoolsArchived },
         reason: 'pnpm account:delete (local environment)',
       });
       await tx.delete(authUser).where(eq(authUser.id, userId));

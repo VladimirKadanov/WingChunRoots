@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 
 import { CONSENT_LABELS } from '@/components/account/consents';
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { PRIVACY_LOAD_ERROR } from '@/components/account/load-errors/privacy';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { CheckIcon, DashIcon, LockIcon } from '@/components/icons';
 import { formatDay } from '@/lib/dates';
@@ -57,7 +57,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const privacy = await pageRead(serverClient(await headers(), guard.principal).account.privacy());
-  if (!privacy) return <LoadError {...LOAD_ERRORS.privacy} retryHref="/account/privacy" />;
+  if (!privacy) return <LoadError {...PRIVACY_LOAD_ERROR} retryHref="/account/privacy" />;
   const [withdrawPublication, withdrawPrivacy, deletion] = await Promise.all([
     readFormResult('withdraw-publication', query.outcome),
     readFormResult('withdraw-privacy_ack', query.outcome),

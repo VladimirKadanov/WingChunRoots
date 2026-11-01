@@ -14,6 +14,7 @@ import { parseIsoDay } from '../../lib/dates';
 import { writeAudit } from '../audit';
 import { requireStaff2FA } from '../auth/guards';
 import type { Principal } from '../auth/principal';
+import { invalidatePublic, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { authUser, entitlementGrant, notification, pilotAccessRequest } from '../db/schema';
 import { type Executor, grantsOf } from '../entitlements/access';
@@ -22,6 +23,14 @@ import { type AccountType, GRANTABLE_PLANS, type PlanCode, PLANS, PLANS_WITHOUT_
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+
+/**
+ * M11: a Professional Sifu grant shows or hides the school pins of its account (v_public_school,
+ * DEFAULT D08/D18), so the cached school answers go when one is given or revoked.
+ */
+function dropSchoolPins(row: GrantRow): void {
+  if (PLANS[row.planCode].audience === 'sifu') invalidatePublic([SCHOOLS_TAG], 'procedure');
+}
 
 export const GRANT_PAGE_SIZE = 20;
 export const GRANT_SORTS = ['created', 'email', 'plan', 'starts', 'ends', 'state'] as const;
@@ -383,7 +392,7 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
   if (!startsAt || Object.keys(dateErrors).length > 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', dateErrors);
   const plan = PLANS[input.planCode];
 
-  return getDb().transaction(async (tx) => {
+  const row = await getDb().transaction(async (tx) => {
     // The account's lock first (services/account-lock.ts): it also serializes two grants for it.
     const account = await lockAccount(tx, { email: input.email });
     if (!account) throw new ServiceError('NOT_FOUND', 'No account has this e-mail address.', { email: 'No account has this e-mail address.' });
@@ -455,6 +464,8 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
     // this read included, changes nothing, so a form can say so.
     return rowById(tx, grantId, now);
   });
+  dropSchoolPins(row);
+  return row;
 }
 
 // --- Revoke ----------------------------------------------------------------------------------------
@@ -476,7 +487,7 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
   const { grantId, reason } = parsed.data;
   if (!reason) throw new ServiceError('BAD_REQUEST', 'Give a reason; it is kept in the audit log.', { reason: 'Give a reason; it is kept in the audit log.' });
 
-  return getDb().transaction(async (tx) => {
+  const row = await getDb().transaction(async (tx) => {
     // The grant's account never changes: read it, take the account's lock first (as every write of
     // an account's plan does, services/account-lock.ts), then the grant's row.
     const [owner] = await tx.select({ userId: entitlementGrant.subjectUserId }).from(entitlementGrant).where(eq(entitlementGrant.id, grantId));
@@ -509,6 +520,8 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
     // In the same transaction, as in createGrant (review round 2, recheck-2).
     return rowById(tx, grantId, now);
   });
+  dropSchoolPins(row);
+  return row;
 }
 
 // --- Close a pilot access request ------------------------------------------------------------------

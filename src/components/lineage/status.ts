@@ -22,7 +22,8 @@ export function relationStatus(status: RelationshipStatusDto): RelationStatus {
     case 'verified':
       return { kind: 'verified', label: 'Verified' };
     case 'in_arbitration':
-      return { kind: 'arbitration', label: 'In arbitration' };
+      // M10b (DEFAULT D19): in arbitration, shown to the public as "Disputed", in words and with the seal.
+      return { kind: 'arbitration', label: 'Disputed' };
     case 'under_review':
       return { kind: 'under_review', label: 'Under review' };
     case 'pending_teacher':

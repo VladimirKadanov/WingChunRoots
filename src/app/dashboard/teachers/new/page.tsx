@@ -19,7 +19,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { NEW_TEACHER_LOAD_ERROR } from '@/components/account/load-errors/new-teacher';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
@@ -111,7 +111,7 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
       q ? orNotFound(client.search.query({ q })) : Promise.resolve(null),
     ]),
   );
-  if (!loaded) return <LoadError {...LOAD_ERRORS.newTeacher} retryHref={retryHref} />;
+  if (!loaded) return <LoadError {...NEW_TEACHER_LOAD_ERROR} retryHref={retryHref} />;
   const [options, mine, declined, chosen, found] = loaded;
 
   if (!mine.hasProfile) {
@@ -197,6 +197,10 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
           teacher who has died, reviewers confirm the training from your evidence:{' '}
           <Link href="/dashboard/teachers/historical" className="link">
             name a historical teacher
+          </Link>
+          . A living teacher who is not on WingChunRoots yet:{' '}
+          <Link href="/dashboard/teachers/invite" className="link">
+            invite your teacher
           </Link>
           .
         </>

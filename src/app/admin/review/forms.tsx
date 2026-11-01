@@ -18,8 +18,8 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, archiveUpdateAction, assignCaseAction, decideCaseAction } from './actions';
-import { ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
+import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction } from './actions';
+import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -120,12 +120,36 @@ const DECISIONS = {
 } as const;
 
 /** One decision on a case: verify, refuse with a reason, or ask for more information. */
-export function DecideForm({ caseId, decision, idempotencyKey, initial }: { caseId: string; decision: keyof typeof DECISIONS; idempotencyKey: string; initial?: FormState | null }) {
+/** The words of a decision for the case's kind (M10b: review.get `decisions`); the claim's by default. */
+export interface DecideText {
+  label: string;
+  pending: string;
+  reason: string;
+  hint: string;
+  optional: boolean;
+}
+
+export function DecideForm({
+  caseId,
+  decision,
+  idempotencyKey,
+  initial,
+  text: given,
+  schoolVersion = null,
+}: {
+  caseId: string;
+  decision: keyof typeof DECISIONS;
+  idempotencyKey: string;
+  initial?: FormState | null;
+  text?: DecideText;
+  /** M11: a school listing is decided from the version of the listing the card shows (school-review.ts). */
+  schoolVersion?: string | null;
+}) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
   useFocusOnError(formId, state);
-  const text = DECISIONS[decision];
+  const text = { ...DECISIONS[decision], ...given, variant: DECISIONS[decision].variant };
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
       {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}
@@ -138,6 +162,7 @@ export function DecideForm({ caseId, decision, idempotencyKey, initial }: { case
         <input type="hidden" name="caseId" value={caseId} />
         <input type="hidden" name="decision" value={decision} />
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+        {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         <TextAreaField form={formId} name="reason" label={text.reason} optional={text.optional} maxLength={2000} hint={text.hint} state={state} />
         <div>
           <Button pending={pending} label={text.label} pendingLabel={text.pending} variant={text.variant} />
@@ -161,6 +186,35 @@ export function NoteForm({ caseId, idempotencyKey, initial }: { caseId: string; 
       <TextAreaField form={formId} name="body" label="Internal note" maxLength={2000} hint="Only reviewers read internal notes." state={state} />
       <div>
         <Button pending={pending} label="Add the note" pendingLabel="Adding…" />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * M10b (DEFAULT D19): "Set in arbitration" of a verified relationship, with the reason both people
+ * read (a moderator or an administrator; review.arbitrate).
+ */
+export function ArbitrateForm({ relationshipId, idempotencyKey, initial }: { relationshipId: string; idempotencyKey: string; initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(arbitrateAction, initial ?? IDLE);
+  const generatedId = useFormId(ARBITRATE_FORM);
+  const formId = initial ? ARBITRATE_FORM : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="arbitrate-form">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="relationshipId" value={relationshipId} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <TextAreaField
+        form={formId}
+        name="reason"
+        label="Reason"
+        maxLength={2000}
+        hint="Required. Both people read it in their notification, their e-mail and on their case page. Say what is disputed and what evidence would settle it."
+        state={state}
+      />
+      <div>
+        <Button pending={pending} label="Set in arbitration" pendingLabel="Setting…" variant="danger" />
       </div>
     </form>
   );

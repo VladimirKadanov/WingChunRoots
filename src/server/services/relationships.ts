@@ -56,13 +56,16 @@ import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import {
   authUser,
+  invitation,
   lineage,
   notification,
   person,
+  personClaim,
   personName,
   place,
   relationshipEvent,
   reviewCase,
+  reviewEvent,
   reviewNote,
   school,
   teachingRelationship,
@@ -78,7 +81,7 @@ import { REJECTION_REASON_CODES, type RejectionReason, rejectionReasonText, isRe
 import { CLAIM_REFUSED_TEXT, CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { approvalOffer, peopleRefs, type PersonRef, type UpgradeOffer, waitingRequests } from './dashboard';
-import { type EvidenceFileView, fileView, filesOfCases } from './evidence';
+import { type EvidenceFileView, fileView, filesOfCases, filesOfRelationships } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
 import { planSummary } from './plans';
 import { neighbourTags } from './profile';
@@ -213,6 +216,30 @@ export interface RelationshipView {
   verificationPath: 'teacher_approval' | 'committee_review';
   /** M10a: the historical claim of a committee_review relationship, for its student and teacher; null otherwise. */
   review: RelationshipReview | null;
+  /**
+   * M10b: the teacher's record is unclaimed (a living teacher the student invited, who has not
+   * joined yet). Only the student and reviewers see it labelled ("Unclaimed record").
+   */
+  unclaimedRecord: boolean;
+  /** M10b: for the student of an awaiting_claim relationship, the newest invitation and the claim. */
+  invitation: RelationshipInvitation | null;
+  /** M10b (DEFAULT D04/D13): approved by a teacher whose instructor evidence is not verified. */
+  approvedByUnverifiedInstructor: boolean;
+  /**
+   * M10b: the files the student sent with an invitation (linked to the relationship itself). Each
+   * opens for its uploader and, once the record is theirs, for the teacher (evidence.ts
+   * accessOfFiles); never for the invitee before the claim is approved, who is no party yet.
+   */
+  evidence: EvidenceFileView[];
+}
+
+/** M10b: where an invitation of a teacher who has no account stands, as its student reads it. */
+export interface RelationshipInvitation {
+  /** none: no e-mail sent yet; sent: waiting; expired; claimed: the teacher joined, the claim is reviewed; refused: the claim was refused. */
+  state: 'none' | 'sent' | 'expired' | 'claimed' | 'refused';
+  expiresAt: string | null;
+  /** The student may send an invitation (again): no claim is waiting. */
+  canSend: boolean;
 }
 
 /** M10a: what the student (and the teacher) of a historical claim see of its review case. */
@@ -400,12 +427,65 @@ async function reviewsOf(db: Executor, visible: { row: RelRow; role: Relationshi
   return out;
 }
 
+/**
+ * M10b: what the views add about invitations and instructors, in one query per batch: whether the
+ * teacher's record is unclaimed, the newest invitation and profile claim of an awaiting_claim
+ * relationship (for its student), and whether a verified link was approved by a teacher whose
+ * instructor evidence is not verified (the same rule as v_public_edge, DEFAULT D04/D13).
+ */
+type InviteFacts = {
+  id: string;
+  unclaimed: boolean;
+  invitation_status: string | null;
+  expires_at: Date | string | null;
+  claim_status: string | null;
+  claim_resolution: string | null;
+  unverified: boolean;
+};
+
+async function inviteFactsOf(db: Executor, visible: { row: RelRow; role: RelationshipRole }[]): Promise<Map<string, InviteFacts>> {
+  const ids = visible.map((v) => v.row.id);
+  const result = await db.execute<InviteFacts>(sql`
+SELECT tr.id::text AS id,
+       (t.stewardship = 'unclaimed') AS unclaimed,
+       i.status AS invitation_status, i.expires_at,
+       c.status AS claim_status, c.resolution AS claim_resolution,
+       (tr.verification_path = 'teacher_approval' AND tr.status IN ('verified', 'in_arbitration')
+         AND tr.confirmed_by_user_id IS NOT NULL AND tr.confirmed_by_user_id = t.claimed_by_user_id
+         AND NOT EXISTS (SELECT 1 FROM review_case v WHERE v.person_id = t.id AND v.kind = 'instructor_verification'
+                          AND v.status = 'resolved' AND v.resolution = 'approved')) AS unverified
+  FROM teaching_relationship tr
+  JOIN person t ON t.id = tr.teacher_person_id
+  LEFT JOIN LATERAL (SELECT status, expires_at FROM invitation WHERE relationship_id = tr.id ORDER BY created_at DESC, id DESC LIMIT 1) i ON tr.status = 'awaiting_claim'
+  LEFT JOIN LATERAL (SELECT status, resolution FROM review_case WHERE relationship_id = tr.id AND kind = 'person_claim' ORDER BY created_at DESC, id DESC LIMIT 1) c ON tr.status = 'awaiting_claim'
+ WHERE tr.id = ANY(${`{${ids.join(',')}}`}::uuid[])`);
+  return new Map(result.rows.map((r) => [r.id, r]));
+}
+
+function invitationOf(facts: InviteFacts): RelationshipInvitation {
+  const claimOpen = facts.claim_status !== null && (OPEN_REVIEW_CASE_STATUSES as readonly string[]).includes(facts.claim_status);
+  const expiresAt = facts.expires_at ? new Date(facts.expires_at) : null;
+  const expired = facts.invitation_status === 'expired' || (facts.invitation_status === 'pending' && expiresAt !== null && expiresAt.getTime() <= Date.now());
+  const state: RelationshipInvitation['state'] = claimOpen
+    ? 'claimed'
+    : facts.invitation_status === 'accepted' && facts.claim_resolution === 'rejected'
+      ? 'refused'
+      : facts.invitation_status === 'pending' && !expired
+        ? 'sent'
+        : expired
+          ? 'expired'
+          : 'none';
+  return { state, expiresAt: state === 'sent' && expiresAt ? expiresAt.toISOString() : null, canSend: !claimOpen };
+}
+
 async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<RelationshipView[]> {
   const visible = rows.map((row) => ({ row, role: roleOf(row, viewer) })).filter((v): v is { row: RelRow; role: RelationshipRole } => v.role !== null);
   if (visible.length === 0) return [];
   const periods = await periodsOf(db, visible.map((v) => v.row.id));
   const refs = await peopleRefs([...new Set(visible.flatMap((v) => [v.row.teacherPersonId, v.row.studentPersonId]))]);
   const reviews = await reviewsOf(db, visible, viewer);
+  const facts = await inviteFactsOf(db, visible);
+  const sent = await filesOfRelationships(db, visible.map((v) => v.row.id));
   return visible.map(({ row, role }) => {
     const own = periods.get(row.id) ?? [];
     const established = row.status === 'verified' || row.status === 'in_arbitration';
@@ -434,13 +514,18 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
       can: {
         approve: role === 'teacher' && row.status === 'pending_teacher',
         reject: role === 'teacher' && row.status === 'pending_teacher',
-        withdraw: role === 'student' && (row.status === 'pending_teacher' || row.status === 'rejected' || row.status === 'under_review'),
+        withdraw: role === 'student' && (row.status === 'pending_teacher' || row.status === 'rejected' || row.status === 'under_review' || row.status === 'awaiting_claim'),
         // A refused historical claim is not corrected: the student sends a new claim (M10a).
         resubmit: role === 'student' && row.status === 'rejected' && byTeacher,
         end: (role === 'teacher' || role === 'student') && established && hasOngoing(own),
       },
       verificationPath: row.verificationPath,
       review: reviews.get(row.id) ?? null,
+      // M10b: the label is for the student and the reviewers only (the milestone's In scope 1).
+      unclaimedRecord: (role === 'student' || role === 'reviewer') && facts.get(row.id)?.unclaimed === true,
+      invitation: role === 'student' && row.status === 'awaiting_claim' && facts.has(row.id) ? invitationOf(facts.get(row.id)!) : null,
+      approvedByUnverifiedInstructor: facts.get(row.id)?.unverified === true,
+      evidence: (sent.get(row.id) ?? []).map((f) => fileView(f, f.uploadedByUserId === viewer.userId || role === 'teacher')),
     };
   });
 }
@@ -586,7 +671,7 @@ export async function requestOptions(principal: Principal | null): Promise<Reque
     .select({ id: school.id, name: school.name, city: place.name, countryCode: place.countryCode })
     .from(school)
     .innerJoin(place, eq(place.id, school.placeId))
-    .where(and(eq(school.status, 'published'), isNull(school.deletedAt)))
+    .where(and(eq(school.status, 'active'), isNull(school.deletedAt)))
     .orderBy(asc(school.name), asc(school.id))
     .limit(500);
   return { lineages, schools, earliestYear: EARLIEST_TRAINING_YEAR, maxPeriods: MAX_PERIODS };
@@ -624,7 +709,7 @@ export async function checkPeriods(db: Executor, input: z.output<typeof periods>
           await db
             .select({ id: school.id })
             .from(school)
-            .where(and(inArray(school.id, schoolIds), eq(school.status, 'published'), isNull(school.deletedAt)))
+            .where(and(inArray(school.id, schoolIds), eq(school.status, 'active'), isNull(school.deletedAt)))
         ).map((s) => s.id),
   );
   input.forEach((period, i) => {
@@ -780,20 +865,22 @@ export async function lockStudentRequests(tx: Transaction, studentId: string): P
 
 /**
  * Refuses one more pending request when the student already has MAX_PENDING_REQUESTS waiting
- * (M10a: requests to a teacher and historical claims under review together).
+ * (M10a: requests to a teacher and historical claims under review together; M10b: and invitations
+ * of a teacher who has not joined yet, awaiting_claim).
  */
 export async function checkPendingCap(tx: Transaction, studentId: string): Promise<void> {
   const [pending] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(teachingRelationship)
-    .where(and(eq(teachingRelationship.studentPersonId, studentId), inArray(teachingRelationship.status, ['pending_teacher', 'under_review'])));
+    .where(and(eq(teachingRelationship.studentPersonId, studentId), inArray(teachingRelationship.status, ['pending_teacher', 'under_review', 'awaiting_claim'])));
   if ((pending?.n ?? 0) >= MAX_PENDING_REQUESTS) {
     throw new ServiceError('TOO_MANY_REQUESTS', `You have ${MAX_PENDING_REQUESTS} requests waiting for an answer. Wait for some of them, or withdraw one, before you send another.`);
   }
 }
 
 /**
- * Refuses one more request (new or corrected; M10a: or a historical claim, under_review) above the
+ * Refuses one more request (new or corrected; M10a: or a historical claim, under_review; M10b: or
+ * an invitation of a teacher who has no account, awaiting_claim) above the
  * request window (REQUESTS_PER_WINDOW, REQUESTS_TO_ONE_TEACHER_PER_WINDOW). Returns how many requests to this teacher the account sent in
  * the window before this one. Under the student's request lock, so parallel requests count each other.
  *
@@ -807,7 +894,7 @@ SELECT count(*)::int AS total, (count(*) FILTER (WHERE tr.teacher_person_id = ${
   FROM relationship_event e
   JOIN teaching_relationship tr ON tr.id = e.relationship_id
  WHERE e.actor_user_id = ${userId}::uuid
-   AND e.to_status IN ('pending_teacher', 'under_review')
+   AND e.to_status IN ('pending_teacher', 'under_review', 'awaiting_claim')
    AND (e.from_status IS NULL OR e.reason = 'resubmitted')
    AND e.created_at > now() - make_interval(hours => ${REQUEST_WINDOW_HOURS}::int)`);
   const counts = result.rows[0] ?? { total: 0, to_teacher: 0 };
@@ -1349,22 +1436,45 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
       authorize(row, viewer, 'withdraw');
       const replay = await replayFor(tx, p, input.idempotencyKey, row.id, { to: 'withdrawn' });
       if (replay) return replay;
-      if (row.status !== 'pending_teacher' && row.status !== 'rejected' && row.status !== 'under_review') {
+      if (row.status !== 'pending_teacher' && row.status !== 'rejected' && row.status !== 'under_review' && row.status !== 'awaiting_claim') {
         throw new ServiceError('CONFLICT', row.status === 'withdrawn' ? 'This request was withdrawn already.' : 'Only a request that waits or was declined can be withdrawn.');
       }
       const now = new Date();
       await tx.update(teachingRelationship).set({ status: 'withdrawn', updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+      // M10a: an open historical claim closes with it. M10b: so does an invited teacher's open
+      // profile claim (its claimant is told), and an invitation not used yet stops working.
+      // The cases are read (and locked, after the relationship) before the update, so the history
+      // keeps the status each one was closed from.
       const closed =
-        row.status === 'under_review'
+        row.status === 'under_review' || row.status === 'awaiting_claim'
           ? await tx
-              .update(reviewCase)
-              .set({ status: 'dismissed', resolutionReason: 'Withdrawn by the claimant.', resolvedAt: now, updatedAt: now })
+              .select({ id: reviewCase.id, kind: reviewCase.kind, status: reviewCase.status, assignedTo: reviewCase.assignedToUserId, openedBy: reviewCase.openedByUserId })
+              .from(reviewCase)
               .where(and(eq(reviewCase.relationshipId, row.id), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])))
-              .returning({ id: reviewCase.id, assignedTo: reviewCase.assignedToUserId })
+              .for('update')
           : [];
+      if (closed.length > 0) {
+        await tx
+          .update(reviewCase)
+          .set({ status: 'dismissed', resolutionReason: 'Withdrawn by the claimant.', resolvedAt: now, updatedAt: now })
+          .where(inArray(reviewCase.id, closed.map((c) => c.id)));
+      }
       for (const c of closed) {
         if (c.assignedTo) await tx.insert(notification).values({ userId: c.assignedTo, template: 'review.updated', payload: { caseId: c.id, change: 'withdrawn' } });
+        if (c.kind === 'person_claim') {
+          await tx.update(personClaim).set({ status: 'withdrawn', decidedAt: now, updatedAt: now }).where(and(eq(personClaim.reviewCaseId, c.id), eq(personClaim.status, 'pending')));
+          await tx.insert(reviewEvent).values({ reviewCaseId: c.id, action: 'withdraw', fromStatus: c.status, toStatus: 'dismissed', actorUserId: p.user.id, actorRole: p.user.role });
+          if (c.openedBy) await tx.insert(notification).values({ userId: c.openedBy, template: 'claim.decided', payload: { caseId: c.id, decision: 'closed' } });
+        }
       }
+      const revoked =
+        row.status === 'awaiting_claim'
+          ? await tx
+              .update(invitation)
+              .set({ status: 'revoked', updatedAt: now })
+              .where(and(eq(invitation.relationshipId, row.id), eq(invitation.status, 'pending')))
+              .returning({ id: invitation.id })
+          : [];
       await recordEvent(tx, { relationshipId: row.id, from: row.status, to: 'withdrawn', actor: p, role: 'student', key: input.idempotencyKey });
       await writeAudit(tx, {
         action: 'relationship.withdraw',
@@ -1373,7 +1483,11 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
         subjectType: 'teaching_relationship',
         subjectId: row.id,
         before: { status: row.status },
-        after: { status: 'withdrawn', ...(closed.length > 0 ? { dismissedCaseIds: closed.map((c) => c.id) } : {}) },
+        after: {
+          status: 'withdrawn',
+          ...(closed.length > 0 ? { dismissedCaseIds: closed.map((c) => c.id) } : {}),
+          ...(revoked.length > 0 ? { revokedInvitationIds: revoked.map((i) => i.id) } : {}),
+        },
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });

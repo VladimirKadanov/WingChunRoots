@@ -35,7 +35,7 @@
 - `label` — английският текст, който приложението показва;
 - `availability` — `now`, ако функцията е част от пилота, или `planned` с фазата, която я носи;
 - `enforced` — дали сървърът я налага във Фаза 1;
-- `opens` — за функция на пилота, чиито екрани още не са готови: кога се отварят, с думите, които приложението показва („Opens with teacher requests“, „Opens with schools and the map“). Подканата и `/plans` го показват до функцията, за да не изглежда използваема преди да е. Етапът, който изгражда функцията (M09, M11), маха `opens` (M09 го махна от `claim_teachers` и `approve_students`);
+- `opens` — за функция на пилота, чиито екрани още не са готови: кога се отварят, с думите, които приложението показва („Opens with teacher requests“, „Opens with schools and the map“). Подканата и `/plans` го показват до функцията, за да не изглежда използваема преди да е. Етапът, който изгражда функцията (M09, M11), маха `opens` (M09 го махна от `claim_teachers` и `approve_students`, M11 — от `school_map`; в момента никоя функция няма `opens`);
 - `upgradeHeading` — заглавието на подканата при лимита на функцията („More students with {plan}“), за да може M11 да ползва същата подкана за картата.
 
 Всяка стойност има `included` (дали планът има това, което редът предлага) и по избор `neutral` (просто факт, например „Browse only“). `/plans` рисува отметка за `included`, тире за липсата му и нищо за `neutral` (`valueMark()`). При „Advertising“ редът предлага липса на реклами: „No ads“ има отметка, а „Ads shown“ — тире.
@@ -45,7 +45,7 @@
 | `identity` (Names and Kung Fu identity) | `now` | не |
 | `claim_teachers` (Name your teachers) | `now`, `opens`: с заявките към учители (M09) | не |
 | `approve_students` (Approve students) | `now`, `opens`: с заявките към учители (M09) | **да**: до 5 одобрени ученици на Free Sifu (D06) |
-| `school_map` (School on the map) | `now`, `opens`: с школите и картата (M11) | **да**, от M11: публичен пин само с Professional Sifu |
+| `school_map` (School on the map) | `now` (M11: картата и школите работят) | **да**, от M11: `schools.submit` иска Professional Sifu, а `v_public_school` показва пина само докато акаунтът, обявил школата, го има (`DEFAULT D08/D18`) |
 | `advertising`, `training_start`, `photos`, `videos`, `school_business`, `passport`, `successor`, `marketplace`, `events`, `poster`, `almanac` | `planned` | не |
 
 Медийните квоти (D07: 1 снимка за ученик, 2 за Сифу) са записани в `photos` и `videos`, но не се налагат преди Фаза 2.
@@ -144,7 +144,7 @@
 Подканата е най-горе в списъка, който лимитът задържа („Student requests“), и е **спокойна по подразбиране**: един ред (`<details>`), който казва какво има акаунтът сега („You have approved 5 of 5 students on Free Sifu.“) и „What Professional Sifu adds“. Тя никога не се отваря сама, затова не пази отказ. Отворена, показва:
 
 - заглавието от матрицата (`upgradeHeading`: „More students with Professional Sifu“) и колко заявки чакат (те остават чакащи и видими). Броят обхваща всички чакащи заявки, не само първите 50 от списъка;
-- „What Professional Sifu adds during the pilot“: ползите **само за функции с `availability: 'now'`**, по `upgradeBenefits()`. Плануваните функции никога не се изреждат. Полза, чиито екрани още не са готови, казва кога се отварят („Opens with schools and the map“);
+- „What Professional Sifu adds during the pilot“: ползите **само за функции с `availability: 'now'`**, по `upgradeBenefits()`. Плануваните функции никога не се изреждат. Полза, чиито екрани още не са готови, казва кога се отварят (след M11 няма такава);
 - цената с етикета „Proposed price (not final)“ и бележка, че в пилота няма плащания;
 - две еднакво видими действия: **„Request pilot access“** и **„Not now“** (едни и същи бутони, един до друг). „Not now“ затваря подканата и връща фокуса на реда ѝ. Без JavaScript е форма с GET към `/dashboard?upgrade=closed`: страницата се зарежда отново, подканата е затворена, а фокусът е на реда ѝ, който е на екрана (`autofocus`; финална проверка, screens-1). Адресът нарочно е без фрагмент: връзка или изпращане, които се различават от адреса само по фрагмента, не зареждат страницата отново (подканата би останала отворена), а страница, отворена на фрагмент с име на елемент, пропуска `autofocus`;
 - връзка „Compare all plans“ към `/plans`.
@@ -250,6 +250,7 @@
 | `2026-10-19.1` | Преглед 1: `opens` за функциите на пилота без готови екрани (`claim_teachers`, `approve_students`, `school_map`) и `upgradeHeading`; „Advertising“ предлага липса на реклами („No ads“ е отметка, „Ads shown“ — тире); „Browse only“ е `neutral`; бележката за картата е в бъдеще време; отпечатък в `plans.test.ts` |
 | `2026-10-19.2` | Довършване след финалната проверка (бележка 2): кратките описания на Free Sifu и Professional Sifu взимат лимита от `FREE_SIFU_STUDENT_LIMIT` (DEFAULT D06) и го пишат с цифра („up to 5 approved students“, „without the 5-student limit“), както останалите текстове. Самият лимит не се променя |
 | `2026-10-31.1` | M09: заявките към учител работят, затова `claim_teachers` и `approve_students` вече нямат `opens` („Opens with teacher requests“). Остава само `school_map`. Стойностите и лимитите не се променят |
+| `2026-11-01.1` | M11: картата и школите работят, затова `school_map` вече няма `opens`; бележката е в сегашно време („Anyone can browse the map…“); `upgradeHeading` „A public school pin with {plan}“ за подканата при обявяване на школа. Стойностите не се променят |
 
 ## 13. Тестове
 

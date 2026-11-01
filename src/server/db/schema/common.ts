@@ -90,8 +90,16 @@ export const REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info', 'resolve
 /** M10a: the statuses of a case that still waits for a decision. */
 export const OPEN_REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info'] as const;
 export const REVIEW_RESOLUTIONS = ['approved', 'rejected'] as const;
+/**
+ * M10b: what a review_event records about a case: opened, assigned or unassigned, a question to its
+ * parties (needs_info), evidence added, decided (approve, reject, dismiss) or withdrawn.
+ */
+export const REVIEW_EVENT_ACTIONS = ['open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw'] as const;
 export const REPORT_SUBJECTS = ['person', 'teaching_relationship', 'school', 'person_name'] as const;
-export const REPORT_REASONS = ['incorrect', 'impersonation', 'privacy', 'offensive', 'other'] as const;
+/** M10b: the reasons of "Report profile" (plan §6.2; the milestone's In scope 4). */
+export const REPORT_REASONS = ['copyright', 'spam', 'inappropriate', 'misleading'] as const;
+/** M10b: the longest details text a report takes. */
+export const REPORT_DETAILS_MAX = 1000;
 export const REPORT_STATUSES = ['open', 'triaged', 'resolved', 'dismissed'] as const;
 // DEFAULT D25: evidence files are at most 20 MB each, and at most 20 files per case (M10a).
 export const EVIDENCE_MAX_BYTES = 20 * 1024 * 1024;
@@ -103,7 +111,14 @@ export const EVIDENCE_NAME_MAX = 200;
 
 // --- Schools and geography (plan §6.2) ----------------------------------------------------------
 export const LOCATION_PRIVACIES = ['exact', 'city_only'] as const;
-export const SCHOOL_STATUSES = ['draft', 'published', 'hidden', 'archived'] as const;
+/**
+ * M11: a listing is a draft, waits for review (a school_listing case of the review queue), then is
+ * active. Only an active school can be public, and only while its pin is allowed (v_public_school:
+ * DEFAULT D08/D18). `hidden` and `archived` are kept from M01 for moderation and removal.
+ */
+export const SCHOOL_STATUSES = ['draft', 'pending_review', 'active', 'hidden', 'archived'] as const;
+/** M11: the forms a school teaches (the six forms of Wing Chun), stored by key, shown in English. */
+export const SCHOOL_FORMS = ['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do'] as const;
 export const SCHOOL_INSTRUCTOR_ROLES = ['head_instructor', 'instructor', 'assistant'] as const;
 
 // --- Organizations (skeleton; DEFAULT D12) ----------------------------------------------------------

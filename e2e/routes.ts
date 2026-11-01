@@ -86,6 +86,30 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/teachers/historical', name: 'teachers-historical', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-pending' },
   { path: '/admin/review', name: 'review-queue', status: 200, milestone: 'M10a', key: true, signInAs: 'admin' },
   { path: '/admin/review/records/demo-root-c', name: 'review-record', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-archivist' },
+  // Invitations, claims, instructors, reports and arbitration (M10b): demo accounts that no test
+  // changes (the tests that invite, claim, report and arbitrate use accounts of their own). The
+  // invitation page needs a token, the case page a case's id and the arbitration form a
+  // relationship's id: screen states (e2e/screenshots.spec.ts), with axe in both themes in
+  // e2e/m10b-claims.spec.ts on ids its tests make (the invitation page, the case page of a claim
+  // and of a dispute, the arbitration form with its error).
+  { path: '/dashboard/teachers/invite', name: 'teachers-invite', status: 200, milestone: 'M10b', key: true, signInAs: 'demo-pending' },
+  { path: '/dashboard/instructor', name: 'instructor', status: 200, milestone: 'M10b', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/dashboard/cases', name: 'cases', status: 200, milestone: 'M10b', signInAs: 'demo-pending' },
+  { path: '/people/demo-two-lineages/report', name: 'report', status: 200, milestone: 'M10b', key: true, signInAs: 'demo-pending' },
+  // Schools and the map (M11). The finder's list view, a school with an exact location and a
+  // city-only one, the page of a school that is not public (a draft: the same page as a missing
+  // address, with noindex), and the school pages of the dashboard of a demo Sifu that no test
+  // changes (demo-free-sifu-5 lists no school; the tests that list use accounts of their own, in
+  // the exclusive run). The map view needs its map to settle: screen states
+  // (e2e/helpers/schools.ts SCHOOL_MAP_SCREENS), with axe in e2e/m11-schools.spec.ts.
+  { path: '/schools?view=list', name: 'schools-list', status: 200, milestone: 'M11', key: true },
+  // The empty answer: no demo school is within 10 km of Varna (nor are the tests' Leipzig schools).
+  { path: '/schools?view=list&near=Varna&radius=10', name: 'schools-empty', status: 200, milestone: 'M11', key: true },
+  { path: '/schools/demo-school-sofia', name: 'school', status: 200, milestone: 'M11', key: true },
+  { path: '/schools/demo-school-city-only', name: 'school-city-only', status: 200, milestone: 'M11', key: true },
+  { path: '/schools/demo-school-hamburg-draft', name: 'school-not-listed', status: 200, milestone: 'M11', key: true },
+  { path: '/dashboard/schools', name: 'dashboard-schools', status: 200, milestone: 'M11', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/dashboard/schools/new', name: 'dashboard-school-new', status: 200, milestone: 'M11', key: true, signInAs: 'demo-free-sifu-5' },
   // The system status (M12) as the seeded administrator sees it. Its counts move while the tests
   // run, so it is not in the visual regression; its screenshots come from a screen state
   // (e2e/screenshots.spec.ts) with the fictional archives of e2e/helpers/ops.ts.

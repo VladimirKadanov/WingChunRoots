@@ -499,22 +499,38 @@ function caseIdOf(template: string, payload: unknown): string {
   return data.caseId;
 }
 
+/** The kinds of case whose new cases the reviewers are told about (review.opened). */
+const OPENED_KINDS = {
+  historical_claim: { title: 'New historical teacher claim', body: 'A student sent a claim with evidence. It waits in the review queue.' },
+  person_claim: { title: 'New profile claim', body: 'An invited teacher claimed the profile a student started for them. It waits in the review queue.' },
+  instructor_verification: { title: 'New instructor verification', body: 'A Sifu sent evidence that they are an instructor. It waits in the review queue.' },
+  profile_report: { title: 'New profile report', body: 'A member reported a profile. It waits in the review queue.' },
+} as const;
+type OpenedKind = keyof typeof OPENED_KINDS;
+
 /**
- * "review.opened": to every archivist and administrator, when a student sends a historical teacher
- * claim. No name: the case card shows the people to a session that proved the second factor.
+ * "review.opened": to the reviewers who decide a kind (archivists and administrators for claims
+ * and instructor verifications, moderators and administrators for reports), when a case of that
+ * kind is opened. No name: the case card shows the people to a session that proved the second
+ * factor. Rows written before M10b carry no kind: they are historical claims.
  */
-const reviewOpened: NotificationTemplate<{ caseId: string }> = {
+const reviewOpened: NotificationTemplate<{ caseId: string; kind: OpenedKind }> = {
   name: 'review.opened',
-  parse: (payload) => ({ caseId: caseIdOf('review.opened', payload) }),
-  render: ({ caseId }) => ({
-    title: 'New historical teacher claim',
-    body: [{ text: 'A student sent a claim with evidence. It waits in the review queue.' }],
+  parse(payload) {
+    const caseId = caseIdOf('review.opened', payload);
+    const kind = payloadObject('review.opened', payload).kind;
+    if (kind !== undefined && !Object.hasOwn(OPENED_KINDS, kind as string)) throw new NotificationDataError('review.opened', 'kind must be a kind of case the reviewers open');
+    return { caseId, kind: (kind as OpenedKind | undefined) ?? 'historical_claim' };
+  },
+  render: ({ caseId, kind }) => ({
+    title: OPENED_KINDS[kind].title,
+    body: [{ text: OPENED_KINDS[kind].body }],
     action: { label: 'Open the case', href: `/admin/review/${caseId}` },
   }),
-  sample: { caseId: '0190a5c0-0000-7000-8000-000000000008' },
+  sample: { caseId: '0190a5c0-0000-7000-8000-000000000008', kind: 'historical_claim' },
 };
 
-/** "review.updated": to the reviewer a case is assigned to, when the claimant adds evidence or withdraws the claim. */
+/** "review.updated": to the reviewer a case is assigned to, when a party adds evidence or a reply, or withdraws. */
 const reviewUpdated: NotificationTemplate<{ caseId: string; change: 'evidence' | 'withdrawn' }> = {
   name: 'review.updated',
   parse(payload) {
@@ -523,14 +539,237 @@ const reviewUpdated: NotificationTemplate<{ caseId: string; change: 'evidence' |
   },
   render: ({ caseId, change }) => ({
     title: change === 'withdrawn' ? 'Claim withdrawn' : 'New evidence in your case',
-    body: [{ text: change === 'withdrawn' ? 'The student withdrew a claim assigned to you. The case is closed.' : 'The student added evidence to a claim assigned to you.' }],
+    body: [
+      {
+        text:
+          change === 'withdrawn'
+            ? 'A claim assigned to you was withdrawn. The case is closed.'
+            : 'A party added evidence or an answer to a case assigned to you.',
+      },
+    ],
     action: { label: 'Open the case', href: `/admin/review/${caseId}` },
   }),
   sample: { caseId: '0190a5c0-0000-7000-8000-000000000009', change: 'evidence' },
 };
 
+// --- Schools (M11) -------------------------------------------------------------------------------
+
+/**
+ * "school.submitted": to every moderator and administrator when a Sifu sends a school listing for
+ * review, and to the assigned reviewer when the Sifu answers their question. No school name: the
+ * case card shows it to a session that proved the second factor.
+ */
+const schoolSubmitted: NotificationTemplate<{ caseId: string }> = {
+  name: 'school.submitted',
+  parse: (payload) => ({ caseId: caseIdOf('school.submitted', payload) }),
+  render: ({ caseId }) => ({
+    title: 'School listing to review',
+    body: [{ text: 'A Sifu sent a school listing for review. It waits in the review queue.' }],
+    action: { label: 'Open the case', href: `/admin/review/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-00000000000a' },
+};
+
+/** "school.reviewed": to the Sifu who listed a school, when the reviewers approve it, return it to draft or ask a question. */
+const schoolReviewed: NotificationTemplate<{ schoolId: string; decision: 'approved' | 'returned' | 'needs_info' }> = {
+  name: 'school.reviewed',
+  parse(payload) {
+    const data = payloadObject('school.reviewed', payload);
+    if (typeof data.schoolId !== 'string' || !UUID.test(data.schoolId)) throw new NotificationDataError('school.reviewed', 'schoolId must be a UUID');
+    if (data.decision !== 'approved' && data.decision !== 'returned' && data.decision !== 'needs_info') {
+      throw new NotificationDataError('school.reviewed', 'decision must be approved, returned or needs_info');
+    }
+    return { schoolId: data.schoolId, decision: data.decision };
+  },
+  render: ({ schoolId, decision }) => {
+    const action = { label: decision === 'approved' ? 'See your school' : decision === 'returned' ? 'Read their reason' : 'Read their question', href: `/dashboard/schools/${schoolId}` };
+    return decision === 'approved'
+      ? { title: 'School listed', body: [{ text: 'The reviewers approved your school listing. Its pin is on the map while your plan includes a public pin.' }], action }
+      : decision === 'returned'
+        ? { title: 'School listing returned to draft', body: [{ text: 'The reviewers returned your school listing to draft. You can correct it and send it again.' }], action }
+        : { title: 'More information needed', body: [{ text: 'The reviewers of your school listing ask for more information.' }], action };
+  },
+  sample: { schoolId: '0190a5c0-0000-7000-8000-00000000000b', decision: 'approved' },
+};
+
+// --- Invitations, profile claims, instructors and arbitration (M10b) -----------------------------
+
+const CASE_PAGE = (caseId: string) => `/dashboard/cases/${caseId}`;
+
+/**
+ * "claim.decided": to the teacher who accepted an invitation, when the reviewers approve the
+ * profile claim, refuse it or ask for more information, or when the student withdraws the request
+ * it answered (closed). The reviewers' words are on the case page.
+ */
+const claimDecided: NotificationTemplate<{ caseId: string; decision: 'approved' | 'rejected' | 'needs_info' | 'closed' }> = {
+  name: 'claim.decided',
+  parse(payload) {
+    const caseId = caseIdOf('claim.decided', payload);
+    const decision = payloadObject('claim.decided', payload).decision;
+    if (decision !== 'approved' && decision !== 'rejected' && decision !== 'needs_info' && decision !== 'closed') {
+      throw new NotificationDataError('claim.decided', 'decision must be approved, rejected, needs_info or closed');
+    }
+    return { caseId, decision };
+  },
+  render: ({ caseId, decision }) =>
+    decision === 'approved'
+      ? {
+          title: 'Profile claim approved',
+          body: [{ text: 'The reviewers approved your claim: the profile is now yours. The student who invited you waits for your answer to their request.' }],
+          action: { label: 'Answer the request', href: STUDENT_QUEUE },
+        }
+      : decision === 'rejected'
+        ? {
+            title: 'Profile claim not approved',
+            body: [{ text: 'The reviewers could not confirm that the profile is yours. The profile stays private.' }],
+            action: { label: 'Read their reason', href: CASE_PAGE(caseId) },
+          }
+        : decision === 'needs_info'
+          ? {
+              title: 'More information needed',
+              body: [{ text: 'The reviewers of your profile claim ask for more information.' }],
+              action: { label: 'Read their question', href: CASE_PAGE(caseId) },
+            }
+          : {
+              title: 'Profile claim closed',
+              body: [{ text: 'The student withdrew the request your claim answered, so the claim is closed. Nothing was published.' }],
+              action: { label: 'See the case', href: CASE_PAGE(caseId) },
+            },
+  sample: { caseId: '0190a5c0-0000-7000-8000-00000000000b', decision: 'approved' },
+};
+
+/**
+ * "invitation.claimed": to the student who invited a teacher, when the teacher accepts the
+ * invitation (claimed), when the reviewers approve the claim (approved: the request now waits for
+ * the teacher) or refuse it (refused: the student may invite again).
+ */
+const invitationClaimed: NotificationTemplate<RelationshipNotice & { stage: 'claimed' | 'approved' | 'refused' }> = {
+  name: 'invitation.claimed',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('invitation.claimed', payload);
+    if (data.stage !== 'claimed' && data.stage !== 'approved' && data.stage !== 'refused') {
+      throw new NotificationDataError('invitation.claimed', 'stage must be claimed, approved or refused');
+    }
+    return { ...notice, stage: data.stage };
+  },
+  render: ({ other, lineageName, stage }) =>
+    stage === 'claimed'
+      ? {
+          title: 'Invitation accepted',
+          body: [who(other, 'Your teacher'), { text: ` accepted your invitation${inLineage(lineageName)}. A reviewer checks the claim; then they answer your request.` }],
+          action: { label: 'See your teachers', href: OWN_TEACHERS },
+        }
+      : stage === 'approved'
+        ? {
+            title: 'Teacher joined',
+            body: [who(other, 'Your teacher'), { text: ` claimed their profile. Your request${inLineage(lineageName)} now waits for their answer.` }],
+            action: { label: 'See your teachers', href: OWN_TEACHERS },
+          }
+        : {
+            title: 'Profile claim not approved',
+            body: [{ text: 'The reviewers could not confirm the claim to the profile of ' }, who(other, 'your teacher'), { text: '. You can send the invitation again.' }],
+            action: { label: 'See your teachers', href: OWN_TEACHERS },
+          },
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-00000000000c',
+    other: { value: 'Demo Invited Sifu', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'awaiting_claim',
+    stage: 'claimed',
+  },
+};
+
+/** "instructor.decided": to a Sifu, when the reviewers verify them as an instructor, refuse or ask for more. */
+const instructorDecided: NotificationTemplate<{ caseId: string; decision: 'verified' | 'rejected' | 'needs_info' }> = {
+  name: 'instructor.decided',
+  parse(payload) {
+    const caseId = caseIdOf('instructor.decided', payload);
+    const decision = payloadObject('instructor.decided', payload).decision;
+    if (decision !== 'verified' && decision !== 'rejected' && decision !== 'needs_info') {
+      throw new NotificationDataError('instructor.decided', 'decision must be verified, rejected or needs_info');
+    }
+    return { caseId, decision };
+  },
+  render: ({ decision }) => ({
+    title: decision === 'verified' ? 'Instructor verified' : decision === 'rejected' ? 'Instructor verification not approved' : 'More information needed',
+    body: [
+      {
+        text:
+          decision === 'verified'
+            ? 'The reviewers verified you as an instructor. Your profile now says “Instructor”.'
+            : decision === 'rejected'
+              ? 'The reviewers could not verify you as an instructor from the evidence sent. You can send new evidence.'
+              : 'The reviewers of your instructor verification ask for more information.',
+      },
+    ],
+    action: { label: decision === 'needs_info' ? 'Read their question' : 'See your instructor status', href: '/dashboard/instructor' },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-00000000000d', decision: 'verified' },
+};
+
+const ARBITRATION_STAGES = ['opened', 'needs_info', 'kept', 'revoked'] as const;
+
+/**
+ * "relationship.arbitration": to both people of a relationship in arbitration (DEFAULT D19): when a
+ * moderator sets it, asks for more, or decides. It shows the moderator's words and links to the
+ * case page, where each party sends evidence.
+ */
+const relationshipArbitration: NotificationTemplate<RelationshipNotice & { caseId: string; stage: (typeof ARBITRATION_STAGES)[number]; reason: string }> = {
+  name: 'relationship.arbitration',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('relationship.arbitration', payload);
+    const caseId = caseIdOf('relationship.arbitration', payload);
+    if (!(ARBITRATION_STAGES as readonly unknown[]).includes(data.stage)) throw new NotificationDataError('relationship.arbitration', 'stage must be opened, needs_info, kept or revoked');
+    if (typeof data.reason !== 'string' || data.reason.trim() === '' || data.reason.length > 2000) {
+      throw new NotificationDataError('relationship.arbitration', 'reason must be a text of 1 to 2000 characters');
+    }
+    return { ...notice, caseId, stage: data.stage as (typeof ARBITRATION_STAGES)[number], reason: data.reason.trim() };
+  },
+  render: ({ other, lineageName, caseId, stage, reason }) => {
+    const relation: NotificationSegment[] = [{ text: 'your relationship with ' }, who(other, 'the other person'), { text: inLineage(lineageName) }];
+    return stage === 'opened'
+      ? {
+          title: 'Relationship in arbitration',
+          body: [{ text: 'A moderator set ' }, ...relation, { text: ` in arbitration. Public pages show it as “Disputed”. Reason: ${reason}` }],
+          action: { label: 'Send evidence', href: CASE_PAGE(caseId) },
+        }
+      : stage === 'needs_info'
+        ? {
+            title: 'More information needed',
+            body: [{ text: 'The moderators handling ' }, ...relation, { text: ` ask for more information: ${reason}` }],
+            action: { label: 'Send evidence', href: CASE_PAGE(caseId) },
+          }
+        : {
+            title: stage === 'kept' ? 'Arbitration decided: the link stands' : 'Arbitration decided: the link is revoked',
+            body: [
+              { text: 'The moderators decided ' },
+              ...relation,
+              { text: stage === 'kept' ? `: it stands and is verified again. Reason: ${reason}` : `: it is revoked and leaves the public lineage. Reason: ${reason}` },
+            ],
+            action: { label: 'See the case', href: CASE_PAGE(caseId) },
+          };
+  },
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-00000000000e',
+    other: { value: 'Demo Sifu', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'in_arbitration',
+    caseId: '0190a5c0-0000-7000-8000-00000000000f',
+    stage: 'opened',
+    reason: 'Another member says the training dates are not right. Please send what shows when the training took place.',
+  },
+};
+
 /** The templates whose payload names a relationship (services/notifications.ts enriches them). */
-export const RELATIONSHIP_NOTIFICATIONS = ['relationship.requested', 'relationship.approved', 'relationship.rejected', 'relationship.ended', 'review.decided'] as const;
+export const RELATIONSHIP_NOTIFICATIONS = [
+  'relationship.requested',
+  'relationship.approved',
+  'relationship.rejected',
+  'relationship.ended',
+  'review.decided',
+  'invitation.claimed',
+  'relationship.arbitration',
+] as const;
 
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
@@ -547,6 +786,12 @@ export const NOTIFICATION_TEMPLATES = {
   'review.decided': reviewDecided,
   'review.opened': reviewOpened,
   'review.updated': reviewUpdated,
+  'school.submitted': schoolSubmitted,
+  'school.reviewed': schoolReviewed,
+  'claim.decided': claimDecided,
+  'invitation.claimed': invitationClaimed,
+  'instructor.decided': instructorDecided,
+  'relationship.arbitration': relationshipArbitration,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

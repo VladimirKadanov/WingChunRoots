@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 
 import { uuidv7FromParts } from '../server/db/ids';
+import { queryForms } from '../server/search/keys';
 import type {
   authAccount,
   authTwoFactor,
@@ -776,6 +777,10 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       population: c.population,
       timezone: c.timezone,
       centroid: { lng: c.lng, lat: c.lat },
+      // The GeoNames extract (db:seed loads it after the fixtures) fills in the alternate names
+      // and rewrites search_text; the fixture's own text finds the city by its English names.
+      alternateNames: [],
+      searchText: [...new Set([c.name, c.asciiName].flatMap((n) => queryForms(n).map((f) => f.text)))].join('\n'),
       createdAt: at,
       updatedAt: at,
     };
@@ -793,13 +798,13 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     status: SchoolRow['status'];
     instructors: P[];
   }[] = [
-    { slug: 'demo-school-sofia', name: 'Demo Wing Chun Hall Sofia', city: 'Sofia', privacy: 'exact', status: 'published', instructors: [hubA] },
-    { slug: 'demo-school-city-only', name: 'Demo Training Room Plovdiv', city: 'Plovdiv', privacy: 'city_only', status: 'published', instructors: [freeSifu] },
-    { slug: 'demo-school-two-lineages', name: 'Demo Two Lineages Kwoon Berlin', city: 'Berlin', privacy: 'exact', status: 'published', instructors: [twoLineages] },
-    { slug: 'demo-school-athens', name: 'Demo Kwoon Athens', city: 'Athens', privacy: 'exact', status: 'published', instructors: [hubB] },
-    { slug: 'demo-school-london', name: 'Demo Wing Chun Club London', city: 'London', privacy: 'city_only', status: 'published', instructors: [proSifu] },
-    { slug: 'demo-school-new-york', name: 'Demo Academy New York', city: 'New York City', privacy: 'exact', status: 'published', instructors: [teachersA[1]!] },
-    { slug: 'demo-school-kowloon', name: 'Demo Kwoon Kowloon', city: 'Kowloon', privacy: 'exact', status: 'published', instructors: [cjkName] },
+    { slug: 'demo-school-sofia', name: 'Demo Wing Chun Hall Sofia', city: 'Sofia', privacy: 'exact', status: 'active', instructors: [hubA] },
+    { slug: 'demo-school-city-only', name: 'Demo Training Room Plovdiv', city: 'Plovdiv', privacy: 'city_only', status: 'active', instructors: [freeSifu] },
+    { slug: 'demo-school-two-lineages', name: 'Demo Two Lineages Kwoon Berlin', city: 'Berlin', privacy: 'exact', status: 'active', instructors: [twoLineages] },
+    { slug: 'demo-school-athens', name: 'Demo Kwoon Athens', city: 'Athens', privacy: 'exact', status: 'active', instructors: [hubB] },
+    { slug: 'demo-school-london', name: 'Demo Wing Chun Club London', city: 'London', privacy: 'city_only', status: 'active', instructors: [proSifu] },
+    { slug: 'demo-school-new-york', name: 'Demo Academy New York', city: 'New York City', privacy: 'exact', status: 'active', instructors: [teachersA[1]!] },
+    { slug: 'demo-school-kowloon', name: 'Demo Kwoon Kowloon', city: 'Kowloon', privacy: 'exact', status: 'active', instructors: [cjkName] },
     { slug: 'demo-school-hamburg-draft', name: 'Demo Hall Hamburg (draft)', city: 'Hamburg', privacy: 'exact', status: 'draft', instructors: [teachersB[3]!] },
   ];
   const schools: SchoolRow[] = [];
@@ -825,6 +830,10 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       status: spec.status,
       description: `${FICTIONAL_MARK}: a made-up school in a real city.`,
       websiteUrl: null,
+      // M11: a reserved, never-delivered address (example.test) and the first forms of the system.
+      contactEmail: `${spec.slug}@example.test`,
+      contactPhone: null,
+      formsTaught: ['siu_nim_tao', 'chum_kiu'],
       lastActivityAt: at,
       createdByUserId: null,
       createdAt: at,
@@ -905,6 +914,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       status: 'pending',
       expiresAt: new Date(caseAt.getTime() + 30 * 86_400_000),
       acceptedAt: null,
+      acceptedByUserId: null,
+      idempotencyKey: null,
       createdAt: caseAt,
       updatedAt: caseAt,
     },

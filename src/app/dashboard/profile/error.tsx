@@ -5,8 +5,8 @@
 // is for anything else, inside the app shell, with the boundary's retry().
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { PROFILE_LOAD_ERROR } from '@/components/account/load-errors/profile';
 
 export default function ProfileError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  return <LoadError {...LOAD_ERRORS.profile} retry={retry} />;
+  return <LoadError {...PROFILE_LOAD_ERROR} retry={retry} />;
 }

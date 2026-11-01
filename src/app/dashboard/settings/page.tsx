@@ -11,7 +11,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { SETTINGS_LOAD_ERROR } from '@/components/account/load-errors/settings';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDay, untilPlanEnd } from '@/lib/dates';
@@ -49,7 +49,7 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
   const query = await searchParams;
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
   const mine = await pageRead(serverClient(await headers(), guard.principal).plans.mine());
-  if (!mine) return <LoadError {...LOAD_ERRORS.settings} retryHref="/dashboard/settings" />;
+  if (!mine) return <LoadError {...SETTINGS_LOAD_ERROR} retryHref="/dashboard/settings" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
 
   return (
@@ -79,8 +79,18 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
           <Section id="plan-heading" title="Your plan">
             <dl className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[10rem_minmax(0,1fr)]">
               <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Shown as</dt>
-              <dd data-testid="instructor-label" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
-                {badge ? <StatusBadge state={badge} label={mine.instructor.label} /> : mine.instructor.label}
+              <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
+                {/* The label alone (the M08 test reads it); the M10b link sits beside it. */}
+                <span data-testid="instructor-label">{badge ? <StatusBadge state={badge} label={mine.instructor.label} /> : mine.instructor.label}</span>
+                {/* M10b: where an unverified Sifu sends instructor evidence (DEFAULT D04/D13). */}
+                {mine.instructor.status === 'unverified' ? (
+                  <>
+                    {' '}
+                    <Link href="/dashboard/instructor" className="link inline-flex min-h-11 items-center">
+                      Send instructor evidence
+                    </Link>
+                  </>
+                ) : null}
               </dd>
               <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Plan in effect</dt>
               <dd data-testid="settings-plan" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">

@@ -9,7 +9,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { LOAD_ERRORS } from '@/components/account/load-error-text';
+import { PROFILE_LOAD_ERROR } from '@/components/account/load-errors/profile';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { ProfileFormValues } from '@/lib/profile-form';
@@ -34,7 +34,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   const view = await pageRead(serverClient(await headers(), guard.principal).profile.get());
-  if (!view) return <LoadError {...LOAD_ERRORS.profile} retryHref="/dashboard/profile" />;
+  if (!view) return <LoadError {...PROFILE_LOAD_ERROR} retryHref="/dashboard/profile" />;
 
   if (!view.profile) {
     return (
