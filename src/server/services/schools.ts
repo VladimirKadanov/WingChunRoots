@@ -113,22 +113,62 @@ const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
 
 // --- Input -------------------------------------------------------------------------------------
 
-const latitude = z.coerce.number({ error: 'Give a latitude.' }).min(-90, { error: 'A latitude is between -90 and 90.' }).max(90, { error: 'A latitude is between -90 and 90.' });
-const longitude = z.coerce.number({ error: 'Give a longitude.' }).min(-180, { error: 'A longitude is between -180 and 180.' }).max(180, { error: 'A longitude is between -180 and 180.' });
+// JSON numbers only (M11 review, code-5): every caller sends numbers (the Server Actions parse the
+// form's text themselves), so null, '' or true is refused with 400 instead of becoming 0 or 1 (a
+// silent search around 0, 0).
+const latitude = z.number({ error: 'Give a latitude.' }).min(-90, { error: 'A latitude is between -90 and 90.' }).max(90, { error: 'A latitude is between -90 and 90.' });
+const longitude = z.number({ error: 'Give a longitude.' }).min(-180, { error: 'A longitude is between -180 and 180.' }).max(180, { error: 'A longitude is between -180 and 180.' });
 const pointInput = z.object({ lat: latitude, lng: longitude });
 
 export const schoolSearchInput = z.object({
   /** The centre of the search; without one, every public school (still filtered by lineage). */
   center: pointInput.nullish(),
-  radiusKm: z.coerce.number().int({ error: 'Give the radius in whole kilometres.' }).min(1).max(MAX_RADIUS_KM, { error: `Use a radius up to ${MAX_RADIUS_KM} km.` }).default(DEFAULT_RADIUS_KM),
+  radiusKm: z.number({ error: 'Give the radius in whole kilometres.' }).int({ error: 'Give the radius in whole kilometres.' }).min(1).max(MAX_RADIUS_KM, { error: `Use a radius up to ${MAX_RADIUS_KM} km.` }).default(DEFAULT_RADIUS_KM),
   /** The person at the root of a lineage: only schools with an instructor who descends from them. */
   lineageRootId: z.uuid({ error: 'Choose a lineage from the list.' }).nullish(),
 });
 export type SchoolSearchInput = z.input<typeof schoolSearchInput>;
 
+/**
+ * A map edge's longitude: any finite number. MapLibre's getBounds() goes beyond ±180 when world
+ * copies show (west -200, east 160); schoolsInViewport wraps it (M11 review, code-1).
+ */
+const edgeLongitude = z.number({ error: 'Give a longitude.' }).min(-1e6, { error: 'Give a longitude.' }).max(1e6, { error: 'Give a longitude.' });
+
 export const schoolViewportInput = z
-  .object({ west: longitude, south: latitude, east: longitude, north: latitude, lineageRootId: z.uuid().nullish() })
+  .object({ west: edgeLongitude, south: latitude, east: edgeLongitude, north: latitude, lineageRootId: z.uuid().nullish() })
   .refine((b) => b.south <= b.north, { error: 'The south edge must be below the north edge.', path: ['south'] });
+
+/** The widest piece of a viewport tested as one geography box (well inside a hemisphere). */
+const VIEWPORT_PIECE_DEGREES = 90;
+/**
+ * Degrees of latitude added to both edges of a piece for the index: more than the bow of a
+ * great-circle edge one degree long (about 0.0011° at 45°), so each piece holds the whole box.
+ */
+const VIEWPORT_INDEX_MARGIN = 0.01;
+
+/**
+ * The longitude ranges of a viewport, each within [-180, 180] and at most VIEWPORT_PIECE_DEGREES
+ * wide, or null for the whole world (east - west of 360° or more). `west > east` means the box
+ * crosses the antimeridian (the old form); longitudes beyond ±180 (MapLibre's world copies) wrap.
+ * Exported for the unit test.
+ */
+export function viewportPieces(west: number, east: number): [number, number][] | null {
+  const span = west <= east ? east - west : east - west + 360;
+  if (span >= 360) return null;
+  const w = ((((west + 180) % 360) + 360) % 360) - 180;
+  const e = w + span;
+  const ranges: [number, number][] = e <= 180 ? [[w, e]] : [[w, 180], [-180, e - 360]];
+  const pieces: [number, number][] = [];
+  for (const [from, to] of ranges) {
+    for (let start = from; ; start += VIEWPORT_PIECE_DEGREES) {
+      const end = Math.min(to, start + VIEWPORT_PIECE_DEGREES);
+      pieces.push([start, end]);
+      if (end >= to) break;
+    }
+  }
+  return pieces;
+}
 
 export const schoolSlugInput = z.object({ slug: z.string().trim().min(1).max(120).regex(/^[a-z0-9-]+$/, { error: NO_SCHOOL }) });
 export const schoolIdInput = z.object({ id: z.uuid({ error: NO_SCHOOL }) });
@@ -350,18 +390,31 @@ export async function schoolsSearch(_principal: Principal | null, raw: SchoolSea
   return cachedSchoolList(input.lineageRootId ?? null);
 }
 
-/** schools.inViewport: the public schools inside a bounding box (west may exceed east across 180°). */
+/**
+ * schools.inViewport: the public schools inside a bounding box whose edges are parallels and
+ * meridians (M11 review, code-1). A geography polygon's edges are great circles, so the box is not
+ * one: its pieces (viewportPieces) only pick candidates through the GiST index on
+ * school.public_point, each segmentized every degree (its edges then stay within metres of the
+ * parallels) and widened by VIEWPORT_INDEX_MARGIN towards both poles, where a great circle bows
+ * into or out of the box; the view's point is then compared with the edges themselves. A box of
+ * 360° or more is the whole world (latitude only).
+ */
 export async function schoolsInViewport(_principal: Principal | null, raw: z.input<typeof schoolViewportInput>): Promise<SchoolSearchDto> {
   const parsed = schoolViewportInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const b = parsed.data;
   const db = getDb();
-  const box = (west: number, east: number) => sql`ST_MakeEnvelope(${west}::float8, ${b.south}::float8, ${east}::float8, ${b.north}::float8, 4326)::geography`;
-  const inBox = b.west <= b.east ? sql`s.public_point && ${box(b.west, b.east)}` : sql`(s.public_point && ${box(b.west, 180)} OR s.public_point && ${box(-180, b.east)})`;
-  const inViewBox =
-    b.west <= b.east
-      ? sql`ST_Intersects(v.public_point, ${box(b.west, b.east)})`
-      : sql`(ST_Intersects(v.public_point, ${box(b.west, 180)}) OR ST_Intersects(v.public_point, ${box(-180, b.east)}))`;
+  const pieces = viewportPieces(b.west, b.east);
+  const south = Math.max(-90, b.south - VIEWPORT_INDEX_MARGIN);
+  const north = Math.min(90, b.north + VIEWPORT_INDEX_MARGIN);
+  const box = ([west, east]: [number, number]) =>
+    sql`ST_Segmentize(ST_MakeEnvelope(${west}::float8, ${south}::float8, ${east}::float8, ${north}::float8, 4326), 1)::geography`;
+  const inBox = pieces ? sql`(${sql.join(pieces.map((piece) => sql`s.public_point && ${box(piece)}`), sql` OR `)})` : sql`true`;
+  const lat = sql`ST_Y(v.public_point::geometry)`;
+  const lng = sql`ST_X(v.public_point::geometry)`;
+  const inViewBox = sql`${lat} BETWEEN ${b.south}::float8 AND ${b.north}::float8 AND ${
+    pieces ? sql`(${sql.join(pieces.map(([west, east]) => sql`${lng} BETWEEN ${west}::float8 AND ${east}::float8`), sql` OR `)})` : sql`true`
+  }`;
   const result = await db.execute<PinRow & { total: number }>(sql`
     SELECT ${PIN_COLUMNS}, NULL::int AS distance_km, count(*) OVER ()::int AS total
       FROM school s

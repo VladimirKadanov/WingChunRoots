@@ -262,3 +262,84 @@ describe('last_activity_at (D17)', () => {
     expect(await at()).toBeGreaterThan(edited);
   });
 });
+
+// --- M11 review fixes ----------------------------------------------------------------------------
+
+/** A Sifu with their own public person, holding a Professional Sifu test plan when `pro`. */
+async function sifuWithPlan(label: string, pro = true) {
+  const m = await member(label, { sifu: true });
+  if (pro) {
+    await getDb()
+      .insert(entitlementGrant)
+      .values({ subjectUserId: m.account.id, planCode: 'pro_sifu', source: 'test_grant', startsAt: new Date(Date.now() - 60_000), reason: 'Demo: M11 test plan' });
+  }
+  return m;
+}
+
+/** A platform school (no listing account), listed, at an exact point (`place` only names its city). */
+async function platformSchoolAt(label: string, placeId: string, point: { lat: number; lng: number }): Promise<string> {
+  const slug = `demo-m11-${label}-${randomBytes(3).toString('hex')}`;
+  await getDb().execute(sql`
+    INSERT INTO school (slug, name, place_id, location_privacy, public_point, status)
+    VALUES (${slug}, ${`Demo ${label} Hall`}, ${placeId}::uuid, 'exact', ST_SetSRID(ST_MakePoint(${point.lng}::float8, ${point.lat}::float8), 4326)::geography, 'active')`);
+  return slug;
+}
+
+const viewSlugs = async (box: { west: number; south: number; east: number; north: number }) => (await schoolsInViewport(null, box)).schools.map((s) => s.slug);
+
+describe('schools.inViewport: a box of parallels and meridians (M11 review, code-1)', () => {
+  it('a whole-world box returns every public school, also with MapLibre longitudes beyond ±180', async () => {
+    const all = (await schoolsSearch(null, {})).schools.map((s) => s.slug).sort();
+    expect(all.length).toBeGreaterThanOrEqual(7);
+    expect((await viewSlugs({ west: -180, south: -85, east: 180, north: 85 })).sort()).toEqual(all);
+    // World copies on both sides (getBounds() of a zoomed-out map), and a box shifted by a full turn.
+    expect((await viewSlugs({ west: -540, south: -85, east: 540, north: 85 })).sort()).toEqual(all);
+    expect((await viewSlugs({ west: -200, south: -85, east: 160, north: 85 })).sort()).toEqual(all);
+    // Wider than 180°: Sofia, Athens, London and New York are all inside -100..100, 20..70.
+    expect(await viewSlugs({ west: -100, south: 20, east: 100, north: 70 })).toEqual(
+      expect.arrayContaining(['demo-school-sofia', 'demo-school-athens', 'demo-school-london', 'demo-school-new-york', 'demo-school-two-lineages']),
+    );
+  });
+
+  it('a continental box follows its parallels: a school just inside the southern edge is in, one just north of the box is out', async () => {
+    const sofia = await cityOf('Sofia', 'BG');
+    const south = await platformSchoolAt('south-edge', sofia.id, { lat: 35.3, lng: 10 });
+    const north = await platformSchoolAt('north-out', sofia.id, { lat: 60.4, lng: 10 });
+    const europe = await viewSlugs({ west: -10, south: 35, east: 30, north: 60 });
+    expect(europe).toContain(south);
+    expect(europe).not.toContain(north);
+    expect(europe).toEqual(expect.arrayContaining(['demo-school-sofia', 'demo-school-athens', 'demo-school-two-lineages']));
+    expect(europe).not.toContain('demo-school-new-york');
+    // The same edges with the box shifted by a whole turn (a world copy east of the first).
+    expect((await viewSlugs({ west: 350, south: 35, east: 390, north: 60 })).sort()).toEqual([...europe].sort());
+  });
+
+  it('a box across the antimeridian, in either form, holds the schools on both sides of 180° and nothing else', async () => {
+    const kowloon = await cityOf('Kowloon', 'HK');
+    const west = await platformSchoolAt('antimeridian-w', kowloon.id, { lat: -17.5, lng: 179.5 });
+    const east = await platformSchoolAt('antimeridian-e', kowloon.id, { lat: -17.5, lng: -179.5 });
+    for (const box of [
+      { west: 170, south: -25, east: -170, north: -10 },
+      { west: 170, south: -25, east: 190, north: -10 },
+      { west: -190, south: -25, east: -170, north: -10 },
+    ]) {
+      expect((await viewSlugs(box)).sort(), JSON.stringify(box)).toEqual([west, east].sort());
+    }
+  });
+});
+
+describe('coordinates are JSON numbers (M11 review, code-5)', () => {
+  it('refuses null, empty or boolean coordinates with 400 instead of reading them as 0 or 1', async () => {
+    for (const center of [{ lat: null, lng: null }, { lat: '', lng: '' }, { lat: true, lng: false }, { lat: '42.1', lng: '24.7' }]) {
+      await expect(schoolsSearch(null, { center } as never), JSON.stringify(center)).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { center: expect.any(String) } });
+    }
+    await expect(schoolsSearch(null, { radiusKm: true } as never)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(schoolsInViewport(null, { west: null, south: '', east: true, north: 1 } as never)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    const sifu = await sifuWithPlan('m11-coerce', false);
+    const sofia = await cityOf('Sofia', 'BG');
+    await expect(
+      createSchool(sifu.principal, { name: 'Demo Coerce Hall', placeId: sofia.id, locationPrivacy: 'exact', point: { lat: true, lng: true }, idempotencyKey: key() } as never, meta),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { point: expect.any(String) } });
+    expect((await mySchools(sifu.principal)).schools).toEqual([]);
+  });
+});
