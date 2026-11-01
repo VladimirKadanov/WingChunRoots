@@ -165,7 +165,7 @@ export function ClaimForm({ options, teacher, idempotencyKey, initial }: { optio
           </SelectField>
         </div>
         <div className={ROW}>
-          <TextField form={formId} name="toYear" label="Ended (year)" optional autoComplete="off" inputMode="numeric" maxLength={4} state={state} />
+          <TextField form={formId} name="toYear" label="Ended (year)" autoComplete="off" inputMode="numeric" maxLength={4} state={state} />
           <SelectField form={formId} name="toMonth" label="Month" optional autoComplete="off" state={state} {...select('toMonth')}>
             <MonthOptions />
           </SelectField>

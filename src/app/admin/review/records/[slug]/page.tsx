@@ -14,7 +14,7 @@ import { NameText } from '@/components/account/person-names';
 import { LoadError } from '@/components/account/load-error';
 import { LOAD_ERRORS } from '@/components/account/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { formatSize } from '@/components/evidence/uploader';
+import { formatSize } from '@/lib/file-size';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';

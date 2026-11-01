@@ -19,6 +19,7 @@ import { type DragEvent, useId, useRef, useState } from 'react';
 
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
+import { formatSize } from '@/lib/file-size';
 
 export const EVIDENCE_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 const MAX_MB = 20;
@@ -37,11 +38,6 @@ interface Item {
   state: 'uploading' | 'done' | 'refused';
   message?: string;
   file?: UploadedEvidenceItem;
-}
-
-export function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1024))} kB`;
 }
 
 type Discard = (id: string) => Promise<{ ok: boolean; message?: string }>;
