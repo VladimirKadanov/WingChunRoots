@@ -72,6 +72,27 @@ function uncovered(element: Locator): Promise<boolean> {
   });
 }
 
+/**
+ * The relative luminance (0 to 255) of the lightest pixel in a PNG screenshot, read by the page's
+ * own canvas (only src/server/storage may import an image library).
+ */
+function lightestPixel(page: Page, png: Buffer): Promise<number> {
+  return page.evaluate(async (src) => {
+    const image = new Image();
+    image.src = src;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let lightest = 0;
+    for (let i = 0; i < data.length; i += 4) lightest = Math.max(lightest, 0.2126 * data[i]! + 0.7152 * data[i + 1]! + 0.0722 * data[i + 2]!);
+    return lightest;
+  }, `data:image/png;base64,${png.toString('base64')}`);
+}
+
 /** The top of the sheet, once it has come to rest. */
 async function restingSheetTop(page: Page): Promise<number> {
   const sheet = sheetOf(page);
@@ -163,6 +184,26 @@ test('@M11 moving the map after "Search this area" keeps the search: a reload an
   const reloaded = new URL(page.url()).searchParams;
   for (const key of ['clat', 'clng', 'radius']) expect(reloaded.get(key), `${key} after the reload`).toBe(searched.get(key));
   expect(Number(reloaded.get('lat'))).toBeCloseTo(Number(panned.get('lat')), 3);
+});
+
+// --- Forced colours ----------------------------------------------------------------------------
+
+test('@M11 in forced colours with the dark theme the zoom buttons show their + and − (review screens-8)', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark', forcedColors: 'active' });
+  await page.goto('/schools');
+  await mapSettled(page, 'dark');
+  for (const name of ['Zoom in', 'Zoom out']) {
+    const icon = page.getByRole('button', { name }).locator('.maplibregl-ctrl-icon');
+    // MapLibre draws them white for a dark system scheme; nothing turns them again.
+    expect(await icon.evaluate((el) => getComputedStyle(el).filter), `${name}: no filter`).toBe('none');
+    // What the screen shows: a light glyph in the middle of the dark button.
+    const box = (await icon.boundingBox())!;
+    const shot = await page.screenshot({ clip: { x: box.x + box.width / 2 - 8, y: box.y + box.height / 2 - 8, width: 16, height: 16 } });
+    expect(await lightestPixel(page, shot), `${name}: a light glyph on the dark button`).toBeGreaterThan(160);
+  }
+  // Outside forced colours the dark theme still turns MapLibre's dark drawings light.
+  await page.emulateMedia({ colorScheme: 'dark', forcedColors: 'none' });
+  await expect.poll(() => page.getByRole('button', { name: 'Zoom in' }).locator('.maplibregl-ctrl-icon').evaluate((el) => getComputedStyle(el).filter)).toBe('invert(1)');
 });
 
 // --- The phone ---------------------------------------------------------------------------------

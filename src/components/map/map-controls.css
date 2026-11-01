@@ -30,6 +30,25 @@
   filter: invert(1);
 }
 
+/*
+ * Not in forced colours (Windows High Contrast), where MapLibre already draws its zoom icons in the
+ * system's scheme (white on a dark one): turned again, they were black on black. MapLibre has no
+ * light drawing of the attribution button, so that one turns light on a dark system scheme there,
+ * whatever the page's theme.
+ */
+@media (forced-colors: active) {
+  [data-map-theme] .maplibregl-ctrl-icon,
+  [data-map-theme] .maplibregl-ctrl-attrib-button {
+    filter: none;
+  }
+}
+
+@media (forced-colors: active) and (prefers-color-scheme: dark) {
+  [data-map-theme] .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
+}
+
 /* A control that reaches under the phone's sheet (school-map.tsx): hidden, so focus never lands on one the sheet covers (WCAG 2.4.11). */
 .maplibregl-map [data-under-sheet] {
   visibility: hidden;
