@@ -139,3 +139,37 @@ test('@M11 in forced colours only the selected school of the list has the bar be
   }
   await page.emulateMedia({ forcedColors: 'none' });
 });
+
+test('@M11 in forced colours a checked box of the school form looks checked, and an unchecked one does not', async ({ page }) => {
+  await freshAccount(page, { name: `Demo Checkbox Sifu ${letters()}`, sifu: true });
+  await page.goto('/dashboard/schools/new');
+  const form = visible(page.getByTestId('school-form'));
+  const checked = form.getByRole('checkbox', { name: 'Siu Nim Tao' });
+  const unchecked = form.getByRole('checkbox', { name: 'Chum Kiu' });
+  await checked.check();
+  await expect(unchecked).not.toBeChecked();
+
+  /** The share of the box's inner area (inside its 2 px border) drawn clearly apart from the ground. */
+  const inked = async (box: Locator) => {
+    const label = box.locator('xpath=ancestor::label[1]');
+    await label.scrollIntoViewIfNeeded();
+    const base = ground((await pixels(page, await label.screenshot({ scale: 'css' }))).rgb);
+    const shot = await pixels(page, await box.locator('xpath=..').screenshot({ scale: 'css' }));
+    const inner = shot.rgb.filter((_, i) => {
+      const x = i % shot.width;
+      const y = Math.floor(i / shot.width);
+      return x >= 4 && y >= 4 && x < shot.width - 4 && y < shot.height - 4;
+    });
+    return inner.filter((p) => distance(p, base) > 96).length / inner.length;
+  };
+  for (const theme of THEMES) {
+    await page.emulateMedia({ colorScheme: theme, forcedColors: 'active' });
+    // The system draws the box (and its tick); the ink tick of the normal look steps aside.
+    expect(await checked.evaluate((el) => getComputedStyle(el).appearance), `${theme}, forced colours: the system draws the box`).toBe('auto');
+    await expect(checked.locator('xpath=following-sibling::*[1]')).toBeHidden();
+    const [on, off] = [await inked(checked), await inked(unchecked)];
+    expect(on, `${theme}, forced colours: the checked box shows its mark`).toBeGreaterThan(0.15);
+    expect(off, `${theme}, forced colours: the unchecked box is empty`).toBeLessThan(0.05);
+  }
+  await page.emulateMedia({ forcedColors: 'none' });
+});

@@ -77,9 +77,13 @@ const radioClass = cx(
   'peer size-6 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-border-strong bg-surface-1',
   'checked:border-[7px] checked:border-fg hover:border-fg-muted',
 );
+// A checked box is an ink fill with a tick. In forced colours the fill's background would be
+// replaced by Canvas and the tick would vanish with it, so the system draws its own checkbox there
+// (as the account type's radios, src/app/dashboard/settings/forms.tsx; review screens-9).
 const boxClass = cx(
   'peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1',
   'transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted',
+  'forced-colors:appearance-auto',
 );
 
 function Check({ name, value, label, defaultChecked, describedById }: { name: string; value: string; label: string; defaultChecked: boolean; describedById?: string }) {
@@ -87,7 +91,7 @@ function Check({ name, value, label, defaultChecked, describedById }: { name: st
     <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 text-ui">
       <span className="relative grid size-6 shrink-0 place-items-center">
         <input type="checkbox" name={name} value={value} defaultChecked={defaultChecked} aria-describedby={describedById} className={boxClass} />
-        <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block" />
+        <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block forced-colors:peer-checked:hidden" />
       </span>
       <span className="min-w-0 pt-px">{label}</span>
     </label>
