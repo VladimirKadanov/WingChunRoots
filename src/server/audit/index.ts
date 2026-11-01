@@ -52,6 +52,11 @@ export interface AuditEntry {
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
   reason?: string | null;
+  /**
+   * The evidence files the change relied on (plan §6.6: the person.update of an archival edit keeps
+   * `reason` and `evidence_ids`), kept in the uuid[] column audit_log.evidence_ids; none is NULL.
+   */
+  evidenceIds?: readonly string[] | null;
   /** From the X-Request-Id header when a proxy sets one; otherwise a new id. */
   requestId?: string | null;
   ipHmac?: string | null;
@@ -75,6 +80,7 @@ export async function writeAudit(db: Database | Transaction, entry: AuditEntry):
     before: entry.before ?? null,
     after: entry.after ?? null,
     reason: entry.reason ?? null,
+    evidenceIds: entry.evidenceIds && entry.evidenceIds.length > 0 ? [...new Set(entry.evidenceIds)] : null,
     requestId: entry.requestId ?? uuidv7(),
     ipHmac: entry.ipHmac ?? null,
   });

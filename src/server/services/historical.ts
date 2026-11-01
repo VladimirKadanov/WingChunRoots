@@ -302,6 +302,7 @@ export async function requestHistoricalTeacher(principal: Principal | null, raw:
           caseId,
           evidenceIds: [...new Set(input.evidenceIds)],
         },
+        evidenceIds: input.evidenceIds,
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });

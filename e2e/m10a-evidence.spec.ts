@@ -444,10 +444,11 @@ test('@M10a an archival edit of demo-root-c requires a reason and records actor,
   await form.getByRole('button', { name: 'Save the record' }).click();
   await page.waitForURL(/[?&]done=saved/);
   await expect(visible(page.getByTestId('record-outcome'))).toContainText('The record is saved');
-  const audits = await getDb().execute<{ actor: string; role: string; reason: string; after: { evidence_ids: string[]; archival: boolean } }>(sql`
-    SELECT actor_user_id::text AS actor, actor_role AS role, reason, after FROM audit_log
+  const audits = await getDb().execute<{ actor: string; role: string; reason: string; evidence_ids: string[] | null; after: { evidence_ids: string[]; archival: boolean } }>(sql`
+    SELECT actor_user_id::text AS actor, actor_role AS role, reason, evidence_ids::text[] AS evidence_ids, after FROM audit_log
      WHERE action = 'person.update' AND subject_id = ${personId} ORDER BY created_at DESC, id DESC LIMIT 1`);
-  expect(audits.rows[0]).toMatchObject({ actor: archivist.userId, role: 'archivist', reason, after: { archival: true, evidence_ids: [fileId] } });
+  // reason and evidence_ids in their own columns (plan §6.6), and the ids in `after` as well.
+  expect(audits.rows[0]).toMatchObject({ actor: archivist.userId, role: 'archivist', reason, evidence_ids: [fileId], after: { archival: true, evidence_ids: [fileId] } });
   await expect(visible(page.getByTestId('record-files'))).toContainText('demo-register.pdf');
 
   // The demo record is put back as it was (the file stays linked), so other screens are unchanged.

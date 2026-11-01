@@ -599,6 +599,9 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
         return { replayed: false, tags: [] as string[] };
       }
 
+      // The files the decision rests on, for audit_log.evidence_ids.
+      const basis = ((await filesOfCases(tx, [c.id])).get(c.id) ?? []).map((f) => f.id);
+
       if (input.decision === 'reject') {
         await tx.update(teachingRelationship).set({ status: 'rejected', statusReason: 'review', updatedAt: now }).where(eq(teachingRelationship.id, row.id));
         await tx
@@ -614,6 +617,7 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
           subjectId: row.id,
           before: { status: 'under_review' },
           after: { status: 'rejected', verificationPath: 'committee_review', caseId: c.id },
+          evidenceIds: basis,
           requestId: meta.requestId,
           ipHmac: meta.ipHmac,
         });
@@ -667,6 +671,7 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
         subjectId: row.id,
         before: { status: 'under_review', visibility: row.visibility, isDisplayPrimary: row.isDisplayPrimary },
         after: { status: 'verified', visibility: 'public', verificationPath: 'committee_review', caseId: c.id, ...verified, lineageId: row.lineageId },
+        evidenceIds: basis,
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });
@@ -955,6 +960,8 @@ export async function updateArchiveRecord(principal: Principal | null, raw: Arch
         evidence_ids: [...new Set(input.evidenceIds)],
       },
       reason: input.reason,
+      // The column of plan §6.6 (M10a review, requirements-1), not only the copy in `after`.
+      evidenceIds: input.evidenceIds,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });

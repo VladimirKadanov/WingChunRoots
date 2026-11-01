@@ -192,7 +192,7 @@ describe('a historical teacher claim', () => {
 describe('review decisions write relationship_event and audit_log', () => {
   it('an archivist takes the case and verifies it: the link and both records are public, the student is told, lineage.recompute is queued; a repeat replays', async () => {
     const archivist = await staff('rv-verify-arch', 'archivist');
-    const { student, caseId, relationshipId, teacherId } = await claim('rv-verify');
+    const { student, file, caseId, relationshipId, teacherId } = await claim('rv-verify');
     const assignKey = key();
     await assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: assignKey }, meta);
     const replayAssign = await assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: assignKey }, meta);
@@ -216,6 +216,12 @@ describe('review decisions write relationship_event and audit_log', () => {
     expect((await auditsOf(relationshipId)).map((a) => [a.action, a.role])).toEqual([
       ['relationship.request', 'user'],
       ['relationship.verify', 'archivist'],
+    ]);
+    // The claim and the verification name the files they rest on in audit_log.evidence_ids.
+    const basis = await getDb().select({ action: auditLog.action, evidenceIds: auditLog.evidenceIds }).from(auditLog).where(eq(auditLog.subjectId, relationshipId)).orderBy(asc(auditLog.createdAt), asc(auditLog.id));
+    expect(basis).toEqual([
+      { action: 'relationship.request', evidenceIds: [file.id] },
+      { action: 'relationship.verify', evidenceIds: [file.id] },
     ]);
     expect((await auditsOf(caseId)).map((a) => [a.action, a.role])).toEqual([
       ['review.assign', 'archivist'],
@@ -372,11 +378,18 @@ describe('the archival edit (plan §6.6)', () => {
     expect(result.record.files.map((f) => f.id)).toEqual([file.id]);
 
     const audits = await getDb()
-      .select({ actor: auditLog.actorUserId, role: auditLog.actorRole, reason: auditLog.reason, after: auditLog.after })
+      .select({ actor: auditLog.actorUserId, role: auditLog.actorRole, reason: auditLog.reason, evidenceIds: auditLog.evidenceIds, after: auditLog.after })
       .from(auditLog)
       .where(and(eq(auditLog.action, 'person.update'), eq(auditLog.subjectId, record.id)));
     expect(audits).toHaveLength(1);
-    expect(audits[0]).toMatchObject({ actor: archivist.account.id, role: 'archivist', reason: 'The fictional hall register gives this spelling.', after: { archival: true, evidence_ids: [file.id], lifeStatus: 'deceased' } });
+    // reason and evidence_ids in their own columns (plan §6.6; M10a review, requirements-1).
+    expect(audits[0]).toMatchObject({
+      actor: archivist.account.id,
+      role: 'archivist',
+      reason: 'The fictional hall register gives this spelling.',
+      evidenceIds: [file.id],
+      after: { archival: true, evidence_ids: [file.id], lifeStatus: 'deceased' },
+    });
     // Neither a name nor the biography is copied into the audit row.
     expect(JSON.stringify(audits[0])).not.toContain('Demo Archive');
     expect(JSON.stringify(audits[0])).not.toContain('fictional teacher of the demo');

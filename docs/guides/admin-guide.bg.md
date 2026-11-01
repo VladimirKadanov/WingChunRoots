@@ -624,7 +624,16 @@ E2E тестовете на M09 (`e2e/m09-requests.spec.ts`) създават с
 - `evidence.upload`, `evidence.view` (всяко изтегляне, с вида на достъпа), `evidence.discard`;
 - `person.create` и `relationship.request` при иск, `review.assign`, `review.note`, `review.needs_info`;
 - `relationship.verify` или `relationship.reject` и `review.resolve` при решение;
-- `person.update` при архивна редакция: актьорът, ролята му, причината, `evidence_ids` и кои полета са променени.
+- `person.update` при архивна редакция: актьорът, ролята му, причината и кои полета са променени.
+
+Причината е в колоната `reason`, а файловете, на които се основава промяната, в колоната `evidence_ids` (`person.update`, а също `relationship.request` на иска и `relationship.verify` или `relationship.reject` на решението). Така се намират например всички промени, основани на даден файл:
+
+```sql
+SELECT occurred_at, actor_user_id, actor_role, action, subject_id, reason
+  FROM audit_log
+ WHERE evidence_ids @> ARRAY['<идентификатор на файла>']::uuid[]
+ ORDER BY occurred_at;
+```
 
 Решенията и възлаганията са и редове в `relationship_event` (раздел 14).
 
