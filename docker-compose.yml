@@ -22,7 +22,9 @@ name: wingchunroots
 
 # The application image and its settings, shared by migrate, web and worker.
 x-app: &app
-  image: wingchunroots-app:local
+  # No `image:` name: every image in this file is pinned by digest (scripts/verify.d/M00.sh), and a
+  # locally built one has none. Compose names the builds itself; migrate, web and worker share the
+  # same build context, so the second and third builds come from the layer cache.
   build:
     context: .
     dockerfile: Dockerfile
