@@ -8291,6 +8291,29 @@
         }
       }
     },
+    "/admin/system": {
+      "get": {
+        "operationId": "system.status",
+        "summary": "Job queue depth, failed jobs, failed e-mail deliveries and the time of the last local backup (staff with a verified second factor)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/evidence/upload": {
       "servers": [
         {

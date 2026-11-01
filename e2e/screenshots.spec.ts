@@ -16,6 +16,7 @@ import { BASE_URL, closeHelpers, emailLinkFromOutbox, giveOwnAddress, signInAs, 
 import { CLAIM_LINEAGE, claimThroughApi, fictionalPdf, letters, lineageIdOf } from './helpers/evidence';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
+import { writeDemoArchives } from './helpers/ops';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { createSchool, freshContext, pendingListing, SCHOOL_MAP_SCREENS, sifuAccount } from './helpers/schools';
@@ -489,6 +490,18 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'admin');
       await page.goto(`/admin/review/arbitrate/${rows.rows[0]!.id}`);
       await expect(page.getByTestId('arbitrate-form').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M12: /admin/system as the seeded administrator sees it, with the queue of the moment and the
+    // newest of two fictional archive names (e2e/helpers/ops.ts) as the last backup.
+    name: 'admin-system',
+    milestone: 'M12',
+    async reach(page) {
+      writeDemoArchives();
+      await signInAs(page, 'admin');
+      await page.goto('/admin/system');
+      await expect(page.getByTestId('last-backup-time')).toBeVisible();
     },
   },
 ];

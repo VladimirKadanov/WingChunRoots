@@ -55,6 +55,17 @@ export function rolePassword(role: DbRole, env: Env = process.env): string {
   return value;
 }
 
+/**
+ * The URL db:migrate connects with: `url` as it is, unless it names the role migrator without a
+ * password; then DB_MIGRATOR_PASSWORD is added, URL-encoded (the Compose `migrate` service: a
+ * password with @, /, # or % cannot be written into a URL as it is).
+ */
+export function migratorUrl(url: string, env: Env = process.env): string {
+  const u = parse(url);
+  if (u.password || decodeURIComponent(u.username) !== 'migrator' || !env[ROLE_PASSWORD_ENV.migrator]) return url;
+  return roleUrl(url, 'migrator', rolePassword('migrator', env));
+}
+
 /** True for a loopback host or a Unix socket. */
 export function isLocalHost(url: string): boolean {
   const u = parse(url);

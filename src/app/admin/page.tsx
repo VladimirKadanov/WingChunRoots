@@ -118,6 +118,13 @@ export default async function AdminPage() {
           )}
         </section>
       ) : null}
+      {/* M12: the state of the local run, for every staff role. */}
+      <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+        <Link href="/admin/system" className={buttonVariants({ variant: 'secondary' })} data-testid="system-status-link">
+          System status
+        </Link>
+        <p className="text-sm text-fg-muted">The job queue, failed jobs and e-mails, and the time of the last local backup.</p>
+      </div>
       {/* M08: the administrators' tool for test plans. */}
       {guard.principal?.user.role === 'admin' ? (
         <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">

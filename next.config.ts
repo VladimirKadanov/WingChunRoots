@@ -26,6 +26,17 @@ const nextConfig: NextConfig = {
   // M04: scripts/verify.d/M04.sh makes a deployable build in a directory of its own, beside the
   // E2E build in .next. Unset everywhere else.
   ...(process.env.WCR_DIST_DIR ? { distDir: process.env.WCR_DIST_DIR } : {}),
+  // M12: the Docker image's build (WCR_STANDALONE=1, Dockerfile) also writes <distDir>/standalone,
+  // the minimal server the image runs (`node server.js`). Other builds (E2E, verify, Lighthouse)
+  // leave it out: it copies node_modules files such as Next.js's own Open Graph library into
+  // .next, which the M00b font check scans (docs/plan/questions/M12.md, question 3, default 1).
+  ...(process.env.WCR_STANDALONE === '1' ? { output: 'standalone' as const } : {}),
+  // M11 + M12: the Open Graph image of a school reads its fonts with readFile from node_modules
+  // (src/app/schools/[slug]/opengraph-image.tsx), a path the trace cannot see; without this the
+  // standalone server of the Docker image has no fonts and the image fails.
+  outputFileTracingIncludes: {
+    '/schools/**': ['./node_modules/@fontsource/noto-serif-display/files/noto-serif-display-{latin,latin-ext,greek,cyrillic}-400-normal.woff'],
+  },
   // Explicit, opt-in caching with 'use cache' (plan §3.1, §6.4).
   cacheComponents: true,
   partialPrefetching: true,

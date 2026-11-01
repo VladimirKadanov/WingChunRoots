@@ -55,3 +55,8 @@ next-env.d.ts
 
 # Lighthouse CI results (scripts/verify.d/M00b.sh)
 /.lighthouseci/
+
+# local archives of scripts/backup-local.sh (M12): database dumps and evidence copies, never
+# committed. The folder itself stays (.gitkeep): Compose mounts it into web read-only.
+/backups/*
+!/backups/.gitkeep

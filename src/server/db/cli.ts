@@ -28,7 +28,7 @@ import {
   throwawayDatabaseName,
 } from './admin';
 import { loadDotEnv } from './dotenv';
-import { redactUrl, targetDatabaseUrl } from './env';
+import { migratorUrl, redactUrl, targetDatabaseUrl } from './env';
 import { stopProducer } from '../jobs/boss';
 import { queueSearchKeysRebuild } from '../jobs/search-keys';
 import { closeDb } from './index';
@@ -44,7 +44,7 @@ function describePgBoss({ action, from, to, repaired }: PgBossMigration): string
 }
 
 async function migrate(): Promise<void> {
-  const url = targetDatabaseUrl();
+  const url = migratorUrl(targetDatabaseUrl());
   const { drizzle: applied, pgboss } = await migrateAll(url);
   log(applied.length > 0 ? `db:migrate: applied ${applied.join(', ')}` : 'db:migrate: nothing to apply');
   log(`db:migrate: ${describePgBoss(pgboss)}`);

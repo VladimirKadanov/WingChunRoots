@@ -513,6 +513,14 @@
       "text": 2
     },
     {
+      "name": "@pinojs/redact",
+      "version": "0.4.0",
+      "license": "MIT",
+      "author": "Matteo Collina",
+      "homepage": "https://github.com/pinojs/redact#readme",
+      "text": 2
+    },
+    {
       "name": "@react-email/render",
       "version": "2.1.0",
       "license": "MIT",
@@ -769,12 +777,20 @@
       "text": 25
     },
     {
+      "name": "atomic-sleep",
+      "version": "1.0.0",
+      "license": "MIT",
+      "author": "David Mark Clements",
+      "homepage": "https://github.com/davidmarkclements/atomic-sleep#readme",
+      "text": 26
+    },
+    {
       "name": "atomically",
       "version": "2.1.1",
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/fabiospampinato/atomically#readme",
-      "text": 26
+      "text": 27
     },
     {
       "name": "aws4fetch",
@@ -782,7 +798,7 @@
       "license": "MIT",
       "author": "Michael Hart",
       "homepage": "https://github.com/mhart/aws4fetch#readme",
-      "text": 27
+      "text": 28
     },
     {
       "name": "balanced-match",
@@ -790,7 +806,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/juliangruber/balanced-match#readme",
-      "text": 28
+      "text": 29
     },
     {
       "name": "baseline-browser-mapping",
@@ -830,7 +846,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/juliangruber/brace-expansion#readme",
-      "text": 29
+      "text": 30
     },
     {
       "name": "bytewise",
@@ -854,7 +870,7 @@
       "license": "CC-BY-4.0",
       "author": "Ben Briggs",
       "homepage": "https://github.com/browserslist/caniuse-lite#readme",
-      "text": 30
+      "text": 31
     },
     {
       "name": "chokidar",
@@ -878,7 +894,7 @@
       "license": "Apache-2.0",
       "author": "Joe Bell",
       "homepage": "https://github.com/joe-bell/cva#readme",
-      "text": 31
+      "text": 32
     },
     {
       "name": "classcat",
@@ -886,7 +902,7 @@
       "license": "MIT",
       "author": "Jorge Bucaran",
       "homepage": "https://github.com/jorgebucaran/classcat#readme",
-      "text": 32
+      "text": 33
     },
     {
       "name": "client-only",
@@ -902,7 +918,7 @@
       "license": "MIT",
       "author": "Luke Edwards",
       "homepage": "https://github.com/lukeed/clsx#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "commander",
@@ -918,7 +934,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/conf#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "cookie",
@@ -966,7 +982,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-color/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-dispatch",
@@ -974,7 +990,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-dispatch/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-drag",
@@ -982,7 +998,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-drag/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-ease",
@@ -990,7 +1006,7 @@
       "license": "BSD-3-Clause",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-ease/",
-      "text": 35
+      "text": 36
     },
     {
       "name": "d3-interpolate",
@@ -998,7 +1014,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-interpolate/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-selection",
@@ -1006,7 +1022,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-selection/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-timer",
@@ -1014,7 +1030,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-timer/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-transition",
@@ -1022,7 +1038,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-transition/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "d3-zoom",
@@ -1030,7 +1046,7 @@
       "license": "ISC",
       "author": "Mike Bostock",
       "homepage": "https://d3js.org/d3-zoom/",
-      "text": 34
+      "text": 35
     },
     {
       "name": "debounce",
@@ -1038,7 +1054,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/sindresorhus/debounce#readme",
-      "text": 36
+      "text": 37
     },
     {
       "name": "debounce-fn",
@@ -1046,7 +1062,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/debounce-fn#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "debug",
@@ -1054,7 +1070,7 @@
       "license": "MIT",
       "author": "Josh Junon",
       "homepage": "https://github.com/debug-js/debug#readme",
-      "text": 37
+      "text": 38
     },
     {
       "name": "deepmerge",
@@ -1078,7 +1094,7 @@
       "license": "Apache-2.0",
       "author": "Lovell Fuller",
       "homepage": "https://github.com/lovell/detect-libc#readme",
-      "text": 38
+      "text": 39
     },
     {
       "name": "dom-serializer",
@@ -1086,7 +1102,7 @@
       "license": "MIT",
       "author": "Felix Boehm",
       "homepage": "https://github.com/cheeriojs/dom-serializer#readme",
-      "text": 39
+      "text": 40
     },
     {
       "name": "domelementtype",
@@ -1094,7 +1110,7 @@
       "license": "BSD-2-Clause",
       "author": "Felix Boehm",
       "homepage": "https://github.com/fb55/domelementtype#readme",
-      "text": 40
+      "text": 41
     },
     {
       "name": "domhandler",
@@ -1102,7 +1118,7 @@
       "license": "BSD-2-Clause",
       "author": "Felix Boehm",
       "homepage": "https://github.com/fb55/domhandler#readme",
-      "text": 40
+      "text": 41
     },
     {
       "name": "domutils",
@@ -1110,7 +1126,7 @@
       "license": "BSD-2-Clause",
       "author": "Felix Boehm",
       "homepage": "https://github.com/fb55/domutils#readme",
-      "text": 40
+      "text": 41
     },
     {
       "name": "dot-prop",
@@ -1118,7 +1134,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/dot-prop#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "drizzle-orm",
@@ -1134,7 +1150,7 @@
       "license": "ISC",
       "author": "Volodymyr Agafonkin",
       "homepage": "https://github.com/mapbox/earcut#readme",
-      "text": 41
+      "text": 42
     },
     {
       "name": "elkjs",
@@ -1142,7 +1158,7 @@
       "license": "EPL-2.0 OR GPL-3.0-or-later",
       "author": "Ulf Rüegg",
       "homepage": "https://github.com/kieler/elkjs#readme",
-      "text": 42
+      "text": 43
     },
     {
       "name": "engine.io",
@@ -1150,7 +1166,7 @@
       "license": "MIT",
       "author": "Guillermo Rauch",
       "homepage": "https://github.com/socketio/socket.io/tree/main/packages/engine.io#readme",
-      "text": 43
+      "text": 44
     },
     {
       "name": "engine.io-parser",
@@ -1166,7 +1182,7 @@
       "license": "BSD-2-Clause",
       "author": "Felix Boehm",
       "homepage": "https://github.com/fb55/entities#readme",
-      "text": 40
+      "text": 41
     },
     {
       "name": "env-paths",
@@ -1174,7 +1190,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/env-paths#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "esbuild",
@@ -1214,7 +1230,7 @@
       "license": "BSD-3-Clause",
       "author": "Vincent Le Goff",
       "homepage": "https://github.com/fastify/fast-uri",
-      "text": 44
+      "text": 45
     },
     {
       "name": "get-value",
@@ -1238,7 +1254,7 @@
       "license": "BlueOak-1.0.0",
       "author": "Isaac Z. Schlueter",
       "homepage": "https://github.com/isaacs/node-glob#readme",
-      "text": 45
+      "text": 46
     },
     {
       "name": "html-to-text",
@@ -1246,7 +1262,7 @@
       "license": "MIT",
       "author": "Malte Legenhausen",
       "homepage": "https://github.com/html-to-text/node-html-to-text",
-      "text": 46
+      "text": 47
     },
     {
       "name": "html5parser",
@@ -1262,7 +1278,7 @@
       "license": "MIT",
       "author": "Felix Boehm",
       "homepage": "https://github.com/fb55/htmlparser2#readme",
-      "text": 47
+      "text": 48
     },
     {
       "name": "is-extendable",
@@ -1294,7 +1310,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/is-unicode-supported#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "isobject",
@@ -1334,7 +1350,7 @@
       "license": "MIT",
       "author": "Mathias Bynens",
       "homepage": "https://mths.be/jsesc",
-      "text": 48
+      "text": 49
     },
     {
       "name": "json-schema-traverse",
@@ -1350,7 +1366,7 @@
       "license": "BSD-2-Clause",
       "author": "Remy Rylan",
       "homepage": "https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node",
-      "text": 49
+      "text": 50
     },
     {
       "name": "json-stringify-pretty-compact",
@@ -1374,7 +1390,7 @@
       "license": "MIT",
       "author": "Aseem Kishore",
       "homepage": "http://json5.org/",
-      "text": 50
+      "text": 51
     },
     {
       "name": "kdbush",
@@ -1382,7 +1398,7 @@
       "license": "ISC",
       "author": "Vladimir Agafonkin",
       "homepage": "https://github.com/mourner/kdbush#readme",
-      "text": 41
+      "text": 42
     },
     {
       "name": "kleur",
@@ -1414,7 +1430,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/log-symbols#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "lru-cache",
@@ -1422,7 +1438,7 @@
       "license": "BlueOak-1.0.0",
       "author": "Isaac Z. Schlueter",
       "homepage": "https://github.com/isaacs/node-lru-cache#readme",
-      "text": 51
+      "text": 52
     },
     {
       "name": "luxon",
@@ -1446,7 +1462,7 @@
       "license": "MIT",
       "author": "Christopher Jeffrey",
       "homepage": "https://marked.js.org/",
-      "text": 52
+      "text": 53
     },
     {
       "name": "mdn-data",
@@ -1454,7 +1470,7 @@
       "license": "CC0-1.0",
       "author": "Mozilla Developer Network",
       "homepage": "https://developer.mozilla.org/",
-      "text": 53
+      "text": 54
     },
     {
       "name": "mime-db",
@@ -1494,7 +1510,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/mimic-function#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "minimatch",
@@ -1502,7 +1518,7 @@
       "license": "BlueOak-1.0.0",
       "author": "Isaac Z. Schlueter",
       "homepage": "https://github.com/isaacs/minimatch#readme",
-      "text": 54
+      "text": 55
     },
     {
       "name": "minimist",
@@ -1510,7 +1526,7 @@
       "license": "MIT",
       "author": "James Halliday",
       "homepage": "https://github.com/minimistjs/minimist",
-      "text": 55
+      "text": 56
     },
     {
       "name": "minipass",
@@ -1518,7 +1534,7 @@
       "license": "BlueOak-1.0.0",
       "author": "Isaac Z. Schlueter",
       "homepage": "https://github.com/isaacs/minipass#readme",
-      "text": 51
+      "text": 52
     },
     {
       "name": "ms",
@@ -1542,7 +1558,7 @@
       "license": "MIT",
       "author": "Andrey Sitnik",
       "homepage": "https://github.com/ai/nanoid#readme",
-      "text": 56
+      "text": 57
     },
     {
       "name": "nanostores",
@@ -1550,7 +1566,7 @@
       "license": "MIT",
       "author": "Andrey Sitnik",
       "homepage": "https://github.com/nanostores/nanostores#readme",
-      "text": 56
+      "text": 57
     },
     {
       "name": "negotiator",
@@ -1574,7 +1590,7 @@
       "license": "MIT-0",
       "author": "Andris Reinman",
       "homepage": "https://nodemailer.com/",
-      "text": 57
+      "text": 58
     },
     {
       "name": "non-error",
@@ -1582,7 +1598,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/non-error#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "normalize-path",
@@ -1617,6 +1633,14 @@
       "text": 25
     },
     {
+      "name": "on-exit-leak-free",
+      "version": "2.1.2",
+      "license": "MIT",
+      "author": "Matteo Collina",
+      "homepage": "https://github.com/mcollina/on-exit-or-gc#readme",
+      "text": 2
+    },
+    {
       "name": "openapi-types",
       "version": "12.1.3",
       "license": "MIT",
@@ -1630,7 +1654,7 @@
       "license": "MIT AND Apache-2.0",
       "author": "The nk2028 Project",
       "homepage": "https://github.com/nk2028/opencc-js#readme",
-      "text": 58
+      "text": 59
     },
     {
       "name": "parseley",
@@ -1646,7 +1670,7 @@
       "license": "BlueOak-1.0.0",
       "author": "Isaac Z. Schlueter",
       "homepage": "https://github.com/isaacs/path-scurry#readme",
-      "text": 51
+      "text": 52
     },
     {
       "name": "pathe",
@@ -1654,7 +1678,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/unjs/pathe#readme",
-      "text": 59
+      "text": 60
     },
     {
       "name": "pbf",
@@ -1662,7 +1686,7 @@
       "license": "BSD-3-Clause",
       "author": "Konstantin Kaefer",
       "homepage": "https://github.com/mapbox/pbf",
-      "text": 60
+      "text": 61
     },
     {
       "name": "peberminta",
@@ -1702,7 +1726,7 @@
       "license": "ISC",
       "author": null,
       "homepage": "https://github.com/charmander/pg-int8#readme",
-      "text": 61
+      "text": 62
     },
     {
       "name": "pg-pool",
@@ -1742,7 +1766,7 @@
       "license": "ISC",
       "author": "Alexey Raspopov",
       "homepage": "https://github.com/alexeyraspopov/picocolors#readme",
-      "text": 62
+      "text": 63
     },
     {
       "name": "picospinner",
@@ -1750,7 +1774,31 @@
       "license": "MIT",
       "author": "PondWader",
       "homepage": "https://github.com/tinylibs/picospinner#readme",
-      "text": 63
+      "text": 64
+    },
+    {
+      "name": "pino",
+      "version": "10.4.0",
+      "license": "MIT",
+      "author": "Matteo Collina",
+      "homepage": "https://getpino.io/",
+      "text": 24
+    },
+    {
+      "name": "pino-abstract-transport",
+      "version": "3.0.0",
+      "license": "MIT",
+      "author": "Matteo Collina",
+      "homepage": "https://github.com/pinojs/pino-abstract-transport#readme",
+      "text": 2
+    },
+    {
+      "name": "pino-std-serializers",
+      "version": "7.1.0",
+      "license": "MIT",
+      "author": "James Sumners",
+      "homepage": "https://github.com/pinojs/pino-std-serializers#readme",
+      "text": 65
     },
     {
       "name": "pinyin-pro",
@@ -1766,7 +1814,7 @@
       "license": "MIT",
       "author": "Andrey Sitnik",
       "homepage": "https://postcss.org/",
-      "text": 56
+      "text": 57
     },
     {
       "name": "postgres-array",
@@ -1806,7 +1854,7 @@
       "license": "ISC",
       "author": "Vladimir Agafonkin",
       "homepage": "https://mapbox.github.io/potpack/",
-      "text": 41
+      "text": 42
     },
     {
       "name": "prettier",
@@ -1822,7 +1870,15 @@
       "license": "MIT",
       "author": "Lea Verou",
       "homepage": "https://github.com/PrismJS/prism#readme",
-      "text": 64
+      "text": 66
+    },
+    {
+      "name": "process-warning",
+      "version": "5.1.1",
+      "license": "MIT",
+      "author": "Tomas Della Vedova",
+      "homepage": "https://github.com/fastify/fastify-warning#readme",
+      "text": 2
     },
     {
       "name": "prompts",
@@ -1841,12 +1897,20 @@
       "text": 25
     },
     {
+      "name": "quick-format-unescaped",
+      "version": "4.0.4",
+      "license": "MIT",
+      "author": "David Mark Clements",
+      "homepage": "https://github.com/davidmarkclements/quick-format#readme",
+      "text": 24
+    },
+    {
       "name": "quickselect",
       "version": "3.0.0",
       "license": "ISC",
       "author": "Vladimir Agafonkin",
       "homepage": "https://github.com/mourner/quickselect#readme",
-      "text": 41
+      "text": 42
     },
     {
       "name": "radash",
@@ -1887,6 +1951,14 @@
       "author": "Thorsten Lorenz",
       "homepage": "https://github.com/paulmillr/readdirp",
       "text": 2
+    },
+    {
+      "name": "real-require",
+      "version": "1.0.0",
+      "license": "MIT",
+      "author": "Paolo Insogna",
+      "homepage": "https://github.com/pinojs/real-require",
+      "text": 24
     },
     {
       "name": "require-from-string",
@@ -1942,7 +2014,15 @@
       "license": "BSD-3-Clause",
       "author": "Mike Bostock",
       "homepage": "https://github.com/mbostock/rw",
-      "text": 65
+      "text": 67
+    },
+    {
+      "name": "safe-stable-stringify",
+      "version": "2.5.0",
+      "license": "MIT",
+      "author": "Ruben Bridgewater",
+      "homepage": "https://github.com/BridgeAR/safe-stable-stringify#readme",
+      "text": 24
     },
     {
       "name": "scheduler",
@@ -1966,7 +2046,7 @@
       "license": "ISC",
       "author": "GitHub Inc.",
       "homepage": "https://github.com/npm/node-semver#readme",
-      "text": 66
+      "text": 68
     },
     {
       "name": "serialize-error",
@@ -1974,7 +2054,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/serialize-error#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "set-cookie-parser",
@@ -1998,7 +2078,7 @@
       "license": "Apache-2.0",
       "author": "Lovell Fuller",
       "homepage": "https://sharp.pixelplumbing.com/",
-      "text": 67
+      "text": 69
     },
     {
       "name": "sisteransi",
@@ -2022,7 +2102,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme",
-      "text": 68
+      "text": 70
     },
     {
       "name": "socket.io-parser",
@@ -2030,7 +2110,15 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme",
-      "text": 68
+      "text": 70
+    },
+    {
+      "name": "sonic-boom",
+      "version": "4.2.1",
+      "license": "MIT",
+      "author": "Matteo Collina",
+      "homepage": "https://github.com/pinojs/sonic-boom#readme",
+      "text": 2
     },
     {
       "name": "sort-asc",
@@ -2038,7 +2126,7 @@
       "license": "MIT",
       "author": "Jon Schlinkert",
       "homepage": "https://github.com/jonschlinkert/sort-asc",
-      "text": 69
+      "text": 71
     },
     {
       "name": "sort-desc",
@@ -2046,7 +2134,7 @@
       "license": "MIT",
       "author": "Jon Schlinkert",
       "homepage": "https://github.com/jonschlinkert/sort-desc",
-      "text": 69
+      "text": 71
     },
     {
       "name": "sort-object",
@@ -2062,7 +2150,7 @@
       "license": "BSD-3-Clause",
       "author": "Valentin 7rulnik Semirulnik",
       "homepage": "https://github.com/7rulnik/source-map-js",
-      "text": 70
+      "text": 72
     },
     {
       "name": "split-string",
@@ -2078,7 +2166,7 @@
       "license": "ISC",
       "author": "Matteo Collina",
       "homepage": "https://github.com/mcollina/split2#readme",
-      "text": 71
+      "text": 73
     },
     {
       "name": "strip-bom",
@@ -2094,7 +2182,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/fabiospampinato/stubborn-fs#readme",
-      "text": 26
+      "text": 27
     },
     {
       "name": "stubborn-utils",
@@ -2102,7 +2190,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/fabiospampinato/stubborn-utils#readme",
-      "text": 26
+      "text": 27
     },
     {
       "name": "styled-jsx",
@@ -2118,7 +2206,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/tagged-tag#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "tailwind-merge",
@@ -2142,7 +2230,15 @@
       "license": "Apache-2.0",
       "author": "Adam Shaw",
       "homepage": "https://github.com/fullcalendar/temporal-polyfill#readme",
-      "text": 72
+      "text": 74
+    },
+    {
+      "name": "thread-stream",
+      "version": "4.2.0",
+      "license": "MIT",
+      "author": "Matteo Collina",
+      "homepage": "https://github.com/mcollina/thread-stream#readme",
+      "text": 2
     },
     {
       "name": "tinyexec",
@@ -2158,7 +2254,7 @@
       "license": "ISC",
       "author": null,
       "homepage": "https://github.com/mourner/tinyqueue",
-      "text": 41
+      "text": 42
     },
     {
       "name": "to-jyutping",
@@ -2166,7 +2262,7 @@
       "license": "BSD-2-Clause",
       "author": "CanCLID",
       "homepage": "https://github.com/CanCLID/to-jyutping#readme",
-      "text": 73
+      "text": 75
     },
     {
       "name": "transliteration",
@@ -2174,7 +2270,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/yf-hk/transliteration#readme",
-      "text": 74
+      "text": 76
     },
     {
       "name": "tsconfig-paths",
@@ -2190,7 +2286,15 @@
       "license": "0BSD",
       "author": "Microsoft Corp.",
       "homepage": "https://www.typescriptlang.org/",
-      "text": 75
+      "text": 77
+    },
+    {
+      "name": "tsx",
+      "version": "4.23.15",
+      "license": "MIT",
+      "author": "Hiroki Osame",
+      "homepage": "https://tsx.hirok.io/",
+      "text": 2
     },
     {
       "name": "type-fest",
@@ -2198,7 +2302,7 @@
       "license": "(MIT OR CC0-1.0)",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/type-fest#readme",
-      "text": 76
+      "text": 78
     },
     {
       "name": "typewise",
@@ -2222,7 +2326,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/uint8array-extras#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "undici-types",
@@ -2270,7 +2374,7 @@
       "license": "MIT",
       "author": null,
       "homepage": "https://github.com/fabiospampinato/when-exit#readme",
-      "text": 26
+      "text": 27
     },
     {
       "name": "ws",
@@ -2278,7 +2382,7 @@
       "license": "MIT",
       "author": "Einar Otto Stangvik",
       "homepage": "https://github.com/websockets/ws",
-      "text": 77
+      "text": 79
     },
     {
       "name": "xtend",
@@ -2286,7 +2390,7 @@
       "license": "MIT",
       "author": "Raynos",
       "homepage": "https://github.com/Raynos/xtend",
-      "text": 78
+      "text": 80
     },
     {
       "name": "yoctocolors",
@@ -2294,7 +2398,7 @@
       "license": "MIT",
       "author": "Sindre Sorhus",
       "homepage": "https://github.com/sindresorhus/yoctocolors#readme",
-      "text": 33
+      "text": 34
     },
     {
       "name": "zod",
@@ -2340,6 +2444,7 @@
     "(The MIT License)\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n'Software'), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
     "The MIT License (MIT)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
     "The MIT License (MIT)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.",
+    "The MIT License (MIT)\nCopyright (c) 2020 David Mark Clements\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,\nDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR\nOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE\nOR OTHER DEALINGS IN THE SOFTWARE.",
     "The MIT License (MIT)\n\nPermission is hereby granted, free of charge, to any person obtaining a\ncopy of this software and associated documentation files (the \"Software\"),\nto deal in the Software without restriction, including without limitation\nthe rights to use, copy, modify, merge, publish, distribute, sublicense,\nand/or sell copies of the Software, and to permit persons to whom the\nSoftware is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.",
     "Permission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
     "(MIT)\n\nOriginal code Copyright Julian Gruber <julian@juliangruber.com>\n\nPort to TypeScript Copyright Isaac Z. Schlueter <i@izs.me>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
@@ -2378,6 +2483,7 @@
     "Permission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR\nOTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\nPERFORMANCE OF THIS SOFTWARE.",
     "ISC License\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.",
     "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE",
+    "Copyright Mateo Collina, David Mark Clements, James Sumners\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
     "MIT LICENSE\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.",
     "Redistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyright notice,\n  this list of conditions and the following disclaimer in the documentation\n  and/or other materials provided with the distribution.\n\n* The name Michael Bostock may not be used to endorse or promote products\n  derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL MICHAEL BOSTOCK BE LIABLE FOR ANY DIRECT,\nINDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,\nBUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY\nOF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,\nEVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
     "The ISC License\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR\nIN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.",
@@ -2475,6 +2581,12 @@
           "@orpc/standard-server-node 1.15.7",
           "@orpc/standard-server-peer 1.15.7",
           "@orpc/tanstack-query 1.15.7"
+        ]
+      },
+      {
+        "line": "Copyright (c) 2025 pinojs contributors",
+        "packages": [
+          "@pinojs/redact 0.4.0"
         ]
       },
       {
@@ -2577,6 +2689,13 @@
         ]
       },
       {
+        "line": "Copyright (c) 2021 Matteo Collina",
+        "packages": [
+          "on-exit-leak-free 2.1.2",
+          "thread-stream 4.2.0"
+        ]
+      },
+      {
         "line": "Copyright (c) 2010 - 2021 Brian Carlson",
         "packages": [
           "pg 8.23.1",
@@ -2590,9 +2709,21 @@
         ]
       },
       {
+        "line": "Copyright (c) 2021 pino",
+        "packages": [
+          "pino-abstract-transport 3.0.0"
+        ]
+      },
+      {
         "line": "Copyright (c) 2022-present zh-lx",
         "packages": [
           "pinyin-pro 3.29.5"
+        ]
+      },
+      {
+        "line": "Copyright (c) 2020-present The Fastify team <https://github.com/fastify/fastify#team>",
+        "packages": [
+          "process-warning 5.1.1"
         ]
       },
       {
@@ -2630,6 +2761,12 @@
         ]
       },
       {
+        "line": "Copyright (c) 2017 Matteo Collina",
+        "packages": [
+          "sonic-boom 4.2.1"
+        ]
+      },
+      {
         "line": "Copyright (c) 2016-present Vercel, Inc.",
         "packages": [
           "styled-jsx 5.1.6"
@@ -2651,6 +2788,12 @@
         "line": "Copyright (c) 2024 Tinylibs",
         "packages": [
           "tinyexec 1.3.1"
+        ]
+      },
+      {
+        "line": "Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>",
+        "packages": [
+          "tsx 4.23.15"
         ]
       },
       {
@@ -3001,9 +3144,33 @@
         ]
       },
       {
+        "line": "Copyright (c) 2016-present Matteo Collina, David Mark Clements and the Pino contributors listed at <https://github.com/pinojs/pino#the-team> and in the README file.",
+        "packages": [
+          "pino 10.4.0"
+        ]
+      },
+      {
+        "line": "Copyright (c) 2016-2019 David Mark Clements",
+        "packages": [
+          "quick-format-unescaped 4.0.4"
+        ]
+      },
+      {
+        "line": "Copyright (c) 2021 Paolo Insogna and the real-require contributors",
+        "packages": [
+          "real-require 1.0.0"
+        ]
+      },
+      {
         "line": "Copyright (c) 2015-2018 Reselect Contributors",
         "packages": [
           "reselect 5.3.0"
+        ]
+      },
+      {
+        "line": "Copyright (c) Ruben Bridgewater",
+        "packages": [
+          "safe-stable-stringify 2.5.0"
         ]
       },
       {
@@ -3150,6 +3317,7 @@
         ]
       }
     ],
+    [],
     [
       {
         "line": "Copyright (c) 2020-present Fabio Spampinato",
@@ -3468,6 +3636,7 @@
         ]
       }
     ],
+    [],
     [
       {
         "line": "Copyright (c) 2012 Lea Verou",
