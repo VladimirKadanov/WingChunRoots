@@ -15,11 +15,14 @@ import { generateFixtures } from '../../fixtures/generate';
 import { createAccount, signIn, setTestAuthEnv, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { withClient } from '../db/admin';
-import { authUser, entitlementGrant, person, personName, reviewCase, school } from '../db/schema';
+import { authUser, entitlementGrant, lineage, person, personName, reviewCase, school, teachingRelationship } from '../db/schema';
 import { PG, pgError } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
+import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { revokeGrant } from './grants';
-import { key, member, meta, principalOf, staff } from './relationships.test-support';
+import { consentWithdraw } from './privacy';
+import { profileUpdate } from './profile';
+import { key, member, meta, newLineage, principalOf, staff } from './relationships.test-support';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
 import { confirmSchool, createSchool, mySchools, radiusQuery, schoolEditor, schoolGet, schoolsInViewport, schoolsSearch, submitSchool, updateSchool } from './schools';
 
@@ -359,6 +362,49 @@ describe('coordinates are JSON numbers (M11 review, code-5)', () => {
       createSchool(sifu.principal, { name: 'Demo Coerce Hall', placeId: sofia.id, locationPrivacy: 'exact', point: { lat: true, lng: true }, idempotencyKey: key() } as never, meta),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { point: expect.any(String) } });
     expect((await mySchools(sifu.principal)).schools).toEqual([]);
+  });
+});
+
+describe('the lineage filter follows a person who is hidden or shown again (M11 review, code-2)', () => {
+  it('hiding the middle person queues lineage.recompute; after the job the school leaves the root filter, and showing them again brings it back', async () => {
+    const root = await member('m11-stale-root');
+    const middle = await member('m11-stale-middle');
+    const instructor = await sifuWithPlan('m11-stale-instructor');
+    const lineageId = await newLineage('m11stale');
+    await getDb().update(lineage).set({ rootPersonId: root.personId }).where(eq(lineage.id, lineageId));
+    await getDb()
+      .insert(teachingRelationship)
+      .values([
+        { teacherPersonId: root.personId, studentPersonId: middle.personId, lineageId, status: 'verified', visibility: 'public', confirmedAt: new Date() },
+        { teacherPersonId: middle.personId, studentPersonId: instructor.personId, lineageId, status: 'verified', visibility: 'public', confirmedAt: new Date() },
+      ]);
+    await recomputeLineageMembership(getDb(), lineageId);
+    const sofia = await cityOf('Sofia', 'BG');
+    const listed = await listedSchool(instructor, { name: 'Demo Stale Lineage Hall', placeId: sofia.id, locationPrivacy: 'city_only' }, 'm11-stale');
+    const inFilter = async () => (await schoolsSearch(null, { lineageRootId: root.personId })).schools.some((s) => s.id === listed.id);
+    expect(await inFilter()).toBe(true);
+
+    const jobs = async () =>
+      (await getDb().execute<{ id: string; data: { lineageIds: string[] } }>(sql`
+        SELECT id::text AS id, data FROM pgboss.job WHERE name = 'lineage.recompute' AND data -> 'lineageIds' ? ${lineageId} ORDER BY created_on`)).rows;
+    const runJobs = async (rows: { id: string; data: { lineageIds: string[] } }[]) =>
+      lineageRecomputeHandler(getDb(), () => undefined, async () => undefined)(rows.map((r) => ({ id: r.id, data: r.data, retryCount: 0, retryLimit: 5 })) as never);
+
+    // The middle person withdraws the publication consent: their profile is hidden in the same transaction.
+    expect(await jobs()).toEqual([]);
+    expect(await consentWithdraw(middle.principal, { kinds: ['publication'] }, meta)).toMatchObject({ profileHidden: true });
+    const queued = await jobs();
+    expect(queued).toHaveLength(1);
+    expect(queued[0]!.data.lineageIds).toContain(lineageId);
+    await runJobs(queued);
+    expect(await inFilter()).toBe(false);
+
+    // Shown again (the profile form's "Show my profile publicly"): queued again, and back in the filter.
+    await profileUpdate(middle.principal, { names: [{ kind: 'name', value: 'Demo Stale Middle', script: 'Latn', lang: 'en', romanization: null, isPrimary: true }], showPublicly: true }, meta);
+    const again = await jobs();
+    expect(again).toHaveLength(2);
+    await runJobs(again.slice(1));
+    expect(await inFilter()).toBe(true);
   });
 });
 

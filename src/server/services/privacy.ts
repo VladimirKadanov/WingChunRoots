@@ -25,6 +25,7 @@ import { lockAccount } from './account-lock';
 import { withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { queueRecomputeForPerson } from './lineage-membership';
 import { neighbourTags, setOwnVisibility } from './profile';
 import { isReferencedRowError } from './retention';
 
@@ -302,6 +303,8 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
           .update(person)
           .set({ claimedByUserId: null, stewardship: 'unclaimed', visibility, placeId: null, trainingStartYear: null, updatedAt: new Date() })
           .where(eq(person.id, own.id));
+        // A profile that stops being public takes its edges out of v_public_edge (M11 review, code-2).
+        if (visibility !== own.visibility) await queueRecomputeForPerson(tx, own.id);
       }
       // Records the account added for other people keep no link to it.
       await tx.update(person).set({ createdByUserId: null }).where(eq(person.createdByUserId, userId));

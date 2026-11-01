@@ -22,11 +22,13 @@ import { lineage, person, personBio, personName, place, teachingRelationship } f
 import { ROMANIZATIONS } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { listedPlaces } from '../geo/places';
+import type { Transaction } from '../jobs/outbox';
 import { writePersonKeys } from '../search/store';
 import { type Country, COUNTRIES, fieldErrors, isCountryCode, type PlaceOption } from './account';
 import { currentConsents, grantConsents, withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { queueRecomputeForPerson } from './lineage-membership';
 import { cleanName, displayNameRefusal, LANG_TAG, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting, type NameWriting } from './names';
 
 export const MAX_NAMES = 10;
@@ -295,7 +297,7 @@ SELECT id::text AS id FROM (SELECT id FROM a LIMIT ${ANCESTORS_CAP + 1}) x`);
  * applyApproval), so the owner's choice survives every later approval (M09 review, code-1).
  */
 export async function setOwnVisibility(
-  tx: Executor,
+  tx: Transaction,
   p: Principal,
   own: { id: string; visibility: 'public' | 'involved_only' },
   showPublicly: boolean,
@@ -314,6 +316,8 @@ export async function setOwnVisibility(
   // DEFAULT D03: a self-stewarded record is public only while its owner keeps it so; unticking hides
   // it even when it has verified relationships (docs/plan/questions/M07.md, question 2).
   await tx.update(person).set({ visibility }).where(and(eq(person.id, own.id), eq(person.stewardship, 'self')));
+  // Every public edge of the person appears or goes: lineage_membership follows (M11 review, code-2).
+  await queueRecomputeForPerson(tx, own.id);
   return true;
 }
 
