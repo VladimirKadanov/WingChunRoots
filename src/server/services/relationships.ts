@@ -586,7 +586,7 @@ export async function requestOptions(principal: Principal | null): Promise<Reque
     .select({ id: school.id, name: school.name, city: place.name, countryCode: place.countryCode })
     .from(school)
     .innerJoin(place, eq(place.id, school.placeId))
-    .where(and(eq(school.status, 'published'), isNull(school.deletedAt)))
+    .where(and(eq(school.status, 'active'), isNull(school.deletedAt)))
     .orderBy(asc(school.name), asc(school.id))
     .limit(500);
   return { lineages, schools, earliestYear: EARLIEST_TRAINING_YEAR, maxPeriods: MAX_PERIODS };
@@ -624,7 +624,7 @@ export async function checkPeriods(db: Executor, input: z.output<typeof periods>
           await db
             .select({ id: school.id })
             .from(school)
-            .where(and(inArray(school.id, schoolIds), eq(school.status, 'published'), isNull(school.deletedAt)))
+            .where(and(inArray(school.id, schoolIds), eq(school.status, 'active'), isNull(school.deletedAt)))
         ).map((s) => s.id),
   );
   input.forEach((period, i) => {

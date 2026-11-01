@@ -90,6 +90,10 @@ export const reviewCase = pgTable(
     uniqueIndex('review_case_one_open_per_relationship_key')
       .on(t.relationshipId, t.kind)
       .where(sql`${t.relationshipId} IS NOT NULL AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
+    // M11: at most one open listing review per school (a double submit cannot open two).
+    uniqueIndex('review_case_one_open_per_school_key')
+      .on(t.schoolId, t.kind)
+      .where(sql`${t.schoolId} IS NOT NULL AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
     check('review_case_kind_check', inList(t.kind.name, REVIEW_CASE_KINDS)),
     check('review_case_status_check', inList(t.status.name, REVIEW_CASE_STATUSES)),
     check('review_case_resolution_check', sql`${t.resolution} IS NULL OR ${inList(t.resolution.name, REVIEW_RESOLUTIONS)}`),

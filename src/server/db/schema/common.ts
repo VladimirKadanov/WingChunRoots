@@ -103,7 +103,14 @@ export const EVIDENCE_NAME_MAX = 200;
 
 // --- Schools and geography (plan §6.2) ----------------------------------------------------------
 export const LOCATION_PRIVACIES = ['exact', 'city_only'] as const;
-export const SCHOOL_STATUSES = ['draft', 'published', 'hidden', 'archived'] as const;
+/**
+ * M11: a listing is a draft, waits for review (a school_listing case of the review queue), then is
+ * active. Only an active school can be public, and only while its pin is allowed (v_public_school:
+ * DEFAULT D08/D18). `hidden` and `archived` are kept from M01 for moderation and removal.
+ */
+export const SCHOOL_STATUSES = ['draft', 'pending_review', 'active', 'hidden', 'archived'] as const;
+/** M11: the forms a school teaches (the six forms of Wing Chun), stored by key, shown in English. */
+export const SCHOOL_FORMS = ['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do'] as const;
 export const SCHOOL_INSTRUCTOR_ROLES = ['head_instructor', 'instructor', 'assistant'] as const;
 
 // --- Organizations (skeleton; DEFAULT D12) ----------------------------------------------------------

@@ -12,6 +12,7 @@ import { writeAudit } from '../audit';
 import { requireUser, safeNextPath } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
+import { listedPlaces } from '../geo/places';
 import { authTwoFactor, person, personName, place } from '../db/schema';
 import { writePersonKeys } from '../search/store';
 import { grantConsents, missingRequiredConsents } from './consent';
@@ -195,12 +196,9 @@ export interface PlaceOption {
   countryCode: string;
 }
 
-/** The cities of the GeoNames excerpt (plan §6.2), for the onboarding form. */
+/** The large cities of the GeoNames extract (plan §6.2), for the onboarding form. */
 async function placeOptions(): Promise<PlaceOption[]> {
-  return getDb()
-    .select({ id: place.id, name: place.name, countryCode: place.countryCode })
-    .from(place)
-    .orderBy(asc(place.countryCode), asc(place.name));
+  return listedPlaces(getDb());
 }
 
 export interface OnboardingOptions {

@@ -35,7 +35,9 @@
     "mail:check": "tsx src/server/jobs/cli.ts mail-check",
     "search:rebuild": "tsx src/server/jobs/cli.ts search-rebuild",
     "api:openapi": "tsx src/server/rpc/openapi-cli.ts",
-    "perf:queries": "tsx scripts/perf-queries.ts"
+    "perf:queries": "tsx scripts/perf-queries.ts",
+    "geo:extract": "tsx scripts/geonames-extract.ts",
+    "geo:load": "tsx src/server/geo/cli.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

@@ -85,4 +85,8 @@ export const vPublicSchool = pgView('v_public_school', {
   instructorPersonIds: uuid('instructor_person_ids').array().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  // M11 (migration m11_schools_map): the listing's contact and forms.
+  contactEmail: text('contact_email'),
+  contactPhone: text('contact_phone'),
+  formsTaught: text('forms_taught').array().notNull(),
 }).existing();

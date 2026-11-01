@@ -21,6 +21,7 @@ import { getDb } from '../db';
 import { lineage, person, personBio, personName, place, teachingRelationship } from '../db/schema';
 import { ROMANIZATIONS } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
+import { listedPlaces } from '../geo/places';
 import { writePersonKeys } from '../search/store';
 import { type Country, COUNTRIES, fieldErrors, isCountryCode, type PlaceOption } from './account';
 import { currentConsents, grantConsents, withdrawConsents } from './consent';
@@ -209,10 +210,11 @@ async function ownProfile(db: Executor, userId: string): Promise<OwnProfile | nu
   };
 }
 
-export async function profileOptions(db: Executor = getDb()): Promise<ProfileOptions> {
+/** The form's choices; the city list holds the large cities and the person's own (`currentPlaceId`). */
+export async function profileOptions(db: Executor = getDb(), currentPlaceId: string | null = null): Promise<ProfileOptions> {
   return {
     countries: COUNTRIES,
-    places: await db.select({ id: place.id, name: place.name, countryCode: place.countryCode }).from(place).orderBy(asc(place.countryCode), asc(place.name)),
+    places: await listedPlaces(db, currentPlaceId),
     writings: NAME_WRITINGS,
     bioLanguages: BIO_LANGUAGES,
     latestStartYear: new Date().getUTCFullYear(),
@@ -225,7 +227,8 @@ export async function profileOptions(db: Executor = getDb()): Promise<ProfileOpt
 export async function profileGet(principal: Principal | null): Promise<ProfileView> {
   const p = requireUser(principal);
   const db = getDb();
-  return { profile: await ownProfile(db, p.user.id), options: await profileOptions(db) };
+  const profile = await ownProfile(db, p.user.id);
+  return { profile, options: await profileOptions(db, profile?.placeId ?? null) };
 }
 
 // --- Update --------------------------------------------------------------------------------------
