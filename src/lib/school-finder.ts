@@ -2,15 +2,21 @@
 // /schools page (its server part reads it) and the map island (it writes the view back).
 //
 //   /schools?near=Sofia&radius=50&lineage=<root id>&view=map&lat=42.7&lng=23.32&z=9
+//   /schools?clat=42.6975&clng=23.3242&radius=50&lat=42.71&lng=23.4&z=9
 //
 // - near: a city or town, looked up in the GeoNames extract (no geocoding service): the centre of
-//   the search. Without `near`, lat and lng are the centre when a radius is given.
+//   the search.
+// - clat, clng: the centre of a search around a point ("Search this area"), when there is no
+//   `near`. The search keeps its centre in keys of its own, apart from the view, so moving the map
+//   after a search never moves the search (a reload or a shared link answers the search on screen).
+//   An address from before these keys (lat and lng with a radius, and no `near`) still reads lat
+//   and lng as the centre; the island moves that centre to clat and clng when it writes the view.
 // - radius: kilometres around the centre (RADIUS_CHOICES_KM in the form; any whole number up to
 //   MAX_RADIUS_KM is read). Without a centre there is no radius: every public school.
 // - lineage: the id of the person at the root of a lineage (the explorer's ids).
 // - view: map (the default) or list.
-// - lat, lng, z: the map's view. The island writes them when the map stops moving (replaceState,
-//   at most every VIEW_WRITE_MS), so a reload or a shared link opens the same view.
+// - lat, lng, z: the map's view, and only that. The island writes them when the map stops moving
+//   (replaceState, at most every VIEW_WRITE_MS), so a reload or a shared link opens the same view.
 //
 // A value that does not parse is dropped, never an error page: the finder opens without it.
 
@@ -24,8 +30,15 @@ export const MAX_ZOOM = 17;
 
 export type FinderView = 'map' | 'list';
 
+export interface FinderPoint {
+  lat: number;
+  lng: number;
+}
+
 export interface FinderParams {
   near: string | null;
+  /** The centre of a search around a point (clat and clng, or lat and lng in an address from before); absent without one. */
+  center?: FinderPoint;
   lat: number | null;
   lng: number | null;
   z: number | null;
@@ -49,35 +62,54 @@ function inRange(value: string | undefined, min: number, max: number): number | 
   return Number.isFinite(n) && n >= min && n <= max ? n : null;
 }
 
+/** A point from two keys of the address (both must parse). */
+function pointOf(query: Query, latKey: string, lngKey: string): FinderPoint | null {
+  const lat = inRange(one(query[latKey]), -90, 90);
+  const lng = inRange(one(query[lngKey]), -180, 180);
+  return lat !== null && lng !== null ? { lat, lng } : null;
+}
+
+/** An address's query as finderParams reads it (every value of a repeated key; the first one counts). */
+function queryOf(search: URLSearchParams): Query {
+  const query: Record<string, string[]> = {};
+  for (const [key, value] of search) (query[key] ??= []).push(value);
+  return query;
+}
+
 /** The finder's state from the address; anything malformed is dropped. */
 export function finderParams(query: Query): FinderParams {
   const near = (one(query.near) ?? '').normalize('NFC').trim().slice(0, 100) || null;
-  const lat = inRange(one(query.lat), -90, 90);
-  const lng = inRange(one(query.lng), -180, 180);
-  const both = lat !== null && lng !== null;
+  const view = pointOf(query, 'lat', 'lng');
   const radiusText = one(query.radius)?.trim();
   const radius = radiusText && /^\d{1,3}$/.test(radiusText) && Number(radiusText) >= 1 && Number(radiusText) <= MAX_RADIUS_KM ? Number(radiusText) : null;
   const lineageText = one(query.lineage)?.trim();
+  // The search's own centre, else (an address from before clat and clng) lat and lng with a radius and no place.
+  const center = pointOf(query, 'clat', 'clng') ?? (near === null && radius !== null ? view : null);
   return {
     near,
-    lat: both ? lat : null,
-    lng: both ? lng : null,
-    z: both ? inRange(one(query.z), MIN_ZOOM, MAX_ZOOM) : null,
+    ...(center ? { center } : {}),
+    lat: view?.lat ?? null,
+    lng: view?.lng ?? null,
+    z: view ? inRange(one(query.z), MIN_ZOOM, MAX_ZOOM) : null,
     radius,
     lineage: lineageText && UUID.test(lineageText) ? lineageText.toLowerCase() : null,
     view: one(query.view) === 'list' ? 'list' : 'map',
   };
 }
 
-/** The search the address asks for: the centre is `near` (looked up by the page), else lat and lng with a radius. */
-export function searchCenterOf(params: FinderParams): { lat: number; lng: number } | null {
-  return params.radius !== null && params.lat !== null && params.lng !== null ? { lat: params.lat, lng: params.lng } : null;
+/** The centre of a search around a point that the address asks for (the page looks a `near` place up itself, first). */
+export function searchCenterOf(params: FinderParams): FinderPoint | null {
+  return params.center ?? null;
 }
 
 /** /schools with these keys, in a fixed order; empty values are left out (the map view is the default). */
 export function finderHref(params: Partial<FinderParams>): string {
   const search = new URLSearchParams();
   if (params.near) search.set('near', params.near);
+  if (params.center) {
+    search.set('clat', roundCoordinate(params.center.lat));
+    search.set('clng', roundCoordinate(params.center.lng));
+  }
   if (params.radius) search.set('radius', String(params.radius));
   if (params.lineage) search.set('lineage', params.lineage);
   if (params.view === 'list') search.set('view', 'list');
@@ -100,9 +132,9 @@ export function roundZoom(n: number): string {
 }
 
 /**
- * The address with the map's view written into it (the island's replaceState). Without a search
- * centre (`searching` false) a radius in the address would turn the written view into one, so it
- * is dropped: a reload shows what the page shows now.
+ * The address with the map's view written into it. Without a search centre (`searching` false) a
+ * radius in the address would turn the written view into one, so it is dropped: a reload shows
+ * what the page shows now. The island writes through viewAddress, which keeps the search.
  */
 export function withView(href: string, view: { lat: number; lng: number; zoom: number }, searching = true): string {
   const url = new URL(href, 'http://finder.invalid');
@@ -113,6 +145,34 @@ export function withView(href: string, view: { lat: number; lng: number; zoom: n
   url.searchParams.set('lng', roundCoordinate(lng));
   url.searchParams.set('z', roundZoom(view.zoom));
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * The address the island writes when the map stops moving (replaceState): the view replaced, the
+ * search kept as the address has it now (read when the write happens, never from an earlier
+ * render). A search around a point keeps its centre in clat and clng; an address from before them,
+ * with the centre in lat and lng, has it moved there first, so the view can move freely. Without
+ * a centre (a place or a point) there is no search, and a radius is dropped (withView).
+ */
+export function viewAddress(href: string, view: { lat: number; lng: number; zoom: number }): string {
+  const url = new URL(href, 'http://finder.invalid');
+  const params = finderParams(queryOf(url.searchParams));
+  if (params.center) {
+    url.searchParams.set('clat', roundCoordinate(params.center.lat));
+    url.searchParams.set('clng', roundCoordinate(params.center.lng));
+  }
+  return withView(`${url.pathname}${url.search}${url.hash}`, view, params.near !== null || params.center !== undefined);
+}
+
+/**
+ * The search an address asks for, without its view: two addresses of one search give the same key
+ * (the island tells a sheet's Back, to the same search, from a step to another search).
+ */
+export function searchKey(href: string): string {
+  const params = finderParams(queryOf(new URL(href, 'http://finder.invalid').searchParams));
+  // A radius counts only with a centre: a place, or a point.
+  const centred = params.near !== null || params.center !== undefined;
+  return finderHref({ near: params.near, center: params.center, radius: centred ? params.radius : null, lineage: params.lineage, view: params.view });
 }
 
 /** The bounds [west, south, east, north] of a circle of `radiusKm` around `center` (the map's first view of a search). */

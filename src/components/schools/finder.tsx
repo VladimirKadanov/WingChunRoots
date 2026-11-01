@@ -16,8 +16,9 @@
 //   the tab bar and the home indicator's safe area), so the pin stays visible above the sheet. The
 //   sheet covers the map rather than shrinking it (coverAbove): the map keeps its size.
 // - The address: the view (lat, lng, z) is written with replaceState when the map stops moving,
-//   at most every VIEW_WRITE_MS (src/lib/school-finder.ts). "Search this area" appears when the
-//   view has left the search, and searches around the centre of the view.
+//   at most every VIEW_WRITE_MS (src/lib/school-finder.ts), and only the view: the search stays
+//   the one on screen. "Search this area" appears when the view has left the search, and searches
+//   around the centre of the view (its centre in clat and clng, apart from the view).
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -30,7 +31,7 @@ import { buttonVariants } from '@/components/ui/button-variants';
 import type { DrawerActions } from '@/components/ui/drawer';
 import { useMediaQuery } from '@/components/ui/use-media-query';
 import { cx } from '@/lib/cx';
-import { DEFAULT_RADIUS_KM, distanceKm, finderHref, VIEW_WRITE_MS, withView } from '@/lib/school-finder';
+import { DEFAULT_RADIUS_KM, distanceKm, finderHref, searchKey, VIEW_WRITE_MS, viewAddress } from '@/lib/school-finder';
 import type { GeoPointDto, SchoolPinDto } from '@/server/dto/schools';
 import { locationText, SchoolList } from './school-list';
 
@@ -109,14 +110,6 @@ function frameHeight(frame: HTMLElement | null): number {
 
 // --- The address -------------------------------------------------------------------------------
 
-/** The address without the view keys, to tell a sheet's Back (same search) from a step to another search. */
-function searchKey(href: string): string {
-  const url = new URL(href, 'http://finder.invalid');
-  for (const key of ['lat', 'lng', 'z']) url.searchParams.delete(key);
-  url.searchParams.sort();
-  return url.search;
-}
-
 /** replaceState with the history entry's own keys (a sheet's history layer), so Next.js keeps its router state. */
 function replaceAddress(href: string) {
   const state = (window.history.state ?? {}) as Record<string, unknown>;
@@ -153,14 +146,18 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
   const pending = useRef<number | null>(null);
   /** The address as this island last left it (a write, or the page of a new search). */
   const address = useRef('');
-  const writeView = (next: MapView) => {
+  const cancelWrite = () => {
     if (pending.current !== null) window.clearTimeout(pending.current);
+    pending.current = null;
+  };
+  const writeView = (next: MapView) => {
+    cancelWrite();
     const wait = Math.max(0, VIEW_WRITE_MS - (Date.now() - lastWrite.current));
     pending.current = window.setTimeout(() => {
       pending.current = null;
       lastWrite.current = Date.now();
-      const href = withView(`${window.location.pathname}${window.location.search}`, next, search.center !== null);
-      replaceAddress(href);
+      // The search is read from the address as it is now (viewAddress), never from this render.
+      replaceAddress(viewAddress(`${window.location.pathname}${window.location.search}`, next));
       address.current = window.location.href;
     }, wait);
   };
@@ -201,7 +198,10 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
   const moved = userMoved && view !== null && (search.center === null || distanceKm(search.center, view) > radius / 3);
   const searchArea = () => {
     if (!view) return;
-    router.push(finderHref({ lat: view.lat, lng: view.lng, z: view.zoom, radius, lineage: search.lineage, view: 'map' }));
+    // A view write still waiting would land on the new search's address after the push.
+    cancelWrite();
+    const center = { lat: view.lat, lng: view.lng };
+    router.push(finderHref({ center, lat: view.lat, lng: view.lng, z: view.zoom, radius, lineage: search.lineage, view: 'map' }));
   };
 
   const empty = (
