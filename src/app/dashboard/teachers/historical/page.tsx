@@ -125,8 +125,10 @@ export default async function HistoricalTeacherPage({ searchParams }: { searchPa
 
   return (
     <Shell>
-      <section aria-labelledby="find-on-record" className="grid gap-3 rounded-sm border border-border-subtle p-4">
-        <h2 id="find-on-record" className="font-display text-xl">
+      {/* A long word ("WingChunRoots?") may break, so with text at 200 % on a phone the box keeps
+          to the screen (M10a review, screens-7; WCAG 1.4.10). */}
+      <section aria-labelledby="find-on-record" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 rounded-sm border border-border-subtle p-4">
+        <h2 id="find-on-record" className="font-display text-xl [overflow-wrap:anywhere]">
           Is the teacher already on WingChunRoots?
         </h2>
         <form method="get" action={PAGE} role="search" className="grid gap-3">
