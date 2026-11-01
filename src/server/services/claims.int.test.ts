@@ -35,6 +35,7 @@ import { openEvidence, uploadEvidence } from './evidence';
 import { instructorOverview, requestInstructorVerification } from './instructor';
 import { acceptInvitation, getInvitation, hashToken, INVITATION_DAYS, inviteTeacher, sendInvitation } from './invitations';
 import { lineageEgo, personProfile } from './lineage';
+import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { profileUpdate } from './profile';
 import { approveRelationship, getRelationship, withdrawRelationship } from './relationships';
 import { reportProfile } from './reports';
@@ -716,5 +717,42 @@ describe('arbitration', () => {
     const moderator = await staff('m10b-moderator-pending', 'moderator');
     expect(await refusal(arbitrateRelationship(moderator.principal, { relationshipId, reason: 'Fictional.', idempotencyKey: key() }, meta))).toBe('CONFLICT');
     expect((await relationship(relationshipId)).status).toBe('awaiting_claim');
+  });
+});
+
+describe('account deletion (pnpm account:delete)', () => {
+  it('deletes an account that reported a profile, and one whose profile claim was refused: the case history stays without them', async () => {
+    const target = await member('m10b-deleted-target');
+    const reporter = await member('m10b-deleted-reporter');
+    const moderator = await staff('m10b-moderator-deleted', 'moderator');
+    const { caseId: reportCase } = await reportProfile(reporter.principal, { personId: target.personId, reason: 'spam', details: 'Fictional advertising.', idempotencyKey: key() }, meta);
+    await decide(moderator, reportCase, 'reject', 'Fictional: nothing to correct.');
+    const { token } = await invite('deleted-claimant');
+    const invitee = await newcomer('deleted-claimant');
+    const archivist = await staff('m10b-archivist-deleted', 'archivist');
+    const { caseId: claimCase } = await acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta);
+    await decide(archivist, claimCase, 'reject', 'Fictional: the details do not match the record.');
+
+    for (const [m, caseId] of [
+      [reporter, reportCase],
+      [invitee, claimCase],
+    ] as const) {
+      expect((await caseEvents(caseId)).map((e) => e.actor)).toContain(m.account.id);
+      const { request } = await requestAccountDeletion(m.principal, { confirm: true }, meta);
+      await carryOutDeletionFromCommandLine(request.id);
+      expect(await getDb().select({ id: authUser.id }).from(authUser).where(eq(authUser.id, m.account.id))).toEqual([]);
+      // The case and its whole history stay (append-only); none of it refers to the account any more.
+      const history = await caseEvents(caseId);
+      expect(history.map((e) => [e.action, e.actor === null])).toEqual([
+        ['open', true],
+        ['assign', false],
+        ['reject', false],
+      ]);
+      const [c] = await getDb().select({ status: reviewCase.status, openedBy: reviewCase.openedByUserId }).from(reviewCase).where(eq(reviewCase.id, caseId));
+      expect(c).toEqual({ status: 'resolved', openedBy: null });
+    }
+    // A deleted account's report keeps no reporter (content_report, ON DELETE SET NULL).
+    const [report] = await getDb().select({ reporter: contentReport.reporterUserId, status: contentReport.status }).from(contentReport).where(eq(contentReport.reviewCaseId, reportCase));
+    expect(report).toEqual({ reporter: null, status: 'dismissed' });
   });
 });

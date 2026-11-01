@@ -200,7 +200,10 @@ export const reviewEvent = pgTable(
     action: text('action', { enum: REVIEW_EVENT_ACTIONS }).notNull(),
     fromStatus: text('from_status', { enum: REVIEW_CASE_STATUSES }),
     toStatus: text('to_status', { enum: REVIEW_CASE_STATUSES }).notNull(),
-    actorUserId: uuid('actor_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
+    // M10b review, code-3: SET NULL, as a report's reporter (ADR 0004: a reference that can stay
+    // without its author), so a case's history never stops the deletion of an account that acted on
+    // it (a report, a claim, an instructor request). Only the referential action writes the row.
+    actorUserId: uuid('actor_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     actorRole: text('actor_role'),
     idempotencyKey: text('idempotency_key'),
     ...timestamps(),

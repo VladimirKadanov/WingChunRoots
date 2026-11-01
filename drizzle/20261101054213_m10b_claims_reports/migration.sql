@@ -1,7 +1,8 @@
 -- Generated migration (M10b: invitations, profile claims, instructor verification, profile reports
 -- and arbitration), with the custom part at the end:
 -- - review_event: the append-only history of a review case, with the idempotency key of the change
---   (plan §5.6); app_rw may only SELECT and INSERT it, as relationship_event.
+--   (plan §5.6); app_rw may only SELECT and INSERT it, as relationship_event. Its actor is SET NULL
+--   when the account is deleted (as content_report's reporter): the history never stops an erasure.
 -- - invitation.accepted_by_user_id and invitation.idempotency_key (single use, one invitation per
 --   key); review_case: at most one open instructor verification per person.
 -- - content_report: the reasons of "Report profile" (copyright, spam, inappropriate, misleading; the
@@ -39,7 +40,7 @@ CREATE UNIQUE INDEX "review_event_idempotency_key" ON "review_event" ("actor_use
 CREATE INDEX "invitation_accepted_by_user_id_idx" ON "invitation" ("accepted_by_user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invitation_idempotency_key" ON "invitation" ("invited_by_user_id","idempotency_key") WHERE "idempotency_key" IS NOT NULL;--> statement-breakpoint
 ALTER TABLE "review_event" ADD CONSTRAINT "review_event_review_case_id_review_case_id_fkey" FOREIGN KEY ("review_case_id") REFERENCES "review_case"("id") ON DELETE RESTRICT;--> statement-breakpoint
-ALTER TABLE "review_event" ADD CONSTRAINT "review_event_actor_user_id_auth_user_id_fkey" FOREIGN KEY ("actor_user_id") REFERENCES "auth_user"("id") ON DELETE RESTRICT;--> statement-breakpoint
+ALTER TABLE "review_event" ADD CONSTRAINT "review_event_actor_user_id_auth_user_id_fkey" FOREIGN KEY ("actor_user_id") REFERENCES "auth_user"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_accepted_by_user_id_auth_user_id_fkey" FOREIGN KEY ("accepted_by_user_id") REFERENCES "auth_user"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "content_report" ADD CONSTRAINT "content_report_details_length" CHECK ("details" IS NULL OR char_length("details") BETWEEN 1 AND 1000);--> statement-breakpoint
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_idempotency_key_format" CHECK ("idempotency_key" IS NULL OR "idempotency_key" ~ '^[A-Za-z0-9_-]{8,64}$');--> statement-breakpoint

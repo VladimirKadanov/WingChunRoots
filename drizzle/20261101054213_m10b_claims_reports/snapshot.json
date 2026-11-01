@@ -7568,7 +7568,7 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "RESTRICT",
+      "onDelete": "SET NULL",
       "name": "review_event_actor_user_id_auth_user_id_fkey",
       "entityType": "fks",
       "schema": "public",
