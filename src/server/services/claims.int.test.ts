@@ -21,22 +21,24 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
-import { auditLog, contentReport, invitation, notification, person, personClaim, relationshipEvent, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
+import { auditLog, authUser, consentRecord, contentReport, invitation, notification, person, personClaim, relationshipEvent, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { filesystemStore } from '../storage/fs';
+import { landingPath } from './account';
 import { arbitrateRelationship } from './arbitration';
 import { getPartyCase, myCases, replyToCase } from './cases';
+import { grantConsents, recordConsents, REQUIRED_SIGN_UP_CONSENTS } from './consent';
 import { pgErrorOf } from './errors';
 import { openEvidence, uploadEvidence } from './evidence';
 import { instructorOverview, requestInstructorVerification } from './instructor';
 import { acceptInvitation, getInvitation, hashToken, INVITATION_DAYS, inviteTeacher, sendInvitation } from './invitations';
-import { approveRelationship, getRelationship } from './relationships';
+import { approveRelationship, getRelationship, withdrawRelationship } from './relationships';
 import { reportProfile } from './reports';
-import { assignReviewCase, decideReviewCase } from './review';
+import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
 import { searchQuery } from './search';
-import { key, type Member, member, meta, newLineage, ongoingFrom, staff } from './relationships.test-support';
+import { key, type Member, member, meta, newLineage, ongoingFrom, principalOf, staff } from './relationships.test-support';
 
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
@@ -164,8 +166,9 @@ async function invite(label: string, opts: { evidence?: boolean } = {}) {
  */
 async function newcomer(label: string) {
   const m = await member(`m10b-newcomer-${label}`, { sifu: true });
-  // No profile of its own: the account is a fresh sign-up.
+  // No profile of its own: the account is a fresh sign-up, with the confirmations sign-up records.
   await getDb().delete(person).where(eq(person.id, m.personId));
+  await getDb().transaction((tx) => grantConsents(tx, m.account.id, 'user', REQUIRED_SIGN_UP_CONSENTS, meta));
   return m;
 }
 
@@ -251,6 +254,36 @@ describe('the invitation token', () => {
     expect((await getInvitation(someone.principal, { token })).viewer.refusal).toMatch(/already has its own profile/);
     expect(await refusal(acceptInvitation(someone.principal, { token, idempotencyKey: key() }, meta))).toBe('CONFLICT');
   });
+
+  it('skips onboarding for the invitee, never the confirmation of the current documents', async () => {
+    const { token, student, relationshipId } = await invite('documents');
+    const invitee = await newcomer('documents');
+    const here = `/invite/${token}`;
+    expect(await landingPath(invitee.principal, here)).toBe(here);
+    // The terms get a new version after the account signed up: it confirms them before it claims.
+    await getDb()
+      .update(consentRecord)
+      .set({ documentVersion: '2000-01-01-demo-old' })
+      .where(and(eq(consentRecord.userId, invitee.account.id), eq(consentRecord.kind, 'terms')));
+    expect(await landingPath(invitee.principal, here)).toBe(`/onboarding?next=${encodeURIComponent(here)}`);
+    const asked = await getInvitation(invitee.principal, { token });
+    expect(asked.viewer).toMatchObject({ confirmDocuments: true, refusal: expect.stringMatching(/confirm the current version/) });
+    expect(await refusal(acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta))).toBe('CONFLICT');
+    await recordConsents(invitee.principal, { kinds: ['terms'] }, meta);
+    expect(await landingPath(invitee.principal, here)).toBe(here);
+    expect((await getInvitation(invitee.principal, { token })).viewer).toMatchObject({ confirmDocuments: false, refusal: null });
+    const { caseId } = await acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta);
+    // While the claim waits: no onboarding (the profile comes with the claim), and the link says so.
+    expect(await landingPath(invitee.principal, undefined)).toBe('/dashboard');
+    expect((await getInvitation(invitee.principal, { token })).viewer.claimStatus).toBe('pending');
+    // The student withdraws the request: the claim closes, and its history keeps where it was.
+    await withdrawRelationship(student.principal, { relationshipId, idempotencyKey: key() }, meta);
+    expect((await getInvitation(invitee.principal, { token })).viewer.claimStatus).toBe('withdrawn');
+    expect((await caseEvents(caseId)).map((e) => [e.action, e.from, e.to])).toEqual([
+      ['open', null, 'open'],
+      ['withdraw', 'open', 'dismissed'],
+    ]);
+  });
 });
 
 describe('the profile claim', () => {
@@ -298,6 +331,7 @@ describe('the profile claim', () => {
     expect((await relationship(relationshipId)).status).toBe('awaiting_claim');
 
     await decide(archivist, caseId, 'verify');
+    expect((await getInvitation(invitee.principal, { token })).viewer.claimStatus).toBe('approved');
     const rel = await relationship(relationshipId);
     expect(rel.status).toBe('pending_teacher');
     expect(rel.visibility).toBe('involved_only');
@@ -368,6 +402,8 @@ describe('the profile claim', () => {
     expect(await refusal(openEvidence(invitee.principal, file!.id, meta, store))).toBe('NOT_FOUND');
     const [pc] = await getDb().select().from(personClaim).where(eq(personClaim.reviewCaseId, caseId));
     expect(pc!.status).toBe('rejected');
+    // The link the invitee opens again says the claim was refused, not that the profile is theirs.
+    expect((await getInvitation(invitee.principal, { token })).viewer).toMatchObject({ caseId, claimStatus: 'rejected' });
     // No relationship transition: only the student's request.
     expect((await events(relationshipId)).map((e) => e.to)).toEqual(['awaiting_claim']);
     const view = await getPartyCase(invitee.principal, { id: caseId });
@@ -527,6 +563,23 @@ describe('arbitration', () => {
     expect((await openEvidence(moderator.principal, file.id, meta, store)).id).toBe(file.id);
     const [afterReply] = await getDb().select({ status: reviewCase.status }).from(reviewCase).where(eq(reviewCase.id, caseId));
     expect(afterReply!.status).toBe('in_review');
+    // The reviewer's card says whose reply it is; only its deciders take a dispute, whose reviewer
+    // opens both sides' files.
+    const card = await getReviewCase(moderator.principal, { id: caseId });
+    expect(card.notes.find((n) => n.body.startsWith('Fictional: my training card'))).toMatchObject({ author: 'claimant', authorSide: 'student' });
+    expect((await getReviewCase(archivist.principal, { id: caseId })).can.assignSelf).toBe(false);
+    expect(await refusal(assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
+    const admin = await staff('m10b-admin-arbitration', 'admin');
+    expect(await refusal(assignReviewCase(admin.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta))).toBe('BAD_REQUEST');
+    expect((await getReviewCase(admin.principal, { id: caseId })).reviewers.map((r) => r.id)).not.toContain(archivist.account.id);
+    // A member of staff who is a party (the teacher, made an administrator for this check) reads the
+    // card as the parties do: never the other side's reply or file.
+    await getDb().update(authUser).set({ role: 'admin', twoFactorEnabled: true }).where(eq(authUser.id, teacher.account.id));
+    const asParty = await getReviewCase(principalOf(teacher.account, 'admin'), { id: caseId });
+    expect(asParty.notes.map((n) => n.body)).toEqual([reason]);
+    expect(asParty.files).toEqual([]);
+    expect(asParty.can).toMatchObject({ assignSelf: false, verify: false, reject: false, note: false });
+    await getDb().update(authUser).set({ role: 'user', twoFactorEnabled: false }).where(eq(authUser.id, teacher.account.id));
 
     // The moderator revokes the link, with a reason both read: out of the public lineage.
     const decision = 'Fictional: the training years could not be confirmed.';

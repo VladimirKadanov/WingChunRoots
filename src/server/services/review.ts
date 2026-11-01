@@ -55,7 +55,7 @@ import type { Principal, StaffRole } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
 import { authUser, contentReport, evidenceLink, invitation, lineage, notification, person, personBio, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
-import { OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES, STAFF_ROLES } from '../db/schema/common';
+import { OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { enqueue, queueEmail, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
@@ -68,7 +68,7 @@ import { pgErrorOf, ServiceError } from './errors';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import { decideKind } from './review-kinds';
-import { caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
+import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import {
   accountOf,
   closesCycle,
@@ -327,6 +327,8 @@ export interface ReviewNoteView {
   /** Who wrote it: the claimant, this reviewer, or another reviewer (by role). */
   author: 'claimant' | 'you' | 'reviewer';
   authorRole: string | null;
+  /** In a dispute, which side of the link a party's note is from (both people are parties there). */
+  authorSide: 'teacher' | 'student' | null;
 }
 
 export interface ReviewCaseView {
@@ -449,6 +451,8 @@ function abilities(p: Principal, c: CaseRow, relStatus: string | null, own: bool
   const needed = DECIDABLE_IN[kind];
   const decidable = known && (needed === undefined || relStatus === needed);
   const may = !own && open;
+  // A dispute or a report is taken only by its deciders (review-core.ts ASSIGNED_TO_DECIDERS).
+  const takes = hasStaff2FA(p, assignableRoles(kind));
   const decideNote = own
     ? 'This case is about you: another reviewer decides it.'
     : !open
@@ -462,7 +466,7 @@ function abilities(p: Principal, c: CaseRow, relStatus: string | null, own: bool
             : null;
   return {
     can: {
-      assignSelf: may && !mine && known,
+      assignSelf: may && !mine && known && takes,
       unassign: may && c.assignedToUserId !== null && (mine || admin),
       assignOthers: may && admin && known,
       verify: may && decidable && decider && (mine || admin),
@@ -487,7 +491,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   const relationship = c.relationshipId ? await viewOf(db, c.relationshipId, { ...viewer, reviewer: true }).catch(() => null) : null;
   const parties = await partiesOf(db, c);
   const own = parties.has(p.user.id);
-  const files = (await filesOfCases(db, [c.id])).get(c.id) ?? [];
+  // A party to a dispute never sees the other side's files, an administrator included (DEFAULT D19).
+  const files = ((await filesOfCases(db, [c.id])).get(c.id) ?? []).filter((f) => !own || c.kind !== 'relationship_dispute' || f.uploadedByUserId === p.user.id);
   // The download's own rule (evidence.ts accessOfFiles): a link and a name only for a file this
   // viewer may open.
   const opens = await openableFiles(db, p, files.map((f) => f.id));
@@ -498,7 +503,12 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     .from(reviewNote)
     .leftJoin(authUser, eq(authUser.id, reviewNote.authorUserId))
     .where(own ? and(eq(reviewNote.reviewCaseId, c.id), eq(reviewNote.isInternal, false)) : eq(reviewNote.reviewCaseId, c.id))
-    .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id));
+    .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id))
+    // ...and in a dispute, like cases.get, the reviewers' notes and their own, never the other
+    // side's reply (DEFAULT D19; a historical claim's teacher reads the claimant's note, M10a).
+    .then((rows) =>
+      own && c.kind === 'relationship_dispute' ? rows.filter((n) => n.author === p.user.id || (n.author !== null && !parties.has(n.author))) : rows,
+    );
   const [assignee] = c.assignedToUserId ? await db.select({ role: authUser.role }).from(authUser).where(eq(authUser.id, c.assignedToUserId)) : [];
   const teacherRecord = relationship
     ? await db
@@ -507,6 +517,15 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
         .where(eq(person.id, relationship.teacher.id))
         .then(([t]) => (t ? { slug: t.slug, kind: t.kind, lifeStatus: t.lifeStatus, stewardship: t.stewardship, visibility: t.visibility, createdWithClaim: t.createdBy !== null && t.createdBy === c.openedByUserId } : null))
     : null;
+  // The two sides of a dispute, so the reviewer reads whose reply each note is.
+  const sides = new Map<string, 'teacher' | 'student'>();
+  if (c.kind === 'relationship_dispute' && relationship) {
+    const rows = await db
+      .select({ id: person.id, userId: person.claimedByUserId })
+      .from(person)
+      .where(inArray(person.id, [relationship.teacher.id, relationship.student.id]));
+    for (const row of rows) if (row.userId) sides.set(row.userId, row.id === relationship.teacher.id ? 'teacher' : 'student');
+  }
   const { can, decideNote } = abilities(p, c, relationship?.status ?? null, own);
   const subject = await subjectOf(db, c);
   const reviewers = can.assignOthers
@@ -514,7 +533,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
         await db
           .select({ id: authUser.id, name: authUser.name, role: authUser.role })
           .from(authUser)
-          .where(and(inArray(authUser.role, [...STAFF_ROLES]), eq(authUser.banned, false)))
+          .where(and(inArray(authUser.role, [...assignableRoles(c.kind)]), eq(authUser.banned, false)))
           .orderBy(asc(authUser.name), asc(authUser.id))
           .limit(200)
       )
@@ -543,6 +562,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       createdAt: n.createdAt.toISOString(),
       author: n.author === p.user.id ? 'you' : n.author !== null && parties.has(n.author) ? 'claimant' : 'reviewer',
       authorRole: own || (n.author !== null && parties.has(n.author)) ? null : (n.role ?? null),
+      authorSide: n.author !== null && n.author !== p.user.id && parties.has(n.author) ? (sides.get(n.author) ?? null) : null,
     })),
     subject,
     decisions: DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
@@ -675,12 +695,15 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
       if (input.assigneeId === null) {
         if (c.assignedToUserId === null) return false;
         if (c.assignedToUserId !== p.user.id && !admin) throw new ServiceError('FORBIDDEN', 'Only the reviewer it is assigned to, or an administrator, can unassign this case.');
-      } else if (input.assigneeId !== p.user.id) {
+      } else if (input.assigneeId === p.user.id) {
+        // A dispute or a report: only its deciders take it (review-core.ts ASSIGNED_TO_DECIDERS).
+        if (!hasStaff2FA(p, assignableRoles(c.kind))) throw new ServiceError('FORBIDDEN', 'Only the reviewers who decide cases of this kind can take this case.');
+      } else {
         if (!admin) throw new ServiceError('FORBIDDEN', 'Only an administrator can give a case to another reviewer.');
         const [other] = await tx
           .select({ id: authUser.id })
           .from(authUser)
-          .where(and(eq(authUser.id, input.assigneeId), inArray(authUser.role, [...STAFF_ROLES]), eq(authUser.banned, false)));
+          .where(and(eq(authUser.id, input.assigneeId), inArray(authUser.role, [...assignableRoles(c.kind)]), eq(authUser.banned, false)));
         if (!other) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { assigneeId: 'Choose a reviewer from the list.' });
         // Nor is a case given to one of its parties (M10a review, security-2).
         if ((await partiesOf(tx, c)).has(input.assigneeId)) {

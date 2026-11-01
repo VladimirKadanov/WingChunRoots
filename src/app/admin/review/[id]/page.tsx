@@ -133,7 +133,11 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
   const done = decided ? view.decisions[decided].done : typeof query.done === 'string' ? DONE[query.done] : undefined;
   // In a dispute both people are parties; elsewhere the one who opened the case is the claimant.
-  const party = view.kind === 'relationship_dispute' ? { author: 'A party', shown: 'shown to both people' } : { author: 'The claimant', shown: 'shown to the claimant' };
+  // A reviewer's note in a dispute reaches both people; a party's reply only the reviewers (DEFAULT D19).
+  const party =
+    view.kind === 'relationship_dispute'
+      ? { author: 'A party', shown: 'shown to both people', reply: 'not shown to the other person' }
+      : { author: 'The claimant', shown: 'shown to the claimant', reply: 'shown to the claimant' };
   // New for every change (actions.ts doneAt): a new note mounts, so it takes the focus again.
   const doneKey = `${String(query.done)}-${String(query.n)}`;
   const rel = view.relationship;
@@ -280,8 +284,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
               {view.notes.map((note) => (
                 <li key={note.id} data-testid="case-note" data-internal={note.internal ? 'yes' : 'no'} className="grid gap-1 rounded-sm bg-surface-2 px-4 py-3">
                   <span className="text-sm text-fg-muted">
-                    {note.author === 'claimant' ? party.author : note.author === 'you' ? 'You' : `A reviewer${note.authorRole ? ` (${note.authorRole})` : ''}`} ·{' '}
-                    {note.internal ? 'internal, reviewers only' : party.shown} · {formatDay(note.createdAt)}
+                    {note.author === 'claimant'
+                      ? note.authorSide
+                        ? `The ${note.authorSide}`
+                        : party.author
+                      : note.author === 'you'
+                        ? 'You'
+                        : `A reviewer${note.authorRole ? ` (${note.authorRole})` : ''}`}{' '}
+                    · {note.internal ? 'internal, reviewers only' : note.author === 'claimant' ? party.reply : party.shown} · {formatDay(note.createdAt)}
                   </span>
                   <span className="text-ui whitespace-pre-line">{note.body}</span>
                 </li>

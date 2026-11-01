@@ -62,6 +62,14 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
+/** What the account that accepted the invitation reads, by where the reviewers are with its claim. */
+const CLAIM_STATUS_TEXT = {
+  pending: 'You claimed this profile. A reviewer is checking your claim.',
+  approved: 'Your claim was approved: this is now your profile.',
+  rejected: 'The reviewers refused your claim. Their reason is on your claim.',
+  withdrawn: 'Your claim was closed: the student withdrew the request.',
+} as const;
+
 function Note({ testId, children }: { testId: string; children: ReactNode }) {
   return (
     <p data-testid={testId} className="mt-6 max-w-[60ch] rounded-sm bg-surface-2 px-4 py-4 text-ui">
@@ -134,13 +142,14 @@ export default async function InvitationPage({ params, searchParams }: { params:
 
       <div className="mt-8 grid gap-4">
         {view.state === 'yours' ? (
-          <Note testId="invitation-yours">
-            You claimed this profile. {view.viewer.caseId ? (
+          <p data-testid="invitation-yours" data-claim-status={view.viewer.claimStatus ?? 'unknown'} className="mt-6 max-w-[60ch] rounded-sm bg-surface-2 px-4 py-4 text-ui">
+            {CLAIM_STATUS_TEXT[view.viewer.claimStatus ?? 'pending']}{' '}
+            {view.viewer.caseId ? (
               <Link href={`/dashboard/cases/${view.viewer.caseId}`} className="link">
                 See your claim
               </Link>
             ) : null}
-          </Note>
+          </p>
         ) : !view.viewer.signedIn ? (
           <div className="grid gap-3" data-testid="invitation-sign-in">
             <p className="max-w-[60ch] text-ui">To claim the profile, sign in. If you have no account yet, create one, confirm your e-mail address, then open this link again.</p>
@@ -154,7 +163,17 @@ export default async function InvitationPage({ params, searchParams }: { params:
             </p>
           </div>
         ) : view.viewer.refusal ? (
-          <Note testId="invitation-refusal">{view.viewer.refusal}</Note>
+          <Note testId="invitation-refusal">
+            {view.viewer.refusal}
+            {view.viewer.confirmDocuments ? (
+              <>
+                {' '}
+                <Link href={`/onboarding?next=${encodeURIComponent(here)}`} className="link">
+                  Confirm the documents
+                </Link>
+              </>
+            ) : null}
+          </Note>
         ) : (
           <AcceptForm token={token} idempotencyKey={randomUUID()} initial={initial} />
         )}

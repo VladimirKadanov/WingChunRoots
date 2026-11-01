@@ -15,7 +15,7 @@ import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import type { Principal, StaffRole } from '../auth/principal';
 import { uuidv7 } from '../db/ids';
 import { authUser, notification, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
-import { OPEN_REVIEW_CASE_STATUSES, type REVIEW_EVENT_ACTIONS } from '../db/schema/common';
+import { OPEN_REVIEW_CASE_STATUSES, type REVIEW_EVENT_ACTIONS, STAFF_ROLES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
 import type { ReviewCaseKind, ReviewCaseStatus } from '../templates/review';
@@ -31,7 +31,8 @@ export const isOpenCase = (status: string) => (OPEN_REVIEW_CASE_STATUSES as read
  * Who decides a case of each kind (plan §6.7): an archivist or an administrator verifies claims and
  * instructors; a moderator or an administrator sets arbitration and decides disputes and reports
  * (DEFAULT D19; reports: a default with no D number, docs/evidence-and-review.md). Any reviewer may
- * take a case, ask its parties for more information when it is theirs, and keep internal notes.
+ * take a claim or an instructor's case and ask its parties for more information when it is theirs
+ * (a dispute or a report: only its deciders, ASSIGNED_TO_DECIDERS), and keep internal notes.
  */
 export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request'>, readonly StaffRole[]>> = {
   historical_claim: ['archivist', 'admin'],
@@ -41,6 +42,19 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
   profile_report: ['moderator', 'admin'],
   school_listing: ['archivist', 'admin'],
 };
+
+/**
+ * The kinds only their deciders take (review.assign): a dispute or a report is all decision, and
+ * the reviewer of a dispute opens both sides' files (evidence.ts accessOfFiles), so a reviewer who
+ * cannot decide it never holds it. The other kinds: any reviewer, who may ask for information.
+ */
+export const ASSIGNED_TO_DECIDERS: ReadonlySet<ReviewCaseKind> = new Set(['relationship_dispute', 'profile_report']);
+
+/** The roles a case of `kind` may be assigned to. */
+export function assignableRoles(kind: ReviewCaseKind): readonly StaffRole[] {
+  if (kind === 'deletion_request') return ['admin'];
+  return ASSIGNED_TO_DECIDERS.has(kind) ? DECIDERS[kind] : STAFF_ROLES;
+}
 
 export interface CaseRow {
   id: string;

@@ -1443,19 +1443,27 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
       await tx.update(teachingRelationship).set({ status: 'withdrawn', updatedAt: now }).where(eq(teachingRelationship.id, row.id));
       // M10a: an open historical claim closes with it. M10b: so does an invited teacher's open
       // profile claim (its claimant is told), and an invitation not used yet stops working.
+      // The cases are read (and locked, after the relationship) before the update, so the history
+      // keeps the status each one was closed from.
       const closed =
         row.status === 'under_review' || row.status === 'awaiting_claim'
           ? await tx
-              .update(reviewCase)
-              .set({ status: 'dismissed', resolutionReason: 'Withdrawn by the claimant.', resolvedAt: now, updatedAt: now })
+              .select({ id: reviewCase.id, kind: reviewCase.kind, status: reviewCase.status, assignedTo: reviewCase.assignedToUserId, openedBy: reviewCase.openedByUserId })
+              .from(reviewCase)
               .where(and(eq(reviewCase.relationshipId, row.id), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])))
-              .returning({ id: reviewCase.id, kind: reviewCase.kind, status: reviewCase.status, assignedTo: reviewCase.assignedToUserId, openedBy: reviewCase.openedByUserId })
+              .for('update')
           : [];
+      if (closed.length > 0) {
+        await tx
+          .update(reviewCase)
+          .set({ status: 'dismissed', resolutionReason: 'Withdrawn by the claimant.', resolvedAt: now, updatedAt: now })
+          .where(inArray(reviewCase.id, closed.map((c) => c.id)));
+      }
       for (const c of closed) {
         if (c.assignedTo) await tx.insert(notification).values({ userId: c.assignedTo, template: 'review.updated', payload: { caseId: c.id, change: 'withdrawn' } });
         if (c.kind === 'person_claim') {
           await tx.update(personClaim).set({ status: 'withdrawn', decidedAt: now, updatedAt: now }).where(and(eq(personClaim.reviewCaseId, c.id), eq(personClaim.status, 'pending')));
-          await tx.insert(reviewEvent).values({ reviewCaseId: c.id, action: 'withdraw', toStatus: 'dismissed', actorUserId: p.user.id, actorRole: p.user.role });
+          await tx.insert(reviewEvent).values({ reviewCaseId: c.id, action: 'withdraw', fromStatus: c.status, toStatus: 'dismissed', actorUserId: p.user.id, actorRole: p.user.role });
           if (c.openedBy) await tx.insert(notification).values({ userId: c.openedBy, template: 'claim.decided', payload: { caseId: c.id, decision: 'closed' } });
         }
       }

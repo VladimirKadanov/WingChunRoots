@@ -43,6 +43,7 @@ import type { Executor } from '../entitlements/access';
 import { queueEmail, type Transaction } from '../jobs/outbox';
 import { writePersonKeys } from '../search/store';
 import type { NameData } from '../templates/email/types';
+import { missingRequiredConsents } from './consent';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 import { linkFilesToRelationship } from './evidence';
@@ -452,8 +453,11 @@ export interface InvitationView {
     signedIn: boolean;
     /** Why this account cannot accept it, when it cannot. */
     refusal: string | null;
-    /** The claim this account sent with it. */
+    /** The refusal is the current documents, which /onboarding asks this account to confirm. */
+    confirmDocuments: boolean;
+    /** The claim this account sent with it, and where the reviewers are with it (state yours). */
     caseId: string | null;
+    claimStatus: 'pending' | 'approved' | 'rejected' | 'withdrawn' | null;
   };
 }
 
@@ -485,6 +489,8 @@ async function invitationByToken(db: Executor, token: string, lock = false): Pro
   return row ?? null;
 }
 
+const CONFIRM_DOCUMENTS = 'Before you claim this profile, confirm the current version of the terms of use and the declarations.';
+
 /** Why `p` may not accept the invitation now, or null. */
 async function refusalFor(db: Executor, p: Principal, inv: InvitationRow, studentPersonId: string): Promise<string | null> {
   const [student] = await db.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, studentPersonId));
@@ -493,6 +499,9 @@ async function refusalFor(db: Executor, p: Principal, inv: InvitationRow, studen
   if (own) return 'Your account already has its own profile, so it cannot claim another one. Ask the student to send their request to your profile instead.';
   const [waiting] = await db.select({ id: personClaim.id }).from(personClaim).where(and(eq(personClaim.userId, p.user.id), eq(personClaim.status, 'pending')));
   if (waiting) return 'You already have a profile claim waiting for the reviewers.';
+  // The confirmations every account gives at sign-up, for the current documents: a claim skips
+  // onboarding, never them (landingPath, /onboarding).
+  if ((await missingRequiredConsents(db, p.user.id)).length > 0) return CONFIRM_DOCUMENTS;
   return null;
 }
 
@@ -521,12 +530,14 @@ export async function getInvitation(principal: Principal | null, raw: z.input<ty
   const [claim] =
     state === 'yours' && viewerId
       ? await db
-          .select({ id: reviewCase.id })
+          .select({ id: reviewCase.id, status: personClaim.status })
           .from(reviewCase)
+          .leftJoin(personClaim, eq(personClaim.reviewCaseId, reviewCase.id))
           .where(and(eq(reviewCase.personId, inv.personId), eq(reviewCase.kind, 'person_claim'), eq(reviewCase.openedByUserId, viewerId)))
           .orderBy(desc(reviewCase.createdAt))
           .limit(1)
       : [];
+  const refusal = principal && state === 'pending' && rel ? await refusalFor(db, principal, inv, rel.studentPersonId) : null;
   return {
     state,
     expiresAt: state === 'pending' ? inv.expiresAt.toISOString() : null,
@@ -536,8 +547,10 @@ export async function getInvitation(principal: Principal | null, raw: z.input<ty
     unclaimedRecord: state === 'pending',
     viewer: {
       signedIn: principal !== null,
-      refusal: principal && state === 'pending' && rel ? await refusalFor(db, principal, inv, rel.studentPersonId) : null,
+      refusal,
+      confirmDocuments: refusal === CONFIRM_DOCUMENTS,
       caseId: claim?.id ?? null,
+      claimStatus: claim?.status ?? null,
     },
   };
 }
