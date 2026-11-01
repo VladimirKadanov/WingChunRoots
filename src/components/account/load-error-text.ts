@@ -54,4 +54,17 @@ export const LOAD_ERRORS = {
     message: "We couldn't load your student requests. Nothing was changed.",
     back: { href: '/dashboard', label: 'Back to the dashboard' },
   },
+  // M10a: historical teachers and the review queue.
+  historicalTeacher: {
+    eyebrow: 'Your teachers',
+    title: 'Name a historical teacher',
+    message: "We couldn't load the claim form. Nothing was sent.",
+    back: { href: '/dashboard/teachers', label: 'Back to your teachers' },
+  },
+  review: {
+    eyebrow: 'Administration',
+    title: 'Review queue',
+    message: "We couldn't load the review queue. Nothing was changed.",
+    back: { href: '/admin', label: 'Back to administration' },
+  },
 } as const;

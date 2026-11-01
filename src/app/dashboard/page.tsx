@@ -253,9 +253,9 @@ function StaffWork({ staff }: { staff: NonNullable<DashboardOverview['staff']> }
         </div>
       ) : open === null ? (
         <div data-testid="staff-work" className="grid justify-items-start gap-3">
-          <p className="max-w-[56ch] text-ui text-fg-muted">The review and moderation tools arrive in later milestones of the pilot.</p>
-          <Link href="/admin" className={buttonVariants({ variant: 'secondary' })}>
-            Administration
+          <p className="max-w-[56ch] text-ui text-fg-muted">Historical teacher claims wait in the review queue. Moderation tools arrive in a later milestone of the pilot.</p>
+          <Link href="/admin/review" className={buttonVariants({ variant: 'secondary' })}>
+            Review queue
             <ArrowRightIcon />
           </Link>
         </div>
