@@ -38,6 +38,7 @@ import { lineageEgo, personProfile } from './lineage';
 import { profileUpdate } from './profile';
 import { approveRelationship, getRelationship, withdrawRelationship } from './relationships';
 import { reportProfile } from './reports';
+import { purgeExpiredEmailAddresses } from './retention';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
 import { searchQuery } from './search';
 import { key, type Member, member, meta, newLineage, ongoingFrom, principalOf, staff } from './relationships.test-support';
@@ -229,6 +230,23 @@ describe('the invitation token', () => {
     expect((await getInvitation(null, { token: fresh })).state).toBe('pending');
     const rows = await getDb().select({ status: invitation.status }).from(invitation).where(eq(invitation.relationshipId, relationshipId)).orderBy(asc(invitation.createdAt));
     expect(rows.map((r) => r.status)).toEqual(['revoked', 'pending']);
+  });
+
+  it('keeps the address in the invitation e-mail no longer than the invitation’s own (retention.purge)', async () => {
+    const { relationshipId, email } = await invite('retention');
+    const [row] = await getDb().select({ id: invitation.id }).from(invitation).where(eq(invitation.relationshipId, relationshipId));
+    const delivery = async () =>
+      (await getDb().execute<{ to: string | null }>(sql`SELECT to_email AS to FROM email_delivery WHERE idempotency_key = ${`invitation:${row!.id}`}`)).rows;
+    expect(await delivery()).toEqual([{ to: email }]);
+    // The link was ignored and expired 31 days ago: both copies of the address go.
+    await getDb()
+      .update(invitation)
+      .set({ expiresAt: new Date(Date.now() - 31 * 86_400_000) })
+      .where(eq(invitation.id, row!.id));
+    await purgeExpiredEmailAddresses(getDb());
+    expect(await delivery()).toEqual([{ to: null }]);
+    const [after] = await getDb().select({ email: invitation.email, status: invitation.status }).from(invitation).where(eq(invitation.id, row!.id));
+    expect(after).toEqual({ email: null, status: 'expired' });
   });
 
   it('works once: a second account finds it used, and the student cannot accept their own invitation', async () => {

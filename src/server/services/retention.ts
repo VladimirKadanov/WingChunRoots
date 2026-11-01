@@ -8,7 +8,10 @@
 //   invitation.email         erased 30 days after the invitation ended: accepted (accepted_at),
 //                            expired (expires_at, or the time it was marked expired), revoked
 //                            (the last change of the row). A pending invitation past its expiry
-//                            becomes `expired` at the same time.
+//                            becomes `expired` at the same time. The copy of the address in the
+//                            invitation e-mail's delivery (email_delivery.to_email, key
+//                            `invitation:<id>`) is erased on the same schedule, not after 90 days
+//                            (M10b review, code-2): the e-mail tells the invitee so.
 //
 //   auth_session             deleted once expired (M02): the privacy notice keeps a session, with
 //                            its ip_hmac and user agent, until it expires or the person signs out.
@@ -40,7 +43,7 @@ export const INVITATION_EMAIL_RETENTION_DAYS = 30;
 export const RETENTION_BATCH_SIZE = 1000;
 
 export interface RetentionResult {
-  /** email_delivery rows whose address was erased. */
+  /** email_delivery rows whose address was erased (after 90 days, or with their invitation's). */
   emailDeliveries: number;
   /** invitation rows whose address was erased. */
   invitations: number;
@@ -57,27 +60,62 @@ async function inBatches(db: Database, batchSize: number, statement: (limit: num
   }
 }
 
+/** The SET list that erases a delivery's address; one still queued was never going to be sent. */
+const ERASE_DELIVERY_ADDRESS = sql.raw(`to_email = NULL,
+             status = CASE WHEN status = 'queued' THEN 'failed' ELSE status END,
+             error = CASE WHEN status = 'queued' THEN coalesce(error, 'not sent within the retention period') ELSE error END,
+             updated_at = now()`);
+
+/**
+ * When an invitation ended, for the retention of its address: accepted (accepted_at), expired
+ * (expires_at, or the time it was marked expired), pending past its expiry (expires_at), revoked
+ * (the last change of the row). `alias` is a fixed table name or alias, never input.
+ */
+function invitationEnded(alias: 'i' | 'invitation'): SQL {
+  return sql.raw(`CASE ${alias}.status
+                        WHEN 'accepted' THEN coalesce(${alias}.accepted_at, ${alias}.updated_at)
+                        WHEN 'expired' THEN least(${alias}.expires_at, ${alias}.updated_at)
+                        WHEN 'pending' THEN ${alias}.expires_at
+                        ELSE ${alias}.updated_at
+                      END`);
+}
+
 /** Erases the addresses whose retention period is over. Idempotent; returns how many rows changed. */
 export async function purgeExpiredEmailAddresses(
   db: Database,
   { batchSize = RETENTION_BATCH_SIZE }: { batchSize?: number } = {},
 ): Promise<RetentionResult> {
   if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('batchSize must be a positive integer');
-  const emailDeliveries = await inBatches(
+  const deliveriesAfter90Days = await inBatches(
     db,
     batchSize,
     (limit) => sql`
       UPDATE email_delivery
-         SET to_email = NULL,
-             status = CASE WHEN status = 'queued' THEN 'failed' ELSE status END,
-             error = CASE WHEN status = 'queued' THEN coalesce(error, 'not sent within the retention period') ELSE error END,
-             updated_at = now()
+         SET ${ERASE_DELIVERY_ADDRESS}
        WHERE id IN (
                SELECT id FROM email_delivery
                 WHERE to_email IS NOT NULL
                   AND created_at < now() - make_interval(days => ${EMAIL_DELIVERY_ADDRESS_RETENTION_DAYS})
                 LIMIT ${limit}
                   FOR UPDATE SKIP LOCKED)`,
+  );
+  // The invitation e-mail's delivery, before the invitation itself: erasing the invitation's address
+  // moves its updated_at (the end of a revoked one). A delivery the Mailer held during that run goes
+  // at the next one, since its invitation then has no address left.
+  const invitationDeliveries = await inBatches(
+    db,
+    batchSize,
+    (limit) => sql`
+      UPDATE email_delivery
+         SET ${ERASE_DELIVERY_ADDRESS}
+       WHERE id IN (
+               SELECT d.id FROM email_delivery d
+                 JOIN invitation i ON d.idempotency_key = 'invitation:' || i.id::text
+                WHERE d.to_email IS NOT NULL
+                  AND d.template = 'invitation'
+                  AND (i.email IS NULL OR ${invitationEnded('i')} < now() - make_interval(days => ${INVITATION_EMAIL_RETENTION_DAYS}))
+                LIMIT ${limit}
+                  FOR UPDATE OF d SKIP LOCKED)`,
   );
   const invitations = await inBatches(
     db,
@@ -90,16 +128,11 @@ export async function purgeExpiredEmailAddresses(
        WHERE id IN (
                SELECT id FROM invitation
                 WHERE email IS NOT NULL
-                  AND CASE status
-                        WHEN 'accepted' THEN coalesce(accepted_at, updated_at)
-                        WHEN 'expired' THEN least(expires_at, updated_at)
-                        WHEN 'pending' THEN expires_at
-                        ELSE updated_at
-                      END < now() - make_interval(days => ${INVITATION_EMAIL_RETENTION_DAYS})
+                  AND ${invitationEnded('invitation')} < now() - make_interval(days => ${INVITATION_EMAIL_RETENTION_DAYS})
                 LIMIT ${limit}
                   FOR UPDATE SKIP LOCKED)`,
   );
-  return { emailDeliveries, invitations };
+  return { emailDeliveries: deliveriesAfter90Days + invitationDeliveries, invitations };
 }
 
 export interface SessionRetentionResult {
