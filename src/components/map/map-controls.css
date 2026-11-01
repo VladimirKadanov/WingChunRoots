@@ -30,6 +30,11 @@
   filter: invert(1);
 }
 
+/* A control that cannot act now (zoom out at the widest view) at the page's disabled strength. */
+.maplibregl-ctrl button:disabled .maplibregl-ctrl-icon {
+  opacity: 0.6;
+}
+
 @media (hover: hover) {
   .maplibregl-ctrl button:not(:disabled):hover {
     background-color: color-mix(in oklab, var(--fg) 10%, transparent);
