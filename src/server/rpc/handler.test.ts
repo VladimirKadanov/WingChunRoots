@@ -4,6 +4,7 @@
 import { ORPCError } from '@orpc/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { configureLogger, restoreLogger } from '../log';
 import { csrfRefusal, logProcedureFailure, procedureFailureLine, sessionHeaders } from './handler';
 
 const APP = 'https://wingchunroots.example';
@@ -70,7 +71,10 @@ describe('procedure failure log (M08 review round 1, security-6)', () => {
   });
 
   it('the interceptor writes the line and throws a bare 500 in place of the error (final check, security-1); the input never reaches the log', async () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // M12: the line is the message of a pino JSON line (src/server/log), read here from its destination.
+    const lines: string[] = [];
+    const previous = configureLogger({ destination: { write: (line: string) => void lines.push(line) } });
+    const messages = () => lines.map((line) => (JSON.parse(line) as { msg: string }).msg);
     try {
       const context = { principal: null, meta: { requestId: 'req-3', ipHmac: null } };
       const thrown = await logProcedureFailure({ next: () => Promise.reject(deadlock), path: ['grants', 'create'], context }).then(
@@ -88,26 +92,29 @@ describe('procedure failure log (M08 review round 1, security-6)', () => {
       expect(replaced.cause).toBeUndefined();
       expect(replaced.data).toBeUndefined();
       expect(`${replaced.message} ${String(replaced.cause)} ${replaced.stack ?? ''}`).not.toContain('@');
-      expect(spy).toHaveBeenCalledTimes(1);
-      const logged = String(spy.mock.calls[0]?.[0]);
-      expect(logged).toBe('rpc grants.create failed: DatabaseError (postgres 40P01) request req-3');
-      expect(logged).not.toContain('@');
+      expect(messages()).toEqual(['rpc grants.create failed: DatabaseError (postgres 40P01) request req-3']);
+      expect(lines[0]).not.toContain('@');
+      expect(JSON.parse(lines[0]!)).toMatchObject({ level: 'error', requestId: 'req-3' });
       await expect(logProcedureFailure({ next: () => Promise.resolve(7), path: ['x'], context })).resolves.toBe(7);
-      expect(spy).toHaveBeenCalledTimes(1);
+      expect(messages()).toHaveLength(1);
     } finally {
-      spy.mockRestore();
+      restoreLogger(previous);
     }
   });
 
   it('lets an expected answer through unchanged and unlogged, with its message and fields', async () => {
+    const lines: string[] = [];
+    const previous = configureLogger({ destination: { write: (line: string) => void lines.push(line) } });
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const context = { principal: null, meta: { requestId: 'req-4', ipHmac: null } };
       const refusal = new ORPCError('BAD_REQUEST', { status: 400, message: 'Check the highlighted fields.', data: { fields: { email: 'Enter it.' } } });
       await expect(logProcedureFailure({ next: () => Promise.reject(refusal), path: ['grants', 'create'], context })).rejects.toBe(refusal);
+      expect(lines).toEqual([]);
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
+      restoreLogger(previous);
     }
   });
 });

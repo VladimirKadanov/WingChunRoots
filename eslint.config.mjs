@@ -39,6 +39,12 @@ const modulePackages = [
     message: 'Only src/server/search transliterates names: use keysForName and queryForms (src/server/search/keys.ts).',
   },
   {
+    // M12: one logger, so every line goes through the same redaction (src/server/log/redact.ts).
+    module: 'src/server/log',
+    group: ['pino', 'pino/*'],
+    message: 'Only src/server/log writes log lines with pino: use logger(), requestLogger() and reportError() (src/server/log).',
+  },
+  {
     module: 'src/server/jobs',
     group: ['pg-boss', 'pg-boss/*'],
     message: 'Only src/server/jobs uses pg-boss: queue work with its outbox helpers (src/server/jobs/outbox.ts).',

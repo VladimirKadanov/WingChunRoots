@@ -61,6 +61,7 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [@orpc/standard-server-node](https://orpc.dev/) | 1.15.7 | MIT | [text 3](#licence-text-3) |
 | [@orpc/standard-server-peer](https://orpc.com/) | 1.15.7 | MIT | [text 3](#licence-text-3) |
 | [@orpc/tanstack-query](https://orpc.dev/) | 1.15.7 | MIT | [text 3](#licence-text-3) |
+| [@pinojs/redact](https://github.com/pinojs/redact#readme) | 0.4.0 | MIT | [text 3](#licence-text-3) |
 | [@react-email/render](https://react.email/) | 2.1.0 | MIT | [text 11](#licence-text-11) |
 | [@selderee/plugin-htmlparser2](https://github.com/mxxii/selderee) | 0.11.0 | MIT | [text 3](#licence-text-3) |
 | [@socket.io/component-emitter](https://github.com/socketio/emitter#readme) | 3.1.2 | MIT | [text 12](#licence-text-12) |
@@ -89,165 +90,177 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [accepts](https://github.com/jshttp/accepts#readme) | 1.3.8 | MIT | [text 15](#licence-text-15) |
 | [ajv](https://ajv.js.org/) | 8.20.0 | MIT | [text 16](#licence-text-16) |
 | [ajv-formats](https://github.com/ajv-validator/ajv-formats#readme) | 3.0.1 | MIT | [text 3](#licence-text-3) |
-| [atomically](https://github.com/fabiospampinato/atomically#readme) | 2.1.1 | MIT | [text 17](#licence-text-17) |
-| [aws4fetch](https://github.com/mhart/aws4fetch#readme) | 1.0.20 | MIT | [text 18](#licence-text-18) |
-| [balanced-match](https://github.com/juliangruber/balanced-match#readme) | 4.0.4 | MIT | [text 19](#licence-text-19) |
+| [atomic-sleep](https://github.com/davidmarkclements/atomic-sleep#readme) | 1.0.0 | MIT | [text 17](#licence-text-17) |
+| [atomically](https://github.com/fabiospampinato/atomically#readme) | 2.1.1 | MIT | [text 18](#licence-text-18) |
+| [aws4fetch](https://github.com/mhart/aws4fetch#readme) | 1.0.20 | MIT | [text 19](#licence-text-19) |
+| [balanced-match](https://github.com/juliangruber/balanced-match#readme) | 4.0.4 | MIT | [text 20](#licence-text-20) |
 | [baseline-browser-mapping](https://github.com/web-platform-dx/baseline-browser-mapping#readme) | 2.11.28 | Apache-2.0 | [text 10](#licence-text-10) |
 | [better-auth](https://better-auth.com/) | 1.7.10 | MIT | [text 4](#licence-text-4) |
 | [better-call](https://github.com/better-auth/better-call#readme) | 1.4.2 | MIT | [text 3](#licence-text-3) |
-| [brace-expansion](https://github.com/juliangruber/brace-expansion#readme) | 5.0.12 | MIT | [text 20](#licence-text-20) |
-| [caniuse-lite](https://github.com/browserslist/caniuse-lite#readme) | 1.0.30001816 | CC-BY-4.0 | [text 21](#licence-text-21) |
+| [brace-expansion](https://github.com/juliangruber/brace-expansion#readme) | 5.0.12 | MIT | [text 21](#licence-text-21) |
+| [caniuse-lite](https://github.com/browserslist/caniuse-lite#readme) | 1.0.30001816 | CC-BY-4.0 | [text 22](#licence-text-22) |
 | [chokidar](https://github.com/paulmillr/chokidar) | 5.0.0 | MIT | [text 9](#licence-text-9) |
 | [citty](https://github.com/unjs/citty#readme) | 0.2.2 | MIT | [text 3](#licence-text-3) |
-| [class-variance-authority](https://github.com/joe-bell/cva#readme) | 0.7.1 | Apache-2.0 | [text 22](#licence-text-22) |
-| [classcat](https://github.com/jorgebucaran/classcat#readme) | 5.0.5 | MIT | [text 23](#licence-text-23) |
+| [class-variance-authority](https://github.com/joe-bell/cva#readme) | 0.7.1 | Apache-2.0 | [text 23](#licence-text-23) |
+| [classcat](https://github.com/jorgebucaran/classcat#readme) | 5.0.5 | MIT | [text 24](#licence-text-24) |
 | [client-only](https://reactjs.org/) | 0.0.1 | MIT | none shipped |
-| [clsx](https://github.com/lukeed/clsx#readme) | 2.1.1 | MIT | [text 24](#licence-text-24) |
+| [clsx](https://github.com/lukeed/clsx#readme) | 2.1.1 | MIT | [text 25](#licence-text-25) |
 | [commander](https://github.com/tj/commander.js#readme) | 13.1.0 | MIT | [text 15](#licence-text-15) |
-| [conf](https://github.com/sindresorhus/conf#readme) | 15.1.0 | MIT | [text 24](#licence-text-24) |
+| [conf](https://github.com/sindresorhus/conf#readme) | 15.1.0 | MIT | [text 25](#licence-text-25) |
 | [cookie](https://github.com/jshttp/cookie#readme) | 0.7.2 | MIT | [text 15](#licence-text-15) |
 | [cookie](https://github.com/jshttp/cookie#readme) | 1.1.1 | MIT | [text 15](#licence-text-15) |
 | [cors](https://github.com/expressjs/cors#readme) | 2.8.6 | MIT | [text 15](#licence-text-15) |
 | [cron-parser](https://github.com/harrisiirak/cron-parser#readme) | 5.10.2 | MIT | [text 16](#licence-text-16) |
 | [css-tree](https://github.com/csstree/csstree#readme) | 3.2.1 | MIT | [text 2](#licence-text-2) |
-| [d3-color](https://d3js.org/d3-color/) | 3.1.0 | ISC | [text 25](#licence-text-25) |
-| [d3-dispatch](https://d3js.org/d3-dispatch/) | 3.0.1 | ISC | [text 25](#licence-text-25) |
-| [d3-drag](https://d3js.org/d3-drag/) | 3.0.0 | ISC | [text 25](#licence-text-25) |
-| [d3-ease](https://d3js.org/d3-ease/) | 3.0.1 | BSD-3-Clause | [text 26](#licence-text-26) |
-| [d3-interpolate](https://d3js.org/d3-interpolate/) | 3.0.1 | ISC | [text 25](#licence-text-25) |
-| [d3-selection](https://d3js.org/d3-selection/) | 3.0.0 | ISC | [text 25](#licence-text-25) |
-| [d3-timer](https://d3js.org/d3-timer/) | 3.0.1 | ISC | [text 25](#licence-text-25) |
-| [d3-transition](https://d3js.org/d3-transition/) | 3.0.1 | ISC | [text 25](#licence-text-25) |
-| [d3-zoom](https://d3js.org/d3-zoom/) | 3.0.0 | ISC | [text 25](#licence-text-25) |
-| [debounce](https://github.com/sindresorhus/debounce#readme) | 2.2.0 | MIT | [text 27](#licence-text-27) |
-| [debounce-fn](https://github.com/sindresorhus/debounce-fn#readme) | 6.0.0 | MIT | [text 24](#licence-text-24) |
-| [debug](https://github.com/debug-js/debug#readme) | 4.4.3 | MIT | [text 28](#licence-text-28) |
-| [deepmerge](https://github.com/TehShrike/deepmerge) | 4.3.1 | MIT | [text 29](#licence-text-29) |
+| [d3-color](https://d3js.org/d3-color/) | 3.1.0 | ISC | [text 26](#licence-text-26) |
+| [d3-dispatch](https://d3js.org/d3-dispatch/) | 3.0.1 | ISC | [text 26](#licence-text-26) |
+| [d3-drag](https://d3js.org/d3-drag/) | 3.0.0 | ISC | [text 26](#licence-text-26) |
+| [d3-ease](https://d3js.org/d3-ease/) | 3.0.1 | BSD-3-Clause | [text 27](#licence-text-27) |
+| [d3-interpolate](https://d3js.org/d3-interpolate/) | 3.0.1 | ISC | [text 26](#licence-text-26) |
+| [d3-selection](https://d3js.org/d3-selection/) | 3.0.0 | ISC | [text 26](#licence-text-26) |
+| [d3-timer](https://d3js.org/d3-timer/) | 3.0.1 | ISC | [text 26](#licence-text-26) |
+| [d3-transition](https://d3js.org/d3-transition/) | 3.0.1 | ISC | [text 26](#licence-text-26) |
+| [d3-zoom](https://d3js.org/d3-zoom/) | 3.0.0 | ISC | [text 26](#licence-text-26) |
+| [debounce](https://github.com/sindresorhus/debounce#readme) | 2.2.0 | MIT | [text 28](#licence-text-28) |
+| [debounce-fn](https://github.com/sindresorhus/debounce-fn#readme) | 6.0.0 | MIT | [text 25](#licence-text-25) |
+| [debug](https://github.com/debug-js/debug#readme) | 4.4.3 | MIT | [text 29](#licence-text-29) |
+| [deepmerge](https://github.com/TehShrike/deepmerge) | 4.3.1 | MIT | [text 30](#licence-text-30) |
 | [defu](https://github.com/unjs/defu#readme) | 6.1.7 | MIT | [text 3](#licence-text-3) |
-| [detect-libc](https://github.com/lovell/detect-libc#readme) | 2.1.2 | Apache-2.0 | [text 30](#licence-text-30) |
-| [dom-serializer](https://github.com/cheeriojs/dom-serializer#readme) | 2.0.0 | MIT | [text 31](#licence-text-31) |
-| [domelementtype](https://github.com/fb55/domelementtype#readme) | 2.3.0 | BSD-2-Clause | [text 32](#licence-text-32) |
-| [domhandler](https://github.com/fb55/domhandler#readme) | 5.0.3 | BSD-2-Clause | [text 32](#licence-text-32) |
-| [domutils](https://github.com/fb55/domutils#readme) | 3.2.2 | BSD-2-Clause | [text 32](#licence-text-32) |
-| [dot-prop](https://github.com/sindresorhus/dot-prop#readme) | 10.2.0 | MIT | [text 24](#licence-text-24) |
+| [detect-libc](https://github.com/lovell/detect-libc#readme) | 2.1.2 | Apache-2.0 | [text 31](#licence-text-31) |
+| [dom-serializer](https://github.com/cheeriojs/dom-serializer#readme) | 2.0.0 | MIT | [text 32](#licence-text-32) |
+| [domelementtype](https://github.com/fb55/domelementtype#readme) | 2.3.0 | BSD-2-Clause | [text 33](#licence-text-33) |
+| [domhandler](https://github.com/fb55/domhandler#readme) | 5.0.3 | BSD-2-Clause | [text 33](#licence-text-33) |
+| [domutils](https://github.com/fb55/domutils#readme) | 3.2.2 | BSD-2-Clause | [text 33](#licence-text-33) |
+| [dot-prop](https://github.com/sindresorhus/dot-prop#readme) | 10.2.0 | MIT | [text 25](#licence-text-25) |
 | [drizzle-orm](https://orm.drizzle.team/) | 1.0.0-rc.4 | Apache-2.0 | none shipped |
-| [elkjs](https://github.com/kieler/elkjs#readme) | 0.12.0 | EPL-2.0 OR GPL-3.0-or-later | [text 33](#licence-text-33) |
-| [engine.io](https://github.com/socketio/socket.io/tree/main/packages/engine.io#readme) | 6.6.11 | MIT | [text 34](#licence-text-34) |
+| [elkjs](https://github.com/kieler/elkjs#readme) | 0.12.0 | EPL-2.0 OR GPL-3.0-or-later | [text 34](#licence-text-34) |
+| [engine.io](https://github.com/socketio/socket.io/tree/main/packages/engine.io#readme) | 6.6.11 | MIT | [text 35](#licence-text-35) |
 | [engine.io-parser](https://github.com/socketio/socket.io/tree/main/packages/engine.io-parser#readme) | 5.2.3 | MIT | [text 15](#licence-text-15) |
-| [entities](https://github.com/fb55/entities#readme) | 4.5.0 | BSD-2-Clause | [text 32](#licence-text-32) |
-| [env-paths](https://github.com/sindresorhus/env-paths#readme) | 3.0.0 | MIT | [text 24](#licence-text-24) |
+| [entities](https://github.com/fb55/entities#readme) | 4.5.0 | BSD-2-Clause | [text 33](#licence-text-33) |
+| [env-paths](https://github.com/sindresorhus/env-paths#readme) | 3.0.0 | MIT | [text 25](#licence-text-25) |
 | [esbuild](https://github.com/evanw/esbuild#readme) | 0.28.2 | MIT | [text 3](#licence-text-3) |
 | [fast-deep-equal](https://github.com/epoberezkin/fast-deep-equal#readme) | 3.1.3 | MIT | [text 3](#licence-text-3) |
-| [fast-uri](https://github.com/fastify/fast-uri) | 3.1.8 | BSD-3-Clause | [text 35](#licence-text-35) |
-| [glob](https://github.com/isaacs/node-glob#readme) | 13.0.6 | BlueOak-1.0.0 | [text 36](#licence-text-36) |
-| [html-to-text](https://github.com/html-to-text/node-html-to-text) | 9.0.5 | MIT | [text 37](#licence-text-37) |
+| [fast-uri](https://github.com/fastify/fast-uri) | 3.1.8 | BSD-3-Clause | [text 36](#licence-text-36) |
+| [glob](https://github.com/isaacs/node-glob#readme) | 13.0.6 | BlueOak-1.0.0 | [text 37](#licence-text-37) |
+| [html-to-text](https://github.com/html-to-text/node-html-to-text) | 9.0.5 | MIT | [text 38](#licence-text-38) |
 | [html5parser](https://github.com/acrazing/html5parser#readme) | 3.0.0 | MIT | [text 16](#licence-text-16) |
-| [htmlparser2](https://github.com/fb55/htmlparser2#readme) | 8.0.2 | MIT | [text 38](#licence-text-38) |
-| [is-unicode-supported](https://github.com/sindresorhus/is-unicode-supported#readme) | 2.1.0 | MIT | [text 24](#licence-text-24) |
+| [htmlparser2](https://github.com/fb55/htmlparser2#readme) | 8.0.2 | MIT | [text 39](#licence-text-39) |
+| [is-unicode-supported](https://github.com/sindresorhus/is-unicode-supported#readme) | 2.1.0 | MIT | [text 25](#licence-text-25) |
 | [jiti](https://github.com/unjs/jiti#readme) | 2.6.1 | MIT | [text 3](#licence-text-3) |
 | [jose](https://github.com/panva/jose) | 6.2.12 | MIT | [text 16](#licence-text-16) |
-| [js-tokens](https://github.com/lydell/js-tokens#readme) | 4.0.0 | MIT | [text 29](#licence-text-29) |
-| [jsesc](https://mths.be/jsesc) | 3.1.0 | MIT | [text 39](#licence-text-39) |
+| [js-tokens](https://github.com/lydell/js-tokens#readme) | 4.0.0 | MIT | [text 30](#licence-text-30) |
+| [jsesc](https://mths.be/jsesc) | 3.1.0 | MIT | [text 40](#licence-text-40) |
 | [json-schema-traverse](https://github.com/epoberezkin/json-schema-traverse#readme) | 1.0.0 | MIT | [text 3](#licence-text-3) |
-| [json-schema-typed](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) | 8.0.2 | BSD-2-Clause | [text 40](#licence-text-40) |
-| [json5](http://json5.org/) | 2.2.3 | MIT | [text 41](#licence-text-41) |
-| [kleur](https://github.com/lukeed/kleur#readme) | 3.0.3 | MIT | [text 29](#licence-text-29) |
+| [json-schema-typed](https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node) | 8.0.2 | BSD-2-Clause | [text 41](#licence-text-41) |
+| [json5](http://json5.org/) | 2.2.3 | MIT | [text 42](#licence-text-42) |
+| [kleur](https://github.com/lukeed/kleur#readme) | 3.0.3 | MIT | [text 30](#licence-text-30) |
 | [kysely](https://kysely.dev/) | 0.29.6 | MIT | [text 16](#licence-text-16) |
 | [leac](https://github.com/mxxii/leac) | 0.6.0 | MIT | [text 3](#licence-text-3) |
-| [log-symbols](https://github.com/sindresorhus/log-symbols#readme) | 7.0.1 | MIT | [text 24](#licence-text-24) |
-| [lru-cache](https://github.com/isaacs/node-lru-cache#readme) | 11.5.3 | BlueOak-1.0.0 | [text 42](#licence-text-42) |
+| [log-symbols](https://github.com/sindresorhus/log-symbols#readme) | 7.0.1 | MIT | [text 25](#licence-text-25) |
+| [lru-cache](https://github.com/isaacs/node-lru-cache#readme) | 11.5.3 | BlueOak-1.0.0 | [text 43](#licence-text-43) |
 | [luxon](https://github.com/moment/luxon#readme) | 3.7.2 | MIT | [text 11](#licence-text-11) |
-| [marked](https://marked.js.org/) | 15.0.12 | MIT | [text 43](#licence-text-43) |
-| [mdn-data](https://developer.mozilla.org/) | 2.27.1 | CC0-1.0 | [text 44](#licence-text-44) |
+| [marked](https://marked.js.org/) | 15.0.12 | MIT | [text 44](#licence-text-44) |
+| [mdn-data](https://developer.mozilla.org/) | 2.27.1 | CC0-1.0 | [text 45](#licence-text-45) |
 | [mime-db](https://github.com/jshttp/mime-db#readme) | 1.52.0 | MIT | [text 15](#licence-text-15) |
 | [mime-db](https://github.com/jshttp/mime-db#readme) | 1.54.0 | MIT | [text 15](#licence-text-15) |
 | [mime-types](https://github.com/jshttp/mime-types#readme) | 2.1.35 | MIT | [text 15](#licence-text-15) |
 | [mime-types](https://github.com/jshttp/mime-types#readme) | 3.0.2 | MIT | [text 15](#licence-text-15) |
-| [mimic-function](https://github.com/sindresorhus/mimic-function#readme) | 5.0.1 | MIT | [text 24](#licence-text-24) |
-| [minimatch](https://github.com/isaacs/minimatch#readme) | 10.2.6 | BlueOak-1.0.0 | [text 45](#licence-text-45) |
-| [minimist](https://github.com/minimistjs/minimist) | 1.2.8 | MIT | [text 46](#licence-text-46) |
-| [minipass](https://github.com/isaacs/minipass#readme) | 7.1.3 | BlueOak-1.0.0 | [text 42](#licence-text-42) |
+| [mimic-function](https://github.com/sindresorhus/mimic-function#readme) | 5.0.1 | MIT | [text 25](#licence-text-25) |
+| [minimatch](https://github.com/isaacs/minimatch#readme) | 10.2.6 | BlueOak-1.0.0 | [text 46](#licence-text-46) |
+| [minimist](https://github.com/minimistjs/minimist) | 1.2.8 | MIT | [text 47](#licence-text-47) |
+| [minipass](https://github.com/isaacs/minipass#readme) | 7.1.3 | BlueOak-1.0.0 | [text 43](#licence-text-43) |
 | [ms](https://github.com/vercel/ms#readme) | 2.1.3 | MIT | [text 16](#licence-text-16) |
-| [nanoid](https://github.com/ai/nanoid#readme) | 3.3.20 | MIT | [text 47](#licence-text-47) |
-| [nanostores](https://github.com/nanostores/nanostores#readme) | 1.5.5 | MIT | [text 47](#licence-text-47) |
+| [nanoid](https://github.com/ai/nanoid#readme) | 3.3.20 | MIT | [text 48](#licence-text-48) |
+| [nanostores](https://github.com/nanostores/nanostores#readme) | 1.5.5 | MIT | [text 48](#licence-text-48) |
 | [negotiator](https://github.com/jshttp/negotiator#readme) | 0.6.3 | MIT | [text 15](#licence-text-15) |
 | [next](https://nextjs.org/) | 16.4.1 | MIT | [text 16](#licence-text-16) |
-| [nodemailer](https://nodemailer.com/) | 10.1.1 | MIT-0 | [text 48](#licence-text-48) |
-| [non-error](https://github.com/sindresorhus/non-error#readme) | 0.1.0 | MIT | [text 24](#licence-text-24) |
-| [normalize-path](https://github.com/jonschlinkert/normalize-path) | 3.0.0 | MIT | [text 29](#licence-text-29) |
+| [nodemailer](https://nodemailer.com/) | 10.1.1 | MIT-0 | [text 49](#licence-text-49) |
+| [non-error](https://github.com/sindresorhus/non-error#readme) | 0.1.0 | MIT | [text 25](#licence-text-25) |
+| [normalize-path](https://github.com/jonschlinkert/normalize-path) | 3.0.0 | MIT | [text 30](#licence-text-30) |
 | [nuqs](https://nuqs.dev/) | 2.10.2 | MIT | [text 3](#licence-text-3) |
 | [nypm](https://github.com/unjs/nypm#readme) | 0.6.6 | MIT | [text 3](#licence-text-3) |
-| [object-assign](https://github.com/sindresorhus/object-assign#readme) | 4.1.1 | MIT | [text 29](#licence-text-29) |
-| [openapi-types](https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-types#readme) | 12.1.3 | MIT | [text 29](#licence-text-29) |
-| [opencc-js](https://github.com/nk2028/opencc-js#readme) | 1.4.2 | MIT AND Apache-2.0 | [text 49](#licence-text-49) |
+| [object-assign](https://github.com/sindresorhus/object-assign#readme) | 4.1.1 | MIT | [text 30](#licence-text-30) |
+| [on-exit-leak-free](https://github.com/mcollina/on-exit-or-gc#readme) | 2.1.2 | MIT | [text 3](#licence-text-3) |
+| [openapi-types](https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-types#readme) | 12.1.3 | MIT | [text 30](#licence-text-30) |
+| [opencc-js](https://github.com/nk2028/opencc-js#readme) | 1.4.2 | MIT AND Apache-2.0 | [text 50](#licence-text-50) |
 | [parseley](https://github.com/mxxii/parseley) | 0.12.1 | MIT | [text 3](#licence-text-3) |
-| [path-scurry](https://github.com/isaacs/path-scurry#readme) | 2.0.2 | BlueOak-1.0.0 | [text 42](#licence-text-42) |
-| [pathe](https://github.com/unjs/pathe#readme) | 2.0.3 | MIT | [text 50](#licence-text-50) |
+| [path-scurry](https://github.com/isaacs/path-scurry#readme) | 2.0.2 | BlueOak-1.0.0 | [text 43](#licence-text-43) |
+| [pathe](https://github.com/unjs/pathe#readme) | 2.0.3 | MIT | [text 51](#licence-text-51) |
 | [peberminta](https://github.com/mxxii/peberminta) | 0.9.0 | MIT | [text 3](#licence-text-3) |
 | [pg](https://github.com/brianc/node-postgres) | 8.23.1 | MIT | [text 3](#licence-text-3) |
 | [pg-boss](https://pgboss.io/) | 12.38.0 | MIT | [text 16](#licence-text-16) |
 | [pg-connection-string](https://github.com/brianc/node-postgres/tree/master/packages/pg-connection-string) | 2.14.1 | MIT | [text 16](#licence-text-16) |
-| [pg-int8](https://github.com/charmander/pg-int8#readme) | 1.0.1 | ISC | [text 51](#licence-text-51) |
+| [pg-int8](https://github.com/charmander/pg-int8#readme) | 1.0.1 | ISC | [text 52](#licence-text-52) |
 | [pg-pool](https://github.com/brianc/node-postgres/tree/master/packages/pg-pool#readme) | 3.14.0 | MIT | [text 3](#licence-text-3) |
 | [pg-protocol](https://github.com/brianc/node-postgres#readme) | 1.16.1 | MIT | [text 3](#licence-text-3) |
 | [pg-types](https://github.com/brianc/node-pg-types) | 2.2.0 | MIT | none shipped |
 | [pgpass](https://github.com/hoegaarden/pgpass#readme) | 1.0.5 | MIT | none shipped |
-| [picocolors](https://github.com/alexeyraspopov/picocolors#readme) | 1.1.1 | ISC | [text 52](#licence-text-52) |
-| [picospinner](https://github.com/tinylibs/picospinner#readme) | 3.1.2 | MIT | [text 53](#licence-text-53) |
+| [picocolors](https://github.com/alexeyraspopov/picocolors#readme) | 1.1.1 | ISC | [text 53](#licence-text-53) |
+| [picospinner](https://github.com/tinylibs/picospinner#readme) | 3.1.2 | MIT | [text 54](#licence-text-54) |
+| [pino](https://getpino.io/) | 10.4.0 | MIT | [text 16](#licence-text-16) |
+| [pino-abstract-transport](https://github.com/pinojs/pino-abstract-transport#readme) | 3.0.0 | MIT | [text 3](#licence-text-3) |
+| [pino-std-serializers](https://github.com/pinojs/pino-std-serializers#readme) | 7.1.0 | MIT | [text 55](#licence-text-55) |
 | [pinyin-pro](https://pinyin-pro.cn/) | 3.29.5 | MIT | [text 3](#licence-text-3) |
-| [postcss](https://postcss.org/) | 8.5.23 | MIT | [text 47](#licence-text-47) |
-| [postgres-array](https://github.com/bendrucker/postgres-array#readme) | 2.0.0 | MIT | [text 29](#licence-text-29) |
-| [postgres-bytea](https://github.com/bendrucker/postgres-bytea#readme) | 1.0.1 | MIT | [text 29](#licence-text-29) |
-| [postgres-date](https://github.com/bendrucker/postgres-date#readme) | 1.0.7 | MIT | [text 29](#licence-text-29) |
-| [postgres-interval](https://github.com/bendrucker/postgres-interval#readme) | 1.2.0 | MIT | [text 29](#licence-text-29) |
+| [postcss](https://postcss.org/) | 8.5.23 | MIT | [text 48](#licence-text-48) |
+| [postgres-array](https://github.com/bendrucker/postgres-array#readme) | 2.0.0 | MIT | [text 30](#licence-text-30) |
+| [postgres-bytea](https://github.com/bendrucker/postgres-bytea#readme) | 1.0.1 | MIT | [text 30](#licence-text-30) |
+| [postgres-date](https://github.com/bendrucker/postgres-date#readme) | 1.0.7 | MIT | [text 30](#licence-text-30) |
+| [postgres-interval](https://github.com/bendrucker/postgres-interval#readme) | 1.2.0 | MIT | [text 30](#licence-text-30) |
 | [prettier](https://prettier.io/) | 3.9.10 | MIT | [text 11](#licence-text-11) |
-| [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | MIT | [text 54](#licence-text-54) |
+| [prismjs](https://github.com/PrismJS/prism#readme) | 1.30.0 | MIT | [text 56](#licence-text-56) |
+| [process-warning](https://github.com/fastify/fastify-warning#readme) | 5.1.1 | MIT | [text 3](#licence-text-3) |
 | [prompts](https://github.com/terkelg/prompts#readme) | 2.4.2 | MIT | [text 3](#licence-text-3) |
+| [quick-format-unescaped](https://github.com/davidmarkclements/quick-format#readme) | 4.0.4 | MIT | [text 16](#licence-text-16) |
 | [radash](https://github.com/rayepps/radash#readme) | 12.1.1 | MIT | [text 3](#licence-text-3) |
 | [react](https://react.dev/) | 19.3.1 | MIT | [text 3](#licence-text-3) |
 | [react-dom](https://react.dev/) | 19.3.1 | MIT | [text 3](#licence-text-3) |
 | [react-email](https://github.com/resend/react-email#readme) | 6.11.2 | MIT | [text 11](#licence-text-11) |
 | [readdirp](https://github.com/paulmillr/readdirp) | 5.1.1 | MIT | [text 3](#licence-text-3) |
-| [require-from-string](https://github.com/floatdrop/require-from-string#readme) | 2.0.2 | MIT | [text 29](#licence-text-29) |
+| [real-require](https://github.com/pinojs/real-require) | 1.0.0 | MIT | [text 16](#licence-text-16) |
+| [require-from-string](https://github.com/floatdrop/require-from-string#readme) | 2.0.2 | MIT | [text 30](#licence-text-30) |
 | [reselect](https://github.com/reduxjs/reselect#readme) | 5.3.0 | MIT | [text 16](#licence-text-16) |
 | [rou3](https://github.com/h3js/rou3#readme) | 0.7.12 | MIT | [text 3](#licence-text-3) |
 | [rou3](https://github.com/h3js/rou3#readme) | 0.9.2 | MIT | [text 3](#licence-text-3) |
 | [rrule-temporal](https://ggaabe.github.io/rrule-temporal/) | 2.2.8 | MIT | [text 3](#licence-text-3) |
+| [safe-stable-stringify](https://github.com/BridgeAR/safe-stable-stringify#readme) | 2.5.0 | MIT | [text 16](#licence-text-16) |
 | [scheduler](https://react.dev/) | 0.28.0 | MIT | [text 3](#licence-text-3) |
 | [selderee](https://github.com/mxxii/selderee) | 0.11.0 | MIT | [text 3](#licence-text-3) |
-| [semver](https://github.com/npm/node-semver#readme) | 7.8.5 | ISC | [text 55](#licence-text-55) |
-| [serialize-error](https://github.com/sindresorhus/serialize-error#readme) | 13.0.2 | MIT | [text 24](#licence-text-24) |
-| [set-cookie-parser](https://github.com/nfriedly/set-cookie-parser) | 3.1.4 | MIT | [text 29](#licence-text-29) |
-| [sharp](https://sharp.pixelplumbing.com/) | 0.35.5 | Apache-2.0 | [text 56](#licence-text-56) |
+| [semver](https://github.com/npm/node-semver#readme) | 7.8.5 | ISC | [text 57](#licence-text-57) |
+| [serialize-error](https://github.com/sindresorhus/serialize-error#readme) | 13.0.2 | MIT | [text 25](#licence-text-25) |
+| [set-cookie-parser](https://github.com/nfriedly/set-cookie-parser) | 3.1.4 | MIT | [text 30](#licence-text-30) |
+| [sharp](https://sharp.pixelplumbing.com/) | 0.35.5 | Apache-2.0 | [text 58](#licence-text-58) |
 | [sisteransi](https://github.com/terkelg/sisteransi#readme) | 1.0.5 | MIT | [text 3](#licence-text-3) |
 | [socket.io](https://github.com/socketio/socket.io/tree/main/packages/socket.io#readme) | 4.8.4 | MIT | [text 15](#licence-text-15) |
-| [socket.io-adapter](https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme) | 2.5.8 | MIT | [text 57](#licence-text-57) |
-| [socket.io-parser](https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme) | 4.2.7 | MIT | [text 57](#licence-text-57) |
-| [source-map-js](https://github.com/7rulnik/source-map-js) | 1.2.2 | BSD-3-Clause | [text 58](#licence-text-58) |
-| [split2](https://github.com/mcollina/split2#readme) | 4.2.0 | ISC | [text 59](#licence-text-59) |
-| [strip-bom](https://github.com/sindresorhus/strip-bom#readme) | 3.0.0 | MIT | [text 29](#licence-text-29) |
-| [stubborn-fs](https://github.com/fabiospampinato/stubborn-fs#readme) | 2.0.0 | MIT | [text 17](#licence-text-17) |
-| [stubborn-utils](https://github.com/fabiospampinato/stubborn-utils#readme) | 1.0.2 | MIT | [text 17](#licence-text-17) |
+| [socket.io-adapter](https://github.com/socketio/socket.io/tree/main/packages/socket.io-adapter#readme) | 2.5.8 | MIT | [text 59](#licence-text-59) |
+| [socket.io-parser](https://github.com/socketio/socket.io/tree/main/packages/socket.io-client#readme) | 4.2.7 | MIT | [text 59](#licence-text-59) |
+| [sonic-boom](https://github.com/pinojs/sonic-boom#readme) | 4.2.1 | MIT | [text 3](#licence-text-3) |
+| [source-map-js](https://github.com/7rulnik/source-map-js) | 1.2.2 | BSD-3-Clause | [text 60](#licence-text-60) |
+| [split2](https://github.com/mcollina/split2#readme) | 4.2.0 | ISC | [text 61](#licence-text-61) |
+| [strip-bom](https://github.com/sindresorhus/strip-bom#readme) | 3.0.0 | MIT | [text 30](#licence-text-30) |
+| [stubborn-fs](https://github.com/fabiospampinato/stubborn-fs#readme) | 2.0.0 | MIT | [text 18](#licence-text-18) |
+| [stubborn-utils](https://github.com/fabiospampinato/stubborn-utils#readme) | 1.0.2 | MIT | [text 18](#licence-text-18) |
 | [styled-jsx](https://github.com/vercel/styled-jsx#readme) | 5.1.6 | MIT | [text 3](#licence-text-3) |
-| [tagged-tag](https://github.com/sindresorhus/tagged-tag#readme) | 1.0.0 | MIT | [text 24](#licence-text-24) |
+| [tagged-tag](https://github.com/sindresorhus/tagged-tag#readme) | 1.0.0 | MIT | [text 25](#licence-text-25) |
 | [tailwind-merge](https://github.com/dcastil/tailwind-merge) | 3.7.0 | MIT | [text 3](#licence-text-3) |
 | [tailwindcss](https://tailwindcss.com/) | 4.3.3 | MIT | [text 3](#licence-text-3) |
-| [temporal-spec](https://github.com/fullcalendar/temporal-polyfill#readme) | 1.0.1 | Apache-2.0 | [text 60](#licence-text-60) |
+| [temporal-spec](https://github.com/fullcalendar/temporal-polyfill#readme) | 1.0.1 | Apache-2.0 | [text 62](#licence-text-62) |
+| [thread-stream](https://github.com/mcollina/thread-stream#readme) | 4.2.0 | MIT | [text 3](#licence-text-3) |
 | [tinyexec](https://github.com/tinylibs/tinyexec#readme) | 1.3.1 | MIT | [text 3](#licence-text-3) |
-| [to-jyutping](https://github.com/CanCLID/to-jyutping#readme) | 3.1.1 | BSD-2-Clause | [text 61](#licence-text-61) |
-| [transliteration](https://github.com/yf-hk/transliteration#readme) | 2.6.2 | MIT | [text 62](#licence-text-62) |
+| [to-jyutping](https://github.com/CanCLID/to-jyutping#readme) | 3.1.1 | BSD-2-Clause | [text 63](#licence-text-63) |
+| [transliteration](https://github.com/yf-hk/transliteration#readme) | 2.6.2 | MIT | [text 64](#licence-text-64) |
 | [tsconfig-paths](https://github.com/dividab/tsconfig-paths#readme) | 4.2.0 | MIT | [text 16](#licence-text-16) |
-| [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 63](#licence-text-63) |
-| [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | [text 64](#licence-text-64) |
-| [uint8array-extras](https://github.com/sindresorhus/uint8array-extras#readme) | 1.6.0 | MIT | [text 24](#licence-text-24) |
+| [tslib](https://www.typescriptlang.org/) | 2.8.1 | 0BSD | [text 65](#licence-text-65) |
+| [tsx](https://tsx.hirok.io/) | 4.23.15 | MIT | [text 3](#licence-text-3) |
+| [type-fest](https://github.com/sindresorhus/type-fest#readme) | 5.10.0 | (MIT OR CC0-1.0) | [text 66](#licence-text-66) |
+| [uint8array-extras](https://github.com/sindresorhus/uint8array-extras#readme) | 1.6.0 | MIT | [text 25](#licence-text-25) |
 | [undici-types](https://undici.nodejs.org/) | 8.9.0 | MIT | [text 3](#licence-text-3) |
 | [uqr](https://github.com/unjs/uqr#readme) | 0.1.3 | MIT | [text 3](#licence-text-3) |
 | [use-sync-external-store](https://github.com/react/react#readme) | 1.7.0 | MIT | [text 3](#licence-text-3) |
 | [vary](https://github.com/jshttp/vary#readme) | 1.1.2 | MIT | [text 15](#licence-text-15) |
-| [when-exit](https://github.com/fabiospampinato/when-exit#readme) | 2.1.5 | MIT | [text 17](#licence-text-17) |
-| [ws](https://github.com/websockets/ws) | 8.21.3 | MIT | [text 65](#licence-text-65) |
-| [xtend](https://github.com/Raynos/xtend) | 4.0.2 | MIT | [text 66](#licence-text-66) |
-| [yoctocolors](https://github.com/sindresorhus/yoctocolors#readme) | 2.2.0 | MIT | [text 24](#licence-text-24) |
+| [when-exit](https://github.com/fabiospampinato/when-exit#readme) | 2.1.5 | MIT | [text 18](#licence-text-18) |
+| [ws](https://github.com/websockets/ws) | 8.21.3 | MIT | [text 67](#licence-text-67) |
+| [xtend](https://github.com/Raynos/xtend) | 4.0.2 | MIT | [text 68](#licence-text-68) |
+| [yoctocolors](https://github.com/sindresorhus/yoctocolors#readme) | 2.2.0 | MIT | [text 25](#licence-text-25) |
 | [zod](https://zod.dev/) | 4.6.7 | MIT | [text 3](#licence-text-3) |
 | [zustand](https://github.com/pmndrs/zustand) | 4.5.7 | MIT | [text 3](#licence-text-3) |
 
@@ -659,12 +672,13 @@ THE SOFTWARE.
 
 ### Licence text 3
 
-Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @orpc/tanstack-query 1.15.7, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/devtools-event-client 0.4.4, @tanstack/form-core 1.33.5, @tanstack/pacer-lite 0.1.1, @tanstack/query-core 5.104.3, @tanstack/react-form 1.33.5, @tanstack/react-query 5.104.3, @tanstack/react-store 0.11.2, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, @xyflow/react 12.12.0, @xyflow/system 0.0.83, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nuqs 2.10.2, nypm 0.6.6, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, pinyin-pro 3.29.5, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, tinyexec 1.3.1, undici-types 8.9.0, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7, zustand 4.5.7
+Used by: @base-ui/react 1.9.0, @base-ui/utils 0.5.0, @better-fetch/fetch 1.3.2, @orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @orpc/tanstack-query 1.15.7, @pinojs/redact 0.4.0, @selderee/plugin-htmlparser2 0.11.0, @standard-schema/spec 1.1.0, @tanstack/devtools-event-client 0.4.4, @tanstack/form-core 1.33.5, @tanstack/pacer-lite 0.1.1, @tanstack/query-core 5.104.3, @tanstack/react-form 1.33.5, @tanstack/react-query 5.104.3, @tanstack/react-store 0.11.2, @tanstack/store 0.11.2, @tanstack/table-core 9.3.1, @xyflow/react 12.12.0, @xyflow/system 0.0.83, ajv-formats 3.0.1, better-call 1.4.2, citty 0.2.2, defu 6.1.7, esbuild 0.28.2, fast-deep-equal 3.1.3, jiti 2.6.1, json-schema-traverse 1.0.0, leac 0.6.0, nuqs 2.10.2, nypm 0.6.6, on-exit-leak-free 2.1.2, parseley 0.12.1, peberminta 0.9.0, pg 8.23.1, pg-pool 3.14.0, pg-protocol 1.16.1, pino-abstract-transport 3.0.0, pinyin-pro 3.29.5, process-warning 5.1.1, prompts 2.4.2, radash 12.1.1, react 19.3.1, react-dom 19.3.1, readdirp 5.1.1, rou3 0.7.12, rou3 0.9.2, rrule-temporal 2.2.8, scheduler 0.28.0, selderee 0.11.0, sisteransi 1.0.5, sonic-boom 4.2.1, styled-jsx 5.1.6, tailwind-merge 3.7.0, tailwindcss 4.3.3, thread-stream 4.2.0, tinyexec 1.3.1, tsx 4.23.15, undici-types 8.9.0, uqr 0.1.3, use-sync-external-store 1.7.0, zod 4.6.7, zustand 4.5.7
 
 ```text
 Copyright (c) 2019 Material-UI SAS    (@base-ui/react 1.9.0, @base-ui/utils 0.5.0)
 Copyright (c) Bereket Engida    (@better-fetch/fetch 1.3.2)
 Copyright (c) 2023 oRPC    (@orpc/client 1.15.7, @orpc/contract 1.15.7, @orpc/interop 1.15.7, @orpc/openapi 1.15.7, @orpc/openapi-client 1.15.7, @orpc/server 1.15.7, @orpc/shared 1.15.7, @orpc/standard-server 1.15.7, @orpc/standard-server-aws-lambda 1.15.7, @orpc/standard-server-fastify 1.15.7, @orpc/standard-server-fetch 1.15.7, @orpc/standard-server-node 1.15.7, @orpc/standard-server-peer 1.15.7, @orpc/tanstack-query 1.15.7)
+Copyright (c) 2025 pinojs contributors    (@pinojs/redact 0.4.0)
 Copyright (c) 2021-2022 KillyMXI <killy@mxii.eu.org>    (@selderee/plugin-htmlparser2 0.11.0, leac 0.6.0, parseley 0.12.1, peberminta 0.9.0, selderee 0.11.0)
 Copyright (c) 2024 Colin McDonnell    (@standard-schema/spec 1.1.0)
 Copyright (c) 2025 TanStack    (@tanstack/devtools-event-client 0.4.4)
@@ -679,18 +693,23 @@ Copyright (c) Pooya Parsa <pooya@pi0.io>    (citty 0.2.2, defu 6.1.7, jiti 2.6.1
 Copyright (c) 2020 Evan Wallace    (esbuild 0.28.2)
 Copyright (c) 2017 Evgeny Poberezkin    (fast-deep-equal 3.1.3, json-schema-traverse 1.0.0)
 Copyright (c) 2020 François Best <contact@francoisbest.com>    (nuqs 2.10.2)
+Copyright (c) 2021 Matteo Collina    (on-exit-leak-free 2.1.2, thread-stream 4.2.0)
 Copyright (c) 2010 - 2021 Brian Carlson    (pg 8.23.1, pg-protocol 1.16.1)
 Copyright (c) 2017 Brian M. Carlson    (pg-pool 3.14.0)
+Copyright (c) 2021 pino    (pino-abstract-transport 3.0.0)
 Copyright (c) 2022-present zh-lx    (pinyin-pro 3.29.5)
+Copyright (c) 2020-present The Fastify team <https://github.com/fastify/fastify#team>    (process-warning 5.1.1)
 Copyright (c) 2018 Terkel Gjervig Nielsen    (prompts 2.4.2, sisteransi 1.0.5)
 Copyright (c) 2022 radash    (radash 12.1.1)
 Copyright (c) Meta Platforms, Inc. and affiliates.    (react 19.3.1, react-dom 19.3.1, scheduler 0.28.0, use-sync-external-store 1.7.0)
 Copyright (c) 2012-2019 Thorsten Lorenz, Paul Miller (https://paulmillr.com)    (readdirp 5.1.1)
 Copyright (c) 2024 ggaabe    (rrule-temporal 2.2.8)
+Copyright (c) 2017 Matteo Collina    (sonic-boom 4.2.1)
 Copyright (c) 2016-present Vercel, Inc.    (styled-jsx 5.1.6)
 Copyright (c) 2021 Dany Castillo    (tailwind-merge 3.7.0)
 Copyright (c) Tailwind Labs, Inc.    (tailwindcss 4.3.3)
 Copyright (c) 2024 Tinylibs    (tinyexec 1.3.1)
+Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>    (tsx 4.23.15)
 Copyright (c) Matteo Collina and Undici contributors    (undici-types 8.9.0)
 Copyright (c) Project Nayuki    (uqr 0.1.3)
 Copyright (c) 2023 Anthony Fu <https://github.com/antfu>    (uqr 0.1.3)
@@ -1569,7 +1588,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### Licence text 16
 
-Used by: ajv 8.20.0, cron-parser 5.10.2, html5parser 3.0.0, jose 6.2.12, kysely 0.29.6, ms 2.1.3, next 16.4.1, pg-boss 12.38.0, pg-connection-string 2.14.1, reselect 5.3.0, tsconfig-paths 4.2.0
+Used by: ajv 8.20.0, cron-parser 5.10.2, html5parser 3.0.0, jose 6.2.12, kysely 0.29.6, ms 2.1.3, next 16.4.1, pg-boss 12.38.0, pg-connection-string 2.14.1, pino 10.4.0, quick-format-unescaped 4.0.4, real-require 1.0.0, reselect 5.3.0, safe-stable-stringify 2.5.0, tsconfig-paths 4.2.0
 
 ```text
 Copyright (c) 2015-2021 Evgeny Poberezkin    (ajv 8.20.0)
@@ -1581,7 +1600,11 @@ Copyright (c) 2020 Vercel, Inc.    (ms 2.1.3)
 Copyright (c) 2025 Vercel, Inc.    (next 16.4.1)
 Copyright (c) 2016 Tim Jones    (pg-boss 12.38.0)
 Copyright (c) 2014 Iced Development    (pg-connection-string 2.14.1)
+Copyright (c) 2016-present Matteo Collina, David Mark Clements and the Pino contributors listed at <https://github.com/pinojs/pino#the-team> and in the README file.    (pino 10.4.0)
+Copyright (c) 2016-2019 David Mark Clements    (quick-format-unescaped 4.0.4)
+Copyright (c) 2021 Paolo Insogna and the real-require contributors    (real-require 1.0.0)
 Copyright (c) 2015-2018 Reselect Contributors    (reselect 5.3.0)
+Copyright (c) Ruben Bridgewater    (safe-stable-stringify 2.5.0)
 Copyright (c) 2016 Jonas Kello    (tsconfig-paths 4.2.0)
 ```
 
@@ -1608,6 +1631,33 @@ SOFTWARE.
 ```
 
 ### Licence text 17
+
+Used by: atomic-sleep 1.0.0
+
+```text
+The MIT License (MIT)
+Copyright (c) 2020 David Mark Clements
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 18
 
 Used by: atomically 2.1.1, stubborn-fs 2.0.0, stubborn-utils 1.0.2, when-exit 2.1.5
 
@@ -1639,7 +1689,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 18
+### Licence text 19
 
 Used by: aws4fetch 1.0.20
 
@@ -1667,7 +1717,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 19
+### Licence text 20
 
 Used by: balanced-match 4.0.4
 
@@ -1697,7 +1747,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 20
+### Licence text 21
 
 Used by: brace-expansion 5.0.12
 
@@ -1727,7 +1777,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 21
+### Licence text 22
 
 Used by: caniuse-lite 1.0.30001816
 
@@ -2120,7 +2170,7 @@ public licenses.
 Creative Commons may be contacted at creativecommons.org.
 ```
 
-### Licence text 22
+### Licence text 23
 
 Used by: class-variance-authority 0.7.1
 
@@ -2317,7 +2367,7 @@ Apache License
    limitations under the License.
 ```
 
-### Licence text 23
+### Licence text 24
 
 Used by: classcat 5.0.5
 
@@ -2333,7 +2383,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 24
+### Licence text 25
 
 Used by: clsx 2.1.1, conf 15.1.0, debounce-fn 6.0.0, dot-prop 10.2.0, env-paths 3.0.0, is-unicode-supported 2.1.0, log-symbols 7.0.1, mimic-function 5.0.1, non-error 0.1.0, serialize-error 13.0.2, tagged-tag 1.0.0, uint8array-extras 1.6.0, yoctocolors 2.2.0
 
@@ -2352,7 +2402,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 25
+### Licence text 26
 
 Used by: d3-color 3.1.0, d3-dispatch 3.0.1, d3-drag 3.0.0, d3-interpolate 3.0.1, d3-selection 3.0.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0
 
@@ -2375,7 +2425,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### Licence text 26
+### Licence text 27
 
 Used by: d3-ease 3.0.1
 
@@ -2412,7 +2462,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 27
+### Licence text 28
 
 Used by: debounce 2.2.0
 
@@ -2430,7 +2480,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 28
+### Licence text 29
 
 Used by: debug 4.4.3
 
@@ -2458,7 +2508,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 29
+### Licence text 30
 
 Used by: deepmerge 4.3.1, js-tokens 4.0.0, kleur 3.0.3, normalize-path 3.0.0, object-assign 4.1.1, openapi-types 12.1.3, postgres-array 2.0.0, postgres-bytea 1.0.1, postgres-date 1.0.7, postgres-interval 1.2.0, require-from-string 2.0.2, set-cookie-parser 3.1.4, strip-bom 3.0.0
 
@@ -2496,7 +2546,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Licence text 30
+### Licence text 31
 
 Used by: detect-libc 2.1.2
 
@@ -2704,7 +2754,7 @@ Apache License
    limitations under the License.
 ```
 
-### Licence text 31
+### Licence text 32
 
 Used by: dom-serializer 2.0.0
 
@@ -2724,7 +2774,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 32
+### Licence text 33
 
 Used by: domelementtype 2.3.0, domhandler 5.0.3, domutils 3.2.2, entities 4.5.0
 
@@ -2744,7 +2794,7 @@ THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRE
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 33
+### Licence text 34
 
 Used by: elkjs 0.12.0
 
@@ -3014,7 +3064,7 @@ in the Eclipse Public License, v. 2.0 are satisfied: GNU General Public License 
 > You may add additional accurate notices of copyright ownership.
 ```
 
-### Licence text 34
+### Licence text 35
 
 Used by: engine.io 6.6.11
 
@@ -3041,7 +3091,7 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 35
+### Licence text 36
 
 Used by: fast-uri 3.1.8
 
@@ -3080,7 +3130,7 @@ The complete list of contributors can be found at:
 - https://github.com/garycourt/uri-js/graphs/contributors
 ```
 
-### Licence text 36
+### Licence text 37
 
 Used by: glob 13.0.6
 
@@ -3150,7 +3200,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### Licence text 37
+### Licence text 38
 
 Used by: html-to-text 9.0.5
 
@@ -3182,7 +3232,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 38
+### Licence text 39
 
 Used by: htmlparser2 8.0.2
 
@@ -3210,7 +3260,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ```
 
-### Licence text 39
+### Licence text 40
 
 Used by: jsesc 3.1.0
 
@@ -3237,7 +3287,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 40
+### Licence text 41
 
 Used by: json-schema-typed 8.0.2
 
@@ -3301,7 +3351,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 41
+### Licence text 42
 
 Used by: json5 2.2.3
 
@@ -3333,7 +3383,7 @@ SOFTWARE.
 [others]: https://github.com/json5/json5/contributors
 ```
 
-### Licence text 42
+### Licence text 43
 
 Used by: lru-cache 11.5.3, minipass 7.1.3, path-scurry 2.0.2
 
@@ -3395,7 +3445,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### Licence text 43
+### Licence text 44
 
 Used by: marked 15.0.12
 
@@ -3446,7 +3496,7 @@ Redistribution and use in source and binary forms, with or without modification,
 This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 ```
 
-### Licence text 44
+### Licence text 45
 
 Used by: mdn-data 2.27.1
 
@@ -3569,7 +3619,7 @@ For more information, please see
 <http://creativecommons.org/publicdomain/zero/1.0/>
 ```
 
-### Licence text 45
+### Licence text 46
 
 Used by: minimatch 10.2.6
 
@@ -3631,7 +3681,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 ```
 
-### Licence text 46
+### Licence text 47
 
 Used by: minimist 1.2.8
 
@@ -3656,7 +3706,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 47
+### Licence text 48
 
 Used by: nanoid 3.3.20, nanostores 1.5.5, postcss 8.5.23
 
@@ -3687,7 +3737,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 48
+### Licence text 49
 
 Used by: nodemailer 10.1.1
 
@@ -3712,7 +3762,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 49
+### Licence text 50
 
 Used by: opencc-js 1.4.2
 
@@ -3798,7 +3848,7 @@ You may add Your own copyright statement to Your modifications and may provide a
 END OF TERMS AND CONDITIONS
 ```
 
-### Licence text 50
+### Licence text 51
 
 Used by: pathe 2.0.3
 
@@ -3877,7 +3927,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 51
+### Licence text 52
 
 Used by: pg-int8 1.0.1
 
@@ -3899,7 +3949,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 52
+### Licence text 53
 
 Used by: picocolors 1.1.1
 
@@ -3923,7 +3973,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 53
+### Licence text 54
 
 Used by: picospinner 3.1.2
 
@@ -3952,7 +4002,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ```
 
-### Licence text 54
+### Licence text 55
+
+Used by: pino-std-serializers 7.1.0
+
+```text
+Copyright Mateo Collina, David Mark Clements, James Sumners
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 56
 
 Used by: prismjs 1.30.0
 
@@ -3982,7 +4046,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Licence text 55
+### Licence text 57
 
 Used by: semver 7.8.5
 
@@ -4006,7 +4070,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 56
+### Licence text 58
 
 Used by: sharp 0.35.5
 
@@ -4204,7 +4268,7 @@ third-party archives.
    limitations under the License.
 ```
 
-### Licence text 57
+### Licence text 59
 
 Used by: socket.io-adapter 2.5.8, socket.io-parser 4.2.7
 
@@ -4233,7 +4297,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 58
+### Licence text 60
 
 Used by: source-map-js 1.2.2
 
@@ -4269,7 +4333,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 59
+### Licence text 61
 
 Used by: split2 4.2.0
 
@@ -4291,7 +4355,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 60
+### Licence text 62
 
 Used by: temporal-spec 1.0.1
 
@@ -4319,7 +4383,7 @@ Portions of this software are derived from the TypeScript project
 licensed under the Apache License, Version 2.0.
 ```
 
-### Licence text 61
+### Licence text 63
 
 Used by: to-jyutping 3.1.1
 
@@ -4353,7 +4417,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Licence text 62
+### Licence text 64
 
 Used by: transliteration 2.6.2
 
@@ -4380,7 +4444,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 63
+### Licence text 65
 
 Used by: tslib 2.8.1
 
@@ -4401,7 +4465,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Licence text 64
+### Licence text 66
 
 Used by: type-fest 5.10.0
 
@@ -4539,7 +4603,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 65
+### Licence text 67
 
 Used by: ws 8.21.3
 
@@ -4568,7 +4632,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Licence text 66
+### Licence text 68
 
 Used by: xtend 4.0.2
 

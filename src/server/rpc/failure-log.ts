@@ -1,5 +1,6 @@
 // The one log line of a procedure that failed unexpectedly (M08 review round 1, security-6; round 2,
-// recheck-2). Every way into the router logs through it: the RPCHandler at /api/rpc and the
+// recheck-2). Since M12 it is written by pino (src/server/log) as the message of a JSON line that
+// also carries the request id as a field. Every way into the router logs through it: the RPCHandler at /api/rpc and the
 // OpenAPIHandler at /api/v1 (./handler.ts, clientInterceptors) and serverClient(), which the pages
 // and Server Actions call in-process (./server.ts, interceptors).
 //
@@ -17,6 +18,7 @@
 
 import { ORPCError } from '@orpc/server';
 
+import { requestLogger } from '../log';
 import { pgErrorOf } from '../services/errors';
 import type { RpcContext } from './router';
 
@@ -45,7 +47,8 @@ export async function logProcedureFailure<T>(options: { next: () => Promise<T>; 
   } catch (error) {
     const line = procedureFailureLine(error, options.path, options.context.meta.requestId);
     if (!line) throw error;
-    console.error(line);
+    // M12: one pino JSON line (src/server/log) whose message is this line, with the request id.
+    requestLogger(options.context.meta.requestId).error(line);
     throw internalServerError();
   }
 }
