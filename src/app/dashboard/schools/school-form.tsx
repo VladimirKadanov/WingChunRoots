@@ -255,58 +255,59 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
             />
           </div>
         </div>
-        {hydrated ? (
-          picking && (city || typedPoint) ? (
-            <div ref={pickerPanel} tabIndex={-1} role="group" aria-labelledby={pickerHintId} className="grid gap-2 rounded-sm" data-testid="pin-picker-panel">
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                <p id={pickerHintId} className="text-sm">
-                  Tap or click the map where the school is: the latitude and longitude fill in.
-                </p>
-                <button
-                  type="button"
-                  className={buttonVariants({ variant: 'secondary', size: 'sm' })}
-                  onClick={() => {
-                    focusAfterPicking.current = 'button';
-                    setPicking(false);
-                  }}
-                  data-testid="hide-pin-map"
-                >
-                  Hide the map
-                </button>
-              </div>
-              <Suspense fallback={pickerLoading}>
-                <PinPicker
-                  center={typedPoint ?? city!.point}
-                  point={typedPoint}
-                  styles={styles}
-                  onPick={(p) => {
-                    setLat(String(p.lat));
-                    setLng(String(p.lng));
-                  }}
-                />
-              </Suspense>
-            </div>
-          ) : (
-            <p>
+        {/* The button is drawn by the server too (disabled until the form hydrates, hidden when
+            scripting is off: the map needs JavaScript), so hydration moves nothing below it and a
+            box ticked while the page hydrates stays under the tap (CI run 41323978929, WebKit). */}
+        {hydrated && picking && (city || typedPoint) ? (
+          <div ref={pickerPanel} tabIndex={-1} role="group" aria-labelledby={pickerHintId} className="grid gap-2 rounded-sm" data-testid="pin-picker-panel">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <p id={pickerHintId} className="text-sm">
+                Tap or click the map where the school is: the latitude and longitude fill in.
+              </p>
               <button
-                ref={dropPin}
                 type="button"
-                className={buttonVariants({ variant: 'secondary' })}
+                className={buttonVariants({ variant: 'secondary', size: 'sm' })}
                 onClick={() => {
-                  focusAfterPicking.current = 'panel';
-                  setPicking(true);
+                  focusAfterPicking.current = 'button';
+                  setPicking(false);
                 }}
-                aria-disabled={!city && !typedPoint ? true : undefined}
-                disabled={!city && !typedPoint}
-                data-testid="drop-pin"
+                data-testid="hide-pin-map"
               >
-                <PinIcon />
-                Drop the pin on a map
+                Hide the map
               </button>
-              {!city && !typedPoint ? <span className="ml-3 text-sm text-fg-muted">Choose the city first.</span> : null}
-            </p>
-          )
-        ) : null}
+            </div>
+            <Suspense fallback={pickerLoading}>
+              <PinPicker
+                center={typedPoint ?? city!.point}
+                point={typedPoint}
+                styles={styles}
+                onPick={(p) => {
+                  setLat(String(p.lat));
+                  setLng(String(p.lng));
+                }}
+              />
+            </Suspense>
+          </div>
+        ) : (
+          <p className="noscript:hidden">
+            <button
+              ref={dropPin}
+              type="button"
+              className={buttonVariants({ variant: 'secondary' })}
+              onClick={() => {
+                focusAfterPicking.current = 'panel';
+                setPicking(true);
+              }}
+              aria-disabled={!hydrated || (!city && !typedPoint) ? true : undefined}
+              disabled={!hydrated || (!city && !typedPoint)}
+              data-testid="drop-pin"
+            >
+              <PinIcon />
+              Drop the pin on a map
+            </button>
+            {!city && !typedPoint ? <span className="ml-3 text-sm text-fg-muted">Choose the city first.</span> : null}
+          </p>
+        )}
       </fieldset>
 
       <TextField form={form} name="websiteUrl" label={LABELS.websiteUrl} state={state} optional autoComplete="url" maxLength={300} placeholder="https://" defaultValue={school?.websiteUrl ?? ''} />
