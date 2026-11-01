@@ -19,11 +19,12 @@ import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
 import { getEvidenceStore } from '../src/server/storage';
-import { jpegWithGps } from '../src/server/storage/test-images';
+import { jpegWithGps, plainImage } from '../src/server/storage/test-images';
 import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs, userIdOf, type SignInTarget } from './helpers/auth';
 import { caseOf, CLAIM_LINEAGE, claimThroughApi, fictionalPdf, letters as token, uploadEvidence as uploadRequest } from './helpers/evidence';
 import { apiPost } from './helpers/plans';
 import { runPaths } from './projects';
+import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -513,3 +514,308 @@ test('@M10a storage keys and evidence URLs never appear in public HTML or API re
   if (existsSync(log)) expect(readFileSync(log, 'utf8').includes(secret), 'the server log').toBe(false);
   await Promise.all([student.context.close(), admin.context.close()]);
 });
+
+// --- M10a review (screens-1 to screens-11): focus, announcements, names and layout -------------
+
+/** An ELF executable: the server reads its first bytes and refuses it, whatever its name. */
+const EXECUTABLE = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0]), Buffer.alloc(4096, 0x90)]);
+
+/** The document's widths with the root text at 200 % (a webview's text zoom). */
+async function widthsAt200(page: Page) {
+  return page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+    return { scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth };
+  });
+}
+
+test('@M10a the evidence field keeps the focus while files upload and after each Remove; its log reads every file and a summary; a refused file says "Not uploaded"', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const student = await member(browser, 'Focus', { viewport: { width: 390, height: 844 } });
+  const { page } = student;
+  // Each answer comes a little later, so the field is seen while its files upload.
+  await page.route('**/api/evidence/upload', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await route.continue();
+  });
+  await page.goto('/dashboard/teachers/historical');
+  const uploader = visible(page.getByTestId('evidence-uploader')).first();
+  const input = uploader.getByTestId('evidence-input');
+  await input.focus();
+  await input.setInputFiles([
+    { name: 'demo-certificate.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(40_000) },
+    { name: 'demo-scan.jpg', mimeType: 'image/jpeg', buffer: EXECUTABLE },
+    { name: 'demo-training-photo.png', mimeType: 'image/png', buffer: Buffer.from(await plainImage('png')) },
+    { name: 'demo-register.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(20 * MB + 1) },
+  ]);
+  // Screens-2: while they upload the field says it is unavailable, yet keeps the focus.
+  await expect(input).toHaveAttribute('aria-disabled', 'true');
+  await expect(input).toBeFocused();
+  const items = uploader.getByTestId('evidence-item');
+  await expect(items).toHaveCount(4);
+  for (const [i, state] of (['done', 'refused', 'done', 'refused'] as const).entries()) {
+    await expect(items.nth(i)).toHaveAttribute('data-state', state, { timeout: 60_000 });
+  }
+  await expect(input).not.toHaveAttribute('aria-disabled', /.*/);
+  await expect(input).toBeFocused();
+
+  // Screens-4: every file's outcome is a line of its own in a polite log, then a summary.
+  const log = uploader.getByTestId('evidence-log');
+  await expect(log).toHaveAttribute('role', 'log');
+  await expect(log).toContainText('2 of 4 files uploaded. Not uploaded: demo-scan.jpg, demo-register.pdf.');
+  expect(await log.locator('p').allTextContents()).toEqual([
+    'Uploading 4 files…',
+    'demo-certificate.pdf: uploaded.',
+    expect.stringMatching(/^demo-scan\.jpg: not uploaded\. Only JPEG, PNG and WebP images and PDF documents can be uploaded/),
+    'demo-training-photo.png: uploaded.',
+    'demo-register.pdf: not uploaded. Larger than 20 MB. Upload a smaller copy, or split the document.',
+    '2 of 4 files uploaded. Not uploaded: demo-scan.jpg, demo-register.pdf.',
+  ]);
+
+  // Screens-9: a refused file says "Not uploaded" with the alert icon and a thick edge (a shape,
+  // not colour alone); an uploaded one says "Uploaded".
+  for (const i of [1, 3]) {
+    const refusal = items.nth(i).getByTestId('evidence-refusal');
+    await expect(refusal).toContainText(/^Not uploaded: /);
+    await expect(refusal.locator('svg')).toHaveCount(1);
+  }
+  await expect(items.nth(0).getByTestId('evidence-refusal')).toHaveCount(0);
+  await expect(items.nth(0)).toContainText('Uploaded · PDF');
+  const edge = (i: number) => items.nth(i).evaluate((row) => Number.parseFloat(getComputedStyle(row).borderLeftWidth));
+  expect(await edge(1)).toBeGreaterThanOrEqual(4);
+  expect(await edge(0)).toBeLessThan(2);
+  for (const theme of ['dark', 'light'] as const) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `the evidence field with uploaded and refused files (${theme})`);
+  }
+
+  // Screens-2: after Remove the focus goes to the next file's Remove, else the previous one's,
+  // else the file field, and the removal is said, for a refused file too.
+  const removeButton = (name: string) => uploader.getByRole('button', { name: `Remove ${name}`, exact: true });
+  const removeWithKeyboard = async (name: string) => {
+    await removeButton(name).focus();
+    await page.keyboard.press('Enter');
+    await expect(log).toHaveText(`${name}: removed.`);
+  };
+  await removeWithKeyboard('demo-scan.jpg');
+  await expect(items).toHaveCount(3);
+  await expect(removeButton('demo-training-photo.png')).toBeFocused();
+  await removeWithKeyboard('demo-register.pdf');
+  await expect(items).toHaveCount(2);
+  await expect(removeButton('demo-training-photo.png')).toBeFocused();
+  await removeWithKeyboard('demo-training-photo.png');
+  await expect(items).toHaveCount(1);
+  await expect(removeButton('demo-certificate.pdf')).toBeFocused();
+  await removeWithKeyboard('demo-certificate.pdf');
+  await expect(items).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await student.context.close();
+});
+
+test('@M10a at 390x844 the claim page keeps to the screen with text at 200%, and the error summary links to the evidence field', async ({ browser }) => {
+  const student = await member(browser, 'Reflow', { viewport: { width: 390, height: 844 } });
+  const { page } = student;
+  await page.goto('/dashboard/teachers/historical');
+  // Screens-7: the search box's heading breaks "WingChunRoots?" instead of widening the page.
+  const fresh = await widthsAt200(page);
+  expect(fresh.scroll, 'the claim page at 200% text').toBeLessThanOrEqual(fresh.client);
+
+  await page.goto('/dashboard/teachers/historical');
+  const form = visible(page.getByTestId('historical-claim-form'));
+  await form.getByLabel(/^Teacher.s name in Latin letters/).fill(`Demo Reflow Teacher ${capital(token())}`);
+  await form.getByRole('button', { name: 'Send the claim' }).click();
+  const summary = visible(page.locator('[data-form-message]'));
+  await expect(summary).toBeFocused();
+  // Screens-3: the summary's Evidence link moves the focus to the file field.
+  const link = summary.getByRole('link', { name: 'Evidence: Attach at least one file of evidence.' });
+  const input = form.getByTestId('evidence-input');
+  expect(await link.getAttribute('href')).toBe(`#${await input.getAttribute('id')}`);
+  await link.focus();
+  await page.keyboard.press('Enter');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+  const errorId = (await input.getAttribute('aria-errormessage'))!;
+  await expect(page.locator(`[id="${errorId}"]`)).toHaveText('Attach at least one file of evidence.');
+  const refused = await widthsAt200(page);
+  expect(refused.scroll, 'the refused claim form at 200% text').toBeLessThanOrEqual(refused.client);
+  await student.context.close();
+});
+
+test('@M10a an administrator\'s "Assign" with no reviewer chosen is refused and keeps the assignment; each outcome on the case card takes the focus', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const student = await member(browser, 'Assigned');
+  const { caseId } = await claimThroughApi(student.page, `Demo Assigned ${capital(token())}`);
+  const admin = await signedIn(browser, 'admin');
+  const { page } = admin;
+  const assignment = async () =>
+    (await getDb().execute<{ assignee: string | null; status: string }>(sql`
+      SELECT assigned_to_user_id::text AS assignee, status FROM review_case WHERE id = ${caseId}::uuid`)).rows[0]!;
+  await page.goto(`/admin/review/${caseId}`);
+  const outcome = visible(page.getByTestId('case-outcome'));
+  await visible(page.getByRole('button', { name: 'Assign to me' })).click();
+  await page.waitForURL(/[?&]done=assigned/);
+  // Screens-5: the outcome takes the focus.
+  await expect(outcome).toBeFocused();
+  await expect(outcome).toContainText('The case is assigned.');
+  expect(await assignment()).toEqual({ assignee: admin.userId, status: 'in_review' });
+
+  // Screens-1: "Assign" with "Choose a reviewer" left as it is is refused with the field's message;
+  // the case stays assigned.
+  const choose = visible(page.getByTestId('assign-choose'));
+  const select = choose.getByLabel('Give the case to');
+  await expect(select).toHaveValue('');
+  await choose.getByRole('button', { name: 'Assign', exact: true }).click();
+  await expect(choose.getByText('Choose a reviewer from the list.')).toBeVisible();
+  await expect(select).toHaveAttribute('aria-invalid', 'true');
+  await expect(select).toBeFocused();
+  expect(page.url()).toMatch(/[?&]done=assigned/);
+  await expect(visible(page.getByTestId('case-status'))).toHaveAttribute('data-status', 'in_review');
+  expect(await assignment()).toEqual({ assignee: admin.userId, status: 'in_review' });
+  // Unassigning is its own action.
+  await visible(page.getByRole('button', { name: 'Unassign' })).click();
+  await page.waitForURL(/[?&]done=unassigned/);
+  await expect(outcome).toBeFocused();
+  expect(await assignment()).toEqual({ assignee: null, status: 'open' });
+  await visible(page.getByRole('button', { name: 'Assign to me' })).click();
+  await page.waitForURL(/[?&]done=assigned/);
+  await expect(outcome).toBeFocused();
+
+  // Screens-10: each decision is a disclosure with a chevron that turns when it opens.
+  const ask = visible(page.getByTestId('decide-needs_info'));
+  const chevron = ask.locator('summary svg');
+  await expect(chevron).toHaveCount(1);
+  const turn = () => chevron.evaluate((icon) => getComputedStyle(icon).rotate);
+  expect(await turn()).toBe('none');
+  await ask.locator('summary').click();
+  await expect.poll(turn).toBe('180deg');
+  await ask.getByLabel(/^Question for the claimant/).fill('Which fictional school register is the certificate from?');
+  await ask.getByRole('button', { name: 'Ask for more information', exact: true }).click();
+  await page.waitForURL(/[?&]done=asked/);
+  await expect(outcome).toBeFocused();
+  await expect(outcome).toContainText('Your question was sent to the student.');
+
+  // Screens-5: a note's confirmation is under the notes, where the reviewer is, and takes the focus.
+  const notes = visible(page.locator('#notes'));
+  await notes.getByLabel(/^Internal note/).fill('A fictional internal note of the demo data.');
+  await notes.getByRole('button', { name: 'Add the note' }).click();
+  await page.waitForURL(/[?&]done=noted/);
+  const noted = notes.getByTestId('case-outcome');
+  await expect(noted).toHaveText('The note is added.');
+  await expect(noted).toBeFocused();
+  await expect(noted).toBeInViewport();
+  await expect(outcome).toHaveCount(1);
+  // A second note in a row: a new confirmation, which takes the focus again.
+  const first = page.url();
+  await notes.getByLabel(/^Internal note/).fill('A second fictional internal note of the demo data.');
+  await notes.getByRole('button', { name: 'Add the note' }).click();
+  await page.waitForURL((url) => url.href !== first && /[?&]done=noted/.test(url.search));
+  await expect(notes.getByTestId('case-note')).toHaveCount(4);
+  await expect(noted).toBeFocused();
+
+  // Screens-10: on a phone every assign and decision button is as wide as its form.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/admin/review/${caseId}`);
+  for (const summary of await visible(page.locator('#actions details > summary')).all()) await summary.click();
+  const widths = await visible(page.locator('#actions')).evaluate((section) =>
+    [...section.querySelectorAll('form')]
+      .filter((form) => form.getClientRects().length > 0)
+      .map((form) => {
+        const style = getComputedStyle(form);
+        const button = form.querySelector('button[type="submit"]')!;
+        return { label: button.textContent, button: button.getBoundingClientRect().width, form: form.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight) };
+      }),
+  );
+  expect(widths.map((w) => w.label)).toEqual(['Unassign', 'Assign', 'Verify the claim', 'Refuse the claim', 'Ask for more information']);
+  for (const width of widths) expect(Math.abs(width.button - width.form), `${width.label}: ${width.button} of ${width.form} px`).toBeLessThanOrEqual(1);
+  for (const theme of ['dark', 'light'] as const) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `the case card with its decisions open (${theme})`);
+  }
+  await Promise.all([student.context.close(), admin.context.close()]);
+});
+
+test('@M10a the outcome of an archival save takes the focus', async ({ browser }) => {
+  const person = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM person WHERE slug = 'demo-root-c'`);
+  const before = await auditCount('person.update', person.rows[0]!.id);
+  const archivist = await signedIn(browser, 'archivist');
+  const { page } = archivist;
+  await page.goto('/admin/review/records/demo-root-c');
+  const form = visible(page.getByTestId('archive-form'));
+  // Nothing changed: nothing is written, and the page says so.
+  await form.getByLabel(/^Reason/).fill('A look at the demo record; nothing changes.');
+  await form.getByRole('button', { name: 'Save the record' }).click();
+  await page.waitForURL(/[?&]done=unchanged/);
+  const outcome = visible(page.getByTestId('record-outcome'));
+  await expect(outcome).toHaveText('Nothing changed, so nothing was saved.');
+  await expect(outcome).toBeFocused();
+  // The same save again: a new outcome, which takes the focus again.
+  const first = page.url();
+  await form.getByLabel(/^Reason/).fill('Another look at the demo record; nothing changes.');
+  await form.getByRole('button', { name: 'Save the record' }).click();
+  await page.waitForURL((url) => url.href !== first && /[?&]done=unchanged/.test(url.search));
+  await expect(outcome).toBeFocused();
+  expect(await auditCount('person.update', person.rows[0]!.id)).toBe(before);
+  await archivist.context.close();
+});
+
+test('@M10a each row of the review queue opens its case under a name of its own, on the row\'s first line; the filters use the app\'s select', async ({ browser }) => {
+  const [first, second] = await Promise.all([member(browser, 'Queued'), member(browser, 'Queued')]);
+  const teachers = [`Demo Queued ${capital(token())}`, `Demo Queued ${capital(token())}`];
+  const claims = [await claimThroughApi(first.page, teachers[0]!), await claimThroughApi(second.page, teachers[1]!)];
+  const admin = await signedIn(browser, 'admin');
+  const { page } = admin;
+  await page.goto('/admin/review?assigned=none&sort=newest');
+  // Screens-6: every link names its case: the people and the day it was opened.
+  for (const [i, claim] of claims.entries()) {
+    const link = visible(page.locator(`tr[data-case="${claim.caseId}"]`)).getByTestId('case-link');
+    await expect(link).toHaveAccessibleName(`Historical teacher case: teacher ${teachers[i]}, student ${[first, second][i]!.name}, opened ${formatDayUtc(new Date())}`);
+  }
+  const names = await visible(page.getByTestId('case-link')).evaluateAll((links) => links.map((link) => (link.textContent ?? '').replace(/\s+/g, ' ').trim()));
+  expect(names.length).toBeGreaterThanOrEqual(2);
+  expect(new Set(names).size, names.join('\n')).toBe(names.length);
+
+  // Screens-11: in the table the link's text is on the first line of its row, with the other cells.
+  const offset = await visible(page.locator(`tr[data-case="${claims[0]!.caseId}"]`)).evaluate((row) => {
+    const link = row.querySelector('[data-testid="case-link"]')!;
+    const text = document.createRange();
+    text.selectNodeContents(link.firstChild!);
+    const status = row.querySelectorAll('td')[2]!.lastElementChild!;
+    return text.getBoundingClientRect().top - status.getBoundingClientRect().top;
+  });
+  expect(Math.abs(offset), `the case link is ${offset} px off the row's first line`).toBeLessThanOrEqual(2);
+  // The filter selects have no native arrow but the app's chevron.
+  for (const id of ['filter-kind', 'filter-status', 'filter-assigned']) {
+    const select = visible(page.locator(`#${id}`));
+    expect(await select.evaluate((el) => getComputedStyle(el).appearance), id).toBe('none');
+    await expect(select.locator('xpath=following-sibling::*[local-name()="svg"]'), id).toHaveCount(1);
+  }
+  await Promise.all([first.context.close(), second.context.close(), admin.context.close()]);
+});
+
+test('@M10a a file added to an open claim on Your teachers is listed once, with the claim\'s files', async ({ browser }) => {
+  const student = await member(browser, 'Adder', { viewport: { width: 390, height: 844 } });
+  const { page } = student;
+  const { relationshipId } = await claimThroughApi(page, `Demo Added ${capital(token())}`);
+  await page.goto('/dashboard/teachers');
+  const claim = visible(page.locator(`li[data-relationship="${relationshipId}"]`)).getByTestId('claim-review');
+  const input = claim.getByTestId('evidence-input');
+  await input.setInputFiles({ name: 'demo-letter.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(29_000) });
+  await expect(claim.getByTestId('claim-files')).toContainText('demo-letter.pdf');
+  // Screens-8: the field does not list it a second time; the log says it joined the claim.
+  await expect(claim.getByTestId('evidence-item')).toHaveCount(0);
+  await expect(claim.getByText('demo-letter.pdf', { exact: true })).toHaveCount(1);
+  await expect(claim.getByTestId('evidence-log')).toContainText('demo-letter.pdf: added to the claim.');
+  // A refused file stays listed, in a box of its own on the raised card.
+  await input.setInputFiles({ name: 'demo-scan.pdf', mimeType: 'application/pdf', buffer: EXECUTABLE });
+  const refused = claim.getByTestId('evidence-item');
+  await expect(refused).toHaveAttribute('data-state', 'refused', { timeout: 30_000 });
+  const borders = await refused.evaluate((row) => ({ top: Number.parseFloat(getComputedStyle(row).borderTopWidth), left: Number.parseFloat(getComputedStyle(row).borderLeftWidth) }));
+  expect(borders.top).toBeGreaterThanOrEqual(1);
+  expect(borders.left).toBeGreaterThanOrEqual(4);
+  await expect(claim.getByTestId('claim-files')).not.toContainText('demo-scan.pdf');
+  await student.context.close();
+});
+
+/** "1 November 2026": the day as the pages write it (src/lib/dates.ts, UTC). */
+function formatDayUtc(day: Date): string {
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(day);
+}
