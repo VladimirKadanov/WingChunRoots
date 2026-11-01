@@ -118,9 +118,21 @@ fi
 drill_db="wcr_drill_$(date -u +%Y%m%d%H%M%S)_$RANDOM"
 drill_container=""
 dump_path=""
+restore_log=""
+
+# The error lines of a pg_restore log, without anything that can quote row data: DETAIL, CONTEXT,
+# HINT, LINE and "Command was" lines are dropped; quoted literals, key values "(k)=(v)" and a value
+# after the last colon are replaced. At most 20 lines of at most 200 characters.
+restore_errors() {
+  grep -E '(ERROR|FATAL|error):' "$1" \
+    | grep -Ev '(DETAIL|CONTEXT|HINT|LINE [0-9]+|Command was):' \
+    | sed -E -e "s/'[^']*'/'…'/g" -e 's/\([^)]*\)=\([^)]*\)/(…)=(…)/g' -e 's/: "[^"]*"[[:space:]]*$/: "…"/' \
+    | cut -c1-200 | head -n 20 || true
+}
 
 cleanup() {
   set +e
+  [ -n "$restore_log" ] && rm -f "$restore_log"
   if [ -n "$drill_container" ]; then
     docker rm -f "$drill_container" >/dev/null 2>&1
   else
@@ -184,12 +196,15 @@ dump_path="$(pg_copy_in "$dump" "$drill_db.dump")"
 started="$(now_ms)"
 pg_tool_on "$admin_db" psql -X -q -v ON_ERROR_STOP=1 \
   -c "CREATE DATABASE \"$drill_db\" TEMPLATE template0 ENCODING 'UTF8' LOCALE 'C.UTF-8'" >/dev/null
-if ! pg_tool_on "$drill_db" pg_restore --exit-on-error --no-password -d "$drill_db" "$dump_path" > "${TMPDIR:-/tmp}/wcr-drill-$$.log" 2>&1; then
-  tail -n 20 "${TMPDIR:-/tmp}/wcr-drill-$$.log" | sed 's/^/     /' >&2
-  rm -f "${TMPDIR:-/tmp}/wcr-drill-$$.log"
+# The pg_restore log stays private (mode 0600, removed on exit): its DETAIL and CONTEXT lines can
+# quote row data. On failure only its error lines are printed, with quoted values replaced.
+restore_log="$(umask 077 && mktemp "${TMPDIR:-/tmp}/wcr-drill.XXXXXXXXXX")"
+if ! pg_tool_on "$drill_db" pg_restore --exit-on-error --no-password -d "$drill_db" "$dump_path" > "$restore_log" 2>&1; then
+  restore_errors "$restore_log" | sed 's/^/     /' >&2
   fail "pg_restore stopped with an error"
 fi
-rm -f "${TMPDIR:-/tmp}/wcr-drill-$$.log"
+rm -f "$restore_log"
+restore_log=""
 finished="$(now_ms)"
 duration_ms=$((finished - started))
 duration_s="$(node -e 'process.stdout.write((Number(process.argv[1]) / 1000).toFixed(1))' "$duration_ms")"
