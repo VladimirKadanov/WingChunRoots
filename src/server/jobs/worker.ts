@@ -14,6 +14,7 @@ import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
 import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from '../services/retention';
+import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { lineageRecomputeHandler } from './lineage-recompute';
 import { jobTemplateData } from './outbox';
@@ -163,7 +164,7 @@ export function searchKeysRebuildHandler(db: Database, log: (line: string) => vo
 /** Starts pg-boss, the queues, the handlers and the schedules. */
 export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
   const { boss, db, mailer, queueOptions, pollingIntervalSeconds = 2, schedules = true } = options;
-  const log = options.log ?? ((line: string) => console.log(line));
+  const log = options.log ?? ((line: string) => logger().info(line));
 
   await boss.start();
   await ensureQueues(boss, queueOptions);

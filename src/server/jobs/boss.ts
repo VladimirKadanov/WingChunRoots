@@ -13,6 +13,7 @@
 import { PgBoss } from 'pg-boss';
 
 import { rolePassword, roleUrl, targetDatabaseUrl } from '../db/env';
+import { logger } from '../log';
 import { redactAddresses } from '../mail/redact';
 import { ensureQueues } from './queues';
 import { PGBOSS_SCHEMA } from './schema';
@@ -58,12 +59,12 @@ export function createBoss({ connectionString, kind }: BossOptions): PgBoss {
 export function logBossError(kind: string, error: unknown): void {
   const e = (error ?? {}) as { code?: unknown; message?: unknown };
   if (typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code)) {
-    console.error(`pg-boss ${kind}: database error ${e.code}`);
+    logger().error(`pg-boss ${kind}: database error ${e.code}`);
     return;
   }
   const code = typeof e.code === 'string' ? ` ${e.code}` : '';
   const message = typeof e.message === 'string' ? `: ${redactAddresses(e.message).split('\n')[0]?.slice(0, 200)}` : '';
-  console.error(`pg-boss ${kind}: error${code}${message}`);
+  logger().error(`pg-boss ${kind}: error${code}${message}`);
 }
 
 /**

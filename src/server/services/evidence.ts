@@ -52,6 +52,7 @@ import { evidenceFile, evidenceLink, notification, reviewCase } from '../db/sche
 import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES_PER_CASE, EVIDENCE_NAME_MAX, OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
+import { logger } from '../log';
 import { getEvidenceStore, newStorageKey, type ObjectStore } from '../storage';
 import { type EvidenceMime, EXTENSION, ImageRefused, isImage, MAX_IMAGE_PIXELS, reencodeImage, sniffMime } from '../storage/sanitize';
 import type { RequestMeta } from './context';
@@ -537,7 +538,7 @@ export async function openEvidence(principal: Principal | null, fileId: string, 
   const object = await store.get(row.storageKey);
   if (!object) {
     // The row is there but its object is not: the store lost it. Logged by id only.
-    console.error(`[evidence] the stored object of evidence file ${row.id} is missing`);
+    logger().error(`[evidence] the stored object of evidence file ${row.id} is missing`);
     throw notFound();
   }
   try {
@@ -597,7 +598,7 @@ export async function discardEvidence(principal: Principal | null, raw: z.input<
   });
   if (key) {
     await store.delete(key).catch(() => {
-      console.error(`[evidence] the stored object of discarded evidence file ${parsed.data.id} could not be removed`);
+      logger().error(`[evidence] the stored object of discarded evidence file ${parsed.data.id} could not be removed`);
     });
   }
   return { id: parsed.data.id, discarded: true };
