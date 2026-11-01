@@ -227,9 +227,10 @@ test('@M11 a school whose instructor is demo-two-lineages is returned for both l
 
 test('@M11 demo-school-city-only: the exact coordinates appear in no API response, page, sitemap, Open Graph image, JSON-LD or test-results/server.log', async ({ page, request }) => {
   const db = getDb();
-  const rows = await db.execute<{ id: string; lat: number; lng: number; address: string | null; city_lat: number; city_lng: number }>(sql`
+  const rows = await db.execute<{ id: string; lat: number; lng: number; address: string | null; city_lat: number; city_lng: number; ewkb: string; wkb: string }>(sql`
     SELECT s.id::text AS id, ST_Y(l.exact_point::geometry) AS lat, ST_X(l.exact_point::geometry) AS lng, l.address_line AS address,
-           ST_Y(p.centroid::geometry) AS city_lat, ST_X(p.centroid::geometry) AS city_lng
+           ST_Y(p.centroid::geometry) AS city_lat, ST_X(p.centroid::geometry) AS city_lng,
+           l.exact_point::text AS ewkb, encode(ST_AsBinary(l.exact_point), 'hex') AS wkb
       FROM school s JOIN school_private_location l ON l.school_id = s.id JOIN place p ON p.id = s.place_id
      WHERE s.slug = 'demo-school-city-only'`);
   expect(rows.rows).toHaveLength(1);
@@ -243,6 +244,12 @@ test('@M11 demo-school-city-only: the exact coordinates appear in no API respons
   const secret = [...new Set([...forms(school.lat), ...forms(school.lng)])].filter((form) => !publicForms.some((p) => p.includes(form)));
   expect(secret.length, 'forms of the private point to look for').toBeGreaterThan(2);
   if (school.address) secret.push(school.address);
+  // The raw column, as a DTO or a log line that serialized it would show it (M11 review,
+  // requirements-3): its EWKB hex (PostGIS's text form of a geography) in either case, and the
+  // 16 bytes of the two coordinates alone, which every WKB and EWKB form of the point contains.
+  const coordinateBytes = school.wkb.slice(-32);
+  expect(school.ewkb.toLowerCase().endsWith(coordinateBytes), 'the EWKB and WKB forms end with the same coordinates').toBe(true);
+  secret.push(school.ewkb.toUpperCase(), school.ewkb.toLowerCase(), coordinateBytes.toUpperCase(), coordinateBytes.toLowerCase());
   const expectClean = (text: string, where: string) => {
     for (const form of secret) expect(text.includes(form), `${where} contains ${form}`).toBe(false);
   };
@@ -295,7 +302,48 @@ test('@M11 demo-school-city-only: the exact coordinates appear in no API respons
   const image = await request.get(new URL(new URL(ogUrl!).pathname + new URL(ogUrl!).search, BASE_URL).toString());
   expect(image.status()).toBe(200);
   expect(image.headers()['content-type']).toBe('image/png');
-  expectClean((await image.body()).toString('latin1'), 'the Open Graph image');
+  const imageBytes = await image.body();
+  expectClean(imageBytes.toString('latin1'), 'the Open Graph image');
+  // A PNG draws its text as pixels, so a coordinate drawn on the image is no substring of its bytes.
+  // The image must depend on the public DTO only: a twin of the school, a copy of every column but
+  // its slug with another private point (and address), draws exactly the same bytes (M11 review,
+  // requirements-3). Any drawing that reads the private point makes the two differ. The twin is
+  // public only for these requests (this spec runs alone, one test at a time).
+  const twinSlug = `demo-school-city-only-twin-${letters()}`;
+  const twin = await db.execute<{ id: string }>(sql`
+    INSERT INTO school (slug, name, place_id, location_privacy, public_point, status, description, website_url, contact_email, contact_phone,
+                        forms_taught, last_activity_at, created_by_user_id, created_at, updated_at)
+    SELECT ${twinSlug}, name, place_id, location_privacy, public_point, status, description, website_url, contact_email, contact_phone,
+           forms_taught, last_activity_at, created_by_user_id, created_at, updated_at
+      FROM school WHERE id = ${school.id}::uuid
+    RETURNING id::text AS id`);
+  const twinId = twin.rows[0]!.id;
+  try {
+    await db.execute(sql`
+      INSERT INTO school_private_location (school_id, exact_point, address_line)
+      SELECT ${twinId}::uuid, ST_Project(exact_point, 1500, radians(60))::geography, 'Another fictional demo address'
+        FROM school_private_location WHERE school_id = ${school.id}::uuid`);
+    await db.execute(sql`INSERT INTO school_instructor (school_id, person_id, role) SELECT ${twinId}::uuid, person_id, role FROM school_instructor WHERE school_id = ${school.id}::uuid`);
+    const moved = await db.execute<{ apart: number }>(sql`
+      SELECT round(ST_Distance(a.exact_point, b.exact_point))::int AS apart
+        FROM school_private_location a, school_private_location b WHERE a.school_id = ${school.id}::uuid AND b.school_id = ${twinId}::uuid`);
+    expect(moved.rows[0]!.apart, 'the twin has another private point').toBeGreaterThan(1000);
+    const twinApi = await request.get(`${BASE_URL}/api/v1/schools/${twinSlug}`);
+    expect(twinApi.status(), 'the twin is public').toBe(200);
+    const publicPart = (dto: Record<string, unknown>) => Object.fromEntries(Object.entries(dto).filter(([k]) => k !== 'id' && k !== 'slug'));
+    const ownApi = await request.get(`${BASE_URL}/api/v1/schools/demo-school-city-only`);
+    expect(publicPart((await twinApi.json()) as Record<string, unknown>), 'the twin has the same public page').toEqual(publicPart((await ownApi.json()) as Record<string, unknown>));
+    const twinPage = await page.goto(`/schools/${twinSlug}`);
+    expect(twinPage?.status()).toBe(200);
+    const twinOgUrl = await page.locator('meta[property="og:image"]').first().getAttribute('content');
+    expect(twinOgUrl).toContain(`/schools/${twinSlug}/opengraph-image`);
+    const twinImage = await request.get(new URL(new URL(twinOgUrl!).pathname + new URL(twinOgUrl!).search, BASE_URL).toString());
+    expect(twinImage.status()).toBe(200);
+    expect(twinImage.headers()['content-type']).toBe('image/png');
+    expect(Buffer.compare(await twinImage.body(), imageBytes), 'the Open Graph image of a twin with another private point is the same image').toBe(0);
+  } finally {
+    await db.execute(sql`DELETE FROM school WHERE id = ${twinId}::uuid`);
+  }
 
   // The server logs of this run (and of the ordinary run before it, when there was one).
   for (const log of new Set([runPaths(process.env.PW_EXCLUSIVE === '1').serverLog, 'test-results/server.log'])) {
