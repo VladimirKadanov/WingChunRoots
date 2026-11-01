@@ -26,7 +26,7 @@ import { uuidv7 } from '../db/ids';
 import { AUTH_TABLES } from '../db/schema';
 import { onEmailVerified, onExistingUserSignUp, onPasswordReset, refuseStaleConfirmationLink } from './accounts';
 import { BACKUP_CODE_COUNT, newBackupCodes } from './credentials';
-import { RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
+import { invitationFromCallback, RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
 import { appUrl, authSecret, trustedProxies } from './env';
 import { afterHook, afterUserCreate, afterUserUpdate, beforeHook, beforeSessionCreate } from './hooks';
 import { proxyList } from './ip';
@@ -119,7 +119,8 @@ export function createAuth() {
       sendOnSignIn: true,
       autoSignInAfterVerification: false,
       expiresIn: VERIFY_EMAIL_EXPIRES_IN_S,
-      sendVerificationEmail: ({ user, token }) => sendVerificationEmail(user, token),
+      // M10b: the link keeps the invitation a sign-up started from (the request's callbackURL).
+      sendVerificationEmail: ({ user, token, url }) => sendVerificationEmail(user, token, invitationFromCallback(url)),
       // After Better Auth has checked the token: a link from before the password changed, or of an
       // account without one, is refused (accounts.ts); a confirmed address's sign-in lock ends.
       beforeEmailVerification: (user, request) => refuseStaleConfirmationLink(user, request),

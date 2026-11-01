@@ -111,9 +111,10 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
           </Link>
         </p>
         <h1 className="mt-2 font-display text-feature">Review queue</h1>
-        <p className="mt-3 max-w-[60ch] text-fg-muted">
-          Claims that wait for a decision, oldest first. Take a case to open its evidence; an archivist or an administrator verifies or refuses a
-          historical teacher claim. Every decision is kept in the audit log.
+        <p className="mt-3 max-w-[60ch] text-fg-muted" data-testid="queue-intro">
+          Cases that wait for a decision, oldest first. An archivist or an administrator decides historical teacher claims, profile claims and
+          instructor verifications; a moderator or an administrator decides profile reports and disputes. Take a case to open it. Every
+          decision is kept in the audit log.
         </p>
       </header>
 

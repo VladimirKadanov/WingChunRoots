@@ -345,6 +345,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
               Account type and plan
             </Link>
+            {/* M10b: a Sifu not verified yet sends instructor evidence here (DEFAULT D04/D13). */}
+            {sifu && overview.instructor.status !== 'verified' ? (
+              <Link href="/dashboard/instructor" className="link inline-flex min-h-11 items-center">
+                Instructor verification
+              </Link>
+            ) : null}
+            {/* M10b: the account's profile claims, instructor verifications and disputes (cases.mine). */}
+            {staffOnly ? null : (
+              <Link href="/dashboard/cases" className="link inline-flex min-h-11 items-center">
+                Your cases
+              </Link>
+            )}
             <Link href="/account" className="link inline-flex min-h-11 items-center">
               Account and security
             </Link>
@@ -368,7 +380,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                 </Link>{' '}
                 if you also train.
               </p>
-            ) : overview.hasProfile ? null : (
+            ) : overview.hasProfile ? null : overview.pendingClaimCaseId ? (
+              // M10b: an invited teacher's claim waits for the reviewers; the profile comes with it.
+              <div data-testid="pending-claim" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
+                <p className="text-ui">Your claim of the profile you were invited to is with the reviewers. When they approve it, the profile is yours.</p>
+                <Link href={`/dashboard/cases/${overview.pendingClaimCaseId}`} className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }))}>
+                  See your claim
+                </Link>
+              </div>
+            ) : (
               <div className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
                 <p className="text-ui">Your profile is not set up yet. Add your name so teachers and students can find and confirm you.</p>
                 <Link href={ONBOARDING} className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>

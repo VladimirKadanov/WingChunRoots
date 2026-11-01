@@ -16,7 +16,11 @@ import type { LineageEdgeDto, LineageRefDto, StudentEntryDto } from '@/server/dt
 import { LatinName, LineageName, type PersonNameData, PersonLink } from './person-name';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from './status';
 
-export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 'visibility' | 'periods'> & { kind?: LineageEdgeDto['kind'] };
+export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 'visibility' | 'periods'> & {
+  kind?: LineageEdgeDto['kind'];
+  /** M10b (DEFAULT D04/D13): approved by a teacher not yet verified as an instructor. */
+  approvedByUnverifiedInstructor?: boolean;
+};
 
 export interface RelationRow {
   person: PersonNameData & { id: string; visibility: 'public' | 'involved_only' };
@@ -67,6 +71,18 @@ export function RelationBadges({ edge, role }: { edge: RelationEdge; role: 'teac
       ))}
     </span>
   );
+}
+
+/**
+ * M10b (DEFAULT D04/D13): the note on a link approved by a teacher not yet verified as an
+ * instructor, on the profile's and the list view's relation lists and in the explorer's panel.
+ */
+export function UnverifiedApprovalNote({ edge, className }: { edge: Pick<RelationEdge, 'approvedByUnverifiedInstructor'>; className?: string }) {
+  return edge.approvedByUnverifiedInstructor ? (
+    <span data-unverified-approval className={className}>
+      Approved by an unverified instructor
+    </span>
+  ) : null;
 }
 
 /**
@@ -148,6 +164,12 @@ function EdgeLine({
       ))}
       <Sep inFlex />
       <RelationBadges edge={edge} role={role} />
+      {edge.approvedByUnverifiedInstructor ? (
+        <>
+          <Sep inFlex />
+          <UnverifiedApprovalNote edge={edge} />
+        </>
+      ) : null}
     </p>
   );
 }

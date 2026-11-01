@@ -106,6 +106,13 @@ export function FactStrip({ profile, className }: { profile: PersonProfileDto; c
     });
   }
   if (profile.claimState !== 'unknown') facts.push({ key: 'record', node: claimText(profile.claimState) });
+  // M10b (DEFAULT D04/D13): a Sifu account chose its type itself; an archivist verifies it.
+  if (profile.instructor) {
+    facts.push({
+      key: 'instructor',
+      node: <span data-testid="instructor-fact" data-instructor={profile.instructor}>{profile.instructor === 'verified' ? 'Instructor' : 'Instructor (unverified)'}</span>,
+    });
+  }
   return (
     <p className={cx('text-ui text-fg-muted', className)}>
       {facts.map((fact, i) => (

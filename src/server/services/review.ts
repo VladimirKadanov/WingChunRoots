@@ -34,8 +34,14 @@
 // against another or against a withdrawal.
 //
 // Account deletion requests (kind deletion_request) stay on /admin and the command line (M07):
-// they name an account, so they are not in this queue. The other kinds come with M10b; their cases
-// are listed and can be assigned, but decided only from M10b.
+// they name an account, so they are not in this queue.
+//
+// M10b: the queue also holds profile claims of invited teachers, instructor verifications, profile
+// reports and relationship disputes. They are taken and decided with the same procedures; each
+// kind's decision is review-kinds.ts, its deciders review-core.ts DECIDERS (archivists and
+// administrators for claims and instructors, moderators and administrators for disputes and
+// reports), and their history is review_event. review.arbitrate (arbitration.ts) opens a dispute.
+// The archival record page lists a record's established links, each with "Set in arbitration".
 //
 // Logs and audit rows carry ids and codes. A reviewer's reason or note is kept in the case
 // (review_case.resolution_reason, review_note), never in a log.
@@ -48,19 +54,21 @@ import { hasStaff2FA, requireStaff2FA } from '../auth/guards';
 import type { Principal, StaffRole } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
-import { authUser, evidenceLink, notification, person, personBio, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
-import { OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES, STAFF_ROLES } from '../db/schema/common';
+import { authUser, contentReport, evidenceLink, invitation, lineage, notification, person, personBio, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
+import { OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { enqueue, queueEmail, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
 import { writePersonKeys } from '../search/store';
-import { REVIEW_KIND_LABELS, REVIEW_STATUS_LABELS, type ReviewCaseKind, type ReviewCaseStatus } from '../templates/review';
+import { REPORT_REASON_LABELS, REVIEW_KIND_LABELS, REVIEW_STATUS_LABELS, type ReviewCaseKind, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ARCHIVAL_EVIDENCE_MESSAGE, type EvidenceFileView, fileView, filesOfCases, filesOfPerson, linkFilesToPerson, openableFiles } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
+import { decideKind } from './review-kinds';
+import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import {
   accountOf,
   closesCycle,
@@ -87,8 +95,8 @@ export const REVIEW_PAGE_SIZE = 25;
 export const REVIEW_TEXT_MAX = 2000;
 /** The kinds this queue lists: every kind except account deletion requests (M07, on /admin). */
 export const QUEUE_KINDS = REVIEW_CASE_KINDS.filter((k) => k !== 'deletion_request') as Exclude<ReviewCaseKind, 'deletion_request'>[];
-/** The roles that verify or refuse a historical claim (plan §6.7). */
-const DECIDE_ROLES: readonly StaffRole[] = ['archivist', 'admin'];
+/** The roles that verify or refuse a historical claim (plan §6.7); review-core.ts DECIDERS has every kind's. */
+const DECIDE_ROLES: readonly StaffRole[] = DECIDERS.historical_claim;
 /** The only role that edits archival records (plan §6.6). */
 const ARCHIVE_ROLES: readonly StaffRole[] = ['archivist'];
 
@@ -152,6 +160,139 @@ export const reviewNoteInput = z.object({
 
 // --- Views -------------------------------------------------------------------------------------
 
+/** The words of one decision on the case card: its button, its field and what it did. */
+export interface DecisionText {
+  label: string;
+  pending: string;
+  reason: string;
+  hint: string;
+  optional: boolean;
+  done: string;
+}
+
+const ASK: DecisionText = {
+  label: 'Ask for more information',
+  pending: 'Sending…',
+  reason: 'Question for the claimant',
+  hint: 'Required. The claimant reads it on Your teachers and can add evidence to the claim.',
+  optional: false,
+  done: 'Your question was sent to the student. The case waits for their answer.',
+};
+
+/** The decisions of each kind (M10a: the historical claim; M10b: the others). */
+export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, Record<'verify' | 'reject' | 'needs_info', DecisionText>> = {
+  historical_claim: {
+    verify: {
+      label: 'Verify the claim',
+      pending: 'Verifying…',
+      reason: 'Note on the decision',
+      hint: 'Optional. Kept with the case for the reviewers; the claimant is told the claim was confirmed.',
+      optional: true,
+      done: 'The claim is verified. The link and both profiles are public now, and the student was told.',
+    },
+    reject: {
+      label: 'Refuse the claim',
+      pending: 'Refusing…',
+      reason: 'Reason',
+      hint: 'Required. The claimant reads it on Your teachers. Neutral and specific: what the evidence does not show.',
+      optional: false,
+      done: 'The claim is refused. The student was told and can read your reason.',
+    },
+    needs_info: ASK,
+  },
+  person_claim: {
+    verify: {
+      label: 'Approve the claim',
+      pending: 'Approving…',
+      reason: 'Note on the decision',
+      hint: 'Optional. The record becomes the claimant’s profile, and the student’s request waits for their answer. Nothing becomes public.',
+      optional: true,
+      done: 'The claim is approved. The record is the claimant’s profile now, and the student’s request waits for their answer.',
+    },
+    reject: {
+      label: 'Refuse the claim',
+      pending: 'Refusing…',
+      reason: 'Reason',
+      hint: 'Required. The claimant reads it on their case page. The student may send a new invitation.',
+      optional: false,
+      done: 'The claim is refused. The claimant was told and can read your reason.',
+    },
+    needs_info: { ...ASK, hint: 'Required. The claimant reads it on their case page and can add evidence.', done: 'Your question was sent to the claimant. The case waits for their answer.' },
+  },
+  instructor_verification: {
+    verify: {
+      label: 'Verify the instructor',
+      pending: 'Verifying…',
+      reason: 'Note on the decision',
+      hint: 'Optional. The profile shows “Instructor” instead of “Instructor (unverified)”.',
+      optional: true,
+      done: 'The instructor is verified. Their profile and the links they approved say so now.',
+    },
+    reject: {
+      label: 'Refuse the verification',
+      pending: 'Refusing…',
+      reason: 'Reason',
+      hint: 'Required. The Sifu reads it on their instructor page and may send new evidence.',
+      optional: false,
+      done: 'The verification is refused. The Sifu was told and can read your reason.',
+    },
+    needs_info: {
+      ...ASK,
+      reason: 'Question for the Sifu',
+      hint: 'Required. The Sifu reads it on their case page and can add evidence.',
+      done: 'Your question was sent to the Sifu. The case waits for their answer.',
+    },
+  },
+  relationship_dispute: {
+    verify: {
+      label: 'Keep the link',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. Both people read it. The link is verified again and no longer shown as disputed.',
+      optional: false,
+      done: 'The link is kept: it is verified again, and both people were told your reason.',
+    },
+    reject: {
+      label: 'Revoke the link',
+      pending: 'Revoking…',
+      reason: 'Reason',
+      hint: 'Required. Both people read it. The link leaves the public lineage.',
+      optional: false,
+      done: 'The link is revoked: it left the public lineage, and both people were told your reason.',
+    },
+    needs_info: {
+      ...ASK,
+      reason: 'Question for both people',
+      hint: 'Required. Both people read it on their case page and can send evidence.',
+      done: 'Your question was sent to both people. The case waits for their answers.',
+    },
+  },
+  profile_report: {
+    verify: {
+      label: 'Uphold the report',
+      pending: 'Saving…',
+      reason: 'Note on the decision',
+      hint: 'Optional, for the reviewers. Nothing is hidden automatically: correct the record with the archival edit, or ask an administrator.',
+      optional: true,
+      done: 'The report is upheld. Correct the record with the archival edit where needed.',
+    },
+    reject: {
+      label: 'Dismiss the report',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required, for the reviewers.',
+      optional: false,
+      done: 'The report is dismissed.',
+    },
+    needs_info: ASK,
+  },
+  school_listing: {
+    verify: { ...ASK, label: 'Approve', done: '' },
+    reject: { ...ASK, label: 'Refuse', done: '' },
+    needs_info: ASK,
+  },
+};
+
 export interface ReviewListRow {
   id: string;
   kind: ReviewCaseKind;
@@ -164,6 +305,11 @@ export interface ReviewListRow {
   /** The people of a relationship case (teacher and student), null for another kind. */
   teacher: PersonRef | null;
   student: PersonRef | null;
+  /**
+   * M10b: the profile a case without a relationship is about (the instructor of an instructor
+   * verification, the reported profile of a report), null for a relationship case.
+   */
+  subject: PersonRef | null;
   lineageName: string | null;
   files: number;
 }
@@ -186,6 +332,8 @@ export interface ReviewNoteView {
   /** Who wrote it: the claimant, this reviewer, or another reviewer (by role). */
   author: 'claimant' | 'you' | 'reviewer';
   authorRole: string | null;
+  /** In a dispute, which side of the link a party's note is from (both people are parties there). */
+  authorSide: 'teacher' | 'student' | null;
 }
 
 export interface ReviewCaseView {
@@ -205,70 +353,18 @@ export interface ReviewCaseView {
   teacherRecord: { slug: string; kind: string; lifeStatus: string; stewardship: string; visibility: string; createdWithClaim: boolean } | null;
   files: EvidenceFileView[];
   notes: ReviewNoteView[];
+  /**
+   * M10b: what a case without a teacher claim is about (the record claimed, the instructor, the
+   * reported profile), with the facts the reviewer weighs; null for a historical claim.
+   */
+  subject: { label: string; person: PersonRef | null; facts: { label: string; value: string }[] } | null;
+  /** M10b: the words of the three decisions for this kind (verify, reject, needs_info). */
+  decisions: Record<'verify' | 'reject' | 'needs_info', DecisionText>;
   can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean };
   /** Why this reviewer may not decide, when they may not (shown on the card). */
   decideNote: string | null;
   /** For an administrator: the reviewers a case can be given to. */
   reviewers: { id: string; label: string }[];
-}
-
-interface CaseRow {
-  id: string;
-  kind: ReviewCaseKind;
-  status: ReviewCaseStatus;
-  relationshipId: string | null;
-  personId: string | null;
-  openedByUserId: string | null;
-  assignedToUserId: string | null;
-  resolution: 'approved' | 'rejected' | null;
-  resolutionReason: string | null;
-  resolvedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const caseColumns = {
-  id: reviewCase.id,
-  kind: reviewCase.kind,
-  status: reviewCase.status,
-  relationshipId: reviewCase.relationshipId,
-  personId: reviewCase.personId,
-  openedByUserId: reviewCase.openedByUserId,
-  assignedToUserId: reviewCase.assignedToUserId,
-  resolution: reviewCase.resolution,
-  resolutionReason: reviewCase.resolutionReason,
-  resolvedAt: reviewCase.resolvedAt,
-  createdAt: reviewCase.createdAt,
-  updatedAt: reviewCase.updatedAt,
-};
-
-async function caseById(db: Executor, id: string, lock = false): Promise<CaseRow | null> {
-  const query = db.select(caseColumns).from(reviewCase).where(and(eq(reviewCase.id, id), ne(reviewCase.kind, 'deletion_request')));
-  const [row] = lock ? await query.for('update') : await query;
-  return row ?? null;
-}
-
-/**
- * The accounts a case is about: the claimant who opened it and the accounts of the relationship's
- * teacher and student. Nobody reviews a claim of their own, whatever their role: such a reviewer
- * takes no action on it, is not given it, and reads it as the parties do (no internal notes).
- */
-async function partiesOf(db: Executor, c: Pick<CaseRow, 'relationshipId' | 'openedByUserId'>): Promise<Set<string>> {
-  const out = new Set<string>();
-  if (c.openedByUserId) out.add(c.openedByUserId);
-  if (!c.relationshipId) return out;
-  const rows = await db
-    .select({ userId: person.claimedByUserId })
-    .from(teachingRelationship)
-    .innerJoin(person, or(eq(person.id, teachingRelationship.teacherPersonId), eq(person.id, teachingRelationship.studentPersonId)))
-    .where(and(eq(teachingRelationship.id, c.relationshipId), isNull(person.deletedAt)));
-  for (const row of rows) if (row.userId) out.add(row.userId);
-  return out;
-}
-
-/** The reviewer's own side of a relationship, if any: nobody reviews their own claim. */
-async function ownSide(db: Executor, p: Principal, c: Pick<CaseRow, 'relationshipId' | 'openedByUserId'>): Promise<boolean> {
-  return (await partiesOf(db, c)).has(p.user.id);
 }
 
 // --- review.list -------------------------------------------------------------------------------
@@ -295,6 +391,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       studentId: teachingRelationship.studentPersonId,
       lineageName: sql<string | null>`(SELECT l.name FROM lineage l WHERE l.id = ${teachingRelationship.lineageId})`,
       files: sql<number>`(SELECT count(*)::int FROM evidence_link el JOIN evidence_file ef ON ef.id = el.evidence_file_id AND ef.deleted_at IS NULL WHERE el.review_case_id = ${reviewCase.id})`,
+      ownFiles: sql<number>`(SELECT count(*)::int FROM evidence_link el JOIN evidence_file ef ON ef.id = el.evidence_file_id AND ef.deleted_at IS NULL WHERE el.review_case_id = ${reviewCase.id} AND ef.uploaded_by_user_id = ${p.user.id})`,
     })
     .from(reviewCase)
     .leftJoin(teachingRelationship, eq(teachingRelationship.id, reviewCase.relationshipId))
@@ -302,7 +399,22 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
     .orderBy(...order)
     .limit(REVIEW_PAGE_SIZE)
     .offset((filters.page - 1) * REVIEW_PAGE_SIZE);
-  const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId]).filter((id): id is string => id !== null))]);
+  // A case without a relationship names its profile instead (review_case.person_id).
+  const subjectOf = (r: (typeof rows)[number]) => (r.relationshipId === null ? r.personId : null);
+  const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId, subjectOf(r)]).filter((id): id is string => id !== null))]);
+  const refOf = (id: string | null) => (id ? (refs.get(id) ?? null) : null);
+  // A row of a case this reviewer is a party to counts only their own files, as review.get shows
+  // them (its party view; the parties as review-core.ts partiesOf names them, read here for the
+  // whole page at once from the records this account has claimed).
+  const mine = await db.select({ id: person.id, deletedAt: person.deletedAt }).from(person).where(eq(person.claimedByUserId, p.user.id));
+  const liveMine = new Set(mine.filter((m) => m.deletedAt === null).map((m) => m.id));
+  const anyMine = new Set(mine.map((m) => m.id));
+  const partyView = (r: (typeof rows)[number]) =>
+    r.kind !== 'historical_claim' &&
+    ((r.kind !== 'relationship_dispute' && r.openedByUserId === p.user.id) ||
+      (r.teacherId !== null && liveMine.has(r.teacherId)) ||
+      (r.studentId !== null && liveMine.has(r.studentId)) ||
+      (r.personId !== null && anyMine.has(r.personId)));
   return {
     rows: rows.map((r) => ({
       id: r.id,
@@ -315,8 +427,9 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       assignee: r.assignedToUserId === null ? null : r.assignedToUserId === p.user.id ? 'me' : 'other',
       teacher: r.teacherId ? (refs.get(r.teacherId) ?? null) : null,
       student: r.studentId ? (refs.get(r.studentId) ?? null) : null,
+      subject: refOf(subjectOf(r)),
       lineageName: r.lineageName,
-      files: r.files,
+      files: partyView(r) ? r.ownFiles : r.files,
     })),
     total,
     page: filters.page,
@@ -333,33 +446,55 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
 
 // --- review.get --------------------------------------------------------------------------------
 
+/** The relationship status each kind is decided in (null: a kind without a relationship). */
+const DECIDABLE_IN: Partial<Record<ReviewCaseKind, string>> = {
+  historical_claim: 'under_review',
+  person_claim: 'awaiting_claim',
+  relationship_dispute: 'in_arbitration',
+};
+
+/** Who decides a kind, in the words of the case card. */
+const DECIDER_TEXT: Partial<Record<ReviewCaseKind, string>> = {
+  historical_claim: 'An archivist or an administrator verifies or refuses a historical claim. You can ask the claimant for more information and add notes.',
+  person_claim: 'An archivist or an administrator approves or refuses a profile claim. You can ask the claimant for more information and add notes.',
+  instructor_verification: 'An archivist or an administrator verifies an instructor. You can ask for more evidence and add notes.',
+  relationship_dispute: 'A moderator or an administrator decides a dispute. You can add notes.',
+  profile_report: 'A moderator or an administrator upholds or dismisses a report. You can add notes.',
+};
+
 /** What this reviewer may do on a case, and why not. */
 function abilities(p: Principal, c: CaseRow, relStatus: string | null, own: boolean) {
   const admin = hasStaff2FA(p, ['admin']);
-  const decider = hasStaff2FA(p, DECIDE_ROLES);
+  const kind = c.kind as Exclude<ReviewCaseKind, 'deletion_request'>;
+  const decider = hasStaff2FA(p, DECIDERS[kind] ?? ['admin']);
   const mine = c.assignedToUserId === p.user.id;
   const open = isOpen(c.status);
-  const decidable = c.kind === 'historical_claim' && relStatus === 'under_review';
+  const known = kind !== 'school_listing';
+  const needed = DECIDABLE_IN[kind];
+  const decidable = known && (needed === undefined || relStatus === needed);
   const may = !own && open;
+  // A dispute or a report is taken only by its deciders (review-core.ts ASSIGNED_TO_DECIDERS).
+  const takes = hasStaff2FA(p, assignableRoles(kind));
   const decideNote = own
-    ? 'This claim is about you: another reviewer decides it.'
+    ? 'This case is about you: another reviewer decides it.'
     : !open
       ? null
-      : c.kind !== 'historical_claim'
+      : !known
         ? 'Cases of this kind are decided from a later version of the review tool.'
         : !decider
-          ? 'An archivist or an administrator verifies or refuses a historical claim. You can ask the claimant for more information and add notes.'
+          ? (DECIDER_TEXT[kind] ?? null)
           : !mine && !admin
             ? 'Assign the case to yourself to decide it and to open the evidence.'
             : null;
   return {
     can: {
-      assignSelf: may && !mine,
+      assignSelf: may && !mine && known && takes,
       unassign: may && c.assignedToUserId !== null && (mine || admin),
-      assignOthers: may && admin,
+      assignOthers: may && admin && known,
       verify: may && decidable && decider && (mine || admin),
       reject: may && decidable && decider && (mine || admin),
-      needsInfo: may && decidable && (mine || admin),
+      // A report is upheld or dismissed; a dispute's parties are asked by its deciders.
+      needsInfo: may && decidable && kind !== 'profile_report' && (mine || admin) && (kind !== 'relationship_dispute' || decider),
       note: !own,
     },
     decideNote,
@@ -378,7 +513,18 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   const relationship = c.relationshipId ? await viewOf(db, c.relationshipId, { ...viewer, reviewer: true }).catch(() => null) : null;
   const parties = await partiesOf(db, c);
   const own = parties.has(p.user.id);
-  const files = (await filesOfCases(db, [c.id])).get(c.id) ?? [];
+  // A member of staff who is a party to an M10b case reads no more than the same party without a
+  // staff role (M10b review, security-3; the conflict-of-interest rule of M10a, review-core.ts
+  // partiesOf): their own files and replies and the reviewers' public notes, never another party's
+  // (a dispute's other side, DEFAULT D19; the claimant's note to the reviewers for the student of a
+  // claimed relationship). A historical claim keeps the M10a rule: its teacher reads the claimant's
+  // note and sees the files.
+  const partyView = own && c.kind !== 'historical_claim';
+  // A party who did not open the case (the reported person, the student of a claimed relationship)
+  // gets nothing of it through cases.get: here, no facts the reviewers weigh about the other party
+  // (a report's reason and details) and no reason of the decision.
+  const outsideParty = partyView && c.kind !== 'relationship_dispute' && c.openedByUserId !== p.user.id;
+  const files = ((await filesOfCases(db, [c.id])).get(c.id) ?? []).filter((f) => !partyView || f.uploadedByUserId === p.user.id);
   // The download's own rule (evidence.ts accessOfFiles): a link and a name only for a file this
   // viewer may open.
   const opens = await openableFiles(db, p, files.map((f) => f.id));
@@ -389,7 +535,9 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     .from(reviewNote)
     .leftJoin(authUser, eq(authUser.id, reviewNote.authorUserId))
     .where(own ? and(eq(reviewNote.reviewCaseId, c.id), eq(reviewNote.isInternal, false)) : eq(reviewNote.reviewCaseId, c.id))
-    .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id));
+    .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id))
+    // ...and, like cases.get, the reviewers' notes and their own, never another party's (above).
+    .then((rows) => (partyView ? rows.filter((n) => n.author === p.user.id || (n.author !== null && !parties.has(n.author))) : rows));
   const [assignee] = c.assignedToUserId ? await db.select({ role: authUser.role }).from(authUser).where(eq(authUser.id, c.assignedToUserId)) : [];
   const teacherRecord = relationship
     ? await db
@@ -398,13 +546,24 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
         .where(eq(person.id, relationship.teacher.id))
         .then(([t]) => (t ? { slug: t.slug, kind: t.kind, lifeStatus: t.lifeStatus, stewardship: t.stewardship, visibility: t.visibility, createdWithClaim: t.createdBy !== null && t.createdBy === c.openedByUserId } : null))
     : null;
+  // The two sides of a dispute, so the reviewer reads whose reply each note is.
+  const sides = new Map<string, 'teacher' | 'student'>();
+  if (c.kind === 'relationship_dispute' && relationship) {
+    const rows = await db
+      .select({ id: person.id, userId: person.claimedByUserId })
+      .from(person)
+      .where(inArray(person.id, [relationship.teacher.id, relationship.student.id]));
+    for (const row of rows) if (row.userId) sides.set(row.userId, row.id === relationship.teacher.id ? 'teacher' : 'student');
+  }
   const { can, decideNote } = abilities(p, c, relationship?.status ?? null, own);
+  const facts = await subjectOf(db, c);
+  const subject = facts && outsideParty ? { ...facts, facts: [] } : facts;
   const reviewers = can.assignOthers
     ? (
         await db
           .select({ id: authUser.id, name: authUser.name, role: authUser.role })
           .from(authUser)
-          .where(and(inArray(authUser.role, [...STAFF_ROLES]), eq(authUser.banned, false)))
+          .where(and(inArray(authUser.role, [...assignableRoles(c.kind)]), eq(authUser.banned, false)))
           .orderBy(asc(authUser.name), asc(authUser.id))
           .limit(200)
       )
@@ -420,7 +579,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     openedAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
     resolution: c.resolution,
-    resolutionReason: c.resolutionReason,
+    resolutionReason: outsideParty ? null : c.resolutionReason,
     resolvedAt: c.resolvedAt?.toISOString() ?? null,
     assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: own ? null : (assignee?.role ?? null) } : null,
     relationship,
@@ -431,12 +590,80 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       internal: n.internal,
       body: n.body,
       createdAt: n.createdAt.toISOString(),
-      author: n.author !== null && n.author === c.openedByUserId ? 'claimant' : n.author === p.user.id ? 'you' : 'reviewer',
-      authorRole: own || (n.author !== null && n.author === c.openedByUserId) ? null : (n.role ?? null),
+      author: n.author === p.user.id ? 'you' : n.author !== null && parties.has(n.author) ? 'claimant' : 'reviewer',
+      authorRole: own || (n.author !== null && parties.has(n.author)) ? null : (n.role ?? null),
+      authorSide: n.author !== null && n.author !== p.user.id && parties.has(n.author) ? (sides.get(n.author) ?? null) : null,
     })),
+    subject,
+    decisions: DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
     can,
     decideNote,
     reviewers,
+  };
+}
+
+/**
+ * M10b: what a profile claim, an instructor verification or a report is about, as facts for the
+ * case card. Never an e-mail address: a claim says only whether the invitation went to the address
+ * the claimant signed up with.
+ */
+async function subjectOf(db: Executor, c: CaseRow): Promise<ReviewCaseView['subject']> {
+  if (!c.personId || (c.kind !== 'person_claim' && c.kind !== 'instructor_verification' && c.kind !== 'profile_report')) return null;
+  const ref = (await peopleRefs([c.personId])).get(c.personId) ?? null;
+  const [record] = await db
+    .select({ kind: person.kind, lifeStatus: person.lifeStatus, stewardship: person.stewardship, visibility: person.visibility, claimedBy: person.claimedByUserId })
+    .from(person)
+    .where(eq(person.id, c.personId));
+  if (c.kind === 'person_claim') {
+    const [sent] = c.relationshipId
+      ? await db
+          .select({ matches: sql<boolean | null>`lower(${invitation.email}) = lower((SELECT u.email FROM auth_user u WHERE u.id = ${invitation.acceptedByUserId}))` })
+          .from(invitation)
+          .where(and(eq(invitation.relationshipId, c.relationshipId), eq(invitation.status, 'accepted')))
+          .orderBy(desc(invitation.acceptedAt))
+          .limit(1)
+      : [];
+    const [own] = c.openedByUserId ? await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, c.openedByUserId), isNull(person.deletedAt))) : [];
+    return {
+      label: 'The record claimed',
+      person: ref,
+      facts: [
+        {
+          label: 'Record',
+          value: [record?.stewardship === 'unclaimed' ? 'Unclaimed record' : record?.stewardship === 'self' ? 'Claimed' : 'Kept by the archive', record?.lifeStatus === 'living' ? 'living' : null, record?.visibility === 'public' ? 'public' : 'not public', 'created by the student who invited the teacher']
+            .filter(Boolean)
+            .join(' · '),
+        },
+        {
+          label: 'Invitation',
+          value:
+            sent?.matches === true
+              ? 'Sent to the address the claimant signed up with'
+              : sent?.matches === false
+                ? 'Sent to another address than the one the claimant signed up with'
+                : 'The address it was sent to is no longer kept',
+        },
+        { label: 'Claimant', value: own && own.id !== c.personId ? 'Has a profile of their own now' : 'An account without a profile of its own' },
+      ],
+    };
+  }
+  if (c.kind === 'instructor_verification') {
+    const [account] = record?.claimedBy ? await db.select({ type: authUser.accountType }).from(authUser).where(eq(authUser.id, record.claimedBy)) : [];
+    return {
+      label: 'The instructor',
+      person: ref,
+      facts: [{ label: 'Account type', value: account?.type === 'sifu' ? 'Sifu' : account ? 'Student' : 'No account' }],
+    };
+  }
+  const [report] = await db.select({ reason: contentReport.reason, details: contentReport.details, status: contentReport.status }).from(contentReport).where(eq(contentReport.reviewCaseId, c.id));
+  return {
+    label: 'The reported profile',
+    person: ref,
+    facts: [
+      { label: 'Reason', value: report ? REPORT_REASON_LABELS[report.reason] : 'Not recorded' },
+      { label: 'Details', value: report?.details ?? 'None given' },
+      { label: 'Record', value: record?.stewardship === 'self' ? 'Claimed by the person' : record?.stewardship === 'platform' ? 'Kept by the archive' : 'Unclaimed record' },
+    ],
   };
 }
 
@@ -472,26 +699,41 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
     const replayed = await db.transaction(async (tx) => {
       const seen = await caseById(tx, input.caseId);
       if (!seen) throw notFound();
-      if (seen.kind !== 'historical_claim' || !seen.relationshipId) throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
+      if (seen.kind === 'school_listing' || (seen.kind === 'historical_claim' && !seen.relationshipId)) {
+        throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
+      }
       // The relationship, then its case: the order of review.decide and relationships.withdraw. The
       // relationship_event written below takes a KEY SHARE lock on the relationship (its foreign
       // key), so taking the case first would deadlock against them (M10a review, code-1).
-      await rowById(tx, seen.relationshipId, true);
+      if (seen.relationshipId) await rowById(tx, seen.relationshipId, true);
       const c = await caseById(tx, input.caseId, true);
-      if (!c || !c.relationshipId) throw notFound();
+      if (!c || (c.kind === 'historical_claim' && !c.relationshipId)) throw notFound();
       const reason = input.assigneeId ? 'assigned' : 'unassigned';
-      if (await replayReview(tx, p, input.idempotencyKey, c.relationshipId, { to: 'under_review', reason })) return true;
-      if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This claim is about you: another reviewer handles it.');
+      // A historical claim keeps its history in relationship_event (M10a); the other kinds in
+      // review_event (M10b, review-core.ts).
+      if (c.kind === 'historical_claim') {
+        if (await replayReview(tx, p, input.idempotencyKey, c.relationshipId, { to: 'under_review', reason })) return true;
+      } else {
+        const replay = await caseReplayOf(tx, p.user.id, input.idempotencyKey);
+        if (replay) {
+          if (replay.caseId !== c.id || replay.action !== (input.assigneeId ? 'assign' : 'unassign')) throw keyReused();
+          return true;
+        }
+      }
+      if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This case is about you: another reviewer handles it.');
       if (!isOpen(c.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
       if (input.assigneeId === null) {
         if (c.assignedToUserId === null) return false;
         if (c.assignedToUserId !== p.user.id && !admin) throw new ServiceError('FORBIDDEN', 'Only the reviewer it is assigned to, or an administrator, can unassign this case.');
-      } else if (input.assigneeId !== p.user.id) {
+      } else if (input.assigneeId === p.user.id) {
+        // A dispute or a report: only its deciders take it (review-core.ts ASSIGNED_TO_DECIDERS).
+        if (!hasStaff2FA(p, assignableRoles(c.kind))) throw new ServiceError('FORBIDDEN', 'Only the reviewers who decide cases of this kind can take this case.');
+      } else {
         if (!admin) throw new ServiceError('FORBIDDEN', 'Only an administrator can give a case to another reviewer.');
         const [other] = await tx
           .select({ id: authUser.id })
           .from(authUser)
-          .where(and(eq(authUser.id, input.assigneeId), inArray(authUser.role, [...STAFF_ROLES]), eq(authUser.banned, false)));
+          .where(and(eq(authUser.id, input.assigneeId), inArray(authUser.role, [...assignableRoles(c.kind)]), eq(authUser.banned, false)));
         if (!other) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { assigneeId: 'Choose a reviewer from the list.' });
         // Nor is a case given to one of its parties (M10a review, security-2).
         if ((await partiesOf(tx, c)).has(input.assigneeId)) {
@@ -501,7 +743,11 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
       if (c.assignedToUserId === input.assigneeId) return false;
       const status = input.assigneeId === null ? (c.status === 'in_review' ? 'open' : c.status) : c.status === 'open' ? 'in_review' : c.status;
       await tx.update(reviewCase).set({ assignedToUserId: input.assigneeId, status, updatedAt: new Date() }).where(eq(reviewCase.id, c.id));
-      await recordEvent(tx, { relationshipId: c.relationshipId, from: 'under_review', to: 'under_review', actor: p, role: p.user.role, reason, key: input.idempotencyKey });
+      if (c.kind === 'historical_claim') {
+        await recordEvent(tx, { relationshipId: c.relationshipId!, from: 'under_review', to: 'under_review', actor: p, role: p.user.role, reason, key: input.idempotencyKey });
+      } else {
+        await recordCaseEvent(tx, { caseId: c.id, action: input.assigneeId ? 'assign' : 'unassign', from: c.status, to: status, actor: p, key: input.idempotencyKey });
+      }
       await writeAudit(tx, {
         action: 'review.assign',
         actorUserId: p.user.id,
@@ -517,7 +763,7 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
     });
     return { case: await getReviewCase(p, { id: input.caseId }), replayed };
   } catch (error) {
-    if (isKeyConflict(error)) throw keyReused();
+    if (isKeyConflict(error) || isCaseKeyConflict(error)) throw keyReused();
     throw error;
   }
 }
@@ -564,7 +810,9 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
       if (input.decision === 'verify') await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${VERIFY_LOCK}))`);
       const seen = await caseById(tx, input.caseId);
       if (!seen) throw notFound();
-      if (seen.kind !== 'historical_claim' || !seen.relationshipId) throw new ServiceError('CONFLICT', 'Cases of this kind are decided from a later version of the review tool.');
+      // M10b: profile claims, instructor verifications, reports and disputes (review-kinds.ts).
+      if (seen.kind !== 'historical_claim') return decideOtherKind(tx, p, seen, input, admin, meta);
+      if (!seen.relationshipId) throw new ServiceError('CONFLICT', 'Cases of this kind are decided from a later version of the review tool.');
       // 2. The relationship, then its case (the order relationships.withdraw takes them).
       const row = await rowById(tx, seen.relationshipId, true);
       const c = await caseById(tx, input.caseId, true);
@@ -694,9 +942,46 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
     if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
     return { case: await getReviewCase(p, { id: input.caseId }), replayed: outcome.replayed };
   } catch (error) {
-    if (isKeyConflict(error) || isNoteKeyConflict(error)) throw keyReused();
+    if (isKeyConflict(error) || isNoteKeyConflict(error) || isCaseKeyConflict(error)) throw keyReused();
     throw error;
   }
+}
+
+/**
+ * M10b: the decision on a case of another kind than a historical claim, after the same checks in
+ * the same order: the relationship (when the case has one), then the case, both FOR UPDATE; a
+ * repeated key replays (review_event); the reviewer is no party, may decide this kind
+ * (review-core.ts DECIDERS) and holds the case (or is an administrator); the case is open. The
+ * writes are review-kinds.ts decideKind.
+ */
+async function decideOtherKind(
+  tx: Transaction,
+  p: Principal,
+  seen: CaseRow,
+  input: z.output<typeof reviewDecideInput>,
+  admin: boolean,
+  meta: RequestMeta,
+): Promise<{ replayed: boolean; tags: string[] }> {
+  if (seen.kind === 'school_listing') throw new ServiceError('CONFLICT', 'Cases of this kind are decided from a later version of the review tool.');
+  const row = seen.relationshipId ? await rowById(tx, seen.relationshipId, true) : null;
+  const c = await caseById(tx, seen.id, true);
+  if (!c) throw notFound();
+  const action = input.decision === 'verify' ? 'approve' : input.decision === 'reject' ? 'reject' : 'needs_info';
+  const replay = await caseReplayOf(tx, p.user.id, input.idempotencyKey);
+  if (replay) {
+    if (replay.caseId !== c.id || replay.action !== action) throw keyReused();
+    return { replayed: true, tags: [] };
+  }
+  if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This case is about you: another reviewer decides it.');
+  const kind = c.kind as Exclude<ReviewCaseKind, 'deletion_request'>;
+  if ((input.decision !== 'needs_info' || kind === 'relationship_dispute') && !hasStaff2FA(p, DECIDERS[kind])) {
+    throw new ServiceError('FORBIDDEN', DECIDER_TEXT[kind]?.split('.')[0]?.concat('.') ?? 'You cannot decide cases of this kind.');
+  }
+  if (input.decision === 'needs_info' && kind === 'profile_report') throw new ServiceError('CONFLICT', 'A report is upheld or dismissed.');
+  if (c.assignedToUserId !== p.user.id && !admin) throw new ServiceError('FORBIDDEN', 'Assign the case to yourself before you decide it.');
+  if (!isOpen(c.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
+  const outcome = await decideKind(tx, p, c, row, input, meta);
+  return { replayed: false, tags: outcome.tags };
 }
 
 function isNoteKeyConflict(error: unknown): boolean {
@@ -822,6 +1107,10 @@ export interface ArchiveRecordView {
   original: { value: string; lang: string } | null;
   bio: string | null;
   files: EvidenceFileView[];
+  /** M10b: the record's established links (verified, in arbitration), for "Set in arbitration". */
+  relationships: { id: string; role: 'teacher' | 'student'; other: PersonRef; lineageName: string; status: 'verified' | 'in_arbitration' }[];
+  /** M10b: this reviewer may set a link in arbitration (a moderator or an administrator). */
+  canArbitrate: boolean;
   /** Whether this reviewer may edit it, and why not. */
   editable: boolean;
   refusal: string | null;
@@ -865,8 +1154,26 @@ export async function getArchiveRecord(principal: Principal | null, raw: z.input
   // The download's own rule (evidence.ts accessOfFiles): the archivist who uploaded a file and the
   // administrators open it, and only they see its link and its name.
   const opens = await openableFiles(db, p, files.map((f) => f.id));
+  const links = await db
+    .select({ id: teachingRelationship.id, teacher: teachingRelationship.teacherPersonId, student: teachingRelationship.studentPersonId, lineageName: lineage.name, status: teachingRelationship.status })
+    .from(teachingRelationship)
+    .innerJoin(lineage, eq(lineage.id, teachingRelationship.lineageId))
+    .where(and(or(eq(teachingRelationship.teacherPersonId, record.id), eq(teachingRelationship.studentPersonId, record.id)), inArray(teachingRelationship.status, [...PUBLIC_RELATIONSHIP_STATUSES])))
+    .orderBy(asc(teachingRelationship.createdAt), asc(teachingRelationship.id))
+    .limit(200);
+  const refs = await peopleRefs([...new Set(links.map((l) => (l.teacher === record.id ? l.student : l.teacher)))]);
   return {
     ...record,
+    relationships: links
+      .filter((l) => refs.has(l.teacher === record.id ? l.student : l.teacher))
+      .map((l) => ({
+        id: l.id,
+        role: l.teacher === record.id ? ('teacher' as const) : ('student' as const),
+        other: refs.get(l.teacher === record.id ? l.student : l.teacher)!,
+        lineageName: l.lineageName,
+        status: l.status as 'verified' | 'in_arbitration',
+      })),
+    canArbitrate: hasStaff2FA(p, DECIDERS.relationship_dispute),
     primaryName: primary?.value ?? '',
     original: original ? { value: original.value, lang: original.lang } : null,
     bio: bio?.body ?? null,

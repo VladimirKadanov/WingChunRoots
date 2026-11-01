@@ -10,6 +10,8 @@
 // the app shell. A failed teachers-and-students read keeps the header and shows the error under
 // the sections' own headings: on the server as a Retry link (a reload, without JavaScript), and
 // in the browser as the catchError boundary's Retry button, which fetches the page again.
+//
+// M10b: "Report profile" under a public profile that is not the viewer's own (/people/<slug>/report).
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -299,6 +301,16 @@ export default async function PersonPage({ params }: Props) {
         )}
       </LineageBoundary>
       {profile.bio ? <About bio={profile.bio} /> : null}
+      {/* M10b: "Report profile" for a public profile that is not the viewer's own (one report per
+          account and profile; the page asks to sign in first). */}
+      {profile.visibility === 'public' && !profile.isOwn && !profile.limited ? (
+        <p className="border-t border-border-subtle pt-6 text-sm text-fg-muted">
+          Something wrong on this profile?{' '}
+          <Link href={`${here}/report`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-profile">
+            Report profile
+          </Link>
+        </p>
+      ) : null}
     </PersonLayout>
   );
 }

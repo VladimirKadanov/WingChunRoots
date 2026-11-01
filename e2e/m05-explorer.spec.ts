@@ -278,7 +278,7 @@ test('@M05 legend shows an icon, a stroke sample and text for every status in vi
   await expect(legend).toBeVisible();
   const items = legend.getByRole('listitem');
   const strokes = new Set(await page.locator('[data-edge]').evaluateAll((paths) => paths.map((p) => p.getAttribute('data-stroke'))));
-  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'In arbitration' };
+  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'Disputed' };
   expect(strokes.size).toBeGreaterThan(0);
   for (const stroke of strokes) {
     const item = items.filter({ hasText: words[stroke!]! });
@@ -638,7 +638,7 @@ test.describe('M05 fixes a1', () => {
     await expect(card.locator('[data-person-node]')).toHaveAttribute('data-lod', 'full');
     // The status line still speaks of the display-primary teacher; the banner tells of the dispute.
     await expect(card).toContainText('Verified');
-    await expect(card.locator('[data-arbitration-banner]')).toHaveText('In arbitration');
+    await expect(card.locator('[data-arbitration-banner]')).toHaveText('Disputed');
     await expect(card.locator('[data-arbitration-banner] [data-seal="scales"]')).toHaveCount(1);
     await expect(personNodes(page).locator('[data-arbitration-banner]')).toHaveCount(1);
   });
@@ -719,7 +719,7 @@ test.describe('Ink restyle (owner decision 2026-10-31)', () => {
 });
 
 test.describe('M05 fixes a2', () => {
-  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'In arbitration' };
+  const words: Record<string, string> = { verified: 'Verified', cross_lineage: 'Cross-lineage', historical: 'Historical', under_review: 'Under review', unconfirmed: 'Pending', arbitration: 'Disputed' };
 
   /** Opens the Lineage view of lineage B and fits the whole of it: about a hundred people, as dots. */
   async function wholeLineageB(page: Parameters<typeof openExplorer>[0]) {

@@ -54,4 +54,12 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/review/actions.ts#decideCaseAction': { rpc: ['review.decide'] },
   'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
   'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
+  // M10b: invitations, profile claims, instructor verification, reports and arbitration.
+  'src/app/admin/review/actions.ts#arbitrateAction': { rpc: ['review.arbitrate'] },
+  'src/app/dashboard/teachers/invite/actions.ts#inviteTeacherAction': { rpc: ['relationships.invite'] },
+  'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction': { rpc: ['invitations.send'] },
+  'src/app/invite/[token]/actions.ts#acceptInvitationAction': { rpc: ['invitations.accept'] },
+  'src/app/dashboard/instructor/actions.ts#requestInstructorAction': { rpc: ['instructor.request'] },
+  'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction': { rpc: ['cases.reply'] },
+  'src/app/people/[slug]/report/actions.ts#reportProfileAction': { rpc: ['reports.create'] },
 };

@@ -198,6 +198,10 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
           <Link href="/dashboard/teachers/historical" className="link">
             name a historical teacher
           </Link>
+          . A living teacher who is not on WingChunRoots yet:{' '}
+          <Link href="/dashboard/teachers/invite" className="link">
+            invite your teacher
+          </Link>
           .
         </>
       }

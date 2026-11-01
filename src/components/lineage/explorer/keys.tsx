@@ -203,12 +203,15 @@ export function useGraphKeys(flow: FlowApi, context: GraphContext): GraphKeys {
       {chooser ? (
         <TeacherChooser
           anchor={chooser.anchor}
+          elementOf={(id) => flow.element(id)}
           label={`Teachers of ${nameOf(chooser.from)}`}
           teachers={chooser.ids.map((id) => ({ id, name: nameOf(id) }))}
           onChoose={(id) => {
             setChooser(null);
-            // Once the menu has closed and let the focus go (a task later): focused while the
-            // menu is still open, the node would lose the focus to it again.
+            // The menu hands the focus to the teacher as it closes (its final focus, in the same
+            // task); a task later the teacher becomes the active node, the view brings it in when it
+            // must, and the live region names it. Done while the menu is still open, its modal focus
+            // would take the focus back.
             const { setActive } = context;
             window.setTimeout(() => setActive(id, { focus: true, announce: true }));
           }}

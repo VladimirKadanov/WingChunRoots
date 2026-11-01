@@ -574,6 +574,8 @@ interface EdgeRow {
   lineage_slug: string;
   lineage_name: string;
   lineage_root_person_id: string | null;
+  /** M10b (DEFAULT D04/D13): v_public_edge.approved_by_unverified_instructor. */
+  approved_by_unverified_instructor: boolean | null;
 }
 
 interface CountRow {
@@ -731,7 +733,8 @@ export async function assembleGraph(
           ex,
           sql`SELECT id::text AS id, teacher_person_id::text AS teacher_id, student_person_id::text AS student_id,
                      lineage_id::text AS lineage_id, status, is_display_primary, periods,
-                     lineage_slug, lineage_name, lineage_root_person_id::text AS lineage_root_person_id
+                     lineage_slug, lineage_name, lineage_root_person_id::text AS lineage_root_person_id,
+                     approved_by_unverified_instructor
                 FROM v_public_edge
                WHERE student_person_id = ANY(${uuids(ids)}) AND teacher_person_id = ANY(${uuids(ids)})
                  AND (${lineageFilter}::uuid IS NULL OR lineage_id = ${lineageFilter}::uuid)
@@ -771,6 +774,7 @@ export async function assembleGraph(
       isDisplayPrimary: e.is_display_primary,
       visibility: 'public' as const,
       periods: periodsOf(e.periods),
+      approvedByUnverifiedInstructor: e.approved_by_unverified_instructor === true,
     })),
     ...ownEdges.map((e) => ({
       id: e.id,
@@ -783,6 +787,8 @@ export async function assembleGraph(
       // DEFAULT D03: shown only to the people involved, so marked as such.
       visibility: 'involved_only' as const,
       periods: periodsOf(e.periods),
+      // Not approved yet: the note is about a link a teacher approved.
+      approvedByUnverifiedInstructor: false,
     })),
   ];
 
@@ -952,12 +958,14 @@ export interface ProfileRow {
   display_name: string;
   alt_names: PublicName[];
   bio: string | null;
+  /** M10b (DEFAULT D04/D13): the record of a Sifu account; null for anyone else. */
+  instructor_status: 'verified' | 'unverified' | null;
 }
 
 export async function publicProfileRow(ex: Executor, personId: string): Promise<ProfileRow | null> {
   const list = await rows<ProfileRow>(
     ex,
-    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, country_code, city_name, display_name, alt_names, bio
+    sql`SELECT id::text AS id, slug, kind, life_status, stewardship, country_code, city_name, display_name, alt_names, bio, instructor_status
           FROM v_public_person WHERE id = ${personId}::uuid`,
   );
   return list[0] ?? null;
@@ -1027,7 +1035,8 @@ function studentsCte(teacherId: string): SQL {
            'id', pe.id, 'lineage_id', pe.lineage_id, 'status', pe.status,
            'is_display_primary', pe.is_display_primary, 'periods', pe.periods,
            'lineage_slug', pe.lineage_slug, 'lineage_name', pe.lineage_name,
-           'lineage_root_person_id', pe.lineage_root_person_id) ORDER BY pe.created_at, pe.id) AS edges,
+           'lineage_root_person_id', pe.lineage_root_person_id,
+           'approved_by_unverified_instructor', pe.approved_by_unverified_instructor) ORDER BY pe.created_at, pe.id) AS edges,
          bool_and(
            jsonb_array_length(pe.periods) > 0
            AND NOT jsonb_path_exists(pe.periods, '$[*] ? (@.ongoing == true)')
@@ -1201,6 +1210,7 @@ export async function studentPage(
       isDisplayPrimary: e.isDisplayPrimary,
       visibility: 'involved_only' as const,
       periods: periodsOf(e.periods),
+      approvedByUnverifiedInstructor: false,
     };
   };
 
@@ -1236,6 +1246,7 @@ export async function studentPage(
         isDisplayPrimary: e.is_display_primary,
         visibility: 'public' as const,
         periods: periodsOf(e.periods),
+        approvedByUnverifiedInstructor: e.approved_by_unverified_instructor === true,
       };
     });
     return {

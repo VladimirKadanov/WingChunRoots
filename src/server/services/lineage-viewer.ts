@@ -140,7 +140,9 @@ SELECT r.id::text AS id, r.teacher_person_id::text AS teacher_id, r.student_pers
       tx,
       sql`
 SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country_code,
-       p.created_by_user_id IS NOT DISTINCT FROM ${principal.user.id}::uuid AS created_by_viewer,
+       -- The viewer wrote the record and nobody has claimed it since (M10b: the record of an
+       -- invited teacher becomes their own once the archivists approve the claim).
+       (p.created_by_user_id IS NOT DISTINCT FROM ${principal.user.id}::uuid AND p.claimed_by_user_id IS NULL) AS created_by_viewer,
        (SELECT pl.name FROM place pl WHERE pl.id = p.place_id) AS city_name,
        pn.value AS display_name,
        COALESCE(
@@ -160,7 +162,9 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
     // record that is not public to the people it concerns. A request the viewer filed and its
     // other person has not answered (pending_teacher, awaiting_claim, or under_review: the
     // committee path for a teacher who is historical or unreachable, plan §6.7) shows only the
-    // names that label the edge, unless the viewer wrote that record themselves.
+    // names that label the edge, unless the viewer wrote that record themselves and it is still no
+    // one's own (M10b review, security-1: once an invited teacher's claim is approved, the record is
+    // the teacher's, and the student who created it reads only the names until the teacher answers).
     const answered = new Set<string>();
     for (const e of edgeRows) {
       if (!own || (e.teacher_id !== own.id && e.student_id !== own.id)) continue;
