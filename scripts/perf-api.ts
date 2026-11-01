@@ -12,18 +12,9 @@
 //   pnpm perf:api --stdout   # prints the section instead (scripts/verify.d/M13.sh)
 //   pnpm perf:api --keep     # keeps the throwaway database for EXPLAIN (its name is printed)
 
-import { registerHooks } from 'node:module';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { stubNextCache } from './lib/next-cache-hook';
 
-const STUB = pathToFileURL(path.resolve('scripts/lib/next-cache-stub.ts')).href;
-
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === 'next/cache' || specifier === 'next/cache.js') return { url: STUB, shortCircuit: true };
-    return nextResolve(specifier, context);
-  },
-});
+stubNextCache();
 
 import('./lib/perf-api-run')
   .then(({ main }) => main())

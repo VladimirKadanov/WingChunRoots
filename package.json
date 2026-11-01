@@ -37,6 +37,7 @@
     "api:openapi": "tsx src/server/rpc/openapi-cli.ts",
     "perf:queries": "tsx scripts/perf-queries.ts",
     "perf:api": "tsx scripts/perf-api.ts",
+    "perf:web": "tsx scripts/lighthouse-routes.ts",
     "geo:extract": "tsx scripts/geonames-extract.ts",
     "geo:load": "tsx src/server/geo/cli.ts"
   },

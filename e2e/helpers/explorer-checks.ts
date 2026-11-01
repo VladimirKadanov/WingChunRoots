@@ -280,30 +280,39 @@ export interface InpResult {
 
 /**
  * Selects nodes one after another at 4x CPU slowdown (Chromium, through the DevTools protocol) and
- * returns the INP of those selections: web-vitals' where it is installed and the browser reports
- * INP; else the worst Event Timing interaction; with neither (WebKit, or every interaction under
- * 16 ms), the frame measure, which also counts its own timer and so errs on the slow side.
- * `next` names the node to select next, or null when there is none.
+ * returns the INP of those selections (see interactionInp). `next` names the node to select next,
+ * or null when there is none.
  */
 export async function selectionInp(page: Page, browserName: string, count: number, next: (selected: string[]) => Promise<string | null>): Promise<InpResult> {
+  const selected: string[] = [];
+  return interactionInp(page, browserName, count, async (i) => {
+    const id = await next(selected);
+    expect(id, `a node to select (${i + 1} of ${count})`).toBeTruthy();
+    await page.locator(`.react-flow__node[data-id="${id}"]`).click();
+    await expect(page.getByTestId('explorer-panel')).toBeVisible();
+    selected.push(id!);
+  });
+}
+
+/**
+ * Runs `act` (one pointer interaction each: a click or a tap) `count` times at 4x CPU slowdown
+ * (Chromium, through the DevTools protocol) and returns the INP of those interactions: web-vitals'
+ * where it is installed and the browser reports INP; else the worst Event Timing interaction; with
+ * neither (WebKit, or every interaction under 16 ms), the frame measure, which also counts its own
+ * timer and so errs on the slow side. M13: also the opening of the search palette.
+ */
+export async function interactionInp(page: Page, browserName: string, count: number, act: (i: number) => Promise<void>): Promise<InpResult> {
   const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null;
   await cdp?.send('Emulation.setCPUThrottlingRate', { rate: 4 });
-  const selected: string[] = [];
   try {
-    for (let i = 0; i < count; i++) {
-      const id = await next(selected);
-      expect(id, `a node to select (${i + 1} of ${count})`).toBeTruthy();
-      await page.locator(`.react-flow__node[data-id="${id}"]`).click();
-      await expect(page.getByTestId('explorer-panel')).toBeVisible();
-      selected.push(id!);
-    }
+    for (let i = 0; i < count; i++) await act(i);
     await page.waitForTimeout(500);
   } finally {
     await cdp?.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   }
   const read = () => page.evaluate(() => (window as unknown as { __inp: InpProbe }).__inp);
   let probe = await read();
-  expect(probe.frames.length, 'every selection was measured').toBeGreaterThanOrEqual(count);
+  expect(probe.frames.length, 'every interaction was measured').toBeGreaterThanOrEqual(count);
   // web-vitals reports from its own observer once it has processed the entries (with no interaction
   // of 16 ms or more, the first input's delay): wait for it wherever it can report.
   if (webVitalsScript() && probe.eventTiming) {
