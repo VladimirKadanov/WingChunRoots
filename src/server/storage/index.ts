@@ -15,6 +15,10 @@
 //   S3_BUCKET_EVIDENCE    the private evidence bucket (default wcr-evidence).
 //
 // The messages never quote a value: the credentials are secrets and the endpoint may carry them.
+//
+// DEFAULT D13: evidence lives in its own private bucket (S3_BUCKET_EVIDENCE) or private folder,
+// apart from the public media bucket (S3_BUCKET_MEDIA, from M11) and never counted against the
+// media quotas of a plan; nothing here ever signs a GET for a browser.
 
 import path from 'node:path';
 

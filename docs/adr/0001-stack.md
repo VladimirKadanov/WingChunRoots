@@ -35,6 +35,7 @@
 | Тестове (M05) | `web-vitals` | 6.2.3 | За разработка (devDependency), Apache-2.0, без зависимости и без install скрипт; публикуван на 05.10.2026. Само за E2E измерването на INP (план §5.8 (c)): Playwright инжектира браузърната му сборка в страницата (`e2e/helpers/explorer-checks.ts`), затова не влиза в нито един bundle, а `THIRD_PARTY_NOTICES.md` не се променя |
 | Търсене (M07) | `transliteration`, `pinyin-pro`, `to-jyutping`, `opencc-js` | 2.6.2, 3.29.5, 3.1.1, 1.4.2 | Ключовете за търсене на имената (план §5.3, M07; `docs/search.md`): Latin транслитерация на кирилица и други писмености (MIT), пинин с режим за фамилия (MIT), Jyutping (BSD-2-Clause), сгъване на традиционни към опростени йероглифи (MIT за кода, Apache-2.0 за речниците; двата текста са в `THIRD_PARTY_NOTICES.md`, `pnpm notices` чете папката `LICENSES/` по REUSE). Версиите са линиите от плана, с последната patch версия, по-стара от `minimumReleaseAge`. Внасят се само в `src/server/search` (ESLint). Нито един няма install скрипт |
 | Форми (M07) | `@tanstack/react-form` | 1.33.5 | TanStack Form за сложните форми (план §5.6): редакторът на профила с редовете на имената; правилата са Zod схема (`src/lib/profile-form-rules.ts`, с `zod/mini`), която редакторът зарежда при първия фокус във формата или при първия запис, а не със страницата: в сборката на Turbopack Zod е около 40 kB gzip JavaScript, и с `zod/mini` (план §5.8 (в)). Последното стабилно издание (2.0 е alpha). Няма install скрипт |
+| Доказателства (M10a) | `sharp`, `aws4fetch` | 0.35.5, 1.0.20 | `sharp` (Apache-2.0; готовите `@img/sharp-*` пакети с libvips под LGPL-3.0, текстовете са в `THIRD_PARTY_NOTICES.md`) прекодира качените изображения, за да не стигнат EXIF и GPS до хранилището; вече беше в lockfile-а като незадължителна зависимост на `next` и няма install скрипт. `aws4fetch` (MIT, без зависимости, без install скрипт) подписва заявките на S3 драйвера към SeaweedFS (AWS Signature V4 върху `fetch`) вместо целия AWS SDK. И двата се внасят само от `src/server/storage` (ESLint). Причините са в [ADR 0012](0012-evidence-and-review.md) |
 
 ### Docker образи (по `@sha256` digest)
 
@@ -67,7 +68,7 @@ pnpm 12 отказва настройка, която не разпознава,
 | `trustPolicy` | `no-downgrade` | Отказва версия с по-слабо доказателство за доверие от по-рано публикувана |
 | `shellEmulator` | `true` | Скриптовете в `package.json` ползват POSIX синтаксис (`NEXT_TELEMETRY_DISABLED=1 next dev`). С вградения емулатор на обвивка pnpm ги пуска еднакво на Linux, macOS и WSL2, а и от PowerShell или cmd, ако някой ги пусне оттам. Емулаторът на pnpm 12.14.0 не поддържа няколко пренасочвания в една команда (`> файл 2>&1`), затова такива команди не се пишат в `package.json`. Командата на `webServer` в `playwright.config.ts` се пуска от Playwright, а не от pnpm, и ползва само пренасочване, което разбират и `sh`, и `cmd.exe`; папката `test-results/` се създава в самия конфиг. Основният път остава WSL2; Windows без WSL2 (Git Bash) е втори, по-бавен път (README, ръководството за администратора и „Облачни сесии, CI и локално“ по-долу) |
 | `trustPolicyExclude` | `semver@6.3.1` | Виж следващия раздел |
-| `allowBuilds` | `unrs-resolver`, `esbuild`, `ssh2`, `cpu-features`, `protobufjs`: всички `false` | Виж раздела за install скриптовете |
+| `allowBuilds` | `unrs-resolver`, `esbuild`, `ssh2`, `cpu-features`, `protobufjs`, `sharp` (M10a): всички `false` | Виж раздела за install скриптовете |
 
 ### Изключение от `trustPolicy`: `semver@6.3.1` (решение по подразбиране)
 
@@ -95,6 +96,12 @@ pnpm 12 отказва настройка, която не разпознава,
 | `ssh2` | `false` | Идва чрез `@testcontainers/postgresql` → `testcontainers` → `dockerode` → `docker-modem` (SSH връзка към отдалечен Docker). Скриптът се опитва да компилира незадължително native разширение за криптография с `node-gyp`; без него `ssh2` ползва вградения `crypto` на Node. Тестовете се свързват с локалния Docker, не по SSH |
 | `cpu-features` | `false` | Незадължителна зависимост на `ssh2`: native модул (`node-gyp rebuild`), с който `ssh2` избира шифри според процесора. Без него `ssh2` работи с подразбиращия се ред на шифрите; няма нужда от компилатор при инсталация |
 | `protobufjs` | `false` | Идва чрез `dockerode` → `@grpc/grpc-js` / `@grpc/proto-loader` (BuildKit сесии, които не ползваме). `postinstall` само проверява версиите на зависимостите на CLI-я `pbjs`; библиотеката работи и без него |
+
+Добавен в M10a ([ADR 0012](0012-evidence-and-review.md)):
+
+| Пакет | Стойност | Причина |
+|---|---|---|
+| `sharp` | `false` | Пряка зависимост от M10a (прекодиране на изображенията на доказателствата). 0.35.5 няма install скрипт и зарежда готовия `@img/sharp-*` бинарен пакет от `optionalDependencies`; изричното `false` гарантира, че компилация от изходен код (`node-gyp`) няма да тръгне, ако бъдещо издание добави такъв скрипт |
 
 ## Телеметрия и „agent feedback“ на Next.js (решение по подразбиране, план §10.2 ред 10)
 
