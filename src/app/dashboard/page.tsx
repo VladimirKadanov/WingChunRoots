@@ -351,6 +351,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                 Instructor verification
               </Link>
             ) : null}
+            {/* M10b: the account's profile claims, instructor verifications and disputes (cases.mine). */}
+            {staffOnly ? null : (
+              <Link href="/dashboard/cases" className="link inline-flex min-h-11 items-center">
+                Your cases
+              </Link>
+            )}
             <Link href="/account" className="link inline-flex min-h-11 items-center">
               Account and security
             </Link>

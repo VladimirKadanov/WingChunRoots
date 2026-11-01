@@ -20,7 +20,7 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { REPORT_REASON_LABELS } from '@/server/services/reports';
+import { REPORT_REASON_LABELS } from '@/server/templates/review';
 import { REPORT_FORM } from './form-ids';
 import { ReportForm } from './report-form';
 

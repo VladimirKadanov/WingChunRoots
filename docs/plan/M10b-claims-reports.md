@@ -56,3 +56,10 @@ M10a.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-11-01 05:45 — схемата и единствената миграция `*_m10b_claims_reports` (`review_event` само за добавяне, `invitation.accepted_by_user_id` и ключ за идемпотентност, един сигнал от акаунт за обект, една отворена проверка на инструктор, `v_public_person.instructor_status`, `v_public_edge.approved_by_unverified_instructor`), тестовите данни: опорните Сифу са потвърдени (f0fe0a2)
+- 2026-11-01 06:11 — услугите: поканата (токен от 32 байта, само SHA-256, 14 дни, веднъж, писмото през outbox със запечатана връзка), поемането (`awaiting_claim → pending_teacher` само след одобрен `person_claim`), проверката на инструктор, сигналите, арбитражът (DEFAULT D19), страницата на случая; шаблоните на писмата и известията (efbb2c9)
+- 2026-11-01 06:27 — процедурите в `/api/rpc` и `/api/v1`, тънките Server Actions в таблицата за паритет, страниците (`/dashboard/teachers/invite`, `/invite/[token]`, `/dashboard/instructor`, `/dashboard/cases`, `/people/[slug]/report`, `/admin/review/arbitrate/[id]`), „Disputed“ на публичните страници, „Instructor (unverified)“ и „Approved by an unverified instructor“ (12ebfa3)
+- 2026-11-01 06:40 — `claims.int.test.ts` (12): токенът като хеш, изтичане, еднократност, един и същ 404; преходът само след одобрен иск; поканеният не отваря доказателствата преди това; всеки преход с `relationship_event` и одит; инструктор, сигнал, арбитраж (f50f1f4)
+- 2026-11-01 06:43 — `e2e/m10b-claims.spec.ts` с петте заглавия в проекта `exclusive` (`PUBLIC_WRITE_SPECS`), новите маршрути и състояния на екраните; `PW_EXCLUSIVE=1 pnpm e2e --grep @M10b` минава (f9e4f6d); снимките в `docs/screenshots/M10b/` (0f5afa4)
+- 2026-11-01 06:55 — `docs/evidence-and-review.md` (D03, D04/D13, D19, D23, сигналите), ADR 0013, двете ръководства, моделът на данните, статусът в плана (M10a слят), трите въпроса към собственика (`docs/plan/questions/M10b.md`), `scripts/verify.d/M10b.sh`, **Your cases** в таблото

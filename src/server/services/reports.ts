@@ -19,18 +19,12 @@ import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { contentReport, person, reviewCase } from '../db/schema';
 import { REPORT_DETAILS_MAX, REPORT_REASONS } from '../db/schema/common';
+import { REPORT_REASON_LABELS, type ReportReason } from '../templates/review';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 import { fieldErrors, idempotencyKey, keyReused, viewerOf } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, recordCaseEvent, tellStaff } from './review-core';
 
-export type ReportReason = (typeof REPORT_REASONS)[number];
-export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
-  copyright: 'Copyright: it uses my text or photos without permission',
-  spam: 'Spam or advertising',
-  inappropriate: 'Inappropriate or offensive',
-  misleading: 'Misleading or false information',
-};
 /** At most this many reports of one account in 24 hours. */
 export const REPORTS_PER_DAY = 10;
 export const ALREADY_REPORTED = 'You have already reported this profile. The moderators have your report.';
