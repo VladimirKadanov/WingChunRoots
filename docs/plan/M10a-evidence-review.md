@@ -72,3 +72,10 @@ M09.
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-11-01 00:14 — `ObjectStore` с драйвер за файловата система и S3 драйвер (`aws4fetch`) за SeaweedFS, общият тест на договора, sharp за прекодирането (`allowBuilds: false`), `.storage/` извън git (ca20023)
+- 2026-11-01 00:14 — схемата и миграцията (`original_name`, видовете в `mime`, един отворен случай на връзка, ключ на бележките), услугата за доказателства, `POST /api/evidence/upload` (411/413 преди тялото, магически байтове, без EXIF и GPS) и `GET /api/evidence/[id]` със заглавките и одита `evidence.view` (debb9f8)
+- 2026-11-01 00:15 — искът за исторически учител (`relationships.requestHistorical`, `involved_only`, DEFAULT D03), опашката (`review.*`), архивната редакция (`archive.*`), шаблоните, процедурите в `/api/rpc` и `/api/v1`, списъкът за паритет и договорът OpenAPI (3452cc9); страниците `/dashboard/teachers/historical`, `/admin/review` и `/admin/review/records/[slug]` с тънки Server Actions и полето за файлове (9295ae6)
+- 2026-11-01 00:17 — SeaweedFS в CI със същия образ и команда като `docker-compose.yml`, sharp и aws4fetch в ADR 0001, маркерът DEFAULT D13 (c5078aa)
+- 2026-11-01 00:24 — интеграционните тестове: `evidence.int.test.ts` (18) и `review.int.test.ts` (11) минават (d078cad)
+- 2026-11-01 00:41 — `e2e/m10a-evidence.spec.ts` с деветте заглавия в проекта `exclusive` (`PUBLIC_WRITE_SPECS`), ключовите маршрути и състоянията на екраните; `PW_EXCLUSIVE=1 pnpm e2e --grep @M10a` минава (69bd8ad, 555c39a); лицензите на sharp и aws4fetch (dd7ef1e)

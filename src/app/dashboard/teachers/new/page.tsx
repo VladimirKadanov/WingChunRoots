@@ -190,7 +190,18 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
       : {};
 
   return (
-    <Shell lead="Ask a teacher to confirm that they taught you. Each teacher answers their own request; one teacher's answer never confirms another.">
+    <Shell
+      lead={
+        <>
+          Ask a teacher to confirm that they taught you. Each teacher answers their own request; one teacher&apos;s answer never confirms another. For a
+          teacher who has died, reviewers confirm the training from your evidence:{' '}
+          <Link href="/dashboard/teachers/historical" className="link">
+            name a historical teacher
+          </Link>
+          .
+        </>
+      }
+    >
       <noscript>
         <form method="get" action={PAGE} role="search" className="grid gap-3 rounded-sm border border-border-subtle p-4">
           <label htmlFor="find-teacher" className="text-sm font-semibold">
