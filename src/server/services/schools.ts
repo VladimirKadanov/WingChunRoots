@@ -472,7 +472,8 @@ export async function schoolGet(_principal: Principal | null, raw: z.input<typeo
 /** Every public school's address for the sitemap (plan §6.4: from the public DTO only). */
 export async function schoolSitemap(): Promise<SchoolSitemapDto> {
   'use cache';
-  cacheLife('hours');
+  // Minutes, as the finder's answers: a plan that ends by its date drops the school without a tag.
+  cacheLife('minutes');
   tagCacheEntry([SCHOOLS_TAG]);
   const result = await getDb().execute<{ slug: string; updated_at: Date | string }>(sql`SELECT v.slug, v.updated_at FROM v_public_school v ORDER BY v.slug`);
   return toPublicSchoolSitemap(result.rows.map((r) => ({ slug: r.slug, updatedAt: new Date(r.updated_at).toISOString() })));
