@@ -17,8 +17,8 @@
 | M06 | [M06 — Изследовател: клавиатура, екранни четци, телефон и разгъване](M06-explorer-a11y.md) | M05 | слят ([#18](https://github.com/VladimirKadanov/WingChunRoots/pull/18), 28.10.2026) |
 | M07 | [M07 — Имена, профил, поверителност на акаунта и търсене](M07-names-search.md) | M04 | слят ([#13](https://github.com/VladimirKadanov/WingChunRoots/pull/13), 26.10.2026) |
 | M08 | [M08 — Права по план, тестови права и табла](M08-entitlements.md) | M02 | слят ([#11](https://github.com/VladimirKadanov/WingChunRoots/pull/11), 24.10.2026) |
-| M09 | [M09 — Заявки към учител и независими одобрения](M09-teacher-requests.md) | M07, M08 | PR отворен ([#20](https://github.com/VladimirKadanov/WingChunRoots/pull/20), клон `m09-teacher-requests`) |
-| M10a | [M10a — Доказателства, исторически учители и опашка за преглед](M10a-evidence-review.md) | M09 | не е започнат |
+| M09 | [M09 — Заявки към учител и независими одобрения](M09-teacher-requests.md) | M07, M08 | слят ([#20](https://github.com/VladimirKadanov/WingChunRoots/pull/20), 01.11.2026) |
+| M10a | [M10a — Доказателства, исторически учители и опашка за преглед](M10a-evidence-review.md) | M09 | PR отворен ([#21](https://github.com/VladimirKadanov/WingChunRoots/pull/21), чернова, клон `m10a-evidence-review`; въпроси в [questions/M10a.md](questions/M10a.md)) |
 | M10b | [M10b — Покани, поемане на профил, проверка на инструктор, сигнали и арбитраж](M10b-claims-reports.md) | M10a | не е започнат |
 | M11 | [M11 — Школи, карта и филтри по линия](M11-schools-map.md) | M08, M10a | не е започнат |
 | M12 | [M12 — Локално пускане като в production, основно наблюдение, локален архив и учение по възстановяване](M12-local-ops.md) | M10b, M11 | не е започнат |

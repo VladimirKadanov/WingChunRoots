@@ -11,6 +11,7 @@ import { relationshipApproved } from './relationship-approved';
 import { relationshipRejected } from './relationship-rejected';
 import { relationshipRequested } from './relationship-requested';
 import { resetPassword } from './reset-password';
+import { reviewDecided } from './review-decided';
 import { type EmailTemplate, TemplateDataError } from './types';
 import { verifyEmail } from './verify-email';
 
@@ -23,6 +24,7 @@ export type { RelationshipApprovedData } from './relationship-approved';
 export type { RelationshipRejectedData } from './relationship-rejected';
 export type { RelationshipRequestedData } from './relationship-requested';
 export type { ResetPasswordData } from './reset-password';
+export type { ReviewDecidedData } from './review-decided';
 export type { VerifyEmailData } from './verify-email';
 
 /** Every e-mail template, by name (= template.name). A new template is added here and in its own file. */
@@ -36,6 +38,8 @@ export const EMAIL_TEMPLATES = {
   'relationship-requested': relationshipRequested,
   'relationship-approved': relationshipApproved,
   'relationship-rejected': relationshipRejected,
+  // M10a: the review committee's decision on a historical teacher claim.
+  'review-decided': reviewDecided,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;

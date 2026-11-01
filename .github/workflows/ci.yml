@@ -74,6 +74,13 @@ jobs:
       DB_MIGRATOR_PASSWORD: migrator-ci
       DB_APP_RW_PASSWORD: app-rw-ci
       DB_APP_PUBLIC_RO_PASSWORD: app-public-ro-ci
+      # M10a: evidence goes to the SeaweedFS started below, through the ObjectStore S3 driver
+      # (src/server/storage); the contract test also runs against it. Throwaway identity of that
+      # container; not a secret.
+      S3_ENDPOINT: http://127.0.0.1:8333
+      S3_ACCESS_KEY_ID: s3-key-ci
+      S3_SECRET_ACCESS_KEY: s3-secret-ci
+      S3_BUCKET_EVIDENCE: wcr-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,6 +100,21 @@ jobs:
         run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
       - name: Create the test database (same SQL as Docker Compose)
         run: psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -f docker/postgres/20-create-test-database.sql
+      - name: Start SeaweedFS (same image and command as docker-compose.yml, from M10a)
+        # A step, not a service container: a service cannot take the `mini` command. Private
+        # buckets only; the evidence bucket is created on start-up (S3_BUCKET).
+        run: |
+          docker run -d --name seaweedfs -p 127.0.0.1:8333:8333 \
+            -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
+            -e S3_BUCKET="$S3_BUCKET_EVIDENCE,wcr-media" \
+            chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d \
+            mini -dir=/data -webdav=false -admin.ui=false -s3.port.iceberg=0 -s3.port.lance=0
+          for attempt in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8333/healthz >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          docker logs --tail 80 seaweedfs
+          exit 1
       - name: Generate the throwaway account settings (from M02)
         # Random per run and never in the repository: the Better Auth secret, the ip_hmac key, the
         # mail seal key and the test-only credentials of the seeded demo accounts (.env.example).

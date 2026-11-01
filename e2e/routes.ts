@@ -78,6 +78,14 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/teachers', name: 'teachers', status: 200, milestone: 'M09', key: true, signInAs: 'demo-pending' },
   { path: '/dashboard/teachers/new', name: 'teachers-new', status: 200, milestone: 'M09', key: true, signInAs: 'demo-pending' },
   { path: '/dashboard/students/requests', name: 'student-requests', status: 200, milestone: 'M09', key: true, signInAs: 'demo-free-sifu-5' },
+  // Evidence and the review queue (M10a). The claim form of a demo account that no test changes;
+  // the queue as the seeded administrator sees it (the seeded cases: the M10a spec, which adds and
+  // decides cases, runs in the exclusive run after the visual regression); the archival edit of
+  // demo-root-c as the seeded archivist. The case card needs a case's id: a screen state
+  // (e2e/screenshots.spec.ts).
+  { path: '/dashboard/teachers/historical', name: 'teachers-historical', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-pending' },
+  { path: '/admin/review', name: 'review-queue', status: 200, milestone: 'M10a', key: true, signInAs: 'admin' },
+  { path: '/admin/review/records/demo-root-c', name: 'review-record', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-archivist' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

@@ -47,4 +47,11 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/teachers/actions.ts#endTrainingAction': { rpc: ['relationships.end'] },
   'src/app/dashboard/students/requests/actions.ts#approveRequestAction': { rpc: ['relationships.approve'] },
   'src/app/dashboard/students/requests/actions.ts#rejectRequestAction': { rpc: ['relationships.reject'] },
+  // M10a: historical teachers, evidence and the review queue.
+  'src/app/dashboard/teachers/historical/actions.ts#requestHistoricalAction': { rpc: ['relationships.requestHistorical'] },
+  'src/app/dashboard/teachers/historical/actions.ts#discardEvidenceAction': { rpc: ['evidence.discard'] },
+  'src/app/admin/review/actions.ts#assignCaseAction': { rpc: ['review.assign'] },
+  'src/app/admin/review/actions.ts#decideCaseAction': { rpc: ['review.decide'] },
+  'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
+  'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
 };

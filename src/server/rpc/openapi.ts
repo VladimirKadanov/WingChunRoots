@@ -95,6 +95,65 @@ export function documentErrors(document: Record<string, unknown>): Record<string
   return document;
 }
 
+/**
+ * M10a: the two binary route handlers of evidence files, outside the router (a file is the body of
+ * the upload and of the download, never JSON), served under /api rather than /api/v1: each path
+ * names its own server. A native client uploads and opens evidence through these, with the same
+ * session (cookie or bearer) and the same checks as the web (src/server/evidence-http.ts).
+ */
+export function documentEvidence(document: Record<string, unknown>): Record<string, unknown> {
+  const errors = (codes: Record<string, string>) => Object.fromEntries(Object.entries(codes).map(([code, description]) => [code, errorResponse(description)]));
+  document.paths = {
+    ...((document.paths ?? {}) as Record<string, unknown>),
+    '/evidence/upload': {
+      servers: [{ url: '/api' }],
+      post: {
+        operationId: 'evidence.upload',
+        summary: 'Upload one evidence file (JPEG, PNG, WebP or PDF, at most 20 MB): private, never public; images are re-encoded without metadata',
+        parameters: [
+          { name: 'case', in: 'query', required: false, description: 'An open claim of the uploader to add the file to; without it the file waits for a claim.', schema: { type: 'string', format: 'uuid' } },
+          { name: 'X-File-Name', in: 'header', required: false, description: "The file's own name, URI-encoded.", schema: { type: 'string', maxLength: 1000 } },
+          { name: 'Content-Length', in: 'header', required: true, description: 'The size of the file; refused above 20 MB before the body is read.', schema: { type: 'integer', minimum: 1, maximum: 20971520 } },
+        ],
+        requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', contentMediaType: 'application/octet-stream' } } } },
+        responses: {
+          '201': {
+            description: "The stored file: its id, type, size, both hashes and the app's download address (never a storage address).",
+            content: { 'application/json': { schema: { type: 'object', required: ['evidence'], properties: { evidence: { type: 'object' } } } } },
+          },
+          ...errors({
+            '400': 'An empty file, or one that ended before its Content-Length.',
+            '401': 'No session.',
+            '403': 'A cross-site request with a cookie session.',
+            '404': 'No such open claim of yours.',
+            '409': 'The claim has 20 files, or has been decided.',
+            '411': 'No Content-Length.',
+            '413': 'Larger than 20 MB.',
+            '415': 'Not a JPEG, PNG, WebP or PDF by its magic bytes, or an image that cannot be read.',
+            '429': '20 files not yet in a claim were uploaded in 24 hours.',
+          }),
+        },
+      },
+    },
+    '/evidence/{id}': {
+      servers: [{ url: '/api' }],
+      get: {
+        operationId: 'evidence.download',
+        summary: 'Download an evidence file: the uploader, the teacher of the request, the assigned reviewers and the administrators; 404 for anyone else',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': {
+            description: 'The file, as an attachment (Content-Disposition: attachment, Cache-Control: no-store, X-Content-Type-Options: nosniff).',
+            content: { 'application/octet-stream': { schema: { type: 'string', contentMediaType: 'application/octet-stream' } } },
+          },
+          ...errors({ '404': 'No such file, or not one this session may open (one answer for both).' }),
+        },
+      },
+    },
+  };
+  return document;
+}
+
 /** The OpenAPI 3.1 document of /api/v1. */
 export async function openApiDocument(): Promise<Record<string, unknown>> {
   const generator = new OpenAPIGenerator({ schemaConverters: [new Zod4SchemaConverter()] });
@@ -107,7 +166,7 @@ export async function openApiDocument(): Promise<Record<string, unknown>> {
     },
     servers: [{ url: '/api/v1' }],
   });
-  return documentErrors(document as unknown as Record<string, unknown>);
+  return documentEvidence(documentErrors(document as unknown as Record<string, unknown>));
 }
 
 /** The file content: two-space JSON with a final newline. */

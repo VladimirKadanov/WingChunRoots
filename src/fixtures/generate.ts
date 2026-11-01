@@ -888,7 +888,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       createdAt: caseAt,
       updatedAt: caseAt,
     });
-    reviewNotes.push({ id: b.id(), reviewCaseId: id, authorUserId: null, body: `${FICTIONAL_MARK}: ${note}`, isInternal: true, createdAt: caseAt, updatedAt: caseAt });
+    reviewNotes.push({ id: b.id(), reviewCaseId: id, authorUserId: null, body: `${FICTIONAL_MARK}: ${note}`, isInternal: true, idempotencyKey: null, createdAt: caseAt, updatedAt: caseAt });
   };
   addCase('historical_claim', 'open', underReviewRel, claimOnly.row.id, null, 'evidence for a historical teacher awaits review.');
   addCase('relationship_dispute', 'in_review', arbitrationRel, null, null, 'a dispute under arbitration.');

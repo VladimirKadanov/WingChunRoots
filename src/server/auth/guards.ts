@@ -80,6 +80,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   // M08: the dashboards and their settings; plan grants for admins only (plan §6.5).
   '/dashboard': { kind: 'user' },
   '/admin/grants': { kind: 'staff2fa', roles: ['admin'] },
+  // M10a: the review queue, for every staff role (the services narrow each action).
+  '/admin/review': { kind: 'staff2fa' },
 };
 
 export const SIGN_IN_PATH = '/sign-in';

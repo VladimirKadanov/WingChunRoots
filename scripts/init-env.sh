@@ -60,6 +60,8 @@ value_for() {
     S3_SECRET_ACCESS_KEY) echo "$s3_secret_key" ;;
     S3_BUCKET_EVIDENCE) echo wcr-evidence ;;
     S3_BUCKET_MEDIA) echo wcr-media ;;
+    # M10a: the evidence store uses the SeaweedFS of docker-compose.yml (docs/evidence-and-review.md).
+    S3_ENDPOINT) echo "http://127.0.0.1:8333" ;;
     E2E_PORT) echo 3100 ;;
     APP_URL) echo http://localhost:3000 ;;
     BETTER_AUTH_SECRET) echo "$better_auth_secret" ;;
@@ -79,7 +81,7 @@ umask 077
 if [ -f .env ] && [ "${1:-}" != "--force" ]; then
   added=()
   for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD MAIL_TRANSPORT \
-    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET; do
+    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET S3_ENDPOINT; do
     if grep -q "^${name}=$" .env.example && ! grep -q "^${name}=" .env; then
       # Keep the last existing line intact when the file does not end with a newline.
       [ -z "$(tail -c 1 .env)" ] || echo >> .env

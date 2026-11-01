@@ -16,6 +16,7 @@ import { adminOverview } from '../services/admin';
 import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
 import { dashboardOverview } from '../services/dashboard';
+import { discardEvidence, discardInput } from '../services/evidence';
 import { isServiceError } from '../services/errors';
 import {
   closePilotRequest,
@@ -27,6 +28,7 @@ import {
   revokeGrant,
   revokeGrantInput,
 } from '../services/grants';
+import { historicalClaimInput, requestHistoricalTeacher } from '../services/historical';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import {
@@ -47,6 +49,22 @@ import {
   studentRequests,
   withdrawRelationship,
 } from '../services/relationships';
+import {
+  addReviewNote,
+  archiveGetInput,
+  archiveUpdateInput,
+  assignReviewCase,
+  decideReviewCase,
+  getArchiveRecord,
+  getReviewCase,
+  listReviewCases,
+  reviewAssignInput,
+  reviewDecideInput,
+  reviewIdInput,
+  reviewListInput,
+  reviewNoteInput,
+  updateArchiveRecord,
+} from '../services/review';
 import { setRoleInput, setUserRole } from '../services/roles';
 import { twoFactorOverview } from '../services/two-factor';
 import { profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
@@ -110,6 +128,12 @@ const signedIn = base.use(({ context, next }) => {
 });
 const adminWithSecondFactor = base.use(({ context, next }) => {
   requireStaff2FA(context.principal, ['admin']);
+  return next();
+});
+// M10a: the review queue, for every staff role with a verified second factor; the services narrow
+// each action further (review.ts).
+const staffWithSecondFactor = base.use(({ context, next }) => {
+  requireStaff2FA(context.principal);
   return next();
 });
 
@@ -307,6 +331,61 @@ export const router = {
       .route({ method: 'GET', path: '/relationships/{id}', summary: 'One relationship, for its student, its teacher or a reviewer (404 for anyone else)' })
       .input(relationshipIdInput)
       .handler(({ context, input }) => getRelationship(context.principal, input)),
+    // M10a: a historical or deceased teacher, confirmed by the review committee from evidence.
+    requestHistorical: signedIn
+      .route({
+        method: 'POST',
+        path: '/relationships/request-historical',
+        summary: 'Claim training with a historical or deceased teacher, with evidence: under review, visible only to you and the reviewers',
+      })
+      .input(historicalClaimInput)
+      .handler(({ context, input }) => requestHistoricalTeacher(context.principal, input, context.meta)),
+  },
+  // M10a: evidence files. The upload and the download are binary route handlers outside the router
+  // (POST /api/evidence/upload, GET /api/evidence/{id}; documented in this contract as well).
+  evidence: {
+    discard: signedIn
+      .route({ method: 'POST', path: '/evidence/discard', summary: 'Remove an own evidence file that is in no claim yet (the uploader)' })
+      .input(discardInput)
+      .handler(({ context, input }) => discardEvidence(context.principal, input, context.meta)),
+  },
+  // M10a: the review queue (staff with a verified second factor; plan §5.6, §6.7).
+  review: {
+    list: staffWithSecondFactor
+      .route({ method: 'GET', path: '/review', summary: 'The review queue: cases by kind, status and assignee, sorted and paged (staff with a verified second factor)' })
+      .input(reviewListInput)
+      .handler(({ context, input }) => listReviewCases(context.principal, input)),
+    get: staffWithSecondFactor
+      .route({ method: 'GET', path: '/review/{id}', summary: 'One review case: the relationship, the evidence, the notes and the allowed actions' })
+      .input(reviewIdInput)
+      .handler(({ context, input }) => getReviewCase(context.principal, input)),
+    assign: staffWithSecondFactor
+      .route({ method: 'POST', path: '/review/assign', summary: 'Take a case, give it to another reviewer (an administrator) or unassign it; audited' })
+      .input(reviewAssignInput)
+      .handler(({ context, input }) => assignReviewCase(context.principal, input, context.meta)),
+    decide: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/review/decide',
+        summary: 'Verify, refuse with a reason, or ask for more information on a historical claim (archivist or administrator to verify or refuse); audited',
+      })
+      .input(reviewDecideInput)
+      .handler(({ context, input }) => decideReviewCase(context.principal, input, context.meta)),
+    note: staffWithSecondFactor
+      .route({ method: 'POST', path: '/review/note', summary: 'Add an internal note to a case (reviewers only); audited' })
+      .input(reviewNoteInput)
+      .handler(({ context, input }) => addReviewNote(context.principal, input, context.meta)),
+  },
+  // M10a: the archival edit (plan §6.6): only an archivist edits a record kept by the platform or unclaimed.
+  archive: {
+    get: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive/{slug}', summary: 'A record for the archival edit, with its evidence (staff with a verified second factor)' })
+      .input(archiveGetInput)
+      .handler(({ context, input }) => getArchiveRecord(context.principal, input)),
+    update: staffWithSecondFactor
+      .route({ method: 'POST', path: '/archive/update', summary: 'Edit a record kept by the platform or unclaimed with a required reason and optional evidence (archivist only); audited' })
+      .input(archiveUpdateInput)
+      .handler(({ context, input }) => updateArchiveRecord(context.principal, input, context.meta)),
   },
   dashboard: {
     overview: base

@@ -184,8 +184,12 @@ export default function ExplorerPanel(props: PanelProps) {
   const sheetOpen = live && opening;
   /** The sheet took the focus from the graph where it covers it (onSheetSnap). */
   const tookFocus = useRef(false);
+  /** Counts the sheet's snaps and closes (onSheetSnap): a snap's settle work runs only while no later one came. */
+  const snaps = useRef(0);
   useEffect(() => {
-    if (!sheetOpen) tookFocus.current = false;
+    if (sheetOpen) return;
+    tookFocus.current = false;
+    snaps.current += 1;
   }, [sheetOpen]);
   useFocusKept(canvas);
   const router = useRouter();
@@ -274,7 +278,7 @@ export default function ExplorerPanel(props: PanelProps) {
       keepMounted
       initialFocus={false}
       finalFocus={() => focusBack(canvas)}
-      onSnapPointChange={(_point, index) => onSheetSnap(index, canvas, tookFocus)}
+      onSnapPointChange={(_point, index) => onSheetSnap(index, canvas, tookFocus, snaps)}
       actions={sheet}
       keepAbove={keepAbove}
       coverAbove={coverAbove}
@@ -652,8 +656,15 @@ function focusActiveNode(canvas: RefObject<CanvasHandle | null>) {
  * while it is still on the sheet itself. Except where the canvas above the sheet cannot show the
  * active node at all (a short window below 768 px, where even the peek covers the canvas: a11y-6):
  * there the sheet covers the graph as at its top, and the focus comes back when it closes.
+ *
+ * The settle work belongs to this snap only (`snaps`): when the sheet moves again, or closes, before
+ * it settles, it is dropped. Else the peek a sheet opened at, settling only after the sheet was
+ * raised to its top, would read the raised sheet as covering and take back a focus moved into the
+ * graph since (a raised sheet takes the focus once, as it comes to rest at the top).
  */
-function onSheetSnap(index: number, canvas: RefObject<CanvasHandle | null>, tookFocus: { current: boolean }) {
+function onSheetSnap(index: number, canvas: RefObject<CanvasHandle | null>, tookFocus: { current: boolean }, snaps: { current: number }) {
+  snaps.current += 1;
+  const snap = snaps.current;
   const cover = () => {
     const inGraph = !!document.activeElement?.closest('.react-flow');
     // A focus this sheet took where it covered at another point stays the sheet's to give back.
@@ -665,6 +676,7 @@ function onSheetSnap(index: number, canvas: RefObject<CanvasHandle | null>, took
     return;
   }
   afterSheetSettles(() => {
+    if (snaps.current !== snap) return;
     const sheet = sheetElement();
     if (sheet && canvas.current && !canvas.current.showsAbove(sheet.getBoundingClientRect().top)) {
       cover();

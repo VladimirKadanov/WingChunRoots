@@ -54,7 +54,13 @@ export default async function AdminPage() {
     <Column>
       <p className="eyebrow">Staff</p>
       <h1 className="mt-2 font-display text-feature">Administration</h1>
-      <p className="mt-3 max-w-[56ch] text-fg-muted">The review and moderation tools arrive in later milestones of the pilot.</p>
+      <p className="mt-3 max-w-[56ch] text-fg-muted">Historical teacher claims and archival edits are in the review queue. Moderation tools arrive in a later milestone of the pilot.</p>
+      {/* M10a: the review queue, for every staff role. */}
+      <p className="mt-5">
+        <Link href="/admin/review" className={buttonVariants({ variant: 'primary' })} data-testid="review-queue-link">
+          Review queue
+        </Link>
+      </p>
       <dl className="mt-8 grid gap-1 border-t border-border-subtle pt-5">
         <dt className="text-sm text-fg-muted">Failed e-mail deliveries</dt>
         <dd className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

@@ -4,6 +4,10 @@
 // historical, with "Mark training as ended". Several teachers are independent: each row is its
 // own request with its own answer.
 //
+// M10a: a historical teacher claim (committee_review) waits here too, under review, with its
+// evidence, the reviewers' questions and, while it waits, a field to add more files; ?claimed=<id>
+// says it was sent. "Name a historical teacher" opens its form.
+//
 // After a change the page says what happened (?sent=, ?withdrawn=, ?ended= with the relationship's
 // id, never a name in the address). The data comes from relationships.mine, the procedure /api/v1
 // serves. Reads the session, so the page renders per request.
@@ -20,10 +24,12 @@ import { LOAD_ERRORS } from '@/components/account/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
+import { EvidenceUploader } from '@/components/evidence/uploader';
 import { EndTrainingForm, WithdrawForm } from '@/components/relationships/forms';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
+import { formatSize } from '@/lib/file-size';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
@@ -68,6 +74,63 @@ function Empty({ testId, children }: { testId: string; children: ReactNode }) {
   );
 }
 
+/**
+ * M10a: the review of a historical teacher claim, as its student sees it: the status in words, the
+ * evidence (each file opens through the app's own address, /api/evidence/<id>), the reviewers'
+ * questions and reason, and while the claim waits, a field to add more files to it.
+ */
+function ClaimReview({ review }: { review: NonNullable<RelationshipView['review']> }) {
+  return (
+    <div data-testid="claim-review" data-case-status={review.status} className="grid gap-3 rounded-sm bg-surface-2 px-4 py-3 sm:col-span-2">
+      <p className="text-sm font-semibold">{review.statusLabel}</p>
+      {review.decision ? (
+        <div data-testid="claim-decision" className="grid gap-1 text-sm">
+          <p>{review.decision.text}</p>
+          {review.decision.reason ? <p className="whitespace-pre-line text-fg-muted">Reviewers: {review.decision.reason}</p> : null}
+        </div>
+      ) : null}
+      {review.messages.length > 0 ? (
+        <ul className="grid gap-2 text-sm" data-testid="claim-messages">
+          {review.messages.map((message, i) => (
+            <li key={i} className="grid gap-0.5">
+              <span className="font-semibold">{message.fromClaimant ? 'Your note' : 'The reviewers ask'}</span>
+              <span className="whitespace-pre-line">{message.body}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="grid gap-1">
+        <p className="text-sm font-semibold">Evidence</p>
+        <ul className="grid gap-1 text-sm" data-testid="claim-files">
+          {review.files.map((file) => (
+            <li key={file.id}>
+              {file.href ? (
+                <a href={file.href} className="link inline-flex min-h-11 items-center" translate="no">
+                  {file.name ?? `${file.kindLabel} file`}
+                </a>
+              ) : (
+                <span translate="no">{file.name ?? `${file.kindLabel} file`}</span>
+              )}{' '}
+              <span className="text-fg-muted">
+                · {file.kindLabel} · {formatSize(file.sizeBytes)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {review.canAddFiles ? (
+        <EvidenceUploader
+          caseId={review.caseId}
+          // A file the list above shows already is not listed by the field again (screens-8).
+          knownIds={review.files.map((file) => file.id)}
+          label="Add evidence to this claim"
+          hint="JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a claim stays with it."
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function Row({ view, children, testId }: { view: RelationshipView; children?: ReactNode; testId: string }) {
   return (
     <li
@@ -87,6 +150,7 @@ function Row({ view, children, testId }: { view: RelationshipView; children?: Re
         <RelationshipBadge view={view} />
         {children}
       </div>
+      {view.review ? <ClaimReview review={view.review} /> : null}
     </li>
   );
 }
@@ -103,6 +167,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
   const all = [...mine.requests, ...mine.teachers];
   const byId = (id: string) => all.find((view) => view.id === id);
   const sent = byId(one(query.sent));
+  const claimed = byId(one(query.claimed));
   const ended = byId(one(query.ended));
   const withdrawn = one(query.withdrawn);
 
@@ -120,10 +185,13 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
           until then.
         </p>
         {mine.hasProfile ? (
-          <p className="mt-5">
+          <p className="mt-5 flex flex-wrap gap-3">
             <Link href={NEW} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
               Name a teacher
               <ArrowRightIcon />
+            </Link>
+            <Link href="/dashboard/teachers/historical" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+              Name a historical teacher
             </Link>
           </p>
         ) : null}
@@ -141,6 +209,12 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
                   Your request to <NameText name={sent.teacher.name} /> is {sent.statusLabel.toLowerCase()}.
                 </>
               )}
+            </OutcomeNote>
+          ) : null}
+          {claimed ? (
+            <OutcomeNote testId="claim-sent">
+              Your claim about <NameText name={claimed.teacher.name} /> was sent with its evidence. Reviewers check it; it waits below until they decide,
+              and you get a notification and an e-mail.
             </OutcomeNote>
           ) : null}
           {withdrawn && !byId(withdrawn) ? (

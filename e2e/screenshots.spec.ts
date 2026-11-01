@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { claimThroughApi, fictionalPdf, letters } from './helpers/evidence';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
@@ -339,6 +340,63 @@ const STATES: readonly ScreenState[] = [
       expect(asked.status(), await asked.text()).toBe(200);
       await page.goto('/account/privacy');
       await expect(page.getByText(/You asked for your account to be deleted on/)).toBeVisible();
+    },
+  },
+  {
+    // M10a: the claim form with one file uploaded and one refused (a renamed executable).
+    name: 'teachers-historical-files',
+    milestone: 'M10a',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Evidence Example' });
+      await page.goto('/dashboard/teachers/historical');
+      const input = page.getByTestId('evidence-input').filter({ visible: true });
+      await input.setInputFiles([
+        { name: 'demo-certificate.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(180_000) },
+        { name: 'demo-photo.jpg', mimeType: 'image/jpeg', buffer: Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(512)]) },
+      ]);
+      const items = page.getByTestId('evidence-item').filter({ visible: true });
+      await expect(items.first()).toHaveAttribute('data-state', 'done');
+      await expect(items.nth(1)).toHaveAttribute('data-state', 'refused');
+    },
+  },
+  {
+    // M10a: the claim form refused without evidence: the error summary and the field's message.
+    name: 'teachers-historical-refused',
+    milestone: 'M10a',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Refused Example' });
+      await page.goto('/dashboard/teachers/historical');
+      const form = page.getByTestId('historical-claim-form').filter({ visible: true });
+      await form.getByLabel(/^Teacher.s name in Latin letters/).fill('Demo Forgotten Teacher');
+      await form.getByLabel(/^Lineage of this training/).selectOption({ label: 'Demo Lineage C' });
+      await form.getByLabel('Started (year)').fill('1980');
+      await form.getByLabel('Ended (year)').fill('1990');
+      await form.getByRole('button', { name: 'Send the claim' }).click();
+      await expect(page.locator('[data-form-message]').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M10a: the student's claim waiting for the reviewers on Your teachers, with its file.
+    name: 'teachers-claim-waiting',
+    milestone: 'M10a',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Claimant Example' });
+      await claimThroughApi(page, `Demo Ancestor ${letters()}`);
+      await page.goto('/dashboard/teachers');
+      await expect(page.getByTestId('claim-review').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M10a: a case card in the review queue as an administrator sees it: the claim, the file
+    // (an administrator may open it), the claimant's note and the decisions.
+    name: 'review-case',
+    milestone: 'M10a',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Claimant Example' });
+      const { caseId } = await claimThroughApi(page, `Demo Ancestor ${letters()}`);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/review/${caseId}`);
+      await expect(page.getByTestId('case-status').filter({ visible: true })).toHaveAttribute('data-status', 'open');
     },
   },
 ];

@@ -87,12 +87,19 @@ export const REVIEW_CASE_KINDS = [
   'deletion_request',
 ] as const;
 export const REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info', 'resolved', 'dismissed'] as const;
+/** M10a: the statuses of a case that still waits for a decision. */
+export const OPEN_REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info'] as const;
 export const REVIEW_RESOLUTIONS = ['approved', 'rejected'] as const;
 export const REPORT_SUBJECTS = ['person', 'teaching_relationship', 'school', 'person_name'] as const;
 export const REPORT_REASONS = ['incorrect', 'impersonation', 'privacy', 'offensive', 'other'] as const;
 export const REPORT_STATUSES = ['open', 'triaged', 'resolved', 'dismissed'] as const;
-// DEFAULT D25: evidence files are at most 20 MB each.
+// DEFAULT D25: evidence files are at most 20 MB each, and at most 20 files per case (M10a).
 export const EVIDENCE_MAX_BYTES = 20 * 1024 * 1024;
+export const EVIDENCE_MAX_FILES_PER_CASE = 20;
+/** M10a: the only types an evidence file can have, recognised by their magic bytes (plan §6.4). */
+export const EVIDENCE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
+/** M10a: the longest stored file name of an evidence file. */
+export const EVIDENCE_NAME_MAX = 200;
 
 // --- Schools and geography (plan §6.2) ----------------------------------------------------------
 export const LOCATION_PRIVACIES = ['exact', 'city_only'] as const;
