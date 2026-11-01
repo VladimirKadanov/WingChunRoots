@@ -142,6 +142,8 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `scripts/db-env-check.sh` | Checks the test database: PostgreSQL ≥ 16, PostGIS ≥ 3.4, UTF-8 locale, the ICU collation `und-x-icu` (name order, M04) |
 | `scripts/verify.sh <Mxx\|all>` | The milestone check: one line per step, full log in `.verify/<Mxx>.log` |
 | `docker compose up -d --wait` / `docker compose down` | Start / stop the local services (data stays in named volumes) |
+| `scripts/check-env.sh compose`, then `docker compose --profile app up --build` | M12: the production-like run from the application image (`Dockerfile`): db-bootstrap, migrate, web on <http://localhost:3000> and worker ([docs/operations/local-run.md](docs/operations/local-run.md)) |
+| `scripts/backup-local.sh [--objects]` / `scripts/restore-drill.sh` | M12: a local `pg_dump -Fc` archive in `backups/` / the timed restore drill into a throwaway database ([docs/operations/backup-and-restore.md](docs/operations/backup-and-restore.md)) |
 
 ## Repository layout
 
