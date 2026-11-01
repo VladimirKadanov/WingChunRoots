@@ -33,7 +33,8 @@ RUN --mount=type=cache,id=wcr-pnpm-store,target=/pnpm/store \
 FROM deps AS build
 COPY . .
 # public/ is optional for Next.js; the runtime stage copies it either way.
-RUN mkdir -p public && pnpm build
+# WCR_STANDALONE=1: this build writes .next/standalone, the server the web stage copies (next.config.ts).
+RUN mkdir -p public && WCR_STANDALONE=1 pnpm build
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
