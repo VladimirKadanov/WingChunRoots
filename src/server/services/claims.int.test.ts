@@ -675,6 +675,27 @@ describe('arbitration', () => {
     return { student, teacher, relationshipId, teacherId };
   }
 
+  it('counts in the queue row only the files of a member of staff who is a party to a dispute, as the case card shows them', async () => {
+    const { student, teacher, relationshipId } = await verifiedLink('staff-dispute-count');
+    const moderator = await staff('m10b-moderator-staff-dispute-count', 'moderator');
+    const { caseId } = await arbitrateRelationship(moderator.principal, { relationshipId, reason: 'Fictional: a question about the years.', idempotencyKey: key() }, meta);
+    await upload(teacher, 'staff-count-teacher-1', caseId);
+    await upload(teacher, 'staff-count-teacher-2', caseId);
+    const own = await upload(student, 'staff-count-student', caseId);
+    const rowOf = async (m: Pick<Member, 'principal'>) =>
+      (await listReviewCases(m.principal, { kind: 'relationship_dispute', status: 'all', sort: 'newest' })).rows.find((r) => r.id === caseId);
+    // The moderator who reviews it counts both sides.
+    expect((await rowOf(moderator))?.files).toBe(3);
+    await getDb().update(authUser).set({ role: 'archivist', twoFactorEnabled: true }).where(eq(authUser.id, student.account.id));
+    try {
+      const asParty = { principal: principalOf(student.account, 'archivist') };
+      expect((await getReviewCase(asParty.principal, { id: caseId })).files.map((f) => f.id)).toEqual([own.id]);
+      expect((await rowOf(asParty))?.files).toBe(1);
+    } finally {
+      await getDb().update(authUser).set({ role: 'user', twoFactorEnabled: false }).where(eq(authUser.id, student.account.id));
+    }
+  });
+
   it('is set by a moderator with the second factor and a reason; both parties get the reason and the link; the decision is recorded', async () => {
     const { student, teacher, relationshipId } = await verifiedLink('arbitrated');
     const moderator = await staff('m10b-moderator-arbitration', 'moderator');
@@ -916,8 +937,11 @@ describe('limits under calls at the same time (M10b review, code-4)', () => {
     const pending = await getDb().select({ id: personClaim.id }).from(personClaim).where(and(eq(personClaim.userId, invitee.account.id), eq(personClaim.status, 'pending')));
     expect(pending).toHaveLength(1);
     // The other student's request still waits for a claim, and its link still works for its teacher.
-    const states = await Promise.all([first.token, second.token].map(async (token) => (await getInvitation(null, { token })).state));
-    expect(states.sort()).toEqual(['pending', 'used']);
+    const states = await Promise.all([first.token, second.token].map(async (token) => (await getInvitation(invitee.principal, { token })).state));
+    expect(states.sort()).toEqual(['pending', 'yours']);
+    // To anyone else the used link answers as an unknown one (ADR 0013 §2).
+    const anonymous = await Promise.all([first.token, second.token].map((token) => getInvitation(null, { token }).then((v) => v.state, (e: unknown) => (e as { code?: string }).code)));
+    expect(anonymous.sort()).toEqual(['NOT_FOUND', 'pending']);
   });
 
   it('instructor.request opens one case at a time', async () => {

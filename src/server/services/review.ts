@@ -391,6 +391,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       studentId: teachingRelationship.studentPersonId,
       lineageName: sql<string | null>`(SELECT l.name FROM lineage l WHERE l.id = ${teachingRelationship.lineageId})`,
       files: sql<number>`(SELECT count(*)::int FROM evidence_link el JOIN evidence_file ef ON ef.id = el.evidence_file_id AND ef.deleted_at IS NULL WHERE el.review_case_id = ${reviewCase.id})`,
+      ownFiles: sql<number>`(SELECT count(*)::int FROM evidence_link el JOIN evidence_file ef ON ef.id = el.evidence_file_id AND ef.deleted_at IS NULL WHERE el.review_case_id = ${reviewCase.id} AND ef.uploaded_by_user_id = ${p.user.id})`,
     })
     .from(reviewCase)
     .leftJoin(teachingRelationship, eq(teachingRelationship.id, reviewCase.relationshipId))
@@ -402,6 +403,18 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
   const subjectOf = (r: (typeof rows)[number]) => (r.relationshipId === null ? r.personId : null);
   const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId, subjectOf(r)]).filter((id): id is string => id !== null))]);
   const refOf = (id: string | null) => (id ? (refs.get(id) ?? null) : null);
+  // A row of a case this reviewer is a party to counts only their own files, as review.get shows
+  // them (its party view; the parties as review-core.ts partiesOf names them, read here for the
+  // whole page at once from the records this account has claimed).
+  const mine = await db.select({ id: person.id, deletedAt: person.deletedAt }).from(person).where(eq(person.claimedByUserId, p.user.id));
+  const liveMine = new Set(mine.filter((m) => m.deletedAt === null).map((m) => m.id));
+  const anyMine = new Set(mine.map((m) => m.id));
+  const partyView = (r: (typeof rows)[number]) =>
+    r.kind !== 'historical_claim' &&
+    ((r.kind !== 'relationship_dispute' && r.openedByUserId === p.user.id) ||
+      (r.teacherId !== null && liveMine.has(r.teacherId)) ||
+      (r.studentId !== null && liveMine.has(r.studentId)) ||
+      (r.personId !== null && anyMine.has(r.personId)));
   return {
     rows: rows.map((r) => ({
       id: r.id,
@@ -416,7 +429,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       student: r.studentId ? (refs.get(r.studentId) ?? null) : null,
       subject: refOf(subjectOf(r)),
       lineageName: r.lineageName,
-      files: r.files,
+      files: partyView(r) ? r.ownFiles : r.files,
     })),
     total,
     page: filters.page,
