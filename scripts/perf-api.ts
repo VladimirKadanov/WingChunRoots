@@ -18,6 +18,8 @@ stubNextCache();
 
 import('./lib/perf-api-run')
   .then(({ main }) => main())
+  // The services can leave a database pool or a job queue open: the run ends here, with its status.
+  .then(() => process.exit(process.exitCode ?? 0))
   .catch((error: unknown) => {
     console.error(`perf:api: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

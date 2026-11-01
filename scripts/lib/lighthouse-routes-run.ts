@@ -59,6 +59,7 @@ export const MAIN_ROUTES: readonly MainRoute[] = [
   { screen: 'Account security', path: '/account/security', as: 'demo-pending' },
   { screen: 'Account privacy', path: '/account/privacy', as: 'demo-pending' },
   { screen: 'Administration', path: '/admin', as: 'admin' },
+  { screen: 'System status', path: '/admin/system', as: 'admin' },
   { screen: 'Onboarding', path: '/onboarding', as: 'new' },
   { screen: 'Person', path: '/people/demo-two-lineages' },
   { screen: 'Lineage list view', path: '/people/demo-two-lineages/lineage' },

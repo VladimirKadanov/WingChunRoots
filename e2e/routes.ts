@@ -32,7 +32,7 @@ export interface AppRoute {
 }
 
 export const ROUTES: readonly AppRoute[] = [
-  { path: '/', name: 'home', status: 200, milestone: 'M00b', key: true },
+  { path: '/', name: 'home', status: 200, milestone: 'M13', key: true },
   { path: '/styleguide', name: 'styleguide', status: 200, milestone: 'M00b', key: true },
   { path: '/legal/licenses', name: 'licenses', status: 200, milestone: 'M00b' },
   // Accounts (M02).
