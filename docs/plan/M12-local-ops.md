@@ -70,3 +70,4 @@ M10b, M11 (и всички етапи преди тях).
 ## Дневник на напредъка (Progress log)
 
 - 2026-11-01 09:20 — pino 10.4.0 със структурирани JSON редове, `requestId`, заличаване на адреси, имена, IP и координати (`logger.redaction.test.ts`), `onRequestError` и `reportError` с празен доставчик (43e0ebc); `/healthz`, `system.status` (`GET /api/v1/admin/system`, персонал с втори фактор) и страницата `/admin/system`, `output: standalone` (1407ca6)
+- 2026-11-01 09:50 — `scripts/backup-local.sh` и `scripts/restore-drill.sh` (време 1,3 s срещу RTO 4 h, DEFAULT D24; amcheck, редове, външни ключове, цикли, пътища до предците, SHA-256 на доказателствата, таблиците на Better Auth), `restore-drill.yml` (dc082e4); `Dockerfile`, профилът `app`, `scripts/check-env.sh` с теста му и задачата `image` в CI (da9136d); `e2e/ops.spec.ts` минава на desktop и mobile Chromium (e70b35d); заявката за имейлите на `/admin/system` поправена с интеграционен тест (db5806a)
