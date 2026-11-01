@@ -20,7 +20,7 @@
 | M09 | [M09 — Заявки към учител и независими одобрения](M09-teacher-requests.md) | M07, M08 | слят ([#20](https://github.com/VladimirKadanov/WingChunRoots/pull/20), 01.11.2026) |
 | M10a | [M10a — Доказателства, исторически учители и опашка за преглед](M10a-evidence-review.md) | M09 | PR отворен ([#21](https://github.com/VladimirKadanov/WingChunRoots/pull/21), чернова, клон `m10a-evidence-review`; въпроси в [questions/M10a.md](questions/M10a.md)) |
 | M10b | [M10b — Покани, поемане на профил, проверка на инструктор, сигнали и арбитраж](M10b-claims-reports.md) | M10a | не е започнат |
-| M11 | [M11 — Школи, карта и филтри по линия](M11-schools-map.md) | M08, M10a | не е започнат |
+| M11 | [M11 — Школи, карта и филтри по линия](M11-schools-map.md) | M08, M10a | в работа (клон `m11-schools-map`; въпроси в [questions/M11.md](questions/M11.md)) |
 | M12 | [M12 — Локално пускане като в production, основно наблюдение, локален архив и учение по възстановяване](M12-local-ops.md) | M10b, M11 | не е започнат |
 | M13 | [M13 — Приемане на пилота (локално)](M13-pilot-acceptance.md) | M12 | не е започнат |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |
