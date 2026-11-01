@@ -212,8 +212,9 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
 
   return (
     <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,26rem)_1fr]" data-testid="school-finder" data-map={mapShown ? 'shown' : 'fallback'}>
-      {/* From 1024 px: the list beside the map. */}
-      <aside ref={aside} aria-labelledby="school-list-heading" className="min-h-0 overflow-y-auto overscroll-contain border-r border-border-subtle px-page pb-6 max-lg:hidden lg:px-6">
+      {/* From 1024 px: the list beside the map. Positioned, so that the absolute `sr-only` texts of the
+          rows scroll inside it instead of growing the page. */}
+      <aside ref={aside} aria-labelledby="school-list-heading" className="relative min-h-0 overflow-y-auto overscroll-contain border-r border-border-subtle px-page pb-6 max-lg:hidden lg:px-6">
         <h2 id="school-list-heading" className="sticky top-0 z-10 bg-bg py-3 text-sm font-semibold" data-testid="school-summary">
           {summary}
         </h2>
@@ -262,7 +263,7 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
           </div>
         ) : (
           // No WebGL 2, or the map could not start: the same schools as a list.
-          <div className="size-full overflow-y-auto overscroll-contain px-page pb-6" data-testid="map-fallback">
+          <div className="relative size-full overflow-y-auto overscroll-contain px-page pb-6" data-testid="map-fallback">
             <p role="status" className="mt-4 rounded-sm border border-border-strong bg-surface-1 p-3 text-sm">
               This browser cannot draw the map (it needs WebGL 2), so the same schools are listed here.{' '}
               <Link href={listHref} className="link">
