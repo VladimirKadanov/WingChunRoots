@@ -18,10 +18,68 @@ export interface S3Config {
   secretAccessKey: string;
 }
 
-/** A store request never waits forever: a slow store fails the upload instead of holding it. */
-const REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * A store request never waits forever: a store that does not answer fails the request instead of
+ * holding it. The deadline covers the request up to the response headers (for a PUT, the whole
+ * upload); it never covers the body of a GET, which the download streams to a reader at the
+ * reader's pace (M10a review, code-3: a total deadline cut long downloads part-way).
+ */
+export const REQUEST_TIMEOUT_MS = 30_000;
+/** A GET body whose next bytes do not arrive for this long fails: the store stalled mid-object. */
+export const BODY_IDLE_TIMEOUT_MS = 30_000;
 
-export function s3Store(config: S3Config): ObjectStore {
+export interface S3Timeouts {
+  /** Until the response headers arrive (REQUEST_TIMEOUT_MS). */
+  requestMs?: number;
+  /** Between two chunks of a GET body that the reader asked for (BODY_IDLE_TIMEOUT_MS). */
+  bodyIdleMs?: number;
+}
+
+const timeoutError = (what: string) => new DOMException(`The S3 store did not answer in time (${what}).`, 'TimeoutError');
+
+/**
+ * `body` with an idle deadline: a read that the consumer asked for and the store does not answer
+ * within `idleMs` cancels the store's stream (which closes its connection) and errors this one. A
+ * slow consumer never trips it: the store is read only when the consumer asks for more (pull, no
+ * read-ahead), and the timer runs only while such a read waits.
+ */
+export function withIdleTimeout(body: ReadableStream<Uint8Array>, idleMs: number): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const stalled = new Promise<'stalled'>((resolve) => {
+          timer = setTimeout(() => resolve('stalled'), idleMs);
+        });
+        try {
+          const next = await Promise.race([reader.read(), stalled]);
+          if (next === 'stalled') {
+            void reader.cancel(timeoutError('GET body')).catch(() => undefined);
+            controller.error(new StorageError('The S3 store stopped sending an object (TimeoutError).'));
+          } else if (next.done) {
+            controller.close();
+          } else {
+            controller.enqueue(next.value);
+          }
+        } catch (error) {
+          const name = error instanceof Error ? error.name : 'error';
+          controller.error(new StorageError(`The S3 store failed while sending an object (${name}).`, { cause: error }));
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      cancel(reason) {
+        return reader.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+export function s3Store(config: S3Config, timeouts: S3Timeouts = {}): ObjectStore {
+  const requestMs = timeouts.requestMs ?? REQUEST_TIMEOUT_MS;
+  const bodyIdleMs = timeouts.bodyIdleMs ?? BODY_IDLE_TIMEOUT_MS;
   const client = new AwsClient({
     accessKeyId: config.accessKeyId,
     secretAccessKey: config.secretAccessKey,
@@ -37,13 +95,37 @@ export function s3Store(config: S3Config): ObjectStore {
     return `${origin}/${bucket}/${key}`;
   }
 
+  /**
+   * One signed request, failed when its response headers do not arrive within `requestMs`. The
+   * race settles the deadline itself: the abort that goes with it is only a courtesy to the
+   * connection, since aws4fetch wraps the call in a Request that holds the signal weakly. Once the
+   * headers are there the timer is cleared, so the body is never aborted by it.
+   */
   async function send(operation: string, key: string, init: RequestInit): Promise<Response> {
+    const url = urlOf(key);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const error = timeoutError(operation);
+        controller.abort(error);
+        reject(error);
+      }, requestMs);
+    });
+    const fetched = client.fetch(url, { ...init, signal: controller.signal });
     try {
-      return await client.fetch(urlOf(key), { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      return await Promise.race([fetched, deadline]);
     } catch (error) {
+      // A response that arrives after the deadline is dropped; a late failure is not unhandled.
+      fetched.then(
+        (late) => late.body?.cancel().catch(() => undefined),
+        () => undefined,
+      );
       if (error instanceof StorageError) throw error;
       const name = error instanceof Error ? error.name : 'error';
       throw new StorageError(`The S3 store did not answer a ${operation} (${name}).`, { cause: error });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -69,7 +151,7 @@ export function s3Store(config: S3Config): ObjectStore {
         await response.body?.cancel();
         throw new StorageError(`The S3 store refused a GET (HTTP ${response.status}).`);
       }
-      return { body: response.body, size: Number(response.headers.get('content-length') ?? 0) };
+      return { body: withIdleTimeout(response.body, bodyIdleMs), size: Number(response.headers.get('content-length') ?? 0) };
     },
     async delete(key) {
       const response = await send('DELETE', key, { method: 'DELETE' });
