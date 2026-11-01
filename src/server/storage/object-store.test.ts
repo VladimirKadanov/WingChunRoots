@@ -3,7 +3,7 @@
 // (SeaweedFS in Docker Compose, and in CI, where .github/workflows/ci.yml starts it). The S3 run
 // also checks that the bucket is private: an unsigned GET of an object is refused.
 
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -11,7 +11,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { createObjectStore, isLocalStorageHost, newStorageKey, storageConfig } from './index';
 import { filesystemStore } from './fs';
-import { objectStoreContract } from './object-store.contract';
+import { objectStoreContract, s3ContractTarget } from './object-store.contract';
 
 const root = mkdtempSync(path.join(tmpdir(), 'wcr-evidence-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -63,16 +63,51 @@ describe('storageConfig', () => {
   });
 });
 
-// The S3 driver, when an endpoint is configured (Docker Compose locally, the SeaweedFS step in CI).
-const s3 = process.env.S3_ENDPOINT ? storageConfig({ ...process.env, EVIDENCE_STORAGE: 's3' }) : null;
-if (s3 && s3.driver === 's3') {
+describe('where the S3 contract runs (M10a review, requirements-4)', () => {
+  const dotenv = ['S3_ENDPOINT=http://127.0.0.1:8333', 'S3_ACCESS_KEY_ID=demo-key', 'S3_SECRET_ACCESS_KEY=demo-secret-value', 'S3_BUCKET_EVIDENCE=wcr-evidence', ''].join('\n');
+
+  it('reads the S3 settings from .env when the environment has none, as `next start` and the E2E tests do', () => {
+    expect(s3ContractTarget({}, dotenv)).toEqual({
+      config: { driver: 's3', endpoint: 'http://127.0.0.1:8333', region: 'us-east-1', bucket: 'wcr-evidence', accessKeyId: 'demo-key', secretAccessKey: 'demo-secret-value' },
+    });
+  });
+
+  it('lets the environment win over .env (CI sets its own)', () => {
+    const target = s3ContractTarget({ S3_ENDPOINT: 'http://seaweedfs:8333', S3_BUCKET_EVIDENCE: 'ci-evidence' }, dotenv);
+    expect(target).toMatchObject({ config: { endpoint: 'http://seaweedfs:8333', bucket: 'ci-evidence', accessKeyId: 'demo-key' } });
+  });
+
+  it('says why the S3 run does not happen: no endpoint anywhere, or the filesystem driver chosen', () => {
+    expect(s3ContractTarget({}, null)).toEqual({ skip: 'S3_ENDPOINT is set neither in the environment nor in .env' });
+    expect(s3ContractTarget({}, 'APP_URL=http://localhost:3000\n')).toEqual({ skip: 'S3_ENDPOINT is set neither in the environment nor in .env' });
+    expect(s3ContractTarget({ EVIDENCE_STORAGE: 'filesystem' }, dotenv)).toEqual({ skip: 'EVIDENCE_STORAGE=filesystem chooses the filesystem driver' });
+  });
+
+  it('fails loudly on incomplete settings instead of skipping, and never quotes a secret', () => {
+    expect(() => s3ContractTarget({}, 'S3_ENDPOINT=http://127.0.0.1:8333\n')).toThrow(/S3_ACCESS_KEY_ID/);
+    let message = '';
+    try {
+      s3ContractTarget({ S3_ENDPOINT: 'https://s3.example.com' }, dotenv);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/local SeaweedFS/);
+    expect(message).not.toContain('demo-secret-value');
+  });
+});
+
+// The S3 driver where an endpoint is configured, in the environment or in .env (Docker Compose
+// locally with scripts/init-env.sh, the SeaweedFS step in CI). Elsewhere (a cloud session has no
+// Docker) the run is reported as skipped with its reason, never as a pass.
+const dotenvPath = path.resolve('.env');
+const target = s3ContractTarget(process.env, existsSync(dotenvPath) ? readFileSync(dotenvPath, 'utf8') : null);
+if ('config' in target) {
+  const s3 = target.config;
   objectStoreContract('s3 (SeaweedFS)', () => createObjectStore(s3), {
     anonymousGet: async (key) => (await fetch(`${s3.endpoint}/${s3.bucket}/${key}`)).status,
   });
 } else {
   describe('ObjectStore contract: s3 (SeaweedFS)', () => {
-    it('runs where S3_ENDPOINT is configured (Docker Compose, CI); this environment has none', () => {
-      expect(process.env.S3_ENDPOINT ?? '').toBe('');
-    });
+    it.skip(`not run here: ${target.skip}; the filesystem contract above ran`, () => undefined);
   });
 }

@@ -3,10 +3,35 @@
 // in Docker Compose and CI). Imported only by tests.
 
 import { createHash, randomBytes } from 'node:crypto';
+import { parseEnv } from 'node:util';
 
 import { describe, expect, it } from 'vitest';
 
-import { newStorageKey, type ObjectStore } from './index';
+import { newStorageKey, type ObjectStore, type StorageConfig, storageConfig } from './index';
+
+/** The settings of the evidence store that the S3 half of the contract reads. */
+export const S3_SETTINGS = ['EVIDENCE_STORAGE', 'S3_ENDPOINT', 'S3_REGION', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'S3_BUCKET_EVIDENCE'] as const;
+
+export type S3ContractTarget = { config: Extract<StorageConfig, { driver: 's3' }> } | { skip: string };
+
+/**
+ * Where the S3 half of the contract runs (M10a review, requirements-4): each S3 setting from the
+ * environment, or, when the environment leaves it unset, from .env (`dotenv`, its text), the file
+ * `next start` and the E2E tests read, so a local run against Docker Compose tests the driver the
+ * app uses. The environment wins, as for loadDotEnv. Without an endpoint anywhere, or with
+ * EVIDENCE_STORAGE=filesystem, the answer is why the S3 run does not happen, which the test reports
+ * as skipped (never as a pass). Incomplete settings throw, so a broken configuration fails loudly.
+ */
+export function s3ContractTarget(env: Record<string, string | undefined>, dotenv: string | null): S3ContractTarget {
+  const file = dotenv === null ? {} : parseEnv(dotenv);
+  const settings: Record<string, string | undefined> = {};
+  for (const name of S3_SETTINGS) settings[name] = env[name] !== undefined ? env[name] : file[name];
+  if (!settings.S3_ENDPOINT?.trim()) return { skip: 'S3_ENDPOINT is set neither in the environment nor in .env' };
+  if (settings.EVIDENCE_STORAGE?.trim() === 'filesystem') return { skip: 'EVIDENCE_STORAGE=filesystem chooses the filesystem driver' };
+  const config = storageConfig({ ...settings, EVIDENCE_STORAGE: 's3' });
+  if (config.driver !== 's3') throw new Error('EVIDENCE_STORAGE=s3 must give the S3 driver');
+  return { config };
+}
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
