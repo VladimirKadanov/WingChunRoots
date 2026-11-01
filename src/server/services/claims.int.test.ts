@@ -285,6 +285,33 @@ describe('the invitation token', () => {
       ['open', null, 'open'],
       ['withdraw', 'open', 'dismissed'],
     ]);
+    // awaiting_claim → withdrawn is a relationship transition like any other: its event and audit row.
+    expect(await events(relationshipId)).toEqual([
+      { from: null, to: 'awaiting_claim', actor: student.account.id, role: 'student', reason: null },
+      { from: 'awaiting_claim', to: 'withdrawn', actor: student.account.id, role: 'student', reason: null },
+    ]);
+    const withdrawn = (await auditsOf(relationshipId)).filter((a) => a.action === 'relationship.withdraw');
+    expect(withdrawn).toEqual([
+      expect.objectContaining({ actor: student.account.id, role: 'user', before: { status: 'awaiting_claim' }, after: { status: 'withdrawn', dismissedCaseIds: [caseId] } }),
+    ]);
+  });
+
+  it('revokes a pending invitation when the student withdraws the request, with the relationship_event and the audit row', async () => {
+    const { token, student, relationshipId } = await invite('withdrawn');
+    const [pending] = await getDb().select({ id: invitation.id }).from(invitation).where(eq(invitation.relationshipId, relationshipId));
+    await withdrawRelationship(student.principal, { relationshipId, idempotencyKey: key() }, meta);
+    expect((await relationship(relationshipId)).status).toBe('withdrawn');
+    expect((await getInvitation(null, { token })).state).toBe('revoked');
+    const [row] = await getDb().select({ status: invitation.status }).from(invitation).where(eq(invitation.id, pending!.id));
+    expect(row!.status).toBe('revoked');
+    expect((await events(relationshipId)).map((e) => [e.from, e.to, e.role])).toEqual([
+      [null, 'awaiting_claim', 'student'],
+      ['awaiting_claim', 'withdrawn', 'student'],
+    ]);
+    const withdrawn = (await auditsOf(relationshipId)).filter((a) => a.action === 'relationship.withdraw');
+    expect(withdrawn).toEqual([
+      expect.objectContaining({ actor: student.account.id, before: { status: 'awaiting_claim' }, after: { status: 'withdrawn', revokedInvitationIds: [pending!.id] } }),
+    ]);
   });
 });
 
