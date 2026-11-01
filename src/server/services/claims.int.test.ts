@@ -34,6 +34,8 @@ import { pgErrorOf } from './errors';
 import { openEvidence, uploadEvidence } from './evidence';
 import { instructorOverview, requestInstructorVerification } from './instructor';
 import { acceptInvitation, getInvitation, hashToken, INVITATION_DAYS, inviteTeacher, sendInvitation } from './invitations';
+import { lineageEgo, personProfile } from './lineage';
+import { profileUpdate } from './profile';
 import { approveRelationship, getRelationship, withdrawRelationship } from './relationships';
 import { reportProfile } from './reports';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
@@ -413,6 +415,48 @@ describe('the profile claim', () => {
     const again = await sendInvitation(student.principal, { relationshipId, email, idempotencyKey: key() }, meta);
     expect(again.invited).toBe(true);
     expect((await getInvitation(null, { token: await tokenSentTo(email) })).state).toBe('pending');
+  });
+
+  it('shows the inviting student only the names of the claimed record until the teacher answers (plan §6.4)', async () => {
+    const { token, student, relationshipId, teacherId } = await invite('private-after-claim');
+    const invitee = await newcomer('private-after-claim');
+    const archivist = await staff('m10b-archivist-private', 'archivist');
+    const [record] = await getDb().select({ slug: person.slug }).from(person).where(eq(person.id, teacherId));
+    const slug = record!.slug;
+    const teacherNode = async () => {
+      const graph = await lineageEgo(student.principal, { focusId: student.personId, up: 1, down: 0, fanoutLimit: 50 });
+      return graph.nodes.find((n) => n.id === teacherId);
+    };
+    // Before the claim the record is the student's own work, nobody else's: they read all of it.
+    expect(await personProfile(student.principal, { slug })).toMatchObject({ limited: false, claimState: 'unclaimed', lifeStatus: 'living' });
+
+    const { caseId } = await acceptInvitation(invitee.principal, { token, idempotencyKey: key() }, meta);
+    await decide(archivist, caseId, 'verify');
+    expect((await relationship(relationshipId)).status).toBe('pending_teacher');
+    // The record is the teacher's now: they write a biography and a country, and keep the profile private.
+    const bio = 'Demo private biography of the fictional invited teacher.';
+    await profileUpdate(
+      invitee.principal,
+      {
+        names: [{ kind: 'name', value: 'Demo Invited Privateafterclaim', script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true }],
+        bio: { body: bio, lang: 'en' },
+        countryCode: 'BG',
+        showPublicly: false,
+      },
+      meta,
+    );
+    expect((await personProfile(invitee.principal, { slug })).bio).toBe(bio);
+
+    // The teacher has not answered the student's request: people.get and the lineage view give the
+    // student the names only, as for any other unanswered request.
+    const seen = await personProfile(student.principal, { slug });
+    expect(seen).toMatchObject({ limited: true, bio: null, countryCode: null, cityName: null, kind: 'unknown', lifeStatus: 'unknown', claimState: 'unknown' });
+    expect(JSON.stringify(seen)).not.toContain(bio);
+    expect(await teacherNode()).toMatchObject({ lifeStatus: 'unknown', claimState: 'unknown' });
+
+    // Once the teacher approves, the student reads the full record (the answered request).
+    await approveRelationship(invitee.principal, { relationshipId, idempotencyKey: key() }, meta);
+    expect(await personProfile(student.principal, { slug })).toMatchObject({ limited: false, bio, countryCode: 'BG' });
   });
 
   it('keeps an invited record out of v_public_person and search until a link with it is verified', async () => {
