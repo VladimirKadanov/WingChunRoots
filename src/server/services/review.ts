@@ -8,7 +8,7 @@
 //   review.list    the queue: filters by kind, status and assignee, sorted, paged (URL state)
 //   review.get     one case: the relationship, the evidence (a link and the file's name only for
 //                  those who may open it: evidence.ts accessOfFiles), the notes and what this
-//                  reviewer may do
+//                  reviewer may do; a reviewer who is a party to the case reads no internal note
 //   review.assign  take a case (any reviewer) or give it to another (an administrator); unassign
 //   review.decide  verify | reject (with a reason) | needs_info (with a question for the claimant)
 //   review.note    an internal note, for reviewers only
@@ -23,7 +23,8 @@
 //     staff without the second factor in this session: SECOND_FACTOR_REQUIRED;
 //   - verify and reject: an archivist or an administrator (plan §6.7), on a case assigned to them
 //     (an administrator also on any other); needs_info: the assignee or an administrator;
-//   - nobody reviews a claim of their own, as the student or the teacher (403);
+//   - nobody reviews a claim of their own, as the student or the teacher (403), is given one, or
+//     reads its internal notes;
 //   - the archival edit: an archivist only; an administrator or a moderator gets 403.
 // Verify runs in the order of an approval (plan §6.3): the global verify lock, then the rows (the
 // relationship before its case, the order withdraw takes them), the cycle, duplicate and self
@@ -247,22 +248,27 @@ async function caseById(db: Executor, id: string, lock = false): Promise<CaseRow
   return row ?? null;
 }
 
+/**
+ * The accounts a case is about: the claimant who opened it and the accounts of the relationship's
+ * teacher and student. Nobody reviews a claim of their own, whatever their role: such a reviewer
+ * takes no action on it, is not given it, and reads it as the parties do (no internal notes).
+ */
+async function partiesOf(db: Executor, c: Pick<CaseRow, 'relationshipId' | 'openedByUserId'>): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (c.openedByUserId) out.add(c.openedByUserId);
+  if (!c.relationshipId) return out;
+  const rows = await db
+    .select({ userId: person.claimedByUserId })
+    .from(teachingRelationship)
+    .innerJoin(person, or(eq(person.id, teachingRelationship.teacherPersonId), eq(person.id, teachingRelationship.studentPersonId)))
+    .where(and(eq(teachingRelationship.id, c.relationshipId), isNull(person.deletedAt)));
+  for (const row of rows) if (row.userId) out.add(row.userId);
+  return out;
+}
+
 /** The reviewer's own side of a relationship, if any: nobody reviews their own claim. */
 async function ownSide(db: Executor, p: Principal, c: Pick<CaseRow, 'relationshipId' | 'openedByUserId'>): Promise<boolean> {
-  if (c.openedByUserId === p.user.id) return true;
-  if (!c.relationshipId) return false;
-  const viewer = await viewerOf(db, p);
-  if (!viewer.personId) return false;
-  const [row] = await db
-    .select({ id: teachingRelationship.id })
-    .from(teachingRelationship)
-    .where(
-      and(
-        eq(teachingRelationship.id, c.relationshipId),
-        or(eq(teachingRelationship.teacherPersonId, viewer.personId), eq(teachingRelationship.studentPersonId, viewer.personId)),
-      ),
-    );
-  return Boolean(row);
+  return (await partiesOf(db, c)).has(p.user.id);
 }
 
 // --- review.list -------------------------------------------------------------------------------
@@ -370,16 +376,19 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   if (!c) throw notFound();
   const viewer = await viewerOf(db, p);
   const relationship = c.relationshipId ? await viewOf(db, c.relationshipId, { ...viewer, reviewer: true }).catch(() => null) : null;
-  const own = await ownSide(db, p, c);
+  const parties = await partiesOf(db, c);
+  const own = parties.has(p.user.id);
   const files = (await filesOfCases(db, [c.id])).get(c.id) ?? [];
   // The download's own rule (evidence.ts accessOfFiles): a link and a name only for a file this
   // viewer may open.
   const opens = await openableFiles(db, p, files.map((f) => f.id));
+  // A party to the case (a reviewer who is its claimant, teacher or student) reads it as the
+  // parties do: no internal note, and no reviewer's role (M10a review, security-2).
   const notes = await db
     .select({ id: reviewNote.id, internal: reviewNote.isInternal, body: reviewNote.body, createdAt: reviewNote.createdAt, author: reviewNote.authorUserId, role: authUser.role })
     .from(reviewNote)
     .leftJoin(authUser, eq(authUser.id, reviewNote.authorUserId))
-    .where(eq(reviewNote.reviewCaseId, c.id))
+    .where(own ? and(eq(reviewNote.reviewCaseId, c.id), eq(reviewNote.isInternal, false)) : eq(reviewNote.reviewCaseId, c.id))
     .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id));
   const [assignee] = c.assignedToUserId ? await db.select({ role: authUser.role }).from(authUser).where(eq(authUser.id, c.assignedToUserId)) : [];
   const teacherRecord = relationship
@@ -398,7 +407,9 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
           .where(and(inArray(authUser.role, [...STAFF_ROLES]), eq(authUser.banned, false)))
           .orderBy(asc(authUser.name), asc(authUser.id))
           .limit(200)
-      ).map((r) => ({ id: r.id, label: `${r.name || 'Reviewer'} (${r.role})${r.id === p.user.id ? ' — you' : ''}` }))
+      )
+        .filter((r) => !parties.has(r.id))
+        .map((r) => ({ id: r.id, label: `${r.name || 'Reviewer'} (${r.role})${r.id === p.user.id ? ' — you' : ''}` }))
     : [];
   return {
     id: c.id,
@@ -411,7 +422,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     resolution: c.resolution,
     resolutionReason: c.resolutionReason,
     resolvedAt: c.resolvedAt?.toISOString() ?? null,
-    assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: assignee?.role ?? null } : null,
+    assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: own ? null : (assignee?.role ?? null) } : null,
     relationship,
     teacherRecord,
     files: files.map((f) => fileView(f, opens.has(f.id))),
@@ -421,7 +432,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       body: n.body,
       createdAt: n.createdAt.toISOString(),
       author: n.author !== null && n.author === c.openedByUserId ? 'claimant' : n.author === p.user.id ? 'you' : 'reviewer',
-      authorRole: n.author !== null && n.author === c.openedByUserId ? null : (n.role ?? null),
+      authorRole: own || (n.author !== null && n.author === c.openedByUserId) ? null : (n.role ?? null),
     })),
     can,
     decideNote,
@@ -482,6 +493,10 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
           .from(authUser)
           .where(and(eq(authUser.id, input.assigneeId), inArray(authUser.role, [...STAFF_ROLES]), eq(authUser.banned, false)));
         if (!other) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { assigneeId: 'Choose a reviewer from the list.' });
+        // Nor is a case given to one of its parties (M10a review, security-2).
+        if ((await partiesOf(tx, c)).has(input.assigneeId)) {
+          throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { assigneeId: 'This claim is about that reviewer: choose another one.' });
+        }
       }
       if (c.assignedToUserId === input.assigneeId) return false;
       const status = input.assigneeId === null ? (c.status === 'in_review' ? 'open' : c.status) : c.status === 'open' ? 'in_review' : c.status;

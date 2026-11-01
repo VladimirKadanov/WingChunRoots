@@ -569,3 +569,58 @@ describe('the request window of a reviewer who trains too', () => {
   });
 });
 
+// M10a review, security-2: getReviewCase returned every note, internal ones included, to any staff
+// session, the case's own claimant or teacher included. A reviewer who is a party reads the case as
+// the parties do and acts on it in no way, and an administrator cannot give it to them.
+describe('a reviewer who is a party to a case', () => {
+  it('a staff claimant and a staff teacher read no internal note and no reviewer’s role, take no action, and are not given the case', async () => {
+    const archivist = await staff('rv-party-arch', 'archivist');
+    const admin = await staff('rv-party-admin', 'admin');
+    // The claimant is a moderator who trains; the teacher a (fictional, deceased) record that an
+    // archivist account holds.
+    const claimant = await member('rv-party-claimant', { role: 'moderator' });
+    const teacher = await member('rv-party-teacher', { role: 'archivist' });
+    await getDb().update(person).set({ lifeStatus: 'deceased' }).where(eq(person.id, teacher.personId));
+    const evidence = await upload(claimant, 'rv-party');
+    const sent = await requestHistoricalTeacher(
+      claimant.principal,
+      { teacherId: teacher.personId, lineageId, periods: ongoingFrom('1995-02'), evidenceIds: [evidence.id], note: 'A fictional certificate of the hall.', idempotencyKey: key() },
+      meta,
+    );
+    const caseId = sent.caseId;
+    await assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta);
+    await addReviewNote(archivist.principal, { caseId, body: 'Internal: the certificate looks altered.', idempotencyKey: key() }, meta);
+    await decideReviewCase(archivist.principal, { caseId, decision: 'needs_info', reason: 'Add the back of the fictional certificate.', idempotencyKey: key() }, meta);
+
+    // A reviewer who is not a party reads all three notes, with the author's role.
+    expect((await getReviewCase(admin.principal, { id: caseId })).notes.map((n) => [n.internal, n.authorRole])).toEqual([
+      [false, null],
+      [true, 'archivist'],
+      [false, 'archivist'],
+    ]);
+    for (const party of [claimant, teacher]) {
+      const view = await getReviewCase(party.principal, { id: caseId });
+      expect(view.notes.map((n) => [n.internal, n.body, n.authorRole])).toEqual([
+        [false, 'A fictional certificate of the hall.', null],
+        [false, 'Add the back of the fictional certificate.', null],
+      ]);
+      expect(JSON.stringify(view)).not.toContain('Internal: the certificate looks altered.');
+      expect(view.assignee).toEqual({ me: false, role: null });
+      expect(Object.values(view.can).some(Boolean)).toBe(false);
+      expect(await refusal(addReviewNote(party.principal, { caseId, body: 'A note on my own claim.', idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
+      expect(await refusal(assignReviewCase(party.principal, { caseId, assigneeId: party.account.id, idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
+      expect(await refusal(decideReviewCase(party.principal, { caseId, decision: 'needs_info', reason: 'Anything.', idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
+      // An administrator cannot give the case to a party, and is not offered them.
+      const given = await assignReviewCase(admin.principal, { caseId, assigneeId: party.account.id, idempotencyKey: key() }, meta).catch((e: unknown) => e);
+      expect(given).toMatchObject({ code: 'BAD_REQUEST', fields: { assigneeId: 'This claim is about that reviewer: choose another one.' } });
+    }
+    const offered = (await getReviewCase(admin.principal, { id: caseId })).reviewers.map((r) => r.id);
+    expect(offered).toContain(archivist.account.id);
+    expect(offered).not.toContain(claimant.account.id);
+    expect(offered).not.toContain(teacher.account.id);
+    const [c] = await getDb().select({ assignedTo: reviewCase.assignedToUserId }).from(reviewCase).where(eq(reviewCase.id, caseId));
+    expect(c!.assignedTo).toBe(archivist.account.id);
+    // The teacher concerned opens the evidence of a request about them (In scope 3), the link included.
+    expect((await getReviewCase(teacher.principal, { id: caseId })).files.map((f) => f.href)).toEqual([`/api/evidence/${evidence.id}`]);
+  });
+});
