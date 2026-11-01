@@ -26,6 +26,10 @@ const nextConfig: NextConfig = {
   // M04: scripts/verify.d/M04.sh makes a deployable build in a directory of its own, beside the
   // E2E build in .next. Unset everywhere else.
   ...(process.env.WCR_DIST_DIR ? { distDir: process.env.WCR_DIST_DIR } : {}),
+  // M12: every build also writes <distDir>/standalone, the minimal server the Docker image runs
+  // (`node server.js`, Dockerfile). `next start` still serves the build itself (E2E, pnpm start);
+  // it only warns that the standalone server exists.
+  output: 'standalone',
   // Explicit, opt-in caching with 'use cache' (plan §3.1, §6.4).
   cacheComponents: true,
   partialPrefetching: true,

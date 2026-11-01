@@ -66,6 +66,7 @@ import {
   updateArchiveRecord,
 } from '../services/review';
 import { setRoleInput, setUserRole } from '../services/roles';
+import { systemStatus } from '../services/system';
 import { twoFactorOverview } from '../services/two-factor';
 import { profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
@@ -391,6 +392,16 @@ export const router = {
     overview: base
       .route({ method: 'GET', path: '/dashboard', summary: "The signed-in account's dashboard: teachers, requests, schools, allowance, notifications" })
       .handler(({ context }) => dashboardOverview(context.principal)),
+  },
+  // M12: /admin/system (plan §3.1 "Наблюдение"): counts, queue names and times only.
+  system: {
+    status: staffWithSecondFactor
+      .route({
+        method: 'GET',
+        path: '/admin/system',
+        summary: 'Job queue depth, failed jobs, failed e-mail deliveries and the time of the last local backup (staff with a verified second factor)',
+      })
+      .handler(({ context }) => systemStatus(context.principal)),
   },
 };
 
