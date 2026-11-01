@@ -105,7 +105,7 @@ export const SCHOOL_ROLE_LABELS: Record<(typeof SCHOOL_INSTRUCTOR_ROLES)[number]
 };
 
 export const LOCATION_LABELS: Record<(typeof LOCATION_PRIVACIES)[number], string> = {
-  exact: 'Exact pin: the address is public',
+  exact: 'Exact pin: the point on the map is public',
   city_only: 'City only: private club, by invitation',
 };
 

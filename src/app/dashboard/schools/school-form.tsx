@@ -169,7 +169,7 @@ export function SchoolForm({ school, places, cityQuery, forms, instructorOptions
         <FieldError id={`${fieldId(form, 'locationPrivacy')}-error`} error={error('locationPrivacy')} />
         {(
           [
-            ['exact', 'Exact pin', 'The pin and the address are public. The school shows as a solid pin.'],
+            ['exact', 'Exact pin', 'The pin is public: the school shows as a solid pin at that point.'],
             ['city_only', 'City only: private club, by invitation', 'The address stays private. The map shows a hollow ring at the centre of the city.'],
           ] as const
         ).map(([value, label, hint], i) => (
