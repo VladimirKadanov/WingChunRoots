@@ -119,7 +119,13 @@ function ClaimReview({ review }: { review: NonNullable<RelationshipView['review'
         </ul>
       </div>
       {review.canAddFiles ? (
-        <EvidenceUploader caseId={review.caseId} label="Add evidence to this claim" hint="JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a claim stays with it." />
+        <EvidenceUploader
+          caseId={review.caseId}
+          // A file the list above shows already is not listed by the field again (screens-8).
+          knownIds={review.files.map((file) => file.id)}
+          label="Add evidence to this claim"
+          hint="JPEG, PNG, WebP or PDF, up to 20 MB each. A file added to a claim stays with it."
+        />
       ) : null}
     </div>
   );

@@ -13,7 +13,7 @@ import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, use
 import { TextAreaField } from '@/components/account/textarea-field';
 import { NameText } from '@/components/account/person-names';
 import { EvidenceUploader, type UploadedEvidenceItem } from '@/components/evidence/uploader';
-import { type FormState, IDLE } from '@/lib/form-state';
+import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import { discardEvidenceAction, requestHistoricalAction } from './actions';
 import { HISTORICAL_FORM } from './form-ids';
 
@@ -186,6 +186,8 @@ export function ClaimForm({ options, teacher, idempotencyKey, initial }: { optio
           hint="JPEG, PNG, WebP or PDF, up to 20 MB each, at most 20 files."
           initial={files}
           discard={discardEvidenceAction}
+          // The error summary's "Evidence" link and the focus after a refusal find the field by this id (screens-3).
+          inputId={fieldId(formId, 'evidenceIds')}
           error={state.status === 'error' ? state.fields?.evidenceIds : undefined}
         />
         <TextAreaField
