@@ -14,6 +14,7 @@ import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from '.
 import { claimThroughApi, fictionalPdf, letters } from './helpers/evidence';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
+import { writeDemoArchives } from './helpers/ops';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
@@ -397,6 +398,18 @@ const STATES: readonly ScreenState[] = [
       await signInAs(page, 'admin');
       await page.goto(`/admin/review/${caseId}`);
       await expect(page.getByTestId('case-status').filter({ visible: true })).toHaveAttribute('data-status', 'open');
+    },
+  },
+  {
+    // M12: /admin/system as the seeded administrator sees it, with the queue of the moment and the
+    // newest of two fictional archive names (e2e/helpers/ops.ts) as the last backup.
+    name: 'admin-system',
+    milestone: 'M12',
+    async reach(page) {
+      writeDemoArchives();
+      await signInAs(page, 'admin');
+      await page.goto('/admin/system');
+      await expect(page.getByTestId('last-backup-time')).toBeVisible();
     },
   },
 ];

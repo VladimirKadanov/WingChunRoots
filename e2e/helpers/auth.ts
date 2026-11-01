@@ -27,7 +27,8 @@ import { loadDotEnv } from '../../src/server/db/dotenv';
 import { jobTemplateData } from '../../src/server/jobs/outbox';
 import type { EmailSendJob } from '../../src/server/jobs/queues';
 
-export const BASE_URL = `http://127.0.0.1:${Number(process.env.E2E_PORT || 3100)}`;
+// M12: E2E_BASE_URL when the tests run against a server that is already up (playwright.config.ts).
+export const BASE_URL = process.env.E2E_BASE_URL?.replace(/\/+$/, '') || `http://127.0.0.1:${Number(process.env.E2E_PORT || 3100)}`;
 
 /** The password of the accounts the tests create themselves (throwaway, test only). */
 export const NEW_ACCOUNT_PASSWORD = 'demo-password-for-e2e-tests';

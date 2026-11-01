@@ -86,6 +86,10 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/teachers/historical', name: 'teachers-historical', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-pending' },
   { path: '/admin/review', name: 'review-queue', status: 200, milestone: 'M10a', key: true, signInAs: 'admin' },
   { path: '/admin/review/records/demo-root-c', name: 'review-record', status: 200, milestone: 'M10a', key: true, signInAs: 'demo-archivist' },
+  // The system status (M12) as the seeded administrator sees it. Its counts move while the tests
+  // run, so it is not in the visual regression; its screenshots come from a screen state
+  // (e2e/screenshots.spec.ts) with the fictional archives of e2e/helpers/ops.ts.
+  { path: '/admin/system', name: 'admin-system', status: 200, milestone: 'M12', signInAs: 'admin' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */
