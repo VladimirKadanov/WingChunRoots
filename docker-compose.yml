@@ -8,8 +8,50 @@
 # in named volumes, never in bind mounts under C:\ (permissions and speed). See README.md.
 #
 # Every image is pinned by @sha256 digest; Renovate keeps the digests current (renovate.json).
-# The application image (profile "app": web, worker, migrate) arrives in M12.
+#
+# M12, the production-like local run (profile "app"; docs/operations/local-run.md):
+#
+#   scripts/check-env.sh compose         # the settings below are set and none is an example
+#   docker compose --profile app up --build
+#
+# builds the application image (Dockerfile) and starts, after the services above, db-bootstrap
+# (database roles, once), migrate (migrations as migrator, then exits), web (one replica, plan
+# §7.6) on http://localhost:3000 and worker. The app uses the database `wingchunroots`, the same as
+# `pnpm dev`; the demo data comes from the host (`pnpm db:seed`). Every port listens on 127.0.0.1.
 name: wingchunroots
+
+# The application image and its settings, shared by migrate, web and worker.
+x-app: &app
+  # No `image:` name: every image in this file is pinned by digest (scripts/verify.d/M00.sh), and a
+  # locally built one has none. Compose names the builds itself; migrate, web and worker share the
+  # same build context, so the second and third builds come from the layer cache.
+  build:
+    context: .
+    dockerfile: Dockerfile
+  profiles: [app]
+  # An init process forwards signals and reaps children (the entrypoint execs node).
+  init: true
+
+x-app-env: &app-env
+  # The roles' passwords come separately: the app connects as app_rw and app_public_ro to this
+  # host and database (src/server/db), so the URL carries no credentials.
+  DATABASE_URL: postgres://app@postgres:5432/wingchunroots
+  DB_APP_RW_PASSWORD: ${DB_APP_RW_PASSWORD:?DB_APP_RW_PASSWORD is not set; run scripts/init-env.sh to create .env}
+  DB_APP_PUBLIC_RO_PASSWORD: ${DB_APP_PUBLIC_RO_PASSWORD:?DB_APP_PUBLIC_RO_PASSWORD is not set; run scripts/init-env.sh to create .env}
+  # The address in the browser: also the links in e-mail and the trusted origin of the API.
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is not set; run scripts/init-env.sh to create .env}
+  IP_HMAC_KEY: ${IP_HMAC_KEY:?IP_HMAC_KEY is not set; run scripts/init-env.sh to create .env}
+  MAIL_SEAL_KEY: ${MAIL_SEAL_KEY:?MAIL_SEAL_KEY is not set; run scripts/init-env.sh to create .env}
+  INTERNAL_REVALIDATE_SECRET: ${INTERNAL_REVALIDATE_SECRET:-}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+  # Evidence in the private bucket of the SeaweedFS above (src/server/storage).
+  S3_ENDPOINT: http://seaweedfs:8333
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is not set; run scripts/init-env.sh to create .env}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is not set; run scripts/init-env.sh to create .env}
+  S3_BUCKET_EVIDENCE: ${S3_BUCKET_EVIDENCE:-wcr-evidence}
+  S3_BUCKET_MEDIA: ${S3_BUCKET_MEDIA:-wcr-media}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:
   postgres:
@@ -88,6 +130,99 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+
+  db-bootstrap:
+    # Once per start of the profile, idempotent: the roles migrator, app_rw and app_public_ro with
+    # the passwords of .env, the database owner and PostGIS (scripts/db-bootstrap.sql), with the
+    # psql of the database image (\getenv needs psql 15+). The passwords stay in the environment.
+    profiles: [app]
+    image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
+    platform: linux/amd64
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", "/bootstrap/db-bootstrap.sql"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set; run scripts/init-env.sh to create .env}
+      PGDATABASE: wingchunroots
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is not set; run scripts/init-env.sh to create .env}
+      DB_APP_RW_PASSWORD: ${DB_APP_RW_PASSWORD:?DB_APP_RW_PASSWORD is not set; run scripts/init-env.sh to create .env}
+      DB_APP_PUBLIC_RO_PASSWORD: ${DB_APP_PUBLIC_RO_PASSWORD:?DB_APP_PUBLIC_RO_PASSWORD is not set; run scripts/init-env.sh to create .env}
+    volumes:
+      - ./scripts/db-bootstrap.sql:/bootstrap/db-bootstrap.sql:ro
+    restart: "no"
+
+  migrate:
+    # The migrations and the pg-boss schema as migrator (plan §6.2), then it exits.
+    <<: *app
+    command: ["migrate"]
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      # The password stays out of the URL (any characters work): db:migrate adds
+      # DB_MIGRATOR_PASSWORD, URL-encoded, to a migrator URL without one (src/server/db/env.ts).
+      DATABASE_URL: postgres://migrator@postgres:5432/wingchunroots
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is not set; run scripts/init-env.sh to create .env}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    restart: "no"
+
+  web:
+    # One replica (plan §7.6): rate limits and the job producer live in one process.
+    <<: *app
+    command: ["web"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      # The local archives of scripts/backup-local.sh, read-only: /admin/system shows the newest.
+      BACKUP_DIR: /backups
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      # The folder scripts/backup-local.sh writes: BACKUP_DIR from .env (relative to the repository,
+      # like the script), else backups/. Long syntax, so that a relative path without ./ is a
+      # folder, not a named volume.
+      - type: bind
+        source: ${BACKUP_DIR:-./backups}
+        target: /backups
+        read_only: true
+        bind:
+          create_host_path: true
+    healthcheck:
+      # /healthz answers only {"ok":true} (200) or {"ok":false} (503).
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    # E-mail, retention, search keys and lineage counters (pg-boss).
+    <<: *app
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      # Every e-mail goes to the Mailpit above (http://localhost:8025); none leaves the machine.
+      MAIL_TRANSPORT: smtp
+      SMTP_URL: smtp://mailpit:1025
+      # The worker asks web to drop its public cache inside the Compose network.
+      INTERNAL_APP_URL: http://web:3000
 
 volumes:
   postgres-data:

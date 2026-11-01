@@ -15,6 +15,7 @@
 // and the request id), never the file name, the storage key or the session (CLAUDE.md §6).
 
 import { principalFromHeaders } from './auth/session';
+import { requestLogger } from './log';
 import { csrfRefusal, sessionHeaders } from './rpc/handler';
 import { requestMeta } from './services/context';
 import { openEvidence, uploadEvidence } from './services/evidence';
@@ -39,7 +40,7 @@ function failure(operation: string, error: unknown, requestId: string): Response
   if (isServiceError(error)) {
     return json(error.status, { code: error.code, message: error.message, ...(Object.keys(error.fields).length > 0 ? { fields: error.fields } : {}) });
   }
-  console.error(failureLine(operation, error, requestId));
+  requestLogger(requestId).error(failureLine(operation, error, requestId));
   return json(500, { code: 'INTERNAL_SERVER_ERROR', message: 'Something went wrong on our side; the file was not saved. Try again.' });
 }
 

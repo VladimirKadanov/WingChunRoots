@@ -139,6 +139,8 @@ step() {
   if [ "$rc" -eq 0 ]; then
     printf '===== STEP %s: ok (%ss)\n' "$name" "$took" >> "$LOG"
     echo "STEP $name: ok (${took}s)"
+    # M12: the restore drill's result line, with its restore time, also goes to the summary.
+    grep -E '^RESTORE DRILL: ' "$STEP_OUT" || true
     return 0
   fi
   printf '===== STEP %s: FAILED (exit %s, %ss)\n' "$name" "$rc" "$took" >> "$LOG"

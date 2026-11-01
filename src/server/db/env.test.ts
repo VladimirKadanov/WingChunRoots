@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertSafeToReset, databaseName, isLocalHost, redactUrl, rolePassword, roleUrl, splitPassword, targetDatabaseUrl, withDatabase } from './env';
+import { assertSafeToReset, databaseName, isLocalHost, migratorUrl, redactUrl, rolePassword, roleUrl, splitPassword, targetDatabaseUrl, withDatabase } from './env';
 
 const LOCAL = 'postgres://postgres:secret@127.0.0.1:5432/wingchunroots';
 const TEST = 'postgres://postgres:secret@db.internal:5432/wingchunroots_test';
@@ -43,6 +43,18 @@ describe('database URLs', () => {
       url: 'postgres://postgres@127.0.0.1/wingchunroots',
       password: '',
     });
+  });
+
+  it('adds DB_MIGRATOR_PASSWORD, URL-encoded, to a migrator URL without a password (Compose migrate)', () => {
+    const bare = 'postgres://migrator@postgres:5432/wingchunroots';
+    const url = migratorUrl(bare, { DB_MIGRATOR_PASSWORD: 'p@ss/w#rd%1' });
+    expect(url).toBe('postgres://migrator:p%40ss%2Fw%23rd%251@postgres:5432/wingchunroots');
+    expect(splitPassword(url).password).toBe('p@ss/w#rd%1');
+    expect(databaseName(url)).toBe('wingchunroots');
+    // A URL with its own password, another user or no password variable stays as it is.
+    expect(migratorUrl(LOCAL, { DB_MIGRATOR_PASSWORD: 'x' })).toBe(LOCAL);
+    expect(migratorUrl('postgres://postgres@127.0.0.1/wingchunroots', { DB_MIGRATOR_PASSWORD: 'x' })).toBe('postgres://postgres@127.0.0.1/wingchunroots');
+    expect(migratorUrl(bare, {})).toBe(bare);
   });
 
   it('asks for a missing role password by its variable name', () => {

@@ -1,0 +1,110 @@
+# The restore drill (milestone M12; plan §3.1 "Архиви", §10.1 D24; docs/operations/backup-and-restore.md):
+# a local archive of a seeded database (scripts/backup-local.sh), restored into a throwaway
+# database and checked (scripts/restore-drill.sh: the time against the RTO of 4 hours, amcheck, row
+# counts, foreign keys, cycles and self-links among the verified edges, the ancestor paths, a
+# sample of evidence hashes, the Better Auth tables), on PostgreSQL 18 + PostGIS 3.6 as a service
+# container. Weekly, and on every pull request that changes the archive, the drill or the schema.
+# Throwaway values only: no secret, no cloud service. The image is pinned by digest and actions by
+# commit SHA; Renovate keeps both current (renovate.json).
+name: restore-drill
+
+on:
+  schedule:
+    # Mondays at 03:17 UTC.
+    - cron: "17 3 * * 1"
+  pull_request:
+    paths:
+      - scripts/backup-local.sh
+      - scripts/restore-drill.sh
+      - scripts/lib/pg-run.sh
+      - scripts/ops/**
+      - drizzle/**
+      - .github/workflows/restore-drill.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-drill-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  restore-drill:
+    name: restore drill (PostgreSQL 18)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # The test database is created empty from template0 below, as in ci.yml.
+          POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Throwaway credentials of the service container above and of the database roles; not secrets.
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/wingchunroots_test
+      DB_MIGRATOR_PASSWORD: migrator-drill
+      DB_APP_RW_PASSWORD: app-rw-drill
+      DB_APP_PUBLIC_RO_PASSWORD: app-public-ro-drill
+      # Evidence in the private folder of the filesystem store (git-ignored .storage/evidence).
+      EVIDENCE_STORAGE: filesystem
+      # The archives of this run.
+      BACKUP_DIR: .verify/backups
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm (exact version from packageManager, no Corepack)
+        run: npm install --global "pnpm@$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '')")"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install the PostgreSQL client (psql for the bootstrap; pg_dump runs in the container)
+        run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - name: Create the test database (same SQL as Docker Compose)
+        run: psql "postgres://postgres:postgres@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -f docker/postgres/20-create-test-database.sql
+      - name: Generate throwaway account settings (as in ci.yml)
+        # Random per run and never in the repository: the seed signs the demo accounts with them.
+        run: |
+          random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+          auth_secret="$(random_hex 32)"
+          ip_key="$(random_hex 32)"
+          seal_key="$(random_hex 32)"
+          password="wcr-$(random_hex 12)"
+          totp_secret="$(random_hex 20)"
+          for value in "$auth_secret" "$ip_key" "$seal_key" "$password" "$totp_secret"; do echo "::add-mask::$value"; done
+          {
+            echo "BETTER_AUTH_SECRET=$auth_secret"
+            echo "IP_HMAC_KEY=$ip_key"
+            echo "MAIL_SEAL_KEY=$seal_key"
+            echo "E2E_PASSWORD=$password"
+            echo "E2E_TOTP_SECRET=$totp_secret"
+          } >> "$GITHUB_ENV"
+      - name: Database roles, migrations and the demo data
+        run: |
+          scripts/db-bootstrap.sh --test-database
+          pnpm db:migrate
+          pnpm db:seed
+      - name: A fictional evidence object for the hash sample
+        run: pnpm exec tsx scripts/ops/evidence-objects.ts fixture --test-database
+      - name: scripts/backup-local.sh
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: scripts/backup-local.sh --test-database --objects
+      - name: scripts/restore-drill.sh
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: scripts/restore-drill.sh --test-database
