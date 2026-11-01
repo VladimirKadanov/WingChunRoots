@@ -163,6 +163,7 @@
 - `app_rw` има само `SELECT` и `INSERT` (`REVOKE UPDATE, DELETE, TRUNCATE`);
 - тригерите `audit_log_no_update_delete` (`BEFORE UPDATE OR DELETE`, за всеки ред) и `audit_log_no_truncate` (`BEFORE TRUNCATE`) отказват промяна за всяка роля, включително собственика, с грешка `audit_log is append-only: <операция> is not allowed`;
 - колони: `occurred_at`, `actor_user_id`, `actor_role`, `action`, `subject_type`, `subject_id`, `request_id`, **`ip_hmac`**, `before`, `after`, `reason`, `evidence_ids`, по желание `prev_hash` и `hash` (верига от хешове против подправяне).
+- `evidence_ids` (`uuid[]`) са файловете с доказателства, на които се основава промяната (M10a): архивната редакция `person.update` (заедно с `reason`), искът за исторически учител `relationship.request` и решението по него `relationship.verify` или `relationship.reject`. Без доказателства колоната е `NULL`.
 
 `relationship_event` също е само за добавяне за `app_rw`: няма `UPDATE` и `DELETE`, а външният ключ `ON DELETE RESTRICT` не позволява изтриване на връзка с история. Тригер няма: собственикът (`migrator`) може да поправя данни с миграция.
 
