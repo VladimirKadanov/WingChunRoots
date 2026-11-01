@@ -64,8 +64,8 @@ export const UNATTACHED_WINDOW_HOURS = 24;
 export const EVIDENCE_MAX_MB = EVIDENCE_MAX_BYTES / (1024 * 1024);
 
 export const TOO_LARGE_MESSAGE = `This file is larger than ${EVIDENCE_MAX_MB} MB. Upload a smaller copy, or split the document.`;
-export const WRONG_TYPE_MESSAGE = 'Only JPEG, PNG and WebP images and PDF documents can be uploaded. This file is none of them.';
-export const CASE_FULL_MESSAGE = `This claim has ${EVIDENCE_MAX_FILES_PER_CASE} files, the most a claim can have. Remove one before you add another.`;
+export const WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPEG, PNG or WebP image or a PDF, whatever its name.';
+export const CASE_FULL_MESSAGE = `This claim already holds ${EVIDENCE_MAX_FILES_PER_CASE} files, the most a claim can have, so no more can be added to it.`;
 export const UNATTACHED_FULL_MESSAGE = `You have uploaded ${EVIDENCE_MAX_FILES_PER_CASE} files today that are not part of a claim yet. Send the claim, or remove some of them, before you upload more.`;
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');

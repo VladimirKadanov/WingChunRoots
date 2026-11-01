@@ -347,7 +347,7 @@ test('@M10a upload refuses a renamed executable and a file over 20 MB', async ({
   const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/evidence/upload');
   const items = await chooseFiles(page, [{ name: 'demo-certificate.pdf', mimeType: 'application/pdf', buffer: executable }], 'refused');
   expect((await answered).status()).toBe(415);
-  await expect(items.last()).toContainText('Only JPEG, PNG and WebP images and PDF documents can be uploaded');
+  await expect(items.last()).toContainText('The contents of this file are not a JPEG, PNG or WebP image or a PDF');
   // A file over 20 MB is stopped by the field before it is sent ...
   await chooseFiles(page, [{ name: 'demo-scan.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(20 * MB + 1) }], 'refused');
   await expect(items.last()).toContainText('Larger than 20 MB');
@@ -566,7 +566,7 @@ test('@M10a the evidence field keeps the focus while files upload and after each
   expect(await log.locator('p').allTextContents()).toEqual([
     'Uploading 4 files…',
     'demo-certificate.pdf: uploaded.',
-    expect.stringMatching(/^demo-scan\.jpg: not uploaded\. Only JPEG, PNG and WebP images and PDF documents can be uploaded/),
+    expect.stringMatching(/^demo-scan\.jpg: not uploaded\. The contents of this file are not a JPEG, PNG or WebP image or a PDF/),
     'demo-training-photo.png: uploaded.',
     'demo-register.pdf: not uploaded. Larger than 20 MB. Upload a smaller copy, or split the document.',
     '2 of 4 files uploaded. Not uploaded: demo-scan.jpg, demo-register.pdf.',
