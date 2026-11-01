@@ -26,7 +26,9 @@
 // Verify runs in the order of an approval (plan §6.3): the global verify lock, then the rows (the
 // relationship before its case, the order withdraw takes them), the cycle, duplicate and self
 // checks, then the writes of relationships.ts markVerified. After the commit the public cache of
-// both people and their neighbours is dropped and lineage.recompute is queued.
+// both people and their neighbours is dropped and lineage.recompute is queued. Every decision and
+// assignment locks the relationship before its case (FOR UPDATE both), so none of them deadlocks
+// against another or against a withdrawal.
 //
 // Account deletion requests (kind deletion_request) stay on /admin and the command line (M07):
 // they name an account, so they are not in this queue. The other kinds come with M10b; their cases
@@ -455,9 +457,15 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
   const admin = hasStaff2FA(p, ['admin']);
   try {
     const replayed = await db.transaction(async (tx) => {
+      const seen = await caseById(tx, input.caseId);
+      if (!seen) throw notFound();
+      if (seen.kind !== 'historical_claim' || !seen.relationshipId) throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
+      // The relationship, then its case: the order of review.decide and relationships.withdraw. The
+      // relationship_event written below takes a KEY SHARE lock on the relationship (its foreign
+      // key), so taking the case first would deadlock against them (M10a review, code-1).
+      await rowById(tx, seen.relationshipId, true);
       const c = await caseById(tx, input.caseId, true);
-      if (!c) throw notFound();
-      if (c.kind !== 'historical_claim' || !c.relationshipId) throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
+      if (!c || !c.relationshipId) throw notFound();
       const reason = input.assigneeId ? 'assigned' : 'unassigned';
       if (await replayReview(tx, p, input.idempotencyKey, c.relationshipId, { to: 'under_review', reason })) return true;
       if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This claim is about you: another reviewer handles it.');

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { and, asc, eq, sql } from 'drizzle-orm';
+import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
@@ -18,9 +19,10 @@ import { getDb } from '../db';
 import { auditLog, evidenceFile, evidenceLink, notification, person, personBio, personName, relationshipEvent, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { filesystemStore } from '../storage/fs';
+import { pgErrorOf } from './errors';
 import { uploadEvidence } from './evidence';
 import { requestHistoricalTeacher } from './historical';
-import { myTeachers } from './relationships';
+import { myTeachers, withdrawRelationship } from './relationships';
 import { addReviewNote, assignReviewCase, decideReviewCase, getArchiveRecord, getReviewCase, listReviewCases, updateArchiveRecord } from './review';
 import { key, type Member, member, meta, newLineage, ongoingFrom, principalOf, staff } from './relationships.test-support';
 
@@ -104,6 +106,17 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
   )) as { code?: string } | null;
   return error?.code ?? 'OK';
 }
+
+/** 'OK', the code of a ServiceError, or the SQLSTATE of a database error (40P01: a deadlock). */
+async function outcome(promise: Promise<unknown>): Promise<string> {
+  return promise.then(
+    () => 'OK',
+    (e: unknown) => pgErrorOf(e)?.code ?? String(e),
+  );
+}
+
+/** A teacher name of letters only (names refuse digits): A, B, ..., Z, Aa, Ab, ... */
+const letters = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : `${String.fromCharCode(65 + Math.floor(i / 26) - 1)}${String.fromCharCode(97 + (i % 26))}`);
 
 describe('a historical teacher claim', () => {
   it('creates a private historical record, an under_review committee link and an open case with the files; archivists and administrators are told, moderators are not', async () => {
@@ -382,5 +395,73 @@ describe('the archival edit (plan §6.6)', () => {
     expect(await refusal(updateArchiveRecord(archivist.principal, { ...base, personId: owned.personId }, meta))).toBe('FORBIDDEN');
     expect((await getArchiveRecord(archivist.principal, { slug: owned.slug })).editable).toBe(false);
     expect(await getDb().select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, 'person.update'), eq(auditLog.subjectId, record.id)))).toHaveLength(0);
+  });
+});
+
+// M10a review, code-1: review.assign took the case FOR UPDATE and then, through the foreign key of
+// its relationship_event, a KEY SHARE lock on the relationship, while review.decide and
+// relationships.withdraw take the relationship FOR UPDATE first and the case second: the two
+// deadlocked (40P01, a 500 for one of them). Every path now takes the relationship first.
+describe('concurrent changes to one case', () => {
+  /** Waits until a backend of this test database waits for a lock (review.assign behind `locker`). */
+  async function untilSomeoneWaits(locker: Client): Promise<void> {
+    for (let i = 0; i < 200; i += 1) {
+      await locker.query('SELECT pg_stat_clear_snapshot()');
+      const { rows } = await locker.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+      if (rows[0]!.n > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('review.assign never waited for the relationship lock');
+  }
+
+  it('review.assign waits for the relationship before it locks the case, the order of review.decide and relationships.withdraw', async () => {
+    const archivist = await staff('rv-lock-order-arch', 'archivist');
+    const { caseId, relationshipId } = await claim('rv-lock-order');
+    const locker = new Client({ connectionString: testDb!.url });
+    await locker.connect();
+    try {
+      await locker.query('BEGIN');
+      await locker.query("SET LOCAL statement_timeout = '5s'");
+      // The first step of review.decide and relationships.withdraw: the relationship FOR UPDATE.
+      await locker.query('SELECT id FROM teaching_relationship WHERE id = $1 FOR UPDATE', [relationshipId]);
+      const assign = outcome(assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta));
+      await untilSomeoneWaits(locker);
+      // Their second step, the case FOR UPDATE, does not wait for review.assign (before the fix: a deadlock).
+      const second = await locker.query('SELECT id FROM review_case WHERE id = $1 FOR UPDATE', [caseId]).then(
+        () => 'OK',
+        (e: unknown) => pgErrorOf(e)?.code ?? String(e),
+      );
+      await locker.query('ROLLBACK');
+      expect({ second, assign: await assign }).toEqual({ second: 'OK', assign: 'OK' });
+    } finally {
+      await locker.query('ROLLBACK').catch(() => undefined);
+      await locker.end();
+    }
+  });
+
+  const ROUNDS = 10;
+
+  it(`"Assign to me" at the moment the student withdraws, or an administrator refuses, never deadlocks (${ROUNDS} rounds each)`, async () => {
+    const archivist = await staff('rv-race-arch', 'archivist');
+    const admin = await staff('rv-race-admin', 'admin');
+    const outcomes: string[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const withdrawn = await claim(`rv-race-withdraw-${round}`, { teacherName: `Demo Historical Withdrawn ${letters(round)}` });
+      outcomes.push(
+        ...(await Promise.all([
+          outcome(assignReviewCase(archivist.principal, { caseId: withdrawn.caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta)),
+          outcome(withdrawRelationship(withdrawn.student.principal, { relationshipId: withdrawn.relationshipId, idempotencyKey: key() }, meta)),
+        ])),
+      );
+      const refused = await claim(`rv-race-refuse-${round}`, { teacherName: `Demo Historical Refused ${letters(round)}` });
+      outcomes.push(
+        ...(await Promise.all([
+          outcome(assignReviewCase(archivist.principal, { caseId: refused.caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta)),
+          outcome(decideReviewCase(admin.principal, { caseId: refused.caseId, decision: 'reject', reason: 'The fictional certificate is unreadable.', idempotencyKey: key() }, meta)),
+        ])),
+      );
+    }
+    // The one that came second may be refused (the case is closed or decided), never failed.
+    expect(outcomes.filter((o) => o !== 'OK' && o !== 'CONFLICT')).toEqual([]);
   });
 });
