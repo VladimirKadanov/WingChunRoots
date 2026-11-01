@@ -69,6 +69,7 @@ import {
   toPublicSchoolSitemap,
 } from '../dto/schools';
 import { type Executor, requireEntitlement } from '../entitlements/access';
+import type { Transaction } from '../jobs/outbox';
 import { feature, upgradeBenefits } from '../entitlements/plans';
 import { LISTED_PLACE_MIN_POPULATION, type PlaceSearchHit, searchPlaces } from '../geo/places';
 import { DEFAULT_RADIUS_KM, MAX_RADIUS_KM } from '../../lib/school-finder';
@@ -78,6 +79,7 @@ import { pgErrorOf, ServiceError } from './errors';
 import { cleanName } from './names';
 import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
+import { recordCaseEvent } from './review-core';
 
 // --- Constants ---------------------------------------------------------------------------------
 
@@ -1062,7 +1064,7 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
     await writeInstructors(tx, row.id, ownId, instructorIds);
     const reReview =
       row.status === 'active' && changed.some((c) => (RE_REVIEWED_CHANGES as readonly string[]).includes(c) && (c !== 'point' || input.locationPrivacy === 'exact'))
-        ? await openReReview(tx, row.id, p.user.id)
+        ? await openReReview(tx, row.id, p)
         : null;
     await writeAudit(tx, {
       action: 'school.update',
@@ -1084,17 +1086,19 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
 /**
  * The school_listing case of an edited listed school (see updateSchool): the open one when there
  * is one (a second edit joins it; the reviewer reloads the case and sees both), else a new one.
- * The school is locked already, so the case's lock comes second, as in schools.submit.
+ * The school is locked already, so the case's lock comes second, as in schools.submit. A new case
+ * starts its history (review_event open), as every kind of M10b does.
  */
-async function openReReview(tx: Executor, schoolId: string, userId: string): Promise<string> {
+async function openReReview(tx: Transaction, schoolId: string, p: Principal): Promise<string> {
   const [open] = await tx
     .select({ id: reviewCase.id })
     .from(reviewCase)
     .where(and(eq(reviewCase.schoolId, schoolId), eq(reviewCase.kind, 'school_listing'), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])))
     .for('update');
   if (open) return open.id;
-  const [created] = await tx.insert(reviewCase).values({ kind: 'school_listing', status: 'open', schoolId, openedByUserId: userId }).returning({ id: reviewCase.id });
-  await tellListingReviewers(tx, created!.id, userId);
+  const [created] = await tx.insert(reviewCase).values({ kind: 'school_listing', status: 'open', schoolId, openedByUserId: p.user.id }).returning({ id: reviewCase.id });
+  await recordCaseEvent(tx, { caseId: created!.id, action: 'open', from: null, to: 'open', actor: p, key: null });
+  await tellListingReviewers(tx, created!.id, p.user.id);
   return created!.id;
 }
 
@@ -1144,9 +1148,11 @@ export async function submitSchool(principal: Principal | null, raw: z.input<typ
       // A listing under review, or a listed school whose edit is under review (updateSchool).
       if ((row.status === 'pending_review' || row.status === 'active') && open) {
         if (open.status !== 'needs_info') return { id: row.id, slug: row.slug, status: row.status, caseId: open.id, replayed: true };
-        // The answer to the reviewers' question: the case waits for them again.
+        // The answer to the reviewers' question: the case waits for them again (review_event
+        // evidence, the action of a party's answer in cases.reply).
         const status = open.assignedToUserId ? 'in_review' : 'open';
         await tx.update(reviewCase).set({ status, updatedAt: new Date() }).where(eq(reviewCase.id, open.id));
+        await recordCaseEvent(tx, { caseId: open.id, action: 'evidence', from: 'needs_info', to: status, actor: p, key: null });
         await writeAudit(tx, {
           action: 'school.submit',
           actorUserId: p.user.id,
@@ -1168,6 +1174,7 @@ export async function submitSchool(principal: Principal | null, raw: z.input<typ
         .insert(reviewCase)
         .values({ kind: 'school_listing', status: 'open', schoolId: row.id, openedByUserId: p.user.id })
         .returning({ id: reviewCase.id });
+      await recordCaseEvent(tx, { caseId: created!.id, action: 'open', from: null, to: 'open', actor: p, key: null });
       await writeAudit(tx, {
         action: 'school.submit',
         actorUserId: p.user.id,

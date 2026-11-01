@@ -8,14 +8,14 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { generateFixtures } from '../../fixtures/generate';
 import { createAccount, signIn, setTestAuthEnv, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { withClient } from '../db/admin';
-import { authUser, entitlementGrant, lineage, person, personName, reviewCase, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
+import { authUser, entitlementGrant, lineage, person, personName, reviewCase, reviewEvent, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import { PG, pgError } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { lineageRecomputeHandler, recomputeLineageMembership } from '../jobs/lineage-recompute';
@@ -233,6 +233,91 @@ describe('listing a school', () => {
     expect(row!.status).toBe('draft');
     const [c] = await getDb().select({ resolution: reviewCase.resolution, reason: reviewCase.resolutionReason }).from(reviewCase).where(eq(reviewCase.id, caseId));
     expect(c).toEqual({ resolution: 'rejected', reason: 'Add the training hall details (fictional).' });
+  });
+
+  const historyOf = (caseId: string) =>
+    getDb()
+      .select({ action: reviewEvent.action, from: reviewEvent.fromStatus, to: reviewEvent.toStatus, actor: reviewEvent.actorUserId })
+      .from(reviewEvent)
+      .where(eq(reviewEvent.reviewCaseId, caseId))
+      .orderBy(asc(reviewEvent.createdAt), asc(reviewEvent.id));
+
+  it('a listing case keeps its history (review_event) like every other kind: open, assign, the question, the answer, the decision', async () => {
+    const pro = await asSifu('m11-history', 'pro_sifu');
+    const created = await createSchool(pro.principal, { ...(await fields()), idempotencyKey: key() }, meta);
+    const { caseId } = await submitSchool(pro.principal, { id: created.id }, meta);
+    const moderator = await staff('m11-history-mod', 'moderator');
+    const assignKey = key();
+    await assignReviewCase(moderator.principal, { caseId, assigneeId: moderator.account.id, idempotencyKey: assignKey }, meta);
+    // The assign's key again on a decision of the same case is refused (M10b: one key, one change).
+    await expect(decideReviewCase(moderator.principal, { caseId, decision: 'needs_info', reason: 'Demo question (fictional).', idempotencyKey: assignKey }, meta)).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+    const askKey = key();
+    await decideReviewCase(moderator.principal, { caseId, decision: 'needs_info', reason: 'Demo question (fictional).', idempotencyKey: askKey }, meta);
+    expect((await decideReviewCase(moderator.principal, { caseId, decision: 'needs_info', reason: 'Demo question (fictional).', idempotencyKey: askKey }, meta)).replayed).toBe(true);
+    // The question's key on another decision is refused, not replayed.
+    await expect(decideReviewCase(moderator.principal, { caseId, decision: 'reject', reason: 'Demo reason (fictional).', idempotencyKey: askKey }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await submitSchool(pro.principal, { id: created.id }, meta);
+    const schoolVersion = (await getReviewCase(moderator.principal, { id: caseId })).school!.version;
+    const approveKey = key();
+    await decideReviewCase(moderator.principal, { caseId, decision: 'verify', reason: null, idempotencyKey: approveKey, schoolVersion }, meta);
+    expect((await decideReviewCase(moderator.principal, { caseId, decision: 'verify', reason: null, idempotencyKey: approveKey, schoolVersion }, meta)).replayed).toBe(true);
+    // The decision's key on an assign is refused too.
+    await expect(assignReviewCase(moderator.principal, { caseId, assigneeId: null, idempotencyKey: approveKey }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(await historyOf(caseId)).toEqual([
+      { action: 'open', from: null, to: 'open', actor: pro.account.id },
+      { action: 'assign', from: 'open', to: 'in_review', actor: moderator.account.id },
+      { action: 'needs_info', from: 'in_review', to: 'needs_info', actor: moderator.account.id },
+      { action: 'evidence', from: 'needs_info', to: 'in_review', actor: pro.account.id },
+      { action: 'approve', from: 'in_review', to: 'resolved', actor: moderator.account.id },
+    ]);
+    const keys = await getDb().select({ key: reviewEvent.idempotencyKey }).from(reviewEvent).where(eq(reviewEvent.reviewCaseId, caseId));
+    expect(keys.map((k) => k.key).filter(Boolean).sort()).toEqual([assignKey, askKey, approveKey].sort());
+  });
+
+  it('a returned edit ends its history with reject; the edit of a listed school opens its case with open', async () => {
+    const pro = await asSifu('m11-history-edit', 'pro_sifu');
+    const moderator = await staff('m11-history-edit-mod', 'moderator');
+    const created = await createSchool(pro.principal, { ...(await fields()), idempotencyKey: key() }, meta);
+    const first = await submitSchool(pro.principal, { id: created.id }, meta);
+    await assignReviewCase(moderator.principal, { caseId: first.caseId, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
+    const v1 = (await getReviewCase(moderator.principal, { id: first.caseId })).school!.version;
+    await decideReviewCase(moderator.principal, { caseId: first.caseId, decision: 'verify', reason: null, idempotencyKey: key(), schoolVersion: v1 }, meta);
+    await updateSchool(pro.principal, { ...(await fields()), id: created.id, websiteUrl: 'https://example.test/m11-history' }, meta);
+    const [edit] = await getDb()
+      .select({ id: reviewCase.id })
+      .from(reviewCase)
+      .where(and(eq(reviewCase.schoolId, created.id), eq(reviewCase.status, 'open')));
+    expect(edit).toBeDefined();
+    await assignReviewCase(moderator.principal, { caseId: edit!.id, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
+    const v2 = (await getReviewCase(moderator.principal, { id: edit!.id })).school!.version;
+    await decideReviewCase(moderator.principal, { caseId: edit!.id, decision: 'reject', reason: 'Demo: not this school (fictional).', idempotencyKey: key(), schoolVersion: v2 }, meta);
+    expect((await historyOf(edit!.id)).map((e) => [e.action, e.from, e.to, e.actor])).toEqual([
+      ['open', null, 'open', pro.account.id],
+      ['assign', 'open', 'in_review', moderator.account.id],
+      ['reject', 'in_review', 'resolved', moderator.account.id],
+    ]);
+  });
+
+  it('an archivist may take a listing and ask the Sifu, but not approve or return it (DECIDERS.school_listing)', async () => {
+    const pro = await asSifu('m11-archivist-sifu', 'pro_sifu');
+    const created = await createSchool(pro.principal, { ...(await fields()), idempotencyKey: key() }, meta);
+    const { caseId } = await submitSchool(pro.principal, { id: created.id }, meta);
+    const archivist = await staff('m11-archivist', 'archivist');
+    const taken = await assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta);
+    expect(taken.case).toMatchObject({ status: 'in_review' });
+    const schoolVersion = (await getReviewCase(archivist.principal, { id: caseId })).school!.version;
+    await expect(decideReviewCase(archivist.principal, { caseId, decision: 'verify', reason: null, idempotencyKey: key(), schoolVersion }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(decideReviewCase(archivist.principal, { caseId, decision: 'reject', reason: 'Demo reason (fictional).', idempotencyKey: key(), schoolVersion }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await decideReviewCase(archivist.principal, { caseId, decision: 'needs_info', reason: 'Demo question (fictional).', idempotencyKey: key() }, meta);
+    const [row] = await getDb().select({ status: school.status }).from(school).where(eq(school.id, created.id));
+    expect(row!.status).toBe('pending_review');
+    expect((await historyOf(caseId)).map((e) => [e.action, e.actor])).toEqual([
+      ['open', pro.account.id],
+      ['assign', archivist.account.id],
+      ['needs_info', archivist.account.id],
+    ]);
   });
 });
 

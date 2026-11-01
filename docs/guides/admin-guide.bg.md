@@ -788,6 +788,8 @@ pnpm geo:load       # около 5200 града; db:seed (и db:reset) го п�
 
 `school.create`, `school.update`, `school.submit`, `school.confirm`, `school.publish`, `school.return`, а при решение и `review.assign`, `review.note`, `review.needs_info`, `review.resolve`. Записите казват кои полета са се променили, никога точка, адрес или контакт.
 
+Историята на случай **School listing** е в `review_event`, както при другите видове (заявката в раздела за M10b): `open` при изпращане или при редакция, която отваря преглед, `assign`/`unassign`, `needs_info`, `evidence`, когато Сифу изпрати обявата отново, и `approve` или `reject`. Повторено решение със същия ключ не прави нищо ново; ключ, който вече сте ползвали за друго действие, се отказва с „This request key was already used for another change. Reload the page and try again.“.
+
 ```sql
 SELECT occurred_at, actor_user_id, actor_role, action, subject_id, reason
   FROM audit_log

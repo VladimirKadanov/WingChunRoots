@@ -21,9 +21,12 @@
 // ask and add notes. Nobody reviews their own listing. The order of the locks is the school, then
 // its case, the order schools.submit takes them.
 //
-// Idempotency: each decision writes a review_note with its request key (the reason, the question,
-// or "Listing approved."); the same key again with the same decision is a replay, with another one
-// a conflict. The case card never shows the exact point of a city_only school: only its city.
+// History and idempotency (M10b, review-core.ts): each decision writes the case's history
+// (review_event needs_info, approve or reject) with its request key, and its note (the reason, the
+// question, or "Listing approved."). A key this reviewer used already on a case event (an assign,
+// a decision) is a replay when it was the same decision on the same case, else a conflict, as for
+// every other kind. schools.submit records open (and evidence when the Sifu answers a question).
+// The case card never shows the exact point of a city_only school: only its city.
 
 import { and, eq, sql } from 'drizzle-orm';
 
@@ -38,8 +41,8 @@ import type { GeoPointDto } from '../dto/schools';
 import { type Executor, requireEntitlement } from '../entitlements/access';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
-import { pgErrorOf, ServiceError } from './errors';
-import { DECIDERS } from './review-core';
+import { ServiceError } from './errors';
+import { caseReplayOf, DECIDERS, isCaseKeyConflict, recordCaseEvent } from './review-core';
 import { keyReused } from './relationships';
 import { LOCATION_LABELS, SCHOOL_FORM_LABELS, SCHOOL_ROLE_LABELS } from './schools';
 
@@ -177,12 +180,10 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
         .where(eq(reviewCase.id, input.caseId))
         .for('update');
       if (!listing || !c) throw new ServiceError('NOT_FOUND', 'No such case.');
-      const [earlier] = await tx
-        .select({ caseId: reviewNote.reviewCaseId, body: reviewNote.body })
-        .from(reviewNote)
-        .where(and(eq(reviewNote.authorUserId, p.user.id), eq(reviewNote.idempotencyKey, input.idempotencyKey)));
-      if (earlier) {
-        if (earlier.caseId !== c.id || earlier.body !== body) throw keyReused();
+      const action = input.decision === 'verify' ? 'approve' : input.decision === 'reject' ? 'reject' : 'needs_info';
+      const replay = await caseReplayOf(tx, p.user.id, input.idempotencyKey);
+      if (replay) {
+        if (replay.caseId !== c.id || replay.action !== action) throw keyReused();
         return { replayed: true, publicChange: false };
       }
       if (c.openedByUserId === p.user.id || listing.createdByUserId === p.user.id) throw new ServiceError('FORBIDDEN', 'This listing is yours: another reviewer decides it.');
@@ -205,7 +206,8 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
 
       if (input.decision === 'needs_info') {
         await tx.update(reviewCase).set({ status: 'needs_info', updatedAt: now }).where(eq(reviewCase.id, c.id));
-        await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: false, idempotencyKey: input.idempotencyKey });
+        await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: false });
+        await recordCaseEvent(tx, { caseId: c.id, action, from: c.status, to: 'needs_info', actor: p, key: input.idempotencyKey });
         await audit('review.needs_info', 'review_case', c.id, { status: c.status }, { status: 'needs_info', schoolId: seen.schoolId });
         if (owner) await tx.insert(notification).values({ userId: owner, template: 'school.reviewed', payload: { schoolId: seen.schoolId, decision: 'needs_info' } });
         return { replayed: false, publicChange: false };
@@ -224,7 +226,8 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
         .set({ status: 'resolved', resolution: approve ? 'approved' : 'rejected', resolutionReason: input.reason, resolvedAt: now, updatedAt: now })
         .where(eq(reviewCase.id, c.id));
       // An approval's note is for the reviewers; a reason to return it is the Sifu's to read.
-      await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: approve && input.reason === null, idempotencyKey: input.idempotencyKey });
+      await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: approve && input.reason === null });
+      await recordCaseEvent(tx, { caseId: c.id, action, from: c.status, to: 'resolved', actor: p, key: input.idempotencyKey });
       await audit(approve ? 'school.publish' : 'school.return', 'school', seen.schoolId, { status: listing.status }, { status: approve ? 'active' : 'draft', caseId: c.id, ...(listed ? { edit: true } : {}) });
       await audit('review.resolve', 'review_case', c.id, { status: c.status }, { status: 'resolved', resolution: approve ? 'approved' : 'rejected', schoolId: seen.schoolId });
       if (owner) await tx.insert(notification).values({ userId: owner, template: 'school.reviewed', payload: { schoolId: seen.schoolId, decision: approve ? 'approved' : 'returned' } });
@@ -234,8 +237,7 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
     if (outcome.publicChange) invalidatePublic([SCHOOLS_TAG], 'procedure');
     return outcome.replayed;
   } catch (error) {
-    const pg = pgErrorOf(error);
-    if (pg?.code === '23505' && pg.constraint === 'review_note_idempotency_key') throw keyReused();
+    if (isCaseKeyConflict(error)) throw keyReused();
     throw error;
   }
 }
