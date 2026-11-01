@@ -305,6 +305,11 @@ export interface ReviewListRow {
   /** The people of a relationship case (teacher and student), null for another kind. */
   teacher: PersonRef | null;
   student: PersonRef | null;
+  /**
+   * M10b: the profile a case without a relationship is about (the instructor of an instructor
+   * verification, the reported profile of a report), null for a relationship case.
+   */
+  subject: PersonRef | null;
   lineageName: string | null;
   files: number;
 }
@@ -393,7 +398,10 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
     .orderBy(...order)
     .limit(REVIEW_PAGE_SIZE)
     .offset((filters.page - 1) * REVIEW_PAGE_SIZE);
-  const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId]).filter((id): id is string => id !== null))]);
+  // A case without a relationship names its profile instead (review_case.person_id).
+  const subjectOf = (r: (typeof rows)[number]) => (r.relationshipId === null ? r.personId : null);
+  const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId, subjectOf(r)]).filter((id): id is string => id !== null))]);
+  const refOf = (id: string | null) => (id ? (refs.get(id) ?? null) : null);
   return {
     rows: rows.map((r) => ({
       id: r.id,
@@ -406,6 +414,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       assignee: r.assignedToUserId === null ? null : r.assignedToUserId === p.user.id ? 'me' : 'other',
       teacher: r.teacherId ? (refs.get(r.teacherId) ?? null) : null,
       student: r.studentId ? (refs.get(r.studentId) ?? null) : null,
+      subject: refOf(subjectOf(r)),
       lineageName: r.lineageName,
       files: r.files,
     })),
