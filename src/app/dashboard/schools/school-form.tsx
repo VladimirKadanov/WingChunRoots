@@ -21,7 +21,7 @@ import { createSchoolAction, updateSchoolAction } from './actions';
 import { SCHOOL_FORM } from './form-ids';
 
 // React.lazy rather than next/dynamic: the picker renders only after a click (never on the server),
-// and the page's first JavaScript stays without next/dynamic's loader (the route budget, ADR 0013).
+// and the page's first JavaScript stays without next/dynamic's loader (the route budget, ADR 0014).
 const PinPicker = lazy(() => import('@/components/map/pin-picker'));
 const pickerLoading = <div className="h-72 animate-pulse rounded-sm bg-surface-1 motion-reduce:animate-none md:h-96" />;
 

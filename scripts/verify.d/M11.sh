@@ -100,7 +100,7 @@ required=(
   public/map-styles/light.json public/map-styles/dark.json
   "$SPEC" e2e/helpers/schools.ts
   licenses/addenda/geonames.md licenses/addenda/openstreetmap.md
-  docs/schools-and-map.md docs/adr/0013-schools-map.md docs/plan/questions/M11.md docs/design/reviews/M11.md
+  docs/schools-and-map.md docs/adr/0014-schools-map.md docs/plan/questions/M11.md docs/design/reviews/M11.md
   scripts/verify.d/M11.sh
 )
 for f in "${required[@]}"; do
@@ -204,9 +204,9 @@ refute "no exact coordinates of a demo city-only school in the screenshots list 
   bash -c "grep -nE '[0-9]{1,3}\.[0-9]{4,}' e2e/routes.ts"
 
 # 5. The map (In scope 6; plan §5.3, §5.8) -----------------------------------------------------------
-check "maplibre-gl 6.14.0 and @vis.gl/react-maplibre 8.1.3 are pinned exactly, with their reason in ADR 0001 and ADR 0013" bash -c '
+check "maplibre-gl 6.14.0 and @vis.gl/react-maplibre 8.1.3 are pinned exactly, with their reason in ADR 0001 and ADR 0014" bash -c '
   grep -qx "    \"maplibre-gl\": \"6.14.0\"," package.json && grep -qx "    \"@vis.gl/react-maplibre\": \"8.1.3\"," package.json &&
-  grep -q "maplibre-gl" docs/adr/0001-stack.md && grep -q "maplibre-gl" docs/adr/0013-schools-map.md'
+  grep -q "maplibre-gl" docs/adr/0001-stack.md && grep -q "maplibre-gl" docs/adr/0014-schools-map.md'
 check "only src/components/map imports MapLibre (eslint.config.mjs)" \
   grep -qF "group: ['maplibre-gl', 'maplibre-gl/*', '@vis.gl/react-maplibre', '@vis.gl/react-maplibre/*']," eslint.config.mjs
 check "the map island and the sheet load after the page (next/dynamic, ssr: false)" bash -c '
@@ -215,8 +215,8 @@ check "no page but /schools loads MapLibre with its first JavaScript (LAZY_ONLY)
   f=scripts/check-bundle-budget.mjs
   grep -qF "export const LAZY_ONLY = [{ name: '\''MapLibre'\'', signature: '\''maplibregl-canvas-container'\'' }];" "$f" &&
   grep -qF "'\''/schools'\'': 170 * KB," "$f"'
-check "the /schools budget and its measured size are in ADR 0013" bash -c '
-  f=docs/adr/0013-schools-map.md; grep -q "/schools" "$f" && grep -q "170 kB" "$f" && grep -qE "159,6|159\.6" "$f"'
+check "the /schools budget and its measured size are in ADR 0014" bash -c '
+  f=docs/adr/0014-schools-map.md; grep -q "/schools" "$f" && grep -q "170 kB" "$f" && grep -qE "159,6|159\.6" "$f"'
 check "the OpenFreeMap styles are in the configuration, the local test styles in public/map-styles" bash -c '
   f=src/server/geo/map-styles.ts
   grep -q "https://tiles.openfreemap.org/styles/positron" "$f" && grep -q "https://tiles.openfreemap.org/styles/dark" "$f" &&
@@ -351,7 +351,7 @@ check "the user guide covers the finder, the map, the school page and listing a 
   grep -q "## Школи и карта (M11)" "$f" && grep -q "### Страницата на школа" "$f" && grep -q "### Обявяване на школа" "$f" && grep -q "/schools" "$f"'
 check "the admin guide covers the listing review and the pin" bash -c '
   f=docs/guides/admin-guide.bg.md
-  grep -q "## 16. Школи, карта и прегледът на обявите (M11)" "$f" && grep -q "geo:load" "$f" && grep -q "MAP_STYLES" "$f"'
+  grep -q "## 17. Школи, карта и прегледът на обявите (M11)" "$f" && grep -q "geo:load" "$f" && grep -q "MAP_STYLES" "$f"'
 check "docs/plan/README.md has a status for M11" bash -c '! grep -qE "^\| M11 .*\| не е започнат \|$" docs/plan/README.md'
 # Done when, item 1: both guides change in the milestone's branch. Checkable while the branch is not
 # merged and origin/main is known (not in a shallow CI checkout).

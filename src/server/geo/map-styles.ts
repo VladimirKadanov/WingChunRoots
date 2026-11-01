@@ -4,7 +4,7 @@
 // - OpenFreeMap (https://openfreemap.org): free vector tiles from OpenStreetMap data with no key and
 //   no account. Its servers receive the reader's IP address and the tiles the map asks for, so the
 //   privacy policy draft names OpenFreeMap as a recipient (content/legal/privacy.en.md).
-//   DEFAULT (no D number; docs/adr/0013-schools-map.md): Positron for the light theme and Dark for
+//   DEFAULT (no D number; docs/adr/0014-schools-map.md): Positron for the light theme and Dark for
 //   the dark one; the addresses were not reachable from the cloud sessions where M11 was built
 //   (docs/plan/questions/M11.md, question 4).
 // - The local minimal styles in public/map-styles/ (a ground and a graticule, no tiles, no glyphs,

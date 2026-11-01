@@ -1,12 +1,14 @@
 // /verify-email (milestone M02, In scope 6 and 7). With `?token=` (the link in the e-mail) it asks
 // for one button press and confirms the address; without a token, or once the link is refused, it
 // sends a new link. `?outcome=` brings back the result of a submit without JavaScript
-// (src/server/forms/flash.ts).
+// (src/server/forms/flash.ts). `?next=` (M10b review): the page the sign-in after the confirmation
+// opens, the invitation a sign-up started from (src/server/auth/emails.ts).
 
 import type { Metadata } from 'next';
 
 import { AuthFrame } from '@/components/account/auth-frame';
 import { isRefusedLink } from '@/lib/form-state';
+import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult } from '@/server/forms/flash';
 import { AlreadyConfirmedFooter, ConfirmEmailForm, ResendConfirmationForm } from './forms';
 import { RESEND, linkRefused } from './headings';
@@ -28,11 +30,13 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 export default async function VerifyEmailPage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
   const token = typeof query.token === 'string' ? query.token.slice(0, 4096) : '';
+  // M10b review: the page the sign-in after the confirmation opens (an invitation link).
+  const next = safeNextPath(query.next, '');
   if (token) {
     const initial = await readFormResult('confirm-email', query.outcome);
     return (
       <AuthFrame>
-        <ConfirmEmailForm token={token} initial={initial} />
+        <ConfirmEmailForm token={token} next={next} initial={initial} />
       </AuthFrame>
     );
   }
@@ -46,8 +50,9 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
       <ResendConfirmationForm
         heading={refused ?? RESEND}
         headingId={refused ? 'verify-link-refused' : undefined}
+        next={next}
         initial={resent}
-        footer={<AlreadyConfirmedFooter />}
+        footer={<AlreadyConfirmedFooter next={next} />}
       />
     </AuthFrame>
   );

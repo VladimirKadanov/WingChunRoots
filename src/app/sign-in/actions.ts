@@ -12,6 +12,7 @@ import { authMessage } from '@/components/account/messages';
 import { MAX_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { emailValue, keepValues, looksLikeEmail, secretValue, textValue } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
+import { isInvitationPath } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { authAction, principalFromSetCookies } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
@@ -53,7 +54,10 @@ async function signIn(form: FormData, next: string): Promise<FormState> {
   if (!password) fields.password = 'Enter your password.';
   if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
 
-  const result = await authAction<SignedIn>('/sign-in/email', { body: { email, password, rememberMe: true } });
+  // An unconfirmed account gets a new confirmation link (sendOnSignIn): it keeps the invitation the
+  // sign-in is on its way to (callbackURL, src/server/auth/emails.ts; M10b review).
+  const callback = isInvitationPath(next) ? { callbackURL: next } : {};
+  const result = await authAction<SignedIn>('/sign-in/email', { body: { email, password, rememberMe: true, ...callback } });
   if (!result.ok || !result.data) return { status: 'error', message: authMessage(result.code), values };
 
   if (result.data.twoFactorRedirect) redirect(withNext('/sign-in/two-factor', next));

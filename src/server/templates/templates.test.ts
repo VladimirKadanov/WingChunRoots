@@ -311,9 +311,70 @@ describe('secret fields (M02 fix round 1)', () => {
   it('every template whose data carries a token declares it secret, so the outbox seals it', () => {
     for (const [name, template] of Object.entries(EMAIL_TEMPLATES) as [string, EmailTemplate<unknown>][]) {
       const tokenFields = Object.entries(template.sample as Record<string, unknown>)
-        .filter(([, value]) => typeof value === 'string' && /[?&]token=/.test(value))
+        // A token in the query (M02) or in the path of an invitation link (M10b: /invite/<token>).
+        .filter(([, value]) => typeof value === 'string' && (/[?&]token=/.test(value) || /\/invite\/[A-Za-z0-9_-]+$/.test(value)))
         .map(([field]) => field);
       expect(template.secretFields ?? [], name).toEqual(tokenFields);
     }
+  });
+});
+
+describe('invitations, claims, instructors and arbitration (M10b)', () => {
+  const invitation = EMAIL_TEMPLATES.invitation.sample;
+
+  it('the invitation names who gave the address, says nothing is public, how long the link works, and links the terms and the privacy notice', async () => {
+    const email = await renderEmail('invitation', invitation);
+    expect(email.text).toContain('They gave us your e-mail address.');
+    expect(email.text).toContain('Nothing about it is public');
+    expect(email.text).toContain('The link works for 14 days and only once.');
+    expect(email.html).toContain('href="http://localhost:3000/legal/terms"');
+    expect(email.html).toContain('href="http://localhost:3000/legal/privacy"');
+    expect(email.html).toContain(`href="${invitation.url}"`);
+  });
+
+  it('the invitation refuses a link elsewhere, a short token, a query and odd lifetimes', async () => {
+    await expect(renderEmail('invitation', { ...invitation, url: 'http://localhost:3000/invite/short' })).rejects.toThrow(/point at \/invite/);
+    await expect(renderEmail('invitation', { ...invitation, url: `${invitation.url}?x=1` })).rejects.toThrow(/point at \/invite/);
+    await expect(renderEmail('invitation', { ...invitation, url: invitation.url.replace('/invite/', '/sign-in/') })).rejects.toThrow(/point at \/invite/);
+    await expect(renderEmail('invitation', { ...invitation, days: 0 })).rejects.toThrow(/days/);
+    await expect(renderEmail('invitation', { ...invitation, days: 1.5 })).rejects.toThrow(/days/);
+  });
+
+  it('a claim decision links an approval to the request queue and anything else to its case page only', async () => {
+    const sample = EMAIL_TEMPLATES['claim-decided'].sample;
+    const casePage = 'http://localhost:3000/dashboard/cases/0190a5c0-0000-7000-8000-00000000000b';
+    expect((await renderEmail('claim-decided', { ...sample, decision: 'needs_info', url: casePage })).subject).toBe('More information needed for your profile claim on WingChunRoots');
+    await expect(renderEmail('claim-decided', { ...sample, decision: 'rejected' })).rejects.toThrow(/dashboard\/cases/);
+    await expect(renderEmail('claim-decided', { ...sample, url: casePage })).rejects.toThrow(/students\/requests/);
+    await expect(renderEmail('claim-decided', { ...sample, decision: 'rejected', url: `${casePage}/x` })).rejects.toThrow(/dashboard\/cases/);
+  });
+
+  it('an arbitration e-mail carries the reason and the evidence link, and refuses an empty or very long reason', async () => {
+    const sample = EMAIL_TEMPLATES['relationship-arbitration'].sample;
+    const email = await renderEmail('relationship-arbitration', sample);
+    expect(email.text).toContain(sample.reason);
+    expect(email.text).toContain('“Disputed”');
+    expect(email.html).toContain(`href="${sample.url}"`);
+    expect((await renderEmail('relationship-arbitration', { ...sample, stage: 'revoked', role: 'teacher' })).text).toContain('It no longer appears in the public lineage.');
+    await expect(renderEmail('relationship-arbitration', { ...sample, reason: '  ' })).rejects.toThrow(/reason/);
+    await expect(renderEmail('relationship-arbitration', { ...sample, reason: 'x'.repeat(2001) })).rejects.toThrow(/reason/);
+  });
+
+  it('the arbitration notification shows the reason and links to the case page; a dispute decision says how it ended', () => {
+    const sample = NOTIFICATION_TEMPLATES['relationship.arbitration'].sample;
+    const opened = renderNotification('relationship.arbitration', sample);
+    expect(opened.body.map((s) => ('text' in s ? s.text : s.name.value)).join('')).toContain(`Reason: ${sample.reason}`);
+    expect(opened.action).toEqual({ label: 'Send evidence', href: `/dashboard/cases/${sample.caseId}` });
+    expect(renderNotification('relationship.arbitration', { ...sample, stage: 'revoked' }).title).toBe('Arbitration decided: the link is revoked');
+    expect(() => renderNotification('relationship.arbitration', { ...sample, reason: '' })).toThrow(NotificationDataError);
+    expect(() => renderNotification('relationship.arbitration', { ...sample, caseId: 'x' })).toThrow(NotificationDataError);
+  });
+
+  it('the reviewers are told which kind of case was opened; rows written before M10b read as historical claims', () => {
+    const caseId = '0190a5c0-0000-7000-8000-000000000008';
+    expect(renderNotification('review.opened', { caseId }).title).toBe('New historical teacher claim');
+    expect(renderNotification('review.opened', { caseId, kind: 'person_claim' }).title).toBe('New profile claim');
+    expect(renderNotification('review.opened', { caseId, kind: 'profile_report' }).title).toBe('New profile report');
+    expect(() => renderNotification('review.opened', { caseId, kind: 'deletion_request' })).toThrow(NotificationDataError);
   });
 });

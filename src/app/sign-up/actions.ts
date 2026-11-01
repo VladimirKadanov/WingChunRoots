@@ -2,22 +2,27 @@
 
 // The sign-up form's Server Action (milestone M02): a thin wrapper over Better Auth's
 // POST /api/auth/sign-up/email (src/server/rpc/parity.ts). The checks here only give the form
-// its field messages; the endpoint and its hook refuse the same input for any client.
+// its field messages; the endpoint and its hook refuse the same input for any client. The path of
+// an invitation link in `next` goes to the endpoint as its callbackURL, which the confirmation
+// e-mail's link keeps (src/server/auth/emails.ts; M10b review, requirements-2).
 
 import { CONSENT_REQUIRED_MESSAGES, type ConsentName } from '@/components/account/consents';
 import { authMessage } from '@/components/account/messages';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
-import { emailValue, keepValues, looksLikeEmail, secretValue, ticked } from '@/lib/form-data';
+import { emailValue, keepValues, looksLikeEmail, secretValue, textValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
+import { isInvitationPath } from '@/lib/invitation-path';
+import { safeNextPath } from '@/server/auth/guards';
 import { authAction } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { REQUIRED_SIGN_UP_CONSENTS, SIGN_UP_CONSENTS } from '@/server/legal/documents';
 
 export async function signUpAction(_previous: FormState, form: FormData): Promise<FormState> {
-  return formResult({ form: 'sign-up', page: '/sign-up' }, await signUp(form));
+  const next = safeNextPath(textValue(form, 'next'), '');
+  return formResult({ form: 'sign-up', page: next ? `/sign-up?${new URLSearchParams({ next })}` : '/sign-up' }, await signUp(form, next));
 }
 
-async function signUp(form: FormData): Promise<FormState> {
+async function signUp(form: FormData, next: string): Promise<FormState> {
   const email = emailValue(form);
   const password = secretValue(form, 'password', MAX_PASSWORD_LENGTH + 1);
   const consents = Object.fromEntries(SIGN_UP_CONSENTS.map((kind) => [kind, ticked(form, kind)]));
@@ -35,7 +40,8 @@ async function signUp(form: FormData): Promise<FormState> {
   if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
 
   // `name` is required by Better Auth; the person's names are asked at onboarding.
-  const result = await authAction('/sign-up/email', { body: { name: '', email, password, consents } });
+  const callback = isInvitationPath(next) ? { callbackURL: next } : {};
+  const result = await authAction('/sign-up/email', { body: { name: '', email, password, consents, ...callback } });
   if (!result.ok) {
     const field =
       result.code === 'INVALID_EMAIL' ? 'email' : result.code?.startsWith('PASSWORD_TOO_') ? 'password' : null;

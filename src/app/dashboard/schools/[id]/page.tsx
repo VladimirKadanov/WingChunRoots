@@ -4,7 +4,7 @@
 // instead, DEFAULT D08/D18), or "Confirm it is current" for a listed school (D17). Below, the
 // school's details with "Edit the details" (./edit: the school form, schools.update): a page of its
 // own, so neither page's first JavaScript carries both the form and the upgrade prompt (the route
-// budget, ADR 0013). Only the account that listed the school reaches it (404 otherwise). Reads the
+// budget, ADR 0014). Only the account that listed the school reaches it (404 otherwise). Reads the
 // session, so it renders per request.
 
 import type { Metadata } from 'next';

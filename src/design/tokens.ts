@@ -51,7 +51,7 @@ export const COLOR_ROLES = [
   'on-verified', // glyph on a verified (jade) seal
   'review', // ochre: broken stroke, hourglass seal, "Under review"
   'unconfirmed', // grey: dotted stroke, "?" seal, "Unconfirmed"; also the dimmed stroke tone (§4.7)
-  'arbitration', // ink: double stroke, scales seal, "In arbitration"
+  'arbitration', // ink: double stroke, scales seal, "Disputed"
   'cross-lineage', // cyan: hollow curve with its own dash, "Cross-lineage" label
   // Interaction
   'focus', // focus ring, 2 px with a 2 px offset; gold, never red or green
@@ -402,7 +402,8 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
     description: 'Confirmed by the teacher or by evidence that holds up.',
   },
   arbitration: {
-    label: 'In arbitration',
+    // M10b (DEFAULT D19): public pages say "Disputed"; the dashboards keep "In arbitration".
+    label: 'Disputed',
     color: 'arbitration',
     strokeColor: 'arbitration',
     labelColor: 'arbitration',
@@ -410,7 +411,7 @@ export const linkStyles: Record<VerificationState | 'cross_lineage' | 'historica
     dash: null,
     width: 1.25,
     seal: 'scales',
-    description: 'Disputed; an independent panel is hearing both sides.',
+    description: 'Disputed; a moderator is asking both people for evidence before deciding.',
   },
   cross_lineage: {
     label: 'Cross-lineage',

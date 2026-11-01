@@ -13,7 +13,7 @@ import { requireUser, safeNextPath } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { listedPlaces } from '../geo/places';
-import { authTwoFactor, person, personName, place } from '../db/schema';
+import { authTwoFactor, person, personClaim, personName, place } from '../db/schema';
 import { writePersonKeys } from '../search/store';
 import { grantConsents, missingRequiredConsents } from './consent';
 import type { RequestMeta } from './context';
@@ -169,6 +169,8 @@ export interface AccountOverview {
   /** A TOTP setup was started (`/two-factor/enable`) and waits for its first code. */
   twoFactorSetupPending: boolean;
   person: OwnPerson | null;
+  /** M10b: a claim of an invited teacher's profile waits for the reviewers (no onboarding then). */
+  pendingClaim: boolean;
   /** Required consents not given for the current document versions (onboarding asks again). */
   missingConsents: string[];
 }
@@ -186,6 +188,7 @@ export async function accountOverview(principal: Principal | null): Promise<Acco
     session: { twoFactorVerified: p.session.twoFactorVerifiedAt !== null, via: p.via },
     twoFactorSetupPending: setup !== undefined && setup.verified === false,
     person: await ownPerson(p.user.id),
+    pendingClaim: (await pendingClaimOf(p.user.id)) !== null,
     missingConsents: await missingRequiredConsents(getDb(), p.user.id),
   };
 }
@@ -232,12 +235,27 @@ export const landingInput = z.object({ next: z.string().max(2048).optional() });
 
 const LANDING = '/dashboard';
 
+/** M10b: the review case of the account's profile claim that waits for the reviewers, if any. */
+export async function pendingClaimOf(userId: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ caseId: personClaim.reviewCaseId })
+    .from(personClaim)
+    .where(and(eq(personClaim.userId, userId), eq(personClaim.status, 'pending')))
+    .limit(1);
+  return row ? (row.caseId ?? 'pending') : null;
+}
+
 export async function landingPath(principal: Principal | null, next: unknown): Promise<string> {
   const { user } = requireUser(principal);
   const requested = safeNextPath(next, LANDING);
   const target = requested === '/onboarding' ? LANDING : requested;
-  const settled = Boolean(await ownPerson(user.id)) && (await missingRequiredConsents(getDb(), user.id)).length === 0;
+  const confirmed = (await missingRequiredConsents(getDb(), user.id)).length === 0;
+  const settled = confirmed && Boolean(await ownPerson(user.id));
   if (settled || target.startsWith('/account/security') || target.startsWith('/admin')) return target;
+  // M10b: an invited teacher claims the profile made for them instead of onboarding, so an
+  // invitation link, and an account whose claim waits for the reviewers, skip onboarding, but
+  // never the confirmation of the current documents (/onboarding asks for it alone then).
+  if (confirmed && (target.startsWith('/invite/') || (await pendingClaimOf(user.id)))) return target;
   // Onboarding without a `next` ends on the account page; any other target is kept for after it.
   return `/onboarding${target === LANDING ? '' : `?next=${encodeURIComponent(target)}`}`;
 }
@@ -256,6 +274,11 @@ export async function onboard(principal: Principal | null, raw: unknown, meta: R
   const userId = p.user.id;
 
   const db = getDb();
+  // M10b: an account whose claim of an invited teacher's profile waits for the reviewers gets that
+  // profile when the claim is approved; it does not make a second one meanwhile.
+  if (await pendingClaimOf(userId)) {
+    throw new ServiceError('CONFLICT', 'Your claim of the profile you were invited to is with the reviewers. You get that profile when they approve it.');
+  }
   const missing = await missingRequiredConsents(db, userId);
   if (missing.length > 0) {
     throw new ServiceError(

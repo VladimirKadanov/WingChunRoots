@@ -9,9 +9,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { expect, test, type Page } from '@playwright/test';
+import { sql } from 'drizzle-orm';
 
-import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
-import { claimThroughApi, fictionalPdf, letters } from './helpers/evidence';
+import { getDb } from '../src/server/db';
+import { BASE_URL, closeHelpers, emailLinkFromOutbox, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { CLAIM_LINEAGE, claimThroughApi, fictionalPdf, letters, lineageIdOf } from './helpers/evidence';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
@@ -440,7 +442,81 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByTestId('case-listing').filter({ visible: true })).toBeVisible();
     },
   },
+  {
+    // M10b: the invitation link opened by a new account: the record, "Unclaimed record", the claim form.
+    name: 'invite-claim',
+    milestone: 'M10b',
+    async reach(page) {
+      const path = await invitationThroughApi(page);
+      await signInAs(page, 'new');
+      await page.goto(path);
+      await expect(page.getByTestId('accept-invitation-form').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M10b: the invitee's case page right after the claim, waiting for the reviewers.
+    name: 'case-claim-sent',
+    milestone: 'M10b',
+    async reach(page) {
+      const path = await invitationThroughApi(page);
+      await signInAs(page, 'new');
+      await page.goto(path);
+      await page.getByRole('button', { name: 'Claim this profile' }).filter({ visible: true }).click();
+      await page.waitForURL(/\/dashboard\/cases\/[0-9a-f-]{36}\?claimed=1/);
+      await expect(page.getByTestId('claim-sent').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M10b: a self-declared Sifu's instructor page: "Instructor (unverified)" and the evidence form.
+    name: 'instructor-request',
+    milestone: 'M10b',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Instructor Example', sifu: true });
+      await page.goto('/dashboard/instructor');
+      await expect(page.getByTestId('instructor-form').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M10b: "Set in arbitration" of a seeded verified link (demo-latin-name's) as the administrator;
+    // nothing is sent.
+    name: 'arbitrate',
+    milestone: 'M10b',
+    async reach(page) {
+      const rows = await getDb().execute<{ id: string }>(sql`
+        SELECT r.id::text AS id FROM teaching_relationship r JOIN person s ON s.id = r.student_person_id
+         WHERE s.slug = 'demo-latin-name' AND r.status = 'verified' LIMIT 1`);
+      expect(rows.rows).toHaveLength(1);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/review/arbitrate/${rows.rows[0]!.id}`);
+      await expect(page.getByTestId('arbitrate-form').filter({ visible: true })).toBeVisible();
+    },
+  },
 ];
+
+/**
+ * M10b: a new student with a profile invites a fictional teacher by e-mail through the API; returns
+ * the path of the invitation link from the outbox (the page stays signed in as the student).
+ */
+async function invitationThroughApi(page: Page): Promise<string> {
+  await freshAccount(page, { name: 'Demo Inviting Student' });
+  const email = uniqueEmail('screenshot-invited');
+  const invited = await apiPost(page, '/relationships/invite', {
+    teacherName: `Demo Invited ${capitalLetters()}`,
+    originalName: '示範師傅',
+    originalLang: 'zh-Hant',
+    lineageId: await lineageIdOf(CLAIM_LINEAGE),
+    periods: [{ from: '2014', to: null, ongoing: true }],
+    email,
+    idempotencyKey: randomUUID(),
+  });
+  expect(invited.status(), await invited.text()).toBe(200);
+  return new URL(await emailLinkFromOutbox('invitation', email)).pathname;
+}
+
+const capitalLetters = () => {
+  const word = letters();
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+};
 const states = STATES.filter((state) => !only || state.milestone === only);
 
 test.afterAll(closeHelpers);

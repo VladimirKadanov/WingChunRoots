@@ -64,7 +64,7 @@ import type { LineageEdgeDto, LineageGraphDto, LineageNodeDto } from '@/server/d
 import type { GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
 import { LatinName, PersonLink } from '../person-name';
-import { RelationBadges } from '../relation-list';
+import { RelationBadges, UnverifiedApprovalNote } from '../relation-list';
 import { periodText } from '../status';
 import type { CanvasHandle, NodeActions, PanelHandle } from './graph-api';
 import { countsInView, ExpandActions } from './node-controls';
@@ -472,6 +472,8 @@ function PersonBody({
                   <PersonLink person={teacher} className="text-ui" />
                   <span className="text-sm text-fg-muted">{periodText(e.periods)}</span>
                   <RelationBadges edge={e} role="teacher" />
+                  {/* M10b (DEFAULT D04/D13): as on the profile, the link's note while its approver is unverified. */}
+                  <UnverifiedApprovalNote edge={e} className="text-sm text-fg-muted" />
                 </li>
               );
             })}

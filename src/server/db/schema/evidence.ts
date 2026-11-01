@@ -14,11 +14,13 @@ import {
   idColumn,
   inList,
   OPEN_REVIEW_CASE_STATUSES,
+  REPORT_DETAILS_MAX,
   REPORT_REASONS,
   REPORT_STATUSES,
   REPORT_SUBJECTS,
   REVIEW_CASE_KINDS,
   REVIEW_CASE_STATUSES,
+  REVIEW_EVENT_ACTIONS,
   REVIEW_RESOLUTIONS,
   SCAN_STATUSES,
   timestamps,
@@ -94,6 +96,10 @@ export const reviewCase = pgTable(
     uniqueIndex('review_case_one_open_per_school_key')
       .on(t.schoolId, t.kind)
       .where(sql`${t.schoolId} IS NOT NULL AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
+    // M10b: at most one open instructor verification per person (a double submit cannot open two).
+    uniqueIndex('review_case_one_open_instructor_key')
+      .on(t.personId)
+      .where(sql`${t.personId} IS NOT NULL AND ${t.kind} = 'instructor_verification' AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
     check('review_case_kind_check', inList(t.kind.name, REVIEW_CASE_KINDS)),
     check('review_case_status_check', inList(t.status.name, REVIEW_CASE_STATUSES)),
     check('review_case_resolution_check', sql`${t.resolution} IS NULL OR ${inList(t.resolution.name, REVIEW_RESOLUTIONS)}`),
@@ -172,5 +178,49 @@ export const contentReport = pgTable(
     check('content_report_subject_type_check', inList(t.subjectType.name, REPORT_SUBJECTS)),
     check('content_report_reason_check', inList(t.reason.name, REPORT_REASONS)),
     check('content_report_status_check', inList(t.status.name, REPORT_STATUSES)),
+    // M10b: one report per account and subject, whatever its status (In scope 4: the same user
+    // cannot report the same profile twice). A deleted account's reports keep no reporter.
+    uniqueIndex('content_report_one_per_reporter_key')
+      .on(t.reporterUserId, t.subjectType, t.subjectId)
+      .where(sql`${t.reporterUserId} IS NOT NULL`),
+    check('content_report_details_length', sql`${t.details} IS NULL OR char_length(${t.details}) BETWEEN 1 AND ${sql.raw(String(REPORT_DETAILS_MAX))}`),
+  ],
+);
+
+/**
+ * M10b: the history of a review case, append-only (app_rw has SELECT and INSERT): who opened it,
+ * took it, asked its parties, added evidence or decided it. The idempotency key of the form or API
+ * call that made the change (plan §5.6): a second call with the same key from the same account
+ * finds this row and changes nothing. A relationship case also writes relationship_event for every
+ * change of the relationship's status (plan §6.6).
+ */
+export const reviewEvent = pgTable(
+  'review_event',
+  {
+    id: idColumn(),
+    reviewCaseId: uuid('review_case_id')
+      .notNull()
+      .references(() => reviewCase.id, { onDelete: 'restrict' }),
+    action: text('action', { enum: REVIEW_EVENT_ACTIONS }).notNull(),
+    fromStatus: text('from_status', { enum: REVIEW_CASE_STATUSES }),
+    toStatus: text('to_status', { enum: REVIEW_CASE_STATUSES }).notNull(),
+    // M10b review, code-3: SET NULL, as a report's reporter (ADR 0004: a reference that can stay
+    // without its author), so a case's history never stops the deletion of an account that acted on
+    // it (a report, a claim, an instructor request). Only the referential action writes the row.
+    actorUserId: uuid('actor_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    actorRole: text('actor_role'),
+    idempotencyKey: text('idempotency_key'),
+    ...timestamps(),
+  },
+  (t) => [
+    index('review_event_review_case_id_idx').on(t.reviewCaseId, t.createdAt),
+    index('review_event_actor_user_id_idx').on(t.actorUserId),
+    uniqueIndex('review_event_idempotency_key')
+      .on(t.actorUserId, t.idempotencyKey)
+      .where(sql`${t.idempotencyKey} IS NOT NULL`),
+    check('review_event_idempotency_key_format', sql`${t.idempotencyKey} IS NULL OR ${t.idempotencyKey} ~ '^[A-Za-z0-9_-]{8,64}$'`),
+    check('review_event_action_check', inList(t.action.name, REVIEW_EVENT_ACTIONS)),
+    check('review_event_from_status_check', sql`${t.fromStatus} IS NULL OR ${inList(t.fromStatus.name, REVIEW_CASE_STATUSES)}`),
+    check('review_event_to_status_check', inList(t.toStatus.name, REVIEW_CASE_STATUSES)),
   ],
 );

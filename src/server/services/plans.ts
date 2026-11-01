@@ -37,6 +37,7 @@ import {
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
+import { neighbourTags } from './profile';
 
 /** The label every price carries (plan §5.6, DEFAULT D09). */
 export const PROPOSED_PRICE_LABEL = 'Proposed price (not final)';
@@ -268,7 +269,7 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
   const next = parsed.data.accountType;
   const subject = { kind: 'user' as const, userId: p.user.id };
 
-  const change = await getDb().transaction(async (tx) => {
+  const outcome = await getDb().transaction(async (tx) => {
     // The account's lock first, as in every write of an account's plan (services/account-lock.ts).
     const account = await lockAccount(tx, { id: p.user.id });
     if (!account) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
@@ -277,11 +278,17 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
     // this read included, changes nothing, so the form can say so.
     const effective = await effectivePlan(subject, { db: tx });
     const status = await instructorStatus(tx, p.user.id, effective.accountType);
-    return { accountType: effective.accountType, plan: planSummary(effective.plan), instructor: { status, label: INSTRUCTOR_LABELS[status] }, changed };
+    // M10b: the public profile says "Instructor (unverified)" or "Instructor" from the account type
+    // (v_public_person.instructor_status), and the panel of each link the account approved says
+    // whether it was approved by an unverified instructor: a change drops their cached pages.
+    const [own] = changed ? await tx.select({ id: person.id }).from(person).where(eq(person.claimedByUserId, p.user.id)) : [];
+    const tags = own ? await neighbourTags(tx, own.id) : [];
+    return { result: { accountType: effective.accountType, plan: planSummary(effective.plan), instructor: { status, label: INSTRUCTOR_LABELS[status] }, changed }, tags };
   });
   // M11: a school pin needs a Sifu account (v_public_school), so a change of type shows or hides it.
-  if (change.changed) invalidatePublic([SCHOOLS_TAG], 'procedure');
-  return change;
+  const tags = outcome.result.changed ? [...outcome.tags, SCHOOLS_TAG] : outcome.tags;
+  if (tags.length > 0) invalidatePublic(tags, 'procedure');
+  return outcome.result;
 }
 
 /** The change itself, under the account's lock: rate limit, the type, the stale request, the audit. */

@@ -42,13 +42,13 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
       <FormFooter>
         <p>
           New here?{' '}
-          <Link href="/sign-up" className="link inline-flex min-h-11 items-center">
+          <Link href={next ? `/sign-up?next=${encodeURIComponent(next)}` : '/sign-up'} className="link inline-flex min-h-11 items-center">
             Create an account
           </Link>
         </p>
         <p>
           Waiting for the confirmation e-mail?{' '}
-          <Link href="/verify-email" className="link inline-flex min-h-11 items-center">
+          <Link href={next ? `/verify-email?next=${encodeURIComponent(next)}` : '/verify-email'} className="link inline-flex min-h-11 items-center">
             Send it again
           </Link>
         </p>

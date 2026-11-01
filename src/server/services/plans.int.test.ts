@@ -43,9 +43,11 @@ import {
   PROPOSED_PRICE_LABEL,
 } from './plans';
 
-
 // M11: grants and account type changes drop the cached school answers (revalidateTag), which
 // needs Next.js's request store; recorded here instead.
+// M10b: a change of account type drops the cached public pages of the account's profile and its
+// neighbours (services/plans.ts, the instructor label); outside a Next.js request the tags are
+// recorded here.
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -164,6 +166,8 @@ describe('plans.catalog and plans.mine', () => {
     await getDb().insert(reviewCase).values({ kind: 'instructor_verification', status: 'resolved', personId, resolution: 'approved', resolvedAt: new Date() });
     expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({ accountType: 'student', instructor: { status: 'not_instructor' }, verifiedInstructor: true });
     expect((await v1(token, 'POST', '/account/type', { accountType: 'sifu' })).status).toBe(200);
+    // The public profile now says "Instructor": its cached page is dropped.
+    expect(cache.revalidated).toContain(`person:${personId}`);
     expect((await v1(token, 'GET', '/plans/mine')).data).toMatchObject({
       accountType: 'sifu',
       instructor: { status: 'verified', label: 'Instructor' },

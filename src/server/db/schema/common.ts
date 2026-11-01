@@ -90,8 +90,16 @@ export const REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info', 'resolve
 /** M10a: the statuses of a case that still waits for a decision. */
 export const OPEN_REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info'] as const;
 export const REVIEW_RESOLUTIONS = ['approved', 'rejected'] as const;
+/**
+ * M10b: what a review_event records about a case: opened, assigned or unassigned, a question to its
+ * parties (needs_info), evidence added, decided (approve, reject, dismiss) or withdrawn.
+ */
+export const REVIEW_EVENT_ACTIONS = ['open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw'] as const;
 export const REPORT_SUBJECTS = ['person', 'teaching_relationship', 'school', 'person_name'] as const;
-export const REPORT_REASONS = ['incorrect', 'impersonation', 'privacy', 'offensive', 'other'] as const;
+/** M10b: the reasons of "Report profile" (plan §6.2; the milestone's In scope 4). */
+export const REPORT_REASONS = ['copyright', 'spam', 'inappropriate', 'misleading'] as const;
+/** M10b: the longest details text a report takes. */
+export const REPORT_DETAILS_MAX = 1000;
 export const REPORT_STATUSES = ['open', 'triaged', 'resolved', 'dismissed'] as const;
 // DEFAULT D25: evidence files are at most 20 MB each, and at most 20 files per case (M10a).
 export const EVIDENCE_MAX_BYTES = 20 * 1024 * 1024;

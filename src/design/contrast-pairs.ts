@@ -38,7 +38,7 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { fg: 'on-verified', bg: 'verified', min: MIN_TEXT, why: 'check carved into the verified seal' },
   ...on('review', MIN_TEXT, '"Under review" text, strokes and seals'),
   ...on('unconfirmed', MIN_GRAPHIC, 'dotted unconfirmed stroke; dimmed stroke and seal tone (plan §4.7)'),
-  ...on('arbitration', MIN_TEXT, '"In arbitration" text, double stroke and seal'),
+  ...on('arbitration', MIN_TEXT, '"Disputed" text, double stroke and seal'),
   ...on('cross-lineage', MIN_TEXT, 'cross-lineage curve and its label'),
   ...on('focus', MIN_GRAPHIC, 'focus ring (drawn with a 2 px offset, so it sits on the ground)'),
   ...on('focus', MIN_GRAPHIC, 'inset focus ring of a hovered or pressed tab', ['surface-3', 'surface-pressed']),

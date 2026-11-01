@@ -133,10 +133,14 @@ export async function authPost(page: Page, endpoint: string, data: Record<string
 }
 
 /**
- * The newest link of an account e-mail to `to`, read from the outbox job (no wait for the worker):
- * the job holds the link sealed (src/server/mail/seal.ts), opened here with MAIL_SEAL_KEY.
+ * The template data of the newest e-mail of `template` to `to`, read from the outbox job (no wait
+ * for the worker): sealed fields (the links, src/server/mail/seal.ts) are opened with
+ * MAIL_SEAL_KEY. M10b: also the invitation and the arbitration notices.
  */
-export async function emailLinkFromOutbox(template: 'verify-email' | 'reset-password' | 'finish-sign-up', to: string): Promise<string> {
+export async function emailDataFromOutbox(
+  template: 'verify-email' | 'reset-password' | 'finish-sign-up' | 'invitation' | 'relationship-arbitration',
+  to: string,
+): Promise<Record<string, unknown>> {
   loadTestEnv();
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const rows = await getDb().execute<{ data: EmailSendJob }>(sql`
@@ -148,12 +152,19 @@ export async function emailLinkFromOutbox(template: 'verify-email' | 'reset-pass
        LIMIT 1`);
     const job = rows.rows[0]?.data;
     if (job) {
-      const url = (jobTemplateData(job) as { url?: unknown }).url;
-      if (typeof url === 'string') return url;
+      const data = jobTemplateData(job);
+      if (data && typeof data === 'object') return data as Record<string, unknown>;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`no ${template} e-mail to ${to} in the outbox`);
+}
+
+/** The newest link of an account e-mail (or, M10b, an invitation) to `to`, from the outbox job. */
+export async function emailLinkFromOutbox(template: 'verify-email' | 'reset-password' | 'finish-sign-up' | 'invitation', to: string): Promise<string> {
+  const url = (await emailDataFromOutbox(template, to)).url;
+  if (typeof url !== 'string') throw new Error(`the ${template} e-mail to ${to} has no link`);
+  return url;
 }
 
 /** The id of the account with `email`. */

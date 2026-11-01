@@ -7,11 +7,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getDb } from '../db';
 import { auditLog, authSession, authUser, consentRecord, emailDelivery } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
+import { jobTemplateData } from '../jobs/outbox';
 import { LEGAL_DOCUMENTS } from '../legal/documents';
 import { ipHmac } from './ip';
 import {
   authFetch,
   deliveryCount,
+  outboxJob,
   sessionCount,
   startAuthTestDatabase,
   stopAuthTestDatabase,
@@ -146,6 +148,28 @@ describe('sign-up', () => {
     // The same ip_hmac as the audit log gives this client (requestMeta: clientIp, then ipHmac).
     expect(session!.ipAddress).toBe(ipHmac(browser.ip));
     expect(session!.twoFactorVerifiedAt).toBeNull();
+  });
+
+  it('keeps the invitation a sign-up started from in the confirmation link, and nothing else (M10b review)', async () => {
+    const link = async (email: string) => new URL(String((jobTemplateData((await outboxJob('verify-email', email))!) as { url: unknown }).url));
+    // From an invitation: the link carries its path, for the sign-in after the confirmation.
+    const invitation = `/invite/${Buffer.alloc(32, 5).toString('base64url')}`;
+    const invited = address('invited');
+    expect((await signUp(invited, ALL_TICKS, { callbackURL: invitation })).status).toBe(200);
+    expect((await link(invited)).searchParams.get('next')).toBe(invitation);
+    // A new link asked for on the way to the invitation carries it too.
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // a new second: a new link
+    const again = await authFetch(new TestBrowser(), '/send-verification-email', { body: { email: invited, callbackURL: invitation } });
+    expect(again.status).toBe(200);
+    expect(await deliveryCount('verify-email', invited)).toBe(2);
+    expect((await link(invited)).searchParams.get('next')).toBe(invitation);
+    // Any other page, and no callback at all: the link has the token only.
+    for (const [label, extra] of [['other-page', { callbackURL: '/account' }], ['no-callback', {}]] as const) {
+      const email = address(label);
+      expect((await signUp(email, ALL_TICKS, extra)).status).toBe(200);
+      const plain = await link(email);
+      expect([...plain.searchParams.keys()], label).toEqual(['token']);
+    }
   });
 
   it('refuses a password shorter than 12 characters', async () => {

@@ -4,6 +4,8 @@
 // URL (the filter form, the sort link, the page links), so the table ships no JavaScript. Below a
 // container width of 52rem (phones, a desktop at 200 % zoom) each row becomes a card: the header row
 // is not displayed and each value carries its label. Status is said in words, never by colour alone.
+// M10b: a case without a relationship (an instructor verification, a profile report) names its
+// profile in the People column and in its link's name, so two such cases are told apart.
 
 import { constructTable, createColumnHelper, tableFeatures } from '@tanstack/table-core';
 import { FlexRender } from '@tanstack/table-core/flex-render';
@@ -14,6 +16,13 @@ import type { ReactNode } from 'react';
 import { NameText } from '@/components/account/person-names';
 import { formatDay, formatShortDay } from '@/lib/dates';
 import type { ReviewList, ReviewListRow } from '@/server/services/review';
+
+/** What the profile of a case without a relationship is to it: shown, and spoken in the link's name. */
+const SUBJECT_ROLE: Partial<Record<ReviewListRow['kind'], { shown: string; spoken: string }>> = {
+  instructor_verification: { shown: 'Instructor', spoken: 'instructor' },
+  profile_report: { shown: 'Reported', spoken: 'reported profile' },
+};
+const subjectRole = (row: ReviewListRow) => SUBJECT_ROLE[row.kind] ?? { shown: 'Profile', spoken: 'profile' };
 
 const features = tableFeatures({ coreReactivityFeature: storeReactivityBindings() });
 const helper = createColumnHelper<typeof features, ReviewListRow>();
@@ -48,6 +57,10 @@ const columns = helper.columns([
                 </>
               ) : row.school ? (
                 <>school {row.school.name}, </>
+              ) : row.subject ? (
+                <>
+                  {subjectRole(row).spoken} <NameText name={row.subject.name} />,{' '}
+                </>
               ) : null}
               opened {formatDay(row.openedAt)}
             </span>
@@ -73,6 +86,14 @@ const columns = helper.columns([
             <span className="text-sm text-fg-muted">
               {row.school.city}, {row.school.countryCode}
             </span>
+          </span>
+        );
+      }
+      if ((!row.teacher || !row.student) && row.subject) {
+        return (
+          <span data-testid="case-subject">
+            <span className="text-sm text-fg-muted">{subjectRole(row).shown} </span>
+            <NameText name={row.subject.name} />
           </span>
         );
       }

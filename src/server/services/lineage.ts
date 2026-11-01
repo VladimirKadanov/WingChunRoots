@@ -238,6 +238,8 @@ export async function personProfile(principal: Principal | null, input: PersonIn
     countryCode: hidden.countryCode,
     cityName: hidden.cityName,
     bio: hidden.bio,
+    // M10b: shown on the public profile only (v_public_person); a record that is not public has none here.
+    instructor: null,
     visibility: 'involved_only',
     isOwn: viewer.extras.personId === id,
     limited: hidden.limited,

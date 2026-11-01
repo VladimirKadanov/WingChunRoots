@@ -55,7 +55,7 @@ export const ROUTE_BUDGETS = {
   // loads after it with next/dynamic and ELK (434 kB) only in the layout worker, so neither is in
   // this count.
   '/explore': 200 * KB,
-  // M11, ADR 0013: the school finder (159.6 kB measured: the shell, the router, the finder island
+  // M11, ADR 0014: the school finder (159.6 kB measured: the shell, the router, the finder island
   // with the list); MapLibre (about 286 kB) and the bottom sheet load after it with next/dynamic,
   // so neither is in this count (LAZY_ONLY below checks that). The default budget, named here so
   // that a change to the default cannot move it unnoticed.

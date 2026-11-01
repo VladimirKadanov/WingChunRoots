@@ -39,11 +39,12 @@ import { type Executor, requireEntitlement } from '../entitlements/access';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
+import { DECIDERS } from './review-core';
 import { keyReused } from './relationships';
 import { LOCATION_LABELS, SCHOOL_FORM_LABELS, SCHOOL_ROLE_LABELS } from './schools';
 
 /** The roles that approve or return a school listing. */
-export const LISTING_DECIDE_ROLES: readonly StaffRole[] = ['moderator', 'admin'];
+export const LISTING_DECIDE_ROLES: readonly StaffRole[] = DECIDERS.school_listing;
 const APPROVED_NOTE = 'Listing approved.';
 
 export interface SchoolCaseView {

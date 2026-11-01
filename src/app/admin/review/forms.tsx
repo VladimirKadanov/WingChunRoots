@@ -18,8 +18,8 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, archiveUpdateAction, assignCaseAction, decideCaseAction } from './actions';
-import { ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
+import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction } from './actions';
+import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -119,52 +119,37 @@ const DECISIONS = {
   },
 } as const;
 
-/** M11: the same decisions on a school listing (school-review.ts), in the listing's words. */
-type DecisionText = { label: string; pending: string; reason: string; hint: string; optional: boolean; variant: (typeof DECISIONS)[keyof typeof DECISIONS]['variant'] };
-const LISTING_DECISIONS: Record<keyof typeof DECISIONS, DecisionText> = {
-  verify: {
-    ...DECISIONS.verify,
-    label: 'Approve the listing',
-    pending: 'Approving…',
-    hint: 'Optional. Kept with the case for the reviewers; the Sifu is told the listing was approved.',
-  },
-  reject: {
-    ...DECISIONS.reject,
-    label: 'Return it to draft',
-    pending: 'Returning…',
-    hint: 'Required. The Sifu reads it on the school’s page in the dashboard. Neutral and specific: what to correct.',
-  },
-  needs_info: {
-    ...DECISIONS.needs_info,
-    reason: 'Question for the Sifu',
-    hint: 'Required. The Sifu reads it on the school’s page in the dashboard and sends the listing again.',
-  },
-};
+/** One decision on a case: verify, refuse with a reason, or ask for more information. */
+/** The words of a decision for the case's kind (M10b: review.get `decisions`); the claim's by default. */
+export interface DecideText {
+  label: string;
+  pending: string;
+  reason: string;
+  hint: string;
+  optional: boolean;
+}
 
-/**
- * One decision on a case: verify, refuse with a reason, or ask for more information. `listing`: a
- * school listing (M11), decided from the version of the listing the card shows (`schoolVersion`).
- */
 export function DecideForm({
   caseId,
   decision,
   idempotencyKey,
   initial,
-  listing = false,
+  text: given,
   schoolVersion = null,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
   idempotencyKey: string;
   initial?: FormState | null;
-  listing?: boolean;
+  text?: DecideText;
+  /** M11: a school listing is decided from the version of the listing the card shows (school-review.ts). */
   schoolVersion?: string | null;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
   useFocusOnError(formId, state);
-  const text: DecisionText = (listing ? LISTING_DECISIONS : DECISIONS)[decision];
+  const text = { ...DECISIONS[decision], ...given, variant: DECISIONS[decision].variant };
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
       {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}
@@ -201,6 +186,35 @@ export function NoteForm({ caseId, idempotencyKey, initial }: { caseId: string; 
       <TextAreaField form={formId} name="body" label="Internal note" maxLength={2000} hint="Only reviewers read internal notes." state={state} />
       <div>
         <Button pending={pending} label="Add the note" pendingLabel="Adding…" />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * M10b (DEFAULT D19): "Set in arbitration" of a verified relationship, with the reason both people
+ * read (a moderator or an administrator; review.arbitrate).
+ */
+export function ArbitrateForm({ relationshipId, idempotencyKey, initial }: { relationshipId: string; idempotencyKey: string; initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(arbitrateAction, initial ?? IDLE);
+  const generatedId = useFormId(ARBITRATE_FORM);
+  const formId = initial ? ARBITRATE_FORM : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="arbitrate-form">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="relationshipId" value={relationshipId} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <TextAreaField
+        form={formId}
+        name="reason"
+        label="Reason"
+        maxLength={2000}
+        hint="Required. Both people read it in their notification, their e-mail and on their case page. Say what is disputed and what evidence would settle it."
+        state={state}
+      />
+      <div>
+        <Button pending={pending} label="Set in arbitration" pendingLabel="Setting…" variant="danger" />
       </div>
     </form>
   );

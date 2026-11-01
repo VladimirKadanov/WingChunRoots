@@ -15,6 +15,9 @@ import { setAccountType } from '../services/plans';
 import { effectivePlan, requireEntitlement } from './access';
 
 // M11: a Professional Sifu grant or an account type change drops the cached school answers (the pin).
+// M10b: a change of account type drops the cached public pages of the account's profile and its
+// neighbours (services/plans.ts, the instructor label); outside a Next.js request the tags are
+// recorded here.
 const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -121,8 +124,11 @@ describe('switching from Sifu to Student', () => {
       const before = await links(sifu.personId);
       expect(before[1]).toBeGreaterThanOrEqual(5);
 
+      cache.revalidated.length = 0;
       const change = await setAccountType(principalOf(sifu), { accountType: 'student' }, meta);
       expect(change).toMatchObject({ accountType: 'student', changed: true, plan: { code: 'free_student' }, instructor: { label: 'Student' } });
+      // The public profile loses its instructor label at once.
+      expect(cache.revalidated).toContain(`person:${sifu.personId}`);
       expect(await links(sifu.personId)).toEqual(before);
       // A Student account approves no students; with five or more already, Free Sifu would not
       // allow another either, so the refusal names Professional Sifu.
@@ -139,8 +145,11 @@ describe('switching from Sifu to Student', () => {
     const sifu = await account('demo-free-sifu-5');
     const change = await setAccountType(principalOf(sifu), { accountType: 'sifu' }, meta);
     expect(change).toMatchObject({ accountType: 'sifu', plan: { code: 'free_sifu' }, instructor: { status: 'verified', label: 'Instructor' } });
-    // The same choice again changes nothing and writes no second audit row.
+    expect(cache.revalidated).toContain(`person:${sifu.personId}`);
+    // The same choice again changes nothing, drops no page and writes no second audit row.
+    cache.revalidated.length = 0;
     expect(await setAccountType(principalOf(sifu), { accountType: 'sifu' }, meta)).toMatchObject({ changed: false });
+    expect(cache.revalidated).toEqual([]);
     const [audits] = await getDb().select({ n: count() }).from(auditLog).where(and(eq(auditLog.action, 'account.type_change'), eq(auditLog.subjectId, sifu.userId)));
     expect(audits!.n).toBe(2);
   });

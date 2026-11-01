@@ -29,6 +29,20 @@ import {
   revokeGrantInput,
 } from '../services/grants';
 import { historicalClaimInput, requestHistoricalTeacher } from '../services/historical';
+import { arbitrateInput, arbitrateRelationship } from '../services/arbitration';
+import { caseIdInput, caseReplyInput, getPartyCase, myCases, replyToCase } from '../services/cases';
+import { instructorOverview, instructorRequestInput, requestInstructorVerification } from '../services/instructor';
+import {
+  acceptInvitation,
+  acceptInvitationInput,
+  getInvitation,
+  invitationTokenInput,
+  inviteInput,
+  inviteTeacher,
+  sendInvitation,
+  sendInvitationInput,
+} from '../services/invitations';
+import { myReports, reportInput, reportProfile } from '../services/reports';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import {
@@ -362,6 +376,65 @@ export const router = {
       })
       .input(historicalClaimInput)
       .handler(({ context, input }) => requestHistoricalTeacher(context.principal, input, context.meta)),
+    // M10b: a living teacher who is not on WingChunRoots yet (plan §6.7).
+    invite: signedIn
+      .route({
+        method: 'POST',
+        path: '/relationships/invite',
+        summary: 'List a living teacher who is not here yet: an unclaimed record and a request awaiting their claim, with an optional e-mail invitation; visible only to you, them and the reviewers',
+      })
+      .input(inviteInput)
+      .handler(({ context, input }) => inviteTeacher(context.principal, input, context.meta)),
+  },
+  // M10b: invitation links (/invite/<token>). The token is the secret: it travels only in request
+  // bodies, never in an API address; only its SHA-256 hash is stored.
+  invitations: {
+    send: signedIn
+      .route({ method: 'POST', path: '/invitations/send', summary: 'Send (or send again) the e-mail invitation of a request awaiting the teacher’s claim (the student); an older link stops working' })
+      .input(sendInvitationInput)
+      .handler(({ context, input }) => sendInvitation(context.principal, input, context.meta)),
+    get: base
+      .route({ method: 'POST', path: '/invitations/view', summary: 'What an invitation link is about and whether the signed-in account can accept it (404 for an unknown link)' })
+      .input(invitationTokenInput)
+      .handler(({ context, input }) => getInvitation(context.principal, input)),
+    accept: signedIn
+      .route({ method: 'POST', path: '/invitations/accept', summary: 'Accept an invitation: claim the unclaimed record, reviewed by an archivist before it becomes yours; single use' })
+      .input(acceptInvitationInput)
+      .handler(({ context, input }) => acceptInvitation(context.principal, input, context.meta)),
+  },
+  // M10b: instructor verification of a Sifu (plan §6.5, DEFAULT D04/D13).
+  instructor: {
+    mine: base
+      .route({ method: 'GET', path: '/instructor', summary: "The signed-in account's instructor status (verified or unverified) and its newest verification case" })
+      .handler(({ context }) => instructorOverview(context.principal)),
+    request: signedIn
+      .route({ method: 'POST', path: '/instructor/request', summary: 'Send evidence that you are an instructor (a Sifu): a review case an archivist decides' })
+      .input(instructorRequestInput)
+      .handler(({ context, input }) => requestInstructorVerification(context.principal, input, context.meta)),
+  },
+  // M10b: "Report profile": one report per account and profile; no automatic hiding.
+  reports: {
+    mine: base
+      .route({ method: 'GET', path: '/reports/mine', summary: "The signed-in account's reports of profiles and where each stands" })
+      .handler(({ context }) => myReports(context.principal)),
+    create: signedIn
+      .route({ method: 'POST', path: '/reports/create', summary: 'Report a public profile (copyright, spam, inappropriate, misleading): a review case for the moderators; once per profile' })
+      .input(reportInput)
+      .handler(({ context, input }) => reportProfile(context.principal, input, context.meta)),
+  },
+  // M10b: a party's own review cases (profile claims, instructor verifications, disputes).
+  cases: {
+    mine: base
+      .route({ method: 'GET', path: '/cases', summary: "The signed-in account's own review cases: profile claims, instructor verifications and disputes about its relationships" })
+      .handler(({ context }) => myCases(context.principal)),
+    get: base
+      .route({ method: 'GET', path: '/cases/{id}', summary: "One of the account's own cases: status, the reviewers' notes, own replies and files, the decision (404 for anyone else)" })
+      .input(caseIdInput)
+      .handler(({ context, input }) => getPartyCase(context.principal, input)),
+    reply: signedIn
+      .route({ method: 'POST', path: '/cases/reply', summary: 'Answer the reviewers of an own open case; a case waiting for information goes back to them' })
+      .input(caseReplyInput)
+      .handler(({ context, input }) => replyToCase(context.principal, input, context.meta)),
   },
   // M10a: evidence files. The upload and the download are binary route handlers outside the router
   // (POST /api/evidence/upload, GET /api/evidence/{id}; documented in this contract as well).
@@ -389,10 +462,20 @@ export const router = {
       .route({
         method: 'POST',
         path: '/review/decide',
-        summary: 'Verify, refuse with a reason, or ask for more information on a historical claim (archivist or administrator to verify or refuse); audited',
+        summary:
+          'Decide a case: verify, refuse with a reason, or ask for more information (claims and instructors: an archivist or administrator; reports and disputes: a moderator or administrator); audited',
       })
       .input(reviewDecideInput)
       .handler(({ context, input }) => decideReviewCase(context.principal, input, context.meta)),
+    // M10b (DEFAULT D19): a verified relationship in arbitration, with a reason both parties read.
+    arbitrate: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/review/arbitrate',
+        summary: 'Set a verified relationship in arbitration with a reason (a moderator or administrator): public pages show "Disputed"; both parties are notified and asked for evidence; audited',
+      })
+      .input(arbitrateInput)
+      .handler(({ context, input }) => arbitrateRelationship(context.principal, input, context.meta)),
     note: staffWithSecondFactor
       .route({ method: 'POST', path: '/review/note', summary: 'Add an internal note to a case (reviewers only); audited' })
       .input(reviewNoteInput)

@@ -52,14 +52,21 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   const me = await client.account.me();
   // The documents whose required confirmation is missing; the optional privacy tick links its own.
   const documents = documentsFor(me.missingConsents);
-  if (me.person) {
-    const after = next === '/onboarding' ? '/account' : next;
-    if (me.missingConsents.length === 0) return <PageRedirect to={after} title="Your profile is already set up" />;
+  // M10b: an invited teacher gets the profile made for them, so an account on its way to an
+  // invitation, or whose claim waits for the reviewers, confirms the documents only.
+  const claiming = !me.person && (me.pendingClaim || next.startsWith('/invite/'));
+  if (me.person || claiming) {
+    const after = next === '/onboarding' ? (me.person ? '/account' : '/dashboard') : next;
+    if (me.missingConsents.length === 0) return <PageRedirect to={after} title={me.person ? 'Your profile is already set up' : 'Nothing to confirm'} />;
     return (
       <AuthFrame
         eyebrow="Your account · documents"
         title={documents.length === 1 ? `Confirm the ${documents[0]!.title.toLowerCase()}` : 'Confirm the documents'}
-        lede="Your profile is set up. Before you continue, confirm the current version of the documents below."
+        lede={
+          me.person
+            ? 'Your profile is set up. Before you continue, confirm the current version of the documents below.'
+            : 'Before you claim the profile you were invited to, confirm the current version of the documents below.'
+        }
       >
         <ConfirmConsentsForm
           missingConsents={me.missingConsents}

@@ -8,6 +8,10 @@
 // evidence, the reviewers' questions and, while it waits, a field to add more files; ?claimed=<id>
 // says it was sent. "Name a historical teacher" opens its form.
 //
+// M10b: a request to a living teacher who is not here yet (awaiting_claim) shows "Unclaimed record",
+// where its invitation stands and a link to send it (again); ?invited=<id> and ?invitation=<id>
+// say it was saved or sent. "Invite your teacher" opens its form.
+//
 // After a change the page says what happened (?sent=, ?withdrawn=, ?ended= with the relationship's
 // id, never a name in the address). The data comes from relationships.mine, the procedure /api/v1
 // serves. Reads the session, so the page renders per request.
@@ -131,6 +135,61 @@ function ClaimReview({ review }: { review: NonNullable<RelationshipView['review'
   );
 }
 
+/** M10b: where the invitation of a request to a teacher who has not joined yet stands, in words. */
+function InvitationLine({ view }: { view: RelationshipView }) {
+  const invitation = view.invitation;
+  if (!invitation) return null;
+  const text =
+    invitation.state === 'sent'
+      ? `Invitation sent. The link works until ${invitation.expiresAt ? formatDay(invitation.expiresAt) : 'it expires'}.`
+      : invitation.state === 'expired'
+        ? 'The invitation expired before your teacher used it.'
+        : invitation.state === 'claimed'
+          ? 'Your teacher accepted the invitation. A reviewer checks the claim; then your teacher answers your request.'
+          : invitation.state === 'refused'
+            ? 'The reviewers did not approve the claim to this profile. You can send a new invitation.'
+            : 'No invitation sent yet.';
+  return (
+    <div className="grid gap-1 text-sm sm:col-span-2" data-testid="invitation-state" data-state={invitation.state}>
+      <p>{text}</p>
+      {invitation.canSend ? (
+        <p>
+          <Link href={`/dashboard/teachers/invite?relationship=${view.id}`} className="link inline-flex min-h-11 items-center">
+            {invitation.state === 'none' ? 'Send the invitation' : 'Send a new invitation'}
+            <span className="sr-only"> ({view.teacher.name.value})</span>
+          </Link>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** M10b: the files a student sent with an invitation (their own: each opens for them). */
+function SentEvidence({ files }: { files: RelationshipView['evidence'] }) {
+  if (files.length === 0) return null;
+  return (
+    <div className="grid gap-1 text-sm sm:col-span-2">
+      <p className="font-semibold">Evidence</p>
+      <ul className="grid gap-1" data-testid="request-files">
+        {files.map((file) => (
+          <li key={file.id}>
+            {file.href ? (
+              <a href={file.href} className="link inline-flex min-h-11 items-center" translate="no">
+                {file.name ?? `${file.kindLabel} file`}
+              </a>
+            ) : (
+              <span translate="no">{file.name ?? `${file.kindLabel} file`}</span>
+            )}{' '}
+            <span className="text-fg-muted">
+              · {file.kindLabel} · {formatSize(file.sizeBytes)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Row({ view, children, testId }: { view: RelationshipView; children?: ReactNode; testId: string }) {
   return (
     <li
@@ -141,6 +200,11 @@ function Row({ view, children, testId }: { view: RelationshipView; children?: Re
     >
       <div className="grid content-start gap-1">
         <PersonName person={view.teacher} link={view.status === 'verified' || view.status === 'in_arbitration'} />
+        {view.unclaimedRecord ? (
+          <span className="text-sm font-semibold" data-testid="unclaimed-label">
+            Unclaimed record
+          </span>
+        ) : null}
         <span className="text-sm text-fg-muted">{view.lineage.name}</span>
         <div className="text-sm">
           <PeriodLines periods={view.periods} />
@@ -151,6 +215,8 @@ function Row({ view, children, testId }: { view: RelationshipView; children?: Re
         {children}
       </div>
       {view.review ? <ClaimReview review={view.review} /> : null}
+      <InvitationLine view={view} />
+      <SentEvidence files={view.evidence} />
     </li>
   );
 }
@@ -168,6 +234,8 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
   const byId = (id: string) => all.find((view) => view.id === id);
   const sent = byId(one(query.sent));
   const claimed = byId(one(query.claimed));
+  const invited = byId(one(query.invited));
+  const invitationSent = byId(one(query.invitation));
   const ended = byId(one(query.ended));
   const withdrawn = one(query.withdrawn);
 
@@ -193,6 +261,9 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
             <Link href="/dashboard/teachers/historical" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
               Name a historical teacher
             </Link>
+            <Link href="/dashboard/teachers/invite" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+              Invite your teacher
+            </Link>
           </p>
         ) : null}
 
@@ -215,6 +286,20 @@ export default async function TeachersPage({ searchParams }: { searchParams: Sea
             <OutcomeNote testId="claim-sent">
               Your claim about <NameText name={claimed.teacher.name} /> was sent with its evidence. Reviewers check it; it waits below until they decide,
               and you get a notification and an e-mail.
+            </OutcomeNote>
+          ) : null}
+          {invited ? (
+            <OutcomeNote testId="teacher-invited">
+              <NameText name={invited.teacher.name} /> is listed as your teacher, waiting to join.{' '}
+              {invited.invitation?.state === 'sent'
+                ? 'The invitation was sent; you get a notification when they accept it.'
+                : 'No invitation was sent: send it from the request below when you have their e-mail address.'}{' '}
+              Only you, your teacher and the reviewers see this request.
+            </OutcomeNote>
+          ) : null}
+          {invitationSent ? (
+            <OutcomeNote testId="invitation-sent">
+              The invitation to <NameText name={invitationSent.teacher.name} /> was sent. The link works for 14 days; an earlier link no longer works.
             </OutcomeNote>
           ) : null}
           {withdrawn && !byId(withdrawn) ? (

@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "6e40e6af-7121-4488-b717-4c768d1886e0",
+  "id": "898b0703-832d-4ca0-b0ec-bdbc3a0deb32",
   "prevIds": [
     "7caf5d09-5e3f-4dbd-977e-cb5d988e9e01"
   ],
@@ -75,6 +75,12 @@
     {
       "isRlsEnabled": false,
       "name": "review_case",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "review_event",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1820,6 +1826,136 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "review_case_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "action",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "from_status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "to_status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_role",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "idempotency_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "review_note"
     },
     {
@@ -2897,6 +3033,32 @@
       "generated": null,
       "identity": null,
       "name": "accepted_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invitation"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "accepted_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "invitation"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "idempotency_key",
       "entityType": "columns",
       "schema": "public",
       "table": "invitation"
@@ -4306,32 +4468,6 @@
       "table": "place"
     },
     {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'[]'",
-      "generated": null,
-      "identity": null,
-      "name": "alternate_names",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "place"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "''",
-      "generated": null,
-      "identity": null,
-      "name": "search_text",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "place"
-    },
-    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -4470,45 +4606,6 @@
       "generated": null,
       "identity": null,
       "name": "website_url",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "school"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "contact_email",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "school"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "contact_phone",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "school"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 1,
-      "default": "'{}'",
-      "generated": null,
-      "identity": null,
-      "name": "forms_taught",
       "entityType": "columns",
       "schema": "public",
       "table": "school"
@@ -5202,6 +5299,41 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "reporter_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "subject_type",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "subject_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"reporter_user_id\" IS NOT NULL",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "content_report_one_per_reporter_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "content_report"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "storage_key",
           "isExpression": false,
           "asc": true,
@@ -5531,14 +5663,7 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "school_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
-          "value": "kind",
+          "value": "person_id",
           "isExpression": false,
           "asc": true,
           "nullsFirst": false,
@@ -5546,14 +5671,91 @@
         }
       ],
       "isUnique": true,
-      "where": "\"school_id\" IS NOT NULL AND \"status\" IN ('open', 'in_review', 'needs_info')",
+      "where": "\"person_id\" IS NOT NULL AND \"kind\" = 'instructor_verification' AND \"status\" IN ('open', 'in_review', 'needs_info')",
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "review_case_one_open_per_school_key",
+      "name": "review_case_one_open_instructor_key",
       "entityType": "indexes",
       "schema": "public",
       "table": "review_case"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "review_case_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "review_event_review_case_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "actor_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "review_event_actor_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "actor_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"idempotency_key\" IS NOT NULL",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "review_event_idempotency_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "review_event"
     },
     {
       "nameExplicit": true,
@@ -6020,6 +6222,55 @@
       "method": "btree",
       "concurrently": false,
       "name": "invitation_token_hash_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "invitation"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "accepted_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "invitation_accepted_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "invitation"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "invited_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"idempotency_key\" IS NOT NULL",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "invitation_idempotency_key",
       "entityType": "indexes",
       "schema": "public",
       "table": "invitation"
@@ -6755,30 +7006,6 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "search_text",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": {
-            "name": "gin_trgm_ops",
-            "default": false
-          }
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "with": "",
-      "method": "gin",
-      "concurrently": false,
-      "name": "place_search_text_trgm_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "place"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
           "value": "slug",
           "isExpression": false,
           "asc": true,
@@ -7324,6 +7551,40 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "name": "review_event_review_case_id_review_case_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "actor_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "review_event_actor_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "review_case_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "review_case",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "review_note_review_case_id_review_case_id_fkey",
       "entityType": "fks",
@@ -7632,6 +7893,23 @@
       "onUpdate": "NO ACTION",
       "onDelete": "RESTRICT",
       "name": "invitation_invited_by_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "invitation"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "accepted_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "invitation_accepted_by_user_id_auth_user_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "invitation"
@@ -8106,6 +8384,16 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "review_event_pkey",
+      "schema": "public",
+      "table": "review_event",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "review_note_pkey",
       "schema": "public",
       "table": "review_note",
@@ -8442,7 +8730,7 @@
       "table": "content_report"
     },
     {
-      "value": "\"reason\" IN ('incorrect', 'impersonation', 'privacy', 'offensive', 'other')",
+      "value": "\"reason\" IN ('copyright', 'spam', 'inappropriate', 'misleading')",
       "name": "content_report_reason_check",
       "entityType": "checks",
       "schema": "public",
@@ -8451,6 +8739,13 @@
     {
       "value": "\"status\" IN ('open', 'triaged', 'resolved', 'dismissed')",
       "name": "content_report_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "content_report"
+    },
+    {
+      "value": "\"details\" IS NULL OR char_length(\"details\") BETWEEN 1 AND 1000",
+      "name": "content_report_details_length",
       "entityType": "checks",
       "schema": "public",
       "table": "content_report"
@@ -8524,6 +8819,34 @@
       "entityType": "checks",
       "schema": "public",
       "table": "review_case"
+    },
+    {
+      "value": "\"idempotency_key\" IS NULL OR \"idempotency_key\" ~ '^[A-Za-z0-9_-]{8,64}$'",
+      "name": "review_event_idempotency_key_format",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "value": "\"action\" IN ('open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw')",
+      "name": "review_event_action_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "value": "\"from_status\" IS NULL OR \"from_status\" IN ('open', 'in_review', 'needs_info', 'resolved', 'dismissed')",
+      "name": "review_event_from_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "review_event"
+    },
+    {
+      "value": "\"to_status\" IN ('open', 'in_review', 'needs_info', 'resolved', 'dismissed')",
+      "name": "review_event_to_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "review_event"
     },
     {
       "value": "\"idempotency_key\" IS NULL OR \"idempotency_key\" ~ '^[A-Za-z0-9_-]{8,64}$'",
@@ -8685,6 +9008,20 @@
       "entityType": "checks",
       "schema": "public",
       "table": "organization_membership"
+    },
+    {
+      "value": "\"idempotency_key\" IS NULL OR \"idempotency_key\" ~ '^[A-Za-z0-9_-]{8,64}$'",
+      "name": "invitation_idempotency_key_format",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "invitation"
+    },
+    {
+      "value": "\"status\" <> 'accepted' OR \"accepted_at\" IS NOT NULL",
+      "name": "invitation_accepted_has_account",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "invitation"
     },
     {
       "value": "\"status\" IN ('pending', 'accepted', 'expired', 'revoked')",
@@ -8904,22 +9241,8 @@
       "table": "school"
     },
     {
-      "value": "\"status\" IN ('draft', 'pending_review', 'active', 'hidden', 'archived')",
+      "value": "\"status\" IN ('draft', 'published', 'hidden', 'archived')",
       "name": "school_status_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "school"
-    },
-    {
-      "value": "char_length(\"name\") BETWEEN 2 AND 120",
-      "name": "school_name_length",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "school"
-    },
-    {
-      "value": "\"forms_taught\" <@ ARRAY['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do']::text[]",
-      "name": "school_forms_taught_check",
       "entityType": "checks",
       "schema": "public",
       "table": "school"

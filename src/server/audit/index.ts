@@ -48,7 +48,18 @@ export type AuditAction =
   | 'school.submit'
   | 'school.confirm'
   | 'school.publish'
-  | 'school.return';
+  | 'school.return'
+  // M10b: invitations, profile claims, instructor verification, reports and arbitration (plan §6.6, §6.7).
+  | 'invitation.create'
+  | 'invitation.revoke'
+  | 'person.claim'
+  | 'relationship.claimed'
+  | 'instructor.request'
+  | 'instructor.verify'
+  | 'report.create'
+  | 'relationship.arbitration'
+  | 'relationship.revoke'
+  | 'review.reply';
 
 export interface AuditEntry {
   action: AuditAction;

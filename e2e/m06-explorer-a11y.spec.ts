@@ -12,7 +12,21 @@ import { MAX_ROUTES } from '../src/components/lineage/explorer/route-list';
 import { FANOUT_SHOWN, summaryIdOf } from '../src/components/lineage/explorer/state';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { edgesInto, EXPLORER_VIEWS, lineageIdOf, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
-import { activeNodeId, announcement, dragEveryNodeOffScreen, dragNodeOffScreen, focusedNodeId, focusGraph, focusInGraph, graphIsTabStop, isInVisibleArea, tabStops, visibleBox } from './helpers/explorer-a11y';
+import {
+  activeNodeId,
+  announcement,
+  dragEveryNodeOffScreen,
+  dragNodeOffScreen,
+  focusedNodeId,
+  focusGraph,
+  focusInGraph,
+  focusTrail,
+  graphIsTabStop,
+  isInVisibleArea,
+  tabStops,
+  visibleBox,
+  watchFocus,
+} from './helpers/explorer-a11y';
 import { captureScenes, installInpProbes, personNameOf, selectionInp, settledView, uncoveredNode } from './helpers/explorer-checks';
 import { drawnStudents, listedStudents, publicStudentCount, scenesFor, screenBox, studentNamesOfPage, summaryNodeOf, walkToSummary } from './helpers/m06-expand';
 import { drawnNodeIds, installKeyProbe, keyInp, personNameById, soleTeacherStudent, statusInPersonView, viewTransform } from './helpers/m06-keys';
@@ -277,6 +291,7 @@ test.describe('keyboard (A)', () => {
     // Every teacher drawn, each once (the order: the display-primary teacher first, checked below).
     await expect(items).toHaveCount(teachers.length);
     const names = await Promise.all(teachers.map((t) => personNameById(t)));
+    const idByName = new Map(teachers.map((t, i) => [names[i]!, t]));
     expect((await items.allInnerTexts()).map((t) => t.trim()).sort()).toEqual(names.sort());
     const primary = lines.find((l) => l.kind === 'primary');
     expect(primary, 'a primary line into the person').toBeDefined();
@@ -292,8 +307,16 @@ test.describe('keyboard (A)', () => {
     await page.keyboard.press('ArrowDown');
     await expect(items.nth(1)).toBeFocused();
     const chosen = (await items.nth(1).innerText()).trim();
+    const chosenId = idByName.get(chosen);
+    expect(chosenId, 'the teacher chosen is one of those drawn').toBeDefined();
+    await watchFocus(page);
     await page.keyboard.press('Enter');
     await expect(chooser).toHaveCount(0);
+    // Straight from the menu to the teacher, never to the page in between: there a screen reader
+    // loses its place, and a read of the focus finds no node (M10b CI: a poll took "no node" for
+    // "not the person" and passed, and the next read found no teacher).
+    await expect.poll(() => focusedNodeId(page), 'Enter moves the focus to the teacher chosen').toBe(chosenId);
+    expect(await focusTrail(page), 'the focus never falls to the page between the menu and the teacher').not.toContain('body');
     await expect.poll(() => focusedNodeId(page), 'Enter moves the focus to the teacher chosen').not.toBe(id);
     const teacher = (await focusedNodeId(page))!;
     expect(teachers).toContain(teacher);

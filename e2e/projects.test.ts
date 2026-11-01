@@ -86,8 +86,8 @@ describe('buildProjects: exclusive (M08 final check)', () => {
       expect(projects.map((p) => p.name)).toEqual(['exclusive']);
       const [exclusive] = projects;
       expect(exclusive?.testMatch).toEqual(EXCLUSIVE_SPECS);
-      // The table-locking specs (M08) and the specs that make links public (M09).
-      expect(exclusive?.testMatch).toEqual([EXCLUSIVE_SPEC, '**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m11-schools.spec.ts']);
+      // The table-locking specs (M08) and the specs that make links or schools public (M09, M10a, M10b, M11).
+      expect(exclusive?.testMatch).toEqual([EXCLUSIVE_SPEC, '**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts']);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);
       // No dependencies: they would run every other project in full, whatever --grep says.

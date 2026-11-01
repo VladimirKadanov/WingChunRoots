@@ -210,10 +210,21 @@ export const invitation = pgTable(
     status: text('status', { enum: INVITATION_STATUSES }).notNull().default('pending'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // M10b: the account that accepted the invitation (single use: set once, with accepted_at).
+    acceptedByUserId: uuid('accepted_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    // M10b (plan §5.6): the idempotency key of the student's form; the same key from the same
+    // account sends no second invitation.
+    idempotencyKey: text('idempotency_key'),
     ...timestamps(),
   },
   (t) => [
     uniqueIndex('invitation_token_hash_key').on(t.tokenHash),
+    index('invitation_accepted_by_user_id_idx').on(t.acceptedByUserId),
+    uniqueIndex('invitation_idempotency_key')
+      .on(t.invitedByUserId, t.idempotencyKey)
+      .where(sql`${t.idempotencyKey} IS NOT NULL`),
+    check('invitation_idempotency_key_format', sql`${t.idempotencyKey} IS NULL OR ${t.idempotencyKey} ~ '^[A-Za-z0-9_-]{8,64}$'`),
+    check('invitation_accepted_has_account', sql`${t.status} <> 'accepted' OR ${t.acceptedAt} IS NOT NULL`),
     index('invitation_person_id_idx').on(t.personId),
     index('invitation_relationship_id_idx').on(t.relationshipId),
     index('invitation_invited_by_user_id_idx').on(t.invitedByUserId),
