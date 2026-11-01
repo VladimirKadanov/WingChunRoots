@@ -68,3 +68,5 @@ M10b, M11 (и всички етапи преди тях).
 ```
 
 ## Дневник на напредъка (Progress log)
+
+- 2026-11-01 09:20 — pino 10.4.0 със структурирани JSON редове, `requestId`, заличаване на адреси, имена, IP и координати (`logger.redaction.test.ts`), `onRequestError` и `reportError` с празен доставчик (43e0ebc); `/healthz`, `system.status` (`GET /api/v1/admin/system`, персонал с втори фактор) и страницата `/admin/system`, `output: standalone` (1407ca6)
