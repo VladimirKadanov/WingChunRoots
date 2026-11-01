@@ -20,7 +20,7 @@ import { auditLog, evidenceFile, evidenceLink, notification, person, personBio, 
 import type { TestDatabase } from '../db/testing';
 import { filesystemStore } from '../storage/fs';
 import { pgErrorOf } from './errors';
-import { uploadEvidence } from './evidence';
+import { ARCHIVAL_EVIDENCE_MESSAGE, CLAIM_EVIDENCE_MESSAGE, openEvidence, uploadEvidence } from './evidence';
 import { requestHistoricalTeacher } from './historical';
 import { myTeachers, REQUESTS_PER_WINDOW, REQUESTS_TO_ONE_TEACHER_PER_WINDOW, withdrawRelationship } from './relationships';
 import { addReviewNote, assignReviewCase, decideReviewCase, getArchiveRecord, getReviewCase, listReviewCases, updateArchiveRecord } from './review';
@@ -330,6 +330,15 @@ describe('review decisions write relationship_event and audit_log', () => {
     const asAdmin = await getReviewCase(admin.principal, { id: caseId });
     expect(asAdmin.files.map((f) => f.href)).toEqual([`/api/evidence/${file.id}`]);
     for (const view of [list, unassigned, asAdmin]) expect(JSON.stringify(view)).not.toContain(stored!.storageKey);
+
+    // The uploaded file's name (personal data) goes only to those who may open the file, as the
+    // migration documents (M10a review, security-4): not to an unassigned moderator.
+    expect(unassigned.files.map((f) => f.name)).toEqual([null]);
+    expect(JSON.stringify(unassigned)).not.toContain('demo-rv-queue.pdf');
+    expect(asAdmin.files.map((f) => f.name)).toEqual(['demo-rv-queue.pdf']);
+    await assignReviewCase(moderator.principal, { caseId, assigneeId: moderator.account.id, idempotencyKey: key() }, meta);
+    const assigned = await getReviewCase(moderator.principal, { id: caseId });
+    expect(assigned.files.map((f) => [f.name, f.href])).toEqual([['demo-rv-queue.pdf', `/api/evidence/${file.id}`]]);
   });
 });
 
@@ -377,6 +386,66 @@ describe('the archival edit (plan §6.6)', () => {
     const again = await updateArchiveRecord(archivist.principal, input, meta);
     expect(again.changed).toBe(false);
     expect(await getDb().select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, 'person.update'), eq(auditLog.subjectId, record.id)))).toHaveLength(1);
+  });
+
+  // M10a review, security-1 and requirements-2: archive.update linked any file the archivist could
+  // open (as the assigned reviewer of a claim, too), and accessOf then opened every file linked to a
+  // record to every archivist. Now a record links only the archivist's own uploads that are in no
+  // claim, and a download is exactly In scope 3: uploader, teacher concerned, assigned reviewers,
+  // administrators.
+  it('links only files the archivist uploaded for the edit, never a claim’s; a record’s file opens for its uploader and the administrators, 404 for another archivist', async () => {
+    const archivist = await staff('rv-arch-link', 'archivist');
+    const otherArchivist = await staff('rv-arch-link-other', 'archivist');
+    const moderator = await staff('rv-arch-link-mod', 'moderator');
+    const admin = await staff('rv-arch-link-admin', 'admin');
+    const record = await platformRecord('rv-arch-link');
+    const base = { personId: record.id, primaryName: 'Demo Archive rv-arch-link', lifeStatus: 'unknown' as const, reason: 'The fictional register.' };
+    const open = (p: Parameters<typeof openEvidence>[0], id: string) => openEvidence(p, id, meta, store);
+    const notFound = (p: Parameters<typeof openEvidence>[0], id: string) => expect(open(p, id)).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+    const linkedTo = async (fileId: string) =>
+      (await getDb().select({ personId: evidenceLink.personId }).from(evidenceLink).where(eq(evidenceLink.evidenceFileId, fileId))).map((l) => l.personId).filter(Boolean);
+
+    // A student's claim file: the archivist assigned to the case opens it, but cannot link it.
+    const { caseId, file } = await claim('rv-arch-link-claim');
+    await assignReviewCase(archivist.principal, { caseId, assigneeId: archivist.account.id, idempotencyKey: key() }, meta);
+    await (await open(archivist.principal, file.id)).body.cancel();
+    const viaApi = await updateArchiveRecord(archivist.principal, { ...base, primaryName: 'Demo Archive Linked', evidenceIds: [file.id] }, meta).catch((e: unknown) => e);
+    expect(viaApi).toMatchObject({ code: 'BAD_REQUEST', fields: { evidenceIds: ARCHIVAL_EVIDENCE_MESSAGE } });
+    expect(await linkedTo(file.id)).toEqual([]);
+    await notFound(otherArchivist.principal, file.id); // never assigned
+    await assignReviewCase(archivist.principal, { caseId, assigneeId: null, idempotencyKey: key() }, meta);
+    await notFound(archivist.principal, file.id); // no longer assigned
+
+    // The archivist's own file sent with a claim of their own stays with that claim.
+    const claimant = await member('rv-arch-link-claimant', { role: 'archivist' });
+    const ownClaimFile = await upload(claimant, 'rv-arch-link-own-claim');
+    await requestHistoricalTeacher(claimant.principal, { teacherName: 'Demo Historical Own Link', lineageId, periods: ongoingFrom(), evidenceIds: [ownClaimFile.id], idempotencyKey: key() }, meta);
+    const ownClaim = await updateArchiveRecord(claimant.principal, { ...base, primaryName: 'Demo Archive Own Claim', evidenceIds: [ownClaimFile.id] }, meta).catch((e: unknown) => e);
+    expect(ownClaim).toMatchObject({ code: 'BAD_REQUEST', fields: { evidenceIds: CLAIM_EVIDENCE_MESSAGE } });
+    expect(await linkedTo(ownClaimFile.id)).toEqual([]);
+
+    // Another archivist's upload is not this archivist's to link either.
+    const theirs = await upload({ principal: otherArchivist.principal }, 'rv-arch-link-theirs');
+    expect(await updateArchiveRecord(archivist.principal, { ...base, evidenceIds: [theirs.id] }, meta).catch((e: unknown) => e)).toMatchObject({
+      code: 'BAD_REQUEST',
+      fields: { evidenceIds: ARCHIVAL_EVIDENCE_MESSAGE },
+    });
+
+    // A file uploaded for the edit is linked, and opens for its uploader and the administrators only.
+    const mine = await upload({ principal: archivist.principal }, 'rv-arch-link-register');
+    const saved = await updateArchiveRecord(archivist.principal, { ...base, evidenceIds: [mine.id] }, meta);
+    expect(saved.record.files.map((f) => [f.id, f.name, f.href])).toEqual([[mine.id, 'demo-rv-arch-link-register.pdf', `/api/evidence/${mine.id}`]]);
+    expect(await linkedTo(mine.id)).toEqual([record.id]);
+    await (await open(archivist.principal, mine.id)).body.cancel();
+    await (await open(admin.principal, mine.id)).body.cancel();
+    await notFound(otherArchivist.principal, mine.id);
+    await notFound(moderator.principal, mine.id);
+    // The record page shows the others neither the link nor the file's name.
+    for (const viewer of [otherArchivist, moderator]) {
+      const view = await getArchiveRecord(viewer.principal, { slug: record.slug });
+      expect(view.files.map((f) => [f.id, f.name, f.href])).toEqual([[mine.id, null, null]]);
+    }
+    expect((await getArchiveRecord(admin.principal, { slug: record.slug })).files.map((f) => f.href)).toEqual([`/api/evidence/${mine.id}`]);
   });
 
   it('requires a reason; a moderator and an administrator get 403; a record kept by its owner is refused', async () => {
@@ -499,3 +568,4 @@ describe('the request window of a reviewer who trains too', () => {
     expect(own.relationship.status).toBe('under_review');
   });
 });
+

@@ -20,12 +20,16 @@
 //      transaction, which checks the room again under a lock. If the transaction fails, the object
 //      is removed again.
 //
-// The download (GET /api/evidence/<id>) streams the object through the app after the check: the
-// uploader, the teacher a linked request is about (their own request), the reviewers assigned to a
-// linked case and the administrators (both with a session that proved the second factor), and for
-// the evidence of an archival edit the archivists (with the second factor). Every
-// download writes `evidence.view`. Anyone else, signed in or not, gets 404, the same answer as for
-// a file that does not exist (plan §5.6, §6.4). No presigned GET exists (plan §6.4).
+// The download (GET /api/evidence/<id>) streams the object through the app after the check, to
+// exactly the people of the milestone's In scope 3: the uploader, the teacher a linked request is
+// about (their own request), the reviewers assigned to a linked case and the administrators (both
+// with a session that proved the second factor). Every download writes `evidence.view`. Anyone
+// else, signed in or not, an archivist who is not assigned included, gets 404, the same answer as
+// for a file that does not exist (plan §5.6, §6.4). No presigned GET exists (plan §6.4). The pages
+// show a file's link and its uploaded name only to the same people (openableFiles).
+//
+// The archival edit links only files the archivist uploaded for it, never a file of a claim: a link
+// to a record opens a file to nobody new (M10a review, security-1).
 //
 // `scan_status` starts as `pending`; an antivirus check is optional and later. `retention_until`
 // stays empty: no evidence is deleted automatically until the owner sets a retention policy (the
@@ -36,7 +40,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { and, asc, count, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -74,7 +78,10 @@ export interface EvidenceFileView {
   /** "PDF", "JPEG image", ... */
   kindLabel: string;
   sizeBytes: number;
-  /** The uploaded file's own name, cleaned; null when it had none. */
+  /**
+   * The uploaded file's own name, cleaned; null when it had none or when this viewer may not open
+   * the file (the name can be personal data: it is shown only to those who may download the file).
+   */
   name: string | null;
   createdAt: string;
   /**
@@ -110,13 +117,14 @@ interface FileRow {
   uploadedByUserId: string | null;
 }
 
+/** A file as `canOpen` (accessOf, openableFiles) lets this viewer see it: the link and the name or neither. */
 export function fileView(row: FileRow, canOpen: boolean): EvidenceFileView {
   return {
     id: row.id,
     mime: row.mime,
     kindLabel: KIND_LABELS[row.mime],
     sizeBytes: row.sizeBytes,
-    name: row.originalName,
+    name: canOpen ? row.originalName : null,
     createdAt: row.createdAt.toISOString(),
     href: canOpen ? evidenceHref(row.id) : null,
   };
@@ -410,18 +418,34 @@ export async function linkFilesToCase(tx: Transaction, userId: string, caseId: s
   return null;
 }
 
+export const ARCHIVAL_EVIDENCE_MESSAGE = 'Link only files you uploaded for this edit.';
+export const CLAIM_EVIDENCE_MESSAGE = 'A file sent with a claim stays with that claim. Upload the document again for this record.';
+
 /**
- * Links files to a person for an archival edit (review.ts): each must be one this account may open
- * (mayOpen) and not removed. Files already linked to the person are left as they are. Returns the
- * field error of `evidenceIds`, or null.
+ * Links files to a person for an archival edit (review.ts): each must be one this archivist
+ * uploaded, not removed, and part of no claim (no case and no relationship link). A file the
+ * archivist can open only as the reviewer of a case, or as an administrator, is refused: linking
+ * it to a record would widen who reads it (M10a review, security-1). Files already linked to the
+ * person are left as they are. Returns the field error of `evidenceIds`, or null.
  */
 export async function linkFilesToPerson(tx: Transaction, principal: Principal, personId: string, fileIds: readonly string[]): Promise<string | null> {
   const ids = [...new Set(fileIds)];
   if (ids.length === 0) return null;
   if (ids.length > EVIDENCE_MAX_FILES_PER_CASE) return `Link at most ${EVIDENCE_MAX_FILES_PER_CASE} files to one edit.`;
-  for (const id of ids) {
-    if (!(await accessOf(tx, principal, id))) return 'Choose files you uploaded or can open.';
-  }
+  const own = await tx
+    .select({ id: evidenceFile.id })
+    .from(evidenceFile)
+    .where(and(inArray(evidenceFile.id, ids), eq(evidenceFile.uploadedByUserId, principal.user.id), isNull(evidenceFile.deletedAt)))
+    .for('update');
+  if (own.length !== ids.length) return ARCHIVAL_EVIDENCE_MESSAGE;
+  // After the row locks, in a statement of its own (a fresh snapshot), so a claim sent with one of
+  // these files a moment ago is seen.
+  const [claimed] = await tx
+    .select({ id: evidenceLink.id })
+    .from(evidenceLink)
+    .where(and(inArray(evidenceLink.evidenceFileId, ids), or(isNotNull(evidenceLink.reviewCaseId), isNotNull(evidenceLink.relationshipId))))
+    .limit(1);
+  if (claimed) return CLAIM_EVIDENCE_MESSAGE;
   const existing = await tx
     .select({ id: evidenceLink.evidenceFileId })
     .from(evidenceLink)
@@ -436,36 +460,48 @@ export async function linkFilesToPerson(tx: Transaction, principal: Principal, p
 
 // --- Download ----------------------------------------------------------------------------------
 
-export type EvidenceAccess = 'uploader' | 'teacher' | 'reviewer' | 'archivist' | 'admin';
+export type EvidenceAccess = 'uploader' | 'teacher' | 'reviewer' | 'admin';
 
 /**
- * How `principal` may open the file, or null when they may not (see the top of this file). A
- * removed file can be opened by nobody.
+ * How `principal` may open each of the files, by id; a file they may not open, a removed one or
+ * one that does not exist is absent (see the top of this file). One query for a page of files.
  */
-export async function accessOf(db: Executor, principal: Principal, fileId: string): Promise<EvidenceAccess | null> {
-  if (!z.uuid().safeParse(fileId).success) return null;
+export async function accessOfFiles(db: Executor, principal: Principal, fileIds: readonly string[]): Promise<Map<string, EvidenceAccess>> {
+  const out = new Map<string, EvidenceAccess>();
+  const ids = [...new Set(fileIds)].filter((id) => z.uuid().safeParse(id).success);
+  if (ids.length === 0) return out;
   const userId = principal.user.id;
-  const result = await db.execute<{ uploader: boolean; assigned: boolean; teacher: boolean; archival: boolean }>(sql`
-SELECT f.uploaded_by_user_id IS NOT DISTINCT FROM ${userId}::uuid AS uploader,
-       EXISTS (SELECT 1 FROM evidence_link l WHERE l.evidence_file_id = f.id AND l.person_id IS NOT NULL) AS archival,
-       EXISTS (SELECT 1 FROM evidence_link l JOIN review_case c ON c.id = l.review_case_id
-                WHERE l.evidence_file_id = f.id AND c.assigned_to_user_id = ${userId}::uuid) AS assigned,
-       EXISTS (SELECT 1 FROM evidence_link l
+  const rows = await db
+    .select({
+      id: evidenceFile.id,
+      uploader: sql<boolean>`evidence_file.uploaded_by_user_id IS NOT DISTINCT FROM ${userId}::uuid`,
+      assigned: sql<boolean>`EXISTS (SELECT 1 FROM evidence_link l JOIN review_case c ON c.id = l.review_case_id
+                WHERE l.evidence_file_id = evidence_file.id AND c.assigned_to_user_id = ${userId}::uuid)`,
+      teacher: sql<boolean>`EXISTS (SELECT 1 FROM evidence_link l
                  LEFT JOIN review_case c ON c.id = l.review_case_id
                  JOIN teaching_relationship r ON r.id = COALESCE(l.relationship_id, c.relationship_id)
                  JOIN person t ON t.id = r.teacher_person_id AND t.deleted_at IS NULL
-                WHERE l.evidence_file_id = f.id AND t.claimed_by_user_id = ${userId}::uuid) AS teacher
-  FROM evidence_file f
- WHERE f.id = ${fileId}::uuid AND f.deleted_at IS NULL`);
-  const row = result.rows[0];
-  if (!row) return null;
-  if (row.uploader) return 'uploader';
-  if (hasStaff2FA(principal, ['admin'])) return 'admin';
-  if (row.assigned && hasStaff2FA(principal)) return 'reviewer';
-  // The evidence of an archival edit (review.ts updateArchiveRecord) opens for every archivist.
-  if (row.archival && hasStaff2FA(principal, ['archivist'])) return 'archivist';
-  if (row.teacher) return 'teacher';
-  return null;
+                WHERE l.evidence_file_id = evidence_file.id AND t.claimed_by_user_id = ${userId}::uuid)`,
+    })
+    .from(evidenceFile)
+    .where(and(inArray(evidenceFile.id, ids), isNull(evidenceFile.deletedAt)));
+  const admin = hasStaff2FA(principal, ['admin']);
+  const reviewer = hasStaff2FA(principal);
+  for (const row of rows) {
+    const access: EvidenceAccess | null = row.uploader ? 'uploader' : admin ? 'admin' : row.assigned && reviewer ? 'reviewer' : row.teacher ? 'teacher' : null;
+    if (access) out.set(row.id, access);
+  }
+  return out;
+}
+
+/** How `principal` may open the file, or null when they may not (accessOfFiles). */
+export async function accessOf(db: Executor, principal: Principal, fileId: string): Promise<EvidenceAccess | null> {
+  return (await accessOfFiles(db, principal, [fileId])).get(fileId) ?? null;
+}
+
+/** The ids of the files this viewer may open: the pages link and name exactly these (the download's rule). */
+export async function openableFiles(db: Executor, principal: Principal, fileIds: readonly string[]): Promise<Set<string>> {
+  return new Set((await accessOfFiles(db, principal, fileIds)).keys());
 }
 
 export interface EvidenceDownload {

@@ -6,15 +6,17 @@
 // notices.
 //
 //   review.list    the queue: filters by kind, status and assignee, sorted, paged (URL state)
-//   review.get     one case: the relationship, the evidence (links only for those who may open
-//                  it: evidence.ts accessOf), the notes and what this reviewer may do
+//   review.get     one case: the relationship, the evidence (a link and the file's name only for
+//                  those who may open it: evidence.ts accessOfFiles), the notes and what this
+//                  reviewer may do
 //   review.assign  take a case (any reviewer) or give it to another (an administrator); unassign
 //   review.decide  verify | reject (with a reason) | needs_info (with a question for the claimant)
 //   review.note    an internal note, for reviewers only
 //   archive.get / archive.update
 //                  the archival edit (In scope 5, plan §6.6): only an archivist edits a record kept
-//                  by the platform or unclaimed, with a required reason and optional evidence; the
-//                  audit row person.update keeps `reason` and `evidence_ids`
+//                  by the platform or unclaimed, with a required reason and optional evidence (files
+//                  they uploaded for the edit, never a claim's); the audit row person.update keeps
+//                  `reason` and `evidence_ids`
 //
 // Who may do what:
 //   - a signed-in account without a staff role: 403 (the page shows the explicit denied state);
@@ -54,7 +56,7 @@ import { writePersonKeys } from '../search/store';
 import { REVIEW_KIND_LABELS, REVIEW_STATUS_LABELS, type ReviewCaseKind, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
-import { type EvidenceFileView, fileView, filesOfCases, filesOfPerson, linkFilesToPerson } from './evidence';
+import { ARCHIVAL_EVIDENCE_MESSAGE, type EvidenceFileView, fileView, filesOfCases, filesOfPerson, linkFilesToPerson, openableFiles } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
@@ -370,9 +372,9 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   const relationship = c.relationshipId ? await viewOf(db, c.relationshipId, { ...viewer, reviewer: true }).catch(() => null) : null;
   const own = await ownSide(db, p, c);
   const files = (await filesOfCases(db, [c.id])).get(c.id) ?? [];
-  // The same rule as the download (evidence.ts accessOf): the assignee and the administrators open
-  // every file of the case, anyone else only a file they uploaded.
-  const opensAll = (c.assignedToUserId === p.user.id && hasStaff2FA(p)) || hasStaff2FA(p, ['admin']);
+  // The download's own rule (evidence.ts accessOfFiles): a link and a name only for a file this
+  // viewer may open.
+  const opens = await openableFiles(db, p, files.map((f) => f.id));
   const notes = await db
     .select({ id: reviewNote.id, internal: reviewNote.isInternal, body: reviewNote.body, createdAt: reviewNote.createdAt, author: reviewNote.authorUserId, role: authUser.role })
     .from(reviewNote)
@@ -412,7 +414,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: assignee?.role ?? null } : null,
     relationship,
     teacherRecord,
-    files: files.map((f) => fileView(f, opensAll || f.uploadedByUserId === p.user.id)),
+    files: files.map((f) => fileView(f, opens.has(f.id))),
     notes: notes.map((n) => ({
       id: n.id,
       internal: n.internal,
@@ -769,8 +771,8 @@ export const archiveUpdateInput = z
       .string({ error: 'Write the reason for this edit.' })
       .max(REVIEW_TEXT_MAX * 2)
       .transform((s) => s.normalize('NFC').replace(/\r\n?/g, '\n').trim()),
-    /** Optional: evidence files this archivist may open, linked to the record. */
-    evidenceIds: z.array(z.uuid({ error: 'Choose files you uploaded or can open.' })).max(20).default([]),
+    /** Optional: files this archivist uploaded for the edit (never a claim's), linked to the record. */
+    evidenceIds: z.array(z.uuid({ error: ARCHIVAL_EVIDENCE_MESSAGE })).max(20).default([]),
   })
   .superRefine((input, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
@@ -840,13 +842,15 @@ export async function getArchiveRecord(principal: Principal | null, raw: z.input
   const archivist = hasStaff2FA(p, ARCHIVE_ROLES);
   const kept = record.stewardship !== 'self';
   const files = await filesOfPerson(db, record.id);
+  // The download's own rule (evidence.ts accessOfFiles): the archivist who uploaded a file and the
+  // administrators open it, and only they see its link and its name.
+  const opens = await openableFiles(db, p, files.map((f) => f.id));
   return {
     ...record,
     primaryName: primary?.value ?? '',
     original: original ? { value: original.value, lang: original.lang } : null,
     bio: bio?.body ?? null,
-    // Evidence of an archival record opens for its uploader, the archivists and the administrators (evidence.ts accessOf).
-    files: files.map((f) => fileView(f, archivist || hasStaff2FA(p, ['admin']) || f.uploadedByUserId === p.user.id)),
+    files: files.map((f) => fileView(f, opens.has(f.id))),
     editable: archivist && kept,
     refusal: !kept ? SELF_KEPT : !archivist ? ARCHIVIST_ONLY : null,
     scripts: ORIGINAL_SCRIPTS.map((s) => ({ lang: s.lang, label: s.label })),
