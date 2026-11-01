@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { auditLog, authUser, consentRecord, contentReport, invitation, notification, person, personClaim, relationshipEvent, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
+import { EVIDENCE_MAX_FILES_PER_CASE } from '../db/schema/common';
 import type { TestDatabase } from '../db/testing';
 import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
@@ -31,7 +32,7 @@ import { arbitrateRelationship } from './arbitration';
 import { getPartyCase, myCases, replyToCase } from './cases';
 import { grantConsents, recordConsents, REQUIRED_SIGN_UP_CONSENTS } from './consent';
 import { pgErrorOf } from './errors';
-import { openEvidence, uploadEvidence } from './evidence';
+import { openEvidence, PARTY_FULL_MESSAGE, uploadEvidence } from './evidence';
 import { instructorOverview, requestInstructorVerification } from './instructor';
 import { acceptInvitation, getInvitation, hashToken, INVITATION_DAYS, INVITATIONS_PER_ACCOUNT, INVITATIONS_PER_RELATIONSHIP, inviteTeacher, sendInvitation } from './invitations';
 import { lineageEgo, personProfile } from './lineage';
@@ -710,6 +711,27 @@ describe('arbitration', () => {
       ['in_arbitration', 'verified'],
     ]);
     expect((await auditsOf(relationshipId)).filter((a) => a.action === 'relationship.arbitration')).toHaveLength(2);
+  });
+
+  it('gives each party of a dispute its own 20 files: one side never fills the case for the other, nor learns what it sent', async () => {
+    const { student, teacher, relationshipId } = await verifiedLink('dispute-files');
+    const moderator = await staff('m10b-moderator-dispute-files', 'moderator');
+    const { caseId } = await arbitrateRelationship(moderator.principal, { relationshipId, reason: 'Fictional: a question about the years.', idempotencyKey: key() }, meta);
+    for (let i = 0; i < EVIDENCE_MAX_FILES_PER_CASE; i += 1) await upload(teacher, `dispute-teacher-${i}`, caseId);
+    // The teacher is at their limit, told only about their own files.
+    expect((await getPartyCase(teacher.principal, { id: caseId })).canAddFiles).toBe(false);
+    const full = await upload(teacher, 'dispute-teacher-extra', caseId).then(
+      () => null,
+      (e: unknown) => e as { code?: string; message?: string },
+    );
+    expect(full).toMatchObject({ code: 'CONFLICT', message: PARTY_FULL_MESSAGE });
+    // The student still sends evidence, and their page says nothing of the teacher's files.
+    const before = await getPartyCase(student.principal, { id: caseId });
+    expect(before).toMatchObject({ files: [], canAddFiles: true });
+    const file = await upload(student, 'dispute-student', caseId);
+    expect((await getPartyCase(student.principal, { id: caseId })).files.map((f) => f.id)).toEqual([file.id]);
+    // The moderator reviews both sides.
+    expect((await getReviewCase(moderator.principal, { id: caseId })).files).toHaveLength(EVIDENCE_MAX_FILES_PER_CASE + 1);
   });
 
   it('refuses a relationship that is not verified', async () => {

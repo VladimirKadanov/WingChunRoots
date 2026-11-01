@@ -7,8 +7,9 @@
 //   1. a signed-in account (401 otherwise);
 //   2. Content-Length is required (411) and at most 20 MB (413), checked BEFORE the body is read
 //      (DEFAULT D25: 20 MB per file); an empty file is refused (400);
-//   3. room for one more file: at most 20 per case (DEFAULT D25), and at most 20 unattached files
-//      uploaded in 24 hours by one account (the files of one claim being prepared);
+//   3. room for one more file: at most 20 per case (DEFAULT D25; in a relationship dispute 20 per
+//      party, so one side never fills the case for the other, M10b review, security-2), and at most
+//      20 unattached files uploaded in 24 hours by one account (the files of one claim being prepared);
 //   4. the body, read up to the declared length and never past 20 MB;
 //   5. the type from the magic bytes (JPEG, PNG, WebP, PDF; 415 otherwise), never the name or the
 //      client's Content-Type (../storage/sanitize.ts);
@@ -66,6 +67,8 @@ export const EVIDENCE_MAX_MB = EVIDENCE_MAX_BYTES / (1024 * 1024);
 export const TOO_LARGE_MESSAGE = `This file is larger than ${EVIDENCE_MAX_MB} MB. Upload a smaller copy, or split the document.`;
 export const WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPEG, PNG or WebP image or a PDF, whatever its name.';
 export const CASE_FULL_MESSAGE = `This claim already holds ${EVIDENCE_MAX_FILES_PER_CASE} files, the most a claim can have, so no more can be added to it.`;
+/** A party's own files in a dispute; never a word about the other party's (DEFAULT D19). */
+export const PARTY_FULL_MESSAGE = `You have added ${EVIDENCE_MAX_FILES_PER_CASE} files to this case, the most each party can add, so you cannot add more.`;
 export const UNATTACHED_FULL_MESSAGE = `You have uploaded ${EVIDENCE_MAX_FILES_PER_CASE} files today that are not part of a claim yet. Send the claim, or remove some of them, before you upload more.`;
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -294,13 +297,24 @@ async function ownOpenCase(db: Executor, userId: string, caseId: string, lock = 
   return { id: row.id, kind: row.kind, status: row.status as OpenCase['status'], assignedToUserId: row.assignedToUserId };
 }
 
-async function filesInCase(db: Executor, caseId: string): Promise<number> {
+/** The files in a case, or only those `uploadedBy` sent to it. */
+async function filesInCase(db: Executor, caseId: string, uploadedBy?: string): Promise<number> {
   const [row] = await db
     .select({ n: count() })
     .from(evidenceLink)
     .innerJoin(evidenceFile, and(eq(evidenceFile.id, evidenceLink.evidenceFileId), isNull(evidenceFile.deletedAt)))
-    .where(eq(evidenceLink.reviewCaseId, caseId));
+    .where(and(eq(evidenceLink.reviewCaseId, caseId), uploadedBy ? eq(evidenceFile.uploadedByUserId, uploadedBy) : undefined));
   return row?.n ?? 0;
+}
+
+/**
+ * Whether `userId` may add one more file to the open case. DEFAULT D25: at most 20 files in a case;
+ * in a relationship dispute each party has 20 of its own (M10b review, security-2), counted
+ * without the other party's files, which the party never learns about (DEFAULT D19).
+ */
+export async function caseHasRoom(db: Executor, c: { id: string; kind: string }, userId: string): Promise<boolean> {
+  const n = await filesInCase(db, c.id, c.kind === 'relationship_dispute' ? userId : undefined);
+  return n < EVIDENCE_MAX_FILES_PER_CASE;
 }
 
 /** The account's files that are in no claim yet, uploaded in the last UNATTACHED_WINDOW_HOURS. */
@@ -322,7 +336,7 @@ async function recentUnattached(db: Executor, userId: string): Promise<number> {
 async function checkRoom(db: Executor, userId: string, caseId: string | null, lock = false): Promise<OpenCase | null> {
   if (caseId) {
     const open = await ownOpenCase(db, userId, caseId, lock);
-    if ((await filesInCase(db, open.id)) >= EVIDENCE_MAX_FILES_PER_CASE) throw new ServiceError('CONFLICT', CASE_FULL_MESSAGE);
+    if (!(await caseHasRoom(db, open, userId))) throw new ServiceError('CONFLICT', open.kind === 'relationship_dispute' ? PARTY_FULL_MESSAGE : CASE_FULL_MESSAGE);
     return open;
   }
   if ((await recentUnattached(db, userId)) >= EVIDENCE_MAX_FILES_PER_CASE) throw new ServiceError('TOO_MANY_REQUESTS', UNATTACHED_FULL_MESSAGE);

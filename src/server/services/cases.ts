@@ -22,14 +22,13 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { person, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
-import { EVIDENCE_MAX_FILES_PER_CASE } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { NameData } from '../templates/email/types';
 import { CLAIM_STATUS_LABELS, REVIEW_KIND_LABELS, type ReviewCaseKind, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
-import { type EvidenceFileView, fileView, filesOfCases } from './evidence';
+import { caseHasRoom, type EvidenceFileView, fileView, filesOfCases } from './evidence';
 import { fieldErrors, idempotencyKey, keyReused, namesFor, rowById } from './relationships';
 import { type CaseRow, caseById, caseNotFound, caseReplayOf, isCaseKeyConflict, isOpenCase, partiesOf, recordCaseEvent, tellAssignee } from './review-core';
 
@@ -150,7 +149,8 @@ export async function getPartyCase(principal: Principal | null, raw: z.input<typ
   const refs = row ? await peopleRefs([row.teacherPersonId, row.studentPersonId]) : new Map<string, PersonRef>();
   const [record] = c.kind === 'person_claim' && c.personId ? await db.select({ stewardship: person.stewardship }).from(person).where(eq(person.id, c.personId)) : [];
   const open = isOpenCase(c.status);
-  const allFiles = (await filesOfCases(db, [c.id])).get(c.id)?.length ?? 0;
+  // In a dispute, room among this party's own files only: the other side's never show (DEFAULT D19).
+  const room = open && (await caseHasRoom(db, c, p.user.id));
   return {
     ...rowOf(c),
     role,
@@ -165,7 +165,7 @@ export async function getPartyCase(principal: Principal | null, raw: z.input<typ
     files: files.map((f) => fileView(f, true)),
     decision: c.resolution ? { resolution: c.resolution, reason: c.resolutionReason } : null,
     open,
-    canAddFiles: open && allFiles < EVIDENCE_MAX_FILES_PER_CASE,
+    canAddFiles: room,
   };
 }
 
