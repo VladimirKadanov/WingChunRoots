@@ -291,7 +291,7 @@ async function approveAsModerator(caseId: string, label: string) {
 
 /** A listed (active, public) school of a Pro Sifu, approved through the review. */
 async function listedSchool(sifu: Awaited<ReturnType<typeof sifuWithPlan>>, fields: Record<string, unknown>, label: string) {
-  const created = await createSchool(sifu.principal, { ...(fields as never), idempotencyKey: key() }, meta);
+  const created = await createSchool(sifu.principal, { ...fields, idempotencyKey: key() } as never, meta);
   const { caseId } = await submitSchool(sifu.principal, { id: created.id }, meta);
   await approveAsModerator(caseId, `${label}-mod`);
   return created;
