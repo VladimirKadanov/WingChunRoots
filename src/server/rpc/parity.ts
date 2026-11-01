@@ -54,4 +54,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/review/actions.ts#decideCaseAction': { rpc: ['review.decide'] },
   'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
   'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
+  // M11: schools and their listing.
+  'src/app/dashboard/schools/actions.ts#createSchoolAction': { rpc: ['schools.create'] },
+  'src/app/dashboard/schools/actions.ts#updateSchoolAction': { rpc: ['schools.update'] },
+  'src/app/dashboard/schools/actions.ts#submitSchoolAction': { rpc: ['schools.submit'] },
+  'src/app/dashboard/schools/actions.ts#confirmSchoolAction': { rpc: ['schools.confirm'] },
 };

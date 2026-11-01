@@ -91,6 +91,11 @@ export interface PlaceHit {
   countryCode: string;
 }
 
+/** A search hit with the city's centroid (GeoNames data, public): the centre of a school search. */
+export interface PlaceSearchHit extends PlaceHit {
+  point: { lat: number; lng: number };
+}
+
 export const PLACE_SEARCH_LIMIT = 8;
 
 /** LIKE pattern text: the folded forms carry no wildcard, but the escape keeps it so. */
@@ -100,7 +105,7 @@ const likeText = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
  * Cities whose name, in any of its spellings, matches the query: a whole name first, then the
  * start of a name, then anywhere in a name; the larger city first within each. Optional country.
  */
-export async function searchPlaces(db: Executor, query: string, countryCode: string | null = null, limit = PLACE_SEARCH_LIMIT): Promise<PlaceHit[]> {
+export async function searchPlaces(db: Executor, query: string, countryCode: string | null = null, limit = PLACE_SEARCH_LIMIT): Promise<PlaceSearchHit[]> {
   const forms = queryForms(query).map((f) => f.text).filter((t) => t.length > 0);
   if (forms.length === 0) return [];
   const score = sql.join(
@@ -113,14 +118,15 @@ export async function searchPlaces(db: Executor, query: string, countryCode: str
     ),
     sql`, `,
   );
-  const result = await db.execute<{ id: string; name: string; country_code: string }>(sql`
-    SELECT p.id, p.name, p.country_code
+  const result = await db.execute<{ id: string; name: string; country_code: string; lat: number; lng: number }>(sql`
+    SELECT p.id, p.name, p.country_code, ST_Y(p.centroid::geometry) AS lat, ST_X(p.centroid::geometry) AS lng
       FROM place p, LATERAL (SELECT greatest(${score}) AS rank) r
      WHERE (${sql.join(forms.map((f) => sql`p.search_text LIKE ${`%${likeText(f)}%`}`), sql` OR `)})
        AND r.rank > 0 AND (${countryCode}::text IS NULL OR p.country_code = ${countryCode})
      ORDER BY r.rank DESC, p.population DESC NULLS LAST, p.name, p.id
      LIMIT ${limit}`);
-  return result.rows.map((r) => ({ id: r.id, name: r.name, countryCode: r.country_code }));
+  const round4 = (n: number) => Math.round(Number(n) * 1e4) / 1e4;
+  return result.rows.map((r) => ({ id: r.id, name: r.name, countryCode: r.country_code, point: { lat: round4(r.lat), lng: round4(r.lng) } }));
 }
 
 /**

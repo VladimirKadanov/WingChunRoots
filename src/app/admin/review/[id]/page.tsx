@@ -26,6 +26,7 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { assignForm, DECIDE_FORM, NOTE_FORM } from '../form-ids';
 import { AssignForm, DecideForm, NoteForm } from '../forms';
+import { ListingSection } from '../listing';
 
 export const instant = false;
 
@@ -56,6 +57,14 @@ const DONE: Record<string, string> = {
   refused: 'The claim is refused. The student was told and can read your reason.',
   asked: 'Your question was sent to the student. The case waits for their answer.',
   noted: 'The note is added.',
+};
+
+/** M11: what a decision on a school listing did. */
+const LISTING_DONE: Record<string, string> = {
+  ...DONE,
+  verified: 'The listing is approved. The school is listed, its pin shows while the Sifu holds Professional Sifu, and the Sifu was told.',
+  refused: 'The listing is back in draft. The Sifu was told and can read your reason.',
+  asked: 'Your question was sent to the Sifu. The case waits for their answer.',
 };
 
 function Frame({ children }: { children: ReactNode }) {
@@ -119,7 +128,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(`${DECIDE_FORM}-reject`, query.outcome),
     readFormResult(`${DECIDE_FORM}-needs_info`, query.outcome),
   ]);
-  const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
+  const done = typeof query.done === 'string' ? (view.school ? LISTING_DONE : DONE)[query.done] : undefined;
   // New for every change (actions.ts doneAt): a new note mounts, so it takes the focus again.
   const doneKey = `${String(query.done)}-${String(query.n)}`;
   const rel = view.relationship;
@@ -182,6 +191,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
           </Section>
         ) : null}
 
+        {view.school ? <ListingSection school={view.school} reason={view.resolutionReason} /> : null}
+
+        {view.school ? null : (
         <Section id="evidence" title="Evidence">
           {view.files.length === 0 ? (
             <p className="text-ui text-fg-muted">No files.</p>
@@ -209,6 +221,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             <p className="max-w-[60ch] text-sm text-fg-muted">The files open for the reviewer the case is assigned to and for the administrators.</p>
           ) : null}
         </Section>
+        )}
 
         <Section id="actions" title="Decision">
           {view.decideNote ? (
@@ -227,9 +240,9 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} /> : null}
-            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} listing={!!view.school} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} listing={!!view.school} /> : null}
+            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} listing={!!view.school} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
             <p className="text-ui text-fg-muted">This case is closed.</p>

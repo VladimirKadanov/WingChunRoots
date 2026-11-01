@@ -119,13 +119,47 @@ const DECISIONS = {
   },
 } as const;
 
-/** One decision on a case: verify, refuse with a reason, or ask for more information. */
-export function DecideForm({ caseId, decision, idempotencyKey, initial }: { caseId: string; decision: keyof typeof DECISIONS; idempotencyKey: string; initial?: FormState | null }) {
+/** M11: the same decisions on a school listing (school-review.ts), in the listing's words. */
+type DecisionText = { label: string; pending: string; reason: string; hint: string; optional: boolean; variant: (typeof DECISIONS)[keyof typeof DECISIONS]['variant'] };
+const LISTING_DECISIONS: Record<keyof typeof DECISIONS, DecisionText> = {
+  verify: {
+    ...DECISIONS.verify,
+    label: 'Approve the listing',
+    pending: 'Approving…',
+    hint: 'Optional. Kept with the case for the reviewers; the Sifu is told the listing was approved.',
+  },
+  reject: {
+    ...DECISIONS.reject,
+    label: 'Return it to draft',
+    pending: 'Returning…',
+    hint: 'Required. The Sifu reads it on the school’s page in the dashboard. Neutral and specific: what to correct.',
+  },
+  needs_info: {
+    ...DECISIONS.needs_info,
+    reason: 'Question for the Sifu',
+    hint: 'Required. The Sifu reads it on the school’s page in the dashboard and sends the listing again.',
+  },
+};
+
+/** One decision on a case: verify, refuse with a reason, or ask for more information. `listing`: a school listing (M11). */
+export function DecideForm({
+  caseId,
+  decision,
+  idempotencyKey,
+  initial,
+  listing = false,
+}: {
+  caseId: string;
+  decision: keyof typeof DECISIONS;
+  idempotencyKey: string;
+  initial?: FormState | null;
+  listing?: boolean;
+}) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
   useFocusOnError(formId, state);
-  const text = DECISIONS[decision];
+  const text: DecisionText = (listing ? LISTING_DECISIONS : DECISIONS)[decision];
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
       {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}

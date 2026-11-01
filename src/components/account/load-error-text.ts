@@ -54,4 +54,17 @@ export const LOAD_ERRORS = {
     message: "We couldn't load your student requests. Nothing was changed.",
     back: { href: '/dashboard', label: 'Back to the dashboard' },
   },
+  // M11: the Sifu's schools.
+  schools: {
+    eyebrow: 'Dashboard',
+    title: 'Your schools',
+    message: "We couldn't load your schools. Nothing was changed.",
+    back: { href: '/dashboard', label: 'Back to the dashboard' },
+  },
+  school: {
+    eyebrow: 'Your schools',
+    title: 'Your school',
+    message: "We couldn't load this school. Nothing was changed.",
+    back: { href: '/dashboard/schools', label: 'Back to your schools' },
+  },
 } as const;

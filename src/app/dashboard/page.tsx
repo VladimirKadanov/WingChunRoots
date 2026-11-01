@@ -206,7 +206,7 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
       <Section id="schools" title="My schools">
         {schools.length === 0 ? (
           <Empty testId="empty-schools">
-            No school lists you as an instructor yet. Schools and the map open later in the pilot; a school that lists you then appears here.
+            No school lists you as an instructor yet. List your school, or ask its head instructor to add you; it appears here.
           </Empty>
         ) : (
           <ul data-testid="schools" className="grid">
@@ -224,6 +224,12 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
             ))}
           </ul>
         )}
+        <p>
+          <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })} data-testid="manage-schools">
+            {schools.length === 0 ? 'List a school' : 'Manage your schools'}
+            <ArrowRightIcon />
+          </Link>
+        </p>
       </Section>
     </>
   );

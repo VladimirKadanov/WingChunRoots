@@ -899,13 +899,12 @@ test('@M00b the Lineage tab is current on the explorer page once the page has hy
   await expect(links.filter({ hasText: 'Explore' })).not.toHaveAttribute('aria-current', 'page');
 });
 
-// The "not drawn yet" placeholder of a tab whose page is not built (Schools until M11): the
-// prerendered not-found page does not know its address, so the tab becomes current only once the
-// page has hydrated (NavList, src/components/shell/nav-links.tsx).
-test('@M00b the Schools tab is current on its placeholder page once the page has hydrated', async ({ page }) => {
+// Until M11 /schools was the "not drawn yet" page (404); since M11 it is the school finder (200),
+// and the Schools tab is current there in the same way.
+test('@M00b the Schools tab is current on the school finder once the page has hydrated', async ({ page }) => {
   const response = await page.goto('/schools');
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole('heading', { level: 1, name: 'This page is not drawn yet' })).toBeVisible();
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1, name: 'Find a school' })).toBeVisible();
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Schools' })).toHaveAttribute('aria-current', 'page');
   for (const other of ['Explore', 'Lineage', 'Me']) {

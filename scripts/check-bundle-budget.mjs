@@ -19,6 +19,10 @@
 // M05) are in no count; the script checks that on the built chunks too: the chunks that carry the
 // library are named only by a worker's chunk list, never by a page or by anything a page loads.
 //
+// The libraries that load only after a page, with next/dynamic (MapLibre, in the school map's
+// islands: milestone M11), are in no count either; the script checks that no page loads a chunk
+// that carries them with its first JavaScript.
+//
 // 1 kB = 1000 bytes; gzip at the zlib default level, as a server would send it.
 //
 // DEFAULT D24: the budgets of plan §5.8 until the owner confirms the performance targets.
@@ -51,6 +55,11 @@ export const ROUTE_BUDGETS = {
   // loads after it with next/dynamic and ELK (434 kB) only in the layout worker, so neither is in
   // this count.
   '/explore': 200 * KB,
+  // M11, ADR 0013: the school finder (159.6 kB measured: the shell, the router, the finder island
+  // with the list); MapLibre (about 286 kB) and the bottom sheet load after it with next/dynamic,
+  // so neither is in this count (LAZY_ONLY below checks that). The default budget, named here so
+  // that a change to the default cannot move it unnoticed.
+  '/schools': 170 * KB,
 };
 
 /**
@@ -257,6 +266,36 @@ export function checkWorkerOnly(dir, loaded, libraries = WORKER_ONLY) {
   return { libraries: found, errors };
 }
 
+/**
+ * Libraries that load only after a page (import(), next/dynamic), never with its first JavaScript,
+ * found in the build by a string only their code carries: MapLibre GL JS, in the school map's
+ * islands (src/components/map; milestone M11).
+ */
+export const LAZY_ONLY = [{ name: 'MapLibre', signature: 'maplibregl-canvas-container' }];
+
+/**
+ * Checks that every library of `libraries` is in the build and that no chunk carrying it is one a
+ * page loads initially (`loaded`): it may only be asked for later.
+ */
+export function checkLazyOnly(dir, loaded, libraries = LAZY_ONLY) {
+  const scripts = filesUnder(path.join(dir, 'static'))
+    .filter((file) => file.endsWith('.js'))
+    .map((file) => path.relative(dir, file).split(path.sep).join('/'));
+  const initial = new Set(loaded);
+  const found = [];
+  const errors = [];
+  for (const library of libraries) {
+    const chunks = scripts.filter((file) => readFileSync(path.join(dir, file), 'utf8').includes(library.signature));
+    if (chunks.length === 0) errors.push(`${library.name}: no built script carries its signature "${library.signature}"`);
+    for (const chunk of chunks) {
+      if (initial.has(chunk)) errors.push(`${library.name} (${chunk}) loads with a page: it must load only after it (next/dynamic)`);
+    }
+    const bytes = chunks.reduce((sum, chunk) => sum + gzipSync(readFileSync(path.join(dir, chunk))).length, 0);
+    found.push({ name: library.name, chunks, bytes });
+  }
+  return { libraries: found, errors };
+}
+
 const kb = (bytes) => `${(bytes / KB).toFixed(1)} kB`;
 
 function main() {
@@ -273,6 +312,8 @@ function main() {
   const { results, errors, loaded } = checkBudgets(dir);
   const workerOnly = checkWorkerOnly(dir, loaded);
   errors.push(...workerOnly.errors);
+  const lazyOnly = checkLazyOnly(dir, loaded);
+  errors.push(...lazyOnly.errors);
   console.log('Initial JavaScript per route (gzip):');
   for (const r of results) {
     const crossCheck = r.checked > 0 ? `${r.checked} cross-checked against the prerendered output` : 'nothing prerendered to cross-check';
@@ -282,8 +323,12 @@ function main() {
   for (const library of workerOnly.libraries) {
     console.log(`  ${library.name.padEnd(29)} ${kb(library.bytes).padStart(9)}  (${library.chunks.join(', ') || 'not found'})`);
   }
+  console.log('Only after a page (next/dynamic), in no count (gzip):');
+  for (const library of lazyOnly.libraries) {
+    console.log(`  ${library.name.padEnd(29)} ${kb(library.bytes).padStart(9)}  (${library.chunks.join(', ') || 'not found'})`);
+  }
   const json = option('--json');
-  if (json) writeFileSync(json, `${JSON.stringify({ results, workerOnly: workerOnly.libraries, errors }, null, 2)}\n`);
+  if (json) writeFileSync(json, `${JSON.stringify({ results, workerOnly: workerOnly.libraries, lazyOnly: lazyOnly.libraries, errors }, null, 2)}\n`);
   for (const error of errors) console.error(`check-bundle-budget: ${error}`);
   const over = results.filter((r) => !r.ok);
   if (over.length || errors.length) {

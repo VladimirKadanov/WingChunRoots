@@ -71,7 +71,7 @@ import { profileGet, profileUpdate, profileUpdateInput } from '../services/profi
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
 import { searchInput, searchQuery } from '../services/search';
 import { searchResultSchema } from '../dto/search';
-import { placeSearchSchema, schoolPageSchema, schoolSearchSchema } from '../dto/schools';
+import { placeSearchSchema, schoolPageSchema, schoolSearchSchema, schoolSitemapSchema } from '../dto/schools';
 import {
   confirmSchool,
   createSchool,
@@ -80,7 +80,9 @@ import {
   placesSearch,
   schoolCreateInput,
   schoolEditor,
+  schoolEditorInput,
   schoolGet,
+  schoolSitemap,
   schoolIdInput,
   schoolSearchInput,
   schoolSlugInput,
@@ -425,16 +427,21 @@ export const router = {
       .input(schoolSlugInput)
       .output(schoolPageSchema)
       .handler(({ context, input }) => schoolGet(context.principal, input)),
+    sitemap: base
+      .route({ method: 'GET', path: '/sitemap/schools', summary: 'The addresses of the public schools and when each last changed (the sitemap)' })
+      .output(schoolSitemapSchema)
+      .handler(() => schoolSitemap()),
     mine: base
       .route({ method: 'GET', path: '/schools/mine', summary: 'The schools the signed-in account listed, with their status and whether the pin shows' })
       .handler(({ context }) => mySchools(context.principal)),
     edit: base
-      .route({ method: 'GET', path: '/schools/mine/{id}', summary: "One of the account's own schools for the editor, with the review state and the upgrade offer" })
-      .input(schoolIdInput)
+      .route({ method: 'GET', path: '/schools/mine/{id}', summary: "One of the account's own schools for the editor, with the review state, the upgrade offer and the cities (optionally those matching `city`)" })
+      .input(schoolIdInput.extend({ city: schoolEditorInput.shape.city }))
       .handler(({ context, input }) => schoolEditor(context.principal, input)),
     options: base
-      .route({ method: 'GET', path: '/schools/mine/new', summary: 'What the form for a new school offers: instructors, forms, and whether a pin can be sent for review' })
-      .handler(({ context }) => schoolEditor(context.principal, {})),
+      .route({ method: 'GET', path: '/schools/mine/new', summary: 'What the form for a new school offers: cities (optionally those matching `city`), instructors, forms, and whether a pin can be sent for review' })
+      .input(schoolEditorInput.pick({ city: true }).optional())
+      .handler(({ context, input }) => schoolEditor(context.principal, { city: input?.city })),
     create: signedIn
       .route({ method: 'POST', path: '/schools/create', summary: 'List a new school as a draft (a Sifu with a profile; the head instructor); only you see it' })
       .input(schoolCreateInput)

@@ -68,7 +68,8 @@ import {
 } from '../dto/schools';
 import { type Executor, requireEntitlement } from '../entitlements/access';
 import { feature, upgradeBenefits } from '../entitlements/plans';
-import { searchPlaces } from '../geo/places';
+import { LISTED_PLACE_MIN_POPULATION, type PlaceSearchHit, searchPlaces } from '../geo/places';
+import { DEFAULT_RADIUS_KM, MAX_RADIUS_KM } from '../../lib/school-finder';
 import type { RequestMeta } from './context';
 import type { UpgradeOffer } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
@@ -78,10 +79,9 @@ import { idempotencyKey } from './relationships';
 
 // --- Constants ---------------------------------------------------------------------------------
 
-/** The radius choices of the finder, in kilometres; any whole number up to MAX_RADIUS_KM is accepted. */
-export const RADIUS_CHOICES_KM = [10, 25, 50, 100, 250] as const;
-export const DEFAULT_RADIUS_KM = 50;
-export const MAX_RADIUS_KM = 500;
+// The radius choices (any whole number up to MAX_RADIUS_KM is accepted) live with the finder's
+// address state (src/lib/school-finder.ts), which the map island shares.
+export { DEFAULT_RADIUS_KM, MAX_RADIUS_KM, RADIUS_CHOICES_KM } from '../../lib/school-finder';
 /** At most this many schools in one answer (the nearest; `total` counts them all). */
 export const SCHOOL_RESULT_LIMIT = 200;
 /** A dropped pin must lie within this distance of the chosen city's centroid. */
@@ -527,6 +527,11 @@ export interface SchoolEditorView {
     pin: PinState;
     lastActivityAt: string;
   } | null;
+  /**
+   * The cities the form offers: the matches of `city` (the editor's "Find a city or town"), the
+   * school's own city, then the large cities (LISTED_PLACE_MIN_POPULATION and over), by country.
+   */
+  places: (PlaceSearchHit & { found: boolean })[];
   /** The people who can be listed as instructors: you (head instructor) and your confirmed students. */
   instructorOptions: { id: string; label: string; self: boolean }[];
   forms: { key: string; label: string }[];
@@ -717,18 +722,45 @@ async function reviewOf(db: Executor, schoolId: string): Promise<SchoolEditorVie
   return { status: c.status, statusLabel, question: c.status === 'needs_info' ? c.question : null, reason: c.resolution === 'rejected' ? c.resolution_reason : null };
 }
 
+/** The editor's own input: the school (none for a new one) and the city search. */
+export const schoolEditorInput = z.object({
+  id: z.uuid({ error: NO_SCHOOL }).nullish(),
+  city: z
+    .string()
+    .max(100)
+    .transform((s) => s.normalize('NFC').trim())
+    .nullish(),
+});
+
+/** The cities of the editor (SchoolEditorView.places): found, the school's own, then the large ones. */
+async function editorPlaces(db: Executor, currentPlaceId: string | null, query: string | null | undefined): Promise<SchoolEditorView['places']> {
+  const found = query ? await searchPlaces(db, query, null, 20) : [];
+  const listed = await db.execute<{ id: string; name: string; country_code: string; lat: number; lng: number }>(sql`
+    SELECT p.id, p.name, p.country_code, ST_Y(p.centroid::geometry) AS lat, ST_X(p.centroid::geometry) AS lng
+      FROM place p
+     WHERE p.population >= ${LISTED_PLACE_MIN_POPULATION} OR p.id = ${currentPlaceId}::uuid
+     ORDER BY p.id = ${currentPlaceId}::uuid DESC, p.country_code, p.name, p.id`);
+  const seen = new Set(found.map((f) => f.id));
+  return [
+    ...found.map((f) => ({ ...f, found: true })),
+    ...listed.rows
+      .filter((r) => !seen.has(r.id))
+      .map((r) => ({ id: r.id, name: r.name, countryCode: r.country_code, point: { lat: Math.round(Number(r.lat) * 1e4) / 1e4, lng: Math.round(Number(r.lng) * 1e4) / 1e4 }, found: false })),
+  ];
+}
+
 /** schools.edit: one of the account's schools for the editor, or (id omitted) what a new one offers. */
-export async function schoolEditor(principal: Principal | null, raw: { id?: string | null } = {}): Promise<SchoolEditorView> {
+export async function schoolEditor(principal: Principal | null, raw: z.input<typeof schoolEditorInput> = {}): Promise<SchoolEditorView> {
   const p = requireUser(principal);
   const db = getDb();
   const ownId = await ownPersonId(db, p.user.id);
   if (!ownId) throw new ServiceError('CONFLICT', 'Set up your profile first: you are the head instructor of the schools you list.');
+  const parsed = schoolEditorInput.safeParse(raw);
+  if (!parsed.success) throw notFound();
   const forms = SCHOOL_FORMS.map((key) => ({ key, label: SCHOOL_FORM_LABELS[key] }));
   const options = await instructorOptions(db, ownId);
   const offer = await pinOffer(db, p.user.id);
-  if (!raw.id) return { school: null, instructorOptions: options, forms, review: null, ...offer };
-  const parsed = schoolIdInput.safeParse(raw);
-  if (!parsed.success) throw notFound();
+  if (!parsed.data.id) return { school: null, places: await editorPlaces(db, null, parsed.data.city), instructorOptions: options, forms, review: null, ...offer };
   const row = await ownedSchool(db, p.user.id, parsed.data.id);
   if (!row) throw notFound();
   const [city] = await db
@@ -762,6 +794,7 @@ export async function schoolEditor(principal: Principal | null, raw: { id?: stri
       pin: pinState(row.status, shown.has(row.id)),
       lastActivityAt: row.lastActivityAt.toISOString(),
     },
+    places: await editorPlaces(db, row.placeId, parsed.data.city),
     instructorOptions: options,
     forms,
     review: await reviewOf(db, row.id),

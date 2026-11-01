@@ -92,7 +92,8 @@ export type SchoolPageDto = z.infer<typeof schoolPageSchema>;
 export const schoolSitemapSchema = z.array(z.object({ slug: z.string(), updatedAt: z.string() }));
 export type SchoolSitemapDto = z.infer<typeof schoolSitemapSchema>;
 
-export const placeHitSchema = z.object({ id: z.uuid(), name: z.string(), countryCode: z.string() });
+/** A city from the GeoNames extract: its English name, country and centroid (public data). */
+export const placeHitSchema = z.object({ id: z.uuid(), name: z.string(), countryCode: z.string(), point: geoPointSchema });
 export const placeSearchSchema = z.object({ places: z.array(placeHitSchema) });
 export type PlaceSearchDto = z.infer<typeof placeSearchSchema>;
 
