@@ -39,9 +39,14 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 /**
  * The finder's frame: the dynamic viewport between the shell's top bar and its tab bar (phones),
- * the whole height beside the rail (desktop), as the explorer's (src/app/explore/page.tsx).
+ * the whole height beside the rail (desktop), as the explorer's (src/app/explore/page.tsx). With
+ * large text or browser zoom the filters grow taller than the frame can spare: the map keeps at
+ * least MAP_MIN of the window and the frame scrolls, so no control is covered or lost (WCAG 1.4.4,
+ * 1.4.10; review screens-3). At the usual sizes everything fits and nothing scrolls.
  */
-const FRAME = 'h-[calc(100dvh-var(--top-h)-1px-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] md:h-dvh';
+const FRAME = 'h-[calc(100dvh-var(--top-h)-1px-env(safe-area-inset-top,0px)-var(--page-clear-bottom))] overflow-y-auto md:h-dvh';
+/** The least height of the map (and the list beside it) in the frame: half the smallest viewport. */
+const MAP_MIN = 'min-h-[50svh]';
 
 /** The note that a distance without a place limits nothing (the Distance select points to it). */
 const DISTANCE_NOTE = 'school-distance-note';
@@ -62,71 +67,77 @@ function lineageOptions(lineages: { name: string; root: { id: string } }[]): Lin
 }
 
 function Filters({ params, lineages, compact, distanceNote }: { params: FinderParams; lineages: LineageOption[]; compact: boolean; distanceNote?: string }) {
-  // Below 1024 px in the map view the select labels are for screen readers only (their options say
-  // "Within 50 km" and "All lineages"): the map keeps its room. The place field keeps its label.
-  const selectLabel = compact ? 'max-lg:sr-only' : '';
+  // Distance and Lineage sit side by side from a width of 21rem (in rem, so it follows the text
+  // size: each select then has room for "Within 250 km"); narrower, or with larger text, they stack
+  // one per row, so no value is cut (review screens-3). Below 1024 px in the map view, while they
+  // sit side by side, their labels are for screen readers only (their options say "Within 50 km"
+  // and "All lineages"): the map keeps its room. Stacked, the labels show. The place field always
+  // keeps its label.
+  const selectLabel = compact ? 'max-lg:@min-[21rem]/filters:sr-only' : '';
   return (
-    <form method="get" action="/schools" role="search" aria-label="Find a school" className="grid grid-cols-2 items-end gap-x-3 gap-y-2 lg:flex lg:flex-wrap">
-      {params.view === 'list' ? <input type="hidden" name="view" value="list" /> : null}
-      <div className="col-span-2 grid gap-1.5 lg:w-72">
-        <label htmlFor="school-near" className="text-sm font-semibold">
-          Near
-        </label>
-        <div className="flex gap-2">
-          <input
-            id="school-near"
-            name="near"
-            type="search"
-            defaultValue={params.near ?? ''}
-            placeholder="City or town"
-            autoComplete="address-level2"
-            maxLength={100}
-            enterKeyHint="search"
-            className={fieldClass}
-          />
-          <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12 shrink-0 lg:hidden')}>
-            <SearchIcon size={18} />
-            <span className="sr-only">Search</span>
-          </button>
+    <div className="@container/filters">
+      <form method="get" action="/schools" role="search" aria-label="Find a school" className="grid grid-cols-1 items-end gap-x-3 gap-y-2 @min-[21rem]/filters:grid-cols-2 lg:flex lg:flex-wrap">
+        {params.view === 'list' ? <input type="hidden" name="view" value="list" /> : null}
+        <div className="col-span-full grid gap-1.5 lg:w-72">
+          <label htmlFor="school-near" className="text-sm font-semibold">
+            Near
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="school-near"
+              name="near"
+              type="search"
+              defaultValue={params.near ?? ''}
+              placeholder="City or town"
+              autoComplete="address-level2"
+              maxLength={100}
+              enterKeyHint="search"
+              className={fieldClass}
+            />
+            <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12 shrink-0 lg:hidden')}>
+              <SearchIcon size={18} />
+              <span className="sr-only">Search</span>
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="grid gap-1.5 lg:w-44">
-        <label htmlFor="school-radius" className={cx('text-sm font-semibold', selectLabel)}>
-          Distance
-        </label>
-        <div className="relative">
-          <select id="school-radius" name="radius" defaultValue={String(params.radius ?? DEFAULT_RADIUS_KM)} aria-describedby={distanceNote} className={selectClass}>
-            {RADIUS_CHOICES_KM.map((km) => (
-              <option key={km} value={km}>
-                Within {km} km
-              </option>
-            ))}
-            {params.radius !== null && !(RADIUS_CHOICES_KM as readonly number[]).includes(params.radius) ? <option value={params.radius}>Within {params.radius} km</option> : null}
-          </select>
-          <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+        <div className="grid gap-1.5 lg:w-44">
+          <label htmlFor="school-radius" className={cx('text-sm font-semibold', selectLabel)}>
+            Distance
+          </label>
+          <div className="relative">
+            <select id="school-radius" name="radius" defaultValue={String(params.radius ?? DEFAULT_RADIUS_KM)} aria-describedby={distanceNote} className={selectClass}>
+              {RADIUS_CHOICES_KM.map((km) => (
+                <option key={km} value={km}>
+                  Within {km} km
+                </option>
+              ))}
+              {params.radius !== null && !(RADIUS_CHOICES_KM as readonly number[]).includes(params.radius) ? <option value={params.radius}>Within {params.radius} km</option> : null}
+            </select>
+            <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+          </div>
         </div>
-      </div>
-      <div className="grid gap-1.5 lg:w-64">
-        <label htmlFor="school-lineage" className={cx('text-sm font-semibold', selectLabel)}>
-          Lineage
-        </label>
-        <div className="relative">
-          <select id="school-lineage" name="lineage" defaultValue={params.lineage ?? ''} className={selectClass}>
-            <option value="">All lineages</option>
-            {lineages.map((l) => (
-              <option key={l.rootId} value={l.rootId}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+        <div className="grid gap-1.5 lg:w-64">
+          <label htmlFor="school-lineage" className={cx('text-sm font-semibold', selectLabel)}>
+            Lineage
+          </label>
+          <div className="relative">
+            <select id="school-lineage" name="lineage" defaultValue={params.lineage ?? ''} className={selectClass}>
+              <option value="">All lineages</option>
+              {lineages.map((l) => (
+                <option key={l.rootId} value={l.rootId}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+          </div>
         </div>
-      </div>
-      <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12 max-lg:hidden')}>
-        <SearchIcon size={18} />
-        Search
-      </button>
-    </form>
+        <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12 max-lg:hidden')}>
+          <SearchIcon size={18} />
+          Search
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -260,14 +271,16 @@ export default async function SchoolsPage({ searchParams }: Props) {
         {notice}
       </header>
       {result ? (
-        <Finder
-          schools={result.schools}
-          summary={summary}
-          styles={mapStyles()}
-          initial={{ view: initialView, bounds: center && radiusKm ? circleBounds(center, radiusKm) : null }}
-          search={{ center, radiusKm, lineage: params.lineage }}
-          listHref={listHref}
-        />
+        <div className={cx(MAP_MIN, 'flex flex-1 flex-col')}>
+          <Finder
+            schools={result.schools}
+            summary={summary}
+            styles={mapStyles()}
+            initial={{ view: initialView, bounds: center && radiusKm ? circleBounds(center, radiusKm) : null }}
+            search={{ center, radiusKm, lineage: params.lineage }}
+            listHref={listHref}
+          />
+        </div>
       ) : (
         failed
       )}

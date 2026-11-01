@@ -90,9 +90,12 @@ function subscribeSheet(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   window.addEventListener('resize', onChange);
+  // The page's frame scrolls with large text (src/app/schools/page.tsx): the map moves under the sheet.
+  window.addEventListener('scroll', onChange, { capture: true, passive: true });
   return () => {
     observer.disconnect();
     window.removeEventListener('resize', onChange);
+    window.removeEventListener('scroll', onChange, { capture: true });
   };
 }
 
@@ -248,16 +251,19 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
                 </button>
               </div>
             ) : null}
-            {/* Below 1024 px with the sheet closed: the summary, which opens the list. */}
+            {/* Below 1024 px with the sheet closed: the summary, which opens the list. When the two
+                do not fit on one line (a long summary, large text) "Show the list" wraps below the
+                summary, which keeps to two lines (the sheet's title has it whole), so the button
+                stays low on the map (review screens-3). */}
             <div className={cx('pointer-events-none absolute inset-x-0 bottom-3 justify-center px-3 lg:hidden', sheetOpen ? 'hidden' : 'flex')}>
               <button
                 ref={showList}
                 type="button"
                 onClick={() => setSheetOpen(true)}
-                className="pointer-events-auto flex min-h-11 max-w-full items-center gap-2 rounded-md border border-border-strong bg-surface-2 px-4 py-2 text-left text-sm font-semibold shadow-sheet"
+                className="pointer-events-auto flex min-h-11 max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-border-strong bg-surface-2 px-4 py-2 text-left text-sm font-semibold shadow-sheet"
                 data-testid="show-list"
               >
-                <span className="[overflow-wrap:anywhere]">{summary}</span>
+                <span className="line-clamp-2 min-w-0 [overflow-wrap:break-word]">{summary}</span>
                 <span className="shrink-0 text-fg-muted underline underline-offset-2">Show the list</span>
               </button>
             </div>

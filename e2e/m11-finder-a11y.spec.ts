@@ -108,6 +108,67 @@ async function leftBar(page: Page, row: Locator): Promise<number> {
 
 // --- The tests ---------------------------------------------------------------------------------
 
+test('@M11 with text at 150% and 200% the map view of /schools keeps every filter readable and reachable, and the map and its summary clear of them', async ({ page }) => {
+  for (const size of ['150%', '200%']) {
+    const tab = await page.context().newPage();
+    try {
+      // As a phone's text-size setting does: before the first layout (src/app/layout.tsx keeps
+      // text-size-adjust at 100%, so the page's own size is the one that grows).
+      await tab.addInitScript((value) => document.addEventListener('DOMContentLoaded', () => document.documentElement.style.setProperty('font-size', value)), size);
+      await tab.goto('/schools?near=Sofia&radius=50');
+      await mapSettled(tab);
+      const form = finderSearch(tab);
+      const at = `at ${size} text`;
+
+      // Each select shows its whole value, under a label that is shown (not for screen readers only).
+      for (const name of ['Distance', 'Lineage']) {
+        const select = form.getByLabel(name);
+        const shown = await selectText(select);
+        expect(shown.fits, `${name} ("${shown.text}") is not cut ${at}`).toBe(true);
+        const label = (await form.locator('label', { hasText: name }).boundingBox())!;
+        expect(label.width > 20 && label.height > 10, `the label "${name}" is shown ${at}`).toBe(true);
+      }
+
+      // Every control is reachable: scrolled into view, nothing covers it.
+      const controls: [string, Locator][] = [
+        ['Map', visible(tab.getByTestId('view-map'))],
+        ['List', visible(tab.getByTestId('view-list'))],
+        ['Near', form.getByLabel('Near')],
+        ['Search', visible(form.getByRole('button', { name: 'Search' }))],
+        ['Distance', form.getByLabel('Distance')],
+        ['Lineage', form.getByLabel('Lineage')],
+      ];
+      if (await narrow(tab)) controls.push(['Show the list', tab.getByTestId('show-list')]);
+      for (const [name, control] of controls) {
+        expect(await reachable(control), `"${name}" is reachable and uncovered ${at}`).toBe(true);
+      }
+
+      // The map keeps a usable height; the page never scrolls sideways.
+      const frame = (await tab.getByTestId('school-map-frame').boundingBox())!;
+      expect(frame.height, `the map's height ${at}`).toBeGreaterThanOrEqual(200);
+      const sideways = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(sideways, `sideways scroll ${at}`).toBeLessThanOrEqual(0);
+
+      // On the phone: the summary that opens the list stays on the map, clear of the filters, with
+      // "Show the list" in it whole.
+      if (await narrow(tab)) {
+        const showList = tab.getByTestId('show-list');
+        await showList.scrollIntoViewIfNeeded();
+        const button = (await showList.boundingBox())!;
+        const map = (await tab.getByTestId('school-map-frame').boundingBox())!;
+        expect(inside(button, map), `the summary button lies within the map ${at}`).toBe(true);
+        expect(inside((await showList.getByText('Show the list').boundingBox())!, button), `"Show the list" is whole ${at}`).toBe(true);
+        for (const name of ['Distance', 'Lineage']) {
+          expect(overlaps(button, (await form.getByLabel(name).boundingBox())!), `the summary button is clear of ${name} ${at}`).toBe(false);
+        }
+        await expect(showList).toContainText('1 school within 50 km of Sofia');
+      }
+    } finally {
+      await tab.close();
+    }
+  }
+});
+
 test('@M11 a distance chosen without a place says that it limits nothing, in the list and the map view', async ({ page }) => {
   const note = page.getByTestId('distance-unused');
   for (const view of ['list', 'map'] as const) {
