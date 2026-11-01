@@ -163,8 +163,10 @@ services:
       db-bootstrap:
         condition: service_completed_successfully
     environment:
-      # init-env.sh generates hex passwords, which a URL carries as they are.
-      DATABASE_URL: postgres://migrator:${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is not set; run scripts/init-env.sh to create .env}@postgres:5432/wingchunroots
+      # The password stays out of the URL (any characters work): db:migrate adds
+      # DB_MIGRATOR_PASSWORD, URL-encoded, to a migrator URL without one (src/server/db/env.ts).
+      DATABASE_URL: postgres://migrator@postgres:5432/wingchunroots
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is not set; run scripts/init-env.sh to create .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     restart: "no"
 
@@ -185,7 +187,15 @@ services:
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"
     volumes:
-      - ./backups:/backups:ro
+      # The folder scripts/backup-local.sh writes: BACKUP_DIR from .env (relative to the repository,
+      # like the script), else backups/. Long syntax, so that a relative path without ./ is a
+      # folder, not a named volume.
+      - type: bind
+        source: ${BACKUP_DIR:-./backups}
+        target: /backups
+        read_only: true
+        bind:
+          create_host_path: true
     healthcheck:
       # /healthz answers only {"ok":true} (200) or {"ok":false} (503).
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]

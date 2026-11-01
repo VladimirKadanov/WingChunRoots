@@ -123,6 +123,10 @@ check "backup-local.sh: pg_dump -Fc, a dated name, a SHA-256 file, 14 kept, opti
   f=scripts/backup-local.sh
   grep -q "pg_dump --format=custom" "$f" && grep -q "date -u +%Y%m%dT%H%M%SZ" "$f" && grep -q "\.sha256" "$f" &&
   grep -q "BACKUP_KEEP:-14" "$f" && grep -q "evidence-objects.ts copy" "$f" && grep -q "umask 077" "$f"'
+check "the drill keeps its pg_restore log private (umask 077, mktemp, removed on exit) and prints no DETAIL or CONTEXT" bash -c '
+  f=scripts/restore-drill.sh
+  grep -q "umask 077 && mktemp" "$f" && grep -q "rm -f \"\$restore_log\"" "$f" &&
+  grep -qF "(DETAIL|CONTEXT|HINT|LINE [0-9]+|Command was):" "$f" && ! grep -qF "wcr-drill-\$\$" "$f"'
 check "backups/ is outside git (only its .gitkeep is tracked)" bash -c '
   git check-ignore -q backups/wingchunroots-20261101T020000Z.dump && git check-ignore -q backups/objects/x/evidence/y &&
   [ -z "$(git ls-files backups | grep -vx backups/.gitkeep)" ]'
@@ -162,8 +166,12 @@ check "the profile app: one web replica on 127.0.0.1:3000 with a /healthz health
   f=docker-compose.yml
   grep -q "^x-app: &app" "$f" && grep -q "profiles: \[app\]" "$f" && grep -q "command: \[\"migrate\"\]" "$f" &&
   grep -q "command: \[\"web\"\]" "$f" && grep -q "command: \[\"worker\"\]" "$f" &&
-  grep -q "DATABASE_URL: postgres://migrator:" "$f" && grep -q "condition: service_completed_successfully" "$f" &&
-  grep -q "\"127.0.0.1:\${APP_PORT:-3000}:3000\"" "$f" && grep -q "/healthz" "$f" && grep -q "./backups:/backups:ro" "$f" &&
+  grep -q "DATABASE_URL: postgres://migrator@postgres:5432/wingchunroots" "$f" && ! grep -q "migrator:\${" "$f" &&
+  sed -n "/^  migrate:/,/^  web:/p" "$f" | grep -q "DB_MIGRATOR_PASSWORD: \${DB_MIGRATOR_PASSWORD:?" &&
+  grep -q "migratorUrl(targetDatabaseUrl())" src/server/db/cli.ts && grep -q "condition: service_completed_successfully" "$f" &&
+  grep -q "\"127.0.0.1:\${APP_PORT:-3000}:3000\"" "$f" && grep -q "/healthz" "$f" &&
+  grep -q "source: \${BACKUP_DIR:-./backups}" "$f" && grep -A2 "source: \${BACKUP_DIR:-./backups}" "$f" | grep -q "target: /backups" &&
+  grep -A3 "source: \${BACKUP_DIR:-./backups}" "$f" | grep -q "read_only: true" &&
   ! grep -qE "^\s+replicas:" "$f" && ! grep -qE "^\s+scale:" "$f"'
 
 # 5. CI (In scope 3, 4) ---------------------------------------------------------------------------
