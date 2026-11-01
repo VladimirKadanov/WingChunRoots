@@ -8,7 +8,7 @@
 //                   archive (scripts/backup-local.sh). Counts, queue names and times only: never a
 //                   job's payload, an address or a name (plan §6.4).
 
-import { count, eq, max, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 
 import { requestIdFrom } from '../audit';
 import { requireStaff2FA } from '../auth/guards';
@@ -102,25 +102,24 @@ export async function systemStatus(principal: Principal | null): Promise<SystemS
     queueCounts(db),
     recentFailedJobs(db),
     db
-      .select({ status: emailDelivery.status, n: count(), last: max(emailDelivery.lastAttemptAt) })
+      .select({
+        failed: sql<number>`count(*) FILTER (WHERE ${emailDelivery.status} = 'failed')`.mapWith(Number),
+        waiting: sql<number>`count(*) FILTER (WHERE ${emailDelivery.status} = 'queued')`.mapWith(Number),
+        lastFailedAt: sql<Date | string | null>`max(${emailDelivery.lastAttemptAt}) FILTER (WHERE ${emailDelivery.status} = 'failed')`,
+      })
       .from(emailDelivery)
-      .where(eq(emailDelivery.status, 'failed'))
-      .groupBy(emailDelivery.status)
-      .union(
-        db.select({ status: emailDelivery.status, n: count(), last: max(emailDelivery.lastAttemptAt) }).from(emailDelivery).where(eq(emailDelivery.status, 'queued')).groupBy(emailDelivery.status),
-      ),
+      .where(inArray(emailDelivery.status, ['failed', 'queued'])),
     backupSummary(backupDir(), databaseName(targetDatabaseUrl())),
   ]);
   const sum = (key: 'waiting' | 'ready' | 'active' | 'failed') => queues.reduce((total, q) => total + q[key], 0);
-  const failedEmail = emails.find((row) => row.status === 'failed');
-  const queuedEmail = emails.find((row) => row.status === 'queued');
+  const email = emails[0];
   return {
     checkedAt: new Date().toISOString(),
     queue: { waiting: sum('waiting'), ready: sum('ready'), active: sum('active'), failed: sum('failed'), queues, recentFailures },
     email: {
-      failed: Number(failedEmail?.n ?? 0),
-      waiting: Number(queuedEmail?.n ?? 0),
-      lastFailedAt: failedEmail?.last ? new Date(failedEmail.last).toISOString() : null,
+      failed: Number(email?.failed ?? 0),
+      waiting: Number(email?.waiting ?? 0),
+      lastFailedAt: email?.lastFailedAt ? new Date(email.lastFailedAt).toISOString() : null,
     },
     backup: backups,
   };

@@ -220,7 +220,7 @@ function BackupSection({ status }: { status: SystemStatus }) {
         <dl className="grid gap-x-6 gap-y-3 text-ui sm:grid-cols-[max-content_1fr]">
           <dt className="text-fg-muted">Made</dt>
           <dd data-volatile data-testid="last-backup-time">
-            {formatTime(latest.createdAt)}
+            <time dateTime={latest.createdAt}>{formatTime(latest.createdAt)}</time>
           </dd>
           <dt className="text-fg-muted">File</dt>
           <dd data-volatile translate="no" className="font-mono text-sm [overflow-wrap:anywhere]">
