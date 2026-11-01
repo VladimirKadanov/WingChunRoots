@@ -63,6 +63,13 @@ grep_code() {
   return "$found"
 }
 
+# png_is <file> <width>: a PNG file (its signature) whose image is <width> pixels wide (IHDR).
+png_is() {
+  [ -s "$1" ] || return 1
+  [ "$(head -c 8 "$1" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ] || return 1
+  [ "$((16#$(head -c 20 "$1" | tail -c 4 | od -An -tx1 | tr -d ' \n')))" -eq "$2" ]
+}
+
 mapfile -t M11_SQL < <(ls drizzle/*_m11_schools_map/migration.sql 2>/dev/null)
 mapfile -t M11_UI < <(find src/app/schools src/app/dashboard/schools src/components/schools src/components/map -type f -name '*.tsx' | sort)
 mapfile -t PUBLIC_SCHOOL_CODE < <(find src/app/schools src/app/sitemap.ts src/components/schools src/components/map src/server/dto/schools.ts -type f \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.test.ts' | sort)
@@ -181,6 +188,11 @@ refute "no radius or distance on a geometry cast (ST_DWithin/ST_Distance with ::
   grep_code 'ST_(DWithin|Distance)\([^)]*::geometry' "$SCHOOLS"
 check "distances are whole kilometres" grep -qF "round(ST_Distance(v.public_point, \${c}) / 1000)::int AS distance_km" "$SCHOOLS"
 check "every public read goes through v_public_school (PIN_COLUMNS from v)" grep -q "FROM v_public_school v" "$SCHOOLS"
+check "the viewport's boxes follow parallels: segmentized before the geography cast, compared with the edges themselves" bash -c '
+  grep -qF "ST_Segmentize(ST_MakeEnvelope(" '"$SCHOOLS"' && grep -qF "BETWEEN \${b.south}::float8 AND \${b.north}::float8" '"$SCHOOLS"''
+check "a listing decision carries the version of the listing the reviewer saw (review.decide schoolVersion, the case card)" bash -c '
+  grep -q "schoolVersion: z.string()" src/server/services/review.ts && grep -q "input.schoolVersion !== listing.version" '"$REVIEW"' &&
+  grep -qF "name=\"schoolVersion\"" src/app/admin/review/forms.tsx'
 refute "no public school code names the private table or its columns (school_private_location, exact_point, address_line)" \
   grep_code 'school_private_location|exactPoint|exact_point|addressLine|address_line' "${PUBLIC_SCHOOL_CODE[@]}"
 check "JSON-LD gives geo only for an exact location" grep -qF "...(school.precision === 'exact' ? { geo: { '@type': 'GeoCoordinates'" 'src/app/schools/[slug]/page.tsx'
@@ -226,7 +238,12 @@ check "without WebGL 2 the finder shows the same list (map-fallback)" grep -q 'd
 check "the map controls follow the theme and have 44 px targets on touch screens" bash -c '
   f=src/components/map/map-controls.css
   grep -q "@media (pointer: coarse)" "$f" && grep -q "width: 44px" "$f" && grep -q "data-map-theme" "$f"'
-check "the privacy policy draft names OpenFreeMap as a recipient" bash -c 'grep -rqi "OpenFreeMap" src/app/legal'
+# The draft /legal/privacy shows (src/server/legal/documents.ts), in its section on recipients.
+check "the privacy policy draft names OpenFreeMap as a recipient" bash -c '
+  f=content/legal/privacy.en.md
+  grep -qF "file: '\''$f'\''," src/server/legal/documents.ts &&
+  awk "/^## [0-9]+\\. Who receives it/{on=1; next} /^## /{on=0} on" "$f" | grep -q "^- \*\*OpenFreeMap\*\*"'
+check "the map styles point to the privacy policy draft that names OpenFreeMap" grep -qF "(content/legal/privacy.en.md)" src/server/geo/map-styles.ts
 
 # 6. Screens, routes and screenshots (In scope 7, 9; Done when 1) ------------------------------------
 for path in "/schools?view=list" /schools/demo-school-sofia /schools/demo-school-city-only /dashboard/schools /dashboard/schools/new; do
@@ -241,10 +258,12 @@ check "the map screens are in the visual regression with the canvas masked, and 
 for state in dashboard-school-upgrade dashboard-school-sent review-listing; do
   check "screen state $state is in e2e/screenshots.spec.ts" grep -q "name: '$state'" e2e/screenshots.spec.ts
 done
+# A real screenshot, not a placeholder: a PNG as wide as its size (390x844 at 2x, as e2e/screenshots.spec.ts takes it).
 for screen in "${KEY_SCREENS[@]}" "${STATES[@]}"; do
   for size in "${SIZES[@]}"; do
+    width=$([ "$size" = 390x844 ] && echo 780 || echo 1440)
     for theme in "${THEMES[@]}"; do
-      check "screenshot: docs/screenshots/M11/$screen-$size-$theme.png" test -s "docs/screenshots/M11/$screen-$size-$theme.png"
+      check "screenshot: docs/screenshots/M11/$screen-$size-$theme.png (a PNG $width px wide)" png_is "docs/screenshots/M11/$screen-$size-$theme.png" "$width"
     done
   done
 done
@@ -274,6 +293,15 @@ check "the M11 spec runs in the exclusive run, after the others (PUBLIC_WRITE_SP
   grep -qE "^export const PUBLIC_WRITE_SPECS = \[.*'\''\*\*/m11-schools\.spec\.ts'\''.*\] as const;$" e2e/projects.ts &&
   grep -qF "export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];" e2e/projects.ts'
 int_titles=(
+  'a whole-world box returns every public school, also with MapLibre longitudes beyond ±180'
+  'a continental box follows its parallels: a school just inside the southern edge is in, one just north of the box is out'
+  'a box across the antimeridian, in either form, holds the schools on both sides of 180° and nothing else'
+  'refuses null, empty or boolean coordinates with 400 instead of reading them as 0 or 1'
+  'hiding the middle person queues lineage.recompute; after the job the school leaves the root filter, and showing them again brings it back'
+  'a decision on a listing changed after the reviewer opened it is refused; an approval needs the version it was made from'
+  'a listed school edited in what it is, where, its website or instructors stays listed and opens a review; returning it to draft takes it off the map'
+  'pnpm account:delete carries out the request of a Sifu with a draft and a listed school: both archived, nothing public or private left on them'
+  'leaves the public school page and the lineage filter when the link is revoked or withdrawn, and comes back while it is confirmed'
   'returns a school 49 km away and not one 51 km away, with whole kilometres'
   'rounds every distance to a whole kilometre'
   "EXPLAIN of the service's radius query uses the GiST index on school.public_point (geography)"
@@ -314,7 +342,10 @@ check "docs/data-model.md describes the M11 columns, statuses and the pin rule o
   f=docs/data-model.md
   grep -q "alternate_names" "$f" && grep -q "pending_review" "$f" && grep -q "forms_taught" "$f" && grep -q "_m11_schools_map" "$f"'
 check "docs/design/reviews/M11.md reviews the screenshots against direction.md" bash -c '
-  f=docs/design/reviews/M11.md; grep -q "docs/screenshots/M11" "$f" && grep -q "direction.md" "$f" && grep -q "390x844" "$f"'
+  f=docs/design/reviews/M11.md; grep -q "docs/screenshots/M11" "$f" && grep -q "direction.md" "$f" && grep -q "390x844" "$f" && grep -q "1440x900" "$f"'
+for screen in "${KEY_SCREENS[@]}" "${STATES[@]}"; do
+  check "docs/design/reviews/M11.md names the screen $screen (its screenshots $screen-*)" grep -qF "\`$screen-" docs/design/reviews/M11.md
+done
 check "the user guide covers the finder, the map, the school page and listing a school" bash -c '
   f=docs/guides/user-guide.bg.md
   grep -q "## Школи и карта (M11)" "$f" && grep -q "### Страницата на школа" "$f" && grep -q "### Обявяване на школа" "$f" && grep -q "/schools" "$f"'
