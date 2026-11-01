@@ -195,7 +195,8 @@ refute "the proxy's matcher never includes healthz, api or _next" grep -nE "matc
 check "pino is pinned exactly, in the ADR and the notices, and only src/server/log imports it" bash -c '
   grep -qE "^    \"pino\": \"[0-9]+\.[0-9]+\.[0-9]+\",$" package.json && grep -q "pino" docs/adr/0013-local-ops.md &&
   grep -qF "| [pino](https://getpino.io/) |" THIRD_PARTY_NOTICES.md'
-check "ESLint keeps pino inside src/server/log" grep -q "module: 'src/server/log', group: \['pino', 'pino/\*'\]" eslint.config.mjs
+check "ESLint keeps pino inside src/server/log" bash -c '
+  grep -A1 -F "module: '\''src/server/log'\''," eslint.config.mjs | grep -qF "group: ['\''pino'\'', '\''pino/*'\'']"'
 refute "no external error service: no Sentry package or import" bash -c 'grep -nE "\"@sentry/|from .@sentry/" package.json $(git ls-files "src/*.ts" "src/*.tsx")'
 check "reportError has an empty provider by default" bash -c '
   grep -q "export const noErrorProvider" src/server/log/index.ts && grep -q "export async function reportError" src/server/log/index.ts'
@@ -208,7 +209,7 @@ check "logger.redaction.test.ts covers e-mail, names, IP addresses and coordinat
   grep -qi "e-mail\|email" "$f" && grep -qi "name" "$f" && grep -qi "ip" "$f" && grep -qi "coordinates" "$f"'
 check "/admin/system: staff with a verified second factor, through system.status (GET /admin/system)" bash -c '
   grep -q "requireStaff2FA(principal)" src/server/services/system.ts &&
-  grep -q "status: staffWithSecondFactor.route({ method: '\''GET'\'', path: '\''/admin/system'\''" src/server/rpc/router.ts &&
+  grep -A4 "^    status: staffWithSecondFactor\$" src/server/rpc/router.ts | tr -d "\n " | grep -qF ".route({method:'\''GET'\'',path:'\''/admin/system'\''," &&
   grep -q "guardRoute(PATH)" src/app/admin/system/page.tsx && grep -qF "'\''/admin'\'': { kind: '\''staff2fa'\'' }" src/server/auth/guards.ts &&
   grep -q "\"/admin/system\"" docs/api/openapi.json'
 check "/admin/system shows status as text with a shape, never by colour alone" bash -c '
@@ -240,14 +241,14 @@ check "docs/operations/local-run.md: Windows (Docker Desktop, WSL2), Linux and m
   f=docs/operations/local-run.md
   grep -q "WSL2" "$f" && grep -q "Docker Desktop" "$f" && grep -q "Linux" "$f" && grep -q "macOS" "$f" &&
   grep -q "docker compose --profile app up --build" "$f" && grep -q "scripts/check-env.sh compose" "$f" &&
-  grep -qi "обновяване" "$f" && grep -qi "спиране" "$f"'
+  grep -qE "[Оо]бновяване" "$f" && grep -qE "[Сс]пиране" "$f"'
 check "docs/operations/backup-and-restore.md: the archive, the drill, RPO, RTO of 4 hours and hosting" bash -c '
   f=docs/operations/backup-and-restore.md
   grep -q "scripts/backup-local.sh" "$f" && grep -q "scripts/restore-drill.sh" "$f" && grep -q "RPO" "$f" &&
   grep -q "RTO" "$f" && grep -q "4 часа" "$f" && grep -q "хостинг" "$f"'
 check "docs/operations/incident.md: the support response time in the pilot and the steps for a data leak" bash -c '
   f=docs/operations/incident.md
-  grep -qi "срок за отговор" "$f" && grep -qi "изтичане на данни" "$f"'
+  grep -qE "[Сс]рок за отговор" "$f" && grep -qE "[Ии]зтичане на данни" "$f"'
 check "the admin guide covers the production-like run, the archive, the restore and /admin/system" bash -c '
   f=docs/guides/admin-guide.bg.md
   grep -q "(M12)" "$f" && grep -q "docker compose --profile app up --build" "$f" && grep -q "scripts/backup-local.sh" "$f" &&
