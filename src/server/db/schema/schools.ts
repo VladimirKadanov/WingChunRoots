@@ -48,7 +48,7 @@ export const place = pgTable(
     centroid: geographyPoint('centroid').notNull(),
     // M11: the English name is shown; these serve the city search (src/server/geo/places.ts).
     alternateNames: jsonb('alternate_names').$type<PlaceAltName[]>().notNull().default([]),
-    /** Every name of the place, folded for search (src/server/geo/fold.ts), one per line. */
+    /** Every name of the place, folded for search (src/server/geo/places.ts), one per line. */
     searchText: text('search_text').notNull().default(''),
     ...timestamps(),
   },

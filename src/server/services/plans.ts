@@ -14,6 +14,7 @@ import { formatDay } from '../../lib/dates';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
+import { invalidatePublic, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { auditLog, authUser, notification, person, pilotAccessRequest, reviewCase } from '../db/schema';
 import { ACCOUNT_TYPES } from '../db/schema/common';
@@ -267,7 +268,7 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
   const next = parsed.data.accountType;
   const subject = { kind: 'user' as const, userId: p.user.id };
 
-  return getDb().transaction(async (tx) => {
+  const change = await getDb().transaction(async (tx) => {
     // The account's lock first, as in every write of an account's plan (services/account-lock.ts).
     const account = await lockAccount(tx, { id: p.user.id });
     if (!account) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
@@ -278,6 +279,9 @@ export async function setAccountType(principal: Principal | null, raw: unknown, 
     const status = await instructorStatus(tx, p.user.id, effective.accountType);
     return { accountType: effective.accountType, plan: planSummary(effective.plan), instructor: { status, label: INSTRUCTOR_LABELS[status] }, changed };
   });
+  // M11: a school pin needs a Sifu account (v_public_school), so a change of type shows or hides it.
+  if (change.changed) invalidatePublic([SCHOOLS_TAG], 'procedure');
+  return change;
 }
 
 /** The change itself, under the account's lock: rate limit, the type, the stale request, the audit. */

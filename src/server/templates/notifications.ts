@@ -529,6 +529,46 @@ const reviewUpdated: NotificationTemplate<{ caseId: string; change: 'evidence' |
   sample: { caseId: '0190a5c0-0000-7000-8000-000000000009', change: 'evidence' },
 };
 
+// --- Schools (M11) -------------------------------------------------------------------------------
+
+/**
+ * "school.submitted": to every moderator and administrator when a Sifu sends a school listing for
+ * review, and to the assigned reviewer when the Sifu answers their question. No school name: the
+ * case card shows it to a session that proved the second factor.
+ */
+const schoolSubmitted: NotificationTemplate<{ caseId: string }> = {
+  name: 'school.submitted',
+  parse: (payload) => ({ caseId: caseIdOf('school.submitted', payload) }),
+  render: ({ caseId }) => ({
+    title: 'School listing to review',
+    body: [{ text: 'A Sifu sent a school listing for review. It waits in the review queue.' }],
+    action: { label: 'Open the case', href: `/admin/review/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-00000000000a' },
+};
+
+/** "school.reviewed": to the Sifu who listed a school, when the reviewers approve it, return it to draft or ask a question. */
+const schoolReviewed: NotificationTemplate<{ schoolId: string; decision: 'approved' | 'returned' | 'needs_info' }> = {
+  name: 'school.reviewed',
+  parse(payload) {
+    const data = payloadObject('school.reviewed', payload);
+    if (typeof data.schoolId !== 'string' || !UUID.test(data.schoolId)) throw new NotificationDataError('school.reviewed', 'schoolId must be a UUID');
+    if (data.decision !== 'approved' && data.decision !== 'returned' && data.decision !== 'needs_info') {
+      throw new NotificationDataError('school.reviewed', 'decision must be approved, returned or needs_info');
+    }
+    return { schoolId: data.schoolId, decision: data.decision };
+  },
+  render: ({ schoolId, decision }) => {
+    const action = { label: decision === 'approved' ? 'See your school' : decision === 'returned' ? 'Read their reason' : 'Read their question', href: `/dashboard/schools/${schoolId}` };
+    return decision === 'approved'
+      ? { title: 'School listed', body: [{ text: 'The reviewers approved your school listing. Its pin is on the map while your plan includes a public pin.' }], action }
+      : decision === 'returned'
+        ? { title: 'School listing returned to draft', body: [{ text: 'The reviewers returned your school listing to draft. You can correct it and send it again.' }], action }
+        : { title: 'More information needed', body: [{ text: 'The reviewers of your school listing ask for more information.' }], action };
+  },
+  sample: { schoolId: '0190a5c0-0000-7000-8000-00000000000b', decision: 'approved' },
+};
+
 /** The templates whose payload names a relationship (services/notifications.ts enriches them). */
 export const RELATIONSHIP_NOTIFICATIONS = ['relationship.requested', 'relationship.approved', 'relationship.rejected', 'relationship.ended', 'review.decided'] as const;
 
@@ -547,6 +587,8 @@ export const NOTIFICATION_TEMPLATES = {
   'review.decided': reviewDecided,
   'review.opened': reviewOpened,
   'review.updated': reviewUpdated,
+  'school.submitted': schoolSubmitted,
+  'school.reviewed': schoolReviewed,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

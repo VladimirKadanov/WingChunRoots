@@ -157,7 +157,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-10-31.1', digest: '6dddb9f81b7fdaa9b371f2963681eef4db30afd7dd34ddf3efd8f532e4ed4640' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-01.1', digest: 'b71e0ea7de85f6ceb1930f8c4ab6d4c4fa35c655cc1c16ee81893211148184ea' });
   });
 });
 
@@ -182,13 +182,14 @@ describe('how /plans marks a value (review round 1, design-4)', () => {
 describe('features of the pilot that are not built yet (review round 1, requirements-1, design-1)', () => {
   it('say when they open, and only features of the pilot do', () => {
     const opening = FEATURES.filter((f) => f.opens !== undefined);
-    // M09 built teacher requests: naming teachers and approving students work now.
-    expect(opening.map((f) => [f.key, f.opens])).toEqual([['school_map', 'Opens with schools and the map']]);
+    // M09 built teacher requests: naming teachers and approving students work now. M11 built the
+    // school map, so no feature of the pilot waits for its screens any more.
+    expect(opening.map((f) => [f.key, f.opens])).toEqual([]);
     for (const f of opening) expect(f.availability, f.key).toBe('now');
   });
 
   it('every benefit of an upgrade carries its opening note', () => {
-    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, 'Opens with schools and the map']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, null]);
   });
 
   it('Premium Student gives nothing of the pilot over Free Student; the grant form says so (requirements-2)', () => {

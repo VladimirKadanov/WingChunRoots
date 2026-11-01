@@ -4,7 +4,7 @@
 // link. Runs the real services (grants.revokeGrant, plans.setAccountType) on the seeded demo data.
 
 import { and, count, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { Principal } from '../auth/principal';
 import { closeDb, getDb } from '../db';
@@ -13,6 +13,17 @@ import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { revokeGrant } from '../services/grants';
 import { setAccountType } from '../services/plans';
 import { effectivePlan, requireEntitlement } from './access';
+
+// M11: a Professional Sifu grant or an account type change drops the cached school answers (the pin).
+const cache = vi.hoisted(() => ({ revalidated: [] as string[] }));
+vi.mock('next/cache', () => ({
+  cacheTag: () => undefined,
+  cacheLife: () => undefined,
+  revalidateTag: (tag: string) => {
+    cache.revalidated.push(tag);
+  },
+  updateTag: () => undefined,
+}));
 
 let testDb: TestDatabase | undefined;
 const meta = { requestId: 'demo-downgrade-test', ipHmac: null };
@@ -75,6 +86,8 @@ describe('revoking the Pro Sifu test plan of demo-pro-sifu-8', () => {
       .where(and(eq(entitlementGrant.subjectUserId, sifu.userId), eq(entitlementGrant.planCode, 'pro_sifu')));
     const revoked = await revokeGrant(await admin(), { grantId: grant!.id, reason: 'Demo: end of the test period' }, meta);
     expect(revoked).toMatchObject({ state: 'revoked', revokeReason: 'Demo: end of the test period', revokedBy: 'demo-admin@example.test' });
+    // M11: the pins of the account's schools go with the plan (DEFAULT D08/D18).
+    expect(cache.revalidated).toContain('schools');
 
     expect(await links(sifu.personId)).toEqual([8, 8, 8]);
     expect((await effectivePlan(subject)).plan).toBe('free_sifu');

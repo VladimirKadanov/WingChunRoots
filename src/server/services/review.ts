@@ -34,8 +34,10 @@
 // against another or against a withdrawal.
 //
 // Account deletion requests (kind deletion_request) stay on /admin and the command line (M07):
-// they name an account, so they are not in this queue. The other kinds come with M10b; their cases
-// are listed and can be assigned, but decided only from M10b.
+// they name an account, so they are not in this queue. M11: school listings (school_listing) are
+// listed, assigned and noted here and decided by school-review.ts (a moderator or an administrator
+// approves or returns them). The other kinds come with M10b; their cases are listed and can be
+// assigned, but decided only from M10b.
 //
 // Logs and audit rows carry ids and codes. A reviewer's reason or note is kept in the case
 // (review_case.resolution_reason, review_note), never in a log.
@@ -59,6 +61,7 @@ import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ARCHIVAL_EVIDENCE_MESSAGE, type EvidenceFileView, fileView, filesOfCases, filesOfPerson, linkFilesToPerson, openableFiles } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
+import { decideSchoolListing, LISTING_DECIDE_ROLES, lockListing, type SchoolCaseView, schoolCaseView, schoolRowsOf } from './school-review';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import {
@@ -163,6 +166,8 @@ export interface ReviewListRow {
   assignee: 'me' | 'other' | null;
   /** The people of a relationship case (teacher and student), null for another kind. */
   teacher: PersonRef | null;
+  /** M11: the school of a listing case, null for another kind. */
+  school: { name: string; city: string; countryCode: string } | null;
   student: PersonRef | null;
   lineageName: string | null;
   files: number;
@@ -203,6 +208,8 @@ export interface ReviewCaseView {
   relationship: RelationshipView | null;
   /** The teacher's record: whether it is new (created with the claim), kept by the platform, public. */
   teacherRecord: { slug: string; kind: string; lifeStatus: string; stewardship: string; visibility: string; createdWithClaim: boolean } | null;
+  /** M11: the school of a listing case (never the exact point of a city-only school). */
+  school: SchoolCaseView | null;
   files: EvidenceFileView[];
   notes: ReviewNoteView[];
   can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean };
@@ -218,6 +225,7 @@ interface CaseRow {
   status: ReviewCaseStatus;
   relationshipId: string | null;
   personId: string | null;
+  schoolId: string | null;
   openedByUserId: string | null;
   assignedToUserId: string | null;
   resolution: 'approved' | 'rejected' | null;
@@ -233,6 +241,7 @@ const caseColumns = {
   status: reviewCase.status,
   relationshipId: reviewCase.relationshipId,
   personId: reviewCase.personId,
+  schoolId: reviewCase.schoolId,
   openedByUserId: reviewCase.openedByUserId,
   assignedToUserId: reviewCase.assignedToUserId,
   resolution: reviewCase.resolution,
@@ -303,6 +312,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
     .limit(REVIEW_PAGE_SIZE)
     .offset((filters.page - 1) * REVIEW_PAGE_SIZE);
   const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.teacherId, r.studentId]).filter((id): id is string => id !== null))]);
+  const schools = await schoolRowsOf(db, [...new Set(rows.map((r) => r.schoolId).filter((id): id is string => id !== null))]);
   return {
     rows: rows.map((r) => ({
       id: r.id,
@@ -315,6 +325,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       assignee: r.assignedToUserId === null ? null : r.assignedToUserId === p.user.id ? 'me' : 'other',
       teacher: r.teacherId ? (refs.get(r.teacherId) ?? null) : null,
       student: r.studentId ? (refs.get(r.studentId) ?? null) : null,
+      school: r.schoolId ? (schools.get(r.schoolId) ?? null) : null,
       lineageName: r.lineageName,
       files: r.files,
     })),
@@ -333,24 +344,31 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
 
 // --- review.get --------------------------------------------------------------------------------
 
-/** What this reviewer may do on a case, and why not. */
-function abilities(p: Principal, c: CaseRow, relStatus: string | null, own: boolean) {
+/** What this reviewer may do on a case, and why not. `subjectStatus`: the relationship's, or the listed school's (M11). */
+function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: boolean) {
   const admin = hasStaff2FA(p, ['admin']);
-  const decider = hasStaff2FA(p, DECIDE_ROLES);
+  const listing = c.kind === 'school_listing';
+  const decider = hasStaff2FA(p, listing ? LISTING_DECIDE_ROLES : DECIDE_ROLES);
   const mine = c.assignedToUserId === p.user.id;
   const open = isOpen(c.status);
-  const decidable = c.kind === 'historical_claim' && relStatus === 'under_review';
+  const decidable = listing ? subjectStatus === 'pending_review' : c.kind === 'historical_claim' && subjectStatus === 'under_review';
   const may = !own && open;
   const decideNote = own
-    ? 'This claim is about you: another reviewer decides it.'
+    ? listing
+      ? 'This listing is yours: another reviewer decides it.'
+      : 'This claim is about you: another reviewer decides it.'
     : !open
       ? null
-      : c.kind !== 'historical_claim'
+      : c.kind !== 'historical_claim' && !listing
         ? 'Cases of this kind are decided from a later version of the review tool.'
         : !decider
-          ? 'An archivist or an administrator verifies or refuses a historical claim. You can ask the claimant for more information and add notes.'
+          ? listing
+            ? 'A moderator or an administrator approves or returns a school listing. You can ask the Sifu for more information and add notes.'
+            : 'An archivist or an administrator verifies or refuses a historical claim. You can ask the claimant for more information and add notes.'
           : !mine && !admin
-            ? 'Assign the case to yourself to decide it and to open the evidence.'
+            ? listing
+              ? 'Assign the case to yourself to decide it.'
+              : 'Assign the case to yourself to decide it and to open the evidence.'
             : null;
   return {
     can: {
@@ -398,7 +416,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
         .where(eq(person.id, relationship.teacher.id))
         .then(([t]) => (t ? { slug: t.slug, kind: t.kind, lifeStatus: t.lifeStatus, stewardship: t.stewardship, visibility: t.visibility, createdWithClaim: t.createdBy !== null && t.createdBy === c.openedByUserId } : null))
     : null;
-  const { can, decideNote } = abilities(p, c, relationship?.status ?? null, own);
+  const schoolView = c.kind === 'school_listing' && c.schoolId ? await schoolCaseView(db, c.schoolId) : null;
+  const { can, decideNote } = abilities(p, c, relationship?.status ?? schoolView?.status ?? null, own);
   const reviewers = can.assignOthers
     ? (
         await db
@@ -425,6 +444,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: own ? null : (assignee?.role ?? null) } : null,
     relationship,
     teacherRecord,
+    school: schoolView,
     files: files.map((f) => fileView(f, opens.has(f.id))),
     notes: notes.map((n) => ({
       id: n.id,
@@ -472,15 +492,19 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
     const replayed = await db.transaction(async (tx) => {
       const seen = await caseById(tx, input.caseId);
       if (!seen) throw notFound();
-      if (seen.kind !== 'historical_claim' || !seen.relationshipId) throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
+      const listing = seen.kind === 'school_listing' && seen.schoolId !== null;
+      if (!listing && (seen.kind !== 'historical_claim' || !seen.relationshipId)) throw new ServiceError('CONFLICT', 'Cases of this kind are handled from a later version of the review tool.');
       // The relationship, then its case: the order of review.decide and relationships.withdraw. The
       // relationship_event written below takes a KEY SHARE lock on the relationship (its foreign
-      // key), so taking the case first would deadlock against them (M10a review, code-1).
-      await rowById(tx, seen.relationshipId, true);
+      // key), so taking the case first would deadlock against them (M10a review, code-1). A listing
+      // case: its school, then the case (the order of schools.submit and school-review.ts).
+      if (listing) await lockListing(tx, seen.schoolId!);
+      else await rowById(tx, seen.relationshipId!, true);
       const c = await caseById(tx, input.caseId, true);
-      if (!c || !c.relationshipId) throw notFound();
+      if (!c || (!listing && !c.relationshipId)) throw notFound();
       const reason = input.assigneeId ? 'assigned' : 'unassigned';
-      if (await replayReview(tx, p, input.idempotencyKey, c.relationshipId, { to: 'under_review', reason })) return true;
+      // A listing case has no relationship_event: the same assignment again changes nothing (below).
+      if (c.relationshipId && (await replayReview(tx, p, input.idempotencyKey, c.relationshipId, { to: 'under_review', reason }))) return true;
       if (await ownSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This claim is about you: another reviewer handles it.');
       if (!isOpen(c.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
       if (input.assigneeId === null) {
@@ -501,7 +525,7 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
       if (c.assignedToUserId === input.assigneeId) return false;
       const status = input.assigneeId === null ? (c.status === 'in_review' ? 'open' : c.status) : c.status === 'open' ? 'in_review' : c.status;
       await tx.update(reviewCase).set({ assignedToUserId: input.assigneeId, status, updatedAt: new Date() }).where(eq(reviewCase.id, c.id));
-      await recordEvent(tx, { relationshipId: c.relationshipId, from: 'under_review', to: 'under_review', actor: p, role: p.user.role, reason, key: input.idempotencyKey });
+      if (c.relationshipId) await recordEvent(tx, { relationshipId: c.relationshipId, from: 'under_review', to: 'under_review', actor: p, role: p.user.role, reason, key: input.idempotencyKey });
       await writeAudit(tx, {
         action: 'review.assign',
         actorUserId: p.user.id,
@@ -555,6 +579,12 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
   }
   const input = parsed.data;
   const db = getDb();
+  // M11: a school listing is decided by school-review.ts (no relationship, no evidence).
+  const [kindOf] = await db.select({ kind: reviewCase.kind }).from(reviewCase).where(eq(reviewCase.id, input.caseId));
+  if (kindOf?.kind === 'school_listing') {
+    const replayed = await decideSchoolListing(p, input, meta);
+    return { case: await getReviewCase(p, { id: input.caseId }), replayed };
+  }
   const admin = hasStaff2FA(p, ['admin']);
   const to = input.decision === 'verify' ? 'verified' : input.decision === 'reject' ? 'rejected' : 'under_review';
   const reason = input.decision === 'needs_info' ? 'needs_info' : 'review';

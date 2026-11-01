@@ -71,6 +71,26 @@ import { profileGet, profileUpdate, profileUpdateInput } from '../services/profi
 import { consentWithdraw, consentWithdrawInput, privacyOverview, requestAccountDeletion, requestDeletionInput } from '../services/privacy';
 import { searchInput, searchQuery } from '../services/search';
 import { searchResultSchema } from '../dto/search';
+import { placeSearchSchema, schoolPageSchema, schoolSearchSchema } from '../dto/schools';
+import {
+  confirmSchool,
+  createSchool,
+  mySchools,
+  placeSearchInput,
+  placesSearch,
+  schoolCreateInput,
+  schoolEditor,
+  schoolGet,
+  schoolIdInput,
+  schoolSearchInput,
+  schoolSlugInput,
+  schoolsInViewport,
+  schoolsSearch,
+  schoolUpdateInput,
+  schoolViewportInput,
+  submitSchool,
+  updateSchool,
+} from '../services/schools';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
@@ -386,6 +406,58 @@ export const router = {
       .route({ method: 'POST', path: '/archive/update', summary: 'Edit a record kept by the platform or unclaimed with a required reason and optional evidence (archivist only); audited' })
       .input(archiveUpdateInput)
       .handler(({ context, input }) => updateArchiveRecord(context.principal, input, context.meta)),
+  },
+  // M11: schools, the map and the lineage filter (plan §6.4). The public reads are POST, so a
+  // visitor's search centre or map view stays out of URLs and proxy logs (as search.query).
+  schools: {
+    search: base
+      .route({ method: 'POST', path: '/schools/search', summary: 'Public schools within a radius of a centre (nearest first, whole kilometres), or all of them; optionally only those whose instructors descend from a lineage root' })
+      .input(schoolSearchInput)
+      .output(schoolSearchSchema)
+      .handler(({ context, input }) => schoolsSearch(context.principal, input)),
+    inViewport: base
+      .route({ method: 'POST', path: '/schools/in-viewport', summary: "Public schools inside the map's bounding box; city-only schools at their city's centre" })
+      .input(schoolViewportInput)
+      .output(schoolSearchSchema)
+      .handler(({ context, input }) => schoolsInViewport(context.principal, input)),
+    get: base
+      .route({ method: 'GET', path: '/schools/{slug}', summary: "A public school's page: instructors, contact, forms and its location (exact or city only); 404 when not public" })
+      .input(schoolSlugInput)
+      .output(schoolPageSchema)
+      .handler(({ context, input }) => schoolGet(context.principal, input)),
+    mine: base
+      .route({ method: 'GET', path: '/schools/mine', summary: 'The schools the signed-in account listed, with their status and whether the pin shows' })
+      .handler(({ context }) => mySchools(context.principal)),
+    edit: base
+      .route({ method: 'GET', path: '/schools/mine/{id}', summary: "One of the account's own schools for the editor, with the review state and the upgrade offer" })
+      .input(schoolIdInput)
+      .handler(({ context, input }) => schoolEditor(context.principal, input)),
+    options: base
+      .route({ method: 'GET', path: '/schools/mine/new', summary: 'What the form for a new school offers: instructors, forms, and whether a pin can be sent for review' })
+      .handler(({ context }) => schoolEditor(context.principal, {})),
+    create: signedIn
+      .route({ method: 'POST', path: '/schools/create', summary: 'List a new school as a draft (a Sifu with a profile; the head instructor); only you see it' })
+      .input(schoolCreateInput)
+      .handler(({ context, input }) => createSchool(context.principal, input, context.meta)),
+    update: signedIn
+      .route({ method: 'POST', path: '/schools/update', summary: 'Edit your school; a listed school stays listed; last activity moves (D17)' })
+      .input(schoolUpdateInput)
+      .handler(({ context, input }) => updateSchool(context.principal, input, context.meta)),
+    submit: signedIn
+      .route({ method: 'POST', path: '/schools/submit', summary: 'Send a draft for the listing review (needs Professional Sifu, otherwise ENTITLEMENT_REQUIRED), or answer the reviewers' })
+      .input(schoolIdInput)
+      .handler(({ context, input }) => submitSchool(context.principal, input, context.meta)),
+    confirm: signedIn
+      .route({ method: 'POST', path: '/schools/confirm', summary: 'Confirm that a listed school is current (last activity, D17)' })
+      .input(schoolIdInput)
+      .handler(({ context, input }) => confirmSchool(context.principal, input, context.meta)),
+  },
+  places: {
+    search: base
+      .route({ method: 'GET', path: '/places/search', summary: 'Cities of the GeoNames extract (CC BY 4.0) by any spelling, the larger first' })
+      .input(placeSearchInput)
+      .output(placeSearchSchema)
+      .handler(({ context, input }) => placesSearch(context.principal, input)),
   },
   dashboard: {
     overview: base
