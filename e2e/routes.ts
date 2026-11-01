@@ -93,9 +93,11 @@ export const ROUTES: readonly AppRoute[] = [
   // the exclusive run). The map view needs its map to settle: screen states
   // (e2e/helpers/schools.ts SCHOOL_MAP_SCREENS), with axe in e2e/m11-schools.spec.ts.
   { path: '/schools?view=list', name: 'schools-list', status: 200, milestone: 'M11', key: true },
+  // The empty answer: no demo school is within 10 km of Varna (nor are the tests' Leipzig schools).
+  { path: '/schools?view=list&near=Varna&radius=10', name: 'schools-empty', status: 200, milestone: 'M11', key: true },
   { path: '/schools/demo-school-sofia', name: 'school', status: 200, milestone: 'M11', key: true },
   { path: '/schools/demo-school-city-only', name: 'school-city-only', status: 200, milestone: 'M11', key: true },
-  { path: '/schools/demo-school-hamburg-draft', name: 'school-not-listed', status: 200, milestone: 'M11' },
+  { path: '/schools/demo-school-hamburg-draft', name: 'school-not-listed', status: 200, milestone: 'M11', key: true },
   { path: '/dashboard/schools', name: 'dashboard-schools', status: 200, milestone: 'M11', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard/schools/new', name: 'dashboard-school-new', status: 200, milestone: 'M11', key: true, signInAs: 'demo-free-sifu-5' },
 ];
