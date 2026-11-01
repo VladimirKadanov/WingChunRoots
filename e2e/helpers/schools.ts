@@ -82,13 +82,18 @@ export async function sifuAccount(page: Page, label: string): Promise<Sifu> {
   return { email: account.email, password: account.password, userId: (await userIdOf(account.email))!, name };
 }
 
-/** Another browser context signed in as a seeded account or role. */
-export async function signedIn(browser: Browser, target: SignInTarget) {
+/** Another browser context with a client address of its own, signed in as nobody. */
+export async function freshContext(browser: Browser) {
   const context = await browser.newContext({ baseURL: BASE_URL });
   await giveOwnAddress(context);
-  const page = await context.newPage();
-  await signInAs(page, target);
-  return { context, page };
+  return { context, page: await context.newPage() };
+}
+
+/** Another browser context signed in as a seeded account or role. */
+export async function signedIn(browser: Browser, target: SignInTarget) {
+  const fresh = await freshContext(browser);
+  await signInAs(fresh.page, target);
+  return fresh;
 }
 
 /** A Professional Sifu test plan for `email`, given by the seeded administrator through the API. */
@@ -126,16 +131,22 @@ export async function approveListing(admin: Page, schoolId: string) {
 }
 
 /**
- * A new Sifu on `page` with a school sent for the listing review: the administrator (another
- * context of the same browser) gives the Professional Sifu test plan first. Nothing becomes public.
+ * A new Sifu on `page` with a school sent for the listing review: the administrator gives the
+ * Professional Sifu test plan first, on `admin` when given (a page already signed in as the seeded
+ * administrator), else in another context of the same browser. Nothing becomes public.
  */
-export async function pendingListing(page: Page): Promise<{ sifu: Sifu; school: { id: string; slug: string; name: string }; caseId: string }> {
+export async function pendingListing(page: Page, admin?: Page): Promise<{ sifu: Sifu; school: { id: string; slug: string; name: string }; caseId: string }> {
   const sifu = await sifuAccount(page, 'Listing Sifu');
-  const admin = await signedIn(page.context().browser()!, 'admin');
-  try {
-    await grantProSifu(admin.page, sifu.email);
-  } finally {
-    await admin.context.close();
+  if (admin) {
+    await grantProSifu(admin, sifu.email);
+  } else {
+    // Each staff sign-in takes one TOTP code, which the parallel workers share (e2e/helpers/auth.ts).
+    const other = await signedIn(page.context().browser()!, 'admin');
+    try {
+      await grantProSifu(other.page, sifu.email);
+    } finally {
+      await other.context.close();
+    }
   }
   const school = await createSchool(page);
   const sent = await apiPost(page, '/schools/submit', { id: school.id });

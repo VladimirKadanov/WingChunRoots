@@ -16,7 +16,7 @@ import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from '.
 import { EXPLORER_STATES } from './helpers/m06-states';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
-import { createSchool, pendingListing, SCHOOL_MAP_SCREENS, sifuAccount } from './helpers/schools';
+import { createSchool, freshContext, pendingListing, SCHOOL_MAP_SCREENS, sifuAccount } from './helpers/schools';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 const only = process.env.SCREENSHOTS_MILESTONE;
@@ -428,9 +428,15 @@ const STATES: readonly ScreenState[] = [
     name: 'review-listing',
     milestone: 'M11',
     async reach(page) {
-      const { caseId } = await pendingListing(page);
+      // One staff sign-in (one TOTP code): the Sifu works in another context of the browser.
       await signInAs(page, 'admin');
-      await page.goto(`/admin/review/${caseId}`);
+      const sifu = await freshContext(page.context().browser()!);
+      try {
+        const { caseId } = await pendingListing(sifu.page, page);
+        await page.goto(`/admin/review/${caseId}`);
+      } finally {
+        await sifu.context.close();
+      }
       await expect(page.getByTestId('case-listing').filter({ visible: true })).toBeVisible();
     },
   },
