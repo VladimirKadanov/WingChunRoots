@@ -25,7 +25,11 @@ export const DEFAULT_RADIUS_KM = 50;
 export const MAX_RADIUS_KM = 500;
 /** The map writes its view into the address at most this often. */
 export const VIEW_WRITE_MS = 500;
-export const MIN_ZOOM = 1;
+/**
+ * As far out as the map zooms: the whole world, so the first fit to every school (school-map.tsx)
+ * shows them all on a phone too (at zoom 1 the world is 1024 px wide, wider than a phone).
+ */
+export const MIN_ZOOM = 0;
 export const MAX_ZOOM = 17;
 
 export type FinderView = 'map' | 'list';

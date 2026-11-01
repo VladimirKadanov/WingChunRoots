@@ -23,6 +23,8 @@ test.beforeEach(async ({ context }) => {
   await giveOwnAddress(context);
 });
 
+const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } as const;
+
 /** The address once the map has stopped and its last view write is in (VIEW_WRITE_MS). */
 async function settledAddress(page: Page): Promise<URLSearchParams> {
   const map = page.getByTestId('school-map');
@@ -91,3 +93,26 @@ test('@M11 moving the map after "Search this area" keeps the search: a reload an
   expect(Number(reloaded.get('lat'))).toBeCloseTo(Number(panned.get('lat')), 3);
 });
 
+// --- The phone ---------------------------------------------------------------------------------
+
+test.describe('at 390x844', () => {
+  test.use(PHONE);
+
+  test('@M11 the first view shows every school on a phone (review screens-5)', async ({ page }) => {
+    await page.goto('/schools');
+    await mapSettled(page);
+    const frame = (await page.getByTestId('school-map-frame').boundingBox())!;
+    const markers = page.getByTestId('school-marker');
+    const count = await markers.count();
+    await expect(page.getByTestId('show-list')).toContainText(`${count} schools`);
+    for (let i = 0; i < count; i += 1) {
+      const box = (await markers.nth(i).boundingBox())!;
+      const slug = await markers.nth(i).getAttribute('data-slug');
+      expect(
+        { left: box.x >= frame.x, right: box.x + box.width <= frame.x + frame.width, top: box.y >= frame.y, bottom: box.y + box.height <= frame.y + frame.height },
+        `${slug} inside the map`,
+      ).toEqual({ left: true, right: true, top: true, bottom: true });
+    }
+  });
+
+});

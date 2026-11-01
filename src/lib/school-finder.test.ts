@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { circleBounds, distanceKm, finderHref, finderParams, searchCenterOf, searchKey, viewAddress, withView } from './school-finder';
+import { circleBounds, distanceKm, finderHref, finderParams, MIN_ZOOM, roundZoom, searchCenterOf, searchKey, viewAddress, withView } from './school-finder';
 
 const ROOT = '0190f3a2-7b1c-7d2e-8f00-1234567890ab';
 
@@ -58,6 +58,12 @@ describe('finderParams', () => {
     expect(finderParams({ radius: '50', lat: '42.6975', lng: '23.3242', z: '9' })).toMatchObject({ center: { lat: 42.6975, lng: 23.3242 }, lat: 42.6975, lng: 23.3242 });
     // With a place, lat and lng are only the view.
     expect(finderParams({ near: 'Sofia', radius: '50', lat: '42.6975', lng: '23.3242' }).center).toBeUndefined();
+  });
+
+  it('reads the widest zoom, the whole world', () => {
+    expect(MIN_ZOOM).toBe(0);
+    expect(finderParams({ lat: '20', lng: '20', z: '0' }).z).toBe(0);
+    expect(roundZoom(-1)).toBe('0');
   });
 });
 
