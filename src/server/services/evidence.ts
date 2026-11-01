@@ -406,14 +406,19 @@ export async function linkFilesToCase(tx: Transaction, userId: string, caseId: s
   const ids = [...new Set(fileIds)];
   if (ids.length === 0) return 'Attach at least one file of evidence.';
   if (ids.length > EVIDENCE_MAX_FILES_PER_CASE) return `Attach at most ${EVIDENCE_MAX_FILES_PER_CASE} files to one claim.`;
+  const unavailable = 'Some of these files are no longer available. Remove them from the list and upload them again.';
   const rows = await tx
-    .select({ id: evidenceFile.id, linked: sql<boolean>`EXISTS (SELECT 1 FROM evidence_link l WHERE l.evidence_file_id = ${evidenceFile.id})` })
+    .select({ id: evidenceFile.id })
     .from(evidenceFile)
     .where(and(inArray(evidenceFile.id, ids), eq(evidenceFile.uploadedByUserId, userId), isNull(evidenceFile.deletedAt)))
     .for('update', { of: evidenceFile });
-  if (rows.length !== ids.length || rows.some((r) => r.linked)) {
-    return 'Some of these files are no longer available. Remove them from the list and upload them again.';
-  }
+  if (rows.length !== ids.length) return unavailable;
+  // None may be linked anywhere yet: checked after the row locks, in a statement of its own (a fresh
+  // snapshot). It was an EXISTS in the select list, whose unqualified "id" (Drizzle renders a
+  // column of a one-table select without its table) named the link's own id: always false, so a
+  // file already in one claim could be sent with another.
+  const [linked] = await tx.select({ id: evidenceLink.id }).from(evidenceLink).where(inArray(evidenceLink.evidenceFileId, ids)).limit(1);
+  if (linked) return unavailable;
   await tx.insert(evidenceLink).values(ids.map((id) => ({ evidenceFileId: id, reviewCaseId: caseId, createdByUserId: userId, note: 'sent with the claim' })));
   return null;
 }

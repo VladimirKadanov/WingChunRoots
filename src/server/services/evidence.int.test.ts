@@ -280,6 +280,15 @@ describe('the number of files (DEFAULT D25: 20 per case)', () => {
     ).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { evidenceIds: expect.stringContaining('at most 20') } });
   });
 
+  it('a file already sent with one claim is not sent with another: it stays with its claim', async () => {
+    const { student, fileId } = await claim('ev-twice');
+    await expect(
+      requestHistoricalTeacher(student.principal, { teacherName: 'Demo Historical Twice', lineageId, periods: ongoingFrom(), evidenceIds: [fileId], idempotencyKey: key() }, meta),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { evidenceIds: expect.stringContaining('no longer available') } });
+    const links = await getDb().select({ caseId: evidenceLink.reviewCaseId }).from(evidenceLink).where(eq(evidenceLink.evidenceFileId, fileId));
+    expect(links).toHaveLength(1);
+  });
+
   it('an account keeps at most 20 files outside a claim in 24 hours (429)', async () => {
     const m = await member('ev-unattached');
     for (let i = 0; i < EVIDENCE_MAX_FILES_PER_CASE; i += 1) await upload(m.principal, fictionalPdf(600, `loose-${i}`));
