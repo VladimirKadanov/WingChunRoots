@@ -11,10 +11,12 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
 import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
@@ -33,7 +35,27 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value.slice(0, 40) : undefined);
 
-const selectClass = 'block min-h-12 w-full rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg';
+const inputClass = 'block min-h-12 w-full rounded-sm border border-border-strong bg-surface-1 px-4 text-field text-fg';
+// The class of SelectField's select (fieldClassName in src/components/account/fields.tsx, a client
+// module this page does not load), without the native arrow.
+const selectClass = `${inputClass} min-w-0 appearance-none pr-11 hover:border-fg-muted focus-visible:border-fg`;
+
+/** A filter select styled as every select of the app (SelectField): no native arrow, the chevron (screens-11). */
+function FilterSelect({ id, label, name, defaultValue, children }: { id: string; label: string; name: string; defaultValue: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className="text-sm font-semibold">
+        {label}
+      </label>
+      <div className="relative">
+        <select id={id} name={name} defaultValue={defaultValue} className={selectClass}>
+          {children}
+        </select>
+        <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+      </div>
+    </div>
+  );
+}
 
 function returnPath(query: Record<string, string | string[] | undefined>): string {
   const params = new URLSearchParams();
@@ -98,41 +120,26 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
       <div className="mt-8 grid gap-10">
         <form method="get" action="/admin/review" role="search" aria-label="Filter the queue" className="grid gap-4 rounded-sm border border-border-subtle p-4" data-testid="queue-filters">
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-1.5">
-              <label htmlFor="filter-kind" className="text-sm font-semibold">
-                Kind
-              </label>
-              <select id="filter-kind" name="kind" defaultValue={list.filters.kind ?? ''} className={selectClass}>
-                <option value="">Any kind</option>
-                {list.kinds.map((kind) => (
-                  <option key={kind.value} value={kind.value}>
-                    {kind.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-1.5">
-              <label htmlFor="filter-status" className="text-sm font-semibold">
-                Status
-              </label>
-              <select id="filter-status" name="status" defaultValue={list.filters.status} className={selectClass}>
-                {list.statuses.map((status) => (
-                  <option key={status.value} value={status.value}>
-                    {status.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-1.5">
-              <label htmlFor="filter-assigned" className="text-sm font-semibold">
-                Assigned to
-              </label>
-              <select id="filter-assigned" name="assigned" defaultValue={list.filters.assigned} className={selectClass}>
-                <option value="any">Anyone</option>
-                <option value="me">Me</option>
-                <option value="none">Nobody yet</option>
-              </select>
-            </div>
+            <FilterSelect id="filter-kind" name="kind" label="Kind" defaultValue={list.filters.kind ?? ''}>
+              <option value="">Any kind</option>
+              {list.kinds.map((kind) => (
+                <option key={kind.value} value={kind.value}>
+                  {kind.label}
+                </option>
+              ))}
+            </FilterSelect>
+            <FilterSelect id="filter-status" name="status" label="Status" defaultValue={list.filters.status}>
+              {list.statuses.map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.label}
+                </option>
+              ))}
+            </FilterSelect>
+            <FilterSelect id="filter-assigned" name="assigned" label="Assigned to" defaultValue={list.filters.assigned}>
+              <option value="any">Anyone</option>
+              <option value="me">Me</option>
+              <option value="none">Nobody yet</option>
+            </FilterSelect>
           </div>
           {list.filters.sort !== 'oldest' ? <input type="hidden" name="sort" value={list.filters.sort} /> : null}
           <div>
@@ -157,7 +164,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
             <label htmlFor="record-slug" className="text-sm font-semibold">
               Record address
             </label>
-            <input id="record-slug" name="slug" autoComplete="off" maxLength={120} pattern="[a-z0-9\-]+" className={selectClass} />
+            <input id="record-slug" name="slug" autoComplete="off" maxLength={120} pattern="[a-z0-9\-]+" className={inputClass} />
             <div>
               <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
                 Open the record

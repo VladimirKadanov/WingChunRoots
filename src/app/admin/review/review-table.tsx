@@ -34,8 +34,21 @@ const columns = helper.columns([
       const row = info.row.original;
       return (
         <span className="grid gap-0.5">
-          <Link href={`/admin/review/${row.id}`} className="link inline-flex min-h-11 items-center font-semibold" data-testid="case-link">
+          {/* The 44 px target is centred on the text; in the table layout it is pulled up by the
+              difference, so the text shares the first line of the row's other cells (screens-11).
+              The name says which case it opens: the people and the day (plan §5.6, screens-6). */}
+          <Link href={`/admin/review/${row.id}`} className="link inline-flex min-h-11 items-center font-semibold @min-[52rem]:-mt-3" data-testid="case-link">
             {info.getValue()}
+            {/* Starts with a word: a browser puts a space before this hidden text. */}
+            <span className="sr-only">
+              case:{' '}
+              {row.teacher && row.student ? (
+                <>
+                  teacher <NameText name={row.teacher.name} />, student <NameText name={row.student.name} />,{' '}
+                </>
+              ) : null}
+              opened {formatDay(row.openedAt)}
+            </span>
           </Link>
           <span className="text-sm text-fg-muted">{row.files === 1 ? '1 file' : `${row.files} files`}</span>
         </span>
