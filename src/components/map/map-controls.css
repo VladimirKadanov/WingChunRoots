@@ -1,0 +1,86 @@
+/*
+ * The MapLibre controls (zoom, attribution) in the page's design (milestone M11): the theme's
+ * tokens instead of MapLibre's white, the page's focus ring, and on a touch screen targets of
+ * 44 x 44 CSS px (CLAUDE.md §10). Imported by the map islands only, after maplibre-gl.css, so it
+ * loads with the map and never on another page.
+ */
+
+.maplibregl-ctrl-group {
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+
+.maplibregl-ctrl-group:not(:empty) {
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--border-strong);
+}
+
+/* MapLibre's icons are dark drawings: on the dark theme they turn light. */
+[data-map-theme='dark'] .maplibregl-ctrl-icon,
+[data-map-theme='dark'] .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}
+
+@media (hover: hover) {
+  .maplibregl-ctrl button:not(:disabled):hover {
+    background-color: color-mix(in oklab, var(--fg) 10%, transparent);
+  }
+}
+
+.maplibregl-ctrl-group button:focus:focus-visible,
+.maplibregl-ctrl-attrib-button:focus-visible {
+  box-shadow: none;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.maplibregl-ctrl-attrib-button:focus:not(:focus-visible) {
+  box-shadow: none;
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  background-color: var(--surface-2);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.maplibregl-ctrl-attrib-button,
+.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* A link is told from the text by its underline as well as its colour. */
+.maplibregl-ctrl-attrib a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .maplibregl-ctrl-group button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .maplibregl-ctrl-attrib.maplibregl-compact {
+    min-height: 20px;
+    padding: 12px 44px 12px 0;
+    border-radius: 22px;
+  }
+
+  .maplibregl-ctrl-attrib.maplibregl-compact-show {
+    padding: 12px 48px 12px 14px;
+  }
+
+  .maplibregl-ctrl-attrib-button {
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+  }
+}

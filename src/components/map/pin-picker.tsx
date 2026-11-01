@@ -7,6 +7,7 @@
 // next/dynamic when the Sifu asks for it, so the form's page loads no map code until then.
 
 import 'maplibre-gl/dist/maplibre-gl.css';
+import './map-controls.css';
 
 import { AttributionControl, Map, Marker, NavigationControl } from '@vis.gl/react-maplibre';
 
@@ -29,7 +30,7 @@ export default function PinPicker({ center, point, styles, onPick }: PinPickerPr
   const theme = usePageTheme();
   const start = point ?? center;
   return (
-    <div className="relative h-72 overflow-hidden rounded-sm border border-border-strong md:h-96" data-testid="pin-picker">
+    <div className="relative h-72 overflow-hidden rounded-sm border border-border-strong md:h-96" data-testid="pin-picker" data-map-theme={theme}>
       <Map
         mapLib={maplibregl}
         mapStyle={styles[theme]}

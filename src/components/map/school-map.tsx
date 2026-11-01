@@ -20,6 +20,7 @@
 // - Coordinates arrive only through the public DTO: a city-only school is at its city's centre.
 
 import 'maplibre-gl/dist/maplibre-gl.css';
+import './map-controls.css';
 
 import { AttributionControl, Map, type MapRef, Marker, NavigationControl } from '@vis.gl/react-maplibre';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
@@ -123,6 +124,7 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
       data-testid="school-map"
       data-map-style={loadedStyle ?? ''}
       data-theme-wanted={theme}
+      data-map-theme={theme}
       data-moving={moving ? 'true' : 'false'}
       data-padding-bottom={paddingBottom}
     >

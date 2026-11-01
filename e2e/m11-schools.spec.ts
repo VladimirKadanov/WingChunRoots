@@ -514,6 +514,12 @@ test('@M11 at 390x844 selecting a pin opens the sheet and the pin stays visible 
     const box = (await marker.boundingBox())!;
     expect(box.width, 'a 44 px touch target').toBeGreaterThanOrEqual(44);
     expect(box.height, 'a 44 px touch target').toBeGreaterThanOrEqual(44);
+    // MapLibre's own controls too (src/components/map/map-controls.css).
+    for (const control of ['.maplibregl-ctrl-zoom-in', '.maplibregl-ctrl-zoom-out', '.maplibregl-ctrl-attrib-button']) {
+      const target = (await page.locator(control).boundingBox())!;
+      expect(target.width, `${control}: a 44 px touch target`).toBeGreaterThanOrEqual(44);
+      expect(target.height, `${control}: a 44 px touch target`).toBeGreaterThanOrEqual(44);
+    }
     await expect(page.getByTestId('show-list')).toContainText('1 school within 50 km of Sofia');
 
     await marker.tap();
