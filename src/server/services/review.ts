@@ -491,8 +491,18 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   const relationship = c.relationshipId ? await viewOf(db, c.relationshipId, { ...viewer, reviewer: true }).catch(() => null) : null;
   const parties = await partiesOf(db, c);
   const own = parties.has(p.user.id);
-  // A party to a dispute never sees the other side's files, an administrator included (DEFAULT D19).
-  const files = ((await filesOfCases(db, [c.id])).get(c.id) ?? []).filter((f) => !own || c.kind !== 'relationship_dispute' || f.uploadedByUserId === p.user.id);
+  // A member of staff who is a party to an M10b case reads no more than the same party without a
+  // staff role (M10b review, security-3; the conflict-of-interest rule of M10a, review-core.ts
+  // partiesOf): their own files and replies and the reviewers' public notes, never another party's
+  // (a dispute's other side, DEFAULT D19; the claimant's note to the reviewers for the student of a
+  // claimed relationship). A historical claim keeps the M10a rule: its teacher reads the claimant's
+  // note and sees the files.
+  const partyView = own && c.kind !== 'historical_claim';
+  // A party who did not open the case (the reported person, the student of a claimed relationship)
+  // gets nothing of it through cases.get: here, no facts the reviewers weigh about the other party
+  // (a report's reason and details) and no reason of the decision.
+  const outsideParty = partyView && c.kind !== 'relationship_dispute' && c.openedByUserId !== p.user.id;
+  const files = ((await filesOfCases(db, [c.id])).get(c.id) ?? []).filter((f) => !partyView || f.uploadedByUserId === p.user.id);
   // The download's own rule (evidence.ts accessOfFiles): a link and a name only for a file this
   // viewer may open.
   const opens = await openableFiles(db, p, files.map((f) => f.id));
@@ -504,11 +514,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     .leftJoin(authUser, eq(authUser.id, reviewNote.authorUserId))
     .where(own ? and(eq(reviewNote.reviewCaseId, c.id), eq(reviewNote.isInternal, false)) : eq(reviewNote.reviewCaseId, c.id))
     .orderBy(asc(reviewNote.createdAt), asc(reviewNote.id))
-    // ...and in a dispute, like cases.get, the reviewers' notes and their own, never the other
-    // side's reply (DEFAULT D19; a historical claim's teacher reads the claimant's note, M10a).
-    .then((rows) =>
-      own && c.kind === 'relationship_dispute' ? rows.filter((n) => n.author === p.user.id || (n.author !== null && !parties.has(n.author))) : rows,
-    );
+    // ...and, like cases.get, the reviewers' notes and their own, never another party's (above).
+    .then((rows) => (partyView ? rows.filter((n) => n.author === p.user.id || (n.author !== null && !parties.has(n.author))) : rows));
   const [assignee] = c.assignedToUserId ? await db.select({ role: authUser.role }).from(authUser).where(eq(authUser.id, c.assignedToUserId)) : [];
   const teacherRecord = relationship
     ? await db
@@ -527,7 +534,8 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     for (const row of rows) if (row.userId) sides.set(row.userId, row.id === relationship.teacher.id ? 'teacher' : 'student');
   }
   const { can, decideNote } = abilities(p, c, relationship?.status ?? null, own);
-  const subject = await subjectOf(db, c);
+  const facts = await subjectOf(db, c);
+  const subject = facts && outsideParty ? { ...facts, facts: [] } : facts;
   const reviewers = can.assignOthers
     ? (
         await db
@@ -549,7 +557,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     openedAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
     resolution: c.resolution,
-    resolutionReason: c.resolutionReason,
+    resolutionReason: outsideParty ? null : c.resolutionReason,
     resolvedAt: c.resolvedAt?.toISOString() ?? null,
     assignee: c.assignedToUserId ? { me: c.assignedToUserId === p.user.id, role: own ? null : (assignee?.role ?? null) } : null,
     relationship,

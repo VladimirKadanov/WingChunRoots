@@ -554,6 +554,55 @@ describe('instructor verification', () => {
   });
 });
 
+describe('a member of staff who is a party (M10b review, security-3)', () => {
+  it('reads a profile claim of their own request as the student does: never the claimant\'s note to the reviewers', async () => {
+    const { token, student } = await invite('staff-student');
+    const invitee = await newcomer('staff-student');
+    const note = 'Fictional private note for the reviewers only.';
+    const { caseId } = await acceptInvitation(invitee.principal, { token, note, idempotencyKey: key() }, meta);
+    const archivist = await staff('m10b-archivist-staff-student', 'archivist');
+    // The reviewers read the note and the facts.
+    const card = await getReviewCase(archivist.principal, { id: caseId });
+    expect(card.notes.map((n) => n.body)).toEqual([note]);
+    expect(card.subject?.facts.length).toBeGreaterThan(0);
+    await getDb().update(authUser).set({ role: 'archivist', twoFactorEnabled: true }).where(eq(authUser.id, student.account.id));
+    try {
+      const asParty = await getReviewCase(principalOf(student.account, 'archivist'), { id: caseId });
+      expect(asParty.notes).toEqual([]);
+      expect(asParty.files).toEqual([]);
+      expect(asParty.subject?.facts).toEqual([]);
+      expect(JSON.stringify(asParty)).not.toContain(note);
+      expect(asParty.can).toMatchObject({ assignSelf: false, verify: false, reject: false, needsInfo: false, note: false });
+      // A refusal: its reason stays with the claimant and the reviewers.
+      const reason = 'Fictional: the details do not match the record.';
+      await decide(archivist, caseId, 'reject', reason);
+      expect((await getReviewCase(principalOf(student.account, 'archivist'), { id: caseId })).resolutionReason).toBeNull();
+      expect((await getReviewCase(archivist.principal, { id: caseId })).resolutionReason).toBe(reason);
+    } finally {
+      await getDb().update(authUser).set({ role: 'user', twoFactorEnabled: false }).where(eq(authUser.id, student.account.id));
+    }
+  });
+
+  it('reads a report of their own profile without its reason, its details or the decision\'s reason', async () => {
+    const target = await member('m10b-reported-moderator', { role: 'moderator' });
+    const reporter = await member('m10b-reporter-of-staff');
+    const details = 'Fictional: I am the demo reporter, his former demo student.';
+    const { caseId } = await reportProfile(reporter.principal, { personId: target.personId, reason: 'misleading', details, idempotencyKey: key() }, meta);
+    const asParty = await getReviewCase(target.principal, { id: caseId });
+    expect(asParty.subject).toMatchObject({ label: 'The reported profile', facts: [] });
+    expect(JSON.stringify(asParty)).not.toContain(details);
+    expect(asParty.can).toMatchObject({ assignSelf: false, verify: false, reject: false, note: false });
+    // Another moderator decides, with the facts in front of them.
+    const moderator = await staff('m10b-moderator-of-staff-report', 'moderator');
+    expect((await getReviewCase(moderator.principal, { id: caseId })).subject?.facts).toContainEqual({ label: 'Details', value: details });
+    await decide(moderator, caseId, 'reject', 'Fictional: the profile is accurate.');
+    const after = await getReviewCase(target.principal, { id: caseId });
+    expect(after.resolution).toBe('rejected');
+    expect(after.resolutionReason).toBeNull();
+    expect(after.subject?.facts).toEqual([]);
+  });
+});
+
 describe('"Report profile"', () => {
   it('opens one review case per account and profile (a unique index), never hides the profile by itself', async () => {
     const target = await member('m10b-reported');
