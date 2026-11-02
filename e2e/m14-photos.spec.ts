@@ -98,10 +98,14 @@ test('@M14 the owner adds a photo with the keyboard, sees it on the profile, the
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute('loading', 'lazy');
   await expect(card).toHaveAttribute('src', /\/96\.webp$/);
+  // The card is named by the person already (its aria-label): the thumbnail is not read twice.
+  await expect(card).toHaveAttribute('alt', '');
   await anon.goto(LIST_PAGE);
   const row = anon.locator(`li[data-person="${OWNER}"]`).filter({ visible: true }).first();
   await expect(row.locator('img[data-person-photo]')).toBeVisible();
   await expect(row.locator('img[data-person-photo]')).toHaveAttribute('src', /\/96\.webp$/);
+  // The name is next to it: the thumbnail has an empty alt.
+  await expect(row.locator('img[data-person-photo]')).toHaveAttribute('alt', '');
 
   // Remove, with the keyboard: the focus moves to the picker, never to the page.
   await page.goto(`/people/${OWNER}`);

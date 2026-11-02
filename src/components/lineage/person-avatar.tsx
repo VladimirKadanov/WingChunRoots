@@ -7,8 +7,10 @@
 // the profile; `width` and `height` always set, so nothing moves when it arrives (CLS);
 // `loading="lazy"` on cards (the explorer draws only the nodes on screen, so only those load) and
 // eager on the profile, where it is part of the first screen. `alt` is the person's Latin display
-// name (empty where the surrounding element is already named by it). The monogram is decorative
-// (aria-hidden): the name is next to it.
+// name on the profile portrait and the review case; empty (`decorative`) wherever the name is
+// next to it or names the surrounding element (list rows, school instructors, the explorer's
+// cards, panel and students list, the search palette), so a screen reader does not read the name
+// twice (M14 review). The monogram is always decorative (aria-hidden): the name is next to it.
 
 import { cx } from '@/lib/cx';
 import type { PhotoDto } from '@/server/dto/public';
@@ -39,8 +41,8 @@ export function PersonAvatar({
   photo?: PhotoDto | null;
   size?: AvatarSize;
   /**
-   * Inside an element whose accessible name is already the person's name (the phone sheet's title),
-   * the image is hidden from assistive technology so the name is not read twice.
+   * Beside the visible name, or inside an element whose accessible name is already the person's
+   * name, the image is hidden from assistive technology so the name is not read twice.
    */
   decorative?: boolean;
   className?: string;

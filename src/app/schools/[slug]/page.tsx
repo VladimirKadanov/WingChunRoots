@@ -156,7 +156,7 @@ export default async function SchoolPage({ params }: Props) {
                 <li key={instructor.id} className="grid gap-1 border-b border-border-subtle pb-4" data-testid="school-instructor" data-slug={instructor.slug}>
                   <p className="flex flex-wrap items-center gap-x-3 font-display text-lg">
                     {/* M14: the instructor's photo, or the monogram. */}
-                    <PersonAvatar name={instructor.displayName.value} photo={instructor.photo} size="sm" />
+                    <PersonAvatar name={instructor.displayName.value} photo={instructor.photo} size="sm" decorative />
                     <NameText name={instructor.displayName} />
                     {instructor.original ? (
                       <span className="text-base text-fg-muted">

@@ -362,7 +362,7 @@ function PersonOverlay({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
           {/* M14: the profile photo's thumbnail, or the monogram. */}
-          <PersonAvatar name={person.displayName} photo={person.photo} size="md" />
+          <PersonAvatar name={person.displayName} photo={person.photo} size="md" decorative />
           <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
             <LatinName name={person.displayName} />
           </h2>

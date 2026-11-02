@@ -38,7 +38,7 @@ function Row({ entry, note }: { entry: StudentEntryDto; note: string | null }) {
     <li className="flex flex-wrap items-center justify-between gap-x-3 border-b border-border-subtle last:border-b-0">
       <span className="flex min-w-0 flex-wrap items-center gap-x-2">
         {/* M14: the photo's thumbnail, or the monogram. */}
-        <PersonAvatar name={person.displayName} photo={person.photo} />
+        <PersonAvatar name={person.displayName} photo={person.photo} decorative />
         <Link href={`/people/${person.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center text-ui">
           <span lang="und-Latn" translate="no">
             {person.displayName}

@@ -252,7 +252,7 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
             {/* M14: the photo as a small round thumbnail in the monogram's 24 px slot (the card's
                 layout, and so the columns at 390 px, stay as they were); the monogram without one.
                 Lazy: onlyRenderVisibleElements mounts only the nodes on screen. */}
-            <PersonAvatar name={data.name} photo={data.photo} size="xs" />
+            <PersonAvatar name={data.name} photo={data.photo} size="xs" decorative />
             <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span lang="und-Latn" translate="no" className="truncate font-display text-base leading-4.5 text-fg">

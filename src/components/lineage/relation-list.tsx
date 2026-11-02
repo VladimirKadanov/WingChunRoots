@@ -224,7 +224,7 @@ export function RelationList({
                 <p className="flex flex-wrap items-baseline gap-x-2">
                   {/* M14: the photo or the monogram before the name; the name's link covers it too.
                       24 px, within the name's line, so a row keeps its height on a phone. */}
-                  <PersonAvatar name={row.person.displayName} photo={row.person.photo} size="xs" className="self-center" />
+                  <PersonAvatar name={row.person.displayName} photo={row.person.photo} size="xs" decorative className="self-center" />
                   <PersonLink person={row.person} stretched className={cx('font-display', nameSize === 'xl' ? 'text-xl' : 'text-lg')} />
                   {row.note ? <span className="text-sm text-fg-muted">({row.note})</span> : null}
                   {primaryFirst && index === 0 ? (
