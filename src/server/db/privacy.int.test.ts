@@ -75,6 +75,8 @@ describe('app_public_ro', () => {
       'public.geometry_columns',
       'public.spatial_ref_sys',
       'public.v_public_edge',
+      // M15: the approved organizations (docs/adr/0018-organizations.md); never the organization tables.
+      'public.v_public_organization',
       'public.v_public_person',
       'public.v_public_school',
     ]);
