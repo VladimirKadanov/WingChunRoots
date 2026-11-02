@@ -1,14 +1,16 @@
 'use client';
 
-// Theme switch of the app shell: System (follow prefers-color-scheme), Light or Dark. A native
-// <select> laid over the icon or the "Theme: …" row: the platform picker on phones and in
-// webviews, full keyboard and screen reader support, and no popup code in every page's
-// JavaScript (plan §5.8 (c)). The choice is stored in a cookie that the inline head script reads
-// before the first paint (src/design/theme.ts).
+// Theme switch of the app shell: one press flips between the dark and the light theme (owner
+// request 2026-11-02, replacing the System / Light / Dark select). Until the reader presses it,
+// the page follows prefers-color-scheme and the switch shows the theme that is on screen; a press
+// stores the other theme in the `wcr-theme` cookie (one year), which the inline head script reads
+// before the first paint on every later visit (src/design/theme.ts). A real <button
+// role="switch">: Space and Enter press it, a screen reader reads "Dark theme, on/off".
 
 import { useLayoutEffect, useSyncExternalStore } from 'react';
-import { MoonIcon, SunIcon, SystemThemeIcon } from '@/components/icons';
-import { applyThemeChoice, parseThemeCookie, type ThemeChoice } from '@/design/theme';
+import { MoonIcon, SunIcon } from '@/components/icons';
+import { applyThemeChoice, parseThemeCookie } from '@/design/theme';
+import type { ThemeName } from '@/design/theme-constants';
 import { cx } from '@/lib/cx';
 
 const EVENT = 'wcr-theme-change';
@@ -23,15 +25,16 @@ function subscribe(onChange: () => void) {
   };
 }
 
-const readChoice = (): ThemeChoice => parseThemeCookie(document.cookie) ?? 'system';
-const serverChoice = (): ThemeChoice => 'system';
+/** The theme on screen: the stored choice, else the system's. */
+const readTheme = (): ThemeName =>
+  parseThemeCookie(document.cookie) ?? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+// The prerendered shell cannot know it; dark is the design's first theme. Hydration reads the real one.
+const serverTheme = (): ThemeName => 'dark';
 
-const LABEL: Record<ThemeChoice, string> = { system: 'System', light: 'Light', dark: 'Dark' };
-const OPTION: Record<ThemeChoice, string> = { system: 'Match the system', light: 'Light', dark: 'Dark' };
-const ICON = { system: SystemThemeIcon, light: SunIcon, dark: MoonIcon } as const;
+const LABEL: Record<ThemeName, string> = { light: 'Light', dark: 'Dark' };
 
 export function ThemeMenu({ variant }: { variant: 'icon' | 'row' }) {
-  const choice = useSyncExternalStore(subscribe, readChoice, serverChoice);
+  const theme = useSyncExternalStore(subscribe, readTheme, serverTheme);
   // React resets <html> attributes on a development remount; re-apply the stored choice.
   useLayoutEffect(() => {
     const stored = parseThemeCookie(document.cookie);
@@ -40,34 +43,40 @@ export function ThemeMenu({ variant }: { variant: 'icon' | 'row' }) {
     }
   }, []);
 
-  const Icon = ICON[choice];
+  const dark = theme === 'dark';
+  const Icon = dark ? MoonIcon : SunIcon;
 
   return (
-    <label
+    <button
+      type="button"
+      role="switch"
+      aria-checked={dark}
+      aria-label="Dark theme"
+      onClick={() => {
+        applyThemeChoice(dark ? 'light' : 'dark');
+        window.dispatchEvent(new Event(EVENT));
+      }}
       className={cx(
-        'relative inline-flex min-h-11 items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg',
-        'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus',
+        'relative inline-flex min-h-11 cursor-pointer items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         variant === 'icon' ? 'size-11 justify-center' : '-ml-2.5 gap-2.5 px-2.5 text-sm',
       )}
     >
       <Icon size={variant === 'icon' ? 22 : 18} />
-      {variant === 'row' ? <span aria-hidden="true">Theme: {LABEL[choice]}</span> : null}
-      <select
-        aria-label="Theme"
-        value={choice}
-        onChange={(event) => {
-          applyThemeChoice(event.target.value as ThemeChoice);
-          window.dispatchEvent(new Event(EVENT));
-        }}
-        // 16 px: iOS zooms the page into a focused control with smaller text.
-        className="absolute inset-0 size-full cursor-pointer appearance-none text-field opacity-0"
-      >
-        {(['system', 'light', 'dark'] as const).map((value) => (
-          <option key={value} value={value}>
-            {OPTION[value]}
-          </option>
-        ))}
-      </select>
-    </label>
+      {variant === 'row' ? (
+        <>
+          <span aria-hidden="true">Theme: {LABEL[theme]}</span>
+          {/* The track: the knob stands right for dark, left for light (position, not colour alone). */}
+          <span aria-hidden="true" className="relative ml-1 inline-block h-5 w-9 shrink-0 rounded-full border border-border-strong bg-surface-2">
+            <span
+              className={cx(
+                'absolute top-0.5 left-0.5 size-3.5 rounded-full bg-fg transition-transform motion-reduce:transition-none',
+                dark ? 'translate-x-4' : 'translate-x-0',
+              )}
+            />
+          </span>
+        </>
+      ) : null}
+    </button>
   );
 }

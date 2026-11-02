@@ -171,7 +171,7 @@ export function useGraphKeys(flow: FlowApi, context: GraphContext): GraphKeys {
     flow,
     context,
     go: (href) => router.push(href),
-    search: openSearch,
+    search: () => openSearch(),
     help: () => setHelp(true),
     choose: (from, ids) => setChooser({ from, anchor: flow.element(from), ids }),
   });

@@ -440,7 +440,7 @@ test.describe('@M00b phone', () => {
   });
 
   test('@M00b form controls use at least 16 px text, so iOS does not zoom into them', async ({ page }) => {
-    for (const path of ['/', '/styleguide']) {
+    for (const path of ['/schools', '/styleguide']) {
       await page.goto(path);
       const sizes = await page.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>('input, select, textarea')].map((el) => ({
@@ -686,7 +686,7 @@ test.describe('@M00b desktop', () => {
       // The rail's controls stay seen: the toast keeps right of the rail.
       const railRight = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-w')));
       expect((await toast.boundingBox())!.x).toBeGreaterThanOrEqual(railRight);
-      const theme = tabBar(page).getByRole('combobox', { name: 'Theme' });
+      const theme = tabBar(page).getByRole('switch', { name: 'Dark theme' });
       expect(await seenAtCentre(theme), 'the Theme control is not covered').toBe(true);
       expect(await seenAtCentre(sheet.getByRole('button', { name: 'Close' })), 'Close').toBe(true);
     });

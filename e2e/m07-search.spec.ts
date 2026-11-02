@@ -72,6 +72,19 @@ test('@M07 Ctrl+K opens the palette and the query "Тестов" finds demo-lati
   await expect(option(page, 'Ivan Testov')).toBeVisible();
 });
 
+test('@M07 a "Try" name on the home page opens the palette with it searched over everyone', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Демов', exact: true }).click();
+  await expect(palette(page)).toBeVisible();
+  await expect(searchInput(page)).toHaveValue('Демов');
+  await expect(option(page, 'Nikolay Demov').first()).toBeVisible();
+  // The next opening starts empty again.
+  await page.keyboard.press('Escape');
+  await expect(palette(page)).toBeHidden();
+  await openPalette(page);
+  await expect(searchInput(page)).toHaveValue('');
+});
+
 test('@M07 a Jyutping query finds demo-cjk-name and shows its stored name', async ({ page }) => {
   await page.goto('/');
   await openPalette(page);

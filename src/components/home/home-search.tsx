@@ -14,7 +14,7 @@ export function HomeSearch() {
   return (
     <button
       type="button"
-      onClick={openSearch}
+      onClick={() => openSearch()}
       onPointerEnter={() => void loadPalette()}
       onFocus={() => void loadPalette()}
       aria-haspopup="dialog"

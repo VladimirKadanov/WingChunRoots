@@ -684,19 +684,20 @@ test('@M11 the map switches between the dark and light styles together with the 
   await expect(map).toHaveAttribute('data-theme-wanted', 'light');
   expect(styleRequests).toContain('/map-styles/light.json');
 
-  // The shell's theme menu: Dark, then back to the system (light).
-  const theme = visible(page.getByRole('combobox', { name: 'Theme' })).first();
-  await theme.selectOption('dark');
-  await expect.poll(() => resolvedTheme(page)).toBe('dark');
-  await mapSettled(page, 'dark');
-  expect(styleRequests).toContain('/map-styles/dark.json');
-  await theme.selectOption('system');
-  await mapSettled(page, 'light');
-
-  // The system's colour scheme, followed while the menu says System.
+  // The system's colour scheme, followed while no theme is chosen.
   await switchColorScheme(page, 'dark');
   await mapSettled(page, 'dark');
   await switchColorScheme(page, 'light');
+  await mapSettled(page, 'light');
+
+  // The shell's theme switch: dark, then light again.
+  const theme = visible(page.getByRole('switch', { name: 'Dark theme' })).first();
+  await theme.click();
+  await expect.poll(() => resolvedTheme(page)).toBe('dark');
+  await mapSettled(page, 'dark');
+  expect(styleRequests).toContain('/map-styles/dark.json');
+  await theme.click();
+  await expect.poll(() => resolvedTheme(page)).toBe('light');
   await mapSettled(page, 'light');
   // The markers stay through each change.
   expect((await markerSlugs(page)).length).toBeGreaterThan(0);
