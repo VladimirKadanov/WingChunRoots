@@ -44,6 +44,8 @@ import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
 import { assignReviewCase } from '../services/review';
 import { type Account, createUser, key, meta, newLineage, ongoingFrom, principalOf } from '../services/relationships.test-support';
+import { grantOrganizationPlan } from '../services/organization-grants';
+import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
 import { createSchool } from '../services/schools';
 import { SIGN_UP_CONSENTS } from '../legal/documents';
 import { handleApiRequest } from './handler';
@@ -278,6 +280,40 @@ async function withPhoto(label: string, opts: { hidden?: boolean } = {}) {
   // `/api/photos/<id>/<hash>/96.webp` → the route's params.
   const [, , , id, hash] = uploaded.photo.small.split('/');
   return { owner, slug: owner.slug!, address: { id: id!, hash: hash!, file: '96.webp' } };
+}
+
+/** M15: an organization's application by a new account (its owner); approved when `active`, with Federation when `federation`. */
+async function organizationOf(opts: { active?: boolean; federation?: boolean } = {}) {
+  const owner = await actor('org-owner', { noPerson: true });
+  const applied = await applyOrganization(
+    owner.principal,
+    { name: 'Demo Matrix Federation', kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
+    meta,
+  );
+  if (opts.active || opts.federation) {
+    await getDb().execute(sql`UPDATE organization SET status = 'active', approved_at = now() WHERE id = ${applied.organizationId}::uuid`);
+    await getDb().execute(sql`UPDATE review_case SET status = 'resolved', resolution = 'approved', resolved_at = now() WHERE id = ${applied.caseId}::uuid`);
+  }
+  let grantId: string | null = null;
+  if (opts.federation) {
+    const view = await grantOrganizationPlan(world.admin.principal, { organizationId: applied.organizationId, reason: 'M15 authorization matrix (fictional)' }, meta);
+    grantId = view.grants[0]!.id;
+  }
+  const [row] = await getDb().execute<{ slug: string }>(sql`SELECT slug FROM organization WHERE id = ${applied.organizationId}::uuid`).then((r) => r.rows);
+  return { owner, organizationId: applied.organizationId, caseId: applied.caseId, slug: row!.slug, grantId };
+}
+
+/** M15: the owner of another approved organization: it administers that one, never this one. */
+async function otherOrganizationAdmin(): Promise<Actor> {
+  return (await organizationOf({ active: true })).owner;
+}
+
+/** M15: a pending link from an organization with Federation to a listed school of a Professional Sifu. */
+async function schoolLink() {
+  const org = await organizationOf({ federation: true });
+  const s = await draftSchool({ pro: true, status: 'active' });
+  const link = await requestOrganizationSchool(org.owner.principal, { organizationId: org.organizationId, schoolSlug: s.slug }, meta);
+  return { org, school: s, linkId: link.linkId };
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -745,6 +781,146 @@ const ROWS: Row[] = [
   },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
+  // M15: organizations. `party` is the owner of another organization: it reaches only its own
+  // (404 here, the same answer as for none), as does every member and staff account.
+  { path: 'organizations.list', make: noInput, expect: everyone },
+  { path: 'organizations.mine', make: noInput, expect: own() },
+  { path: 'organizations.options', make: noInput, expect: own() },
+  { path: 'organizations.schoolLinks', make: noInput, expect: own() },
+  {
+    path: 'organizations.manage',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'organizations.get', make: async () => ({ input: { slug: (await organizationOf({ active: true })).slug } }), expect: everyone },
+  {
+    // A pending application is not public: 404 for everyone, its applicant included (the dashboard is organizations.manage).
+    path: 'organizations.get (pending organization)',
+    make: async () => {
+      const o = await organizationOf();
+      return { owner: o.owner, input: { slug: o.slug } };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizations.apply',
+    // A new account each call: an account with an application waiting is refused (CONFLICT).
+    make: async () => ({
+      owner: await actor('org-applicant', { noPerson: true }),
+      input: { name: 'Demo Applied Association', kind: 'association', leaderName: 'Demo Leader', websiteUrl: 'https://example.test', countryCode: 'BG', schoolsEstimate: 2, evidenceIds: [], idempotencyKey: key() },
+    }),
+    expect: { ...signedInOnly, owner: 'ok' },
+  },
+  {
+    path: 'organizations.update',
+    make: async () => {
+      const o = await organizationOf();
+      return {
+        owner: o.owner,
+        party: await otherOrganizationAdmin(),
+        input: { organizationId: o.organizationId, name: 'Demo Edited Federation', kind: 'federation', leaderName: 'Demo Leader', countryCode: 'BG', schoolsEstimate: 4 },
+      };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizations.addAdmin',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, email: (await actor('org-new-admin', { noPerson: true })).email } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizations.removeAdmin',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      const added = await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: (await actor('org-removed-admin', { noPerson: true })).email }, meta);
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, adminId: added.adminId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizations.addMember',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, personSlug: (await actor('org-member')).slug, role: 'member' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // DEFAULT D08: approved but without Federation, members are not managed.
+    path: 'organizations.addMember (no Federation plan)',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, input: { organizationId: o.organizationId, personSlug: (await actor('org-member')).slug, role: 'member' } };
+    },
+    expect: { ...signedInOnly, owner: 'ENTITLEMENT_REQUIRED', member: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizations.endMember',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      const m = await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: (await actor('org-member')).slug! }, meta);
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, membershipId: m.membershipId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizations.requestSchool',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      const s = await draftSchool({ pro: true, status: 'active' });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, schoolSlug: s.slug } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // The school's listing account answers; the organization that asked does not.
+    path: 'organizations.answerSchoolLink',
+    make: async () => {
+      const l = await schoolLink();
+      return { owner: l.school.owner, party: l.org.owner, input: { linkId: l.linkId, accept: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // Either side: the organization withdraws its pending request; nobody else reaches it.
+    path: 'organizations.endSchoolLink',
+    make: async () => {
+      const l = await schoolLink();
+      return { owner: l.org.owner, party: await otherOrganizationAdmin(), input: { linkId: l.linkId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'organizations.adminList', make: noInput, expect: staffOnly({ admin: 'ok' }) },
+  {
+    path: 'organizations.adminGet',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, input: { organizationId: o.organizationId } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'organizations.grant',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, input: { organizationId: o.organizationId, reason: 'M15 matrix (fictional)' } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'organizations.revokeGrant',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      return { owner: o.owner, input: { grantId: o.grantId, reason: 'M15 matrix' } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
   // the evidence routes outside the router (plan §6.4): streamed only after the permission check
   {
     path: 'GET /api/evidence/{id}',
@@ -1130,6 +1306,17 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/schools/actions.ts#submitSchoolAction', row: 'schools.submit', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#confirmSchoolAction', row: 'schools.confirm', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#createSchoolAction', row: 'schools.create', form: same, roles: ['anonymous', 'member', 'owner'] },
+  // M15: organizations. `party` is another organization's owner (404); the apply form carries uploaded files (below).
+  { action: 'src/app/dashboard/organization/actions.ts#updateOrganizationAction', row: 'organizations.update', form: (i) => ({ ...same(i), schoolsEstimate: String(i.schoolsEstimate) }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#addOrganizationAdminAction', row: 'organizations.addAdmin', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#removeOrganizationAdminAction', row: 'organizations.removeAdmin', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#addOrganizationMemberAction', row: 'organizations.addMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#endOrganizationMemberAction', row: 'organizations.endMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction', row: 'organizations.requestSchool', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction', row: 'organizations.endSchoolLink', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction', row: 'organizations.answerSchoolLink', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction', row: 'organizations.grant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
+  { action: 'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction', row: 'organizations.revokeGrant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   // The editor saves the account's own person only: the form has no person to choose.
   { action: 'src/app/dashboard/profile/actions.ts#saveProfileAction', row: 'profile.update', form: () => ({ 'names.0.value': 'Demo Profile Person', primary: '0', showPublicly: 'on' }), roles: ['anonymous', 'owner'] },
 ];
@@ -1139,6 +1326,9 @@ const ACTIONS_ELSEWHERE: Record<string, string> = {
   'src/app/dashboard/teachers/historical/actions.ts#requestHistoricalAction': 'its form carries uploaded files; relationships.requestHistorical is in the matrix and M10a E2E posts the form',
   'src/app/dashboard/teachers/invite/actions.ts#inviteTeacherAction': 'relationships.invite takes no object of another account (a new record); in the matrix over HTTP',
   'src/app/dashboard/instructor/actions.ts#requestInstructorAction': 'its form carries uploaded files; instructor.request is in the matrix and M10b E2E posts the form',
+  'src/app/dashboard/organization/actions.ts#applyOrganizationAction': 'its form carries uploaded files; organizations.apply is in the matrix and M15 E2E posts the form',
+  'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction':
+    'the school side of organizations.endSchoolLink, whose row runs the organization side; the school side is in organizations.int.test.ts and M15 E2E',
 };
 
 describe('Server Actions run the same checks (M13)', () => {
