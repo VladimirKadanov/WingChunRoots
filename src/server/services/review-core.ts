@@ -14,7 +14,7 @@ import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Principal, StaffRole } from '../auth/principal';
 import { uuidv7 } from '../db/ids';
-import { authUser, notification, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
+import { authUser, notification, organization, organizationAdmin, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
 import { OPEN_REVIEW_CASE_STATUSES, type REVIEW_EVENT_ACTIONS, STAFF_ROLES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
@@ -42,6 +42,9 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
   profile_report: ['moderator', 'admin'],
   // M11: a listing is public content, so a moderation task (school-review.ts).
   school_listing: ['moderator', 'admin'],
+  // M15: an organization's application is about identity and authenticity, like an instructor's
+  // (DEFAULT, docs/adr/0018-organizations.md): an archivist or an administrator decides it.
+  organization_application: ['archivist', 'admin'],
 };
 
 /**
@@ -65,6 +68,8 @@ export interface CaseRow {
   personId: string | null;
   /** M11: the school of a listing case. */
   schoolId: string | null;
+  /** M15: the organization of an application case. */
+  organizationId: string | null;
   openedByUserId: string | null;
   assignedToUserId: string | null;
   resolution: 'approved' | 'rejected' | null;
@@ -81,6 +86,7 @@ export const caseColumns = {
   relationshipId: reviewCase.relationshipId,
   personId: reviewCase.personId,
   schoolId: reviewCase.schoolId,
+  organizationId: reviewCase.organizationId,
   openedByUserId: reviewCase.openedByUserId,
   assignedToUserId: reviewCase.assignedToUserId,
   resolution: reviewCase.resolution,
@@ -103,7 +109,10 @@ export async function caseById(db: Executor, id: string, lock = false): Promise<
  * the reported profile). Nobody reviews a case of their own, whatever their role: such a reviewer
  * takes no action on it, is not given it, and reads it as the parties do (no internal notes).
  */
-export async function partiesOf(db: Executor, c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'>): Promise<Set<string>> {
+export async function partiesOf(
+  db: Executor,
+  c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'> & { organizationId?: string | null },
+): Promise<Set<string>> {
   const out = new Set<string>();
   // A dispute is opened by the moderator who set the arbitration: they are its reviewer, not a party.
   if (c.openedByUserId && c.kind !== 'relationship_dispute') out.add(c.openedByUserId);
@@ -119,11 +128,18 @@ export async function partiesOf(db: Executor, c: Pick<CaseRow, 'kind' | 'relatio
     const [named] = await db.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, c.personId));
     if (named?.userId) out.add(named.userId);
   }
+  // M15: an organization's applicant and its admins, now or before, are parties to its application.
+  if (c.organizationId) {
+    const rows = await db.select({ userId: organizationAdmin.userId }).from(organizationAdmin).where(eq(organizationAdmin.organizationId, c.organizationId));
+    for (const row of rows) out.add(row.userId);
+    const [org] = await db.select({ createdBy: organization.createdByUserId }).from(organization).where(eq(organization.id, c.organizationId));
+    if (org?.createdBy) out.add(org.createdBy);
+  }
   return out;
 }
 
 /** Whether this reviewer is one of the case's parties: nobody reviews their own case. */
-export async function ownSide(db: Executor, p: Principal, c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'>): Promise<boolean> {
+export async function ownSide(db: Executor, p: Principal, c: Pick<CaseRow, 'kind' | 'relationshipId' | 'openedByUserId' | 'personId'> & { organizationId?: string | null }): Promise<boolean> {
   return (await partiesOf(db, c)).has(p.user.id);
 }
 

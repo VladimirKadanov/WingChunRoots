@@ -851,8 +851,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   // --- Organizations (skeleton, DEFAULT D12) -----------------------------------------------------
   const orgAt = b.tick();
   const organizations: OrganizationRow[] = [
-    { id: b.id(), slug: 'demo-federation-north', name: 'Demo Federation North', kind: 'federation', status: 'active', countryCode: 'DE', websiteUrl: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
-    { id: b.id(), slug: 'demo-association-south', name: 'Demo Association South', kind: 'association', status: 'active', countryCode: 'GR', websiteUrl: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
+    { id: b.id(), slug: 'demo-federation-north', name: 'Demo Federation North', kind: 'federation', status: 'active', countryCode: 'DE', websiteUrl: null, leaderName: null, leaderTitle: null, schoolsEstimate: null, createdByUserId: null, approvedAt: null, approvedByUserId: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
+    { id: b.id(), slug: 'demo-association-south', name: 'Demo Association South', kind: 'association', status: 'active', countryCode: 'GR', websiteUrl: null, leaderName: null, leaderTitle: null, schoolsEstimate: null, createdByUserId: null, approvedAt: null, approvedByUserId: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
   ];
   const membership = (org: OrganizationRow, p: P, role: OrganizationMembershipRow['role']): OrganizationMembershipRow => ({
     id: b.id(),
@@ -891,6 +891,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       relationshipId: rel.id,
       personId,
       schoolId: null,
+      organizationId: null,
       openedByUserId: null,
       assignedToUserId: null,
       resolution,
@@ -1062,6 +1063,7 @@ function demoAccounts(
     relationshipId: null,
     personId: b.bySlug.get(slug)!.row.id,
     schoolId: null,
+    organizationId: null,
     openedByUserId: accounts[slug],
     assignedToUserId: accounts['demo-archivist'],
     resolution: 'approved',

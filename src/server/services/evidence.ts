@@ -267,7 +267,7 @@ interface OpenCase {
 }
 
 /** The kinds whose claimant (the account that opened the case) adds files to it. */
-const CLAIMANT_KINDS: readonly string[] = ['historical_claim', 'person_claim', 'instructor_verification'];
+const CLAIMANT_KINDS: readonly string[] = ['historical_claim', 'person_claim', 'instructor_verification', 'organization_application'];
 
 /**
  * An open case the uploader may add files to, or 404 (the same answer as for no such case): their
@@ -464,6 +464,16 @@ async function attachToOpenCase(tx: Transaction, open: OpenCase, fileId: string,
  */
 export async function linkFilesToCase(tx: Transaction, userId: string, caseId: string, fileIds: readonly string[]): Promise<string | null> {
   return linkFiles(tx, userId, { reviewCaseId: caseId, note: 'sent with the claim' }, fileIds, true);
+}
+
+/**
+ * M15: links the applicant's unattached files to an organization's application case, in its
+ * transaction; none is required (the supporting document is optional, specification §4.3). The
+ * same rules as linkFilesToCase (DEFAULT D13: the private store; DEFAULT D25: at most 20 files).
+ */
+export async function linkOptionalFilesToCase(tx: Transaction, userId: string, caseId: string, fileIds: readonly string[]): Promise<string | null> {
+  if (fileIds.length === 0) return null;
+  return linkFiles(tx, userId, { reviewCaseId: caseId, note: 'sent with the application' }, fileIds, false);
 }
 
 /**

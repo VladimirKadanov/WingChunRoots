@@ -25,6 +25,7 @@ export const REVIEW_KIND_LABELS: Record<ReviewCaseKind, string> = {
   profile_report: 'Profile report',
   school_listing: 'School listing',
   deletion_request: 'Account deletion',
+  organization_application: 'Organization application',
 };
 
 /** The status of a case as the reviewers read it. */

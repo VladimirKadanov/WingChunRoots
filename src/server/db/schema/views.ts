@@ -1,4 +1,4 @@
-// The three public views, the only relations app_public_ro can read (plan §6.2, §6.4). They are
+// The public views, the only relations app_public_ro can read (plan §6.2, §6.4). They are
 // created in the custom migration drizzle/*_roles_views_audit (SQL kept compatible with
 // PostgreSQL 16+) and declared here with .existing(), so Drizzle can query them but drizzle-kit
 // never tries to manage them.
@@ -99,4 +99,21 @@ export const vPublicSchool = pgView('v_public_school', {
   contactEmail: text('contact_email'),
   contactPhone: text('contact_phone'),
   formsTaught: text('forms_taught').array().notNull(),
+}).existing();
+
+/**
+ * M15: approved organizations (status 'active', not deleted). The public identity only: no
+ * applicant, no leader's name or title (a leader is named only through a public person's
+ * membership, DEFAULT D03), no supporting document, no admins, no plan. app_public_ro reads it.
+ */
+export const vPublicOrganization = pgView('v_public_organization', {
+  id: uuid('id').notNull(),
+  slug: text('slug').notNull(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(),
+  countryCode: text('country_code'),
+  websiteUrl: text('website_url'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 }).existing();

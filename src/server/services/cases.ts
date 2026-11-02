@@ -33,7 +33,7 @@ import { fieldErrors, idempotencyKey, keyReused, namesFor, rowById } from './rel
 import { type CaseRow, caseById, caseNotFound, caseReplayOf, isCaseKeyConflict, isOpenCase, partiesOf, recordCaseEvent, tellAssignee } from './review-core';
 
 export const CASE_REPLY_MAX = 2000;
-const PARTY_KINDS: readonly ReviewCaseKind[] = ['person_claim', 'instructor_verification', 'relationship_dispute'];
+const PARTY_KINDS: readonly ReviewCaseKind[] = ['person_claim', 'instructor_verification', 'relationship_dispute', 'organization_application'];
 
 export const caseIdInput = z.object({ id: z.uuid({ error: 'No such case.' }) });
 
@@ -117,7 +117,7 @@ export async function myCases(principal: Principal | null): Promise<{ cases: Par
     .from(reviewCase)
     .where(
       or(
-        and(inArray(reviewCase.kind, ['person_claim', 'instructor_verification']), eq(reviewCase.openedByUserId, p.user.id)),
+        and(inArray(reviewCase.kind, ['person_claim', 'instructor_verification', 'organization_application']), eq(reviewCase.openedByUserId, p.user.id)),
         disputed ? and(eq(reviewCase.kind, 'relationship_dispute'), inArray(reviewCase.relationshipId, disputed)) : sql`false`,
       ),
     )

@@ -505,6 +505,8 @@ const OPENED_KINDS = {
   person_claim: { title: 'New profile claim', body: 'An invited teacher claimed the profile a student started for them. It waits in the review queue.' },
   instructor_verification: { title: 'New instructor verification', body: 'A Sifu sent evidence that they are an instructor. It waits in the review queue.' },
   profile_report: { title: 'New profile report', body: 'A member reported a profile. It waits in the review queue.' },
+  // M15.
+  organization_application: { title: 'New organization application', body: 'An organization applied to be listed. It waits in the review queue.' },
 } as const;
 type OpenedKind = keyof typeof OPENED_KINDS;
 
@@ -772,6 +774,94 @@ export const RELATIONSHIP_NOTIFICATIONS = [
 ] as const;
 
 /** Every notification template, by name (= template.name). */
+// --- Organizations (M15) -------------------------------------------------------------------------
+
+function uuidOf(template: string, key: string, payload: unknown): string {
+  const value = payloadObject(template, payload)[key];
+  if (typeof value !== 'string' || !UUID.test(value)) throw new NotificationDataError(template, `${key} must be a UUID`);
+  return value;
+}
+
+const ORGANIZATION_PAGE = (organizationId: string) => `/dashboard/organization/${organizationId}`;
+
+/**
+ * "organization.reviewed": to the admins of an organization when the reviewers approve its
+ * application, decline it or ask for more information. Approval lists the organization; it is not
+ * a plan and verifies nobody (DEFAULT D04).
+ */
+const organizationReviewed: NotificationTemplate<{ organizationId: string; decision: 'approved' | 'declined' | 'needs_info' }> = {
+  name: 'organization.reviewed',
+  parse(payload) {
+    const organizationId = uuidOf('organization.reviewed', 'organizationId', payload);
+    const decision = payloadObject('organization.reviewed', payload).decision;
+    if (decision !== 'approved' && decision !== 'declined' && decision !== 'needs_info') {
+      throw new NotificationDataError('organization.reviewed', 'decision must be approved, declined or needs_info');
+    }
+    return { organizationId, decision };
+  },
+  render: ({ organizationId, decision }) => {
+    const action = { label: decision === 'approved' ? 'Open your organization' : decision === 'declined' ? 'Read their reason' : 'Read their question', href: ORGANIZATION_PAGE(organizationId) };
+    return decision === 'approved'
+      ? { title: 'Organization approved', body: [{ text: 'The reviewers approved your organization’s application. Its public page is online. Approval is not a plan and verifies no teacher or relationship.' }], action }
+      : decision === 'declined'
+        ? { title: 'Organization application declined', body: [{ text: 'The reviewers declined your organization’s application. Their reason is on its page.' }], action }
+        : { title: 'More information needed', body: [{ text: 'The reviewers of your organization’s application ask for more information.' }], action };
+  },
+  sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000c', decision: 'approved' },
+};
+
+/** "organization.admin_added": to an account an organization's owner made one of its admins. */
+const organizationAdminAdded: NotificationTemplate<{ organizationId: string }> = {
+  name: 'organization.admin_added',
+  parse: (payload) => ({ organizationId: uuidOf('organization.admin_added', 'organizationId', payload) }),
+  render: ({ organizationId }) => ({
+    title: 'You administer an organization',
+    body: [{ text: 'An owner of an organization added you as one of its admins. You can manage its details from your dashboard.' }],
+    action: { label: 'Open the organization', href: ORGANIZATION_PAGE(organizationId) },
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000d' },
+};
+
+/** "organization.school_requested": to the account that listed a school, when an organization asks to link it. */
+const organizationSchoolRequested: NotificationTemplate<{ linkId: string }> = {
+  name: 'organization.school_requested',
+  parse: (payload) => ({ linkId: uuidOf('organization.school_requested', 'linkId', payload) }),
+  render: () => ({
+    title: 'An organization asks to link your school',
+    body: [{ text: 'An organization asks to list your school among its schools. Nothing changes until you accept; your school and its pin stay as they are either way.' }],
+    action: { label: 'Answer the request', href: '/dashboard/schools#organizations' },
+  }),
+  sample: { linkId: '0190a5c0-0000-7000-8000-00000000000e' },
+};
+
+/** "organization.school_answered": to the admins of an organization, when a school accepts, refuses or ends a link. */
+const organizationSchoolAnswered: NotificationTemplate<{ organizationId: string; decision: 'accepted' | 'refused' | 'ended' }> = {
+  name: 'organization.school_answered',
+  parse(payload) {
+    const organizationId = uuidOf('organization.school_answered', 'organizationId', payload);
+    const decision = payloadObject('organization.school_answered', payload).decision;
+    if (decision !== 'accepted' && decision !== 'refused' && decision !== 'ended') {
+      throw new NotificationDataError('organization.school_answered', 'decision must be accepted, refused or ended');
+    }
+    return { organizationId, decision };
+  },
+  render: ({ organizationId, decision }) => ({
+    title: decision === 'accepted' ? 'A school accepted the link' : decision === 'refused' ? 'A school refused the link' : 'A school ended the link',
+    body: [
+      {
+        text:
+          decision === 'accepted'
+            ? 'A school accepted your organization’s request: it is listed on your organization’s page now.'
+            : decision === 'refused'
+              ? 'A school refused your organization’s request. Nothing changed.'
+              : 'A school ended its link with your organization. It is no longer listed on your organization’s page.',
+      },
+    ],
+    action: { label: 'Open the organization', href: ORGANIZATION_PAGE(organizationId) },
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000f', decision: 'accepted' },
+};
+
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,
@@ -792,6 +882,11 @@ export const NOTIFICATION_TEMPLATES = {
   'invitation.claimed': invitationClaimed,
   'instructor.decided': instructorDecided,
   'relationship.arbitration': relationshipArbitration,
+  // M15.
+  'organization.reviewed': organizationReviewed,
+  'organization.admin_added': organizationAdminAdded,
+  'organization.school_requested': organizationSchoolRequested,
+  'organization.school_answered': organizationSchoolAnswered,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

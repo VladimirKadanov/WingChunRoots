@@ -110,6 +110,44 @@ import {
   updateSchool,
 } from '../services/schools';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
+import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
+import {
+  addAdminInput,
+  addMemberInput,
+  addOrganizationAdmin,
+  addOrganizationMember,
+  answerSchoolLink,
+  answerSchoolLinkInput,
+  applicationOptions,
+  applyOrganization,
+  endMemberInput,
+  endOrganizationMember,
+  endSchoolLink,
+  linkIdInput,
+  manageOrganization,
+  myOrganizations,
+  mySchoolLinks,
+  organizationApplyInput,
+  organizationGet,
+  organizationIdInput,
+  organizationSlugInput,
+  organizationsList,
+  organizationUpdateInput,
+  removeAdminInput,
+  removeOrganizationAdmin,
+  requestOrganizationSchool,
+  requestSchoolInput,
+  updateOrganization,
+} from '../services/organizations';
+import {
+  adminOrganization,
+  adminOrganizationInput,
+  adminOrganizations,
+  grantOrganizationPlan,
+  organizationGrantInput,
+  organizationRevokeInput,
+  revokeOrganizationPlan,
+} from '../services/organization-grants';
 import { exploreStartSchema } from '../dto/explore';
 import { exploreStart } from '../services/explore-start';
 import {
@@ -569,6 +607,83 @@ export const router = {
       .route({ method: 'POST', path: '/schools/confirm', summary: 'Confirm that a listed school is current (last activity, D17)' })
       .input(schoolIdInput)
       .handler(({ context, input }) => confirmSchool(context.principal, input, context.meta)),
+  },
+  // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
+  // an organization's admin reaches only the organizations they administer (404 for any other).
+  organizations: {
+    list: base
+      .route({ method: 'GET', path: '/organizations', summary: 'Approved organizations: name, kind and country' })
+      .output(organizationListSchema)
+      .handler(() => organizationsList()),
+    mine: base
+      .route({ method: 'GET', path: '/organizations/mine', summary: 'The organizations the signed-in account administers, their approval and plan, and whether it may apply' })
+      .handler(({ context }) => myOrganizations(context.principal)),
+    options: base
+      .route({ method: 'GET', path: '/organizations/apply', summary: 'What the application form offers: countries and kinds of organization' })
+      .handler(({ context }) => applicationOptions(context.principal)),
+    schoolLinks: base
+      .route({ method: 'GET', path: '/organizations/school-links', summary: 'The organization links the schools of the signed-in account were asked for or accepted' })
+      .handler(({ context }) => mySchoolLinks(context.principal)),
+    manage: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}', summary: 'One organization the account administers: approval, plan, details, admins, members, schools, its application (404 for any other)' })
+      .input(organizationIdInput)
+      .handler(({ context, input }) => manageOrganization(context.principal, input)),
+    get: base
+      .route({ method: 'GET', path: '/organizations/{slug}', summary: "An approved organization's public page: public members and public schools by city; 404 when not approved" })
+      .input(organizationSlugInput)
+      .output(organizationPageSchema)
+      .handler(({ context, input }) => organizationGet(context.principal, input)),
+    apply: signedIn
+      .route({ method: 'POST', path: '/organizations/apply', summary: 'Apply for an organization: official name, kind, leader, website, country, number of schools and an optional private document; opens a review case' })
+      .input(organizationApplyInput)
+      .handler(({ context, input }) => applyOrganization(context.principal, input, context.meta)),
+    update: signedIn
+      .route({ method: 'POST', path: '/organizations/update', summary: "Edit your organization: a pending one edits its application, an approved one its website, leader and number of schools" })
+      .input(organizationUpdateInput)
+      .handler(({ context, input }) => updateOrganization(context.principal, input, context.meta)),
+    addAdmin: signedIn
+      .route({ method: 'POST', path: '/organizations/admins/add', summary: 'An owner adds an existing account as an admin of an approved organization (audited)' })
+      .input(addAdminInput)
+      .handler(({ context, input }) => addOrganizationAdmin(context.principal, input, context.meta)),
+    removeAdmin: signedIn
+      .route({ method: 'POST', path: '/organizations/admins/remove', summary: 'An owner removes an admin, or an admin leaves (audited); an owner stays' })
+      .input(removeAdminInput)
+      .handler(({ context, input }) => removeOrganizationAdmin(context.principal, input, context.meta)),
+    addMember: signedIn
+      .route({ method: 'POST', path: '/organizations/members/add', summary: 'List a public person as a member (needs approval and the Federation plan); never creates or verifies a teaching relationship' })
+      .input(addMemberInput)
+      .handler(({ context, input }) => addOrganizationMember(context.principal, input, context.meta)),
+    endMember: signedIn
+      .route({ method: 'POST', path: '/organizations/members/end', summary: 'End a membership today; it stays as history (needs approval and the Federation plan)' })
+      .input(endMemberInput)
+      .handler(({ context, input }) => endOrganizationMember(context.principal, input, context.meta)),
+    requestSchool: signedIn
+      .route({ method: 'POST', path: '/organizations/schools/request', summary: "Ask a public school to link to the organization; the school's account accepts or refuses (needs approval and the Federation plan)" })
+      .input(requestSchoolInput)
+      .handler(({ context, input }) => requestOrganizationSchool(context.principal, input, context.meta)),
+    answerSchoolLink: signedIn
+      .route({ method: 'POST', path: '/organizations/schools/answer', summary: "The school's account accepts or refuses an organization's link; the school and its pin do not change" })
+      .input(answerSchoolLinkInput)
+      .handler(({ context, input }) => answerSchoolLink(context.principal, input, context.meta)),
+    endSchoolLink: signedIn
+      .route({ method: 'POST', path: '/organizations/schools/end', summary: 'End a school link, from either side (the school and its pin do not change)' })
+      .input(linkIdInput)
+      .handler(({ context, input }) => endSchoolLink(context.principal, input, context.meta)),
+    adminList: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/organizations', summary: 'Every organization with its approval and its plan, apart (admin with a verified second factor)' })
+      .handler(({ context }) => adminOrganizations(context.principal)),
+    adminGet: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/organizations/{organizationId}', summary: 'One organization with its plan grants (admin with a verified second factor)' })
+      .input(adminOrganizationInput)
+      .handler(({ context, input }) => adminOrganization(context.principal, input)),
+    grant: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/organizations/grant', summary: 'Give an approved organization a test or complimentary Federation plan with a reason, start and end (admin, audited; never charged)' })
+      .input(organizationGrantInput)
+      .handler(({ context, input }) => grantOrganizationPlan(context.principal, input, context.meta)),
+    revokeGrant: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/organizations/revoke-grant', summary: "Revoke an organization's plan with a reason (admin, audited); members, school links and the public page stay" })
+      .input(organizationRevokeInput)
+      .handler(({ context, input }) => revokeOrganizationPlan(context.principal, input, context.meta)),
   },
   places: {
     search: base
