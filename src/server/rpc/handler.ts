@@ -23,6 +23,7 @@ import { OpenAPIHandler } from '@orpc/openapi/fetch';
 import { RPCHandler } from '@orpc/server/fetch';
 
 import { appUrl } from '../auth/env';
+import { PHOTO_MAX_BYTES } from '../db/schema/common';
 import { createContext } from './context';
 import { logProcedureFailure } from './failure-log';
 import { router } from './router';
@@ -61,9 +62,36 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
+/**
+ * M14: the largest multipart body a procedure takes: one profile photo (DEFAULT D07: 5 MB) and the
+ * form's own bytes. Only photos.upload sends files.
+ */
+export const MULTIPART_MAX_BYTES = PHOTO_MAX_BYTES + 64 * 1024;
+
+/**
+ * M14: a multipart body (a file upload) is checked by its Content-Length BEFORE oRPC reads it, so
+ * a large or endless upload is never buffered: 411 without a length, 413 above MULTIPART_MAX_BYTES.
+ * null when the request may proceed.
+ */
+export function bodyRefusal(request: Request): Response | null {
+  const type = request.headers.get('content-type') ?? '';
+  if (!/^multipart\//i.test(type.trim())) return null;
+  const value = (request.headers.get('content-length') ?? '').trim();
+  if (!/^\d{1,16}$/.test(value)) return json(411, { code: 'LENGTH_REQUIRED', message: 'Send the file with its size (Content-Length).' });
+  if (Number(value) > MULTIPART_MAX_BYTES) {
+    return json(413, { code: 'PAYLOAD_TOO_LARGE', message: `This photo is larger than ${PHOTO_MAX_BYTES / (1024 * 1024)} MB. Choose a smaller copy.` });
+  }
+  return null;
+}
+
 export async function handleApiRequest(request: Request, api: 'rpc' | 'openapi'): Promise<Response> {
   if (csrfRefusal(request)) {
     return json(403, { code: 'CSRF', message: 'Cross-site request refused.' });
+  }
+  const refused = bodyRefusal(request);
+  if (refused) {
+    refused.headers.set('cache-control', 'private, no-store');
+    return refused;
   }
   const context = await createContext(sessionHeaders(request));
   const result =

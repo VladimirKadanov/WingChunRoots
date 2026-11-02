@@ -40,6 +40,10 @@ export const vPublicPerson = pgView('v_public_person', {
   // M10b (plan §6.5, DEFAULT D04/D13): 'verified' or 'unverified' for the record of a Sifu account
   // ("Instructor" or "Instructor (unverified)"), null for anyone else. Never the account itself.
   instructorStatus: text('instructor_status'),
+  // M14 (docs/adr/0016-profile-photos.md): the current profile photo, only while it is active;
+  // the app builds its address from the id and the content hash. Never the storage key.
+  photoId: uuid('photo_id'),
+  photoSha256: text('photo_sha256'),
 }).existing();
 
 /**

@@ -38,6 +38,7 @@ import {
   subtreeGraph,
   withoutRouteIds,
 } from './lineage-graph';
+import { graphPhotos, publicPhotoRefs, photoOf, studentPhotos } from './photo-refs';
 
 function graphTags(graph: { nodes: { id: string }[]; lineages: { id: string }[] } | null, ...extra: string[]): string[] {
   return [...extra, ...(graph?.nodes.map((n) => personTag(n.id)) ?? []), ...(graph?.lineages.map((l) => lineageTag(l.id)) ?? [])];
@@ -47,7 +48,7 @@ export async function cachedEgo(input: { focusId: string; up: number; down: numb
   'use cache';
   cacheLife('hours');
   const graph = await readTransaction(getPublicDb(), async (tx) =>
-    (await isPublicPerson(tx, input.focusId)) ? egoGraph(tx, input, NO_EXTRAS) : null,
+    (await isPublicPerson(tx, input.focusId)) ? graphPhotos(tx, await egoGraph(tx, input, NO_EXTRAS)) : null,
   );
   tagCacheEntry(graphTags(graph, personTag(input.focusId)));
   return graph ? toPublicGraph(graph) : null;
@@ -57,7 +58,7 @@ export async function cachedAncestors(input: { focusId: string }): Promise<Linea
   'use cache';
   cacheLife('hours');
   const graph = await readTransaction(getPublicDb(), async (tx) =>
-    (await isPublicPerson(tx, input.focusId)) ? ancestorsGraph(tx, input.focusId, NO_EXTRAS) : null,
+    (await isPublicPerson(tx, input.focusId)) ? graphPhotos(tx, await ancestorsGraph(tx, input.focusId, NO_EXTRAS)) : null,
   );
   tagCacheEntry(graphTags(graph, personTag(input.focusId)));
   return graph ? toPublicGraph(graph) : null;
@@ -67,7 +68,7 @@ export async function cachedSubtree(input: { rootId: string; lineageId: string |
   'use cache';
   cacheLife('hours');
   const graph = await readTransaction(getPublicDb(), async (tx) =>
-    (await isPublicPerson(tx, input.rootId)) ? subtreeGraph(tx, input, NO_EXTRAS) : null,
+    (await isPublicPerson(tx, input.rootId)) ? graphPhotos(tx, await subtreeGraph(tx, input, NO_EXTRAS)) : null,
   );
   tagCacheEntry(graphTags(graph, personTag(input.rootId), lineageTag(input.rootId)));
   return graph ? toPublicGraph(graph) : null;
@@ -77,7 +78,7 @@ export async function cachedPaths(input: { focusId: string; limit: number }): Pr
   'use cache';
   cacheLife('hours');
   const graph = await readTransaction(getPublicDb(), async (tx) =>
-    (await isPublicPerson(tx, input.focusId)) ? pathsGraph(tx, input, NO_EXTRAS) : null,
+    (await isPublicPerson(tx, input.focusId)) ? graphPhotos(tx, await pathsGraph(tx, input, NO_EXTRAS)) : null,
   );
   // totalPaths counts every route found, so the entry carries everyone on every route, not only
   // the people on the routes it returns: hiding an ancestor on a route not shown still drops it.
@@ -94,6 +95,8 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
     if (!row) return null;
     const counts = await personCounts(tx, personId);
     const lineages = await lineageRefs(tx, counts.lineageIds);
+    // M14: the current photo, only while the person is public (v_public_person).
+    const photo = photoOf((await publicPhotoRefs(tx, [personId])).get(personId));
     return {
       id: row.id,
       slug: row.slug,
@@ -108,6 +111,7 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
       instructor: row.instructor_status === 'verified' || row.instructor_status === 'unverified' ? row.instructor_status : null,
       visibility: 'public' as const,
       isOwn: false,
+      photo,
       limited: false,
       counts: {
         teachers: counts.teachers,
@@ -134,7 +138,7 @@ export async function cachedStudents(input: {
   cacheLife('hours');
   const options = { page: input.page, pageSize: input.pageSize, order: input.order };
   const page = await readTransaction(getPublicDb(), async (tx) =>
-    (await isPublicPerson(tx, input.personId)) ? studentPage(tx, input.personId, options, NO_EXTRAS) : null,
+    (await isPublicPerson(tx, input.personId)) ? studentPhotos(tx, await studentPage(tx, input.personId, options, NO_EXTRAS)) : null,
   );
   // Each student and each other teacher named: a change to any of them (or to one of their
   // relationships, which changes studentCount or otherTeachers) drops the page.

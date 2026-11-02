@@ -23,10 +23,29 @@ export class Zod4SchemaConverter implements ConditionalSchemaConverter {
     const zod = schema as z.ZodType;
     const json = z.toJSONSchema(zod, { io: options.strategy, unrepresentable: 'any', target: 'draft-2020-12' }) as Record<string, unknown>;
     delete json.$schema;
+    markFiles(json);
     // Optional when undefined is a valid value (an optional or defaulted field, an empty body).
     const required = !zod.safeParse(undefined).success;
     return [required, json as JSONSchema];
   }
+}
+
+/**
+ * M14: a z.file() field (photos.upload) becomes `{ type: string, format: binary }`; oRPC documents a
+ * body as multipart/form-data only when a field has `contentMediaType`, so it gets one.
+ */
+function markFiles(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) markFiles(item);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  const record = node as Record<string, unknown>;
+  if (record.type === 'string' && record.format === 'binary' && record.contentMediaType === undefined) {
+    record.contentMediaType = 'application/octet-stream';
+    delete record.contentEncoding;
+  }
+  for (const value of Object.values(record)) markFiles(value);
 }
 
 /** The error body of every procedure (oRPC's error JSON; the router's middleware sets code and message). */
@@ -154,6 +173,39 @@ export function documentEvidence(document: Record<string, unknown>): Record<stri
   return document;
 }
 
+/**
+ * M14: the binary route handler of profile photos, outside the router (the answer is the image),
+ * under /api: one rendition of a person's current photo after the visibility check
+ * (src/server/photo-http.ts). The upload and the removal are procedures (photos.upload, photos.remove).
+ */
+export function documentPhotos(document: Record<string, unknown>): Record<string, unknown> {
+  document.paths = {
+    ...((document.paths ?? {}) as Record<string, unknown>),
+    '/photos/{id}/{hash}/{file}': {
+      servers: [{ url: '/api' }],
+      get: {
+        operationId: 'photos.image',
+        summary:
+          "One rendition of a person's current profile photo (WebP, square, no metadata): everyone for a public person; for a person who is not public only the person's own account and staff; 404 otherwise",
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'The photo id (photos.get, or `photo` on a person in any public answer).', schema: { type: 'string', format: 'uuid' } },
+          { name: 'hash', in: 'path', required: true, description: "The first 16 hex digits of the photo's content hash.", schema: { type: 'string', pattern: '^[0-9a-f]{16}$' } },
+          { name: 'file', in: 'path', required: true, description: 'The size: the 96 px card thumbnail or the 512 px profile image.', schema: { type: 'string', enum: ['96.webp', '512.webp'] } },
+        ],
+        responses: {
+          '200': {
+            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, max-age=3600 for a public person, private, no-store otherwise).',
+            content: { 'image/webp': { schema: { type: 'string', contentMediaType: 'image/webp' } } },
+          },
+          '304': { description: 'Not modified (If-None-Match matched the ETag).' },
+          '404': errorResponse('No such photo, a replaced or removed one, or a person this session may not see (one answer for all).'),
+        },
+      },
+    },
+  };
+  return document;
+}
+
 /** The OpenAPI 3.1 document of /api/v1. */
 export async function openApiDocument(): Promise<Record<string, unknown>> {
   const generator = new OpenAPIGenerator({ schemaConverters: [new Zod4SchemaConverter()] });
@@ -166,7 +218,7 @@ export async function openApiDocument(): Promise<Record<string, unknown>> {
     },
     servers: [{ url: '/api/v1' }],
   });
-  return documentEvidence(documentErrors(document as unknown as Record<string, unknown>));
+  return documentPhotos(documentEvidence(documentErrors(document as unknown as Record<string, unknown>)));
 }
 
 /** The file content: two-space JSON with a final newline. */

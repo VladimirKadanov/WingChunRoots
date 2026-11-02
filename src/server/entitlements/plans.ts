@@ -253,6 +253,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     enforced: false,
     unit: { one: 'photo', many: 'photos', verb: 'added' },
     // DEFAULT D07: recorded here, enforced with the media of Phase 2.
+    // DEFAULT D07 (M14): the one current profile photo of a person counts as 1 against this
+    // allowance, which every plan has (withQuota in src/server/services/photos.ts); replacing it
+    // adds nothing. The gallery itself stays planned (Phase 2).
     values: {
       free_student: quota('1', '1 photo', 1),
       premium_student: quota('10', '10 photos', 10),
@@ -270,6 +273,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     enforced: false,
     unit: { one: 'video', many: 'videos', verb: 'added' },
     // DEFAULT D07: recorded here, enforced with the media of Phase 2.
+    // DEFAULT D07 (M14): the one current profile photo of a person counts as 1 against this
+    // allowance, which every plan has (withQuota in src/server/services/photos.ts); replacing it
+    // adds nothing. The gallery itself stays planned (Phase 2).
     values: {
       free_student: quota('0', 'No videos', 0),
       premium_student: quota('2', '2 videos', 2),

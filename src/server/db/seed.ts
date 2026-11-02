@@ -22,6 +22,7 @@ import { readExtract } from '../geo/extract-file';
 import { loadPlaces } from '../geo/places';
 import { recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { contentHash, withClient } from './admin';
+import { type DemoPhoto, writeDemoPhotos } from './seed-photos';
 import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
 import {
   auditLog,
@@ -48,6 +49,7 @@ import {
   personClaim,
   personName,
   personNameKey,
+  personPhoto,
   pilotAccessRequest,
   place,
   relationshipEvent,
@@ -86,6 +88,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   personClaim,
   personName,
   personNameKey,
+  personPhoto,
   pilotAccessRequest,
   place,
   relationshipEvent,
@@ -169,7 +172,7 @@ async function credentialRows(f: Fixtures, creds: DemoCredentials): Promise<Cred
 }
 
 /** Loads `fixtures` through an open client that is already `migrator`. */
-async function load(client: Client, f: Fixtures, creds: CredentialRows): Promise<Record<string, number>> {
+async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: readonly DemoPhoto[] = []): Promise<Record<string, number>> {
   const db = drizzle({ client });
   const counts: Record<string, number> = {};
   const insert = async <T extends PgTable>(table: T, rows: readonly InferInsertModel<T>[]) => {
@@ -187,6 +190,29 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows): Promise
   await insert(person, f.persons);
   await insert(personName, f.personNames);
   await insert(personBio, f.personBios);
+  // M14: the generated demo photos (seed-photos.ts) and person.photo_id of their people.
+  const personIds = new Map(f.persons.map((p) => [p.slug, p.id]));
+  const photoRows = photos
+    .filter((ph) => personIds.has(ph.slug))
+    .map((ph) => ({
+      id: ph.id,
+      personId: personIds.get(ph.slug)!,
+      storageKey: ph.storageKey,
+      sha256: ph.sha256,
+      originalSha256: ph.originalSha256,
+      width: ph.side,
+      height: ph.side,
+      sizeBytes: ph.sizeBytes,
+      status: 'active' as const,
+      uploadedByUserId: null,
+      removedByUserId: null,
+      removedAt: null,
+      removalReason: null,
+      createdAt: ph.createdAt,
+      updatedAt: ph.createdAt,
+    }));
+  await insert(personPhoto, photoRows);
+  for (const row of photoRows) await db.execute(sql`UPDATE person SET photo_id = ${row.id}::uuid WHERE id = ${row.personId}::uuid`);
   await insert(lineage, f.lineages);
   await insert(teachingRelationship, f.relationships);
   await insert(trainingPeriod, f.trainingPeriods);
@@ -219,6 +245,14 @@ export async function seedDatabase(
   assertSafeToReset(url, process.env, 'db:seed');
   const fixtures = generateFixtures(seed);
   const creds = await credentialRows(fixtures, credentials);
+  // M14: the demo photos' files first (the photo store, src/server/storage); without a store that
+  // can be written (no SeaweedFS running) the people keep their monogram.
+  let photos: DemoPhoto[] = [];
+  try {
+    photos = await writeDemoPhotos();
+  } catch (error) {
+    creds.skipped.push(`demo photos (the photo store could not be written: ${error instanceof Error ? error.name : 'error'})`);
+  }
   return withClient(
     url,
     async (client) => {
@@ -235,7 +269,7 @@ export async function seedDatabase(
       let counts: Record<string, number>;
       try {
         await client.query(`TRUNCATE TABLE ${names}`);
-        counts = await load(client, fixtures, creds);
+        counts = await load(client, fixtures, creds, photos);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');

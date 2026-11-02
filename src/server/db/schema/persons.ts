@@ -3,7 +3,7 @@
 // account gets its own record at onboarding (stewardship = self, claimed_by_user_id).
 
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
 import { reviewCase } from './evidence';
@@ -19,6 +19,8 @@ import {
   NAME_KEY_KINDS,
   NAME_KINDS,
   PERSON_KINDS,
+  PHOTO_REASON_MAX,
+  PHOTO_STATUSES,
   ROMANIZATIONS,
   STEWARDSHIPS,
   timestamps,
@@ -49,6 +51,9 @@ export const person = pgTable(
     trainingStartYear: integer('training_start_year'),
     // Private and not collected in the pilot (D16); the public role never sees it.
     birthDate: date('birth_date'),
+    // M14: the current profile photo (person_photo, status active), or none. v_public_person
+    // shows it only for a public person (docs/adr/0016-profile-photos.md).
+    photoId: uuid('photo_id').references((): AnyPgColumn => personPhoto.id, { onDelete: 'set null' }),
     ...timestamps(),
     deletedAt: deletedAt(),
   },
@@ -71,6 +76,58 @@ export const person = pgTable(
     ),
     index('person_place_id_idx').on(t.placeId),
     index('person_created_by_user_id_idx').on(t.createdByUserId),
+    index('person_photo_id_idx').on(t.photoId),
+  ],
+);
+
+/**
+ * M14 (docs/adr/0016-profile-photos.md): a profile photo of a person. The upload is decoded,
+ * turned upright, stripped of every metadata block (EXIF with its GPS position), cropped to a
+ * centred square and stored as WebP at the sizes of PHOTO_SIZES under `<storage_key>/<size>` in
+ * the photo store, never in the evidence store (src/server/storage). The person's current photo is
+ * person.photo_id and has status `active`; a replaced or removed photo keeps its row (who uploaded
+ * and who removed it, for the audit trail) while its files are deleted.
+ */
+export const personPhoto = pgTable(
+  'person_photo',
+  {
+    id: idColumn(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id, { onDelete: 'cascade' }),
+    // `photos/<48 hex digits>` from 24 random bytes: nothing in it comes from the file or the person.
+    storageKey: text('storage_key').notNull(),
+    // SHA-256 of the stored 512 px rendition: the content hash in the photo's address.
+    sha256: text('sha256').notNull(),
+    // SHA-256 of the uploaded original (never stored itself).
+    originalSha256: text('original_sha256').notNull(),
+    // The largest rendition stored: a square of this side (at most 512, at least PHOTO_MIN_SIDE).
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    status: text('status', { enum: PHOTO_STATUSES }).notNull().default('active'),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    removedByUserId: uuid('removed_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    // Staff removal only: the reason the owner reads (never shown publicly).
+    removalReason: text('removal_reason'),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('person_photo_storage_key_key').on(t.storageKey),
+    // One current photo per person.
+    uniqueIndex('person_photo_one_active_key').on(t.personId).where(sql`${t.status} = 'active'`),
+    index('person_photo_person_id_idx').on(t.personId),
+    index('person_photo_uploaded_by_user_id_idx').on(t.uploadedByUserId),
+    index('person_photo_removed_by_user_id_idx').on(t.removedByUserId),
+    check('person_photo_status_check', inList(t.status.name, PHOTO_STATUSES)),
+    check('person_photo_storage_key_format', sql`${t.storageKey} ~ '^photos/[0-9a-f]{48}$'`),
+    check('person_photo_sha256_format', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+    check('person_photo_original_sha256_format', sql`${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
+    check('person_photo_square', sql`${t.width} = ${t.height} AND ${t.width} BETWEEN 96 AND 512`),
+    check('person_photo_size_check', sql`${t.sizeBytes} > 0`),
+    check('person_photo_removed_has_time', sql`${t.status} <> 'removed' OR ${t.removedAt} IS NOT NULL`),
+    check('person_photo_reason_length', sql`${t.removalReason} IS NULL OR char_length(${t.removalReason}) BETWEEN 1 AND ${sql.raw(String(PHOTO_REASON_MAX))}`),
   ],
 );
 
