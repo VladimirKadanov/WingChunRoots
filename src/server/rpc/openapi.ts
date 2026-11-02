@@ -194,7 +194,7 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
         ],
         responses: {
           '200': {
-            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, max-age=3600 for a public person, private, no-store otherwise).',
+            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, no-cache (revalidated with the ETag) for a public person, private, no-store otherwise).',
             content: { 'image/webp': { schema: { type: 'string', contentMediaType: 'image/webp' } } },
           },
           '304': { description: 'Not modified (If-None-Match matched the ETag).' },

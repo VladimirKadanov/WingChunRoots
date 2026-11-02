@@ -6,9 +6,10 @@
 // one answer for all, as the person pages (plan §6.4). The store is never addressed directly.
 //
 // Caching: the address carries the content hash, so a new photo is a new address. A public
-// person's photo may be kept by any cache for an hour (`public, max-age=3600`) and is revalidated
-// after that with its ETag (the full hash); so a photo removed or a person hidden stops being
-// served within the hour everywhere. A hidden person's photo is `private, no-store`.
+// person's photo may be stored by any cache but is revalidated on every use (`public, no-cache`)
+// with its ETag (the full hash; 304 when unchanged), so a staff removal, a hidden profile or a
+// deleted account takes effect at once everywhere (M14 review). A hidden person's photo is
+// `private, no-store`.
 //
 // An unexpected failure is logged in one line (the error's name and the request id), never the
 // address, the person or the session (CLAUDE.md §6).
@@ -19,7 +20,7 @@ import { sessionHeaders } from './rpc/handler';
 import { requestMeta } from './services/context';
 import { openPhoto } from './services/photos';
 
-export const PUBLIC_PHOTO_CACHE = 'public, max-age=3600';
+export const PUBLIC_PHOTO_CACHE = 'public, no-cache';
 
 function notFound(): Response {
   return new Response(JSON.stringify({ code: 'NOT_FOUND', message: 'No such photo.' }), {
