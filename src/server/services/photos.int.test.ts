@@ -1,0 +1,405 @@
+// Profile photos (milestone M14; docs/adr/0016-profile-photos.md), against a migrated throwaway
+// database: who may upload, replace, remove and see a photo; a hidden person's photo is 404 and
+// never in a public DTO; a replaced or removed photo's files are deleted; the photo counts as one
+// against the plan's `photos` (DEFAULT D07); the evidence store is never touched.
+//
+// The photo store and the evidence store are two private temporary folders (MEDIA_STORAGE_DIR and
+// EVIDENCE_STORAGE_DIR), set before either store is first made. Every image is generated here: a
+// flat colour, nothing of a real person.
+
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+import { and, asc, count, eq } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
+import { getDb, getPublicDb } from '../db';
+import { auditLog, evidenceFile, person, personPhoto } from '../db/schema';
+import { PHOTO_MAX_BYTES } from '../db/schema/common';
+import type { TestDatabase } from '../db/testing';
+import { currentUse } from '../entitlements/access';
+import { handlePhotoRequest } from '../photo-http';
+import { type ObjectStore, StorageError } from '../storage';
+import { jpegWithGps, plainImage } from '../storage/test-images';
+import { personProfile } from './lineage';
+import { getPhoto, openPhoto, PHOTO_TOO_LARGE_MESSAGE, PHOTO_WRONG_TYPE_MESSAGE, publicPhotoRefs, removePhoto, uploadPhoto } from './photos';
+import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
+import { member, meta, principalOf, staff } from './relationships.test-support';
+
+vi.mock('next/cache', () => ({
+  cacheTag: () => undefined,
+  cacheLife: () => undefined,
+  revalidateTag: () => undefined,
+  updateTag: () => undefined,
+}));
+
+let testDb: TestDatabase | undefined;
+const photoRoot = mkdtempSync(path.join(tmpdir(), 'wcr-photos-int-'));
+const evidenceRoot = mkdtempSync(path.join(tmpdir(), 'wcr-photos-int-evidence-'));
+const saved = { media: process.env.MEDIA_STORAGE, mediaDir: process.env.MEDIA_STORAGE_DIR, evidence: process.env.EVIDENCE_STORAGE, evidenceDir: process.env.EVIDENCE_STORAGE_DIR };
+
+beforeAll(async () => {
+  process.env.MEDIA_STORAGE = 'filesystem';
+  process.env.MEDIA_STORAGE_DIR = photoRoot;
+  process.env.EVIDENCE_STORAGE = 'filesystem';
+  process.env.EVIDENCE_STORAGE_DIR = evidenceRoot;
+  testDb = await startAuthTestDatabase();
+});
+
+afterAll(async () => {
+  await stopAuthTestDatabase(testDb);
+  rmSync(photoRoot, { recursive: true, force: true });
+  rmSync(evidenceRoot, { recursive: true, force: true });
+  for (const [name, value] of [
+    ['MEDIA_STORAGE', saved.media],
+    ['MEDIA_STORAGE_DIR', saved.mediaDir],
+    ['EVIDENCE_STORAGE', saved.evidence],
+    ['EVIDENCE_STORAGE_DIR', saved.evidenceDir],
+  ] as const) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
+
+const filesIn = (root: string) =>
+  readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((d) => d.isFile())
+    .map((d) => path.relative(root, path.join(d.parentPath, d.name)).split(path.sep).join('/'));
+
+async function image(format: 'jpeg' | 'png' | 'webp' = 'png', width = 160, height = 120): Promise<File> {
+  return new File([new Uint8Array(await plainImage(format, width, height))], `demo-photo.${format}`, { type: `image/${format}` });
+}
+
+async function codeOf(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+    return 'ok';
+  } catch (error) {
+    return (error as { code?: string }).code ?? String(error);
+  }
+}
+
+/** `/api/photos/<id>/<hash>/96.webp` → the route's params. */
+function addressOf(url: string) {
+  const [, , , id, hash, file] = url.split('/');
+  return { id: id!, hash: hash!, file: file! };
+}
+
+async function photoRows(personId: string) {
+  return getDb().select().from(personPhoto).where(eq(personPhoto.personId, personId)).orderBy(asc(personPhoto.createdAt), asc(personPhoto.id));
+}
+
+async function auditOf(personId: string) {
+  return getDb()
+    .select({ action: auditLog.action, actor: auditLog.actorUserId, reason: auditLog.reason, after: auditLog.after })
+    .from(auditLog)
+    .where(and(eq(auditLog.subjectType, 'person'), eq(auditLog.subjectId, personId)))
+    .orderBy(asc(auditLog.occurredAt), asc(auditLog.id));
+}
+
+describe('upload', () => {
+  it('stores a square WebP at 96 and 512 px in the photo store, sets the person, audits, and leaves the evidence store alone', async () => {
+    const owner = await member('photo-owner');
+    const result = await uploadPhoto(owner.principal, { file: await image('png', 800, 600) }, meta);
+    expect(result).toMatchObject({ personId: owner.personId, slug: owner.slug, side: 512, replaced: false });
+    expect(result.photo.small).toMatch(/^\/api\/photos\/[0-9a-f-]{36}\/[0-9a-f]{16}\/96\.webp$/);
+    expect(result.photo.large).toMatch(/\/512\.webp$/);
+    const [row] = await photoRows(owner.personId);
+    // No storage key in the answer.
+    expect(JSON.stringify(result)).not.toContain(row!.storageKey.slice('photos/'.length));
+    expect(row).toMatchObject({ status: 'active', width: 512, height: 512, uploadedByUserId: owner.account.id });
+    const [p] = await getDb().select({ photoId: person.photoId }).from(person).where(eq(person.id, owner.personId));
+    expect(p!.photoId).toBe(row!.id);
+    expect(filesIn(photoRoot)).toEqual(expect.arrayContaining([`${row!.storageKey}/96`, `${row!.storageKey}/512`]));
+    expect(filesIn(evidenceRoot)).toEqual([]);
+    expect((await getDb().select({ n: count() }).from(evidenceFile))[0]!.n).toBe(0);
+
+    const audit = await auditOf(owner.personId);
+    expect(audit.map((a) => a.action)).toEqual(['photo.upload']);
+    expect(audit[0]!.actor).toBe(owner.account.id);
+    expect(audit[0]!.after).toMatchObject({ photoId: row!.id, side: 512 });
+  });
+
+  it('strips the EXIF block and GPS position of a JPEG', async () => {
+    const owner = await member('photo-exif');
+    const result = await uploadPhoto(owner.principal, { file: new File([new Uint8Array(await jpegWithGps(200, 200))], 'demo.jpg', { type: 'image/jpeg' }) }, meta);
+    const served = await openPhoto(null, addressOf(result.photo.large));
+    expect(served?.notModified).toBe(false);
+    const bytes = served && !served.notModified ? served.bytes : new Uint8Array();
+    expect(String.fromCharCode(...bytes.subarray(8, 12))).toBe('WEBP');
+    expect(Buffer.from(bytes).includes(Buffer.from('Exif'))).toBe(false);
+    expect(Buffer.from(bytes).includes(Buffer.from('GPS'))).toBe(false);
+  });
+
+  it('replacing the photo marks the old one replaced, deletes its files and still counts one photo (DEFAULT D07)', async () => {
+    const owner = await member('photo-replace');
+    const subject = { kind: 'user' as const, userId: owner.account.id };
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(0);
+    const first = await uploadPhoto(owner.principal, { file: await image('png') }, meta);
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(1);
+    const second = await uploadPhoto(owner.principal, { file: await image('webp', 300, 300) }, meta);
+    expect(second.replaced).toBe(true);
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(1);
+
+    const [old, current] = await photoRows(owner.personId);
+    expect(old!.status).toBe('replaced');
+    expect(current!.status).toBe('active');
+    const files = filesIn(photoRoot);
+    expect(files.some((f) => f.startsWith(`${old!.storageKey}/`))).toBe(false);
+    expect(files.some((f) => f.startsWith(`${current!.storageKey}/`))).toBe(true);
+    // The old address is gone at once.
+    expect(await openPhoto(null, addressOf(first.photo.small))).toBeNull();
+    expect(await openPhoto(null, addressOf(second.photo.small))).not.toBeNull();
+  });
+
+  it('refuses a non-image, a too-small image and a file over the size limit, storing nothing', async () => {
+    const owner = await member('photo-refused');
+    const before = filesIn(photoRoot).length;
+    const pdf = new File([new TextEncoder().encode('%PDF-1.4\n% demo\n%%EOF\n')], 'demo.png', { type: 'image/png' });
+    await expect(uploadPhoto(owner.principal, { file: pdf }, meta)).rejects.toMatchObject({ code: 'UNSUPPORTED_MEDIA_TYPE', message: PHOTO_WRONG_TYPE_MESSAGE });
+    await expect(uploadPhoto(owner.principal, { file: await image('png', 64, 64) }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    const big = new File([new Uint8Array(PHOTO_MAX_BYTES + 1)], 'demo.png', { type: 'image/png' });
+    await expect(uploadPhoto(owner.principal, { file: big }, meta)).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE', message: PHOTO_TOO_LARGE_MESSAGE });
+    expect(filesIn(photoRoot).length).toBe(before);
+    expect(await photoRows(owner.personId)).toEqual([]);
+  });
+
+  it('anonymous: UNAUTHORIZED; an account without its own person: NOT_FOUND', async () => {
+    expect(await codeOf(uploadPhoto(null, { file: await image() }, meta))).toBe('UNAUTHORIZED');
+    const reviewer = await staff('photo-no-person');
+    expect(await codeOf(uploadPhoto(reviewer.principal, { file: await image() }, meta))).toBe('NOT_FOUND');
+  });
+});
+
+describe('remove', () => {
+  it('the owner removes their own photo: status removed, files deleted, audited, 404 afterwards', async () => {
+    const owner = await member('photo-remove-own');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const result = await removePhoto(owner.principal, {}, meta);
+    expect(result).toEqual({ personId: owner.personId, slug: owner.slug, removed: true });
+    const [row] = await photoRows(owner.personId);
+    expect(row).toMatchObject({ status: 'removed', removedByUserId: owner.account.id, removalReason: null });
+    expect(filesIn(photoRoot).some((f) => f.startsWith(`${row!.storageKey}/`))).toBe(false);
+    expect(await openPhoto(owner.principal, addressOf(up.photo.small))).toBeNull();
+    expect((await auditOf(owner.personId)).map((a) => a.action)).toEqual(['photo.upload', 'photo.remove']);
+    // Again: nothing to remove, said so.
+    expect((await removePhoto(owner.principal, {}, meta)).removed).toBe(false);
+  });
+
+  it("another account: NOT_FOUND; staff without 2FA: SECOND_FACTOR_REQUIRED; staff need a reason, which is audited", async () => {
+    const owner = await member('photo-remove-other');
+    await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const other = await member('photo-remove-stranger');
+    expect(await codeOf(removePhoto(other.principal, { slug: owner.slug, reason: 'Demo.' }, meta))).toBe('NOT_FOUND');
+    const unverified = await staff('photo-mod-no2fa', 'moderator', { unverified: true });
+    expect(await codeOf(removePhoto(unverified.principal, { slug: owner.slug, reason: 'Demo.' }, meta))).toBe('SECOND_FACTOR_REQUIRED');
+    const moderator = await staff('photo-mod');
+    expect(await codeOf(removePhoto(moderator.principal, { slug: owner.slug }, meta))).toBe('BAD_REQUEST');
+    expect((await photoRows(owner.personId))[0]!.status).toBe('active');
+
+    const result = await removePhoto(moderator.principal, { slug: owner.slug, reason: 'A fictional moderation reason.' }, meta);
+    expect(result.removed).toBe(true);
+    const [row] = await photoRows(owner.personId);
+    expect(row).toMatchObject({ status: 'removed', removedByUserId: moderator.account.id, removalReason: 'A fictional moderation reason.' });
+    const audit = await auditOf(owner.personId);
+    expect(audit.at(-1)).toMatchObject({ action: 'photo.remove', actor: moderator.account.id, reason: 'A fictional moderation reason.' });
+  });
+
+  it('staff with a reason remove their own photo as staff (reason kept, audited as staff); without one, or as a member, it is the owner path', async () => {
+    const moderator = await member('photo-mod-own', { role: 'moderator' });
+    await uploadPhoto(moderator.principal, { file: await image() }, meta);
+    await removePhoto(moderator.principal, { slug: moderator.slug, reason: 'A fictional moderation reason.' }, meta);
+    let rows = await photoRows(moderator.personId);
+    expect(rows.at(-1)).toMatchObject({ status: 'removed', removedByUserId: moderator.account.id, removalReason: 'A fictional moderation reason.' });
+    expect((await auditOf(moderator.personId)).at(-1)).toMatchObject({ action: 'photo.remove', reason: 'A fictional moderation reason.', after: { by: 'staff' } });
+    // The same without a slug.
+    await uploadPhoto(moderator.principal, { file: await image() }, meta);
+    await removePhoto(moderator.principal, { reason: 'Another fictional reason.' }, meta);
+    rows = await photoRows(moderator.personId);
+    expect(rows.at(-1)).toMatchObject({ status: 'removed', removalReason: 'Another fictional reason.' });
+    expect((await auditOf(moderator.personId)).at(-1)).toMatchObject({ reason: 'Another fictional reason.', after: { by: 'staff' } });
+    // Without a reason: the owner's removal.
+    await uploadPhoto(moderator.principal, { file: await image() }, meta);
+    await removePhoto(moderator.principal, { slug: moderator.slug }, meta);
+    rows = await photoRows(moderator.personId);
+    expect(rows.at(-1)).toMatchObject({ status: 'removed', removalReason: null });
+    expect((await auditOf(moderator.personId)).at(-1)).toMatchObject({ reason: null, after: { by: 'owner' } });
+    // A member's reason on their own photo is not kept: the owner path ignores it.
+    const owner = await member('photo-own-reason');
+    await uploadPhoto(owner.principal, { file: await image() }, meta);
+    await removePhoto(owner.principal, { reason: 'A fictional note.' }, meta);
+    expect((await photoRows(owner.personId))[0]).toMatchObject({ status: 'removed', removalReason: null });
+    expect((await auditOf(owner.personId)).at(-1)).toMatchObject({ reason: null, after: { by: 'owner' } });
+  });
+});
+
+describe('visibility', () => {
+  it("a hidden person's photo is 404 to everyone but the owner and staff with 2FA, and in no public DTO", async () => {
+    const owner = await member('photo-hidden');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, owner.personId));
+    const other = await member('photo-hidden-viewer');
+    const moderator = await staff('photo-hidden-mod');
+    const unverified = await staff('photo-hidden-no2fa', 'moderator', { unverified: true });
+    const address = addressOf(up.photo.small);
+
+    // The image itself.
+    expect(await openPhoto(null, address)).toBeNull();
+    expect(await openPhoto(other.principal, address)).toBeNull();
+    expect(await openPhoto(unverified.principal, address)).toBeNull();
+    expect((await openPhoto(owner.principal, address))?.public).toBe(false);
+    expect((await openPhoto(moderator.principal, address))?.public).toBe(false);
+    const anonymous = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`), address);
+    expect(anonymous.status).toBe(404);
+
+    // photos.get
+    expect(await codeOf(getPhoto(null, { slug: owner.slug }))).toBe('NOT_FOUND');
+    expect(await codeOf(getPhoto(other.principal, { slug: owner.slug }))).toBe('NOT_FOUND');
+    expect((await getPhoto(owner.principal, { slug: owner.slug })).photo).toEqual(up.photo);
+    expect((await getPhoto(moderator.principal, { slug: owner.slug })).canModerate).toBe(true);
+
+    // The public read model never has it; the owner's own profile does.
+    expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
+    expect(await codeOf(personProfile(null, { slug: owner.slug }))).toBe('NOT_FOUND');
+    expect((await personProfile(owner.principal, { slug: owner.slug })).photo).toEqual(up.photo);
+  });
+
+  it("a public person's photo: in the profile DTO, served with a public cache and its ETag", async () => {
+    const owner = await member('photo-public');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    expect((await personProfile(null, { slug: owner.slug })).photo).toEqual(up.photo);
+    expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).get(owner.personId)?.id).toBe(addressOf(up.photo.small).id);
+    const response = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`), addressOf(up.photo.small));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/webp');
+    expect(response.headers.get('cache-control')).toBe('public, no-cache');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    const etag = response.headers.get('etag')!;
+    const again = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`, { headers: { 'if-none-match': etag } }), addressOf(up.photo.small));
+    expect(again.status).toBe(304);
+    expect(again.headers.get('cache-control')).toBe('public, no-cache');
+    // A wrong content hash or size: 404.
+    expect((await handlePhotoRequest(new Request('http://localhost/x'), { ...addressOf(up.photo.small), hash: '0'.repeat(16) })).status).toBe(404);
+    expect((await handlePhotoRequest(new Request('http://localhost/x'), { ...addressOf(up.photo.small), file: '200.webp' })).status).toBe(404);
+  });
+
+  it('a removed or deleted person keeps no public photo', async () => {
+    const owner = await member('photo-deleted');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    await getDb().update(person).set({ deletedAt: new Date() }).where(eq(person.id, owner.personId));
+    expect(await openPhoto(null, addressOf(up.photo.small))).toBeNull();
+    expect(await openPhoto(principalOf(owner.account), addressOf(up.photo.small))).toBeNull();
+    expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
+  });
+
+  it('pnpm account:delete removes the photo with the account: the row removed, photo_id cleared, the files deleted, no original hash kept', async () => {
+    const owner = await member('photo-leaving');
+    // An earlier photo (replaced) and the current one.
+    await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const rows = await photoRows(owner.personId);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => /^[0-9a-f]{64}$/.test(r.originalSha256 ?? ''))).toBe(true);
+    const before = rows.find((r) => r.status === 'active');
+    const { request } = await requestAccountDeletion(owner.principal, { confirm: true }, meta);
+    await carryOutDeletionFromCommandLine(request.id);
+    const after = await photoRows(owner.personId);
+    expect(after).toHaveLength(2);
+    // M14 review: nothing identifies the uploaded originals any more, on any of the person's rows.
+    expect(after.map((r) => r.originalSha256)).toEqual([null, null]);
+    const row = after.find((r) => r.id === before!.id);
+    expect(row).toMatchObject({ id: before!.id, status: 'removed', uploadedByUserId: null });
+    expect(row!.removedAt).not.toBeNull();
+    const [p] = await getDb().select({ photoId: person.photoId }).from(person).where(eq(person.id, owner.personId));
+    expect(p!.photoId).toBeNull();
+    expect(filesIn(photoRoot).some((f) => f.startsWith(`${before!.storageKey}/`))).toBe(false);
+    expect(await openPhoto(null, addressOf(up.photo.small))).toBeNull();
+    expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
+  });
+});
+
+describe('serving from a store that stalls (CI run 41470799646)', () => {
+  /**
+   * A photo store that never answers a get (`get: 'never'`), or answers with a body that sends one
+   * chunk and then nothing (`get: 'stall'`); it records the gets and whether the body was cancelled.
+   */
+  function stalledStore(mode: 'never' | 'stall') {
+    const seen = { gets: 0, cancelled: false, signalAborted: () => false };
+    const store: ObjectStore = {
+      driver: 's3',
+      put: async () => undefined,
+      delete: async () => undefined,
+      async get(_key, options) {
+        seen.gets += 1;
+        seen.signalAborted = () => options?.signal?.aborted ?? false;
+        if (mode === 'never') return new Promise<never>(() => undefined);
+        let sent = false;
+        const body = new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              if (sent) return new Promise<void>(() => undefined);
+              sent = true;
+              controller.enqueue(new Uint8Array(64));
+            },
+            cancel() {
+              seen.cancelled = true;
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        return { body, size: 4096 };
+      },
+    };
+    return { store, seen };
+  }
+
+  const DEADLINE_MS = 300;
+
+  async function timedRequest(url: string, address: ReturnType<typeof addressOf>, store: ObjectStore, headers: Record<string, string> = {}) {
+    const started = performance.now();
+    const response = await handlePhotoRequest(new Request(`http://localhost${url}`, { headers }), address, { store, timeoutMs: DEADLINE_MS });
+    return { response, ms: performance.now() - started };
+  }
+
+  it('a store that never answers: 503 no-store within the deadline, the store request aborted', async () => {
+    const owner = await member('photo-stall-never');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const { store, seen } = stalledStore('never');
+    const { response, ms } = await timedRequest(up.photo.large, addressOf(up.photo.large), store);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(ms).toBeLessThan(DEADLINE_MS + 1_500);
+    expect(seen.gets).toBe(1);
+    expect(seen.signalAborted()).toBe(true);
+    await expect(openPhoto(null, addressOf(up.photo.large), store, { timeoutMs: DEADLINE_MS })).rejects.toThrow(StorageError);
+  });
+
+  it('a body that stalls mid-stream: 503 no-store within the deadline, the body cancelled', async () => {
+    const owner = await member('photo-stall-body');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const { store, seen } = stalledStore('stall');
+    const { response, ms } = await timedRequest(up.photo.small, addressOf(up.photo.small), store);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(ms).toBeLessThan(DEADLINE_MS + 1_500);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen.cancelled).toBe(true);
+  });
+
+  it('a revalidation whose ETag matches is 304 without reading the store; a 200 carries the bytes with their own length', async () => {
+    const owner = await member('photo-etag-no-read');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const ok = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`), addressOf(up.photo.small));
+    expect(ok.status).toBe(200);
+    const body = new Uint8Array(await ok.arrayBuffer());
+    expect(ok.headers.get('content-length')).toBe(String(body.byteLength));
+    expect(String.fromCharCode(...body.subarray(8, 12))).toBe('WEBP');
+    const { store, seen } = stalledStore('never');
+    const { response, ms } = await timedRequest(up.photo.small, addressOf(up.photo.small), store, { 'if-none-match': ok.headers.get('etag')! });
+    expect(response.status).toBe(304);
+    expect(ms).toBeLessThan(DEADLINE_MS);
+    expect(seen.gets).toBe(0);
+  });
+});

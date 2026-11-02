@@ -23,4 +23,5 @@
 | M11 | [M11 — Школи, карта и филтри по линия](M11-schools-map.md) | M08, M10a | слят ([#23](https://github.com/VladimirKadanov/WingChunRoots/pull/23), merge commit ea0b7a0; въпроси в [questions/M11.md](questions/M11.md)) |
 | M12 | [M12 — Локално пускане като в production, основно наблюдение, локален архив и учение по възстановяване](M12-local-ops.md) | M10b, M11 | слят ([#24](https://github.com/VladimirKadanov/WingChunRoots/pull/24), merge commit b9c2b5d; въпроси в [questions/M12.md](questions/M12.md)) |
 | M13 | [M13 — Приемане на пилота (локално)](M13-pilot-acceptance.md) | M12 | в работа (клон `m13-pilot-acceptance`) |
+| M14 | [M14 — Снимки на профила](M14-profile-photos.md) | M13 | в изпълнение (клон `m14-profile-photos`) |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |

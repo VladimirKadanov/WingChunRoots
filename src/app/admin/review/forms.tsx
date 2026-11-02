@@ -18,8 +18,8 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction } from './actions';
-import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
+import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removePhotoAction } from './actions';
+import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -215,6 +215,35 @@ export function ArbitrateForm({ relationshipId, idempotencyKey, initial }: { rel
       />
       <div>
         <Button pending={pending} label="Set in arbitration" pendingLabel="Setting…" variant="danger" />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * M14: "Remove photo" of the profile a case is about, with the reason kept in the audit log
+ * (photos.remove; staff with the second factor). The owner can add a new photo afterwards.
+ */
+export function RemovePhotoForm({ caseId, slug, initial }: { caseId: string; slug: string; initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(removePhotoAction, initial ?? IDLE);
+  const generatedId = useFormId(PHOTO_REMOVE_FORM);
+  const formId = initial ? PHOTO_REMOVE_FORM : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="photo-remove-form">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="caseId" value={caseId} />
+      <input type="hidden" name="slug" value={slug} />
+      <TextAreaField
+        form={formId}
+        name="reason"
+        label="Reason for removing the photo"
+        maxLength={1000}
+        hint="Required. Kept in the audit log. The photo's files are deleted; the person can add another photo."
+        state={state}
+      />
+      <div>
+        <Button pending={pending} label="Remove photo" pendingLabel="Removing…" variant="danger" />
       </div>
     </form>
   );

@@ -25,6 +25,17 @@ export type PublicNameDto = z.infer<typeof nameSchema>;
 export const visibilitySchema = z.enum(['public', 'involved_only']);
 
 /**
+ * M14 (docs/adr/0016-profile-photos.md): a person's current profile photo, as the app's own
+ * addresses (GET /api/photos/<id>/<content hash>/<size>.webp), never a storage key: `small` is the
+ * 96 px card thumbnail, `large` the 512 px profile image (both square, WebP, without metadata). Given
+ * only for a public person, or to the account whose own person it is; null when there is none. The
+ * services always set it; absent (an older client's fixture) reads as null.
+ */
+export const photoSchema = z.object({ small: z.string(), large: z.string() });
+export type PhotoDto = z.infer<typeof photoSchema>;
+const photoField = photoSchema.nullable().optional();
+
+/**
  * 'claimed' (the person's own account), 'platform' (kept by the archive) or 'unclaimed'; 'unknown'
  * for a record shown with its names only (`limited`, plan §6.4).
  */
@@ -66,6 +77,8 @@ export const lineageNodeSchema = z.object({
   hasMoreChildren: z.boolean(),
   /** involved_only: shown only to the signed-in participant (DEFAULT D03). */
   visibility: visibilitySchema,
+  /** M14: the profile photo (public people and the viewer's own person only). */
+  photo: photoField,
 });
 export type LineageNodeDto = z.infer<typeof lineageNodeSchema>;
 
@@ -160,6 +173,8 @@ export const personProfileSchema = z.object({
   visibility: visibilitySchema,
   /** The signed-in account's own person. */
   isOwn: z.boolean(),
+  /** M14: the profile photo (a public person, or the viewer's own); null for a `limited` record. */
+  photo: photoField,
   /**
    * Only the names are given (no bio, place, life status, kind or claim state): a record that is not
    * public, shown to the viewer because of their own request, which its person has not answered yet
@@ -179,6 +194,7 @@ const personRefSchema = lineageNodeSchema.pick({
   lifeStatus: true,
   claimState: true,
   visibility: true,
+  photo: true,
 });
 
 export const studentEntrySchema = z.object({

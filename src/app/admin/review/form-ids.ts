@@ -15,3 +15,5 @@ export const NOTE_FORM = 'review-note';
 export const ARCHIVE_FORM = 'archive-edit';
 /** M10b: "Set in arbitration" (/admin/review/arbitrate/<relationship id>). */
 export const ARBITRATE_FORM = 'review-arbitrate';
+/** M14: "Remove photo" of a reported profile (photos.remove with a reason). */
+export const PHOTO_REMOVE_FORM = 'review-photo-remove';

@@ -77,6 +77,7 @@ import type { RequestMeta } from './context';
 import type { UpgradeOffer } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
 import { cleanName } from './names';
+import { photoOf, publicPhotoRefs } from './photo-refs';
 import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
@@ -505,6 +506,8 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
              WHERE x.person_id = ANY (${sql`ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}]`})
              ORDER BY x.person_id, e.lineage_name, e.lineage_id`)
         ).rows;
+  // M14: the instructors' public photos (v_public_person: public people only, active photos only).
+  const photos = await publicPhotoRefs(db, ids);
   tagCacheEntry([SCHOOLS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag)]);
   const last = row.last_activity_at instanceof Date ? row.last_activity_at : new Date(row.last_activity_at);
   return toPublicSchoolPage({
@@ -530,6 +533,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
         role: i.role,
         original: original ? { value: original.value, lang: original.lang, script: original.script } : null,
         lineages: lineages.filter((l) => l.person_id === i.id).map((l) => ({ id: l.id, slug: l.slug, name: l.name })),
+        photo: photoOf(photos.get(i.id)),
       };
     }),
   });

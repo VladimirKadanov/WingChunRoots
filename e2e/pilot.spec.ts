@@ -26,6 +26,7 @@ import { claimThroughApi } from './helpers/evidence';
 import { captureScenes, personNameOf, sceneOf } from './helpers/explorer-checks';
 import { edgesInto, lineageIdOf, nodeOf, openExplorer, personIdOf } from './helpers/explorer';
 import { apiPost } from './helpers/plans';
+import { plainImage } from '../src/server/storage/test-images';
 import { openPalette, option, search, searchInput } from './helpers/search';
 import { runPaths } from './projects';
 import { ROUTES } from './routes';
@@ -462,6 +463,18 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
   const historical = (await db.execute<{ id: string; slug: string }>(sql`
     SELECT p.id::text AS id, p.slug FROM teaching_relationship r JOIN person p ON p.id = r.teacher_person_id WHERE r.id = ${claim.relationshipId}::uuid`)).rows[0]!;
   const file = (await db.execute<{ storage_key: string; sha256: string }>(sql`SELECT storage_key, sha256 FROM evidence_file WHERE id = ${claim.fileId}::uuid`)).rows[0]!;
+  // M14: the hidden person's profile photo (its address, id, content hash and storage key are
+  // never public), and the storage keys of the demo photos (only the app's addresses are).
+  const uploaded = await hidden.page.request.post(`${BASE_URL}/api/v1/photos/upload`, {
+    multipart: { file: { name: 'demo-photo.png', mimeType: 'image/png', buffer: Buffer.from(await plainImage('png', 200, 200)) } },
+    headers: { origin: BASE_URL },
+  });
+  expect(uploaded.status(), await uploaded.text()).toBe(200);
+  const hiddenPhoto = (await db.execute<{ id: string; storage_key: string; sha256: string }>(sql`
+    SELECT id::text AS id, storage_key, sha256 FROM person_photo WHERE person_id = ${hidden.personId}::uuid AND status = 'active'`)).rows[0]!;
+  const hiddenPhotoUrl = ((await uploaded.json()) as { photo: { small: string } }).photo.small;
+  expect((await request.get(`${BASE_URL}${hiddenPhotoUrl}`)).status()).toBe(404);
+  const demoPhotoKeys = (await db.execute<{ storage_key: string }>(sql`SELECT storage_key FROM person_photo`)).rows.map((r) => r.storage_key);
 
   const secrets: [string, string][] = [
     ['pending edge', pendingId],
@@ -476,6 +489,9 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
     ['evidence id', claim.fileId],
     ['evidence key', file.storage_key],
     ['evidence hash', file.sha256],
+    ['hidden person photo', hiddenPhoto.id],
+    ['hidden person photo hash', hiddenPhoto.sha256.slice(0, 16)],
+    ...demoPhotoKeys.map((k): [string, string] => ['photo storage key', k.slice('photos/'.length)]),
     ['user id', teacher.userId],
     ['user id', hidden.userId],
     ...[teacher, pendingStudent, hidden].map((m): [string, string] => ['e-mail address', m.email]),

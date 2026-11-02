@@ -12,7 +12,8 @@ import { Fragment } from 'react';
 import { LinkStroke } from '@/components/ink/link-stroke';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { cx } from '@/lib/cx';
-import type { LineageEdgeDto, LineageRefDto, StudentEntryDto } from '@/server/dto/public';
+import type { LineageEdgeDto, LineageRefDto, PhotoDto, StudentEntryDto } from '@/server/dto/public';
+import { PersonAvatar } from './person-avatar';
 import { LatinName, LineageName, type PersonNameData, PersonLink } from './person-name';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from './status';
 
@@ -23,7 +24,7 @@ export type RelationEdge = Pick<LineageEdgeDto, 'id' | 'lineageId' | 'status' | 
 };
 
 export interface RelationRow {
-  person: PersonNameData & { id: string; visibility: 'public' | 'involved_only' };
+  person: PersonNameData & { id: string; visibility: 'public' | 'involved_only'; photo?: PhotoDto | null };
   /** The person's relationships with the focus (usually one; one per lineage otherwise). */
   edges: RelationEdge[];
   /** A student's other public teachers (at most 3) and how many there are in all. */
@@ -221,6 +222,9 @@ export function RelationList({
             <div className={cx('grid min-w-0 gap-0.5', columns && 'md:grid-cols-[minmax(0,1fr)_auto] md:items-baseline md:gap-x-6')}>
               <div className="grid min-w-0 gap-0.5">
                 <p className="flex flex-wrap items-baseline gap-x-2">
+                  {/* M14: the photo or the monogram before the name; the name's link covers it too.
+                      24 px, within the name's line, so a row keeps its height on a phone. */}
+                  <PersonAvatar name={row.person.displayName} photo={row.person.photo} size="xs" decorative className="self-center" />
                   <PersonLink person={row.person} stretched className={cx('font-display', nameSize === 'xl' ? 'text-xl' : 'text-lg')} />
                   {row.note ? <span className="text-sm text-fg-muted">({row.note})</span> : null}
                   {primaryFirst && index === 0 ? (

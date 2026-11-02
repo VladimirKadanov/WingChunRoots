@@ -239,6 +239,8 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
         root: roots.has(sn.id),
         // DEFAULT D22: a founder only as recorded (the lineage's root), as the routes of descent mark one.
         mark: roots.has(sn.id) ? 'founder' : person.lifeStatus === 'living' ? 'living' : 'other',
+        // M14: the profile photo (public people and the viewer's own only), or the monogram.
+        photo: person.photo ?? null,
         slot: { x: sn.x, y: sn.y, width: sn.width, height: sn.height },
         boxes: sn.boxes,
         slug: person.slug,

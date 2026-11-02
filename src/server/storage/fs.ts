@@ -40,7 +40,7 @@ export function filesystemStore(root: string): ObjectStore {
         throw new StorageError(`The file store could not write an object (${errorCode(error) ?? 'error'}).`, { cause: error });
       }
     },
-    async get(key) {
+    async get(key, options) {
       const file = fileOf(key);
       let size: number;
       try {
@@ -51,7 +51,7 @@ export function filesystemStore(root: string): ObjectStore {
         if (errorCode(error) === 'ENOENT') return null;
         throw new StorageError(`The file store could not read an object (${errorCode(error) ?? 'error'}).`, { cause: error });
       }
-      const body = Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>;
+      const body = Readable.toWeb(createReadStream(file, { signal: options?.signal })) as ReadableStream<Uint8Array>;
       return { body, size };
     },
     async delete(key) {

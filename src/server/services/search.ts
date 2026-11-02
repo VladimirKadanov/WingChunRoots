@@ -13,6 +13,7 @@ import { searchLineages, searchPeople, searchSchools, setThresholds } from '../s
 import { isCountryCode } from './account';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { photoOf, publicPhotoRefs } from './photo-refs';
 
 export const searchInput = z.object({
   q: z.string().max(MAX_QUERY_LENGTH, { error: `Search for at most ${MAX_QUERY_LENGTH} characters.` }),
@@ -69,7 +70,9 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
     const people = await searchPeople(tx, forms, filters, query);
     const schools = await searchSchools(tx, forms, filters);
     const lineages = await searchLineages(tx, forms, filters);
-    return { query, people: people.people, morePeople: people.more, schools, lineages };
+    // M14: each person's public photo (v_public_person: public people only, active photos only).
+    const photos = await publicPhotoRefs(tx, people.people.map((p) => p.id));
+    return { query, people: people.people.map((p) => ({ ...p, photo: photoOf(photos.get(p.id)) })), morePeople: people.more, schools, lineages };
   });
   return toPublicSearchResult(result);
 }

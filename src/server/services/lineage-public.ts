@@ -38,6 +38,7 @@ import {
   subtreeGraph,
   withoutRouteIds,
 } from './lineage-graph';
+import { photoOf, publicPhotoRefs } from './photo-refs';
 
 function graphTags(graph: { nodes: { id: string }[]; lineages: { id: string }[] } | null, ...extra: string[]): string[] {
   return [...extra, ...(graph?.nodes.map((n) => personTag(n.id)) ?? []), ...(graph?.lineages.map((l) => lineageTag(l.id)) ?? [])];
@@ -94,6 +95,8 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
     if (!row) return null;
     const counts = await personCounts(tx, personId);
     const lineages = await lineageRefs(tx, counts.lineageIds);
+    // M14: the current photo, only while the person is public (v_public_person).
+    const photo = photoOf((await publicPhotoRefs(tx, [personId])).get(personId));
     return {
       id: row.id,
       slug: row.slug,
@@ -108,6 +111,7 @@ export async function cachedProfile(personId: string): Promise<PersonProfileDto 
       instructor: row.instructor_status === 'verified' || row.instructor_status === 'unverified' ? row.instructor_status : null,
       visibility: 'public' as const,
       isOwn: false,
+      photo,
       limited: false,
       counts: {
         teachers: counts.teachers,

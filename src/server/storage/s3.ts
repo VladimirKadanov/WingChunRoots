@@ -28,6 +28,10 @@ export const REQUEST_TIMEOUT_MS = 30_000;
 /** A GET body whose next bytes do not arrive for this long fails: the store stalled mid-object. */
 export const BODY_IDLE_TIMEOUT_MS = 30_000;
 
+/** Attempts after the first on a 5xx or 429 answer, with a random back-off from RETRY_BASE_MS. */
+const RETRIES = 2;
+const RETRY_BASE_MS = 50;
+
 export interface S3Timeouts {
   /** Until the response headers arrive (REQUEST_TIMEOUT_MS). */
   requestMs?: number;
@@ -80,12 +84,14 @@ export function withIdleTimeout(body: ReadableStream<Uint8Array>, idleMs: number
 export function s3Store(config: S3Config, timeouts: S3Timeouts = {}): ObjectStore {
   const requestMs = timeouts.requestMs ?? REQUEST_TIMEOUT_MS;
   const bodyIdleMs = timeouts.bodyIdleMs ?? BODY_IDLE_TIMEOUT_MS;
+  // aws4fetch signs; the retries are ours (fetchWithRetries), so a refused attempt's body is
+  // cancelled instead of left open (AwsClient.fetch drops a 5xx response without reading it).
   const client = new AwsClient({
     accessKeyId: config.accessKeyId,
     secretAccessKey: config.secretAccessKey,
     service: 's3',
     region: config.region,
-    retries: 2,
+    retries: 0,
   });
   const origin = config.endpoint.replace(/\/+$/, '');
   const bucket = encodeURIComponent(config.bucket);
@@ -96,12 +102,27 @@ export function s3Store(config: S3Config, timeouts: S3Timeouts = {}): ObjectStor
   }
 
   /**
+   * The signed request, retried RETRIES times on a 5xx or 429 answer (a short random back-off, as
+   * aws4fetch did). Every answer that is not returned has its body cancelled, so its connection is
+   * closed or reused instead of held by an unread body.
+   */
+  async function fetchWithRetries(url: string, init: RequestInit): Promise<Response> {
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await fetch(await client.sign(url, init));
+      if (attempt >= RETRIES || (response.status < 500 && response.status !== 429)) return response;
+      await response.body?.cancel().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * RETRY_BASE_MS * 2 ** attempt));
+    }
+  }
+
+  /**
    * One signed request, failed when its response headers do not arrive within `requestMs`. The
    * race settles the deadline itself: the abort that goes with it is only a courtesy to the
    * connection, since aws4fetch wraps the call in a Request that holds the signal weakly. Once the
-   * headers are there the timer is cleared, so the body is never aborted by it.
+   * headers are there the timer is cleared, so the body is never aborted by it. The caller's
+   * `signal` (M14: the photo read's deadline) aborts the request at any time, the body included.
    */
-  async function send(operation: string, key: string, init: RequestInit): Promise<Response> {
+  async function send(operation: string, key: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     const url = urlOf(key);
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -111,8 +132,18 @@ export function s3Store(config: S3Config, timeouts: S3Timeouts = {}): ObjectStor
         controller.abort(error);
         reject(error);
       }, requestMs);
+      if (signal) {
+        const onAbort = () => {
+          const error = new DOMException(`The S3 ${operation} was given up by its caller.`, 'AbortError');
+          controller.abort(error);
+          reject(error);
+        };
+        if (signal.aborted) onAbort();
+        else signal.addEventListener('abort', onAbort, { once: true });
+      }
     });
-    const fetched = client.fetch(url, { ...init, signal: controller.signal });
+    deadline.catch(() => undefined);
+    const fetched = fetchWithRetries(url, { ...init, signal: controller.signal });
     try {
       return await Promise.race([fetched, deadline]);
     } catch (error) {
@@ -141,8 +172,8 @@ export function s3Store(config: S3Config, timeouts: S3Timeouts = {}): ObjectStor
       await response.body?.cancel();
       if (!response.ok) throw new StorageError(`The S3 store refused a PUT (HTTP ${response.status}).`);
     },
-    async get(key) {
-      const response = await send('GET', key, { method: 'GET' });
+    async get(key, options) {
+      const response = await send('GET', key, { method: 'GET' }, options?.signal);
       if (response.status === 404) {
         await response.body?.cancel();
         return null;

@@ -61,8 +61,8 @@ export function exifTiff(): Uint8Array {
 }
 
 /** A JPEG with the EXIF block above (camera and GPS position) in an APP1 segment after SOI. */
-export async function jpegWithGps(): Promise<Uint8Array> {
-  const jpeg = await plainImage('jpeg');
+export async function jpegWithGps(width = 64, height = 48): Promise<Uint8Array> {
+  const jpeg = await plainImage('jpeg', width, height);
   const tiff = exifTiff();
   const header = new Uint8Array([0x45, 0x78, 0x69, 0x66, 0, 0]); // "Exif\0\0"
   const length = 2 + header.length + tiff.length;
@@ -71,8 +71,8 @@ export async function jpegWithGps(): Promise<Uint8Array> {
 }
 
 /** A PNG with the same EXIF block in an eXIf chunk before IDAT. */
-export async function pngWithGps(): Promise<Uint8Array> {
-  const png = await plainImage('png');
+export async function pngWithGps(width = 64, height = 48): Promise<Uint8Array> {
+  const png = await plainImage('png', width, height);
   const tiff = exifTiff();
   const type = new TextEncoder().encode('eXIf');
   const chunk = new Uint8Array(12 + tiff.length);
@@ -102,4 +102,41 @@ export async function imageFacts(bytes: Uint8Array) {
 /** Whether `needle` occurs in `bytes` (an ASCII marker such as "Exif" or the camera name). */
 export function containsAscii(bytes: Uint8Array, needle: string): boolean {
   return Buffer.from(bytes).includes(Buffer.from(needle, 'latin1'));
+}
+
+/**
+ * M14: a 200 x 100 JPEG whose left half is red and right half blue, with EXIF orientation 6
+ * ("turn 90° clockwise to show"): shown upright it is 100 x 200, red on top and blue below.
+ */
+export async function orientedJpeg(): Promise<Uint8Array> {
+  const half = (r: number, b: number) => sharp({ create: { width: 100, height: 100, channels: 3, background: { r, g: 0, b } } }).png().toBuffer();
+  const image = sharp({ create: { width: 200, height: 100, channels: 3, background: { r: 0, g: 0, b: 0 } } }).composite([
+    { input: await half(255, 0), left: 0, top: 0 },
+    { input: await half(0, 255), left: 100, top: 0 },
+  ]);
+  const jpeg = new Uint8Array(await image.jpeg({ quality: 95 }).toBuffer());
+  // An EXIF block of its own (no sharp option that keeps metadata, M10a): IFD0 with one entry,
+  // Orientation (SHORT) = 6, in an APP1 segment after SOI.
+  const tiff = new Uint8Array(26);
+  const view = new DataView(tiff.buffer);
+  tiff.set([0x49, 0x49], 0); // "II"
+  view.setUint16(2, 42, true);
+  view.setUint32(4, 8, true);
+  view.setUint16(8, 1, true);
+  view.setUint16(10, 0x0112, true);
+  view.setUint16(12, 3, true);
+  view.setUint32(14, 1, true);
+  view.setUint16(18, 6, true);
+  view.setUint32(22, 0, true);
+  const header = new Uint8Array([0x45, 0x78, 0x69, 0x66, 0, 0]); // "Exif\0\0"
+  const length = 2 + header.length + tiff.length;
+  const app1 = new Uint8Array([0xff, 0xe1, length >> 8, length & 0xff, ...header, ...tiff]);
+  return new Uint8Array([...jpeg.subarray(0, 2), ...app1, ...jpeg.subarray(2)]);
+}
+
+/** M14: the colour of one pixel of an image, as [r, g, b]. */
+export async function pixelAt(bytes: Uint8Array, x: number, y: number): Promise<[number, number, number]> {
+  const { data, info } = await sharp(bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const i = (y * info.width + x) * info.channels;
+  return [data[i]!, data[i + 1]!, data[i + 2]!];
 }

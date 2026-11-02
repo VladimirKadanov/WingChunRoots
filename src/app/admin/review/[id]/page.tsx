@@ -21,6 +21,7 @@ import type { ReactNode } from 'react';
 import { LoadError } from '@/components/account/load-error';
 import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { formatDay } from '@/lib/dates';
 import { formatSize } from '@/lib/file-size';
@@ -28,8 +29,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { assignForm, DECIDE_FORM, NOTE_FORM } from '../form-ids';
-import { AssignForm, DecideForm, NoteForm } from '../forms';
+import { assignForm, DECIDE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM } from '../form-ids';
+import { AssignForm, DecideForm, NoteForm, RemovePhotoForm } from '../forms';
 import { ListingSection } from '../listing';
 
 export const instant = false;
@@ -58,6 +59,8 @@ const DONE: Record<string, string> = {
   assigned: 'The case is assigned. You can open its evidence and decide it.',
   unassigned: 'The case is unassigned and back in the queue.',
   noted: 'The note is added.',
+  // M14: photos.remove from the case of a reported profile.
+  'photo-removed': 'The profile photo is removed. The removal and your reason are in the audit log.',
   // M10b: review.arbitrate opens the dispute here.
   arbitrated: 'The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.',
 };
@@ -122,7 +125,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     );
   }
   if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
-  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult] = await Promise.all([
+  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult] = await Promise.all([
     readFormResult(assignForm('self'), query.outcome),
     readFormResult(assignForm('none'), query.outcome),
     readFormResult(assignForm('choose'), query.outcome),
@@ -130,6 +133,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(`${DECIDE_FORM}-verify`, query.outcome),
     readFormResult(`${DECIDE_FORM}-reject`, query.outcome),
     readFormResult(`${DECIDE_FORM}-needs_info`, query.outcome),
+    readFormResult(PHOTO_REMOVE_FORM, query.outcome),
   ]);
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
   const done = decided ? view.decisions[decided].done : typeof query.done === 'string' ? DONE[query.done] : undefined;
@@ -143,6 +147,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
   const doneKey = `${String(query.done)}-${String(query.n)}`;
   const rel = view.relationship;
   const userId = guard.principal!.user.id;
+  // M14: the profile photo of the person a case is about (a reported profile), with "Remove photo"
+  // for staff who may moderate it. A failed read only leaves the section out.
+  const subjectSlug = view.subject?.person && !view.subject.person.removed ? view.subject.person.slug : null;
+  const photo = subjectSlug
+    ? await serverClient(await headers(), guard.principal)
+        .photos.get({ slug: subjectSlug })
+        .catch(() => null)
+    : null;
 
   return (
     <Frame>
@@ -182,6 +194,15 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
                 {view.resolutionReason}
               </p>
             ) : null}
+          </Section>
+        ) : null}
+
+        {photo && photo.photo && photo.canModerate && subjectSlug ? (
+          <Section id="photo" title="Profile photo">
+            <PersonAvatar name={view.subject!.person!.name.value} photo={photo.photo} size="lg" />
+            <div className="max-w-[40rem]">
+              <RemovePhotoForm caseId={view.id} slug={subjectSlug} initial={photoResult} />
+            </div>
           </Section>
         ) : null}
 

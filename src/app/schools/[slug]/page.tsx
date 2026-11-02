@@ -13,6 +13,7 @@ import Link from 'next/link';
 
 import { ArrowLeftIcon } from '@/components/icons';
 import { NameText } from '@/components/account/person-names';
+import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
 import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -153,10 +154,12 @@ export default async function SchoolPage({ params }: Props) {
             <ul className="mt-3 grid gap-4">
               {school.instructors.map((instructor) => (
                 <li key={instructor.id} className="grid gap-1 border-b border-border-subtle pb-4" data-testid="school-instructor" data-slug={instructor.slug}>
-                  <p className="font-display text-lg">
+                  <p className="flex flex-wrap items-center gap-x-3 font-display text-lg">
+                    {/* M14: the instructor's photo, or the monogram. */}
+                    <PersonAvatar name={instructor.displayName.value} photo={instructor.photo} size="sm" decorative />
                     <NameText name={instructor.displayName} />
                     {instructor.original ? (
-                      <span className="ml-2 text-base text-fg-muted">
+                      <span className="text-base text-fg-muted">
                         <NameText name={instructor.original} />
                       </span>
                     ) : null}

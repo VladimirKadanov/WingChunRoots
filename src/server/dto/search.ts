@@ -9,6 +9,8 @@
 
 import * as z from 'zod';
 
+import { photoSchema } from './public';
+
 export const searchNameSchema = z.object({
   value: z.string(),
   /** BCP 47 tag, for the `lang` attribute. */
@@ -31,6 +33,8 @@ export const personHitSchema = z.object({
   lineageName: z.string().nullable(),
   /** At least one verified public relationship. */
   verified: z.boolean(),
+  /** M14: the public profile photo (the 96 px thumbnail and the 512 px image), or null. */
+  photo: photoSchema.nullable().optional(),
 });
 export type PersonHitDto = z.infer<typeof personHitSchema>;
 

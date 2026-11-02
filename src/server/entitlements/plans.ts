@@ -252,7 +252,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     phase: 2,
     enforced: false,
     unit: { one: 'photo', many: 'photos', verb: 'added' },
-    // DEFAULT D07: recorded here, enforced with the media of Phase 2.
+    // DEFAULT D07: recorded here; the gallery comes with the media of Phase 2 (so `planned` and
+    // `enforced: false` in the catalogue, which the plan pages read).
+    // DEFAULT D07 (M14): the one current profile photo of a person already counts as 1 against this
+    // allowance, which every plan has (withQuota in src/server/services/photos.ts); replacing it
+    // adds nothing.
     values: {
       free_student: quota('1', '1 photo', 1),
       premium_student: quota('10', '10 photos', 10),

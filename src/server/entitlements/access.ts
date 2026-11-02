@@ -8,7 +8,7 @@
 import { and, countDistinct, eq, inArray, isNull } from 'drizzle-orm';
 
 import { getDb, type Database } from '../db';
-import { authUser, entitlementGrant, person, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
+import { authUser, entitlementGrant, person, personPhoto, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
 import { decide, type EffectivePlan, type EntitlementDecision, type GrantPeriod, resolveEffectivePlan } from './effective';
 import type { FeatureKey } from './plans';
 
@@ -58,11 +58,33 @@ export async function effectivePlan(subject: EntitlementSubject, options: Entitl
 }
 
 /**
+ * M14 (DEFAULT D07): the active profile photos of the account's own person (at most one). The
+ * photo gallery of Phase 2 will count its photos here too.
+ */
+async function activePhotos(db: Executor, subject: EntitlementSubject, personId?: string): Promise<number> {
+  const [row] = await db
+    .select({ n: countDistinct(personPhoto.id) })
+    .from(personPhoto)
+    .innerJoin(person, eq(person.id, personPhoto.personId))
+    .where(
+      and(
+        eq(person.claimedByUserId, subject.userId),
+        isNull(person.deletedAt),
+        eq(personPhoto.status, 'active'),
+        personId === undefined ? undefined : eq(personPhoto.personId, personId),
+      ),
+    );
+  return row?.n ?? 0;
+}
+
+/**
  * How much of a counted feature the account uses now. Approved students (D06): the distinct
  * students of the account's own person whose relationship is established (verified or in
- * arbitration), whatever its visibility. The other features count nothing in Phase 1.
+ * arbitration), whatever its visibility. Photos (M14, DEFAULT D07): the current profile photo of
+ * the account's own person counts as one. The other features count nothing in Phase 1.
  */
 export async function currentUse(db: Executor, subject: EntitlementSubject, key: FeatureKey): Promise<number> {
+  if (key === 'photos') return activePhotos(db, subject);
   if (key !== 'approve_students') return 0;
   const [row] = await db
     .select({ n: countDistinct(teachingRelationship.studentPersonId) })
@@ -84,6 +106,8 @@ export async function currentUse(db: Executor, subject: EntitlementSubject, key:
  * link of a student who counts adds nothing to the count (D06 counts distinct students).
  */
 export async function alreadyCounted(db: Executor, subject: EntitlementSubject, key: FeatureKey, unit: string): Promise<boolean> {
+  // M14: replacing the profile photo of a person who has one adds nothing (the unit is the person).
+  if (key === 'photos') return (await activePhotos(db, subject, unit)) > 0;
   if (key !== 'approve_students') return false;
   const [row] = await db
     .select({ n: countDistinct(teachingRelationship.studentPersonId) })

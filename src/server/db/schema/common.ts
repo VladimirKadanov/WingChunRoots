@@ -109,6 +109,21 @@ export const EVIDENCE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'ap
 /** M10a: the longest stored file name of an evidence file. */
 export const EVIDENCE_NAME_MAX = 200;
 
+// --- Profile photos (milestone M14; docs/adr/0016-profile-photos.md) ---------------------------
+/**
+ * M14: a photo is the person's current one (`active`), was replaced by a newer upload (`replaced`)
+ * or was removed by its owner or by staff (`removed`). Only an active photo is ever served.
+ */
+export const PHOTO_STATUSES = ['active', 'replaced', 'removed'] as const;
+/** DEFAULT D07 (M14): an uploaded profile photo is at most 5 MB before processing. */
+export const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+/** M14: the square sizes stored of every photo, in pixels: the card thumbnail and the profile. */
+export const PHOTO_SIZES = [96, 512] as const;
+/** M14: the shortest side an uploaded photo must have, in pixels (a smaller image is too blurred for the card). */
+export const PHOTO_MIN_SIDE = 96;
+/** M14: the longest removal reason staff can give. */
+export const PHOTO_REASON_MAX = 1000;
+
 // --- Schools and geography (plan §6.2) ----------------------------------------------------------
 export const LOCATION_PRIVACIES = ['exact', 'city_only'] as const;
 /**

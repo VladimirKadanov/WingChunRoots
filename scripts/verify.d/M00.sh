@@ -8,7 +8,7 @@ cd "$ROOT" || exit 2
 
 PLAN="docs/WingChunRoots_Technical_Plan.bg.md"
 ADR="docs/adr/0001-stack.md"
-MILESTONES=(M00 M00b M01 M01b M02 M03 M04 M05 M06 M07 M08 M09 M10a M10b M11 M12 M13)
+MILESTONES=(M00 M00b M01 M01b M02 M03 M04 M05 M06 M07 M08 M09 M10a M10b M11 M12 M13 M14)
 failures=0
 
 ok() { echo "ok   $1"; }
@@ -42,7 +42,7 @@ for f in scripts/verify.sh scripts/verify.d/M00.sh scripts/cloud-setup.sh script
   check "executable: $f" test -x "$f"
 done
 
-# 2. Seventeen milestone files that follow the template of plan §8.3 --------------------
+# 2. Eighteen milestone files that follow the template of plan §8.3 --------------------
 template=(
   "## Цел (Objective)"
   "## Прочети първо (Read first)"

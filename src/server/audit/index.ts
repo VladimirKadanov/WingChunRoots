@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02, M07, M08, M09, M10a and M11; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07, M08, M09, M10a, M11 and M14; later milestones add theirs (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -59,7 +59,11 @@ export type AuditAction =
   | 'report.create'
   | 'relationship.arbitration'
   | 'relationship.revoke'
-  | 'review.reply';
+  | 'review.reply'
+  // M14: profile photos (docs/adr/0016-profile-photos.md). The rows carry photo ids, sizes and
+  // hashes, never a storage key or a file name; a staff removal keeps its reason.
+  | 'photo.upload'
+  | 'photo.remove';
 
 export interface AuditEntry {
   action: AuditAction;

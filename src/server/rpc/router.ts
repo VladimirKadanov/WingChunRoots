@@ -42,6 +42,7 @@ import {
   sendInvitation,
   sendInvitationInput,
 } from '../services/invitations';
+import { getPhoto, photoGetInput, photoRemoveInput, photoUploadInput, removePhoto, uploadPhoto } from '../services/photos';
 import { myReports, reportInput, reportProfile } from '../services/reports';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
@@ -444,6 +445,32 @@ export const router = {
       .route({ method: 'POST', path: '/evidence/discard', summary: 'Remove an own evidence file that is in no claim yet (the uploader)' })
       .input(discardInput)
       .handler(({ context, input }) => discardEvidence(context.principal, input, context.meta)),
+  },
+  // M14: profile photos (docs/adr/0016-profile-photos.md). The upload is multipart/form-data with
+  // one `file` (JPEG, PNG or WebP, at most 5 MB, refused by size before the body is buffered:
+  // src/server/rpc/handler.ts); the photo itself is served by GET /api/photos/{id}/{hash}/{size}.webp.
+  photos: {
+    get: base
+      .route({ method: 'GET', path: '/photos/{slug}', summary: "A person's current profile photo (the 96 px and 512 px addresses), and whether this viewer may change or remove it; 404 for a person this viewer may not see" })
+      .input(photoGetInput)
+      .handler(({ context, input }) => getPhoto(context.principal, input)),
+    upload: signedIn
+      .route({
+        method: 'POST',
+        path: '/photos/upload',
+        summary:
+          'Upload or replace the profile photo of your own person (multipart `file`: JPEG, PNG or WebP, at most 5 MB): metadata and location removed, cropped square, stored as WebP at 96 and 512 px; counts as one photo of your plan (D07); audited',
+      })
+      .input(photoUploadInput)
+      .handler(({ context, input }) => uploadPhoto(context.principal, input, context.meta)),
+    remove: signedIn
+      .route({
+        method: 'POST',
+        path: '/photos/remove',
+        summary: "Remove a profile photo: your own (no slug), or as staff with a verified second factor anyone's, with a reason kept in the audit log; audited",
+      })
+      .input(photoRemoveInput)
+      .handler(({ context, input }) => removePhoto(context.principal, input, context.meta)),
   },
   // M10a: the review queue (staff with a verified second factor; plan §5.6, §6.7).
   review: {

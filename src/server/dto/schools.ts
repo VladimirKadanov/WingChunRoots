@@ -11,6 +11,7 @@
 
 import * as z from 'zod';
 
+import { photoSchema } from './public';
 import { searchNameSchema } from './search';
 
 /** Degrees, rounded to 5 decimals (about a metre) by the service. */
@@ -67,6 +68,8 @@ export const schoolPageInstructorSchema = schoolInstructorRefSchema.extend({
   original: searchNameSchema.nullable(),
   /** The lineages of the instructor's public relationships, for the explorer and the list view. */
   lineages: z.array(z.object({ id: z.uuid(), slug: z.string(), name: z.string() })),
+  /** M14: the instructor's public profile photo, or null. */
+  photo: photoSchema.nullable().optional(),
 });
 
 export const schoolPageSchema = z.object({

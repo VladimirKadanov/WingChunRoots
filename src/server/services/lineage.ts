@@ -53,6 +53,7 @@ import {
 } from './lineage-graph';
 import { cachedAncestors, cachedEgo, cachedPaths, cachedProfile, cachedStudents, cachedSubtree } from './lineage-public';
 import { isPersonalised, loadViewer, mayViewHidden, type Viewer } from './lineage-viewer';
+import { photoOf } from './photo-refs';
 
 // --- Input: every number bounded and written as digits only ---------------------------------
 
@@ -242,6 +243,8 @@ export async function personProfile(principal: Principal | null, input: PersonIn
     instructor: null,
     visibility: 'involved_only',
     isOwn: viewer.extras.personId === id,
+    // M14: a person who is not public shows a photo only to their own account.
+    photo: viewer.extras.personId === id ? photoOf(hidden.photo) : null,
     limited: hidden.limited,
     counts: {
       teachers: counts.teachers,
