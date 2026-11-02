@@ -57,9 +57,10 @@ export function PersonHeading({ profile, prefix }: { profile: Pick<PersonProfile
  */
 export function PersonIdentity({ profile, children }: { profile: Pick<PersonProfileDto, 'displayName' | 'photo'>; children: ReactNode }) {
   return (
-    <div className="flex items-start gap-x-6 gap-y-4" data-testid="person-identity">
+    // The name goes under the picture when it would not fit beside it (a narrow screen, large text).
+    <div className="flex flex-wrap items-start gap-x-6 gap-y-4" data-testid="person-identity">
       <PersonAvatar name={profile.displayName} photo={profile.photo} size="lg" className="mt-1" />
-      <div className="grid min-w-0 flex-1 content-start gap-3">{children}</div>
+      <div className="grid min-w-0 flex-1 basis-[10rem] content-start gap-3">{children}</div>
     </div>
   );
 }

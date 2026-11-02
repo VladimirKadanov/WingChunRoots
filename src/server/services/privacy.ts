@@ -18,7 +18,7 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
-import { authUser, consentRecord, notification, person, personBio, personName, reviewCase, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
+import { authUser, consentRecord, notification, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
@@ -26,6 +26,7 @@ import { withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { queueRecomputeForPerson } from './lineage-membership';
+import { deletePhotoFiles } from './photos';
 import { neighbourTags, setOwnVisibility } from './profile';
 import { isReferencedRowError } from './retention';
 
@@ -313,8 +314,10 @@ export interface DeletionCarriedOut {
  * has already refused production and a database that is not on this machine.
  */
 export async function carryOutDeletionFromCommandLine(caseId: string): Promise<DeletionCarriedOut> {
+  // M14: the profile photo goes with the account (its files after the commit).
+  let photos: { id: string; storageKey: string }[] = [];
   try {
-    return await getDb().transaction(async (tx) => {
+    const result = await getDb().transaction(async (tx) => {
       const request = await lockOpenDeletionCase(tx, caseId);
       const userId = request.userId;
       const [own] = await tx
@@ -328,6 +331,12 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
       if (own) {
         namesRemoved = (await tx.delete(personName).where(and(eq(personName.personId, own.id), eq(personName.isPrimary, false)))).rowCount ?? 0;
         biosRemoved = (await tx.delete(personBio).where(eq(personBio.personId, own.id))).rowCount ?? 0;
+        // M14: the profile photo is the account's own, like the bio: marked removed, its files deleted below.
+        photos = await tx
+          .update(personPhoto)
+          .set({ status: 'removed', removedAt: new Date(), removedByUserId: null, updatedAt: new Date() })
+          .where(and(eq(personPhoto.personId, own.id), eq(personPhoto.status, 'active')))
+          .returning({ id: personPhoto.id, storageKey: personPhoto.storageKey });
         const [verified] = await tx
           .select({ id: teachingRelationship.id })
           .from(teachingRelationship)
@@ -341,7 +350,7 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
         visibility = own.visibility === 'public' && verified ? 'public' : 'involved_only';
         await tx
           .update(person)
-          .set({ claimedByUserId: null, stewardship: 'unclaimed', visibility, placeId: null, trainingStartYear: null, updatedAt: new Date() })
+          .set({ claimedByUserId: null, stewardship: 'unclaimed', visibility, placeId: null, trainingStartYear: null, photoId: null, updatedAt: new Date() })
           .where(eq(person.id, own.id));
         // A profile that stops being public takes its edges out of v_public_edge (M11 review, code-2).
         if (visibility !== own.visibility) await queueRecomputeForPerson(tx, own.id);
@@ -363,12 +372,14 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
         subjectType: 'review_case',
         subjectId: request.id,
         before: { userId, personId: own?.id ?? null, visibility: own?.visibility ?? null },
-        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, consentsRemoved, schoolsArchived },
+        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, photosRemoved: photos.length, consentsRemoved, schoolsArchived },
         reason: 'pnpm account:delete (local environment)',
       });
       await tx.delete(authUser).where(eq(authUser.id, userId));
       return { personId: own?.id ?? null, visibility };
     });
+    await deletePhotoFiles(photos);
+    return result;
   } catch (error) {
     if (!isReferencedRowError(error)) throw error;
     const constraint = (error as { constraint?: unknown; cause?: { constraint?: unknown } }).constraint ?? (error as { cause?: { constraint?: unknown } }).cause?.constraint;

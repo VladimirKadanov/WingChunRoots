@@ -109,7 +109,7 @@ export const personPhoto = pgTable(
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     removedByUserId: uuid('removed_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     removedAt: timestamp('removed_at', { withTimezone: true }),
-    // Staff removal only: the reason the owner reads (never shown publicly).
+    // Staff removal only: the reason, for staff and the audit log (never shown publicly).
     removalReason: text('removal_reason'),
     ...timestamps(),
   },

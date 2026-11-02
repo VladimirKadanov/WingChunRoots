@@ -15,9 +15,9 @@ import type { PhotoDto } from '@/server/dto/public';
 import { monogram } from './monogram';
 
 const SIZES = {
-  /** The explorer's full card (the monogram's old 24 px slot). */
+  /** The explorer's full card (the monogram's old 24 px slot) and the rows of the relation lists. */
   xs: { px: 24, text: 'text-caption' },
-  /** Lists, search results and school pages. */
+  /** The explorer's students list, search results and school pages. */
   sm: { px: 32, text: 'text-xs' },
   /** The explorer's selection panel. */
   md: { px: 40, text: 'text-sm' },

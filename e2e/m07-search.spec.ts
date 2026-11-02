@@ -222,7 +222,8 @@ test('@M07 search results contain only public persons and no private fields', as
   );
   for (const person of answer.people) {
     expect(publicSlugs.has(person.slug as string)).toBe(true);
-    expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'lineageName', 'matched', 'slug', 'verified']);
+    // M14: `photo` is public (the app's own addresses of a public person's photo, or null).
+    expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'lineageName', 'matched', 'photo', 'slug', 'verified']);
   }
   const text = JSON.stringify({ people: answer.people, schools: answer.schools, lineages: answer.lineages });
   expect(text).not.toMatch(/claimedBy|claimed_by|birth|email|public_point|exact_point|"key"|source|keyKind/i);

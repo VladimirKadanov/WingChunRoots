@@ -24,6 +24,7 @@ import { handlePhotoRequest } from '../photo-http';
 import { jpegWithGps, plainImage } from '../storage/test-images';
 import { personProfile } from './lineage';
 import { getPhoto, openPhoto, PHOTO_TOO_LARGE_MESSAGE, PHOTO_WRONG_TYPE_MESSAGE, publicPhotoRefs, removePhoto, uploadPhoto } from './photos';
+import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { member, meta, principalOf, staff } from './relationships.test-support';
 
 vi.mock('next/cache', () => ({
@@ -260,6 +261,22 @@ describe('visibility', () => {
     await getDb().update(person).set({ deletedAt: new Date() }).where(eq(person.id, owner.personId));
     expect(await openPhoto(null, addressOf(up.photo.small))).toBeNull();
     expect(await openPhoto(principalOf(owner.account), addressOf(up.photo.small))).toBeNull();
+    expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
+  });
+
+  it('pnpm account:delete removes the photo with the account: the row removed, photo_id cleared, the files deleted', async () => {
+    const owner = await member('photo-leaving');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const [before] = await photoRows(owner.personId);
+    const { request } = await requestAccountDeletion(owner.principal, { confirm: true }, meta);
+    await carryOutDeletionFromCommandLine(request.id);
+    const [row] = await photoRows(owner.personId);
+    expect(row).toMatchObject({ id: before!.id, status: 'removed', uploadedByUserId: null });
+    expect(row!.removedAt).not.toBeNull();
+    const [p] = await getDb().select({ photoId: person.photoId }).from(person).where(eq(person.id, owner.personId));
+    expect(p!.photoId).toBeNull();
+    expect(filesIn(photoRoot).some((f) => f.startsWith(`${before!.storageKey}/`))).toBe(false);
+    expect(await openPhoto(null, addressOf(up.photo.small))).toBeNull();
     expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
   });
 });

@@ -7,7 +7,8 @@
 //   - upload or replace: the signed-in account whose own person it is (person.claimed_by_user_id);
 //     nobody else, staff included (staff remove, they never put a photo on someone's profile);
 //   - remove: that account (its own photo), or staff (moderator, archivist or administrator) with a
-//     verified second factor, with a reason the owner reads; audited as photo.remove either way;
+//     verified second factor, with a reason kept with the row and in the audit log (staff read it;
+//     the owner is not notified in Phase 1); audited as photo.remove either way;
 //   - read (photos.get, GET /api/photos/...): everyone for a public person; for a person who is not
 //     public only the account whose own person it is and staff with a verified second factor.
 //     Anyone else gets 404, the same answer as for no such person (plan §6.4).
@@ -132,6 +133,14 @@ async function ownPerson(userId: string): Promise<OwnPerson | null> {
 
 const filesOf = (key: string) => PHOTO_SIZES.map((size) => `${key}/${size}`);
 
+/**
+ * Deletes the files of photos whose rows are already `removed` (account deletion, src/server/services/
+ * privacy.ts): best effort, after the transaction that changed the rows has committed.
+ */
+export async function deletePhotoFiles(photos: readonly { id: string; storageKey: string }[], store: ObjectStore = getPhotoStore()): Promise<void> {
+  for (const photo of photos) await deleteFiles(store, photo.storageKey, photo.id);
+}
+
 async function deleteFiles(store: ObjectStore, key: string, photoId: string): Promise<void> {
   for (const file of filesOf(key)) {
     await store.delete(file).catch(() => {
@@ -193,13 +202,14 @@ export async function uploadPhoto(
   const large = rendered.renditions[512];
   const content = sha256(large);
   const key = newStorageKey('photos');
-  for (const size of PHOTO_SIZES) {
-    await store.put(`${key}/${size}`, rendered.renditions[size], { contentType: 'image/webp', sha256: sha256(rendered.renditions[size]) });
-  }
   const subject: EntitlementSubject = { kind: 'user', userId: p.user.id };
   const id = uuidv7();
   let previous: { id: string; storageKey: string } | null = null;
   try {
+    // Inside the try: a rendition written before a failed one is deleted with it.
+    for (const size of PHOTO_SIZES) {
+      await store.put(`${key}/${size}`, rendered.renditions[size], { contentType: 'image/webp', sha256: sha256(rendered.renditions[size]) });
+    }
     const outcome = await getDb().transaction(async (tx) =>
       // DEFAULT D07: the current photo counts as one against 'photos', which every plan allows;
       // a replacement of the person's photo adds nothing (the unit is the person).
@@ -277,7 +287,15 @@ export async function removePhoto(
 ): Promise<{ personId: string; slug: string; removed: boolean }> {
   const p = requireUser(principal);
   const parsed = photoRemoveInput.safeParse(raw);
-  if (!parsed.success) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { slug: 'Must be a profile address.' });
+  if (!parsed.success) {
+    // Each refused field says so on its own: a reason too long is not a bad address.
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      if (issue.path[0] === 'reason') fields.reason = `At most ${PHOTO_REASON_MAX} characters.`;
+      else fields.slug = 'Must be a profile address.';
+    }
+    throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
+  }
   const own = await ownPerson(p.user.id);
   let target: { id: string; slug: string };
   let asStaff = false;
@@ -302,7 +320,7 @@ export async function removePhoto(
   }
   const reason = (parsed.data.reason ?? '').trim();
   if (asStaff && reason.length === 0) {
-    throw new ServiceError('BAD_REQUEST', 'Say why the photo is removed: the owner reads it.', { reason: 'Say why the photo is removed: the owner reads it.' });
+    throw new ServiceError('BAD_REQUEST', 'Say why the photo is removed: the reason is kept in the audit log.', { reason: 'Say why the photo is removed: the reason is kept in the audit log.' });
   }
   if (reason.length > PHOTO_REASON_MAX) {
     throw new ServiceError('BAD_REQUEST', `At most ${PHOTO_REASON_MAX} characters.`, { reason: `At most ${PHOTO_REASON_MAX} characters.` });

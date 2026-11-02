@@ -467,7 +467,7 @@ export const router = {
       .route({
         method: 'POST',
         path: '/photos/remove',
-        summary: "Remove a profile photo: your own (no slug), or as staff with a verified second factor anyone's, with a reason the owner reads; audited",
+        summary: "Remove a profile photo: your own (no slug), or as staff with a verified second factor anyone's, with a reason kept in the audit log; audited",
       })
       .input(photoRemoveInput)
       .handler(({ context, input }) => removePhoto(context.principal, input, context.meta)),
