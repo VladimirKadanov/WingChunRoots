@@ -3,7 +3,7 @@
 # the unit tests (src/server/storage/photo.test.ts: metadata and GPS stripped, orientation, no
 # enlargement, the types by their magic bytes, the pixel bomb; src/server/storage/photo-store.test.ts:
 # the photo store is never the evidence store; src/server/rpc/handler.test.ts: 411/413 before the
-# body is read), the integration tests (src/server/services/photos.int.test.ts and the photo rows of
+# body is read, 413 past the limit while a body without a length is read), the integration tests (src/server/services/photos.int.test.ts and the photo rows of
 # the authorization matrix), db:check, db:reset+migrate+seed, the build with the bundle budgets and
 # E2E (`@smoke|@M14`; the M14 spec adds a photo to a seeded demo person, so it runs in the exclusive
 # run after the others, e2e/projects.ts). They stay valid after M14, so `scripts/verify.sh all`
@@ -93,11 +93,13 @@ check "the image is sniffed, decoded under the pixel limit, turned upright and r
 check "only src/server/storage imports sharp" bash -c "! grep -rlE \"from 'sharp'\" src --include=*.ts --include=*.tsx | grep -v '^src/server/storage/'"
 check "the route serves only through openPhoto, with the hash in the address, an ETag, nosniff and a sandbox CSP" bash -c "
   grep -q 'handlePhotoRequest' '$ROUTE' && grep -q 'openPhoto' $HTTP && grep -q 'etag' $HTTP && grep -q 'nosniff' $HTTP &&
-  grep -q \"sandbox\" $HTTP && grep -q \"private, no-store\" $HTTP"
+  grep -q \"sandbox\" $HTTP && grep -q \"private, no-store\" $HTTP && grep -q \"PUBLIC_PHOTO_CACHE = 'public, no-cache'\" $HTTP"
 check "a hidden person's photo is public only through v_public_person (app_public_ro)" bash -c "
   grep -q 'FROM v_public_person' $REFS && grep -q 'publicPhotoRefs(getPublicDb()' $SERVICE"
 check "a multipart body is refused by its Content-Length before it is read (411, 413)" bash -c "
   f=src/server/rpc/handler.ts; grep -q 'export function bodyRefusal' \"\$f\" && grep -q 'LENGTH_REQUIRED' \"\$f\" && grep -q 'MULTIPART_MAX_BYTES' \"\$f\""
+check "every API body is counted as it is read and stopped with 413 past its limit (boundedRequest)" bash -c "
+  f=src/server/rpc/handler.ts; grep -q 'export async function boundedRequest' \"\$f\" && grep -q 'await boundedRequest(request)' \"\$f\" && grep -q 'JSON_MAX_BYTES' \"\$f\""
 
 # 4. The procedures and the Server Action (In scope 3, 6; plan §6.8) -------------------------------
 mkdir -p .verify
@@ -169,7 +171,7 @@ check "the M13 leak scan includes the hidden person's photo and the photo storag
 # 8. Documentation (In scope 9) --------------------------------------------------------------------
 check "ADR 0016 records the store, the view, the route and its cache, D07 and the demo images" bash -c "
   f=docs/adr/0016-profile-photos.md; grep -q 'MEDIA_STORAGE' \"\$f\" && grep -q 'v_public_person' \"\$f\" && grep -q '/api/photos/' \"\$f\" &&
-  grep -q 'max-age=3600' \"\$f\" && grep -q 'DEFAULT D07' \"\$f\" && grep -q 'D20' \"\$f\""
+  grep -q 'public, no-cache' \"\$f\" && grep -q 'DEFAULT D07' \"\$f\" && grep -q 'D20' \"\$f\""
 check "docs/data-model.md describes person_photo and the photo columns of v_public_person" bash -c "
   f=docs/data-model.md; grep -q 'person_photo' \"\$f\" && grep -q 'photo_sha256' \"\$f\""
 check ".env.example names MEDIA_STORAGE and MEDIA_STORAGE_DIR (names only)" bash -c "grep -qx 'MEDIA_STORAGE=' .env.example && grep -qx 'MEDIA_STORAGE_DIR=' .env.example"
