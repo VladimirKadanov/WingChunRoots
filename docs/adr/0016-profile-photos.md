@@ -38,7 +38,7 @@
 
 ### 6. API първо
 
-Процедурите `photos.get` (`GET /api/v1/photos/{slug}`), `photos.upload` (`POST /api/v1/photos/upload`, multipart с поле `file`) и `photos.remove` (`POST /api/v1/photos/remove`) са на `/api/rpc` и `/api/v1`. Формата на собственика вика `/api/v1` с `fetch`, а махането от модератор е тънко Server Action (`removePhotoAction`) над `photos.remove`, записано в таблицата на съответствието (`src/server/rpc/parity.ts`) и в матрицата за оторизация. Multipart заявка без `Content-Length` е 411, а над 5 MB + 64 KiB — 413, преди oRPC да чете тялото.
+Процедурите `photos.get` (`GET /api/v1/photos/{slug}`), `photos.upload` (`POST /api/v1/photos/upload`, multipart с поле `file`) и `photos.remove` (`POST /api/v1/photos/remove`) са на `/api/rpc` и `/api/v1`. Формата на собственика вика `/api/rpc` с `fetch` (във вида на RPC протокола на oRPC: multipart с част `data` и файла в част `0`; `/api/v1` е договорът на мобилното приложение), а махането от модератор е тънко Server Action (`removePhotoAction`) над `photos.remove`, записано в таблицата на съответствието (`src/server/rpc/parity.ts`) и в матрицата за оторизация. Multipart заявка без `Content-Length` е 411, а над 5 MB + 64 KiB — 413, преди oRPC да чете тялото.
 
 ### 7. Право по план (DEFAULT D07)
 

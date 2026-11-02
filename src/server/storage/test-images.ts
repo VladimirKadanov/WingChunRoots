@@ -114,8 +114,24 @@ export async function orientedJpeg(): Promise<Uint8Array> {
     { input: await half(255, 0), left: 0, top: 0 },
     { input: await half(0, 255), left: 100, top: 0 },
   ]);
-  const flat = await image.jpeg({ quality: 95 }).toBuffer();
-  return new Uint8Array(await sharp(flat).withMetadata({ orientation: 6 }).jpeg({ quality: 95 }).toBuffer());
+  const jpeg = new Uint8Array(await image.jpeg({ quality: 95 }).toBuffer());
+  // An EXIF block of its own (no sharp option that keeps metadata, M10a): IFD0 with one entry,
+  // Orientation (SHORT) = 6, in an APP1 segment after SOI.
+  const tiff = new Uint8Array(26);
+  const view = new DataView(tiff.buffer);
+  tiff.set([0x49, 0x49], 0); // "II"
+  view.setUint16(2, 42, true);
+  view.setUint32(4, 8, true);
+  view.setUint16(8, 1, true);
+  view.setUint16(10, 0x0112, true);
+  view.setUint16(12, 3, true);
+  view.setUint32(14, 1, true);
+  view.setUint16(18, 6, true);
+  view.setUint32(22, 0, true);
+  const header = new Uint8Array([0x45, 0x78, 0x69, 0x66, 0, 0]); // "Exif\0\0"
+  const length = 2 + header.length + tiff.length;
+  const app1 = new Uint8Array([0xff, 0xe1, length >> 8, length & 0xff, ...header, ...tiff]);
+  return new Uint8Array([...jpeg.subarray(0, 2), ...app1, ...jpeg.subarray(2)]);
 }
 
 /** M14: the colour of one pixel of an image, as [r, g, b]. */

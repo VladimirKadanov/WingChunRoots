@@ -4,10 +4,12 @@
 // "Add photo" or "Change photo" and "Remove photo". The picker is a real `<input type="file">`
 // (visually hidden, its label drawn as the button), so it works with a keyboard (Tab, then Enter or
 // Space opens the system picker), a screen reader, a phone's browser and a mobile webview, with no
-// drag and drop needed. The file goes to the same API a native app uses (POST
-// /api/v1/photos/upload, multipart `file`; POST /api/v1/photos/remove), which checks everything
-// again: the size before the body is read, the type by its magic bytes, the image re-encoded
-// without EXIF and GPS. The 5 MB check here only spares a long wait (DEFAULT D07).
+// drag and drop needed. The file goes to the procedures a native app uses too (photos.upload and
+// photos.remove), here through the web's /api/rpc (plan §6.8; /api/v1 is the mobile contract) in
+// oRPC's RPC form: a multipart body whose `data` part says where the file goes and whose part `0`
+// is the file. The server checks everything again: the size before the body is read, the type by
+// its magic bytes, the image re-encoded without EXIF and GPS. The 5 MB check here only spares a
+// long wait (DEFAULT D07).
 //
 // What happened is said in words in a polite status line, never by colour alone; a refusal also
 // has the alert icon. The focus never falls to the page: after "Remove photo" (which disappears)
@@ -26,9 +28,11 @@ const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 type Status = { kind: 'idle' | 'busy' | 'done' | 'refused'; text: string };
 
+/** The error's words: oRPC's RPC answer (`{ json: { message } }`) or the body check's (`{ message }`). */
 async function messageOf(response: Response, fallback: string): Promise<string> {
-  const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
-  return typeof body?.message === 'string' && body.message ? body.message : fallback;
+  const body = (await response.json().catch(() => null)) as { message?: unknown; json?: { message?: unknown } } | null;
+  const message = body?.json?.message ?? body?.message;
+  return typeof message === 'string' && message ? message : fallback;
 }
 
 export function PhotoControl({ hasPhoto }: { hasPhoto: boolean }) {
@@ -47,9 +51,11 @@ export function PhotoControl({ hasPhoto }: { hasPhoto: boolean }) {
     }
     setStatus({ kind: 'busy', text: 'Uploading the photo…' });
     try {
+      // oRPC's RPC form: the input is { file }, and the file itself is part 0.
       const form = new FormData();
-      form.append('file', file);
-      const response = await fetch('/api/v1/photos/upload', { method: 'POST', body: form, credentials: 'same-origin' });
+      form.set('data', JSON.stringify({ json: { file: {} }, maps: [['file']] }));
+      form.set('0', file);
+      const response = await fetch('/api/rpc/photos/upload', { method: 'POST', body: form, credentials: 'same-origin' });
       if (!response.ok) {
         setStatus({ kind: 'refused', text: await messageOf(response, 'The photo could not be uploaded. Try again.') });
         return;
@@ -67,9 +73,9 @@ export function PhotoControl({ hasPhoto }: { hasPhoto: boolean }) {
     if (busy) return;
     setStatus({ kind: 'busy', text: 'Removing the photo…' });
     try {
-      const response = await fetch('/api/v1/photos/remove', {
+      const response = await fetch('/api/rpc/photos/remove', {
         method: 'POST',
-        body: '{}',
+        body: JSON.stringify({ json: {} }),
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
       });
