@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects, runPaths } from './projects';
+import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PILOT_SPEC, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects, runPaths } from './projects';
 
 describe('buildProjects', () => {
   it('runs desktop and mobile Chromium outside CI, without WebKit', () => {
@@ -71,9 +71,9 @@ describe('buildProjects: visual and screenshots (M00b)', () => {
     expect(projects.at(-1)?.use?.defaultBrowserType).toBe('chromium');
   });
 
-  it('keeps the visual, screenshot and exclusive specs out of the other projects', () => {
+  it('keeps the visual, screenshot, exclusive and pilot specs out of the other projects', () => {
     for (const project of buildProjects({ ci: true })) {
-      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS]);
+      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS, PILOT_SPEC]);
     }
   });
 });
@@ -111,5 +111,40 @@ describe('buildProjects: exclusive (M08 final check)', () => {
     // Playwright empties outputDir at the start of a run: the exclusive one must not hold the other.
     expect(ordinary.outputDir.startsWith(exclusive.outputDir)).toBe(false);
     expect(exclusive.outputDir.startsWith(ordinary.outputDir)).toBe(false);
+  });
+});
+
+describe('buildProjects: pilot (M13)', () => {
+  it('runs only pilot.spec.ts, on desktop and mobile Chromium, and mobile WebKit in CI', () => {
+    const executablePath = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+    expect(buildProjects({ ci: false, pilot: true }).map((p) => p.name)).toEqual(['desktop-chromium', 'mobile-chromium']);
+    // Neither the visual nor the screenshots project: the pilot changes what they compare.
+    const projects = buildProjects({ ci: true, visual: true, screenshots: true, pilot: true, chromiumExecutable: executablePath });
+    expect(projects.map((p) => p.name)).toEqual(['desktop-chromium', 'mobile-chromium', 'mobile-webkit']);
+    for (const project of projects) {
+      expect(project.testMatch).toBe(PILOT_SPEC);
+      expect(project.testIgnore).toBeUndefined();
+    }
+    const byName = Object.fromEntries(projects.map((p) => [p.name, p]));
+    expect(byName['desktop-chromium']?.use?.viewport).toEqual({ width: 1440, height: 900 });
+    expect(byName['mobile-chromium']?.use?.isMobile).toBe(true);
+    expect(byName['mobile-webkit']?.use?.defaultBrowserType).toBe('webkit');
+    expect(byName['mobile-chromium']?.use?.launchOptions?.executablePath).toBe(executablePath);
+  });
+
+  it('never runs in the ordinary or the exclusive run', () => {
+    for (const options of [{ ci: false }, { ci: true }, { ci: true, visual: true }, { ci: false, screenshots: true }]) {
+      for (const project of buildProjects(options)) expect(project.testMatch).not.toBe(PILOT_SPEC);
+      expect(buildProjects({ ...options, exclusive: true })[0]?.testMatch).not.toContain(PILOT_SPEC);
+    }
+  });
+
+  it('keeps its server log, artifacts and report apart from the other runs', () => {
+    const pilot = runPaths('pilot');
+    for (const other of [runPaths(false), runPaths(true)]) {
+      for (const key of ['serverLog', 'outputDir', 'htmlReport'] as const) expect(pilot[key]).not.toBe(other[key]);
+      expect(other.outputDir.startsWith(pilot.outputDir)).toBe(false);
+      expect(pilot.outputDir.startsWith(other.outputDir)).toBe(false);
+    }
   });
 });

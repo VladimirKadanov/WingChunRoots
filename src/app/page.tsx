@@ -1,13 +1,16 @@
-// Home page, first version (M00b; the final one is M13): the thesis through a living lineage,
-// a demo search, how verification works and a featured lineage. All people and halls here are
-// fictional demo content (DEFAULT D20).
+// Home page (M00b, completed in M13; plan §5.5): the mission through a living lineage, the ways in
+// (the search palette, the explorer, the school finder, signing up and in), how verification works
+// and a featured lineage. All people and halls here are fictional demo content (DEFAULT D20).
+// The page reads no session, so it is the same for everyone and prerendered: the account links
+// are for visitors, and a signed-in member reaches the dashboard from the shell's Me tab.
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { BrandSeal } from '@/components/brand/brand-mark';
-import { LockIcon } from '@/components/icons';
+import { ArrowRightIcon, LineageIcon, LockIcon, SchoolsIcon } from '@/components/icons';
 import { DEMO_HALL, DEMO_LINE } from '@/components/home/demo-lineage';
 import { HALL_TREE_KINDS, HALL_TREE_STATS, HallTree, HallTreeKey } from '@/components/home/hall-tree';
+import { HomeSearch } from '@/components/home/home-search';
 import { LivingLine } from '@/components/home/living-line';
 import { TraceLineButton } from '@/components/home/trace-line';
 import { Legend } from '@/components/ink/legend';
@@ -95,6 +98,62 @@ export default function HomePage() {
           </p>
         }
       />
+
+      {/* The ways in (plan §5.5): the real search, the explorer, the school finder and an account. */}
+      <section aria-labelledby="start-heading" className="border-t border-border-subtle py-section md:py-section-desktop">
+        <div className="mb-6 grid max-w-[62ch] gap-2.5">
+          <p className="eyebrow">Start here</p>
+          <h2 id="start-heading" className="font-display text-section">
+            Find your teacher, your lineage, a school
+          </h2>
+          <p className="text-base text-fg-muted">
+            Search finds a person by any spelling of their name: Latin script, Chinese characters, Cyrillic, Jyutping or pinyin.
+            Only confirmed, public records are shown.
+          </p>
+        </div>
+        <div className="grid max-w-[46rem] gap-4">
+          <HomeSearch />
+          <ul className="grid gap-3 sm:grid-cols-2">
+            <li>
+              <Link
+                href="/explore"
+                className="flex min-h-14 items-center gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 py-3 text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted"
+              >
+                <LineageIcon size={22} className="shrink-0 text-fg-muted" />
+                <span className="grid min-w-0 flex-1">
+                  <span className="font-medium">Explore the lineages</span>
+                  <span className="text-sm text-fg-muted">The graph and the list of every verified line</span>
+                </span>
+                <ArrowRightIcon size={18} className="shrink-0 text-fg-subtle" />
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/schools"
+                className="flex min-h-14 items-center gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 py-3 text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted"
+              >
+                <SchoolsIcon size={22} className="shrink-0 text-fg-muted" />
+                <span className="grid min-w-0 flex-1">
+                  <span className="font-medium">Find a school</span>
+                  <span className="text-sm text-fg-muted">The map, a radius and a lineage filter</span>
+                </span>
+                <ArrowRightIcon size={18} className="shrink-0 text-fg-subtle" />
+              </Link>
+            </li>
+          </ul>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-border-subtle pt-4">
+            <p className="text-sm text-fg-muted">Trained with someone? Add your link to the record.</p>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/sign-up" className={buttonVariants({ variant: 'primary' })}>
+                Create an account
+              </Link>
+              <Link href="/sign-in" className={buttonVariants({ variant: 'secondary' })}>
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* A size container: the marks lay out by the section's width, not the window's (the rail
           takes 232 px from 768 px), see Mark. */}

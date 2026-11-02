@@ -345,15 +345,22 @@ async function lineageIdsOfRoot(db: Executor, rootId: string): Promise<string[]>
 /**
  * The radius search (plan §6.4): within `radiusKm` of `center`, nearest first. Exported for the
  * integration tests (49 km in, 51 km out; the GiST index in EXPLAIN).
+ *
+ * The candidates come from the GiST index on school.public_point first, as one array (an
+ * InitPlan), and the view is read once for them through its primary key (M13, pnpm perf:api). A
+ * join of `school` to the view instead let the planner, which expects one row from ST_DWithin,
+ * scan the whole security_barrier view once per candidate: 1.1 s for 172 schools in one city out
+ * of 3,000, and a statement timeout under load (docs/perf/api.md).
  */
 export function radiusQuery(center: GeoPointDto, radiusKm: number, lineageRootId: string | null | undefined, limit: number = SCHOOL_RESULT_LIMIT) {
   const radiusM = radiusKm * 1000;
   const c = sql`ST_SetSRID(ST_MakePoint(${center.lng}::float8, ${center.lat}::float8), 4326)::geography`;
   return sql`
     SELECT ${PIN_COLUMNS}, round(ST_Distance(v.public_point, ${c}) / 1000)::int AS distance_km, count(*) OVER ()::int AS total
-      FROM school s
-      JOIN v_public_school v ON v.id = s.id
-     WHERE ST_DWithin(s.public_point, ST_SetSRID(ST_MakePoint(${center.lng}::float8, ${center.lat}::float8), 4326)::geography, ${radiusM}::float8)
+      FROM v_public_school v
+     WHERE v.id = ANY (ARRAY(
+             SELECT s.id FROM school s
+              WHERE ST_DWithin(s.public_point, ST_SetSRID(ST_MakePoint(${center.lng}::float8, ${center.lat}::float8), 4326)::geography, ${radiusM}::float8)))
        AND ST_DWithin(v.public_point, ${c}, ${radiusM}::float8)
        AND ${lineageCondition(lineageRootId)}
      ORDER BY distance_km, v.name, v.id
@@ -430,11 +437,11 @@ export async function schoolsInViewport(_principal: Principal | null, raw: z.inp
   const inViewBox = sql`${lat} BETWEEN ${b.south}::float8 AND ${b.north}::float8 AND ${
     pieces ? sql`(${sql.join(pieces.map(([west, east]) => sql`${lng} BETWEEN ${west}::float8 AND ${east}::float8`), sql` OR `)})` : sql`true`
   }`;
+  // The candidates from the GiST index first, then the view once by primary key (as radiusQuery).
   const result = await db.execute<PinRow & { total: number }>(sql`
     SELECT ${PIN_COLUMNS}, NULL::int AS distance_km, count(*) OVER ()::int AS total
-      FROM school s
-      JOIN v_public_school v ON v.id = s.id
-     WHERE ${inBox} AND ${inViewBox} AND ${lineageCondition(b.lineageRootId)}
+      FROM v_public_school v
+     WHERE v.id = ANY (ARRAY(SELECT s.id FROM school s WHERE ${inBox})) AND ${inViewBox} AND ${lineageCondition(b.lineageRootId)}
      ORDER BY v.name, v.id
      LIMIT ${SCHOOL_RESULT_LIMIT}`);
   return toPublicSchoolSearch({

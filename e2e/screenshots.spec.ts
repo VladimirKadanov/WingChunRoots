@@ -4,6 +4,10 @@
  * PR and the design review, and the screen states below that a route alone does not reach (a
  * form after its submit). Runs only on request: `pnpm screenshots` (all of them) or
  * `SCREENSHOTS_MILESTONE=M05 pnpm screenshots` (those of one milestone).
+ *
+ * M13 (In scope 6): `SCREENSHOTS_FINAL=M13 pnpm screenshots` writes the final set of the main
+ * screens into docs/screenshots/M13/: every key route and the screens only steps reach that plan
+ * §5.5 names (the explorer's views and list, the search palette, the finder's map).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -530,7 +534,12 @@ const capitalLetters = () => {
   const word = letters();
   return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
 };
-const states = STATES.filter((state) => !only || state.milestone === only);
+/** The main screens that only steps reach, in the final set (M13). */
+const FINAL_STATES = new Set(['explore-person', 'explore-generations', 'explore-lineage', 'explore-list', 'palette-cjk', 'schools-map', 'schools-map-selected']);
+const final = process.env.SCREENSHOTS_FINAL;
+const states = STATES.filter((state) => (final ? FINAL_STATES.has(state.name) : !only || state.milestone === only));
+/** Where a screen's shot goes: its milestone's folder, or the final set's. */
+const folder = (milestone: string) => `docs/screenshots/${final ?? milestone}`;
 
 test.afterAll(closeHelpers);
 
@@ -551,7 +560,7 @@ for (const size of SCREEN_SIZES) {
           if (route.signInAs) await signInAs(page, route.signInAs);
           const response = await page.goto(route.path);
           expect(response?.status()).toBe(route.status);
-          await capture(page, `docs/screenshots/${route.milestone}/${route.name}-${size.name}-${theme}.png`);
+          await capture(page, `${folder(route.milestone)}/${route.name}-${size.name}-${theme}.png`);
         });
       }
     }
@@ -561,7 +570,7 @@ for (const size of SCREEN_SIZES) {
         test(`${state.name} at ${size.name} in the ${theme} theme`, { tag: ['@screenshots'] }, async ({ page }) => {
           await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
           await state.reach(page);
-          await capture(page, `docs/screenshots/${state.milestone}/${state.name}-${size.name}-${theme}.png`);
+          await capture(page, `${folder(state.milestone)}/${state.name}-${size.name}-${theme}.png`);
         });
       }
     }

@@ -113,7 +113,16 @@ check "the M11 migration exists (m11_schools_map), with its snapshot" bash -c '
   [ "$(ls -d drizzle/*_m11_schools_map 2>/dev/null | wc -l)" -eq 1 ] && ls drizzle/*_m11_schools_map/snapshot.json'
 refute "the M11 migration is PostgreSQL 16 SQL (no uuidv7(), no virtual columns, no OLD/NEW in RETURNING)" \
   grep_code 'uuidv7\(|VIRTUAL|RETURNING[^;]*(OLD|NEW)\.' "${M11_SQL[@]}"
-if git rev-parse --verify -q origin/main >/dev/null 2>&1 && base="$(git merge-base HEAD origin/main 2>/dev/null)" \
+# The rule is about the M11 branch: once its migration is on origin/main (M11 merged), a later
+# milestone's branch adds its own migrations or none, and the rule no longer applies (M13).
+m11_on_main() {
+  local folder
+  folder="$(ls -d drizzle/*_m11_schools_map 2>/dev/null | head -n 1)"
+  [ -n "$folder" ] && git cat-file -e "origin/main:$folder/migration.sql" 2>/dev/null
+}
+if m11_on_main; then
+  ok "one new migration in the M11 branch: M11 is merged into origin/main (checked in its own branch)"
+elif git rev-parse --verify -q origin/main >/dev/null 2>&1 && base="$(git merge-base HEAD origin/main 2>/dev/null)" \
   && [ "$base" != "$(git rev-parse HEAD)" ] && ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
   check "this branch adds exactly one migration folder (the M11 one)" bash -c "
     added=\$(git diff --name-only --diff-filter=A $base -- drizzle | grep -E '/migration\.sql\$')

@@ -28,7 +28,10 @@ if (buildProblem) throw new Error(buildProblem);
 // of their own (e2e/projects.ts, EXCLUSIVE_SPECS): PW_EXCLUSIVE=1, after the ordinary run
 // (scripts/verify.sh does both).
 const exclusive = process.env.PW_EXCLUSIVE === '1';
-const paths = runPaths(exclusive);
+// M13: the pilot path (e2e/pilot.spec.ts) on the three devices, in a run of its own after the
+// exclusive one (PW_PILOT=1; scripts/verify.sh runs all three).
+const pilot = !exclusive && process.env.PW_PILOT === '1';
+const paths = runPaths(pilot ? 'pilot' : exclusive);
 // Fewer parallel workers on a slower machine (PW_WORKERS=2): unset keeps Playwright's default.
 const workers = process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : undefined;
 if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) {
@@ -68,6 +71,7 @@ export default defineConfig({
     visual: ci || process.env.PW_VISUAL === '1',
     screenshots: process.env.PW_SCREENSHOTS === '1',
     exclusive,
+    pilot,
   }),
   webServer: external
     ? []
@@ -75,7 +79,7 @@ export default defineConfig({
         {
           name: 'web',
           // `pnpm build:e2e` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
-          // The log is test-results/server.log (test-results/server-exclusive.log in the exclusive run).
+          // The log is test-results/server.log (server-exclusive.log in the exclusive run, server-pilot.log in the pilot run).
           command: `pnpm start --hostname 127.0.0.1 --port ${port} > ${paths.serverLog} 2>&1`,
           url: `${baseURL}/`,
           env: serverEnv,
