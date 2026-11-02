@@ -28,6 +28,7 @@ import { uuidv7 } from '../db/ids';
 import { authSession, authUser, notification, person, personName, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleEvidenceDownload, handleEvidenceUpload } from '../evidence-http';
+import { writePersonKeys } from '../search/store';
 import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { recordConsents } from '../services/consent';
@@ -828,6 +829,146 @@ describe('the authorization matrix (M13)', () => {
       expect(lines(actual)).toEqual(lines(row.expect));
     });
   }
+});
+
+// --- What the public reads return to each caller (M13 review) ----------------------------------
+//
+// The rows above only say a public read answers; their fixture is a public link, which every caller
+// sees. Here the fixture holds what is not public: a pending request between two public people and
+// a verified link whose student is not public (involved_only). DEFAULT D03 (lineage-viewer.ts): the
+// people involved see their own such relationships, and the reviewers (staff with a verified second
+// factor) on the pages of the person they open; an unrelated member, an anonymous visitor and an
+// administrator without the second factor do not. search.query reads public records only, the same
+// for everyone (plan §6.4): the hidden person is absent for every caller, their own account included.
+
+/** The JSON body /api/rpc returns, or the oRPC error code. */
+async function rpcBody(token: string | null, procedure: string, input: unknown): Promise<{ code: string; text: string }> {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  const response = await handleApiRequest(
+    new Request(`${TEST_APP_URL}/api/rpc/${procedure.replace(/\./g, '/')}`, { method: 'POST', headers, body: JSON.stringify({ json: input }) }),
+    'rpc',
+  );
+  const text = await response.text();
+  if (response.ok) return { code: 'ok', text };
+  return { code: (JSON.parse(text) as { json?: { code?: string } }).json?.code ?? `HTTP ${response.status}`, text };
+}
+
+type Seen = 'present' | 'absent' | Outcome;
+interface Exposed {
+  owner: Actor;
+  party: Actor;
+  /** In the answer only when the caller may see what is not public. */
+  secret: string;
+  input: unknown;
+}
+
+interface Exposure {
+  procedure: string;
+  /** A fresh fixture for each caller. */
+  fixture: () => Promise<Exposed>;
+  expect: Record<Who, Seen>;
+}
+
+/** A pending request from a public student (the owner) to a public teacher (the party). */
+async function pendingFixture(read: (r: Awaited<ReturnType<typeof pendingRequest>>) => Pick<Exposed, 'secret' | 'input'>): Promise<Exposed> {
+  const r = await pendingRequest();
+  return { owner: r.student, party: r.teacher, ...read(r) };
+}
+
+/** A verified link whose student (the owner) is not public (involved_only); the teacher (the party) is. */
+async function hiddenStudentFixture(read: (r: Awaited<ReturnType<typeof verifiedLink>>) => Pick<Exposed, 'secret' | 'input'>): Promise<Exposed> {
+  const r = await verifiedLink();
+  await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, r.student.personId!));
+  return { owner: r.student, party: r.teacher, ...read(r) };
+}
+
+/** Gives a person a name no one else has, with its search keys (as the profile editor does); returns it. */
+async function renameUniquely(personId: string, label: string): Promise<string> {
+  const name = `Demo ${label} ${Array.from(randomBytes(8), (b) => String.fromCharCode(97 + (b % 26))).join('')}`;
+  await getDb().update(personName).set({ value: name }).where(eq(personName.personId, personId));
+  await writePersonKeys(getDb(), personId);
+  return name;
+}
+
+/** Seen by the people involved and by the reviewers of the person read; by no one else. */
+const involvedAndReviewers: Record<Who, Seen> = {
+  anonymous: 'absent',
+  member: 'absent',
+  owner: 'present',
+  party: 'present',
+  moderator: 'present',
+  archivist: 'present',
+  admin: 'present',
+  adminNo2fa: 'absent',
+};
+const nobody: Record<Who, Seen> = Object.fromEntries(ROLES.map((w) => [w, 'absent'])) as Record<Who, Seen>;
+
+const EXPOSURES: Exposure[] = [
+  // The pending request: the teacher from the student's side, the student from the teacher's side.
+  {
+    procedure: 'lineage.ego',
+    fixture: () => pendingFixture((r) => ({ secret: r.teacher.personId!, input: { focusId: r.student.personId, up: 1, down: 0 } })),
+    expect: involvedAndReviewers,
+  },
+  {
+    procedure: 'lineage.ego',
+    fixture: () => pendingFixture((r) => ({ secret: r.student.personId!, input: { focusId: r.teacher.personId, up: 0, down: 1 } })),
+    expect: involvedAndReviewers,
+  },
+  { procedure: 'lineage.ancestors', fixture: () => pendingFixture((r) => ({ secret: r.teacher.personId!, input: { focusId: r.student.personId } })), expect: involvedAndReviewers },
+  { procedure: 'lineage.paths', fixture: () => pendingFixture((r) => ({ secret: r.teacher.personId!, input: { focusId: r.student.personId } })), expect: involvedAndReviewers },
+  { procedure: 'lineage.subtree', fixture: () => pendingFixture((r) => ({ secret: r.student.personId!, input: { rootId: r.teacher.personId } })), expect: involvedAndReviewers },
+  { procedure: 'people.students', fixture: () => pendingFixture((r) => ({ secret: r.student.personId!, input: { slug: r.teacher.slug } })), expect: involvedAndReviewers },
+  // The hidden student of a public teacher, from the teacher's side.
+  {
+    procedure: 'lineage.ego',
+    fixture: () => hiddenStudentFixture((r) => ({ secret: r.student.personId!, input: { focusId: r.teacher.personId, up: 0, down: 1 } })),
+    expect: involvedAndReviewers,
+  },
+  { procedure: 'lineage.subtree', fixture: () => hiddenStudentFixture((r) => ({ secret: r.student.personId!, input: { rootId: r.teacher.personId } })), expect: involvedAndReviewers },
+  { procedure: 'people.students', fixture: () => hiddenStudentFixture((r) => ({ secret: r.student.personId!, input: { slug: r.teacher.slug } })), expect: involvedAndReviewers },
+  {
+    // The hidden person's own read: no such person for anyone who may not see them.
+    procedure: 'lineage.ancestors',
+    fixture: () => hiddenStudentFixture((r) => ({ secret: r.teacher.personId!, input: { focusId: r.student.personId } })),
+    expect: { ...involvedAndReviewers, anonymous: 'NOT_FOUND', member: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // Search: public records only, for every caller.
+    procedure: 'search.query',
+    fixture: async () => {
+      const made = await hiddenStudentFixture((r) => ({ secret: r.student.personId!, input: null }));
+      return { ...made, input: { q: await renameUniquely(made.owner.personId!, 'Hidden') } };
+    },
+    expect: nobody,
+  },
+];
+
+describe('what the public reads return to each caller (M13 review)', () => {
+  for (const [index, exposure] of EXPOSURES.entries()) {
+    it(`${exposure.procedure} (#${index + 1}): the people involved and the reviewers, or nobody`, async () => {
+      const actual: Partial<Record<Who, Seen>> = {};
+      for (const who of ROLES) {
+        const made = await exposure.fixture();
+        const caller = principalFor(who, made);
+        const answer = await rpcBody(caller?.token ?? null, exposure.procedure, made.input);
+        actual[who] = answer.code !== 'ok' ? (answer.code as Outcome) : answer.text.includes(made.secret) ? 'present' : 'absent';
+      }
+      const lines = (seen: Partial<Record<Who, Seen>>) => ROLES.map((w) => `${w}: ${seen[w]}`);
+      expect(lines(actual)).toEqual(lines(exposure.expect));
+    });
+  }
+
+  it('search.query finds the same kind of person while public, for every caller (the control of the row above)', async () => {
+    const r = await verifiedLink();
+    const name = await renameUniquely(r.student.personId!, 'Visible');
+    for (const caller of [null, world.member, r.student, r.teacher, world.admin]) {
+      const answer = await rpcBody(caller?.token ?? null, 'search.query', { q: name });
+      expect(answer.code).toBe('ok');
+      expect(answer.text.includes(r.student.personId!), caller?.email ?? 'anonymous').toBe(true);
+    }
+  });
 });
 
 // --- Server Actions ------------------------------------------------------------------------------
