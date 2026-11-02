@@ -135,4 +135,17 @@ describe('bodyRefusal (M14: a photo upload is refused by its size before it is r
     expect(await large?.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
     expect(bodyRefusal(post({ 'content-type': 'multipart/form-data; boundary=x', 'content-length': String(MULTIPART_MAX_BYTES) }))).toBeNull();
   });
+
+  it('refuses any body over the limit (413) and a body that is not JSON without a length (411), before oRPC reads it', async () => {
+    expect(bodyRefusal(post({ 'content-type': 'application/json', 'content-length': String(MULTIPART_MAX_BYTES + 1) }))?.status).toBe(413);
+    expect(bodyRefusal(post({ 'content-type': 'application/octet-stream', 'content-length': String(MULTIPART_MAX_BYTES + 1) }))?.status).toBe(413);
+    expect(bodyRefusal(post({ 'content-type': 'application/octet-stream' }))?.status).toBe(411);
+    expect(bodyRefusal(post({ 'content-type': 'text/plain' }))?.status).toBe(411);
+    expect(bodyRefusal(post({ 'content-type': 'multipart/form-data; boundary=x', 'content-length': '12x' }))?.status).toBe(400);
+    // A chunked JSON body, a body-less POST and every GET pass as before.
+    expect(bodyRefusal(post({ 'content-type': 'application/json; charset=utf-8' }))).toBeNull();
+    expect(bodyRefusal(post({}))).toBeNull();
+    expect(bodyRefusal(new Request('http://localhost:3100/api/v1/photos/demo-x', { headers: { 'content-type': 'application/octet-stream' } }))).toBeNull();
+    expect(bodyRefusal(post({ 'content-type': 'application/octet-stream', 'content-length': '10' }))).toBeNull();
+  });
 });
