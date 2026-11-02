@@ -21,6 +21,7 @@ import { PHOTO_MAX_BYTES } from '../db/schema/common';
 import type { TestDatabase } from '../db/testing';
 import { currentUse } from '../entitlements/access';
 import { handlePhotoRequest } from '../photo-http';
+import { type ObjectStore, StorageError } from '../storage';
 import { jpegWithGps, plainImage } from '../storage/test-images';
 import { personProfile } from './lineage';
 import { getPhoto, openPhoto, PHOTO_TOO_LARGE_MESSAGE, PHOTO_WRONG_TYPE_MESSAGE, publicPhotoRefs, removePhoto, uploadPhoto } from './photos';
@@ -125,7 +126,8 @@ describe('upload', () => {
     const owner = await member('photo-exif');
     const result = await uploadPhoto(owner.principal, { file: new File([new Uint8Array(await jpegWithGps(200, 200))], 'demo.jpg', { type: 'image/jpeg' }) }, meta);
     const served = await openPhoto(null, addressOf(result.photo.large));
-    const bytes = new Uint8Array(await new Response(served!.body).arrayBuffer());
+    expect(served?.notModified).toBe(false);
+    const bytes = served && !served.notModified ? served.bytes : new Uint8Array();
     expect(String.fromCharCode(...bytes.subarray(8, 12))).toBe('WEBP');
     expect(Buffer.from(bytes).includes(Buffer.from('Exif'))).toBe(false);
     expect(Buffer.from(bytes).includes(Buffer.from('GPS'))).toBe(false);
@@ -315,5 +317,89 @@ describe('visibility', () => {
     expect(filesIn(photoRoot).some((f) => f.startsWith(`${before!.storageKey}/`))).toBe(false);
     expect(await openPhoto(null, addressOf(up.photo.small))).toBeNull();
     expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
+  });
+});
+
+describe('serving from a store that stalls (CI run 41470799646)', () => {
+  /**
+   * A photo store that never answers a get (`get: 'never'`), or answers with a body that sends one
+   * chunk and then nothing (`get: 'stall'`); it records the gets and whether the body was cancelled.
+   */
+  function stalledStore(mode: 'never' | 'stall') {
+    const seen = { gets: 0, cancelled: false, signalAborted: () => false };
+    const store: ObjectStore = {
+      driver: 's3',
+      put: async () => undefined,
+      delete: async () => undefined,
+      async get(_key, options) {
+        seen.gets += 1;
+        seen.signalAborted = () => options?.signal?.aborted ?? false;
+        if (mode === 'never') return new Promise<never>(() => undefined);
+        let sent = false;
+        const body = new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              if (sent) return new Promise<void>(() => undefined);
+              sent = true;
+              controller.enqueue(new Uint8Array(64));
+            },
+            cancel() {
+              seen.cancelled = true;
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        return { body, size: 4096 };
+      },
+    };
+    return { store, seen };
+  }
+
+  const DEADLINE_MS = 300;
+
+  async function timedRequest(url: string, address: ReturnType<typeof addressOf>, store: ObjectStore, headers: Record<string, string> = {}) {
+    const started = performance.now();
+    const response = await handlePhotoRequest(new Request(`http://localhost${url}`, { headers }), address, { store, timeoutMs: DEADLINE_MS });
+    return { response, ms: performance.now() - started };
+  }
+
+  it('a store that never answers: 503 no-store within the deadline, the store request aborted', async () => {
+    const owner = await member('photo-stall-never');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const { store, seen } = stalledStore('never');
+    const { response, ms } = await timedRequest(up.photo.large, addressOf(up.photo.large), store);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(ms).toBeLessThan(DEADLINE_MS + 1_500);
+    expect(seen.gets).toBe(1);
+    expect(seen.signalAborted()).toBe(true);
+    await expect(openPhoto(null, addressOf(up.photo.large), store, { timeoutMs: DEADLINE_MS })).rejects.toThrow(StorageError);
+  });
+
+  it('a body that stalls mid-stream: 503 no-store within the deadline, the body cancelled', async () => {
+    const owner = await member('photo-stall-body');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const { store, seen } = stalledStore('stall');
+    const { response, ms } = await timedRequest(up.photo.small, addressOf(up.photo.small), store);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(ms).toBeLessThan(DEADLINE_MS + 1_500);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen.cancelled).toBe(true);
+  });
+
+  it('a revalidation whose ETag matches is 304 without reading the store; a 200 carries the bytes with their own length', async () => {
+    const owner = await member('photo-etag-no-read');
+    const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
+    const ok = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`), addressOf(up.photo.small));
+    expect(ok.status).toBe(200);
+    const body = new Uint8Array(await ok.arrayBuffer());
+    expect(ok.headers.get('content-length')).toBe(String(body.byteLength));
+    expect(String.fromCharCode(...body.subarray(8, 12))).toBe('WEBP');
+    const { store, seen } = stalledStore('never');
+    const { response, ms } = await timedRequest(up.photo.small, addressOf(up.photo.small), store, { 'if-none-match': ok.headers.get('etag')! });
+    expect(response.status).toBe(304);
+    expect(ms).toBeLessThan(DEADLINE_MS);
+    expect(seen.gets).toBe(0);
   });
 });

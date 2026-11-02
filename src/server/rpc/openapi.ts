@@ -199,6 +199,7 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
           },
           '304': { description: 'Not modified (If-None-Match matched the ETag).' },
           '404': errorResponse('No such photo, a replaced or removed one, or a person this session may not see (one answer for all).'),
+          '503': errorResponse('The photo store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.'),
         },
       },
     },

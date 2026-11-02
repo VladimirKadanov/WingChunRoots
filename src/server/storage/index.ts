@@ -36,7 +36,7 @@ import { filesystemStore } from './fs';
 import { type S3Config, s3Store } from './s3';
 import type { ObjectStore } from './types';
 
-export type { ObjectStore, PutOptions, StoredObject } from './types';
+export type { GetOptions, ObjectStore, PutOptions, StoredObject } from './types';
 export { isStorageKey, newStorageKey, StorageError } from './types';
 
 type Env = Record<string, string | undefined>;
