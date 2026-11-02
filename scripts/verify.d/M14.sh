@@ -3,8 +3,9 @@
 # the unit tests (src/server/storage/photo.test.ts: metadata and GPS stripped, orientation, no
 # enlargement, the types by their magic bytes, the pixel bomb; src/server/storage/photo-store.test.ts:
 # the photo store is never the evidence store; src/server/rpc/handler.test.ts: 411/413 before the
-# body is read, 413 past the limit while a body without a length is read), the integration tests (src/server/services/photos.int.test.ts and the photo rows of
-# the authorization matrix), db:check, db:reset+migrate+seed, the build with the bundle budgets and
+# body is read, 413 past the limit while a body without a length is read), the integration tests
+# (src/server/services/photos.int.test.ts and the photo rows of the authorization matrix), db:check,
+# db:reset+migrate+seed, the build with the bundle budgets and
 # E2E (`@smoke|@M14`; the M14 spec adds a photo to a seeded demo person, so it runs in the exclusive
 # run after the others, e2e/projects.ts). They stay valid after M14, so `scripts/verify.sh all`
 # keeps running them.
