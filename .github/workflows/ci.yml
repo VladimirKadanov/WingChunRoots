@@ -30,7 +30,8 @@ jobs:
     # 30 minutes stopped the job in checks:M03 after the whole suite had passed (M04, run 39198539517).
     # 60 minutes stopped it inside E2E on a slow runner (M12, run 41312974198): main already took
     # 53 minutes (run 41277130511), so the suite outgrew the budget. Nothing is skipped; the job has more time.
-    timeout-minutes: 90
+    # M13 adds the pilot run, perf:api and perf:web after the E2E runs (run 41364037805 needed ~58 minutes for the first E2E run alone). Nothing is skipped.
+    timeout-minutes: 150
     services:
       postgres:
         image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
