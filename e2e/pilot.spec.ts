@@ -314,27 +314,51 @@ test('@pilot a teacher with students in two active lineages sees and manages bot
     await expect(requestRow(teacher.page, id)).toContainText(lineage);
   }
 
-  // Approving each one: both students listed with their lineage, and the training can be ended.
+  // Approving each one: both students listed with their lineage, both public.
   await approve(teacher.page, toA);
   await approve(teacher.page, toB);
-  const students = visible(teacher.page.getByTestId('student'));
+  const studentRow = (id: string) => visible(teacher.page.getByTestId('student')).and(teacher.page.locator(`[data-relationship="${id}"]`));
   for (const [id, who, lineage] of [
     [toA, inA, LINEAGE_A],
     [toB, inB, LINEAGE_B],
   ] as const) {
-    const row = students.and(teacher.page.locator(`[data-relationship="${id}"]`));
-    await expect(row).toContainText(who.name);
-    await expect(row).toContainText(lineage);
-    await expect(row.getByText('Mark training as ended…')).toBeVisible();
+    await expect(studentRow(id)).toContainText(who.name);
+    await expect(studentRow(id)).toContainText(lineage);
     expect(await relationshipRow(id)).toEqual({ status: 'verified', visibility: 'public' });
   }
-
-  // On the public profile: both students.
   const anonymous = await sameDevice(browser, page);
   const profile = await anonymous.newPage();
   await profile.goto(`/people/${teacher.slug}`);
   const list = profile.getByRole('list', { name: /^Students of / });
   for (const who of [inA, inB]) await expect(list.locator(`li[data-person="${who.slug}"]`)).toContainText('Verified');
+
+  // Managing both: the teacher ends the training in each lineage, one after the other, from the same list.
+  for (const [id, who, year] of [
+    [toA, inA, '2023'],
+    [toB, inB, '2024'],
+  ] as const) {
+    const row = studentRow(id);
+    await row.getByText('Mark training as ended…').click();
+    await row.getByLabel('Year ended').fill(year);
+    await row.getByRole('button', { name: /^Mark as ended/ }).click();
+    await teacher.page.waitForURL(/[?&]ended=/);
+    await expect(visible(teacher.page.getByTestId('training-ended'))).toContainText(who.name);
+    await expect(studentRow(id)).toContainText('Verified · training ended');
+    // Kept, verified and public; now historical (an end date), never deleted.
+    expect(await relationshipRow(id)).toEqual({ status: 'verified', visibility: 'public' });
+    const ended = await getDb().execute<{ ends: string | null }>(sql`
+      SELECT to_char(max(ends_on), 'YYYY') AS ends FROM training_period WHERE relationship_id = ${id}::uuid AND NOT ongoing`);
+    expect(ended.rows[0]?.ends, `the training of ${who.name} ended in ${year}`).toBe(year);
+    // The training in the other lineage is its own relationship: ending this one leaves it current.
+    if (id === toA) await expect(studentRow(toB)).not.toContainText('training ended');
+  }
+
+  // On the public profile: both students, now historical.
+  await profile.goto(`/people/${teacher.slug}`);
+  for (const who of [inA, inB]) {
+    await expect(list.locator(`li[data-person="${who.slug}"]`)).toContainText('Verified');
+    await expect(list.locator(`li[data-person="${who.slug}"]`)).toContainText('Historical');
+  }
   const lineages = new Map([
     [inA.personId, await lineageIdOf('demo-lineage-a')],
     [inB.personId, await lineageIdOf('demo-lineage-b')],
@@ -390,16 +414,40 @@ test('@pilot a teacher with two active verified teachers in different lineages a
 
 /** Paths an anonymous visitor may open, and the crawl follows (not the account and staff pages). */
 const CRAWLED = /^\/(?:$|people\/|schools(?:\/|\?|$)|explore(?:\?|$)|plans$|legal\/)/;
-const CRAWL_LIMIT = 400;
+/**
+ * Every public page of the demo data (about 1,600 after db:seed: each person's profile and list
+ * view, the explorer focused on them, the schools…) with room for the people the tests add; past it
+ * the test fails rather than stopping short (M13 review).
+ */
+const CRAWL_LIMIT = 5_000;
+
+/** `value` cut (not rounded) to `decimals` decimals, as a careless `slice` or `Math.trunc` would write it. */
+function truncated(value: number, decimals: number): string {
+  const long = value.toFixed(12);
+  return long.slice(0, long.indexOf('.') + 1 + decimals);
+}
 
 /**
- * Every way a coordinate could be written with 4 or 5 decimals (about 10 m to 1 m). Only forms that
- * keep at least 4 decimals: a shorter one ("42.7") also turns up in unrelated numbers of a page.
+ * Every way a coordinate could be written with 4 to 6 decimals (about 10 m to 10 cm): as stored,
+ * rounded and cut. Only forms that keep at least 4 decimals: a shorter one ("42.7") also turns up in
+ * unrelated numbers of a page.
  */
-const coordinateForms = (value: number) => [String(value), value.toFixed(5), value.toFixed(4), String(Number(value.toFixed(5)))].filter((form) => /\.\d{4,}$/.test(form));
+const coordinateForms = (value: number) =>
+  [
+    String(value),
+    value.toFixed(6),
+    value.toFixed(5),
+    value.toFixed(4),
+    String(Number(value.toFixed(6))),
+    String(Number(value.toFixed(5))),
+    truncated(value, 6),
+    truncated(value, 5),
+    truncated(value, 4),
+  ].filter((form) => /\.\d{4,}$/.test(form));
 
 test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Open Graph and JSON-LD finds no private fields, pending edges, involved-only persons, city-only coordinates or evidence keys', async ({ page, browser, request }) => {
-  test.setTimeout(300_000);
+  // The crawl reads every public page of the demo data (some 1,600; about 2 minutes here, more on a slower runner).
+  test.setTimeout(600_000);
   // What must never be public: a pending edge between two public people, a hidden person with a
   // historical claim and its certificate, and the accounts behind them.
   const [teacher, pendingStudent, hidden] = await Promise.all([
@@ -452,8 +500,14 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
   // test, and every public page linked from them, as an anonymous client reads them.
   const queue: string[] = [];
   const seen = new Set<string>();
+  // Past the limit a path is not read but counted, and the test fails: a crawl never stops short silently.
+  const overflow: string[] = [];
   const add = (path: string) => {
-    if (seen.has(path) || seen.size >= CRAWL_LIMIT) return;
+    if (seen.has(path)) return;
+    if (seen.size >= CRAWL_LIMIT) {
+      overflow.push(path);
+      return;
+    }
     seen.add(path);
     queue.push(path);
   };
@@ -471,10 +525,19 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
   expect(sitemapPaths.length).toBeGreaterThan(2);
   for (const path of sitemapPaths) add(path);
   const robots = await request.get(`${BASE_URL}/robots.txt`);
-  const documents: [string, string][] = [
-    ['/sitemap.xml', sitemapText],
-    ['/robots.txt', robots.status() === 200 ? await robots.text() : ''],
-  ];
+  // Each document is scanned as it is read (some 1,600 pages: they are not kept), except the pages
+  // of the pending request's two people, checked again below.
+  const leaks: string[] = [];
+  const kept = new Map<string, string>();
+  const keep = new Set([teacher, pendingStudent].flatMap((m) => [`/people/${m.slug}`, `/people/${m.slug}/lineage`]));
+  let read = 0;
+  const scan = (path: string, text: string) => {
+    read += 1;
+    for (const [what, secret] of secrets) if (text.includes(secret)) leaks.push(`${path}: ${what}`);
+    if (keep.has(path)) kept.set(path, text);
+  };
+  scan('/sitemap.xml', sitemapText);
+  scan('/robots.txt', robots.status() === 200 ? await robots.text() : '');
 
   let openGraph = 0;
   let jsonLd = 0;
@@ -487,7 +550,7 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
       if (want !== undefined ? status !== want : ![200, 404].includes(status)) failures.push(`${path}: status ${status}`);
       if (!(response.headers()['content-type'] ?? '').includes('text/html')) continue;
       const html = await response.text();
-      documents.push([path, html]);
+      scan(path, html);
       openGraph += (html.match(/<meta property="og:/g) ?? []).length;
       for (const block of html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
         jsonLd += 1;
@@ -505,13 +568,67 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
   };
   // A few readers at once; the queue grows as pages are read, so the readers start again until it stays empty.
   while (queue.length > 0) await Promise.all(Array.from({ length: 4 }, worker));
+  expect(overflow, `paths past the crawl limit of ${CRAWL_LIMIT} (${seen.size} read)`).toEqual([]);
   expect(failures).toEqual([]);
-  expect(documents.length, 'pages read').toBeGreaterThan(50);
+  expect(read, 'pages read').toBeGreaterThan(50);
   expect(openGraph, 'Open Graph tags read').toBeGreaterThan(0);
   expect(jsonLd, 'JSON-LD blocks read').toBeGreaterThan(0);
 
-  const leaks: string[] = [];
-  for (const [path, text] of documents) for (const [what, secret] of secrets) if (text.includes(secret)) leaks.push(`${path}: ${what}`);
+  // The JSON the public client islands fetch, as an anonymous visitor's browser fetches it: the
+  // palette (search.query), the map (schools.inViewport) and the finder (schools.search) around every
+  // city-only school, and the explorer (lineage.ego, lineage.subtree…) around the people of the test.
+  // The answer is scanned without what only echoes the caller's own input (search.query's `query`,
+  // schools.search's `center`): the name typed and the point asked about are the visitor's, not a leak.
+  const rpc = async (procedure: string, input: Record<string, unknown>, want = 200): Promise<string> => {
+    const response = await request.post(`${BASE_URL}/api/rpc/${procedure}`, { data: { json: input }, headers: { origin: BASE_URL } });
+    const body = (await response.json()) as { json?: Record<string, unknown> };
+    if (response.status() !== want) failures.push(`/api/rpc/${procedure} ${JSON.stringify(input)}: status ${response.status()}`);
+    const answer = { ...body.json };
+    if (procedure === 'search/query') {
+      expect(answer.query, 'search.query echoes the query').toBe(input.q);
+      delete answer.query;
+    }
+    if (procedure === 'schools/search' && input.center) {
+      expect(answer.center, 'schools.search echoes the centre').toEqual(input.center);
+      delete answer.center;
+    }
+    const text = JSON.stringify(answer);
+    scan(`/api/rpc/${procedure} ${JSON.stringify(input)}`, text);
+    return text;
+  };
+  for (const m of [teacher, pendingStudent, hidden]) {
+    for (const q of [m.name, m.find]) await rpc('search/query', { q });
+  }
+  await rpc('search/query', { q: historicalName });
+  const teacherFound = await rpc('search/query', { q: teacher.find });
+  expect(teacherFound, 'the palette finds the public teacher of the test').toContain(teacher.personId);
+  const lineageA = await lineageIdOf('demo-lineage-a');
+  const pins: string[] = [];
+  for (const school of cityOnly.rows) {
+    for (const [lat, lng] of [
+      [school.city_lat, school.city_lng],
+      [school.lat, school.lng],
+    ] as const) {
+      pins.push(await rpc('schools/search', { center: { lat, lng }, radiusKm: 50 }));
+      pins.push(await rpc('schools/inViewport', { west: lng - 0.5, south: lat - 0.5, east: lng + 0.5, north: lat + 0.5 }));
+    }
+  }
+  pins.push(await rpc('schools/search', {}));
+  pins.push(await rpc('schools/inViewport', { west: -180, south: -85, east: 180, north: 85 }));
+  for (const school of cityOnly.rows) expect(pins.join('\n'), `the map and the finder list ${school.slug}`).toContain(`"${school.slug}"`);
+  const egoOfTeacher = await rpc('lineage/ego', { focusId: teacher.personId, up: 2, down: 2 });
+  expect(egoOfTeacher, 'the explorer reads the teacher of the test').toContain(teacher.personId);
+  await rpc('lineage/ego', { focusId: pendingStudent.personId, up: 2, down: 2 });
+  await rpc('lineage/subtree', { rootId: teacher.personId, depth: 3 });
+  await rpc('lineage/subtree', { rootId: teacher.personId, lineageId: lineageA, depth: 3 });
+  await rpc('lineage/subtree', { rootId: await rootOf(LINEAGE_A), lineageId: lineageA, depth: 3 });
+  await rpc('lineage/ancestors', { focusId: pendingStudent.personId });
+  await rpc('lineage/paths', { focusId: pendingStudent.personId });
+  await rpc('people/students', { slug: teacher.slug });
+  // The hidden and the historical person: no such person, in the explorer as on the pages.
+  for (const focusId of [hidden.personId, historical.id]) await rpc('lineage/ego', { focusId, up: 2, down: 2 }, 404);
+  expect(failures).toEqual([]);
+
   expect(leaks).toEqual([]);
 
   // The pending edge between two public people: in neither profile nor list view.
@@ -521,7 +638,7 @@ test('@pilot leak scan: an anonymous crawl of all public routes, the sitemap, Op
     [`/people/${pendingStudent.slug}`, teacher],
     [`/people/${pendingStudent.slug}/lineage`, teacher],
   ] as const) {
-    const html = documents.find(([p]) => p === path)?.[1];
+    const html = kept.get(path);
     expect(html, path).toBeDefined();
     expect(html!.includes(other.slug) || html!.includes(other.name), `${path} names the other side of a pending request`).toBe(false);
   }

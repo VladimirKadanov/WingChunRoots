@@ -80,6 +80,10 @@ check "the leak scan reads the sitemap, Open Graph, JSON-LD, the city-only priva
   f=e2e/pilot.spec.ts
   grep -q "sitemap.xml" "$f" && grep -q "og:" "$f" && grep -qF "ld\\+json" "$f" && grep -q "school_private_location" "$f" &&
   grep -q "storage_key" "$f" && grep -q "runPaths('\''pilot'\'').serverLog" "$f"'
+check "the leak scan reads the JSON of the public islands (palette, map, finder, explorer) and fails past its crawl limit (M13 review)" bash -c '
+  f=e2e/pilot.spec.ts
+  for p in search/query schools/inViewport schools/search lineage/ego lineage/subtree; do grep -qF "rpc('\''$p'\''" "$f" || exit 1; done
+  grep -qF "expect(overflow" "$f"'
 
 # 3. The authorization matrix (In scope 3) ----------------------------------------------------------
 check "the matrix covers every procedure, every role, over /api/rpc and through the Server Actions" bash -c '
