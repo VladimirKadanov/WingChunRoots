@@ -6,8 +6,8 @@
 // cookie. The onboarding page gets a new account without a profile, the invitation page a new
 // invitation of a new fictional account (D20). The thresholds are those of lighthouserc.json (the
 // M00b check of `/`): LCP and CLS. Lighthouse itself runs in plain Node, in scripts/lighthouse.mjs
-// --plan (each route once; a route over a threshold twice more, and the median of the three
-// decides; reports in .lighthouseci/reports/routes/, git-ignored): tsx's transform of the
+// --plan (each route once; a route whose first run is not within 90 % of every budget twice more,
+// and the median of the three decides, scripts/lib/lighthouse-runs.mjs; reports in .lighthouseci/reports/routes/, git-ignored): tsx's transform of the
 // functions Lighthouse sends to the page breaks them there. The plan holds the session cookies, so
 // it lives in a private temporary folder that is removed afterwards.
 
@@ -97,6 +97,10 @@ interface PlanResults {
   throttling: string;
   limits: Record<string, number>;
   routes: { label: string; runs: number; median: Median | null; ok: boolean; error: string | null }[];
+  /** The share of each budget one run must stay within to decide alone (CLEAR_MARGIN). */
+  clearMargin: number;
+  /** The whole Lighthouse run, in seconds. */
+  seconds: number;
 }
 
 function args(): Record<string, string> {
@@ -197,7 +201,7 @@ function report(results: PlanResults, date: string): string {
     '',
     `### Lighthouse в мобилен профил: всички основни маршрути (${date})`,
     '',
-    `Lighthouse ${results.lighthouse}, мобилен профил (4× по-бавен процесор и бавна 4G мрежа, ${results.throttling} throttling), срещу \`next start\` на тази версия с тестовите данни (\`pnpm perf:web\`, \`scripts/verify.d/M13.sh\`). Страниците зад вход се мерят с вход: сесия на демо акаунт, а на персонала с минат втори фактор. Праговете са тези на \`lighthouserc.json\`: LCP ≤ ${lcpLimit} ms и CLS ≤ ${clsLimit}. Всеки маршрут се пуска веднъж; маршрут над праг се пуска още два пъти и решава медианата от трите. TBT е лабораторният заместител на INP и е само за сведение.`,
+    `Lighthouse ${results.lighthouse}, мобилен профил (4× по-бавен процесор и бавна 4G мрежа, ${results.throttling} throttling), срещу \`next start\` на тази версия с тестовите данни (\`pnpm perf:web\`, \`scripts/verify.d/M13.sh\`). Страниците зад вход се мерят с вход: сесия на демо акаунт, а на персонала с минат втори фактор. Праговете са тези на \`lighthouserc.json\`: LCP ≤ ${lcpLimit} ms и CLS ≤ ${clsLimit}. Всеки маршрут се пуска веднъж и това пускане решава само, ако LCP и CLS са до ${Math.round(results.clearMargin * 100)} % от бюджета си (ясен запас; DEFAULT на прегледа на M13, въпрос в \`docs/plan/questions/M13.md\`); иначе маршрутът се пуска още два пъти и решава медианата от трите. Три пускания: ${results.routes.filter((r) => r.runs > 1).length} от ${results.routes.length} маршрута; цялото измерване отне ${Math.round(results.seconds / 60)} min. TBT е лабораторният заместител на INP и е само за сведение.`,
     '',
     '| Екран (план §5.5) | Адрес | LCP | CLS | TBT | FCP | Пускания | В бюджета |',
     '|---|---|---|---|---|---|---|---|',

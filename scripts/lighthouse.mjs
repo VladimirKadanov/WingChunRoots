@@ -7,8 +7,11 @@
 //   node scripts/lighthouse.mjs --plan=<plan.json> --results=<results.json> [--chrome-path=…]
 //
 // With --plan (M13, pnpm perf:web, scripts/lib/lighthouse-routes-run.ts): every route of the plan
-// ({ base, routes: [{ label, path, cookie? }] }) in one Chrome, each once; a route over a threshold
-// runs twice more and the median of the three decides. A route whose page ends at another path
+// ({ base, routes: [{ label, path, cookie? }] }) in one Chrome. A route's first run decides alone
+// only when every budgeted metric is within CLEAR_MARGIN (90 %) of its budget; otherwise the route
+// runs twice more and the median of the three decides (scripts/lib/lighthouse-runs.mjs, DEFAULT
+// of the M13 review, docs/plan/questions/M13.md). The routes that got three runs are listed at the
+// end. A route whose page ends at another path
 // (a guarded page that sent Lighthouse to the sign-in page) fails. The measurements go to
 // --results as JSON; reports to `upload.outputDir`/routes.
 //
@@ -22,6 +25,8 @@ import { join, resolve } from 'node:path';
 
 import * as chromeLauncher from 'chrome-launcher';
 import lighthouse from 'lighthouse';
+
+import { CLEAR_MARGIN, decide, runsNeeded } from './lib/lighthouse-runs.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((arg) => {
@@ -60,7 +65,6 @@ const AUDITS = {
 async function runPlan(plan, resultsFile) {
   const settings = config.collect.settings ?? {};
   const limits = Object.fromEntries(Object.entries(config.assert.assertions).map(([audit, [, { maxNumericValue }]]) => [audit, maxNumericValue]));
-  const within = (run) => run.lcp <= limits['largest-contentful-paint'] && run.cls <= limits['cumulative-layout-shift'];
   const dir = join(root, config.upload?.outputDir ?? '.lighthouseci/reports', 'routes');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
@@ -70,6 +74,8 @@ async function runPlan(plan, resultsFile) {
   });
   const out = { lighthouse: '', throttling: settings.throttlingMethod ?? 'devtools', limits, routes: [] };
   let failed = 0;
+  const tripled = [];
+  const started = Date.now();
   try {
     for (const [index, route] of plan.routes.entries()) {
       const target = new URL(route.path, plan.base);
@@ -97,20 +103,15 @@ async function runPlan(plan, resultsFile) {
       let error = null;
       try {
         await once();
-        if (!within(runsOf[0])) {
-          await once();
-          await once();
-        }
+        while (runsOf.length < runsNeeded(runsOf[0], limits)) await once();
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       }
-      const mid = (key) => {
-        const values = runsOf.map((r) => r[key]).sort((a, b) => a - b);
-        return values[Math.floor(values.length / 2)];
-      };
-      const median = runsOf.length ? { lcp: mid('lcp'), cls: mid('cls'), tbt: mid('tbt'), fcp: mid('fcp') } : null;
-      const ok = !error && median !== null && within(median);
+      const verdict = decide(runsOf, limits);
+      const median = verdict.median;
+      const ok = !error && verdict.ok;
       if (!ok) failed += 1;
+      if (runsOf.length > 1) tripled.push(route.label);
       out.routes.push({ label: route.label, runs: runsOf.length, median, ok, error });
       console.log(
         error
@@ -121,7 +122,13 @@ async function runPlan(plan, resultsFile) {
   } finally {
     await chrome.kill();
   }
+  out.clearMargin = CLEAR_MARGIN;
+  out.seconds = Math.round((Date.now() - started) / 1000);
   writeFileSync(resultsFile, JSON.stringify(out, null, 2));
+  console.log(
+    `${tripled.length} of ${plan.routes.length} routes ran three times (first run not within ${Math.round(CLEAR_MARGIN * 100)} % of every budget)` +
+      `${tripled.length ? `: ${tripled.join(', ')}` : ''}; ${out.seconds} s in all`,
+  );
   console.log(
     `Lighthouse ${out.lighthouse}, mobile, ${out.throttling} throttling: ${plan.routes.length - failed} of ${plan.routes.length} routes within ` +
       `LCP <= ${limits['largest-contentful-paint']} ms and CLS <= ${limits['cumulative-layout-shift']}`,
