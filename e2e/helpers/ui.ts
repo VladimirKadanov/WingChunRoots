@@ -1,7 +1,7 @@
 // Shared steps of the UI tests (M00b): themes, axe and fonts.
 
 import AxeBuilder from '@axe-core/playwright';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 import type { Theme } from '../routes';
 
@@ -64,6 +64,18 @@ export function resolvedTheme(page: Page): Promise<string> {
  * after the page's content, so axe runs once the document has a title again: a title that never
  * comes still fails here (CI run 41323978929: document-title on /account/security?codes=new).
  */
+/**
+ * Waits until every CSS transition and animation inside the element has finished. Playwright's
+ * toBeVisible ignores opacity, so an axe scan right after a fade-in can measure the half-faded
+ * text and report a colour-contrast violation that the settled UI does not have (CI run
+ * 41457488899: the /styleguide menu in mobile WebKit, dark theme).
+ */
+export async function animationsSettled(locator: Locator) {
+  await locator.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => undefined))).then(() => undefined),
+  );
+}
+
 export async function expectNoAxeViolations(page: Page, label: string) {
   await expect(page, `${label}: the document has its title`).toHaveTitle(/\S/);
   const results = await new AxeBuilder({ page }).analyze();

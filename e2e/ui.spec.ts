@@ -6,7 +6,7 @@
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-import { expectNoAxeViolations, openInTheme } from './helpers/ui';
+import { animationsSettled, expectNoAxeViolations, openInTheme } from './helpers/ui';
 import { THEMES } from './routes';
 
 const PHONE = { width: 390, height: 844 };
@@ -701,24 +701,28 @@ for (const theme of THEMES) {
 
     await page.getByRole('button', { name: 'Open a dialog' }).click();
     await expect(page.getByRole('dialog', { name: 'Withdraw this claim?' })).toBeVisible();
+    await animationsSettled(page.getByRole('dialog', { name: 'Withdraw this claim?' }));
     await expectNoAxeViolations(page, `/styleguide dialog (${theme})`);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Open a sheet' }).click();
     await expect(page.getByRole('dialog', { name: 'Mira Probnova' })).toBeVisible();
+    await animationsSettled(page.getByRole('dialog', { name: 'Mira Probnova' }));
     await expectNoAxeViolations(page, `/styleguide sheet (${theme})`);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Show a peek sheet' }).click();
     await expect(page.getByRole('dialog', { name: 'Jade Lantern Hall' })).toBeVisible();
+    await animationsSettled(page.getByRole('dialog', { name: 'Jade Lantern Hall' }));
     await expectNoAxeViolations(page, `/styleguide peek sheet (${theme})`);
     await page.getByRole('dialog', { name: 'Jade Lantern Hall' }).getByRole('button', { name: 'Close' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Actions' }).click();
     await expect(page.getByRole('menu')).toBeVisible();
+    await animationsSettled(page.getByRole('menu'));
     await expectNoAxeViolations(page, `/styleguide menu (${theme})`);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menu')).toHaveCount(0);
