@@ -229,6 +229,35 @@ test('@M11 in forced colours only the selected school of the list has the bar be
   await page.emulateMedia({ forcedColors: 'none' });
 });
 
+test('@M11 "Show on the map" in the list zooms in to the school, never out', async ({ page }) => {
+  if (await narrow(page)) await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/schools');
+  const map = await mapSettled(page);
+  const aside = page.locator('aside[aria-labelledby="school-list-heading"]');
+  /** The map's zoom is `z`: the view the finder writes into the address (at most every 500 ms) once it settles. */
+  const zoomIs = (z: number) => expect.poll(() => Math.round(Number(new URL(page.url()).searchParams.get('z')) * 10) / 10, { timeout: 5_000 }).toBe(z);
+  /** Presses "Show on the map" and waits until the map has stopped with the school's pin in its middle. */
+  const show = async (slug: string) => {
+    await aside.locator(`[data-testid="school-row"][data-slug="${slug}"]`).getByTestId('show-on-map').click();
+    await expect(async () => {
+      await expect(map).toHaveAttribute('data-moving', 'false', { timeout: 100 });
+      const frame = (await map.boundingBox())!;
+      const pin = (await page.locator(`[data-testid="school-marker"][data-slug="${slug}"]`).boundingBox())!;
+      expect(Math.abs(pin.x + pin.width / 2 - (frame.x + frame.width / 2)), `${slug} is in the middle of the map`).toBeLessThan(4);
+    }).toPass({ timeout: 10_000 });
+  };
+
+  // A city-only school: its city (its public point is the city's centre, so no closer).
+  await show('demo-school-city-only');
+  await zoomIs(10);
+  // An exact location: its streets.
+  await show('demo-school-new-york');
+  await zoomIs(14);
+  // Already closer than a city: the map moves to the city-only school without zooming out.
+  await show('demo-school-city-only');
+  await zoomIs(14);
+});
+
 test('@M11 in forced colours a checked box of the school form looks checked, and an unchecked one does not', async ({ page }) => {
   await freshAccount(page, { name: `Demo Checkbox Sifu ${letters()}`, sifu: true });
   await page.goto('/dashboard/schools/new');
