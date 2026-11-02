@@ -27,11 +27,13 @@ import {
   pendingText,
   PersonCounts,
   PersonHeading,
+  PersonIdentity,
   PersonReadings,
   PersonViews,
   PrivateRecordNotice,
 } from '@/components/lineage/person-header';
 import { PersonLayout } from '@/components/lineage/person-layout';
+import { PhotoControl } from '@/components/lineage/photo-control';
 import { LineageName } from '@/components/lineage/person-name';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
 import { bySeniority, groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
@@ -269,10 +271,14 @@ export default async function PersonPage({ params }: Props) {
     <PersonLayout
       header={
         <>
-          <p className="eyebrow">Person on the record</p>
-          <PersonHeading profile={profile} />
-          <PersonReadings profile={profile} />
-          <FactStrip profile={profile} />
+          <PersonIdentity profile={profile}>
+            <p className="eyebrow">Person on the record</p>
+            <PersonHeading profile={profile} />
+            <PersonReadings profile={profile} />
+            <FactStrip profile={profile} />
+          </PersonIdentity>
+          {/* M14: the owner's photo controls (their own record only, never a limited view). */}
+          {profile.isOwn && !profile.limited ? <PhotoControl hasPhoto={Boolean(profile.photo)} /> : null}
           {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} limited={profile.limited} /> : null}
         </>
       }

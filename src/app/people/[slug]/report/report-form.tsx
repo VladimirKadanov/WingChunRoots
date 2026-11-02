@@ -51,7 +51,7 @@ export function ReportForm({
         label="Details"
         optional
         maxLength={2000}
-        hint="What is wrong and where. The moderators read it; it is never public, and the person is not told who reported."
+        hint="What is wrong and where, for example the profile photo. The moderators read it; it is never public, and the person is not told who reported."
         state={state}
         className="max-w-[40rem]"
       />

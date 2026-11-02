@@ -34,6 +34,7 @@ import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 
 import { ArrowRightIcon, CloseIcon, SearchIcon } from '@/components/icons';
 import { Seal } from '@/components/ink/seal';
+import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { cx } from '@/lib/cx';
 import { RECENT_SEARCHES_MAX, readRecentSearches, writeRecentSearches } from '@/lib/recent-searches';
 import { releaseLayerEntry, useBackToClose } from './use-back-to-close';
@@ -58,6 +59,8 @@ interface SearchAnswer {
     countryCode: string | null;
     lineageName: string | null;
     verified: boolean;
+    /** M14: the profile photo (a public person only; null without one). */
+    photo?: { small: string; large: string } | null;
   }[];
   schools: { id: string; slug: string; name: string; city: string; countryCode: string; instructor: { slug: string; displayName: SearchName } | null }[];
   lineages: { id: string; slug: string; name: string; root: { slug: string; displayName: SearchName } }[];
@@ -195,20 +198,25 @@ function ItemBody({ item }: { item: Item }) {
   if (item.kind === 'person') {
     const { hit } = item;
     const where = [hit.city, countryName(hit.countryCode), hit.lineageName].filter(Boolean).join(' · ');
+    // M14: the photo or the monogram before the result, decorative: the option is already named by
+    // the person's name beside it.
     return (
-      <span className="grid min-w-0 gap-0.5">
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <Name name={hit.displayName} className="font-display text-lg leading-snug [overflow-wrap:anywhere]" />
-          {hit.matched ? <Name name={hit.matched} className="text-ui text-fg-muted [overflow-wrap:anywhere]" /> : null}
-        </span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-fg-subtle">
-          {hit.verified ? (
-            <span className="inline-flex items-center gap-1 font-semibold text-fg-muted">
-              <Seal kind="check" size={14} />
-              Verified
-            </span>
-          ) : null}
-          {where ? <span className="[overflow-wrap:anywhere]">{where}</span> : null}
+      <span className="flex min-w-0 items-start gap-3">
+        <PersonAvatar name={hit.displayName.value} photo={hit.photo} size="sm" decorative className="mt-0.5" />
+        <span className="grid min-w-0 gap-0.5">
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <Name name={hit.displayName} className="font-display text-lg leading-snug [overflow-wrap:anywhere]" />
+            {hit.matched ? <Name name={hit.matched} className="text-ui text-fg-muted [overflow-wrap:anywhere]" /> : null}
+          </span>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-fg-subtle">
+            {hit.verified ? (
+              <span className="inline-flex items-center gap-1 font-semibold text-fg-muted">
+                <Seal kind="check" size={14} />
+                Verified
+              </span>
+            ) : null}
+            {where ? <span className="[overflow-wrap:anywhere]">{where}</span> : null}
+          </span>
         </span>
       </span>
     );

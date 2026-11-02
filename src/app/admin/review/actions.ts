@@ -1,8 +1,8 @@
 'use server';
 
 // The Server Actions of the review queue (milestone M10a, In scope 4 and 5; M10b: arbitration):
-// thin wrappers over review.assign, review.decide, review.note, review.arbitrate and
-// archive.update (src/server/rpc/parity.ts), called
+// thin wrappers over review.assign, review.decide, review.note, review.arbitrate,
+// archive.update and (M14) photos.remove (src/server/rpc/parity.ts), called
 // in-process with this request's session, so the forms and /api/v1 run the same checks (the
 // second factor, the roles, the assignment). Each mutation carries an idempotency key the page
 // made for it, except the archival edit, which writes nothing when nothing changed. A failure
@@ -21,7 +21,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, NOTE_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM } from './form-ids';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -175,4 +175,25 @@ export async function arbitrateAction(_previous: FormState, form: FormData): Pro
     return formResult({ form: ARBITRATE_FORM, page, anchor: outcomeTarget(ARBITRATE_FORM, state, true) }, state);
   }
   redirect(doneAt(casePage(caseId), 'arbitrated'));
+}
+
+/**
+ * M14: "Remove photo" of the profile a case is about (photos.remove with the reason; a moderator,
+ * an archivist or an administrator with the second factor). The removal is audited with the
+ * reason; the photo's files are deleted. Success reloads the case card at its outcome note.
+ */
+export async function removePhotoAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const slug = textValue(form, 'slug', 120);
+  const reason = textValue(form, 'reason', 4000);
+  const page = casePage(caseId);
+  try {
+    await (await client()).photos.remove({ slug: SLUG.test(slug) ? slug : '', reason });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, slug, reason });
+    return formResult({ form: PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(PHOTO_REMOVE_FORM, state, true) }, state);
+  }
+  redirect(doneAt(page, 'photo-removed'));
 }

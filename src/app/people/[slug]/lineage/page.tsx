@@ -22,6 +22,7 @@ import {
   pendingText,
   PersonCounts,
   PersonHeading,
+  PersonIdentity,
   PersonReadings,
   PersonViews,
   PrivateRecordNotice,
@@ -273,10 +274,12 @@ export default async function LineageListPage({ params, searchParams, embed }: P
     <PersonLayout
       header={
         <>
-          <p className="eyebrow">Lineage list</p>
-          <PersonHeading profile={profile} prefix="Lineage of " />
-          <PersonReadings profile={profile} />
-          <FactStrip profile={profile} />
+          <PersonIdentity profile={profile}>
+            <p className="eyebrow">Lineage list</p>
+            <PersonHeading profile={profile} prefix="Lineage of " />
+            <PersonReadings profile={profile} />
+            <FactStrip profile={profile} />
+          </PersonIdentity>
           {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} limited={profile.limited} /> : null}
         </>
       }

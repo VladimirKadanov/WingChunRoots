@@ -21,8 +21,8 @@ const SIZES = {
   sm: { px: 32, text: 'text-xs' },
   /** The explorer's selection panel. */
   md: { px: 40, text: 'text-sm' },
-  /** The profile. */
-  lg: { px: 112, text: 'text-3xl' },
+  /** The profile's header, beside the name. */
+  lg: { px: 96, text: 'text-3xl' },
 } as const;
 
 export type AvatarSize = keyof typeof SIZES;

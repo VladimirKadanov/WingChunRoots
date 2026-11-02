@@ -67,4 +67,6 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/instructor/actions.ts#requestInstructorAction': { rpc: ['instructor.request'] },
   'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction': { rpc: ['cases.reply'] },
   'src/app/people/[slug]/report/actions.ts#reportProfileAction': { rpc: ['reports.create'] },
+  // M14: a moderator's removal of a reported profile photo.
+  'src/app/admin/review/actions.ts#removePhotoAction': { rpc: ['photos.remove'] },
 };

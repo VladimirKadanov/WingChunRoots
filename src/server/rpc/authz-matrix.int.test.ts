@@ -1118,6 +1118,13 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/review/actions.ts#decideCaseAction', row: 'review.decide', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/admin/review/actions.ts#addNoteAction', row: 'review.note', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'moderator'] },
   { action: 'src/app/admin/review/actions.ts#arbitrateAction', row: 'review.arbitrate', form: same, roles: ['anonymous', 'member', 'owner', 'archivist', 'adminNo2fa', 'moderator'] },
+  // M14: a moderator's "Remove photo" on a case card; the owner's own removal is the same procedure.
+  {
+    action: 'src/app/admin/review/actions.ts#removePhotoAction',
+    row: "photos.remove (another account's photo, with a reason)",
+    form: same,
+    roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
+  },
   { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist'] },
   { action: 'src/app/dashboard/schools/actions.ts#updateSchoolAction', row: 'schools.update', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#submitSchoolAction', row: 'schools.submit', form: same, roles: ['anonymous', 'member', 'owner'] },

@@ -11,6 +11,7 @@ import { NameText } from '@/components/account/person-names';
 import { LockIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import type { LineageRefDto, PersonProfileDto } from '@/server/dto/public';
+import { PersonAvatar } from './person-avatar';
 import { aliases, LineageName, originalNames, readingLabel, readingLang, readings } from './person-name';
 import { Sep } from './relation-list';
 import { claimText, lifeText } from './status';
@@ -47,6 +48,19 @@ export function PersonHeading({ profile, prefix }: { profile: Pick<PersonProfile
         <NameText key={`${name.lang}-${name.value}`} name={name} className="text-[0.74em] text-fg-muted" />
       ))}
     </h1>
+  );
+}
+
+/**
+ * M14: the top of a person's page with the profile photo (or the monogram) beside the name and
+ * what follows it. The photo's alt is the Latin display name; a `limited` record has no photo.
+ */
+export function PersonIdentity({ profile, children }: { profile: Pick<PersonProfileDto, 'displayName' | 'photo'>; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-x-6 gap-y-4" data-testid="person-identity">
+      <PersonAvatar name={profile.displayName} photo={profile.photo} size="lg" className="mt-1" />
+      <div className="grid min-w-0 flex-1 content-start gap-3">{children}</div>
+    </div>
   );
 }
 
