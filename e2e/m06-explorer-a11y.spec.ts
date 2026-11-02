@@ -858,6 +858,9 @@ test.describe('expansion (C)', () => {
     // A click on the summary node opens the same list.
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
+    // Closing the panel gives the canvas its room back and the view may still move: a click while
+    // the node moves lands beside it (CI run 41531540584). Wait until it settles, as after Zoom or Fit.
+    await settledView(page);
     await node.click();
     await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
     expect(await listedStudents(page, hubName, 1)).toEqual(first);
