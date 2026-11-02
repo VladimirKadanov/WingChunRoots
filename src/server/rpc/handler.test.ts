@@ -5,7 +5,7 @@ import { ORPCError } from '@orpc/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { configureLogger, restoreLogger } from '../log';
-import { bodyRefusal, csrfRefusal, logProcedureFailure, MULTIPART_MAX_BYTES, procedureFailureLine, sessionHeaders } from './handler';
+import { bodyRefusal, boundedRequest, csrfRefusal, JSON_MAX_BYTES, logProcedureFailure, MULTIPART_MAX_BYTES, procedureFailureLine, sessionHeaders } from './handler';
 
 const APP = 'https://wingchunroots.example';
 const post = (headers: Record<string, string>) => new Request(`${APP}/api/v1/consent/record`, { method: 'POST', headers });
@@ -138,6 +138,8 @@ describe('bodyRefusal (M14: a photo upload is refused by its size before it is r
 
   it('refuses any body over the limit (413) and a body that is not JSON without a length (411), before oRPC reads it', async () => {
     expect(bodyRefusal(post({ 'content-type': 'application/json', 'content-length': String(MULTIPART_MAX_BYTES + 1) }))?.status).toBe(413);
+    expect(bodyRefusal(post({ 'content-type': 'application/json', 'content-length': String(JSON_MAX_BYTES + 1) }))?.status).toBe(413);
+    expect(bodyRefusal(post({ 'content-type': 'application/json', 'content-length': String(JSON_MAX_BYTES) }))).toBeNull();
     expect(bodyRefusal(post({ 'content-type': 'application/octet-stream', 'content-length': String(MULTIPART_MAX_BYTES + 1) }))?.status).toBe(413);
     expect(bodyRefusal(post({ 'content-type': 'application/octet-stream' }))?.status).toBe(411);
     expect(bodyRefusal(post({ 'content-type': 'text/plain' }))?.status).toBe(411);
@@ -147,5 +149,75 @@ describe('bodyRefusal (M14: a photo upload is refused by its size before it is r
     expect(bodyRefusal(post({}))).toBeNull();
     expect(bodyRefusal(new Request('http://localhost:3100/api/v1/photos/demo-x', { headers: { 'content-type': 'application/octet-stream' } }))).toBeNull();
     expect(bodyRefusal(post({ 'content-type': 'application/octet-stream', 'content-length': '10' }))).toBeNull();
+  });
+});
+
+describe('boundedRequest (M14 review: a body without a Content-Length is counted as it is read)', () => {
+  /** A chunked body: `chunks` pieces of `size` bytes, with no Content-Length; counts the pieces pulled. */
+  function chunked(headers: Record<string, string>, size: number, chunks: number) {
+    const pulled = { count: 0, cancelled: false };
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled.count === chunks) return controller.close();
+        pulled.count += 1;
+        controller.enqueue(new Uint8Array(size).fill(0x20));
+      },
+      cancel() {
+        pulled.cancelled = true;
+      },
+    });
+    const request = new Request('http://localhost:3100/api/rpc/photos/upload', { method: 'POST', headers, body, duplex: 'half' } as RequestInit);
+    return { request, pulled };
+  }
+
+  it('stops reading a chunked JSON body past JSON_MAX_BYTES and answers 413, without reading the rest', async () => {
+    const { request, pulled } = chunked({ 'content-type': 'application/json' }, 64 * 1024, 1000);
+    expect(bodyRefusal(request)).toBeNull();
+    const result = await boundedRequest(request);
+    expect(result).toBeInstanceOf(Response);
+    const response = result as Response;
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.' });
+    // The read stops one piece past the limit (the stream may have queued one more).
+    expect(pulled.count).toBeGreaterThanOrEqual(JSON_MAX_BYTES / (64 * 1024) + 1);
+    expect(pulled.count).toBeLessThanOrEqual(JSON_MAX_BYTES / (64 * 1024) + 2);
+    expect(pulled.cancelled).toBe(true);
+  });
+
+  it('does the same for a chunked body without a Content-Type', async () => {
+    const { request, pulled } = chunked({}, 64 * 1024, 1000);
+    expect(bodyRefusal(request)).toBeNull();
+    expect(((await boundedRequest(request)) as Response).status).toBe(413);
+    expect(pulled.count).toBeLessThan(1000);
+  });
+
+  it('refuses a chunked multipart body: 411 before reading, and 413 past MULTIPART_MAX_BYTES if it is read', async () => {
+    const headers = { 'content-type': 'multipart/form-data; boundary=x' };
+    expect(bodyRefusal(chunked(headers, 64 * 1024, 1000).request)?.status).toBe(411);
+    const { request, pulled } = chunked(headers, 64 * 1024, 1000);
+    const response = (await boundedRequest(request)) as Response;
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', message: expect.stringContaining('This photo is larger than 5 MB') });
+    // The read stops one piece past the limit (the stream may have queued one more).
+    expect(pulled.count).toBeGreaterThanOrEqual(MULTIPART_MAX_BYTES / (64 * 1024) + 1);
+    expect(pulled.count).toBeLessThanOrEqual(MULTIPART_MAX_BYTES / (64 * 1024) + 2);
+    expect(pulled.cancelled).toBe(true);
+  });
+
+  it('passes a body within its limit on unchanged, and a request without a body as it is', async () => {
+    const { request } = chunked({ 'content-type': 'application/json', 'x-request-id': 'r1' }, 1024, 3);
+    const result = await boundedRequest(request);
+    expect(result).toBeInstanceOf(Request);
+    const passed = result as Request;
+    expect(passed.method).toBe('POST');
+    expect(passed.url).toBe(request.url);
+    expect(passed.headers.get('x-request-id')).toBe('r1');
+    expect((await passed.arrayBuffer()).byteLength).toBe(3 * 1024);
+    const multipart = chunked({ 'content-type': 'multipart/form-data; boundary=x' }, 64 * 1024, MULTIPART_MAX_BYTES / (64 * 1024));
+    expect(await boundedRequest(multipart.request)).toBeInstanceOf(Request);
+    const empty = new Request('http://localhost:3100/api/rpc/account/me', { method: 'POST' });
+    expect(await boundedRequest(empty)).toBe(empty);
+    const get = new Request('http://localhost:3100/api/v1/photos/demo-x');
+    expect(await boundedRequest(get)).toBe(get);
   });
 });
