@@ -191,7 +191,7 @@ test('@pilot register → onboarding → find a teacher with the palette → req
   // The home page: the ways in.
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(visible(page.locator('[data-home-search]'))).toBeVisible();
+  await expect(visible(page.locator('[data-home-search]')).first()).toBeVisible();
   await expect(visible(page.getByRole('link', { name: 'Explore the lineages' }))).toHaveAttribute('href', '/explore');
   await expect(visible(page.getByRole('link', { name: 'Find a school' }))).toHaveAttribute('href', '/schools');
   await visible(page.getByRole('link', { name: 'Create an account' })).click();

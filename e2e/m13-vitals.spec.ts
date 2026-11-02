@@ -39,7 +39,7 @@ test('@M13 opening the search palette responds with INP under 200 ms at 4x CPU t
   await installInpProbes(page);
   await page.goto('/');
   // Both fields are server-drawn buttons; they open the palette once their islands have hydrated.
-  const home = page.locator('[data-home-search]').filter({ visible: true });
+  const home = page.locator('[data-home-search]').filter({ visible: true }).first();
   const shell = page.locator('[data-search-field]').filter({ visible: true }).first();
   await expect(home).toBeVisible();
   await expect(shell).toBeVisible();
