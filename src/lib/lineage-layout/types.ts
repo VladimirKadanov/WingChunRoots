@@ -162,6 +162,13 @@ export interface LayoutOptions {
   previousPositions?: Record<string, Point>;
   /** Overrides the preset's node placement strategy (used by the M03 comparison). */
   nodePlacement?: NodePlacement;
+  /**
+   * Stacks a teacher's students who have no students of their own in the view in a block of two
+   * columns below the teacher, instead of all in one row (the explorer's Lineage view; stacks.ts,
+   * ADR 0017). The first tier of a block stands on its row's line; the next row starts below the
+   * deepest block. Default false: one row per generation (plan §4.4).
+   */
+  stackLeaves?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import type { ElkNode } from 'elkjs/lib/elk.bundled.js';
 import type { ElkGraphBuild } from './elk-graph.ts';
 import { ElkLayoutError } from './errors.ts';
 import { NODE_SIZES, layoutPresets } from './presets.ts';
+import { FEED_SPACE, stackedPlaces, stackedRoute, type Stack, type StackPlan } from './stacks.ts';
 import type {
   BezierPath,
   Box,
@@ -471,7 +472,9 @@ export interface LaidOutColumn {
  * has its own height in each. The rows of the scene take the largest gap between two rows over
  * the columns (the gap holds the horizontal runs of the routes), a column without people in
  * some rows keeps at least the gap it had between the rows it has, and a gap that a curve runs
- * along (`runGaps`, by the rank above it) is at least as high as given. Returns the top of every row.
+ * along (`runGaps`, by the rank above it) is at least as high as given. A row is `band[r]` high
+ * (a card, or its deepest block of stacked students, stacks.ts), and a row with a block has
+ * `feed[r]` more room above it. Returns the top of every row.
  */
 function sceneRows(
   columns: { tops: Map<number, number> }[],
@@ -479,6 +482,8 @@ function sceneRows(
   cardHeight: number,
   defaultGap: number,
   runGaps: ReadonlyMap<number, number>,
+  band: readonly number[],
+  feed: readonly number[],
 ): number[] {
   const gap: number[] = Array.from({ length: rankCount }, () => Number.NEGATIVE_INFINITY);
   const reach: { from: number; to: number; channel: number }[] = [];
@@ -501,9 +506,9 @@ function sceneRows(
       continue;
     }
     const before = gap[r - 1]!;
-    let y = top[r - 1]! + cardHeight + Math.max(Number.isFinite(before) ? before : defaultGap, runGaps.get(r - 1) ?? 0);
-    for (const span of reach) if (span.to === r) y = Math.max(y, top[span.from]! + cardHeight + span.channel);
-    top.push(y);
+    let y = top[r - 1]! + band[r - 1]! + Math.max(Number.isFinite(before) ? before : defaultGap, runGaps.get(r - 1) ?? 0);
+    for (const span of reach) if (span.to === r) y = Math.max(y, top[span.from]! + band[span.from]! + span.channel);
+    top.push(y + feed[r]!);
   }
   return top;
 }
@@ -512,9 +517,10 @@ function sceneRows(
  * Maps a y of a column's own layout to the scene: inside a row it keeps its distance from the
  * top of the row, and in the gap below a row it keeps its distance from the bottom of the row,
  * so the horizontal runs of the routes stay right under their teachers and a route stays
- * orthogonal (the map only moves rows and gaps apart).
+ * orthogonal (the map only moves rows and gaps apart). The gap below a row starts below its band
+ * (`band`: stacked students hang below the row's line).
  */
-function columnY(tops: Map<number, number>, rows: readonly number[], cardHeight: number): (y: number) => number {
+function columnY(tops: Map<number, number>, rows: readonly number[], cardHeight: number, band: readonly number[]): (y: number) => number {
   const present = [...tops.keys()].sort((a, b) => a - b);
   return (y) => {
     for (let i = 0; i < present.length; i++) {
@@ -523,13 +529,13 @@ function columnY(tops: Map<number, number>, rows: readonly number[], cardHeight:
       if (y < top) {
         if (i === 0) return rows[rank]! - (top - y);
         const above = present[i - 1]!;
-        return rows[above]! + cardHeight + (y - (tops.get(above)! + cardHeight));
+        return rows[above]! + band[above]! + (y - (tops.get(above)! + cardHeight));
       }
       if (y <= top + cardHeight) return rows[rank]! + (y - top);
     }
     const last = present[present.length - 1];
     if (last === undefined) return y;
-    return rows[last]! + cardHeight + (y - (tops.get(last)! + cardHeight));
+    return rows[last]! + band[last]! + (y - (tops.get(last)! + cardHeight));
   };
 }
 
@@ -549,8 +555,24 @@ export function buildScene(
   view: ElkGraphBuild,
   columns: readonly LaidOutColumn[],
   curves: readonly LineageEdge[],
+  /**
+   * The blocks of stacked students (stacks.ts) and the model order of the view's people: `graph`
+   * then has a block in place of each block's students, which the scene puts back.
+   */
+  stacking?: { plan: StackPlan; order: readonly string[] },
 ): Scene {
-  const cardHeight = NODE_SIZES[view.nodeSize].height;
+  const card = NODE_SIZES[view.nodeSize];
+  const cardHeight = card.height;
+  const cardGap = Number(layoutPresets[view.preset]['elk.spacing.nodeNode'] ?? CARD_GAP);
+  const stacks = stacking?.plan.stacks ?? new Map<string, Stack>();
+  // The band of every row (as high as its deepest block, or a card) and the room above a row with a block.
+  const band: number[] = Array.from({ length: ranks.rankCount }, () => cardHeight);
+  const feed: number[] = Array.from({ length: ranks.rankCount }, () => 0);
+  for (const stack of stacks.values()) {
+    const rank = ranks.ranks.get(stack.id)!;
+    band[rank] = Math.max(band[rank]!, stack.height);
+    feed[rank] = FEED_SPACE;
+  }
   const spineEdgeIds = new Set(view.spine.map((e) => e.id));
   const spineNodeIds = new Set<string>();
   for (const edge of view.spine) {
@@ -579,11 +601,11 @@ export function buildScene(
     if (rank !== undefined && rank > 0) runGaps.set(rank - 1, defaultGap + CURVE_RUN_EXTRA);
   }
   const place = () => {
-    const rows = sceneRows(measured, ranks.rankCount, cardHeight, defaultGap, runGaps);
+    const rows = sceneRows(measured, ranks.rankCount, cardHeight, defaultGap, runGaps, band, feed);
     let left = 0;
     const placed = measured.map(({ column, tops }) => {
       const width = column.laidOut.width ?? 0;
-      const at = { column, dx: left, width, mapY: columnY(tops, rows, cardHeight) };
+      const at = { column, dx: left, width, mapY: columnY(tops, rows, cardHeight, band) };
       left += width + COLUMN_GAP;
       return at;
     });
@@ -594,14 +616,7 @@ export function buildScene(
     const childOf = new Map<string, { child: ElkNode; at: (typeof placed)[number] }>();
     for (const at of placed) for (const child of at.column.laidOut.children ?? []) childOf.set(child.id, { child, at });
 
-    const nodes: SceneNode[] = view.order.map((id) => {
-      const found = childOf.get(id);
-      if (!found) throw new ElkLayoutError(`no position for node ${id}`);
-      const { child, at } = found;
-      const width = child.width ?? NODE_SIZES[view.nodeSize].width;
-      const height = child.height ?? cardHeight;
-      const x = roundCoord((child.x ?? 0) + at.dx);
-      const y = roundCoord(at.mapY(child.y ?? 0));
+    const slot = (id: string, rank: number, x: number, y: number, width: number, height: number): SceneNode => {
       const center = point(x + width / 2, y + height / 2);
       const boxes = Object.fromEntries(DETAIL_LEVELS.map((level) => [level, centredBox(center, level)])) as Record<
         DetailLevel,
@@ -609,17 +624,35 @@ export function buildScene(
       >;
       return {
         id,
-        rank: ranks.ranks.get(id)!,
+        rank,
         cutOff: ranks.cutOff.has(id),
         onSpine: spineNodeIds.has(id) || id === focusId,
-        x,
-        y,
+        x: roundCoord(x),
+        y: roundCoord(y),
         width,
         height,
         center,
         boxes,
       };
-    });
+    };
+    const blocks = new Map<string, SceneNode>();
+    const nodes: SceneNode[] = [];
+    for (const id of view.order) {
+      const found = childOf.get(id);
+      if (!found) throw new ElkLayoutError(`no position for node ${id}`);
+      const { child, at } = found;
+      const width = child.width ?? card.width;
+      const height = child.height ?? cardHeight;
+      const node = slot(id, ranks.ranks.get(id)!, roundCoord((child.x ?? 0) + at.dx), roundCoord(at.mapY(child.y ?? 0)), width, height);
+      const stack = stacks.get(id);
+      if (!stack) {
+        nodes.push(node);
+        continue;
+      }
+      // The students of a block in its tiers (stacks.ts).
+      blocks.set(id, node);
+      stackedPlaces(stack, node, card, cardGap).forEach((p, i) => nodes.push(slot(stack.students[i]!, node.rank, p.x, p.y, card.width, cardHeight)));
+    }
     const byId = new Map(nodes.map((n) => [n.id, n]));
 
     const edges: SceneEdge[] = [];
@@ -636,6 +669,27 @@ export function buildScene(
             const last = points[points.length - 1];
             if (!last || last.x !== next.x || last.y !== next.y) points.push(next);
           }
+        }
+        const stack = stacks.get(edge.studentId);
+        if (stack) {
+          // One route per student of a block: down its lane and into the middle of the student's top.
+          const block = blocks.get(stack.id)!;
+          for (const own of stack.edges) {
+            const student = byId.get(own.studentId)!;
+            const route = stackedRoute(points, block.y, student, card).map((p) => point(p.x, p.y));
+            edges.push({
+              id: own.id,
+              teacherId: own.teacherId,
+              studentId: own.studentId,
+              lineageId: own.lineageId,
+              kind: own.kind,
+              routedBy: 'elk',
+              onSpine: spineEdgeIds.has(own.id),
+              bends: Math.max(0, route.length - 2),
+              path: { type: 'orthogonal', points: route },
+            });
+          }
+          continue;
         }
         const path: OrthogonalPath = { type: 'orthogonal', points };
         edges.push({
@@ -732,7 +786,8 @@ export function buildScene(
     }
   }
   const { rows, placed, sceneWidth, sceneHeight, childOf, nodes, edges, rowY } = attempt;
-  const position = new Map(view.order.map((id, i) => [id, i]));
+  const position = new Map((stacking?.order ?? view.order).map((id, i) => [id, i]));
+  if (stacking) nodes.sort((a, b) => position.get(a.id)! - position.get(b.id)!);
   edges.sort(
     (a, b) =>
       position.get(a.teacherId)! - position.get(b.teacherId)! ||
@@ -758,7 +813,7 @@ export function buildScene(
   }
   if (placed.length >= 2 && rows.length > 0) minY = Math.min(minY, rows[0]! - COLUMN_HEADER_SPACE);
   const columnPeople = new Map<LaidOutColumn, number>();
-  for (const { at } of childOf.values()) columnPeople.set(at.column, (columnPeople.get(at.column) ?? 0) + 1);
+  for (const [id, { at }] of childOf) columnPeople.set(at.column, (columnPeople.get(at.column) ?? 0) + (stacks.get(id)?.students.length ?? 1));
 
   return {
     version: 1,

@@ -1,7 +1,8 @@
 // Moving between people with the arrow keys (plan §4.9; milestone M06, package A), pure: ↑ to a
 // teacher (a chooser with two or more drawn), ↓ to the drawn student nearest in x, ← and → to the
-// nearest person in the same rank without wrapping; the summary node "and N more" is in the
-// students' row (↓ and ←/→ reach it; ↑ from it goes to its teacher). A move with no target says why
+// nearest person in the same rank without wrapping (a column of stacked students top down, ADR
+// 0017); the summary node "and N more" is in the students' row (↓ and ←/→ reach it; ↑ from it goes
+// to its teacher). A move with no target says why
 // ("No teachers drawn in this view.", "First in this row."), for the live region.
 //
 // "Drawn" is the view's drawing, not the screen: a node off screen (onlyRenderVisibleElements) is
@@ -91,7 +92,7 @@ export function navigate(graph: NavGraph, from: string, direction: Direction): N
   // ← and →: the people in the same rank, left to right; no wrapping at either end.
   const row = [...shown.values()]
     .filter((n) => n.data.rank === node.data.rank)
-    .sort((a, b) => centreX(a) - centreX(b) || a.id.localeCompare(b.id));
+    .sort((a, b) => centreX(a) - centreX(b) || a.position.y - b.position.y || a.id.localeCompare(b.id));
   const at = row.findIndex((n) => n.id === from);
   const next = row[direction === 'left' ? at - 1 : at + 1];
   if (next) return { kind: 'move', id: next.id };
