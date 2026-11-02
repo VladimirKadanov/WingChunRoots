@@ -5,7 +5,7 @@ import { ORPCError } from '@orpc/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { configureLogger, restoreLogger } from '../log';
-import { csrfRefusal, logProcedureFailure, procedureFailureLine, sessionHeaders } from './handler';
+import { bodyRefusal, csrfRefusal, logProcedureFailure, MULTIPART_MAX_BYTES, procedureFailureLine, sessionHeaders } from './handler';
 
 const APP = 'https://wingchunroots.example';
 const post = (headers: Record<string, string>) => new Request(`${APP}/api/v1/consent/record`, { method: 'POST', headers });
@@ -116,5 +116,23 @@ describe('procedure failure log (M08 review round 1, security-6)', () => {
       spy.mockRestore();
       restoreLogger(previous);
     }
+  });
+});
+
+describe('bodyRefusal (M14: a photo upload is refused by its size before it is read)', () => {
+  const post = (headers: Record<string, string>) => new Request('http://localhost:3100/api/v1/photos/upload', { method: 'POST', headers });
+
+  it('lets JSON bodies through untouched', () => {
+    expect(bodyRefusal(post({ 'content-type': 'application/json' }))).toBeNull();
+  });
+
+  it('needs a Content-Length for a multipart body (411) and refuses one over the limit (413)', async () => {
+    const missing = bodyRefusal(post({ 'content-type': 'multipart/form-data; boundary=x' }));
+    expect(missing?.status).toBe(411);
+    expect(await missing?.json()).toMatchObject({ code: 'LENGTH_REQUIRED' });
+    const large = bodyRefusal(post({ 'content-type': 'multipart/form-data; boundary=x', 'content-length': String(MULTIPART_MAX_BYTES + 1) }));
+    expect(large?.status).toBe(413);
+    expect(await large?.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+    expect(bodyRefusal(post({ 'content-type': 'multipart/form-data; boundary=x', 'content-length': String(MULTIPART_MAX_BYTES) }))).toBeNull();
   });
 });

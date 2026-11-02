@@ -18,6 +18,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { cx } from '@/lib/cx';
 import type { StudentEntryDto, StudentsPageDto } from '@/server/dto/public';
 
+import { PersonAvatar } from '../person-avatar';
 import { studentTotalsText } from '../status';
 import { readStudents } from './expand-state';
 
@@ -35,7 +36,9 @@ function Row({ entry, note }: { entry: StudentEntryDto; note: string | null }) {
   const person = entry.person;
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-3 border-b border-border-subtle last:border-b-0">
-      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+        {/* M14: the photo's thumbnail, or the monogram. */}
+        <PersonAvatar name={person.displayName} photo={person.photo} />
         <Link href={`/people/${person.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center text-ui">
           <span lang="und-Latn" translate="no">
             {person.displayName}

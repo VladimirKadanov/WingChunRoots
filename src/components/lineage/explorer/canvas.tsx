@@ -74,9 +74,11 @@ import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
 import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
+import type { PhotoDto } from '@/server/dto/public';
 
 import { type GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
+import { PersonAvatar } from '../person-avatar';
 import { ROUTE_MARK_LABELS, RouteMark, type RouteMarkKind } from '../route-mark';
 import { announce, createAnnouncer, SELECTION_CLEARED, selectedWords, studentsOpenWords } from './announce';
 import {
@@ -123,6 +125,8 @@ export interface PersonNodeData extends Record<string, unknown> {
   root: boolean;
   /** The person's mark on the card's top edge, where the links arrive: founder, living, or not recorded as living. */
   mark: RouteMarkKind;
+  /** M14: the profile photo's addresses (the thumbnail is drawn), or null for the monogram. */
+  photo?: PhotoDto | null;
   slot: Box;
   boxes: Record<DetailLevel, Box>;
   // M06 seam: node-data (built by explorer.tsx flowBase)
@@ -185,12 +189,7 @@ const lodOf = (s: ReactFlowState): DetailLevel => (s.transform[2] >= DETAIL_ZOOM
 const detailAt = (zoom: number): DetailLevel => (zoom >= DETAIL_ZOOM.full ? 'full' : zoom >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
 
 /** The monogram of a full card (plan §4.8): the first letters of the first and the last word of the Latin name. */
-export function monogram(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const first = words[0]?.[0] ?? '';
-  const last = words.length > 1 ? words[words.length - 1]![0]! : '';
-  return (first + last).toUpperCase();
-}
+export { monogram } from '../monogram';
 
 // M06 seam: roving (the focus-loss guard)
 /** Told when a node that has the keyboard focus is about to leave the DOM (CanvasFrame's lost). */
@@ -250,9 +249,10 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
         ) : null}
         {lod === 'full' ? (
           <div className={cx('flex size-full items-center gap-2 overflow-hidden rounded-sm bg-surface-1 px-2 py-1 text-left', frame, ring)}>
-            <span aria-hidden="true" className="inline-grid size-6 shrink-0 place-items-center rounded-xs border border-border-strong text-caption leading-none font-semibold tracking-normal text-fg-muted">
-              {monogram(data.name)}
-            </span>
+            {/* M14: the photo as a small round thumbnail in the monogram's 24 px slot (the card's
+                layout, and so the columns at 390 px, stay as they were); the monogram without one.
+                Lazy: onlyRenderVisibleElements mounts only the nodes on screen. */}
+            <PersonAvatar name={data.name} photo={data.photo} size="xs" />
             <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span lang="und-Latn" translate="no" className="truncate font-display text-base leading-4.5 text-fg">

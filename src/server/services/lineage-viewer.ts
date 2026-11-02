@@ -136,6 +136,8 @@ SELECT r.id::text AS id, r.teacher_person_id::text AS teacher_id, r.student_pers
       bio: string | null;
       is_public: boolean;
       created_by_viewer: boolean;
+      photo_id: string | null;
+      photo_sha256: string | null;
     }>(
       tx,
       sql`
@@ -153,7 +155,10 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
             FROM person_name n WHERE n.person_id = p.id AND NOT n.is_primary),
          '[]'::jsonb) AS alt_names,
        (SELECT b.body FROM person_bio b WHERE b.person_id = p.id ORDER BY (b.lang = 'en') DESC, b.lang LIMIT 1) AS bio,
-       EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = p.id) AS is_public
+       EXISTS (SELECT 1 FROM v_public_person vp WHERE vp.id = p.id) AS is_public,
+       -- M14: the current photo; kept below for the viewer's own person only.
+       (SELECT ph.id::text FROM person_photo ph WHERE ph.id = p.photo_id AND ph.person_id = p.id AND ph.status = 'active') AS photo_id,
+       (SELECT ph.sha256 FROM person_photo ph WHERE ph.id = p.photo_id AND ph.person_id = p.id AND ph.status = 'active') AS photo_sha256
   FROM person p
   JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
  WHERE p.id = ANY(${`{${involved.join(',')}}`}::uuid[]) AND p.deleted_at IS NULL`,
@@ -194,6 +199,8 @@ SELECT p.id::text AS id, p.slug, p.kind, p.life_status, p.stewardship, p.country
         cityName: full ? n.city_name : null,
         bio: full ? n.bio : null,
         limited: !full,
+        // M14: a person who is not public shows a photo to their own account only.
+        photo: n.id === own?.id && n.photo_id && n.photo_sha256 ? { id: n.photo_id, sha256: n.photo_sha256 } : null,
       };
     }
     // An edge whose other end has no primary name cannot be drawn (the public views require one).

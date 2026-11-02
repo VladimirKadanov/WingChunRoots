@@ -32,6 +32,7 @@ import type {
   StudentEntryDto,
   StudentsPageDto,
 } from '../dto/public';
+import { photoOf, type PhotoRef, publicPhotoRefs } from './photo-refs';
 
 /** About 500 people per answer (plan §6.3); the rest goes to hiddenCounts. */
 export const NODE_CAP = 500;
@@ -203,6 +204,8 @@ export interface OwnNode {
   bio: string | null;
   /** Only the names: the other end of the viewer's own request that nobody has answered yet. */
   limited: boolean;
+  /** M14: the current profile photo, only for the viewer's own person (nobody else hidden has one). */
+  photo?: PhotoRef | null;
 }
 
 /**
@@ -561,6 +564,9 @@ interface PersonRow {
   stewardship: string;
   display_name: string;
   alt_names: PublicName[];
+  // M14: the current photo (v_public_person: active photos of public people only).
+  photo_id: string | null;
+  photo_sha256: string | null;
 }
 
 interface EdgeRow {
@@ -621,7 +627,7 @@ async function publicPeople(ex: Executor, ids: readonly string[]): Promise<Map<s
   if (ids.length === 0) return new Map();
   const list = await rows<PersonRow>(
     ex,
-    sql`SELECT id::text AS id, slug, life_status, stewardship, display_name, alt_names
+    sql`SELECT id::text AS id, slug, life_status, stewardship, display_name, alt_names, photo_id::text AS photo_id, photo_sha256
           FROM v_public_person WHERE id = ANY(${uuids(ids)})`,
   );
   return new Map(list.map((p) => [p.id, p]));
@@ -821,6 +827,8 @@ export async function assembleGraph(
       childCount: c.students,
       hasMoreChildren: c.students > shownStudents,
       visibility: p ? 'public' : 'involved_only',
+      // M14: a public person's photo, or the viewer's own (OwnNode.photo is set for no one else).
+      photo: p ? photoOf(p.photo_id && p.photo_sha256 ? { id: p.photo_id, sha256: p.photo_sha256 } : null) : photoOf(own!.photo),
     });
   }
 
@@ -1229,12 +1237,21 @@ export async function studentPage(
           lifeStatus: t.life_status,
           claimState: claimStateOf(t.stewardship),
           visibility: 'public' as const,
+          photo: photoFor(t.teacher_id),
         },
         lineageId: t.lineage_id,
       })),
       otherTeachersTotal: found[0]?.total ?? 0,
     };
   };
+
+  // M14: the photos of the public people of the page (v_public_person); a hidden own row's from extras.
+  const photos = await publicPhotoRefs(ex, [
+    ...list.map((s) => s.id),
+    ...[...others.values()].flat().map((t) => t.teacher_id),
+    ...ownPeople.keys(),
+  ]);
+  const photoFor = (id: string) => photoOf(photos.get(id) ?? extras.nodes[id]?.photo);
 
   const entries: StudentEntryDto[] = list.map((s) => {
     const edges = s.edges.map((e) => {
@@ -1258,6 +1275,7 @@ export async function studentPage(
         lifeStatus: s.life_status,
         claimState: claimStateOf(s.stewardship),
         visibility: 'public' as const,
+        photo: photoFor(s.id),
       },
       edges: [...edges, ...(ownOnRow.get(s.id) ?? []).map(ownEdgeDto)],
       historical: s.historical,
@@ -1280,6 +1298,7 @@ export async function studentPage(
         lifeStatus: p ? p.life_status : n!.lifeStatus,
         claimState: claimStateOf(p ? p.stewardship : n!.stewardship),
         visibility: p ? 'public' : 'involved_only',
+        photo: photoFor(studentId),
       },
       edges: edges.map(ownEdgeDto),
       historical: false,

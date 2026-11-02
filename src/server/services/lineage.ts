@@ -53,7 +53,7 @@ import {
 } from './lineage-graph';
 import { cachedAncestors, cachedEgo, cachedPaths, cachedProfile, cachedStudents, cachedSubtree } from './lineage-public';
 import { isPersonalised, loadViewer, mayViewHidden, type Viewer } from './lineage-viewer';
-import { graphPhotos, ownPhotoRef, type PhotoRef, photoOf, studentPhotos } from './photo-refs';
+import { photoOf } from './photo-refs';
 
 // --- Input: every number bounded and written as digits only ---------------------------------
 
@@ -133,15 +133,6 @@ async function resolveSlug(viewer: Viewer, value: string, deadline: ReadDeadline
   return Object.values(viewer.extras.nodes).find((n) => n.slug === value)?.id ?? null;
 }
 
-/**
- * M14: the viewer's own person's photo for an answer computed for them, which may show that person
- * while they are not public (a public person's photo comes from v_public_person in the read itself).
- */
-async function ownPhoto(viewer: Viewer): Promise<{ personId: string; ref: PhotoRef | null } | undefined> {
-  const personId = viewer.extras.personId;
-  return personId ? { personId, ref: await ownPhotoRef(personId) } : undefined;
-}
-
 // --- lineage.* ---------------------------------------------------------------------------------
 
 export async function lineageEgo(principal: Principal | null, input: EgoInput, meta?: RequestMeta): Promise<LineageGraphDto> {
@@ -151,11 +142,10 @@ export async function lineageEgo(principal: Principal | null, input: EgoInput, m
   // against what is left of it (withinBudget, lineage-graph.ts).
   const deadline = readDeadline();
   const viewer = await loadViewer(principal, deadline, { id: args.focusId });
-  const own = isPersonalised(viewer) ? await ownPhoto(viewer) : undefined;
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
-        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? graphPhotos(tx, await egoGraph(tx, args, viewer.extras), own) : null),
+        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? egoGraph(tx, args, viewer.extras) : null),
         deadline,
       )
     : await withinBudget(deadline, () => cachedEgo(args));
@@ -167,11 +157,10 @@ export async function lineageAncestors(principal: Principal | null, input: Ances
   failOnce(meta?.testFault, 'lineage-once');
   const deadline = readDeadline();
   const viewer = await loadViewer(principal, deadline, { id: input.focusId });
-  const own = isPersonalised(viewer) ? await ownPhoto(viewer) : undefined;
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
-        async (tx) => ((await visibleTo(viewer, tx, input.focusId)) ? graphPhotos(tx, await ancestorsGraph(tx, input.focusId, viewer.extras), own) : null),
+        async (tx) => ((await visibleTo(viewer, tx, input.focusId)) ? ancestorsGraph(tx, input.focusId, viewer.extras) : null),
         deadline,
       )
     : await withinBudget(deadline, () => cachedAncestors({ focusId: input.focusId }));
@@ -184,11 +173,10 @@ export async function lineageSubtree(principal: Principal | null, input: Subtree
   const args = { rootId: input.rootId, lineageId: input.lineageId ?? null, depth: input.depth };
   const deadline = readDeadline();
   const viewer = await loadViewer(principal, deadline, { id: args.rootId });
-  const own = isPersonalised(viewer) ? await ownPhoto(viewer) : undefined;
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
-        async (tx) => ((await visibleTo(viewer, tx, args.rootId)) ? graphPhotos(tx, await subtreeGraph(tx, args, viewer.extras), own) : null),
+        async (tx) => ((await visibleTo(viewer, tx, args.rootId)) ? subtreeGraph(tx, args, viewer.extras) : null),
         deadline,
       )
     : await withinBudget(deadline, () => cachedSubtree(args));
@@ -201,11 +189,10 @@ export async function lineagePaths(principal: Principal | null, input: PathsInpu
   const args = { focusId: input.focusId, limit: input.limit };
   const deadline = readDeadline();
   const viewer = await loadViewer(principal, deadline, { id: args.focusId });
-  const own = isPersonalised(viewer) ? await ownPhoto(viewer) : undefined;
   const graph = isPersonalised(viewer)
     ? await readTransaction(
         getPublicDb(),
-        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? withoutRouteIds(await graphPhotos(tx, await pathsGraph(tx, args, viewer.extras), own)) : null),
+        async (tx) => ((await visibleTo(viewer, tx, args.focusId)) ? withoutRouteIds(await pathsGraph(tx, args, viewer.extras)) : null),
         deadline,
       )
     : await withinBudget(deadline, () => cachedPaths(args));
@@ -257,7 +244,7 @@ export async function personProfile(principal: Principal | null, input: PersonIn
     visibility: 'involved_only',
     isOwn: viewer.extras.personId === id,
     // M14: a person who is not public shows a photo only to their own account.
-    photo: viewer.extras.personId === id ? photoOf(await ownPhotoRef(id)) : null,
+    photo: viewer.extras.personId === id ? photoOf(hidden.photo) : null,
     limited: hidden.limited,
     counts: {
       teachers: counts.teachers,
@@ -308,9 +295,8 @@ export async function personStudents(principal: Principal | null, input: Student
   const id = await resolveSlug(viewer, input.slug, deadline);
   if (!id) throw notFound();
   const options = { page: input.page, pageSize: input.pageSize, order: input.order };
-  const own = isPersonalised(viewer) ? await ownPhoto(viewer) : undefined;
   const page = isPersonalised(viewer)
-    ? await readTransaction(getPublicDb(), async (tx) => studentPhotos(tx, await studentPage(tx, id, options, viewer.extras), own), deadline)
+    ? await readTransaction(getPublicDb(), (tx) => studentPage(tx, id, options, viewer.extras), deadline)
     : await withinBudget(deadline, () => cachedStudents({ personId: id, ...options }));
   if (!page) throw notFound();
   return page;

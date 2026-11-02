@@ -63,6 +63,7 @@ import type { LineageEdgeDto, LineageGraphDto, LineageNodeDto } from '@/server/d
 
 import type { GenerationLabel } from '../generation';
 import { GenerationText } from '../generation-text';
+import { PersonAvatar } from '../person-avatar';
 import { LatinName, PersonLink } from '../person-name';
 import { RelationBadges, UnverifiedApprovalNote } from '../relation-list';
 import { periodText } from '../status';
@@ -252,7 +253,11 @@ export default function ExplorerPanel(props: PanelProps) {
       Students of <LatinName name={students.displayName} />
     </>
   ) : shown ? (
-    <LatinName name={shown.displayName} />
+    <span className="inline-flex items-center gap-2">
+      {/* M14: the thumbnail (or monogram); the title already says the name. */}
+      <PersonAvatar name={shown.displayName} photo={shown.photo} decorative />
+      <LatinName name={shown.displayName} />
+    </span>
   ) : (
     ''
   );
@@ -355,9 +360,13 @@ function PersonOverlay({
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
-          <LatinName name={person.displayName} />
-        </h2>
+        <div className="flex min-w-0 items-center gap-3">
+          {/* M14: the profile photo's thumbnail, or the monogram. */}
+          <PersonAvatar name={person.displayName} photo={person.photo} size="md" />
+          <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">
+            <LatinName name={person.displayName} />
+          </h2>
+        </div>
         <button type="button" aria-label="Close" onClick={close} className={closeButton}>
           <CloseIcon size={18} />
         </button>

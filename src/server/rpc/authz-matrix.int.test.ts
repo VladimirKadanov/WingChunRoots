@@ -28,11 +28,14 @@ import { uuidv7 } from '../db/ids';
 import { authSession, authUser, notification, person, personName, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleEvidenceDownload, handleEvidenceUpload } from '../evidence-http';
+import { handlePhotoRequest } from '../photo-http';
 import { writePersonKeys } from '../search/store';
 import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { recordConsents } from '../services/consent';
 import { uploadEvidence } from '../services/evidence';
+import { uploadPhoto } from '../services/photos';
+import { plainImage } from '../storage/test-images';
 import { createGrant } from '../services/grants';
 import { requestHistoricalTeacher } from '../services/historical';
 import { requestInstructorVerification } from '../services/instructor';
@@ -123,6 +126,8 @@ vi.mock('./server', async (importOriginal) => {
 
 let testDb: TestDatabase | undefined;
 const storageRoot = mkdtempSync(path.join(tmpdir(), 'wcr-authz-matrix-'));
+// M14: the photo store, apart from the evidence folder.
+const photoRoot = mkdtempSync(path.join(tmpdir(), 'wcr-authz-matrix-photos-'));
 
 // --- actors ---------------------------------------------------------------------------------------
 
@@ -258,6 +263,21 @@ async function draftSchool(opts: { pro?: boolean; status?: 'active' } = {}) {
   const saved = await createSchool(owner.principal, { name: 'Demo Matrix Hall', placeId: city.rows[0]!.id, locationPrivacy: 'city_only', idempotencyKey: key() }, meta);
   if (opts.status) await getDb().execute(sql`UPDATE school SET status = ${opts.status} WHERE id = ${saved.id}::uuid`);
   return { owner, schoolId: saved.id, slug: saved.slug, placeId: city.rows[0]!.id };
+}
+
+/** M14: a generated flat-colour image (fictional) as an upload. */
+async function photoFile(): Promise<File> {
+  return new File([new Uint8Array(await plainImage('png', 160, 120))], 'demo-photo.png', { type: 'image/png' });
+}
+
+/** M14: an account whose own person has a profile photo; its person hidden when `hidden`. */
+async function withPhoto(label: string, opts: { hidden?: boolean } = {}) {
+  const owner = await actor(label);
+  const uploaded = await uploadPhoto(owner.principal, { file: await photoFile() }, meta);
+  if (opts.hidden) await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, owner.personId!));
+  // `/api/photos/<id>/<hash>/96.webp` → the route's params.
+  const [, , , id, hash] = uploaded.photo.small.split('/');
+  return { owner, slug: owner.slug!, address: { id: id!, hash: hash!, file: '96.webp' } };
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -555,6 +575,49 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  // M14: profile photos. Reads follow the person pages (a hidden person: its own account and the
+  // reviewers); uploads are the own person's only; staff remove anyone's with a reason.
+  { path: 'photos.get', make: async () => ({ input: { slug: (await withPhoto('photo-public')).slug } }), expect: everyone },
+  {
+    path: 'photos.get (hidden person)',
+    make: async () => {
+      const p = await withPhoto('photo-hidden', { hidden: true });
+      return { owner: p.owner, input: { slug: p.slug } };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'photos.upload',
+    make: async () => ({ owner: await actor('photo-uploader'), input: null }),
+    // Staff accounts have no own person to put a photo on.
+    expect: { ...signedInOnly, owner: 'ok', member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'photos.remove',
+    make: async () => ({ owner: (await withPhoto('photo-remover')).owner, input: {} }),
+    expect: { ...signedInOnly, owner: 'ok', member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'photos.remove (another account\'s photo, with a reason)',
+    make: async () => {
+      const p = await withPhoto('photo-moderated');
+      return { owner: p.owner, input: { slug: p.slug, reason: 'A fictional moderation reason.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: 'GET /api/photos/{id}/{hash}/{file}',
+    make: async () => ({ input: (await withPhoto('photo-served')).address }),
+    expect: { anonymous: 'ok', member: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  {
+    path: 'GET /api/photos/{id}/{hash}/{file} (hidden person)',
+    make: async () => {
+      const p = await withPhoto('photo-served-hidden', { hidden: true });
+      return { owner: p.owner, input: p.address };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
   // the review queue and the archive (staff with a verified second factor)
   { path: 'review.list', make: () => ({ input: {} }), expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {
@@ -751,6 +814,29 @@ async function viaEvidenceRoute(token: string | null, row: Row, input: unknown):
   return response.ok ? 'ok' : (STATUS_CODES[response.status] ?? `HTTP ${response.status}`);
 }
 
+/** M14: GET /api/photos/<id>/<hash>/<file> with this session. */
+async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }): Promise<string> {
+  const headers = new Headers();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  const response = await handlePhotoRequest(new Request(`${TEST_APP_URL}/api/photos/${address.id}/${address.hash}/${address.file}`, { headers }), address);
+  await response.arrayBuffer();
+  return response.ok ? 'ok' : (STATUS_CODES[response.status] ?? `HTTP ${response.status}`);
+}
+
+/** M14: photos.upload as the native app sends it: multipart/form-data to /api/v1. */
+async function viaPhotoUpload(token: string | null): Promise<string> {
+  const body = new FormData();
+  body.set('file', await photoFile());
+  const encoded = new Response(body);
+  const bytes = await encoded.arrayBuffer();
+  const headers = new Headers({ 'content-type': encoded.headers.get('content-type')!, 'content-length': String(bytes.byteLength) });
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  const response = await handleApiRequest(new Request(`${TEST_APP_URL}/api/v1/photos/upload`, { method: 'POST', headers, body: bytes }), 'openapi');
+  if (response.ok) return 'ok';
+  const answer = (await response.json()) as { code?: string };
+  return answer.code ?? `HTTP ${response.status}`;
+}
+
 function principalFor(who: Who, made: Made): Actor | null | undefined {
   switch (who) {
     case 'anonymous':
@@ -767,6 +853,7 @@ function principalFor(who: Who, made: Made): Actor | null | undefined {
 beforeAll(async () => {
   process.env.EVIDENCE_STORAGE = 'filesystem';
   process.env.EVIDENCE_STORAGE_DIR = storageRoot;
+  process.env.MEDIA_STORAGE_DIR = photoRoot;
   testDb = await startAuthTestDatabase();
   // The GeoNames places (schools need a city).
   const { seedDatabase } = await import('../db/seed');
@@ -783,6 +870,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await stopAuthTestDatabase(testDb);
   rmSync(storageRoot, { recursive: true, force: true });
+  rmSync(photoRoot, { recursive: true, force: true });
 });
 
 function procedurePaths(node: Record<string, unknown>, prefix: string[] = []): string[] {
@@ -822,7 +910,13 @@ describe('the authorization matrix (M13)', () => {
         const made = await row.make(who);
         const caller = principalFor(who, made);
         if (caller === undefined) throw new Error(`${row.path}: no ${who} in the fixture`);
-        actual[who] = row.path.includes('/api/evidence') ? await viaEvidenceRoute(caller?.token ?? null, row, made.input) : await viaRpc(caller?.token ?? null, row.path, made.input);
+        actual[who] = row.path.includes('/api/evidence')
+          ? await viaEvidenceRoute(caller?.token ?? null, row, made.input)
+          : row.path.includes('/api/photos')
+            ? await viaPhotoRoute(caller?.token ?? null, made.input as { id: string; hash: string; file: string })
+            : row.path === 'photos.upload'
+              ? await viaPhotoUpload(caller?.token ?? null)
+              : await viaRpc(caller?.token ?? null, row.path, made.input);
       }
       // Line by line, so a failure shows every role's answer.
       const lines = (answers: Partial<Record<Who, string>>) => ROLES.filter((w) => row.expect[w]).map((w) => `${w}: ${answers[w]}`);
