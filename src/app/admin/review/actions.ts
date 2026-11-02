@@ -86,6 +86,8 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
   const reason = textValue(form, 'reason', 4000);
   // M11: the version of the school listing the card showed (review.decide refuses a newer one).
   const schoolVersion = textValue(form, 'schoolVersion', 24);
+  // M15: the version of the organization's application the card showed (the same check).
+  const organizationVersion = textValue(form, 'organizationVersion', 24);
   const page = casePage(caseId);
   try {
     await (await client()).review.decide({
@@ -94,6 +96,7 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
       reason: reason || null,
       idempotencyKey: key(form),
       ...(schoolVersion ? { schoolVersion } : {}),
+      ...(organizationVersion ? { organizationVersion } : {}),
     });
   } catch (error) {
     unstable_rethrow(error);

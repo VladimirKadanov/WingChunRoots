@@ -134,6 +134,15 @@ export default async function AdminPage() {
           <p className="text-sm text-fg-muted">Give and revoke test plans of the pilot, and answer pilot access requests.</p>
         </div>
       ) : null}
+      {/* M15: organizations, their approval and their plan. */}
+      {guard.principal?.user.role === 'admin' ? (
+        <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+          <Link href="/admin/organizations" className={buttonVariants({ variant: 'secondary' })} data-testid="admin-organizations-link">
+            Organizations
+          </Link>
+          <p className="text-sm text-fg-muted">Every organization’s approval and plan; give or revoke a test Federation plan.</p>
+        </div>
+      ) : null}
       <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
         <Link href="/account" className="link inline-flex min-h-11 items-center">
           Back to your account
