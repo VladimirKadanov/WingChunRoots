@@ -56,7 +56,7 @@ export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
  * sitemap, and both the public pages other specs and the visual regression compare, so they run
  * with the exclusive specs, after the ordinary run.
  */
-export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts'] as const;
+export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts', '**/m14-photos.spec.ts'] as const;
 /** Everything the `exclusive` project runs, and the ordinary projects leave out. */
 export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
 /** The pilot path of plan §2.2 (M13): only the pilot run (PW_PILOT=1) runs it. */
