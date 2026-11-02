@@ -12,8 +12,10 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ELK as ElkEngine, ElkNode } from 'elkjs/lib/elk.bundled.js';
 import { convergingPass, deferredEdges, firstPassGraph } from './converging.ts';
 import { buildElkGraph, type ElkGraphBuild } from './elk-graph.ts';
-import { ElkLayoutError } from './errors.ts';
-import { indexGraph, lineageBands, type GraphIndex } from './graph.ts';
+import { ElkLayoutError, LineageInputError } from './errors.ts';
+import { indexGraph, isObject, lineageBands, modelOrder, type GraphIndex } from './graph.ts';
+import { NODE_SIZES, layoutPresets } from './presets.ts';
+import { planStacks, type StackPlan } from './stacks.ts';
 import { computeRanksIndexed } from './ranks.ts';
 import { buildScene, type LaidOutColumn } from './scene.ts';
 import type { LayoutOptions, LayoutStats, LineageEdge, LineageGraph, RankResult, Scene } from './types.ts';
@@ -68,6 +70,29 @@ async function layOut(
 }
 
 /**
+ * The blocks of stacked students of a view (stacks.ts), with the options to lay it out: with the
+ * expand preset a block takes the previous position of its leftmost student shown before, so that
+ * semi-interactive crossing minimization keeps it where its students were.
+ */
+function stackPlan(index: GraphIndex, options: LayoutOptions): { plan: StackPlan | null; options: LayoutOptions } {
+  // Validates the options (preset, size, placement, previous positions) and gives the focus spine.
+  const ranks = computeRanksIndexed(index);
+  const view = buildElkGraph(index, ranks, options);
+  const spineNodes = view.focusId && index.nodes.has(view.focusId) ? [view.focusId, ...view.spine.map((e) => e.teacherId)] : [];
+  const { bandOf } = lineageBands(index, spineNodes);
+  const card = NODE_SIZES[view.nodeSize];
+  const gap = Number(layoutPresets[view.preset]['elk.spacing.nodeNode'] ?? 24);
+  const plan = planStacks(index, ranks, bandOf, view.focusId, new Set(spineNodes), card, gap);
+  if (!plan || !view.previous) return { plan, options };
+  const previousPositions: Record<string, { x: number; y: number }> = { ...options.previousPositions };
+  for (const stack of plan.stacks.values()) {
+    const shown = stack.students.map((id) => view.previous!.get(id)).filter((p) => p !== undefined);
+    if (shown.length > 0) previousPositions[stack.id] = shown.reduce((a, b) => (b.x < a.x ? b : a));
+  }
+  return { plan, options: { ...options, previousPositions } };
+}
+
+/**
  * Lays out a lineage view: ranks → ELK graph → scene. Returns the scene and timings.
  *
  * A view with people of two or more lineages is laid out one lineage column at a time
@@ -90,9 +115,20 @@ export async function layoutLineageWithStats(
   engine: ElkEngine = sharedElkEngine(),
 ): Promise<{ scene: Scene; stats: LayoutStats }> {
   const started = now();
-  const index = indexGraph(graph);
+  const original = indexGraph(graph);
+  const stackLeaves = isObject(options as unknown) ? options.stackLeaves : undefined;
+  if (stackLeaves !== undefined && typeof stackLeaves !== 'boolean') {
+    throw new LineageInputError('`stackLeaves` must be true or false.');
+  }
+  // With stackLeaves, the graph laid out has a block in place of the stacked students of each
+  // teacher (stacks.ts); the scene puts them back.
+  const stacking = stackLeaves === true ? stackPlan(original, options) : null;
+  const plan = stacking?.plan ?? null;
+  const laid = plan?.graph ?? graph;
+  const index = plan ? indexGraph(laid) : original;
+  const layoutOptions = stacking?.options ?? options;
   const ranks = computeRanksIndexed(index);
-  const view = buildElkGraph(index, ranks, options);
+  const view = buildElkGraph(index, ranks, layoutOptions, undefined, plan?.sizes);
   // The spine of the view, from the focus upwards: it stays in one column (lineageBands).
   const spineNodes = view.focusId && index.nodes.has(view.focusId) ? [view.focusId, ...view.spine.map((e) => e.teacherId)] : [];
   const { keys, bandOf } = lineageBands(index, spineNodes);
@@ -112,16 +148,16 @@ export async function layoutLineageWithStats(
     const routed = new Set<string>();
     const unplaced = new Set<string>();
     for (const key of keys) {
-      const people = new Set(graph.nodes.filter((n) => bandOf.get(n.id) === key).map((n) => n.id));
+      const people = new Set(laid.nodes.filter((n) => bandOf.get(n.id) === key).map((n) => n.id));
       const columnGraph: LineageGraph = {
-        ...graph,
+        ...laid,
         focusId: spineNodes.length > 0 && people.has(spineNodes[0]!) ? spineNodes[0]! : null,
-        nodes: graph.nodes.filter((n) => people.has(n.id)),
-        edges: graph.edges.filter((e) => e.kind !== 'crossLineage' && people.has(e.teacherId) && people.has(e.studentId)),
+        nodes: laid.nodes.filter((n) => people.has(n.id)),
+        edges: laid.edges.filter((e) => e.kind !== 'crossLineage' && people.has(e.teacherId) && people.has(e.studentId)),
       };
       const columnIndex = indexGraph(columnGraph);
       const spine = view.spine.filter((e) => people.has(e.teacherId) && people.has(e.studentId));
-      const build = buildElkGraph(columnIndex, ranks, { ...options, focusId: columnGraph.focusId }, spine);
+      const build = buildElkGraph(columnIndex, ranks, { ...layoutOptions, focusId: columnGraph.focusId }, spine, plan?.sizes);
       const done = await layOut(engine, columnIndex, ranks, build);
       columns.push({ key, build, laidOut: done.laidOut });
       elkMs += done.elkMs;
@@ -131,7 +167,7 @@ export async function layoutLineageWithStats(
     }
     unplacedStudents.push(...view.order.filter((id) => unplaced.has(id)));
     const position = new Map(view.order.map((id, i) => [id, i]));
-    curves = graph.edges
+    curves = laid.edges
       .filter((e) => !routed.has(e.id))
       .sort(
         (a, b) =>
@@ -140,7 +176,7 @@ export async function layoutLineageWithStats(
           (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
       );
   }
-  const scene = buildScene(graph, ranks, view, columns, curves);
+  const scene = buildScene(laid, ranks, view, columns, curves, plan ? { plan, order: modelOrder(original) } : undefined);
   return {
     scene,
     stats: {

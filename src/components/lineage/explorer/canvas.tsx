@@ -555,6 +555,8 @@ export function columnMarks(scene: Scene, nodes: readonly PersonNode[], names: R
       const key =
         label?.kind === 'lineage' ? `${label.rootId}:${label.generation}` : n.data.root && n.data.mark === 'founder' ? `${n.id}:1` : 'none';
       const row = rows.get(n.data.rank) ?? { y: n.position.y + n.data.slot.height / 2, keys: new Set<string>() };
+      // Stacked students (ADR 0017) hang below their row's line: the label stays on the line.
+      row.y = Math.min(row.y, n.position.y + n.data.slot.height / 2);
       row.keys.add(key);
       rows.set(n.data.rank, row);
     }

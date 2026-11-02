@@ -9,7 +9,7 @@ import {
   SPINE_STRAIGHTNESS,
   layoutPresets,
 } from './presets.ts';
-import type { DetailLevel, LayoutOptions, LineageEdge, NodePlacement, Point, PresetName, RankResult } from './types.ts';
+import type { DetailLevel, LayoutOptions, LineageEdge, NodePlacement, Point, PresetName, RankResult, Size } from './types.ts';
 
 /** Id of the ELK root node. Node ids of the view never collide with it: they are children. */
 export const ELK_ROOT_ID = '__lineage_root__';
@@ -60,6 +60,8 @@ export function buildElkGraph(
    * the edges of the view's spine inside the column, instead of a spine of its own.
    */
   spineOfView?: LineageEdge[],
+  /** Slots of another size than the preset's card, by node id: the blocks of stacked students (stacks.ts). */
+  sizes?: ReadonlyMap<string, Size>,
 ): ElkGraphBuild {
   if (!isObject(options as unknown)) {
     throw new LineageInputError('The layout options must be an object.');
@@ -92,19 +94,20 @@ export function buildElkGraph(
   const children: ElkNode[] = order.map((id) => {
     const rank = ranks.ranks.get(id)!;
     const prev = previous?.get(id);
+    const own = sizes?.get(id) ?? size;
     // One port at the middle of each side a card is linked by (b5 of ADR 0010): the students of a
     // teacher share one trunk, so ELK routes them as one hyperedge and gives the gap below the
     // teacher one track for all of them, not one per student.
     const node: ElkNode = {
       id,
-      width: size.width,
-      height: size.height,
+      width: own.width,
+      height: own.height,
       x: prev?.x ?? 0,
       y: rank * RANK_PSEUDO_Y,
       layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
       ports: [
-        { id: inPortId(id), x: size.width / 2, y: 0, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'NORTH' } },
-        { id: outPortId(id), x: size.width / 2, y: size.height, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'SOUTH' } },
+        { id: inPortId(id), x: own.width / 2, y: 0, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'NORTH' } },
+        { id: outPortId(id), x: own.width / 2, y: own.height, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'SOUTH' } },
       ],
     };
     if (prev) {
