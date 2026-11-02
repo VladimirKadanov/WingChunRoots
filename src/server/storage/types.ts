@@ -21,12 +21,17 @@ export interface StoredObject {
   size: number;
 }
 
+export interface GetOptions {
+  /** Aborts the request, and the body once it has begun: the store's connection is closed. */
+  signal?: AbortSignal;
+}
+
 export interface ObjectStore {
   readonly driver: 'filesystem' | 's3';
   /** Stores `body` under `key`, replacing any object there. */
   put(key: string, body: Uint8Array, options: PutOptions): Promise<void>;
   /** The object as a stream, or null when there is none. */
-  get(key: string): Promise<StoredObject | null>;
+  get(key: string, options?: GetOptions): Promise<StoredObject | null>;
   /** Removes the object; removing one that is not there is no error. */
   delete(key: string): Promise<void>;
 }

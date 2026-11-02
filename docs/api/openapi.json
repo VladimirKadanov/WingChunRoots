@@ -9060,6 +9060,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The photo store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

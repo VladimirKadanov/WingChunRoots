@@ -49,6 +49,7 @@ import { withQuota } from '../entitlements/quota';
 import { logger } from '../log';
 import { getPhotoStore, newStorageKey, type ObjectStore } from '../storage';
 import { PhotoRefused, type PhotoSize, renderProfilePhoto } from '../storage/photo';
+import { readObjectBytes } from '../storage/read';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { PHOTO_HASH_LENGTH, photoDto, publicPhotoRefs } from './photo-refs';
@@ -400,13 +401,36 @@ export async function getPhoto(principal: Principal | null, raw: z.input<typeof 
 
 // --- Serving -----------------------------------------------------------------------------------
 
-export interface PhotoFile {
-  body: ReadableStream<Uint8Array>;
-  size: number;
+/**
+ * The whole read of one rendition from the photo store, headers and body (M14, CI run
+ * 41470799646): renditions are small (a few tens of KB), so a store that takes longer has stalled,
+ * and the route answers 503 at once instead of holding the browser's request and the page's
+ * `load` event for the S3 driver's own 30 s deadlines.
+ */
+export const PHOTO_READ_TIMEOUT_MS = 5_000;
+/** No rendition comes near this; a larger object in the store is refused, never sent. */
+export const PHOTO_RENDITION_MAX_BYTES = 1024 * 1024;
+
+/** The ETag of a photo: its full content hash, so the same bytes keep the same tag. */
+export const photoEtag = (sha256: string) => `"${sha256}"`;
+
+interface PhotoFileBase {
   /** The full content hash, for the ETag. */
   sha256: string;
   /** Whether the person is public: a shared cache may then keep the answer for a while. */
   public: boolean;
+}
+
+/** The rendition's bytes, or `notModified` when the caller's If-None-Match names it (no store read). */
+export type PhotoFile = (PhotoFileBase & { notModified: false; bytes: Uint8Array<ArrayBuffer> }) | (PhotoFileBase & { notModified: true });
+
+export interface OpenPhotoOptions {
+  /** The request's If-None-Match header: a match answers notModified without reading the store. */
+  ifNoneMatch?: string | null;
+  /** The deadline of the store read (PHOTO_READ_TIMEOUT_MS). */
+  timeoutMs?: number;
+  /** The request's signal: a browser that went away ends the store read. */
+  signal?: AbortSignal;
 }
 
 const ADDRESS = {
@@ -415,15 +439,25 @@ const ADDRESS = {
   file: z.enum(PHOTO_SIZES.map((size) => `${size}.webp`) as [string, ...string[]]),
 };
 
+const etagMatches = (header: string | null | undefined, etag: string) =>
+  (header ?? '').split(',').some((tag) => {
+    const trimmed = tag.trim();
+    return trimmed === etag || trimmed === `W/${etag}` || trimmed === '*';
+  });
+
 /**
  * One rendition for GET /api/photos/<id>/<hash>/<size>.webp: only the current photo of a person
  * this viewer may see (the rule of getPhoto), and only at its current content hash. Everything
- * else is null (404): a malformed address, a replaced or removed photo, a hidden person.
+ * else is null (404): a malformed address, a replaced or removed photo, a hidden person. The
+ * rendition is read whole within `timeoutMs` (StorageError otherwise; the store's response is
+ * always read to its end or cancelled, ../storage/read.ts); a revalidation whose ETag still matches
+ * reads nothing from the store.
  */
 export async function openPhoto(
   principal: Principal | null,
   address: { id: string; hash: string; file: string },
   store: ObjectStore = getPhotoStore(),
+  options: OpenPhotoOptions = {},
 ): Promise<PhotoFile | null> {
   if (!ADDRESS.id.safeParse(address.id).success || !ADDRESS.hash.safeParse(address.hash).success || !ADDRESS.file.safeParse(address.file).success) return null;
   const size = Number(address.file.split('.')[0]) as PhotoSize;
@@ -440,7 +474,13 @@ export async function openPhoto(
     const isOwn = principal !== null && row.claimedBy === principal.user.id;
     if (!isOwn && !hasStaff2FA(principal)) return null;
   }
-  const object = await store.get(`${row.storageKey}/${size}`);
-  if (!object) return null;
-  return { body: object.body, size: object.size, sha256: row.sha256, public: isPublic };
+  // Checked after the visibility rule, so a 304 tells nobody more than a 404 would.
+  if (etagMatches(options.ifNoneMatch, photoEtag(row.sha256))) return { notModified: true, sha256: row.sha256, public: isPublic };
+  const bytes = await readObjectBytes(store, `${row.storageKey}/${size}`, {
+    timeoutMs: options.timeoutMs ?? PHOTO_READ_TIMEOUT_MS,
+    maxBytes: PHOTO_RENDITION_MAX_BYTES,
+    signal: options.signal,
+  });
+  if (!bytes) return null;
+  return { notModified: false, bytes, sha256: row.sha256, public: isPublic };
 }
