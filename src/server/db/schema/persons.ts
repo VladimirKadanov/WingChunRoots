@@ -99,8 +99,9 @@ export const personPhoto = pgTable(
     storageKey: text('storage_key').notNull(),
     // SHA-256 of the stored 512 px rendition: the content hash in the photo's address.
     sha256: text('sha256').notNull(),
-    // SHA-256 of the uploaded original (never stored itself).
-    originalSha256: text('original_sha256').notNull(),
+    // SHA-256 of the uploaded original (never stored itself). Cleared when the account is deleted
+    // (M14 review): nothing then ties the row to the file that was uploaded.
+    originalSha256: text('original_sha256'),
     // The largest rendition stored: a square of this side (at most 512, at least PHOTO_MIN_SIDE).
     width: integer('width').notNull(),
     height: integer('height').notNull(),
@@ -123,7 +124,7 @@ export const personPhoto = pgTable(
     check('person_photo_status_check', inList(t.status.name, PHOTO_STATUSES)),
     check('person_photo_storage_key_format', sql`${t.storageKey} ~ '^photos/[0-9a-f]{48}$'`),
     check('person_photo_sha256_format', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
-    check('person_photo_original_sha256_format', sql`${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
+    check('person_photo_original_sha256_format', sql`${t.originalSha256} IS NULL OR ${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
     check('person_photo_square', sql`${t.width} = ${t.height} AND ${t.width} BETWEEN 96 AND 512`),
     check('person_photo_size_check', sql`${t.sizeBytes} > 0`),
     check('person_photo_removed_has_time', sql`${t.status} <> 'removed' OR ${t.removedAt} IS NOT NULL`),

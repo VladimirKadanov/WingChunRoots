@@ -1,7 +1,8 @@
 -- Generated migration with custom SQL (M14: profile photos; docs/adr/0016-profile-photos.md):
 -- - person_photo: one row per uploaded profile photo (its random storage key, the content hash of
---   the stored rendition, the hash of the original, the square side, the uploader and, once
---   removed, who removed it and why); at most one active photo per person.
+--   the stored rendition, the hash of the original (cleared when the account is deleted), the
+--   square side, the uploader and, once removed, who removed it and why); at most one active
+--   photo per person.
 -- - person.photo_id: the current photo, or none.
 -- - v_public_person.photo_id and photo_sha256: the current photo of a public person, only while
 --   it is active, appended at the end (CREATE OR REPLACE VIEW keeps the existing columns and
@@ -13,7 +14,7 @@ CREATE TABLE "person_photo" (
 	"person_id" uuid NOT NULL,
 	"storage_key" text NOT NULL,
 	"sha256" text NOT NULL,
-	"original_sha256" text NOT NULL,
+	"original_sha256" text,
 	"width" integer NOT NULL,
 	"height" integer NOT NULL,
 	"size_bytes" integer NOT NULL,
@@ -27,7 +28,7 @@ CREATE TABLE "person_photo" (
 	CONSTRAINT "person_photo_status_check" CHECK ("status" IN ('active', 'replaced', 'removed')),
 	CONSTRAINT "person_photo_storage_key_format" CHECK ("storage_key" ~ '^photos/[0-9a-f]{48}$'),
 	CONSTRAINT "person_photo_sha256_format" CHECK ("sha256" ~ '^[0-9a-f]{64}$'),
-	CONSTRAINT "person_photo_original_sha256_format" CHECK ("original_sha256" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "person_photo_original_sha256_format" CHECK ("original_sha256" IS NULL OR "original_sha256" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "person_photo_square" CHECK ("width" = "height" AND "width" BETWEEN 96 AND 512),
 	CONSTRAINT "person_photo_size_check" CHECK ("size_bytes" > 0),
 	CONSTRAINT "person_photo_removed_has_time" CHECK ("status" <> 'removed' OR "removed_at" IS NOT NULL),

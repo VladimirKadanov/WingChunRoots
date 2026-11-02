@@ -204,6 +204,33 @@ describe('remove', () => {
     const audit = await auditOf(owner.personId);
     expect(audit.at(-1)).toMatchObject({ action: 'photo.remove', actor: moderator.account.id, reason: 'A fictional moderation reason.' });
   });
+
+  it('staff with a reason remove their own photo as staff (reason kept, audited as staff); without one, or as a member, it is the owner path', async () => {
+    const moderator = await member('photo-mod-own', { role: 'moderator' });
+    await uploadPhoto(moderator.principal, { file: await image() }, meta);
+    await removePhoto(moderator.principal, { slug: moderator.slug, reason: 'A fictional moderation reason.' }, meta);
+    let rows = await photoRows(moderator.personId);
+    expect(rows.at(-1)).toMatchObject({ status: 'removed', removedByUserId: moderator.account.id, removalReason: 'A fictional moderation reason.' });
+    expect((await auditOf(moderator.personId)).at(-1)).toMatchObject({ action: 'photo.remove', reason: 'A fictional moderation reason.', after: { by: 'staff' } });
+    // The same without a slug.
+    await uploadPhoto(moderator.principal, { file: await image() }, meta);
+    await removePhoto(moderator.principal, { reason: 'Another fictional reason.' }, meta);
+    rows = await photoRows(moderator.personId);
+    expect(rows.at(-1)).toMatchObject({ status: 'removed', removalReason: 'Another fictional reason.' });
+    expect((await auditOf(moderator.personId)).at(-1)).toMatchObject({ reason: 'Another fictional reason.', after: { by: 'staff' } });
+    // Without a reason: the owner's removal.
+    await uploadPhoto(moderator.principal, { file: await image() }, meta);
+    await removePhoto(moderator.principal, { slug: moderator.slug }, meta);
+    rows = await photoRows(moderator.personId);
+    expect(rows.at(-1)).toMatchObject({ status: 'removed', removalReason: null });
+    expect((await auditOf(moderator.personId)).at(-1)).toMatchObject({ reason: null, after: { by: 'owner' } });
+    // A member's reason on their own photo is not kept: the owner path ignores it.
+    const owner = await member('photo-own-reason');
+    await uploadPhoto(owner.principal, { file: await image() }, meta);
+    await removePhoto(owner.principal, { reason: 'A fictional note.' }, meta);
+    expect((await photoRows(owner.personId))[0]).toMatchObject({ status: 'removed', removalReason: null });
+    expect((await auditOf(owner.personId)).at(-1)).toMatchObject({ reason: null, after: { by: 'owner' } });
+  });
 });
 
 describe('visibility', () => {
@@ -245,11 +272,12 @@ describe('visibility', () => {
     const response = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`), addressOf(up.photo.small));
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/webp');
-    expect(response.headers.get('cache-control')).toMatch(/^public, max-age=\d+/);
+    expect(response.headers.get('cache-control')).toBe('public, no-cache');
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     const etag = response.headers.get('etag')!;
     const again = await handlePhotoRequest(new Request(`http://localhost${up.photo.small}`, { headers: { 'if-none-match': etag } }), addressOf(up.photo.small));
     expect(again.status).toBe(304);
+    expect(again.headers.get('cache-control')).toBe('public, no-cache');
     // A wrong content hash or size: 404.
     expect((await handlePhotoRequest(new Request('http://localhost/x'), { ...addressOf(up.photo.small), hash: '0'.repeat(16) })).status).toBe(404);
     expect((await handlePhotoRequest(new Request('http://localhost/x'), { ...addressOf(up.photo.small), file: '200.webp' })).status).toBe(404);
@@ -264,13 +292,22 @@ describe('visibility', () => {
     expect((await publicPhotoRefs(getPublicDb(), [owner.personId])).size).toBe(0);
   });
 
-  it('pnpm account:delete removes the photo with the account: the row removed, photo_id cleared, the files deleted', async () => {
+  it('pnpm account:delete removes the photo with the account: the row removed, photo_id cleared, the files deleted, no original hash kept', async () => {
     const owner = await member('photo-leaving');
+    // An earlier photo (replaced) and the current one.
+    await uploadPhoto(owner.principal, { file: await image() }, meta);
     const up = await uploadPhoto(owner.principal, { file: await image() }, meta);
-    const [before] = await photoRows(owner.personId);
+    const rows = await photoRows(owner.personId);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => /^[0-9a-f]{64}$/.test(r.originalSha256 ?? ''))).toBe(true);
+    const before = rows.find((r) => r.status === 'active');
     const { request } = await requestAccountDeletion(owner.principal, { confirm: true }, meta);
     await carryOutDeletionFromCommandLine(request.id);
-    const [row] = await photoRows(owner.personId);
+    const after = await photoRows(owner.personId);
+    expect(after).toHaveLength(2);
+    // M14 review: nothing identifies the uploaded originals any more, on any of the person's rows.
+    expect(after.map((r) => r.originalSha256)).toEqual([null, null]);
+    const row = after.find((r) => r.id === before!.id);
     expect(row).toMatchObject({ id: before!.id, status: 'removed', uploadedByUserId: null });
     expect(row!.removedAt).not.toBeNull();
     const [p] = await getDb().select({ photoId: person.photoId }).from(person).where(eq(person.id, owner.personId));

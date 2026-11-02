@@ -276,7 +276,8 @@ export async function uploadPhoto(
 
 /**
  * Removes a person's current photo: the account's own (no slug, or its own slug), or as staff with
- * a verified second factor anyone's, with a required reason. The row stays (status `removed`, who
+ * a verified second factor anyone's, with a required reason (staff who give a reason for their own
+ * person's photo remove it as staff too). The row stays (status `removed`, who
  * and when), the files go. Removing when there is no photo is a no-op that says so.
  */
 export async function removePhoto(
@@ -297,11 +298,16 @@ export async function removePhoto(
     throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
   }
   const own = await ownPerson(p.user.id);
+  const reason = (parsed.data.reason ?? '').trim();
   let target: { id: string; slug: string };
   let asStaff = false;
   if (!parsed.data.slug || (own && parsed.data.slug === own.slug)) {
     if (!own) throw new ServiceError('NOT_FOUND', NO_OWN_PERSON_MESSAGE);
     target = own;
+    // M14 review: staff with a verified second factor who give a reason remove as staff, even
+    // their own person's photo (the reason kept, the audit says staff). Without a reason, or for
+    // any other account, this is the owner's removal and a reason is not kept.
+    asStaff = hasStaff2FA(p) && reason.length > 0;
   } else {
     // Someone else's photo: staff only (a verified second factor), with a reason.
     if (!hasStaff2FA(p)) {
@@ -318,7 +324,6 @@ export async function removePhoto(
     if (!row) throw notFound();
     target = row;
   }
-  const reason = (parsed.data.reason ?? '').trim();
   if (asStaff && reason.length === 0) {
     throw new ServiceError('BAD_REQUEST', 'Say why the photo is removed: the reason is kept in the audit log.', { reason: 'Say why the photo is removed: the reason is kept in the audit log.' });
   }

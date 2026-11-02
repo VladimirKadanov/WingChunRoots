@@ -3826,7 +3826,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -9727,7 +9727,7 @@
       "table": "person_photo"
     },
     {
-      "value": "\"original_sha256\" ~ '^[0-9a-f]{64}$'",
+      "value": "\"original_sha256\" IS NULL OR \"original_sha256\" ~ '^[0-9a-f]{64}$'",
       "name": "person_photo_original_sha256_format",
       "entityType": "checks",
       "schema": "public",

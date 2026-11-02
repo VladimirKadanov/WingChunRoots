@@ -337,6 +337,9 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
           .set({ status: 'removed', removedAt: new Date(), removedByUserId: null, updatedAt: new Date() })
           .where(and(eq(personPhoto.personId, own.id), eq(personPhoto.status, 'active')))
           .returning({ id: personPhoto.id, storageKey: personPhoto.storageKey });
+        // M14 review: no row of the person (the current photo, replaced or removed ones) keeps the
+        // hash of the file the account uploaded.
+        await tx.update(personPhoto).set({ originalSha256: null, updatedAt: new Date() }).where(eq(personPhoto.personId, own.id));
         const [verified] = await tx
           .select({ id: teachingRelationship.id })
           .from(teachingRelationship)
