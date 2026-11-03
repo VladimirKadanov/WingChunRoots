@@ -2,7 +2,8 @@
 // every organization with its approval and its plan, shown apart (DEFAULT D04), and the Federation
 // plan as a test or complimentary grant (DEFAULT D09: never charged; there are no payments in the
 // pilot). Only an administrator whose session proved the second factor; audited (grant.create,
-// grant.revoke) in the transaction of the change, and the organization's admins are told.
+// grant.revoke) in the transaction of the change. No notification is sent: the organization's
+// dashboard shows its plan as it stands.
 //
 //   organizations.adminList    every organization: approval, plan, admins, open application
 //   organizations.adminGet     one organization with its grants

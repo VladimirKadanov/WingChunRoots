@@ -227,7 +227,7 @@ export function AddMemberForm({ organizationId, roles, initial }: { organization
           </option>
         ))}
       </SelectField>
-      <TextField form={formId} name="startsOn" type="date" label="Member since" state={state} optional autoComplete="off" className="max-w-[14rem]" />
+      <TextField form={formId} name="startsOn" type="date" label="Member since" state={state} optional hint="Today or earlier. Leave it empty when not known." autoComplete="off" className="max-w-[14rem]" />
       <div>
         <SubmitButton pending={pending} pendingLabel="Adding…" variant="secondary">
           Add member

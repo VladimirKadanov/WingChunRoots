@@ -21,7 +21,7 @@
 // reviews the application of an organization they applied for or administer. Lock order: the
 // organization, then its case (the order organizations.update takes the organization).
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { writeAudit } from '../audit';
 import { hasStaff2FA, requireStaff2FA } from '../auth/guards';
@@ -84,10 +84,10 @@ export async function organizationCaseView(db: Executor, organizationId: string)
 /** The organizations of these application cases, for the queue's rows: name and country. */
 export async function organizationRowsOf(db: Executor, ids: readonly string[]): Promise<Map<string, { name: string; countryCode: string | null }>> {
   const out = new Map<string, { name: string; countryCode: string | null }>();
-  for (const id of new Set(ids)) {
-    const [row] = await db.select({ name: organization.name, countryCode: organization.countryCode }).from(organization).where(eq(organization.id, id));
-    if (row) out.set(id, row);
-  }
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return out;
+  const rows = await db.select({ id: organization.id, name: organization.name, countryCode: organization.countryCode }).from(organization).where(inArray(organization.id, unique));
+  for (const row of rows) out.set(row.id, { name: row.name, countryCode: row.countryCode });
   return out;
 }
 
@@ -181,8 +181,9 @@ export async function decideOrganizationApplication(principal: Principal | null,
         .update(reviewCase)
         .set({ status: 'resolved', resolution: approve ? 'approved' : 'rejected', resolutionReason: input.reason, resolvedAt: now, updatedAt: now })
         .where(eq(reviewCase.id, c.id));
-      // An approval's note is for the reviewers; a reason to decline is the applicant's to read.
-      await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: approve && input.reason === null });
+      // The decision's note is for the reviewers: the applicant reads a decline's reason once, from
+      // the case's resolution (applicationOf), and never an approval's note.
+      await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: true });
       await recordCaseEvent(tx, { caseId: c.id, action, from: c.status, to: 'resolved', actor: p, key: input.idempotencyKey });
       const evidenceIds = ((await filesOfCases(tx, [c.id])).get(c.id) ?? []).map((f) => f.id);
       await audit(approve ? 'organization.approve' : 'organization.reject', 'organization', orgId, { status: 'pending' }, { status: approve ? 'active' : 'rejected', caseId: c.id }, evidenceIds);

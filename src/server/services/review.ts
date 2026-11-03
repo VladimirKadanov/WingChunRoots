@@ -567,7 +567,7 @@ function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: 
       : !decider
         ? (DECIDER_TEXT[kind] ?? null)
         : !mine && !admin
-          ? listing || application
+          ? listing
             ? 'Assign the case to yourself to decide it.'
             : 'Assign the case to yourself to decide it and to open the evidence.'
           : null;

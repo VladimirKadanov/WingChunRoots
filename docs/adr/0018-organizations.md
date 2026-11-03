@@ -35,7 +35,7 @@
 
 ### 5. Публичната страница (DEFAULT D03)
 
-- Изгледът `v_public_organization` (`security_barrier`): `id`, `slug`, `name`, `kind`, `country_code`, `website_url`, `approved_at`, `created_at`, `updated_at` на одобрените, неизтрити организации. `app_public_ro` чете само него; правата върху `organization`, `organization_admin`, `organization_membership` и `organization_school` са отнети.
+- Изгледът `v_public_organization` (`security_barrier`): `id`, `slug`, `name`, `kind`, `country_code`, `website_url`, `approved_at`, `created_at`, `updated_at` на одобрените, неизтрити организации. `SELECT` върху него има само `app_rw` (услугата чете през `getDb()` и подава само публичния DTO); `app_public_ro` не чете нито изгледа, нито `organization`, `organization_admin`, `organization_membership` и `organization_school` (правата са отнети), така че списъкът ѝ остава трите публични изгледа от M01.
 - Публичният DTO (`src/server/dto/organizations.ts`) съдържа само текущите членове, които са публични хора (`v_public_person`), и публичните школи (`v_public_school`) с приета връзка, **само с града** (никога точка). Ръководителят от кандидатурата не е публичен: ръководител се показва само като публичен член с роля `leader`. Член, който скрие профила си, изчезва от страницата, без да се казва нищо. Без администратори, план и документи.
 - Само DTO влиза в `'use cache'` (етикети `organizations`, `schools` и етикетите на членовете).
 

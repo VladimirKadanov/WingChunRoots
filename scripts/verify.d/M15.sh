@@ -78,7 +78,7 @@ if [ "${#M15_SQL[@]}" -eq 1 ]; then
     grep -q 'REVOKE ALL ON TABLE' '$SQL' && grep -q 'FROM app_public_ro;' '$SQL' && for t in organization organization_admin organization_membership organization_school; do grep -q \"\\\"\$t\\\"\" '$SQL' || exit 1; done"
   check "v_public_organization lists approved, undeleted organizations only, behind a security barrier" bash -c "
     grep -q 'CREATE VIEW \"v_public_organization\" WITH (security_barrier = true)' '$SQL' && grep -q \"o.\\\"status\\\" = 'active'\" '$SQL' && grep -q 'o.\"deleted_at\" IS NULL' '$SQL' &&
-    grep -q 'GRANT SELECT ON TABLE \"v_public_organization\" TO app_rw, app_public_ro;' '$SQL'"
+    grep -q 'GRANT SELECT ON TABLE \"v_public_organization\" TO app_rw;' '$SQL'"
   refute "the public view has no leader, applicant, estimate or admin column" bash -c "sed -n '/^CREATE VIEW \"v_public_organization\"/,/;/p' '$SQL' | grep -E 'leader|created_by|schools_estimate|approved_by'"
   refute "the migration stays on PostgreSQL 16+ (no uuidv7(), no virtual generated columns, no OLD/NEW in RETURNING)" \
     grep -nEi "uuidv7\(|VIRTUAL|RETURNING[^;]*\b(OLD|NEW)\." "$SQL"
@@ -186,7 +186,7 @@ int_titles=(
   'answers 404 for every read and write of another organization'
   'lists only public people; needs Federation; revoking keeps the members, links, page and user grants'
   'accept, refuse and end leave the school row as it was, and the page names only the city'
-  'app_public_ro reads v_public_organization only, and a pending organization is not in it'
+  'app_public_ro reads no organization table nor the view, and a pending organization is not in the view'
 )
 for title in "${int_titles[@]}"; do
   check "integration test: $title" grep -qF "$title" "$INT"

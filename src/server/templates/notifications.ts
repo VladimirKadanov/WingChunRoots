@@ -773,7 +773,6 @@ export const RELATIONSHIP_NOTIFICATIONS = [
   'relationship.arbitration',
 ] as const;
 
-/** Every notification template, by name (= template.name). */
 // --- Organizations (M15) -------------------------------------------------------------------------
 
 function uuidOf(template: string, key: string, payload: unknown): string {
@@ -862,6 +861,7 @@ const organizationSchoolAnswered: NotificationTemplate<{ organizationId: string;
   sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000f', decision: 'accepted' },
 };
 
+/** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,

@@ -8,7 +8,8 @@
 --   accepted or refused by the school's listing account; the school and its pin never depend on it.
 -- - review_case.organization_id and the kind organization_application, one open per organization.
 -- - v_public_organization: approved organizations only, without the applicant, the leader's name,
---   the admins, the plan or any document. app_public_ro reads it and nothing else of these tables.
+--   the admins, the plan or any document. Only app_rw reads it; app_public_ro reads none of these
+--   tables and not the view (its list stays the three public views of M01).
 -- SQL compatible with PostgreSQL 16+ (plan §3.2); ids come from the app (UUIDv7).
 CREATE TABLE "organization_admin" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,4 +92,4 @@ SELECT
   o."updated_at"
 FROM "organization" o
 WHERE o."status" = 'active' AND o."deleted_at" IS NULL;--> statement-breakpoint
-GRANT SELECT ON TABLE "v_public_organization" TO app_rw, app_public_ro;
+GRANT SELECT ON TABLE "v_public_organization" TO app_rw;

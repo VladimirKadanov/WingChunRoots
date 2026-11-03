@@ -221,7 +221,9 @@ export const addMemberInput = z.object({
     .max(10)
     .nullish()
     .transform((s) => (s ? s : null))
-    .refine((s) => s === null || parseIsoDay(s) !== null, { error: 'Enter the date as YYYY-MM-DD, or leave it empty.' }),
+    .refine((s) => s === null || parseIsoDay(s) !== null, { error: 'Enter the date as YYYY-MM-DD, or leave it empty.' })
+    // A member is current from the day they are listed; a later start would be a membership nobody can see or end.
+    .refine((s) => s === null || parseIsoDay(s) === null || s <= isoDay(new Date()), { error: 'The start date cannot be later than today.' }),
 });
 export const endMemberInput = z.object({ organizationId: z.uuid({ error: NO_ORGANIZATION }), membershipId: z.uuid({ error: 'Choose a member from the list.' }) });
 
@@ -412,7 +414,7 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
            m.role
       FROM organization_membership m
       JOIN v_public_person p ON p.id = m.person_id
-     WHERE m.organization_id = ${row.id}::uuid AND (m.ends_on IS NULL OR m.ends_on > current_date)
+     WHERE m.organization_id = ${row.id}::uuid AND (m.starts_on IS NULL OR m.starts_on <= current_date) AND (m.ends_on IS NULL OR m.ends_on > current_date)
      ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, p.display_name, p.id
      LIMIT ${ORGANIZATION_LIST_LIMIT}`);
   const ids = members.rows.map((m) => m.id);
@@ -435,7 +437,11 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
      WHERE l.organization_id = ${row.id}::uuid AND l.status = 'accepted'
      ORDER BY s.name, s.slug
      LIMIT ${ORGANIZATION_LIST_LIMIT}`);
-  tagCacheEntry([ORGANIZATIONS_TAG, SCHOOLS_TAG, ...ids.map(personTag)]);
+  // Every member's tag, the hidden ones too: a member who makes their profile public (or hides it)
+  // changes this page, and that person's tag is what the profile change invalidates.
+  const everyMember = await db.execute<{ person_id: string }>(sql`
+    SELECT DISTINCT m.person_id FROM organization_membership m WHERE m.organization_id = ${row.id}::uuid`);
+  tagCacheEntry([ORGANIZATIONS_TAG, SCHOOLS_TAG, ...everyMember.rows.map((m) => personTag(m.person_id))]);
   const approved = row.approved_at === null ? null : row.approved_at instanceof Date ? row.approved_at : new Date(row.approved_at);
   return toPublicOrganizationPage({
     slug: row.slug,
@@ -655,7 +661,7 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
     members: memberRows.flatMap((m) => {
       const person = refs.get(m.personId);
       if (!person) return [];
-      const current = m.endsOn === null || m.endsOn > today;
+      const current = membershipIsCurrent(m, today);
       return [{ id: m.id, person, role: m.role, roleLabel: MEMBER_ROLE_LABELS[m.role], startsOn: m.startsOn, endsOn: m.endsOn, current }];
     }),
     schools: links.rows.map((l) => ({ id: l.id, schoolId: l.school_id, slug: l.slug, name: l.name, city: l.city, countryCode: l.country_code, status: l.status, statusLabel: LINK_STATUS_LABELS[l.status] })),
@@ -897,12 +903,12 @@ export async function addOrganizationMember(principal: Principal | null, raw: z.
     const personId = found.rows[0]?.id;
     if (!personId) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { personSlug: 'No public profile has this address. Only people whose profile is public can be listed.' });
     const [existing] = await tx
-      .select({ id: organizationMembership.id, endsOn: organizationMembership.endsOn })
+      .select({ id: organizationMembership.id, startsOn: organizationMembership.startsOn, endsOn: organizationMembership.endsOn })
       .from(organizationMembership)
       .where(and(eq(organizationMembership.organizationId, org.id), eq(organizationMembership.personId, personId)))
       .for('update');
     const today = isoDay(new Date());
-    if (existing && (existing.endsOn === null || existing.endsOn > today)) throw new ServiceError('CONFLICT', 'This person is a member of the organization already.');
+    if (existing && !membershipHasEnded(existing, today)) throw new ServiceError('CONFLICT', 'This person is a member of the organization already.');
     const now = new Date();
     const membershipId = existing?.id ?? uuidv7();
     if (existing) {
@@ -928,6 +934,19 @@ export async function addOrganizationMember(principal: Principal | null, raw: z.
   return { membershipId: out.membershipId };
 }
 
+type MembershipDays = { startsOn: string | null; endsOn: string | null };
+/**
+ * Ended: its end has come, or it was ended before it began (ends_on = starts_on in the future, the
+ * only end a later start allows under ends_on >= starts_on).
+ */
+export function membershipHasEnded(m: MembershipDays, today: string): boolean {
+  return m.endsOn !== null && (m.endsOn <= today || (m.startsOn !== null && m.endsOn <= m.startsOn));
+}
+/** Current: begun (or no start known) and not ended; the public page uses the same rule in SQL. */
+export function membershipIsCurrent(m: MembershipDays, today: string): boolean {
+  return (m.startsOn === null || m.startsOn <= today) && !membershipHasEnded(m, today);
+}
+
 /** organizations.endMember: ends a current membership today; the row stays as history. */
 export async function endOrganizationMember(principal: Principal | null, raw: z.input<typeof endMemberInput>, meta: RequestMeta): Promise<MemberChanged> {
   const p = requireUser(principal);
@@ -942,7 +961,7 @@ export async function endOrganizationMember(principal: Principal | null, raw: z.
       .for('update');
     if (!row) throw new ServiceError('NOT_FOUND', 'No such member.');
     const today = isoDay(new Date());
-    if (row.endsOn !== null && row.endsOn <= today) throw new ServiceError('CONFLICT', 'This membership has ended already.');
+    if (membershipHasEnded(row, today)) throw new ServiceError('CONFLICT', 'This membership has ended already.');
     // A membership that starts later than today ends on its first day (ends_on >= starts_on).
     const endsOn = row.startsOn !== null && row.startsOn > today ? row.startsOn : today;
     await tx.update(organizationMembership).set({ endsOn, updatedAt: new Date() }).where(eq(organizationMembership.id, row.id));
@@ -1086,7 +1105,9 @@ export async function endSchoolLink(principal: Principal | null, raw: z.input<ty
     // a school may always leave.
     if (orgAdmin && !schoolSide) {
       const org = await organizationRow(tx, link.organizationId);
-      await requireAdministration(tx, org!);
+      // A deleted organization has no administration left: its admins see no link (as any 404).
+      if (!org) throw new ServiceError('NOT_FOUND', NO_LINK);
+      await requireAdministration(tx, org);
     }
     const now = new Date();
     await tx.update(organizationSchool).set({ status: 'ended', endedByUserId: p.user.id, endedAt: now, updatedAt: now }).where(eq(organizationSchool.id, link.id));

@@ -4,7 +4,7 @@
 // a person's visibility (DEFAULT D12); a pending organization edits only its own application;
 // member and school administration needs approval and Federation, and revoking it keeps the
 // members, the links, the page and every user's own grants (DEFAULT D08); app_public_ro reads
-// v_public_organization only, and a pending organization is not in it; a school link is answered
+// no organization table nor v_public_organization, and a pending organization is not in the view; a school link is answered
 // by the school's account and never changes the school. Fictional data only (D20).
 
 import { randomBytes } from 'node:crypto';
@@ -323,7 +323,7 @@ describe('school links (the school decides; the school never changes)', () => {
 });
 
 describe('the public role and the view', () => {
-  it('app_public_ro reads v_public_organization only, and a pending organization is not in it', async () => {
+  it('app_public_ro reads no organization table nor the view, and a pending organization is not in the view', async () => {
     const pending = await apply();
     const active = await apply();
     await approve(active.caseId);
@@ -332,6 +332,10 @@ describe('the public role and the view', () => {
         const error = await pgError(c.query(`SELECT 1 FROM ${table} LIMIT 1`));
         expect(error.code, table).toBe(PG.insufficientPrivilege);
       }
+      const denied = await pgError(c.query('SELECT 1 FROM v_public_organization LIMIT 1'));
+      expect(denied.code).toBe(PG.insufficientPrivilege);
+    });
+    await withClient(testDb!.roleUrl('app_rw'), async (c) => {
       const view = await c.query<{ id: string }>('SELECT id FROM v_public_organization');
       const ids = view.rows.map((r) => r.id);
       expect(ids).toContain(active.organizationId);
