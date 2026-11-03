@@ -52,11 +52,13 @@ export const DEMO_GALLERY: readonly { slug: string; captions: readonly (string |
 
 /**
  * M16 (D20): the demo schools' logos and room photos (generated, fictional), on `demo-` schools
- * only: a logo and two rooms for one exact-location school, one room for a city-only school.
+ * only: a logo and two rooms for one exact-location school. demo-school-city-only stays without
+ * photos: the M11 privacy check compares its public page with a twin that copies only its columns
+ * and instructors (a copied photo would carry another id); a city-only school's photos are covered
+ * by src/server/services/school-photos.int.test.ts.
  */
 export const DEMO_SCHOOL_PHOTOS: readonly { slug: string; logo: boolean; rooms: readonly (string | null)[] }[] = [
   { slug: 'demo-school-sofia', logo: true, rooms: ['Demo main training room', 'Demo wooden dummy corner'] },
-  { slug: 'demo-school-city-only', logo: false, rooms: [null] },
 ];
 
 async function putAll(store: ObjectStore, storageKey: string, files: Record<string, Uint8Array>): Promise<void> {
