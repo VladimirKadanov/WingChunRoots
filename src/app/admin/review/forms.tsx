@@ -136,6 +136,7 @@ export function DecideForm({
   initial,
   text: given,
   schoolVersion = null,
+  organizationVersion = null,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
@@ -144,6 +145,8 @@ export function DecideForm({
   text?: DecideText;
   /** M11: a school listing is decided from the version of the listing the card shows (school-review.ts). */
   schoolVersion?: string | null;
+  /** M15: an organization's application is decided from the version the card shows (organization-review.ts). */
+  organizationVersion?: string | null;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
@@ -163,6 +166,7 @@ export function DecideForm({
         <input type="hidden" name="decision" value={decision} />
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
         {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
+        {organizationVersion ? <input type="hidden" name="organizationVersion" value={organizationVersion} /> : null}
         <TextAreaField form={formId} name="reason" label={text.reason} optional={text.optional} maxLength={2000} hint={text.hint} state={state} />
         <div>
           <Button pending={pending} label={text.label} pendingLabel={text.pending} variant={text.variant} />

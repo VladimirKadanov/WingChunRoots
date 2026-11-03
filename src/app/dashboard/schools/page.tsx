@@ -16,9 +16,12 @@ import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
+import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { linkForm } from '../organization/form-ids';
 import { PIN_TEXT } from './labels';
+import { LinkAnswer } from './organization-links';
 
 export const instant = false;
 
@@ -29,12 +32,25 @@ export const metadata: Metadata = {
 
 const PAGE = '/dashboard/schools';
 
-export default async function SchoolsDashboardPage() {
+const LINK_DONE: Record<string, string> = {
+  accepted: 'The link is accepted. The organization’s page lists the school; the school and its pin did not change.',
+  refused: 'The link is refused. Nothing changed for the school.',
+  ended: 'The link ended. The school and its pin did not change.',
+};
+
+type Search = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function SchoolsDashboardPage({ searchParams }: { searchParams: Search }) {
   const guard = await guardRoute(PAGE);
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
-  const mine = await pageRead(serverClient(await headers(), guard.principal).schools.mine());
-  if (!mine) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
+  const query = await searchParams;
+  const client = serverClient(await headers(), guard.principal);
+  // M15: the organization links of this account's schools (organizations.schoolLinks).
+  const [mine, links] = await Promise.all([pageRead(client.schools.mine()), pageRead(client.organizations.schoolLinks())]);
+  if (!mine || !links) return <LoadError {...SCHOOLS_LOAD_ERROR} retryHref={PAGE} />;
+  const linkRows = await Promise.all(links.links.map(async (l) => ({ ...l, initial: await readFormResult(linkForm(l.id), query.outcome) })));
+  const linkDone = typeof query.organization === 'string' ? LINK_DONE[query.organization] : undefined;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -98,6 +114,42 @@ export default async function SchoolsDashboardPage() {
               ))}
             </ul>
           )}
+
+          {linkRows.length > 0 || linkDone ? (
+            <section id="organizations" aria-labelledby="organizations-heading" className="grid scroll-mt-3 gap-4 border-t border-border-subtle pt-6" data-testid="school-organization-links">
+              <h2 id="organizations-heading" className="font-display text-2xl">
+                Organizations
+              </h2>
+              <p className="max-w-[60ch] text-sm text-fg-muted">
+                An organization asked to list your school. Accepting shows the school on the organization’s page; it changes nothing in the school, its pin or anyone’s teachers.
+              </p>
+              {linkDone ? (
+                <p role="status" className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="organization-link-done">
+                  {linkDone}
+                </p>
+              ) : null}
+              <ul className="grid gap-3">
+                {linkRows.map((l) => (
+                  <li key={l.id} className="grid gap-2 border-b border-border-subtle pb-4" data-testid="organization-link" data-status={l.status}>
+                    <p className="[overflow-wrap:anywhere]">
+                      {l.organization.public ? (
+                        <Link href={`/organizations/${l.organization.slug}`} className="link inline-flex min-h-11 items-center font-semibold">
+                          {l.organization.name}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold">{l.organization.name}</span>
+                      )}
+                    </p>
+                    <p className="text-sm text-fg-muted">
+                      {l.organization.kindLabel}
+                      {l.organization.countryCode ? `, ${l.organization.countryCode}` : ''} · {l.school.name} · {l.statusLabel}
+                    </p>
+                    <LinkAnswer linkId={l.id} pending={l.status === 'pending'} context={`${l.organization.name}, ${l.school.name}`} initial={l.initial} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
         </div>
       </div>
     </div>

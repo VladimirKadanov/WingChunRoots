@@ -85,6 +85,8 @@ export const REVIEW_CASE_KINDS = [
   'profile_report',
   'school_listing',
   'deletion_request',
+  // M15: an organization's application (organization-review.ts).
+  'organization_application',
 ] as const;
 export const REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info', 'resolved', 'dismissed'] as const;
 /** M10a: the statuses of a case that still waits for a decision. */
@@ -136,10 +138,26 @@ export const SCHOOL_STATUSES = ['draft', 'pending_review', 'active', 'hidden', '
 export const SCHOOL_FORMS = ['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do'] as const;
 export const SCHOOL_INSTRUCTOR_ROLES = ['head_instructor', 'instructor', 'assistant'] as const;
 
-// --- Organizations (skeleton; DEFAULT D12) ----------------------------------------------------------
+// --- Organizations (M01 skeleton; M15 application, review and administration; DEFAULT D12) -------------
 export const ORGANIZATION_KINDS = ['federation', 'association', 'school_group'] as const;
-export const ORGANIZATION_STATUSES = ['pending', 'active', 'suspended'] as const;
+/**
+ * M15: an application waits for review (`pending`), is approved (`active`) or declined
+ * (`rejected`); `suspended` is kept from M01 for moderation. Only an active organization is public
+ * (v_public_organization). Approval is not a plan and not a verification of anyone (DEFAULT D04).
+ */
+export const ORGANIZATION_STATUSES = ['pending', 'active', 'suspended', 'rejected'] as const;
+/** The role of a person in an organization (organization_membership): history, never authority (D12). */
 export const ORGANIZATION_ROLES = ['leader', 'admin', 'member'] as const;
+/** M15: the authority of an account over an organization (organization_admin), apart from membership (D12). */
+export const ORGANIZATION_ADMIN_ROLES = ['owner', 'admin'] as const;
+/**
+ * M15: a link between an organization and a school. The organization asks (`pending`), the school's
+ * listing account accepts or refuses; either side ends an accepted link (`ended`). The school and its
+ * pin never change with it (DEFAULT D12).
+ */
+export const ORGANIZATION_SCHOOL_STATUSES = ['pending', 'accepted', 'refused', 'ended'] as const;
+/** M15: the most affiliated schools an application may name (an approximate number). */
+export const ORGANIZATION_SCHOOLS_ESTIMATE_MAX = 100_000;
 
 // --- Entitlements (plan §6.5) ----------------------------------------------------------------------
 export const PLAN_CODES = ['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] as const;

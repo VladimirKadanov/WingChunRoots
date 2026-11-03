@@ -35,6 +35,7 @@ export const ISOLATED = [
   'src/server/forms/two-factor.test.ts',
   'src/server/rpc/api-parity.test.ts',
   'src/server/services/lineage-graph.test.ts',
+  'src/server/services/organizations.test.ts',
 ];
 
 const UNIT = ['src/**/*.test.{ts,tsx}', 'e2e/**/*.test.ts', 'scripts/**/*.test.ts'];

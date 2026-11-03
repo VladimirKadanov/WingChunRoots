@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02, M07, M08, M09, M10a, M11 and M14; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07, M08, M09, M10a, M11, M14 and M15; later milestones add theirs (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -63,7 +63,20 @@ export type AuditAction =
   // M14: profile photos (docs/adr/0016-profile-photos.md). The rows carry photo ids, sizes and
   // hashes, never a storage key or a file name; a staff removal keeps its reason.
   | 'photo.upload'
-  | 'photo.remove';
+  | 'photo.remove'
+  // M15: organizations (docs/adr/0018-organizations.md). The rows carry ids, statuses and the names
+  // of the fields that changed, never a leader's name, a website or an e-mail address.
+  | 'organization.apply'
+  | 'organization.update'
+  | 'organization.approve'
+  | 'organization.reject'
+  | 'organization.admin_add'
+  | 'organization.admin_remove'
+  | 'organization.member_add'
+  | 'organization.member_end'
+  | 'organization.school_request'
+  | 'organization.school_answer'
+  | 'organization.school_end';
 
 export interface AuditEntry {
   action: AuditAction;

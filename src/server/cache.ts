@@ -18,13 +18,15 @@
 //
 //   schools        every public answer about schools (M11): the finder's list and the school pages;
 //                  a listing, a Professional Sifu grant or an account type that changes drops it.
+//   organizations  every public answer about organizations (M15): the list and the organization
+//                  pages; an approval, an edit, a member or a school link that changes drops it.
 //
 // The services that change these records (M09 onwards) call invalidatePublic(). Answers for a
 // signed-in participant with their own involved_only relationships are never cached.
 
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
-export { EXPLORE_START_TAG, lineageMembershipTag, lineageTag, personTag, SCHOOLS_TAG } from './cache-tags';
+export { EXPLORE_START_TAG, lineageMembershipTag, lineageTag, ORGANIZATIONS_TAG, personTag, SCHOOLS_TAG } from './cache-tags';
 
 /** Next.js takes at most 128 tags per cacheTag() call (later calls append). */
 const MAX_TAGS_PER_CALL = 128;

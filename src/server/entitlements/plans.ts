@@ -499,6 +499,16 @@ export function plansFor(audience: PlanDefinition['audience']): PlanDefinition[]
  */
 export const GRANTABLE_PLANS: readonly PlanCode[] = ['premium_student', 'pro_sifu'];
 
+/**
+ * M15: the plans an admin may give an organization as a test or complimentary plan: Federation
+ * only. DEFAULT D09: its price stays a proposal ("Proposed price (not final)") and nothing is ever
+ * charged; the plan itself stays 'planned' on /plans, since bulk import, the heatmap and the other
+ * Federation features are later milestones. In M15 the grant opens the organization's member and
+ * school administration (src/server/services/organizations.ts), and revoking it hides only that
+ * (DEFAULT D08).
+ */
+export const ORGANIZATION_GRANTABLE_PLANS: readonly PlanCode[] = ['federation'];
+
 /** "$19 a month", "$99 a month or $990 a year", and "Free" for a plan without a price. */
 export function formatPrice(price: PlanPrice): string {
   if (price.monthlyUsd === 0) return 'Free';

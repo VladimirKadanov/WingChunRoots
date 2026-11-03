@@ -114,6 +114,17 @@ export const ROUTES: readonly AppRoute[] = [
   // run, so it is not in the visual regression; its screenshots come from a screen state
   // (e2e/screenshots.spec.ts) with the fictional archives of e2e/helpers/ops.ts.
   { path: '/admin/system', name: 'admin-system', status: 200, milestone: 'M12', signInAs: 'admin' },
+  // M15: organizations. The public list and a seeded demo organization's page (demo-federation-north
+  // lists two seeded public members); the account's organizations and the application form as an
+  // account that administers none (demo-root-a: the tests that apply use accounts of their own, in
+  // the exclusive run); and the administrators' list. Not key screens yet: their baselines come
+  // from a CI run (docs/plan/M15-organizations.md).
+  { path: '/organizations', name: 'organizations', status: 200, milestone: 'M15' },
+  { path: '/organizations/demo-federation-north', name: 'organization', status: 200, milestone: 'M15' },
+  { path: '/organizations/demo-not-an-organization', name: 'organization-not-listed', status: 200, milestone: 'M15' },
+  { path: '/dashboard/organization', name: 'dashboard-organization', status: 200, milestone: 'M15', signInAs: 'user' },
+  { path: '/dashboard/organization/apply', name: 'dashboard-organization-apply', status: 200, milestone: 'M15', signInAs: 'user' },
+  { path: '/admin/organizations', name: 'admin-organizations', status: 200, milestone: 'M15', signInAs: 'admin' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

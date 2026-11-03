@@ -57,6 +57,8 @@ const columns = helper.columns([
                 </>
               ) : row.school ? (
                 <>school {row.school.name}, </>
+              ) : row.organization ? (
+                <>organization {row.organization.name}, </>
               ) : row.subject ? (
                 <>
                   {subjectRole(row).spoken} <NameText name={row.subject.name} />,{' '}
@@ -86,6 +88,18 @@ const columns = helper.columns([
             <span className="text-sm text-fg-muted">
               {row.school.city}, {row.school.countryCode}
             </span>
+          </span>
+        );
+      }
+      // M15: an organization's application names the organization and its country.
+      if (row.organization) {
+        return (
+          <span className="grid gap-0.5" data-testid="case-organization">
+            <span>
+              <span className="text-sm text-fg-muted">Organization </span>
+              {row.organization.name}
+            </span>
+            {row.organization.countryCode ? <span className="text-sm text-fg-muted">{row.organization.countryCode}</span> : null}
           </span>
         );
       }

@@ -33,7 +33,7 @@ export type QuotaTransaction = Parameters<Parameters<Database['transaction']>[0]
  * two spellings of one id count the same rows and must take the same lock.
  */
 export function quotaLockKey(subject: EntitlementSubject, key: FeatureKey): bigint {
-  const id = subject.userId.toLowerCase();
+  const id = (subject.kind === 'user' ? subject.userId : subject.organizationId).toLowerCase();
   const digest = createHash('sha256').update(`wingchunroots:quota:v1:${key}:${subject.kind}:${id}`).digest();
   let high = digest.readInt32BE(0);
   // Keep clear of the int4 key space: upper half neither 0x00000000 nor 0xFFFFFFFF.
