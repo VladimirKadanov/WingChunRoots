@@ -1,11 +1,10 @@
 /**
- * Milestone M16: galleries (docs/adr/0019-galleries.md). The seeded gallery of demo-two-lineages
- * (D20: generated images) opens in its viewer with the keyboard (Enter, the arrow keys, Esc, the
- * focus back on the photo) and by touch-sized buttons; a new account adds a photo with the
- * keyboard on /dashboard/photos, captions it, meets its Free Student limit (the upgrade prompt,
+ * Milestone M16: galleries (docs/adr/0019-galleries.md), the specs that write. A new account adds
+ * a photo with the keyboard on /dashboard/photos, captions it, meets its Free Student limit (the upgrade prompt,
  * only there) and removes it; a Sifu adds a logo and a room photo to their school, whose public
- * page then shows them, and no served rendition carries the photo's GPS position. axe runs on the
- * profile with the viewer open and on both management pages, in both themes. Every image is
+ * page then shows them, and no served rendition carries the photo's GPS position. axe runs on both
+ * management pages, in both themes. The viewer of a seeded gallery, which writes nothing, is
+ * e2e/m16-gallery-viewer.spec.ts (desktop and phone projects). Every image is
  * generated here: a flat colour, nothing of a real person.
  *
  * The school becomes public and a new public profile is made, which changes pages other specs and
@@ -29,8 +28,6 @@ test.beforeEach(async ({ context }) => {
   await giveOwnAddress(context);
 });
 
-const SEEDED = '/people/demo-two-lineages';
-
 /** Moves the focus with Tab until the focused element has `testId` (at most `max` steps). */
 async function tabTo(page: Page, testId: string, max = 120) {
   for (let i = 0; i < max; i++) {
@@ -39,54 +36,6 @@ async function tabTo(page: Page, testId: string, max = 120) {
   }
   throw new Error(`Tab never reached ${testId}`);
 }
-
-test('@M16 the profile gallery opens in its viewer with the keyboard: Enter, the arrow keys, Esc, and the focus back on the photo', async ({ page }) => {
-  await page.goto(SEEDED);
-  const grid = page.getByTestId('profile-gallery').getByTestId('gallery-grid');
-  await expect(grid).toBeVisible();
-  const links = grid.locator('a[data-gallery-photo]');
-  const count = await links.count();
-  expect(count).toBeGreaterThanOrEqual(2);
-  // Every thumbnail has its alt text (the caption, or the name and its place), and a 44 px target.
-  for (let i = 0; i < count; i++) {
-    await expect(links.nth(i).locator('img')).toHaveAttribute('alt', /\S/);
-    const box = await links.nth(i).boundingBox();
-    expect(box!.width).toBeGreaterThanOrEqual(44);
-    expect(box!.height).toBeGreaterThanOrEqual(44);
-  }
-
-  await links.first().focus();
-  await page.keyboard.press('Enter');
-  const title = page.getByTestId('gallery-viewer-title');
-  await expect(title).toHaveText(`Photo 1 of ${count}`);
-  const image = page.getByTestId('gallery-viewer-image');
-  await expect(image).toHaveAttribute('alt', /\S/);
-  await expect(image).toHaveAttribute('src', /\/full\.webp$/);
-  // The arrow keys move while the focus is inside the viewer; the buttons do the same.
-  await page.keyboard.press('ArrowRight');
-  await expect(title).toHaveText(`Photo 2 of ${count}`);
-  await page.keyboard.press('ArrowLeft');
-  await expect(title).toHaveText(`Photo 1 of ${count}`);
-  const next = page.getByTestId('gallery-next');
-  const nextBox = await next.boundingBox();
-  expect(nextBox!.height).toBeGreaterThanOrEqual(44);
-  await next.click();
-  await expect(title).toHaveText(`Photo 2 of ${count}`);
-  await page.getByTestId('gallery-previous').click();
-  await expect(title).toHaveText(`Photo 1 of ${count}`);
-
-  // axe with the viewer open, in both themes.
-  for (const theme of THEMES) {
-    await switchColorScheme(page, theme);
-    await expectNoAxeViolations(page, `profile gallery viewer (${theme})`);
-  }
-
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('gallery-viewer')).toHaveCount(0);
-  await expect(links.first()).toBeFocused();
-  // No new window, no pop-up: the page is the same one.
-  expect(page.context().pages()).toHaveLength(1);
-});
 
 test('@M16 an owner adds a photo with the keyboard, captions it, meets the Free Student limit, and removes it', async ({ page }) => {
   test.setTimeout(120_000);

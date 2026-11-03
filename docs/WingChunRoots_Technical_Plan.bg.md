@@ -1074,6 +1074,7 @@ M00 копира този подраздел дословно в `docs/plan/RULE
 | M13 | [`docs/plan/M13-pilot-acceptance.md`](plan/M13-pilot-acceptance.md) — Приемане на пилота (локално) | `m13-pilot-acceptance` | 40 хода | D20, D23, D24 |
 | M14 | [`docs/plan/M14-profile-photos.md`](plan/M14-profile-photos.md) — Снимки на профила (искане на собственика от 02.11.2026, след Фаза 1) | `m14-profile-photos` | — | D07, D20 |
 | M15 | [`docs/plan/M15-organizations.md`](plan/M15-organizations.md) — Организации (искане на собственика от 02.11.2026, след Фаза 1) | `m15-organizations` | — | D03, D04, D08, D09, D12, D13, D25 |
+| M16 | [`docs/plan/M16-galleries.md`](plan/M16-galleries.md) — Галерии (решения на собственика от 03.11.2026, след Фаза 1) | `m16-galleries` | — | D07, D13, D20 |
 | Отложен | [`docs/plan/deferred-hosting.md`](plan/deferred-hosting.md) — Хостинг и разгръщане (след решение на собственика) | — | — | D24 |
 
 ---

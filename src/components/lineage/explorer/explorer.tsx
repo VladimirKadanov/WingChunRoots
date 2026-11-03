@@ -353,11 +353,12 @@ function skeletonRows(graph: LineageGraphDto | null, showHistorical: boolean): n
   }
 }
 
+/** A slot per person, as wide as a full card (NODE_SIZES.full: 264 px since M16, docs/adr/0019-galleries.md). */
 function SkeletonRows({ rows }: { rows: number[] }) {
   return rows.slice(0, 8).map((count, i) => (
     <div key={i} data-skeleton-row={i} className="flex max-w-full justify-center gap-3 overflow-hidden">
       {Array.from({ length: Math.min(count, 7) }, (_, j) => (
-        <div key={j} className="h-16 w-[200px] max-w-[42vw] shrink-0 animate-pulse rounded-sm border border-border-subtle bg-surface-2 motion-reduce:animate-none" />
+        <div key={j} className="h-16 w-[264px] max-w-[42vw] shrink-0 animate-pulse rounded-sm border border-border-subtle bg-surface-2 motion-reduce:animate-none" />
       ))}
     </div>
   ));
