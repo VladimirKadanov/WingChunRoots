@@ -11,20 +11,28 @@
 // next to it or names the surrounding element (list rows, school instructors, the explorer's
 // cards, panel and students list, the search palette), so a screen reader does not read the name
 // twice (M14 review). The monogram is always decorative (aria-hidden): the name is next to it.
+//
+// M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): on the explorer's full card the
+// picture is no longer a small round thumbnail but a square on the card's leading edge whose side
+// is the card's height (`card`: it fills the card's height, flush with its edge, a line between it
+// and the text; the card clips its corners). The monogram stays in the same square. The lists,
+// the panel, the search results and the profile keep their round thumbnails.
 
 import { cx } from '@/lib/cx';
 import type { PhotoDto } from '@/server/dto/public';
 import { monogram } from './monogram';
 
 const SIZES = {
-  /** The explorer's full card (the monogram's old 24 px slot) and the rows of the relation lists. */
-  xs: { px: 24, text: 'text-caption' },
-  /** The explorer's students list, search results and school pages. */
-  sm: { px: 32, text: 'text-xs' },
-  /** The explorer's selection panel. */
-  md: { px: 40, text: 'text-sm' },
+  /** A small round thumbnail (M14's card size; kept for a caller that needs one). */
+  xs: { px: 24, text: 'text-caption', square: false },
+  /** A round thumbnail of 32 px. */
+  sm: { px: 32, text: 'text-xs', square: false },
+  /** A round thumbnail of 40 px. */
+  md: { px: 40, text: 'text-sm', square: false },
   /** The profile's header, beside the name. */
-  lg: { px: 96, text: 'text-3xl' },
+  lg: { px: 96, text: 'text-3xl', square: false },
+  /** M16: the explorer's full card, a square as high as the card (NODE_SIZES.full.height) on its leading edge. */
+  card: { px: 64, text: 'text-xl', square: true },
 } as const;
 
 export type AvatarSize = keyof typeof SIZES;
@@ -47,7 +55,11 @@ export function PersonAvatar({
   decorative?: boolean;
   className?: string;
 }) {
-  const { px, text } = SIZES[size];
+  const { px, text, square } = SIZES[size];
+  // M16: a card's square fills the card's height, flush with its leading edge (the card's own
+  // border and rounded corners frame it), with a line between it and the text.
+  const shape = square ? 'self-stretch rounded-none border-0 border-r' : 'rounded-full border';
+  const box = square ? { height: '100%', width: 'auto', aspectRatio: '1 / 1' } : { width: px, height: px };
   if (photo) {
     return (
       // A plain <img>: the app serves the WebP renditions itself (GET /api/photos/...), already
@@ -62,8 +74,9 @@ export function PersonAvatar({
         loading={size === 'lg' ? 'eager' : 'lazy'}
         decoding="async"
         data-person-photo=""
-        className={cx('shrink-0 rounded-full border border-border-strong bg-surface-2 object-cover', className)}
-        style={{ width: px, height: px }}
+        data-shape={square ? 'square' : 'round'}
+        className={cx('shrink-0 border-border-strong bg-surface-2 object-cover', shape, className)}
+        style={box}
       />
     );
   }
@@ -71,12 +84,14 @@ export function PersonAvatar({
     <span
       aria-hidden="true"
       data-person-monogram=""
+      data-shape={square ? 'square' : 'round'}
       className={cx(
-        'inline-grid shrink-0 place-items-center rounded-xs border border-border-strong leading-none font-semibold tracking-normal text-fg-muted',
+        'inline-grid shrink-0 place-items-center border-border-strong leading-none font-semibold tracking-normal text-fg-muted',
+        square ? shape : 'rounded-xs border',
         text,
         className,
       )}
-      style={{ width: px, height: px }}
+      style={box}
     >
       {monogram(name)}
     </span>

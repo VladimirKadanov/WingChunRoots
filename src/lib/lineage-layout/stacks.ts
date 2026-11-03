@@ -33,7 +33,7 @@ import type { LineageEdge, LineageGraph, LineageNode, Point, RankResult, Size } 
 /** The fewest leaf students of one teacher that are stacked: two stand in a row as wide as a block. */
 export const STACK_MIN = 3;
 
-/** Columns of a block: one lane in the middle reaches both, and a block fits a 390 px phone like two cards. */
+/** Columns of a block: one lane in the middle reaches both, and a block is as wide as two cards of a row. */
 export const STACK_COLUMNS = 2;
 
 /** The gap between two tiers of a block, in px: the turn to a student runs along its middle, 12 px from each card. */

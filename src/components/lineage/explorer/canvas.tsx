@@ -4,7 +4,7 @@
 // layout worker computed. It is a client island of its own, loaded with next/dynamic only on
 // /explore, so neither React Flow nor ELK is in any other page's JavaScript.
 //
-// - Nodes are fixed slots (200×64, plan §4.5), so nothing waits for the DOM to be measured. Their
+// - Nodes are fixed slots (264×64 since M16, plan §4.5), so nothing waits for the DOM to be measured. Their
 //   level of detail follows the zoom (plan §4.8): a full card from 0.75, a compact chip from 0.4,
 //   a dot below (with a name only for the focus, the selection and the lineage root).
 //   onlyRenderVisibleElements keeps the DOM to what is on screen.
@@ -248,12 +248,13 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
           </span>
         ) : null}
         {lod === 'full' ? (
-          <div className={cx('flex size-full items-center gap-2 overflow-hidden rounded-sm bg-surface-1 px-2 py-1 text-left', frame, ring)}>
-            {/* M14: the photo as a small round thumbnail in the monogram's 24 px slot (the card's
-                layout, and so the columns at 390 px, stay as they were); the monogram without one.
+          <div className={cx('flex size-full items-stretch overflow-hidden rounded-sm bg-surface-1 text-left', frame, ring)}>
+            {/* M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): the photo is a square on
+                the card's leading edge whose side is the card's height (NODE_SIZES.full: 264×64, the
+                200 px of text and the 64 px square); the monogram without one, in the same square.
                 Lazy: onlyRenderVisibleElements mounts only the nodes on screen. */}
-            <PersonAvatar name={data.name} photo={data.photo} size="xs" decorative />
-            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <PersonAvatar name={data.name} photo={data.photo} size="card" decorative />
+            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2 py-1">
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span lang="und-Latn" translate="no" className="truncate font-display text-base leading-4.5 text-fg">
                   {data.name}
@@ -984,7 +985,7 @@ export function wholeFitZoom(people: readonly Box[], pane: { width: number; heig
   return reactFlowFit(people.reduce(union), pane).zoom;
 }
 
-/** The margin a first view keeps from the pane's edges: a whole-view fit's padding; on a phone the overlays' inset, so that two full cards fit side by side at 390 px. */
+/** The margin a first view keeps from the pane's edges: a whole-view fit's padding; on a phone the overlays' inset (two full cards fitted side by side at 390 px until M16's wider card; questions/M16.md). */
 function marginOf(pane: Pane): { x: number; y: number } {
   if (pane.width < NARROW_PANE) return { x: OVERLAY_GAP, y: OVERLAY_GAP };
   // React Flow's: the pane / (1 + padding) inside it.
@@ -1118,7 +1119,7 @@ export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pa
  * (wholeViewStart): one whose drawn people the pane shows whole at READABLE_ZOOM or more.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
- * overlays' inset, so that two full cards fit side by side at 390 px) and clear of the overlays
+ * overlays' inset; two full cards fitted side by side at 390 px until M16's wider card) and clear of the overlays
  * (`pane.overlays`, the legend and the zoom buttons): on a phone the legend spans the pane and the
  * zoom buttons stand above it, so a frame that reached the pane's bottom edge would be hidden there.
  * Only what is drawn counts: `hidden` holds the people and links hidden by default (ended training).

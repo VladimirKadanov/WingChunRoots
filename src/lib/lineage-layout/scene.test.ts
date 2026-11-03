@@ -41,12 +41,16 @@ function slot(id: string, rank: number, x: number, y: number): SceneNode {
 }
 
 /**
- * Two rows of cards 224 px apart (a card and the 24 px gap between two cards), with a gap of
+ * Two rows of cards a card and the 24 px gap between two cards apart (264 + 24 = 288 px since
+ * M16's square photo; 224 before), with a gap of
  * `gap` px between the rows: 60 px is the least ELK leaves (`nodeNodeBetweenLayers`), and edges
  * routed between the rows widen it.
  */
+/** The distance between two neighbouring cards of a row: a card and the gap between two cards. */
+const PITCH = NODE_SIZES.full.width + 24;
+
 function twoRows(count: number, gap = 60): SceneNode[][] {
-  return [0, 1].map((rank) => Array.from({ length: count }, (_, i) => slot(`demo-${rank}-${i}`, rank, i * 224, rank * (64 + gap))));
+  return [0, 1].map((rank) => Array.from({ length: count }, (_, i) => slot(`demo-${rank}-${i}`, rank, i * PITCH, rank * (64 + gap))));
 }
 
 /**
@@ -86,13 +90,16 @@ async function lineageViews(root: AnchorSlug, lineage: string, maxStudentsPerTea
 }
 
 describe('bezierBetween: a curve to a teacher from another lineage (plan §4.6, screens-1)', () => {
-  // The longest runs that a curve can drop out of the rows for: 12 cards in the lowest gap, 100 in a 200 px one.
+  // The longest runs that a curve can drop out of the rows for: 2688 px in the lowest gap (12 cards
+  // of 200 px before M16), 22400 px in a 200 px one (100 such cards). The limit is the curve's, in
+  // px; with M16's wider card (264 px, docs/adr/0019-galleries.md) the cases keep runs at least as
+  // long: 10 cards (2880 px) and 78 (22464 px).
   it.each([
     [2, 60],
     [3, 60],
-    [12, 60],
+    [10, 60],
     [18, 100],
-    [100, 200],
+    [78, 200],
   ])('runs along the gap above the student, not behind the cards of either row (%i cards apart, %i px gap)', (apart, gap) => {
     const [above, below] = twoRows(apart + 2, gap);
     const teacher = above![0]!;
@@ -233,7 +240,7 @@ describe('bezierLabelPoint: where "Teacher in {lineage}" goes (plan §4.6, graph
     }
   });
 
-  it.each([3, 12, 160])('puts the label of a long curve on its run beside the student, clear of both rows (%i cards apart)', (apart) => {
+  it.each([3, 12, 125])('puts the label of a long curve on its run beside the student, clear of both rows (%i cards apart)', (apart) => {
     const [above, below] = twoRows(apart + 2);
     const teacher = above![0]!;
     const student = below![apart]!;

@@ -150,7 +150,7 @@ export interface Box extends Point, Size {}
 export interface LayoutOptions {
   /** ELK settings to use; default `explorer`. */
   preset?: PresetName;
-  /** Size of the slot every node gets in the layout; default `full` (200×64). */
+  /** Size of the slot every node gets in the layout; default `full` (264×64 since M16). */
   nodeSize?: DetailLevel;
   /** Focused person; default `graph.focusId`. Its spine gets straight edges (plan §4.5). */
   focusId?: string | null;
