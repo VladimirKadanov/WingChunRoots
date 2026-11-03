@@ -12,7 +12,7 @@ export const RANK_PSEUDO_Y = 200;
 
 /** Fixed node sizes for the three levels of detail (plan §4.5); no DOM measuring. */
 export const NODE_SIZES: Readonly<Record<DetailLevel, Size>> = {
-  full: { width: 200, height: 64 },
+  full: { width: 264, height: 64 }, // M16: 200 + the 64 px square photo on its leading edge (docs/adr/0019-galleries.md)
   compact: { width: 120, height: 36 },
   dot: { width: 24, height: 24 },
 };

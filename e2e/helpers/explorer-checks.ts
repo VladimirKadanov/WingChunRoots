@@ -76,7 +76,7 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Brings a node to a full card with the explorer's own Zoom in button, as a person does, when the
- * view opened at a lower level of detail. Only a full card, from zoom 0.75, shows the generation
+ * view opened at a lower level of detail. Only a full card, from zoom 0.75 (on a phone from about 0.576, M16 Q2), shows the generation
  * line and the chips (plan §4.8); a phone whose fitted zoom is lower starts with compact chips
  * (owner question 3 of docs/plan/questions/M05.md, the shipped default: 0.70 at the 393×659 of
  * the iPhone 15 profile, and lower where the view is fitted clear of the legend, ADR 0009 item 5).

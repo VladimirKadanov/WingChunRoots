@@ -4,8 +4,9 @@
 // layout worker computed. It is a client island of its own, loaded with next/dynamic only on
 // /explore, so neither React Flow nor ELK is in any other page's JavaScript.
 //
-// - Nodes are fixed slots (200×64, plan §4.5), so nothing waits for the DOM to be measured. Their
-//   level of detail follows the zoom (plan §4.8): a full card from 0.75, a compact chip from 0.4,
+// - Nodes are fixed slots (264×64 since M16, plan §4.5), so nothing waits for the DOM to be measured. Their
+//   level of detail follows the zoom (plan §4.8): a full card from 0.75 (on a phone from
+//   PHONE_FULL_ZOOM, 0.576, owner decision 2026-11-03, questions/M16.md Q2), a compact chip from 0.4,
 //   a dot below (with a name only for the focus, the selection and the lineage root).
 //   onlyRenderVisibleElements keeps the DOM to what is on screen.
 // - Edges are drawn from the scene, exactly as plan §4.6 says: ELK's orthogonal routes, and the
@@ -72,7 +73,8 @@ import { type InkShape, type Point as InkPoint } from '@/design/ink';
 import { type Route, roundedRoute, routeD } from '@/design/ink-route';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
-import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
+import { NODE_SIZES } from '@/lib/lineage-layout/presets';
+import { bezierLabelPoint, COLUMN_GAP, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import type { PhotoDto } from '@/server/dto/public';
 
@@ -184,9 +186,28 @@ export type LineageEdge = Edge<LineageEdgeData, 'lineage'>;
 /** The levels of detail by zoom (plan §4.8): a full card from `full`, a compact chip from `compact`, a dot below. */
 export const DETAIL_ZOOM = { full: 0.75, compact: 0.4 } as const;
 
-const lodOf = (s: ReactFlowState): DetailLevel => (s.transform[2] >= DETAIL_ZOOM.full ? 'full' : s.transform[2] >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
-/** The level of detail lodOf gives at this zoom, for a view not yet on the pane. */
-const detailAt = (zoom: number): DetailLevel => (zoom >= DETAIL_ZOOM.full ? 'full' : zoom >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
+/** A pane narrower than this is a phone's: its first view keeps the overlays' inset, and full cards start at PHONE_FULL_ZOOM. */
+export const NARROW_PANE = 640;
+/**
+ * On a phone, full cards start at this zoom instead of DETAIL_ZOOM.full (owner decision 2026-11-03,
+ * docs/plan/questions/M16.md Q2, docs/adr/0019-galleries.md): two full cards side by side, with the
+ * column gap between them, are as wide on screen as before M16 widened the card from 200 px to 264 px
+ * for its square photo (0.75 × 424 / 552 ≈ 0.576), so they fit side by side at 390 px again. The whole
+ * card, text and photo, is drawn that much smaller; desktops and tablets keep 0.75.
+ */
+export const PHONE_FULL_ZOOM = (DETAIL_ZOOM.full * (2 * 200 + COLUMN_GAP)) / (2 * NODE_SIZES.full.width + COLUMN_GAP);
+/** The zoom from which a pane this wide draws full cards. */
+export const fullZoomOf = (paneWidth: number): number => (paneWidth > 0 && paneWidth < NARROW_PANE ? PHONE_FULL_ZOOM : DETAIL_ZOOM.full);
+
+/** The level of detail at this zoom on a pane this wide. */
+const detailAt = (zoom: number, paneWidth: number): DetailLevel => (zoom >= fullZoomOf(paneWidth) ? 'full' : zoom >= DETAIL_ZOOM.compact ? 'compact' : 'dot');
+/** The level of detail on the pane now (detailAt with React Flow's zoom and pane width; full from DETAIL_ZOOM.full, or on a phone from PHONE_FULL_ZOOM). */
+const lodOf = (s: ReactFlowState): DetailLevel =>
+  s.transform[2] >= DETAIL_ZOOM.full || (s.transform[2] >= fullZoomOf(s.width) && s.width < NARROW_PANE)
+    ? 'full'
+    : s.transform[2] >= DETAIL_ZOOM.compact
+      ? 'compact'
+      : 'dot';
 
 /** The monogram of a full card (plan §4.8): the first letters of the first and the last word of the Latin name. */
 export { monogram } from '../monogram';
@@ -248,12 +269,13 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
           </span>
         ) : null}
         {lod === 'full' ? (
-          <div className={cx('flex size-full items-center gap-2 overflow-hidden rounded-sm bg-surface-1 px-2 py-1 text-left', frame, ring)}>
-            {/* M14: the photo as a small round thumbnail in the monogram's 24 px slot (the card's
-                layout, and so the columns at 390 px, stay as they were); the monogram without one.
+          <div className={cx('flex size-full items-stretch overflow-hidden rounded-sm bg-surface-1 text-left', frame, ring)}>
+            {/* M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): the photo is a square on
+                the card's leading edge whose side is the card's height (NODE_SIZES.full: 264×64, the
+                200 px of text and the 64 px square); the monogram without one, in the same square.
                 Lazy: onlyRenderVisibleElements mounts only the nodes on screen. */}
-            <PersonAvatar name={data.name} photo={data.photo} size="xs" decorative />
-            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <PersonAvatar name={data.name} photo={data.photo} size="card" decorative />
+            <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-2 py-1">
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span lang="und-Latn" translate="no" className="truncate font-display text-base leading-4.5 text-fg">
                   {data.name}
@@ -929,11 +951,8 @@ function ZoomControls({
  * dots shows no one's name; ADR 0009 item 5). "Fit the whole view" still shows all of it.
  */
 export const READABLE_ZOOM = DETAIL_ZOOM.compact;
-/** The zoom a large view starts at: cards at their own size, on a phone the smallest zoom with full cards (plan §4.8). */
-const LARGE_VIEW_ZOOM = { wide: 1, narrow: DETAIL_ZOOM.full } as const;
-/** The smallest zoom with full cards (plan §4.8, lodOf). */
-const FULL_CARDS = DETAIL_ZOOM.full;
-const NARROW_PANE = 640;
+/** The zoom a large view starts at on a wide pane: cards at their own size; on a phone the smallest zoom with full cards (fullZoomOf, plan §4.8). */
+const LARGE_VIEW_ZOOM_WIDE = 1;
 /**
  * The overlays' inset from the pane's edges (the legend's and the zoom buttons', 0.75rem): what the
  * first view frames keeps this far from an overlay, and on a phone from the pane's edges.
@@ -941,6 +960,14 @@ const NARROW_PANE = 640;
 const OVERLAY_GAP = 12;
 /** Every fit of the whole view, the first and the button's: cards never larger than their own size. */
 export const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
+
+/**
+ * The smallest zoom (React Flow's minZoom, the zoom-out button and "Fit the whole view"): a full
+ * card at least 20 px wide on screen, as 0.1 gave the 200 px card before M16. With M16's 264 px card
+ * (its square photo, docs/adr/0019-galleries.md) 0.1 would stop "Fit the whole view" short of the
+ * widest rows on a 390 px phone (the twelve students of demo-hub-a).
+ */
+export const MIN_ZOOM = (0.1 * 200) / NODE_SIZES.full.width;
 
 /** Where a view starts: the point at the centre of the pane, and the zoom. */
 export interface ViewStart {
@@ -984,7 +1011,7 @@ export function wholeFitZoom(people: readonly Box[], pane: { width: number; heig
   return reactFlowFit(people.reduce(union), pane).zoom;
 }
 
-/** The margin a first view keeps from the pane's edges: a whole-view fit's padding; on a phone the overlays' inset, so that two full cards fit side by side at 390 px. */
+/** The margin a first view keeps from the pane's edges: a whole-view fit's padding; on a phone the overlays' inset (two full cards side by side at 390 px, at PHONE_FULL_ZOOM since M16). */
 function marginOf(pane: Pane): { x: number; y: number } {
   if (pane.width < NARROW_PANE) return { x: OVERLAY_GAP, y: OVERLAY_GAP };
   // React Flow's: the pane / (1 + padding) inside it.
@@ -1021,7 +1048,7 @@ function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { sta
   const fit = reactFlowFit(bounds, pane);
   const overlays = (pane.overlays ?? []).filter((o) => o.width > 0 && o.height > 0);
   // The boxes drawn at the fit's level of detail, where they land on the pane.
-  const level = detailAt(fit.zoom);
+  const level = detailAt(fit.zoom, pane.width);
   const drawn = (n: SceneNode): Box => {
     const box = n.boxes[level];
     return { x: fit.x + box.x * fit.zoom, y: fit.y + box.y * fit.zoom, width: box.width * fit.zoom, height: box.height * fit.zoom };
@@ -1067,7 +1094,7 @@ function wholeView(people: readonly SceneNode[], pane: Pane, topRoom = 0): { sta
   const withRoom = frame(Math.max(margin.y, topRoom));
   if (topRoom <= margin.y) return withRoom;
   const plain = frame(margin.y);
-  return detailAt(withRoom.zoom) === detailAt(plain.zoom) ? withRoom : plain;
+  return detailAt(withRoom.zoom, pane.width) === detailAt(plain.zoom, pane.width) ? withRoom : plain;
 }
 
 /**
@@ -1118,7 +1145,7 @@ export function fitViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: Pa
  * (wholeViewStart): one whose drawn people the pane shows whole at READABLE_ZOOM or more.
  *
  * The people it frames lie inside the pane's margin (a whole-view fit's padding; on a phone the
- * overlays' inset, so that two full cards fit side by side at 390 px) and clear of the overlays
+ * overlays' inset; two full cards side by side at 390 px, at PHONE_FULL_ZOOM) and clear of the overlays
  * (`pane.overlays`, the legend and the zoom buttons): on a phone the legend spans the pane and the
  * zoom buttons stand above it, so a frame that reached the pane's bottom edge would be hidden there.
  * Only what is drawn counts: `hidden` holds the people and links hidden by default (ended training).
@@ -1127,8 +1154,9 @@ export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
   const people = scene.nodes.filter((n) => !hidden.has(n.id));
   if (people.length === 0 || wholeView(people, pane, headerRoom(scene)).zoom >= READABLE_ZOOM) return null;
   const start = people.find((n) => n.id === scene.focusId) ?? people.find((n) => n.rank === 0) ?? people[0]!;
-  const narrow = pane.width < NARROW_PANE;
-  const zoom = narrow ? LARGE_VIEW_ZOOM.narrow : LARGE_VIEW_ZOOM.wide;
+  // The smallest zoom with full cards on this pane (plan §4.8, lodOf).
+  const fullCards = fullZoomOf(pane.width);
+  const zoom = pane.width < NARROW_PANE ? fullCards : LARGE_VIEW_ZOOM_WIDE;
   const margin = marginOf(pane);
   const room = { width: pane.width - 2 * margin.x, height: pane.height - 2 * margin.y };
   // How far down the pane a frame this many pixels wide, centred across it, reaches clear of the overlays.
@@ -1143,13 +1171,13 @@ export function largeViewStart(scene: Scene, hidden: ReadonlySet<string>, pane: 
   let box = boxOf(start);
   for (const n of near) {
     const next = union(box, boxOf(n));
-    if (fits(next, FULL_CARDS)) box = next;
+    if (fits(next, fullCards)) box = next;
   }
   let scale: number = zoom;
   if (box.width !== start.width || box.height !== start.height) {
     // The largest zoom up to the pane's at which the frame fits; at least full cards, where it fits.
-    scale = Math.max(FULL_CARDS, Math.min(zoom, room.width / box.width, room.height / box.height));
-    if (!fits(box, scale)) scale = Math.max(FULL_CARDS, (floor(box.width * scale) - margin.y) / box.height);
+    scale = Math.max(fullCards, Math.min(zoom, room.width / box.width, room.height / box.height));
+    if (!fits(box, scale)) scale = Math.max(fullCards, (floor(box.width * scale) - margin.y) / box.height);
   }
   const height = box.height * scale;
   // The frame's top on the pane: centred, but never below the point where the top of the view (its
@@ -1927,7 +1955,7 @@ function CanvasFrame({
               multiSelectionKeyCode={null}
               elementsSelectable
               selectNodesOnDrag={false}
-              minZoom={0.1}
+              minZoom={MIN_ZOOM}
               maxZoom={2}
               // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
               // each time <Activity> shows the graph, over the view the user left.

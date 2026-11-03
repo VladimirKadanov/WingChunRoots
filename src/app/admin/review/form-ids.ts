@@ -17,3 +17,7 @@ export const ARCHIVE_FORM = 'archive-edit';
 export const ARBITRATE_FORM = 'review-arbitrate';
 /** M14: "Remove photo" of a reported profile (photos.remove with a reason). */
 export const PHOTO_REMOVE_FORM = 'review-photo-remove';
+/** M16: "Remove photo" of a photo in the gallery of a reported profile (gallery.remove with a reason). */
+export const GALLERY_REMOVE_FORM = 'review-gallery-remove';
+/** M16: "Remove photo" of a school's logo or room photo, from its listing case (schoolPhotos.remove with a reason). */
+export const SCHOOL_PHOTO_REMOVE_FORM = 'review-school-photo-remove';

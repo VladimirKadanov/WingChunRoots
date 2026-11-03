@@ -60,6 +60,7 @@ import {
   reviewNote,
   school,
   schoolInstructor,
+  schoolPhoto,
   schoolPrivateLocation,
   teachingRelationship,
   trainingPeriod,
@@ -101,6 +102,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   reviewNote,
   school,
   schoolInstructor,
+  schoolPhoto,
   schoolPrivateLocation,
   teachingRelationship,
   trainingPeriod,
@@ -197,7 +199,7 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
   // M14: the generated demo photos (seed-photos.ts) and person.photo_id of their people.
   const personIds = new Map(f.persons.map((p) => [p.slug, p.id]));
   const photoRows = photos
-    .filter((ph) => personIds.has(ph.slug))
+    .filter((ph) => (ph.role === 'profile' || ph.role === 'gallery') && personIds.has(ph.slug))
     .map((ph) => ({
       id: ph.id,
       personId: personIds.get(ph.slug)!,
@@ -207,7 +209,12 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
       width: ph.side,
       height: ph.side,
       sizeBytes: ph.sizeBytes,
-      status: 'active' as const,
+      // M16: the gallery's other photos beside the profile photo.
+      status: ph.role === 'profile' ? ('active' as const) : ('gallery' as const),
+      fullWidth: ph.fullWidth,
+      fullHeight: ph.fullHeight,
+      position: ph.position,
+      caption: ph.caption,
       uploadedByUserId: null,
       removedByUserId: null,
       removedAt: null,
@@ -216,7 +223,7 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
       updatedAt: ph.createdAt,
     }));
   await insert(personPhoto, photoRows);
-  for (const row of photoRows) await db.execute(sql`UPDATE person SET photo_id = ${row.id}::uuid WHERE id = ${row.personId}::uuid`);
+  for (const row of photoRows) if (row.status === 'active') await db.execute(sql`UPDATE person SET photo_id = ${row.id}::uuid WHERE id = ${row.personId}::uuid`);
   await insert(lineage, f.lineages);
   await insert(teachingRelationship, f.relationships);
   await insert(trainingPeriod, f.trainingPeriods);
@@ -229,6 +236,35 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
   await insert(school, f.schools);
   await insert(schoolPrivateLocation, f.schoolPrivateLocations);
   await insert(schoolInstructor, f.schoolInstructors);
+  // M16: the demo schools' generated logos and room photos (seed-photos.ts).
+  const schoolIds = new Map(f.schools.map((sc) => [sc.slug, sc.id]));
+  await insert(
+    schoolPhoto,
+    photos
+      .filter((ph) => (ph.role === 'logo' || ph.role === 'room') && schoolIds.has(ph.slug))
+      .map((ph) => ({
+        id: ph.id,
+        schoolId: schoolIds.get(ph.slug)!,
+        kind: ph.role as 'logo' | 'room',
+        storageKey: ph.storageKey,
+        sha256: ph.sha256,
+        originalSha256: ph.originalSha256,
+        width: ph.side,
+        height: ph.side,
+        fullWidth: ph.fullWidth,
+        fullHeight: ph.fullHeight,
+        sizeBytes: ph.sizeBytes,
+        caption: ph.caption,
+        position: ph.position,
+        status: 'active' as const,
+        uploadedByUserId: null,
+        removedByUserId: null,
+        removedAt: null,
+        removalReason: null,
+        createdAt: ph.createdAt,
+        updatedAt: ph.createdAt,
+      })),
+  );
   await insert(organization, f.organizations);
   await insert(organizationMembership, f.organizationMemberships);
   await insert(reviewCase, f.reviewCases);

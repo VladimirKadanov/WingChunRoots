@@ -11,6 +11,8 @@
 
 import * as z from 'zod';
 
+import { galleryPhotoSchema, schoolLogoSchema } from './gallery';
+
 import { photoSchema } from './public';
 import { searchNameSchema } from './search';
 
@@ -88,6 +90,12 @@ export const schoolPageSchema = z.object({
   /** When the listing was last edited or confirmed (DEFAULT D17), as YYYY-MM-DD. */
   lastActivityOn: z.string(),
   instructors: z.array(schoolPageInstructorSchema),
+  /**
+   * M16 (docs/adr/0019-galleries.md): the school's logo and the photos of its rooms, as the app's
+   * own addresses (GET /api/school-photos/...), every rendition without metadata (no GPS position).
+   */
+  logo: schoolLogoSchema.nullable(),
+  photos: z.array(galleryPhotoSchema),
 });
 export type SchoolPageDto = z.infer<typeof schoolPageSchema>;
 

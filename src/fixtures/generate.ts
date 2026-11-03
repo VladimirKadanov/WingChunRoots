@@ -929,6 +929,9 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   for (const slug of ANCHOR_SCHOOL_SLUGS) anchors[slug] = schools.find((s) => s.slug === slug)!.id;
 
   const { instructorCases, ...accountData } = demoAccounts(seed, b);
+  // M16: demo-pro-sifu-8 listed demo-school-sofia (its editor, M11), so a demo account can show
+  // the school's "Logo and photos" page (/dashboard/schools/<id>/photos) with the seeded logo and rooms.
+  schools.find((s) => s.slug === 'demo-school-sofia')!.createdByUserId = accountData.accounts['demo-pro-sifu-8'];
 
   return {
     seed,

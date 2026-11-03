@@ -43,6 +43,7 @@
 //   - the student cannot answer their own request (403), the teacher cannot withdraw or resubmit it (403).
 // Logs and audit rows carry ids and codes, never a name (plan §6.4).
 
+import { allowanceSentence } from '@/lib/allowance-text';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
@@ -1240,7 +1241,7 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
       if (!quota.ok) {
         const message =
           quota.code === 'quota'
-            ? `You have approved ${quota.current} of ${quota.limit} students on ${planSummary(quota.plan).name}. The request stays pending.`
+            ? `${allowanceSentence({ one: 'student', many: 'students', verb: 'approved' }, quota.current, quota.limit, planSummary(quota.plan).name)} The request stays pending.`
             : 'Approving students needs a Sifu account. Change your account type in Account type and plan; the request stays pending.';
         throw new ServiceError('ENTITLEMENT_REQUIRED', message, {}, { entitlement: quota });
       }

@@ -28,6 +28,7 @@ import { PILOT_ACCESS_FORM, UPGRADE_CLOSED_PARAM } from '@/components/plans/form
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { allowanceShort } from '@/lib/allowance-text';
 import { cx } from '@/lib/cx';
 import { formatDay, untilPlanEnd } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
@@ -156,10 +157,7 @@ function StudentLists({ overview }: { overview: DashboardOverview }) {
 
 function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade: ReactNode }) {
   const { requests, students, schools } = overview.sifu!;
-  const allowance =
-    students.limit === null
-      ? `${students.approved} approved, no limit on ${overview.plan.name}`
-      : `${students.approved} of ${students.limit} approved on ${overview.plan.name}`;
+  const allowance = allowanceShort('approved', students.approved, students.limit, overview.plan.name);
   return (
     <>
       <Section

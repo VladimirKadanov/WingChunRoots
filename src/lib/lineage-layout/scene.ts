@@ -400,9 +400,11 @@ export function bezierLabelPoint(path: BezierPath): Point {
 
 /**
  * The gap between two lineage columns, besides ELK's padding of each (12 px), in px: twice the
- * gap between two cards of a row. Two columns of one card each then fit side by side in full cards
- * on a 390 px phone, as two cards of one row do (React Flow's fit there leaves (390 - 50) / 0.75 =
- * 453 px for the cards; 2 x 200 + 24 + 2 x 12 = 448).
+ * gap between two cards of a row. With the 200 px card before M16, two columns of one card each fit
+ * side by side in full cards on a 390 px phone, as two cards of one row did (React Flow's fit
+ * there leaves (390 - 50) / 0.75 = 453 px for the cards; 2 x 200 + 24 + 2 x 12 = 448). M16's card
+ * is 264 px (its square photo, docs/adr/0019-galleries.md): 2 x 264 + 24 + 2 x 12 = 576, so a
+ * phone shows one full card per row and the rest by panning (DEFAULT, questions/M16.md, Q2).
  */
 export const COLUMN_GAP = 24;
 

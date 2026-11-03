@@ -29,8 +29,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { assignForm, DECIDE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM } from '../form-ids';
-import { AssignForm, DecideForm, NoteForm, RemovePhotoForm } from '../forms';
+import { assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, SCHOOL_PHOTO_REMOVE_FORM } from '../form-ids';
+import { AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm } from '../forms';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
 
@@ -62,6 +62,9 @@ const DONE: Record<string, string> = {
   noted: 'The note is added.',
   // M14: photos.remove from the case of a reported profile.
   'photo-removed': 'The profile photo is removed. The removal and your reason are in the audit log.',
+  // M16: gallery.remove and schoolPhotos.remove from the case.
+  'gallery-photo-removed': 'The photo is removed from the gallery. The removal and your reason are in the audit log.',
+  'school-photo-removed': 'The school photo is removed. The removal and your reason are in the audit log.',
   // M10b: review.arbitrate opens the dispute here.
   arbitrated: 'The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.',
 };
@@ -126,7 +129,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     );
   }
   if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
-  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult] = await Promise.all([
+  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult] = await Promise.all([
     readFormResult(assignForm('self'), query.outcome),
     readFormResult(assignForm('none'), query.outcome),
     readFormResult(assignForm('choose'), query.outcome),
@@ -135,6 +138,8 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(`${DECIDE_FORM}-reject`, query.outcome),
     readFormResult(`${DECIDE_FORM}-needs_info`, query.outcome),
     readFormResult(PHOTO_REMOVE_FORM, query.outcome),
+    readFormResult(GALLERY_REMOVE_FORM, query.outcome),
+    readFormResult(SCHOOL_PHOTO_REMOVE_FORM, query.outcome),
   ]);
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
   const done = decided ? view.decisions[decided].done : typeof query.done === 'string' ? DONE[query.done] : undefined;
@@ -156,6 +161,20 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         .photos.get({ slug: subjectSlug })
         .catch(() => null)
     : null;
+  // M16: the rest of that person's gallery, and the logo and room photos of a listing case's school.
+  const gallery = subjectSlug
+    ? await serverClient(await headers(), guard.principal)
+        .gallery.get({ slug: subjectSlug })
+        .catch(() => null)
+    : null;
+  const galleryOthers = gallery && gallery.canModerate ? gallery.photos.filter((p) => !p.isProfile) : [];
+  const schoolPhotos = view.school
+    ? await serverClient(await headers(), guard.principal)
+        .schoolPhotos.get({ schoolId: view.school.id })
+        .catch(() => null)
+    : null;
+  const schoolItems = schoolPhotos && schoolPhotos.canModerate ? [...(schoolPhotos.logo ? [{ id: schoolPhotos.logo.id, src: schoolPhotos.logo.large, label: 'Logo' }] : []), ...schoolPhotos.rooms.map((r, i) => ({ id: r.id, src: r.large, label: r.caption ?? `Room photo ${i + 1}` }))] : [];
+  const initialFor = (result: typeof galleryResult, photoId: string) => (result?.values?.photoId === photoId ? result : null);
 
   return (
     <Frame>
@@ -204,6 +223,38 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             <div className="max-w-[40rem]">
               <RemovePhotoForm caseId={view.id} slug={subjectSlug} initial={photoResult} />
             </div>
+          </Section>
+        ) : null}
+
+        {galleryOthers.length > 0 ? (
+          <Section id="gallery" title="Other photos of the gallery">
+            <ul className="grid gap-6">
+              {galleryOthers.map((p, i) => (
+                <li key={p.id} className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]" data-testid="case-gallery-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.large} alt={p.caption ?? `Gallery photo ${i + 1}`} width={128} height={128} className="size-32 rounded-sm border border-border-strong object-cover" />
+                  <div className="max-w-[40rem]">
+                    <RemoveGalleryPhotoForm caseId={view.id} photoId={p.id} kind="person" initial={initialFor(galleryResult, p.id)} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+
+        {schoolItems.length > 0 ? (
+          <Section id="school-photos" title="The school's logo and photos">
+            <ul className="grid gap-6">
+              {schoolItems.map((p) => (
+                <li key={p.id} className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]" data-testid="case-school-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.src} alt={p.label} width={128} height={128} className="size-32 rounded-sm border border-border-strong bg-surface-1 object-contain" />
+                  <div className="max-w-[40rem]">
+                    <RemoveGalleryPhotoForm caseId={view.id} photoId={p.id} kind="school" initial={initialFor(schoolPhotoResult, p.id)} />
+                  </div>
+                </li>
+              ))}
+            </ul>
           </Section>
         ) : null}
 

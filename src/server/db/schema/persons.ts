@@ -19,6 +19,8 @@ import {
   NAME_KEY_KINDS,
   NAME_KINDS,
   PERSON_KINDS,
+  PHOTO_CAPTION_MAX,
+  PHOTO_FULL_MAX_SIDE,
   PHOTO_REASON_MAX,
   PHOTO_STATUSES,
   ROMANIZATIONS,
@@ -112,10 +114,24 @@ export const personPhoto = pgTable(
     removedAt: timestamp('removed_at', { withTimezone: true }),
     // Staff removal only: the reason, for staff and the audit log (never shown publicly).
     removalReason: text('removal_reason'),
+    // M16 (docs/adr/0019-galleries.md): the owner's caption (the viewer's alt text), the order in
+    // the gallery (smallest first) and the size of the `full` rendition, the whole photo at most
+    // PHOTO_FULL_MAX_SIDE on its longer side; null for a photo stored before M16 (512 px only).
+    caption: text('caption'),
+    position: integer('position').notNull().default(0),
+    fullWidth: integer('full_width'),
+    fullHeight: integer('full_height'),
     ...timestamps(),
   },
   (t) => [
     uniqueIndex('person_photo_storage_key_key').on(t.storageKey),
+    // M16: the gallery of a person, in its order.
+    index('person_photo_gallery_idx').on(t.personId, t.position).where(sql`${t.status} IN ('active', 'gallery')`),
+    check('person_photo_caption_length', sql`${t.caption} IS NULL OR char_length(${t.caption}) BETWEEN 1 AND ${sql.raw(String(PHOTO_CAPTION_MAX))}`),
+    check(
+      'person_photo_full_size',
+      sql`(${t.fullWidth} IS NULL AND ${t.fullHeight} IS NULL) OR (${t.fullWidth} BETWEEN 1 AND ${sql.raw(String(PHOTO_FULL_MAX_SIDE))} AND ${t.fullHeight} BETWEEN 1 AND ${sql.raw(String(PHOTO_FULL_MAX_SIDE))})`,
+    ),
     // One current photo per person.
     uniqueIndex('person_photo_one_active_key').on(t.personId).where(sql`${t.status} = 'active'`),
     index('person_photo_person_id_idx').on(t.personId),

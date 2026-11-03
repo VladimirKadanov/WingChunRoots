@@ -18,8 +18,8 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removePhotoAction } from './actions';
-import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM } from './form-ids';
+import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction } from './actions';
+import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, SCHOOL_PHOTO_REMOVE_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -244,6 +244,46 @@ export function RemovePhotoForm({ caseId, slug, initial }: { caseId: string; slu
         label="Reason for removing the photo"
         maxLength={1000}
         hint="Required. Kept in the audit log. The photo's files are deleted; the person can add another photo."
+        state={state}
+      />
+      <div>
+        <Button pending={pending} label="Remove photo" pendingLabel="Removing…" variant="danger" />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * M16: "Remove photo" of one photo of a gallery (a reported profile's: gallery.remove) or of a
+ * school (its listing case: schoolPhotos.remove), with the reason kept in the audit log.
+ */
+export function RemoveGalleryPhotoForm({
+  caseId,
+  photoId,
+  kind,
+  initial,
+}: {
+  caseId: string;
+  photoId: string;
+  kind: 'person' | 'school';
+  initial?: FormState | null;
+}) {
+  const [state, action, pending] = useActionState(kind === 'person' ? removeGalleryPhotoAction : removeSchoolPhotoAction, initial ?? IDLE);
+  const fixed = kind === 'person' ? GALLERY_REMOVE_FORM : SCHOOL_PHOTO_REMOVE_FORM;
+  const generatedId = useFormId(fixed);
+  const formId = initial ? fixed : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="gallery-remove-form">
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="caseId" value={caseId} />
+      <input type="hidden" name="photoId" value={photoId} />
+      <TextAreaField
+        form={formId}
+        name="reason"
+        label="Reason for removing this photo"
+        maxLength={1000}
+        hint="Required. Kept in the audit log. The photo's files are deleted."
         state={state}
       />
       <div>

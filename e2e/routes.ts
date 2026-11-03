@@ -125,6 +125,15 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/organization', name: 'dashboard-organization', status: 200, milestone: 'M15', signInAs: 'user' },
   { path: '/dashboard/organization/apply', name: 'dashboard-organization-apply', status: 200, milestone: 'M15', signInAs: 'user' },
   { path: '/admin/organizations', name: 'admin-organizations', status: 200, milestone: 'M15', signInAs: 'admin' },
+  // M16: galleries. The own gallery's page as demo-two-lineages (its seeded profile photo, at its
+  // Free Student allowance of 1, with the upgrade prompt; no test changes it), the same page as an
+  // account without a profile yet, and the profile and the school pages above with their seeded
+  // photos (demo-two-lineages, demo-school-sofia; the gallery of several is demo-pro-sifu-8's). The school's
+  // "Logo and photos" page needs a school of the account's own: e2e/m16-galleries.spec.ts runs
+  // axe on it in both themes. Not key screens yet: their baselines come from a CI run
+  // (docs/plan/M16-galleries.md).
+  { path: '/dashboard/photos', name: 'dashboard-photos', status: 200, milestone: 'M16', signInAs: 'demo-two-lineages' },
+  { path: '/dashboard/photos', name: 'dashboard-photos-no-profile', status: 200, milestone: 'M16', signInAs: 'new' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

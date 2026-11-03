@@ -11,6 +11,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { ArrowLeftIcon } from '@/components/icons';
 import { NameText } from '@/components/account/person-names';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
@@ -121,7 +122,22 @@ export default async function SchoolPage({ params }: Props) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(school)).replace(/</g, '\\u003c') }} />
       <header className="max-w-[46rem]">
         <Back />
-        <h1 className="mt-2 font-display text-feature [overflow-wrap:anywhere]">{school.name}</h1>
+        <div className="mt-2 flex items-center gap-4">
+          {/* M16: the school's logo, whole on its transparent square; the heading names the school,
+              so it is decorative. */}
+          {school.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={school.logo.large}
+              alt=""
+              width={72}
+              height={72}
+              data-testid="school-logo"
+              className="size-18 shrink-0 rounded-sm border border-border-subtle bg-surface-1 object-contain"
+            />
+          ) : null}
+          <h1 className="min-w-0 font-display text-feature [overflow-wrap:anywhere]">{school.name}</h1>
+        </div>
         <p className="mt-3 text-fg-muted">{locationLine(school)}</p>
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
           <LocationTag precision={school.precision} />
@@ -137,6 +153,18 @@ export default async function SchoolPage({ params }: Props) {
       </header>
 
       <div className="mt-8 grid max-w-[46rem] gap-10">
+        {/* M16: the photos of the school's rooms, a gallery of their own (every rendition without
+            metadata, so no photo says where it was taken). */}
+        {school.photos.length > 0 ? (
+          <section aria-labelledby="school-photos" data-testid="school-gallery">
+            <h2 id="school-photos" className="font-display text-xl">
+              Photos
+            </h2>
+            <div className="mt-3">
+              <GalleryGrid photos={school.photos} name={school.name} label={`Photos of ${school.name}`} testId="school-gallery-grid" />
+            </div>
+          </section>
+        ) : null}
         {school.description ? (
           <section aria-labelledby="school-about">
             <h2 id="school-about" className="font-display text-xl">

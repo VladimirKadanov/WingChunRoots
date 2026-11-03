@@ -64,6 +64,16 @@ export type AuditAction =
   // hashes, never a storage key or a file name; a staff removal keeps its reason.
   | 'photo.upload'
   | 'photo.remove'
+  // M16: galleries (docs/adr/0019-galleries.md): a person's gallery and a school's logo and room photos.
+  | 'gallery.add'
+  | 'gallery.remove'
+  | 'gallery.update'
+  | 'gallery.reorder'
+  | 'gallery.profile'
+  | 'school_photo.upload'
+  | 'school_photo.remove'
+  | 'school_photo.update'
+  | 'school_photo.reorder'
   // M15: organizations (docs/adr/0018-organizations.md). The rows carry ids, statuses and the names
   // of the fields that changed, never a leader's name, a website or an e-mail address.
   | 'organization.apply'

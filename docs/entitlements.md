@@ -46,9 +46,10 @@
 | `claim_teachers` (Name your teachers) | `now`, `opens`: с заявките към учители (M09) | не |
 | `approve_students` (Approve students) | `now`, `opens`: с заявките към учители (M09) | **да**: до 5 одобрени ученици на Free Sifu (D06) |
 | `school_map` (School on the map) | `now` (M11: картата и школите работят) | **да**, от M11: `schools.submit` иска Professional Sifu, а `v_public_school` показва пина само докато акаунтът, обявил школата, го има (`DEFAULT D08/D18`) |
-| `advertising`, `training_start`, `photos`, `videos`, `school_business`, `passport`, `successor`, `marketplace`, `events`, `poster`, `almanac` | `planned` | не |
+| `photos` (Photos) | `now` (M16: галерията на профила работи) | **да**, от M16: всяка снимка от галерията на човека (снимката на профила е една от тях) се брои под заключването на квотата (`withQuota`), `DEFAULT D07`: 1, 10, 2, 100 и без число за Federation; доказателствата никога не се броят (`DEFAULT D13`), а логото и снимките на залите на школа имат собствен лимит |
+| `advertising`, `training_start`, `videos`, `school_business`, `passport`, `successor`, `marketplace`, `events`, `poster`, `almanac` | `planned` | не |
 
-Медийните квоти (D07: 1 снимка за ученик, 2 за Сифу) са записани в `photos` и `videos`, но не се налагат преди Фаза 2.
+Квотата за видео (D07) е записана в `videos`, но не се налага преди Фаза 2. Квотата за снимки се налага от M16; по-висок лимит идва само от право, дадено от администратор (без плащания). При отнето право галерията остава цяла: отказва се само следващото добавяне над лимита (`DEFAULT D08`, както при одобрените ученици).
 
 ### Как се променя матрицата
 
@@ -251,6 +252,7 @@
 | `2026-10-19.2` | Довършване след финалната проверка (бележка 2): кратките описания на Free Sifu и Professional Sifu взимат лимита от `FREE_SIFU_STUDENT_LIMIT` (DEFAULT D06) и го пишат с цифра („up to 5 approved students“, „without the 5-student limit“), както останалите текстове. Самият лимит не се променя |
 | `2026-10-31.1` | M09: заявките към учител работят, затова `claim_teachers` и `approve_students` вече нямат `opens` („Opens with teacher requests“). Остава само `school_map`. Стойностите и лимитите не се променят |
 | `2026-11-01.1` | M11: картата и школите работят, затова `school_map` вече няма `opens`; бележката е в сегашно време („Anyone can browse the map…“); `upgradeHeading` „A public school pin with {plan}“ за подканата при обявяване на школа. Стойностите не се променят |
+| `2026-11-03.1` | M16 (решение на собственика от 03.11.2026): галерията на профила е част от пилота, затова `photos` е `now` (без фаза) и `enforced: true`; `upgradeHeading` „More photos with {plan}“ и бележка (снимката на профила е една от снимките, доказателствата не се броят, DEFAULT D13). Лимитите остават (DEFAULT D07: 1, 10, 2, 100, без число); Premium Student вече дава нещо от пилота (10 снимки) |
 
 ## 13. Тестове
 

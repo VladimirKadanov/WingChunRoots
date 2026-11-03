@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/lib/lineage-layout/types';
 
 import { type PersonNode, summaryNodes } from './canvas';
+import { summaryOf, summaryWords } from './summary-node';
 
 const box = { x: 240, y: 124, width: 200, height: 64 };
 const sceneNode = (id: string) => ({ id, rank: 1, ...box, center: { x: 340, y: 156 }, boxes: { full: box, compact: box, dot: box } });
@@ -36,6 +37,16 @@ describe('summaryNodes', () => {
     const scene = { focusId: 't', dataVersion: 'test', nodes: [sceneNode('t'), sceneNode('more:t')], edges: [] } as unknown as Scene;
     const one = { id: 't', data: { name: 'Demo Teacher', slug: 'demo-teacher', more: 1 } } as unknown as PersonNode;
     expect(summaryNodes(scene, [one])[0]!.ariaLabel).toBe('and 1 more student of Demo Teacher');
+  });
+
+  it('shows words that are part of its accessible name, for one left out and for several (WCAG 2.5.3)', () => {
+    // The full card: "and N more →" over "student(s) of {name}"; the arrow is no word.
+    const scene = { focusId: 't', dataVersion: 'test', nodes: [sceneNode('t'), sceneNode('more:t')], edges: [] } as unknown as Scene;
+    for (const more of [1, 5]) {
+      const node = summaryNodes(scene, [{ id: 't', data: { name: 'Demo Teacher', slug: 'demo-teacher', more } } as unknown as PersonNode])[0]!;
+      const visible = `${summaryWords(more).replace(' →', '')} ${summaryOf(more)} Demo Teacher`;
+      expect(node.ariaLabel).toBe(visible);
+    }
   });
 
   it('is empty for a scene without summary nodes', () => {

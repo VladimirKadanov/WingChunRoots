@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-01.1';
+export const PLAN_MATRIX_VERSION = '2026-11-03.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -156,7 +156,7 @@ export interface FeatureValue {
   neutral?: true;
   /**
    * A countable allowance: a number, or null for "unlimited". Only on the quota features. For
-   * photos and videos (D07) it is recorded and not enforced in Phase 1.
+   * videos (D07) it is recorded and not enforced in Phase 1; photos are enforced from M16.
    */
   limit?: number | null;
 }
@@ -170,8 +170,8 @@ export interface FeatureDefinition {
   /** The phase that brings a planned feature (plan §2.3); null for 'now'. */
   phase: 2 | 3 | 4 | null;
   /**
-   * Enforced on the server in Phase 1 (plan §6.5): only the five approved students of Free Sifu
-   * (D06) and the public school pin of Professional Sifu (from M11).
+   * Enforced on the server in Phase 1 (plan §6.5): the five approved students of Free Sifu (D06),
+   * the public school pin of Professional Sifu (from M11) and (from M16) the photo allowance (D07).
    */
   enforced: boolean;
   /**
@@ -248,15 +248,19 @@ export const FEATURES: readonly FeatureDefinition[] = [
     key: 'photos',
     source: 'Photo allowance',
     label: 'Photos',
-    availability: 'planned',
-    phase: 2,
-    enforced: false,
+    // M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): the profile gallery is part of
+    // the pilot, so the allowance is available now and enforced on the server.
+    availability: 'now',
+    phase: null,
+    enforced: true,
     unit: { one: 'photo', many: 'photos', verb: 'added' },
-    // DEFAULT D07: recorded here; the gallery comes with the media of Phase 2 (so `planned` and
-    // `enforced: false` in the catalogue, which the plan pages read).
-    // DEFAULT D07 (M14): the one current profile photo of a person already counts as 1 against this
-    // allowance, which every plan has (withQuota in src/server/services/photos.ts); replacing it
-    // adds nothing.
+    upgradeHeading: 'More photos with {plan}',
+    note: 'The profile photo is one of your photos. Evidence you send for review is private and never counts.',
+    // DEFAULT D07: these allowances. M14: the one current profile photo of a person counts as 1
+    // (withQuota in src/server/services/photos.ts); replacing it adds nothing. M16: every photo of
+    // the person's gallery counts (src/server/services/gallery.ts), never an evidence file (DEFAULT
+    // D13) and never a school's logo or room photos (their own limit). Federation's "unlimited" is
+    // no limit in the pilot.
     values: {
       free_student: quota('1', '1 photo', 1),
       premium_student: quota('10', '10 photos', 10),
@@ -492,10 +496,9 @@ export function plansFor(audience: PlanDefinition['audience']): PlanDefinition[]
 
 /**
  * Plans an admin may give as a test or complimentary plan in the pilot (Federation is Phase 3).
- * Premium Student unlocks nothing yet in Phase 1: every feature where it gives more than Free
- * Student is planned (see PLANS_WITHOUT_PILOT_BENEFITS). It stays grantable so pilot testers keep
- * it when its features arrive; the grant form and the admin guide say so (review round 1,
- * requirements-2).
+ * Premium Student unlocked nothing in Phase 1 until M16: from then its photo allowance (10 instead
+ * of 1, DEFAULT D07) is a benefit of the pilot (PLANS_WITHOUT_PILOT_BENEFITS is empty). The grant
+ * form still says so of any plan that gives nothing of the pilot (review round 1, requirements-2).
  */
 export const GRANTABLE_PLANS: readonly PlanCode[] = ['premium_student', 'pro_sifu'];
 
@@ -545,18 +548,30 @@ export interface Benefit {
 }
 
 /**
+ * Features that joined the pilot after M08 (the photo allowance, M16): an upgrade prompt lists
+ * their benefits after the ones the pilot had before, which keep the matrix's order.
+ */
+const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos'];
+
+/**
  * The real benefits of moving from one plan to another (plan §5.6): only features with
  * availability 'now', where `to` gives more. Planned features never appear here; a feature of the
- * pilot that is not built yet carries `opens`, which the prompt shows beside it.
+ * pilot that is not built yet carries `opens`, which the prompt shows beside it. A prompt at a
+ * limit passes that limit's feature as `lead`, so its benefit comes first (the one that was hit);
+ * otherwise the matrix's order, with the features that joined the pilot later after the others.
  */
-export function upgradeBenefits(from: PlanCode, to: PlanCode): Benefit[] {
-  return FEATURES.filter((f) => f.availability === 'now' && improves(f, from, to)).map((f) => ({
-    feature: f.key,
-    label: f.label,
-    from: f.values[from].label,
-    to: f.values[to].label,
-    opens: f.opens ?? null,
-  }));
+export function upgradeBenefits(from: PlanCode, to: PlanCode, lead?: FeatureKey): Benefit[] {
+  const rank = (key: FeatureKey) => (key === lead ? 0 : JOINED_PILOT_LATER.includes(key) ? 2 : 1);
+  return FEATURES.filter((f) => f.availability === 'now' && improves(f, from, to))
+    .map((f, index) => ({ f, index }))
+    .sort((a, b) => rank(a.f.key) - rank(b.f.key) || a.index - b.index)
+    .map(({ f }) => ({
+      feature: f.key,
+      label: f.label,
+      from: f.values[from].label,
+      to: f.values[to].label,
+      opens: f.opens ?? null,
+    }));
 }
 
 /** Plans an admin can grant that give no benefit of the pilot over their free plan (Premium Student). */

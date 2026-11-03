@@ -114,9 +114,34 @@ export const EVIDENCE_NAME_MAX = 200;
 // --- Profile photos (milestone M14; docs/adr/0016-profile-photos.md) ---------------------------
 /**
  * M14: a photo is the person's current one (`active`), was replaced by a newer upload (`replaced`)
- * or was removed by its owner or by staff (`removed`). Only an active photo is ever served.
+ * or was removed by its owner or by staff (`removed`). M16: or it is one of the other photos of the
+ * person's gallery (`gallery`). Only an active or a gallery photo is ever served.
  */
-export const PHOTO_STATUSES = ['active', 'replaced', 'removed'] as const;
+export const PHOTO_STATUSES = ['active', 'replaced', 'removed', 'gallery'] as const;
+/**
+ * M16 (docs/adr/0019-galleries.md): the statuses of a photo that is in the person's gallery: the
+ * profile photo (`active`, at most one) and the gallery's other photos (`gallery`). Both count
+ * against the plan's `photos` allowance (DEFAULT D07); both are served while the person is public.
+ */
+export const GALLERY_PHOTO_STATUSES = ['active', 'gallery'] as const;
+/** M16: the longest caption of a gallery or school photo (the viewer's alt text and its caption). */
+export const PHOTO_CAPTION_MAX = 200;
+/**
+ * M16: the longest side of the `full` rendition of a gallery or school room photo, the one the
+ * viewer shows (the whole photo, never cropped; never enlarged). DEFAULT, no D number.
+ */
+export const PHOTO_FULL_MAX_SIDE = 1280;
+/** M14: the largest rendition the photo routes send (a larger object in the store is refused); M16: the whole photo is encoded to fit it. */
+export const PHOTO_RENDITION_MAX_BYTES = 1024 * 1024;
+/** M16: a school's photos: its logo (at most one) and the photos of its training rooms. */
+export const SCHOOL_PHOTO_KINDS = ['logo', 'room'] as const;
+/** M16: a school photo is shown (`active`), was replaced by a newer logo (`replaced`) or was removed. */
+export const SCHOOL_PHOTO_STATUSES = ['active', 'replaced', 'removed'] as const;
+/**
+ * DEFAULT D07 (M16): a school's room gallery holds at most 12 photos, apart from the logo and from
+ * every person's `photos` allowance (docs/plan/questions/M16.md, question 1).
+ */
+export const SCHOOL_ROOM_PHOTOS_MAX = 12;
 /** DEFAULT D07 (M14): an uploaded profile photo is at most 5 MB before processing. */
 export const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 /** M14: the square sizes stored of every photo, in pixels: the card thumbnail and the profile. */

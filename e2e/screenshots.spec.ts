@@ -16,7 +16,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { sql } from 'drizzle-orm';
 
 import { getDb } from '../src/server/db';
-import { BASE_URL, closeHelpers, emailLinkFromOutbox, giveOwnAddress, signInAs, uniqueEmail } from './helpers/auth';
+import { BASE_URL, closeHelpers, emailLinkFromOutbox, giveOwnAddress, signInAs, signInAsForPages, uniqueEmail } from './helpers/auth';
 import { CLAIM_LINEAGE, claimThroughApi, fictionalPdf, letters, lineageIdOf } from './helpers/evidence';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
@@ -557,7 +557,7 @@ for (const size of SCREEN_SIZES) {
       for (const theme of THEMES) {
         test(`${route.path} (${route.name}) at ${size.name} in the ${theme} theme`, { tag: ['@screenshots'] }, async ({ page }) => {
           await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
-          if (route.signInAs) await signInAs(page, route.signInAs);
+          if (route.signInAs) await signInAsForPages(page, route.signInAs);
           const response = await page.goto(route.path);
           expect(response?.status()).toBe(route.status);
           await capture(page, `${folder(route.milestone)}/${route.name}-${size.name}-${theme}.png`);

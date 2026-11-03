@@ -21,7 +21,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, SCHOOL_PHOTO_REMOVE_FORM } from './form-ids';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -199,4 +199,44 @@ export async function removePhotoAction(_previous: FormState, form: FormData): P
     return formResult({ form: PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(PHOTO_REMOVE_FORM, state, true) }, state);
   }
   redirect(doneAt(page, 'photo-removed'));
+}
+
+/**
+ * M16: "Remove photo" of one photo in the gallery of the profile a case is about (gallery.remove
+ * with the reason; staff with the second factor). Audited with the reason; the files are deleted.
+ */
+export async function removeGalleryPhotoAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const photoId = textValue(form, 'photoId', 40);
+  const reason = textValue(form, 'reason', 4000);
+  const page = casePage(caseId);
+  try {
+    await (await client()).gallery.remove({ photoId: UUID.test(photoId) ? photoId : '', reason });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, photoId, reason });
+    return formResult({ form: GALLERY_REMOVE_FORM, page, anchor: outcomeTarget(GALLERY_REMOVE_FORM, state, true) }, state);
+  }
+  redirect(doneAt(page, 'gallery-photo-removed'));
+}
+
+/**
+ * M16: "Remove photo" of a school's logo or room photo, from the school's listing case
+ * (schoolPhotos.remove with the reason; staff with the second factor). Audited with the reason.
+ */
+export async function removeSchoolPhotoAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const photoId = textValue(form, 'photoId', 40);
+  const reason = textValue(form, 'reason', 4000);
+  const page = casePage(caseId);
+  try {
+    await (await client()).schoolPhotos.remove({ photoId: UUID.test(photoId) ? photoId : '', reason });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, photoId, reason });
+    return formResult({ form: SCHOOL_PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(SCHOOL_PHOTO_REMOVE_FORM, state, true) }, state);
+  }
+  redirect(doneAt(page, 'school-photo-removed'));
 }

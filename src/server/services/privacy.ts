@@ -18,7 +18,8 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
-import { authUser, consentRecord, notification, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPrivateLocation, teachingRelationship } from '../db/schema';
+import { GALLERY_PHOTO_STATUSES } from '../db/schema/common';
+import { authUser, consentRecord, notification, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPhoto, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
@@ -273,11 +274,21 @@ async function lockOpenDeletionCase(tx: Transaction, caseId: string): Promise<{ 
  * cleared (ADR 0004: a reference that may outlive its author). The name, slug and city stay, so the
  * review history still says which school a case was about. Returns the number archived.
  */
-async function archiveListedSchools(tx: Transaction, userId: string): Promise<number> {
+async function archiveListedSchools(tx: Transaction, userId: string, removedPhotos: { id: string; storageKey: string }[] = []): Promise<number> {
   const listed = await tx.select({ id: school.id }).from(school).where(eq(school.createdByUserId, userId)).for('update');
   if (listed.length === 0) return 0;
   const ids = listed.map((r) => r.id);
   const now = new Date();
+  // M16: the school's logo and room photos are the Sifu's too: marked removed (the hash of the
+  // uploaded file cleared), their files deleted after the commit (the caller).
+  removedPhotos.push(
+    ...(await tx
+      .update(schoolPhoto)
+      .set({ status: 'removed', removedAt: now, removedByUserId: null, updatedAt: now })
+      .where(and(inArray(schoolPhoto.schoolId, ids), eq(schoolPhoto.status, 'active')))
+      .returning({ id: schoolPhoto.id, storageKey: schoolPhoto.storageKey })),
+  );
+  await tx.update(schoolPhoto).set({ originalSha256: null, updatedAt: now }).where(inArray(schoolPhoto.schoolId, ids));
   await tx
     .update(reviewCase)
     .set({ status: 'dismissed', resolutionReason: 'The account that listed the school was deleted.', resolvedAt: now, updatedAt: now })
@@ -316,6 +327,8 @@ export interface DeletionCarriedOut {
 export async function carryOutDeletionFromCommandLine(caseId: string): Promise<DeletionCarriedOut> {
   // M14: the profile photo goes with the account (its files after the commit).
   let photos: { id: string; storageKey: string }[] = [];
+  // M16: the logos and room photos of the schools the account listed.
+  const schoolPhotos: { id: string; storageKey: string }[] = [];
   try {
     const result = await getDb().transaction(async (tx) => {
       const request = await lockOpenDeletionCase(tx, caseId);
@@ -331,11 +344,13 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
       if (own) {
         namesRemoved = (await tx.delete(personName).where(and(eq(personName.personId, own.id), eq(personName.isPrimary, false)))).rowCount ?? 0;
         biosRemoved = (await tx.delete(personBio).where(eq(personBio.personId, own.id))).rowCount ?? 0;
-        // M14: the profile photo is the account's own, like the bio: marked removed, its files deleted below.
+        // M14: the profile photo is the account's own, like the bio: marked removed, its files deleted below
+        // (M16: and the rest of the gallery).
         photos = await tx
           .update(personPhoto)
           .set({ status: 'removed', removedAt: new Date(), removedByUserId: null, updatedAt: new Date() })
-          .where(and(eq(personPhoto.personId, own.id), eq(personPhoto.status, 'active')))
+          // M16: every photo of the gallery, the profile photo among them.
+          .where(and(eq(personPhoto.personId, own.id), inArray(personPhoto.status, [...GALLERY_PHOTO_STATUSES])))
           .returning({ id: personPhoto.id, storageKey: personPhoto.storageKey });
         // M14 review: no row of the person (the current photo, replaced or removed ones) keeps the
         // hash of the file the account uploaded.
@@ -360,7 +375,7 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
       }
       // Records the account added for other people keep no link to it.
       await tx.update(person).set({ createdByUserId: null }).where(eq(person.createdByUserId, userId));
-      const schoolsArchived = await archiveListedSchools(tx, userId);
+      const schoolsArchived = await archiveListedSchools(tx, userId, schoolPhotos);
       const consentsRemoved = (await tx.delete(consentRecord).where(eq(consentRecord.userId, userId))).rowCount ?? 0;
       const now = new Date();
       await tx
@@ -381,7 +396,7 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
       await tx.delete(authUser).where(eq(authUser.id, userId));
       return { personId: own?.id ?? null, visibility };
     });
-    await deletePhotoFiles(photos);
+    await deletePhotoFiles([...photos, ...schoolPhotos]);
     return result;
   } catch (error) {
     if (!isReferencedRowError(error)) throw error;

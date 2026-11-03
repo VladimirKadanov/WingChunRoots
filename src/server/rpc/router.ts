@@ -43,6 +43,33 @@ import {
   sendInvitationInput,
 } from '../services/invitations';
 import { getPhoto, photoGetInput, photoRemoveInput, photoUploadInput, removePhoto, uploadPhoto } from '../services/photos';
+import {
+  addGalleryPhoto,
+  galleryAddInput,
+  galleryGetInput,
+  galleryRemoveInput,
+  galleryReorderInput,
+  gallerySetProfileInput,
+  galleryUpdateInput,
+  getGallery,
+  getOwnGallery,
+  removeGalleryPhoto,
+  reorderGallery,
+  setProfilePhoto,
+  updateGalleryPhoto,
+} from '../services/gallery';
+import {
+  getSchoolPhotos,
+  removeSchoolPhoto,
+  reorderSchoolPhotos,
+  schoolPhotoRemoveInput,
+  schoolPhotoReorderInput,
+  schoolPhotosGetInput,
+  schoolPhotoUpdateInput,
+  schoolPhotoUploadInput,
+  updateSchoolPhoto,
+  uploadSchoolPhoto,
+} from '../services/school-photos';
 import { myReports, reportInput, reportProfile } from '../services/reports';
 import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
@@ -509,6 +536,76 @@ export const router = {
       })
       .input(photoRemoveInput)
       .handler(({ context, input }) => removePhoto(context.principal, input, context.meta)),
+  },
+  // M16: a person's gallery (docs/adr/0019-galleries.md). The profile photo is one of its photos;
+  // every photo counts against the plan's `photos` allowance (DEFAULT D07). The upload is
+  // multipart/form-data like photos.upload; the images are served by GET /api/photos/{id}/{hash}/{file}.
+  gallery: {
+    mine: signedIn
+      .route({ method: 'GET', path: '/gallery/mine', summary: 'Your own gallery, with your plan\'s photo allowance and, at the limit, the upgrade offer; 404 without a profile yet' })
+      .handler(({ context }) => getOwnGallery(context.principal)),
+    get: base
+      .route({
+        method: 'GET',
+        path: '/gallery/{slug}',
+        summary: "A person's gallery (the photos in their order, their captions, which is the profile photo); for its owner also the allowance and, at the limit, the upgrade offer; 404 for a person this viewer may not see",
+      })
+      .input(galleryGetInput)
+      .handler(({ context, input }) => getGallery(context.principal, input)),
+    add: signedIn
+      .route({
+        method: 'POST',
+        path: '/gallery/add',
+        summary:
+          'Add a photo to your own gallery (multipart `file`: JPEG, PNG or WebP, at most 5 MB; optional `caption`): metadata and location removed, stored as WebP squares and the whole photo; counts against your plan (D07, ENTITLEMENT_REQUIRED at the limit); audited',
+      })
+      .input(galleryAddInput)
+      .handler(({ context, input }) => addGalleryPhoto(context.principal, input, context.meta)),
+    remove: signedIn
+      .route({ method: 'POST', path: '/gallery/remove', summary: "Remove a photo of your own gallery, or as staff with a verified second factor anyone's, with a reason kept in the audit log; audited" })
+      .input(galleryRemoveInput)
+      .handler(({ context, input }) => removeGalleryPhoto(context.principal, input, context.meta)),
+    update: signedIn
+      .route({ method: 'POST', path: '/gallery/update', summary: 'Change the caption of a photo of your own gallery (the alt text in the viewer); audited' })
+      .input(galleryUpdateInput)
+      .handler(({ context, input }) => updateGalleryPhoto(context.principal, input, context.meta)),
+    reorder: signedIn
+      .route({ method: 'POST', path: '/gallery/reorder', summary: 'Put the photos of your own gallery in a new order (every photo once; CONFLICT when the gallery changed); audited' })
+      .input(galleryReorderInput)
+      .handler(({ context, input }) => reorderGallery(context.principal, input, context.meta)),
+    setProfile: signedIn
+      .route({ method: 'POST', path: '/gallery/profile', summary: 'Make a photo of your own gallery your profile photo; the previous one stays in the gallery; audited' })
+      .input(gallerySetProfileInput)
+      .handler(({ context, input }) => setProfilePhoto(context.principal, input, context.meta)),
+  },
+  // M16: a school's logo and room photos (a gallery of its own, DEFAULT D07: at most 12 room photos),
+  // for the account that listed the school; shown on the public page through schools.get.
+  schoolPhotos: {
+    get: signedIn
+      .route({ method: 'GET', path: '/schools/mine/{schoolId}/photos', summary: "The logo and room photos of one of your schools, for its editor (or staff with a verified second factor); 404 for any other school" })
+      .input(schoolPhotosGetInput)
+      .handler(({ context, input }) => getSchoolPhotos(context.principal, input)),
+    upload: signedIn
+      .route({
+        method: 'POST',
+        path: '/schools/photos/upload',
+        summary:
+          'Upload the logo of your school (replacing the old one) or one more room photo (multipart `schoolId`, `kind` logo|room, `file`, optional `caption`): metadata and location removed, stored as WebP; at most 12 room photos (D07, CONFLICT past it); audited',
+      })
+      .input(schoolPhotoUploadInput)
+      .handler(({ context, input }) => uploadSchoolPhoto(context.principal, input, context.meta)),
+    remove: signedIn
+      .route({ method: 'POST', path: '/schools/photos/remove', summary: "Remove a photo of your school, or as staff with a verified second factor any school's, with a reason kept in the audit log; audited" })
+      .input(schoolPhotoRemoveInput)
+      .handler(({ context, input }) => removeSchoolPhoto(context.principal, input, context.meta)),
+    update: signedIn
+      .route({ method: 'POST', path: '/schools/photos/update', summary: 'Change the caption of a room photo of your school; audited' })
+      .input(schoolPhotoUpdateInput)
+      .handler(({ context, input }) => updateSchoolPhoto(context.principal, input, context.meta)),
+    reorder: signedIn
+      .route({ method: 'POST', path: '/schools/photos/reorder', summary: "Put your school's room photos in a new order (every photo once; CONFLICT when they changed); audited" })
+      .input(schoolPhotoReorderInput)
+      .handler(({ context, input }) => reorderSchoolPhotos(context.principal, input, context.meta)),
   },
   // M10a: the review queue (staff with a verified second factor; plan §5.6, §6.7).
   review: {
