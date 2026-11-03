@@ -41,7 +41,7 @@ import { invalidatePublic, personTag, SCHOOLS_TAG } from '../cache';
 import { getDb, getPublicDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { person, personPhoto } from '../db/schema';
-import { PHOTO_MAX_BYTES, PHOTO_REASON_MAX, PHOTO_SIZES } from '../db/schema/common';
+import { PHOTO_MAX_BYTES, PHOTO_REASON_MAX, PHOTO_RENDITION_MAX_BYTES, PHOTO_SIZES } from '../db/schema/common';
 import { SLUG_PATTERN } from '../db/schema/persons';
 import type { PhotoDto } from '../dto/public';
 import type { EntitlementSubject } from '../entitlements/access';
@@ -429,8 +429,8 @@ export async function getPhoto(principal: Principal | null, raw: z.input<typeof 
  * `load` event for the S3 driver's own 30 s deadlines.
  */
 export const PHOTO_READ_TIMEOUT_MS = 5_000;
-/** No rendition comes near this; a larger object in the store is refused, never sent. */
-export const PHOTO_RENDITION_MAX_BYTES = 1024 * 1024;
+/** No rendition is larger (the whole photo of M16 is encoded to fit); a larger object in the store is refused, never sent. */
+export { PHOTO_RENDITION_MAX_BYTES };
 
 /** The ETag of a photo: its full content hash, so the same bytes keep the same tag. */
 export const photoEtag = (sha256: string) => `"${sha256}"`;

@@ -219,14 +219,17 @@ function Relations({ profile, teachers: graph, students: page }: { profile: Pers
 }
 
 /**
- * M16: the person's gallery (gallery.get, the same visibility as the page). A failed read only
- * leaves the section out; the profile itself is already there.
+ * M16: the person's gallery (gallery.get: public people, the owner and staff with a second
+ * factor). A failed read only leaves the section out; the profile itself is already there.
  */
 async function readGallery(profile: PersonProfileDto): Promise<GalleryView | null> {
   if (profile.limited) return null;
   try {
     return await (await lineageClient()).gallery.get({ slug: profile.slug });
   } catch (error) {
+    // NOT_FOUND is an answer, not a failure: a person this viewer sees in full (people.get) but
+    // who is not public (involved_only, seen by the teacher who added them) shows no gallery.
+    if (failure(error) === 'NOT_FOUND') return null;
     console.error(`[person-page] the gallery could not be loaded: ${failure(error)}`);
     return null;
   }

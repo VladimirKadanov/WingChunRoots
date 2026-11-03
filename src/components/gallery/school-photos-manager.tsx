@@ -95,7 +95,7 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
     focusAfter.current = null;
   }, [rooms]);
 
-  async function run(busyText: string, doneText: string, call: () => Promise<Response>, after?: () => void) {
+  async function run(busyText: string, doneText: string, call: () => Promise<Response>, after?: () => void, undo?: () => void) {
     if (busy) return;
     setStatus({ kind: 'busy', text: busyText });
     const outcome = await call().then(
@@ -103,7 +103,11 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
       () => 'The connection failed. Try again.',
     );
     if (outcome !== null) {
+      // A refused change shows what the server holds again (code review: a refused reorder kept
+      // the order it had only drawn).
+      undo?.();
       setStatus({ kind: 'refused', text: outcome });
+      router.refresh();
       return;
     }
     after?.();
@@ -130,9 +134,14 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
     const target = index + step;
     const button = step < 0 && target > 0 ? 'up' : step > 0 && target < next.length - 1 ? 'down' : step < 0 ? 'down' : 'up';
     focusAfter.current = `${id}-${moved!.id}-${button}`;
+    const before = rooms;
     setRooms(next);
-    void run('Saving the order…', `Moved to place ${target + 1} of ${next.length}.`, () =>
-      callRpc('/api/rpc/schoolPhotos/reorder', { schoolId: view.schoolId, photoIds: next.map((p) => p.id) }),
+    void run(
+      'Saving the order…',
+      `Moved to place ${target + 1} of ${next.length}.`,
+      () => callRpc('/api/rpc/schoolPhotos/reorder', { schoolId: view.schoolId, photoIds: next.map((p) => p.id) }),
+      undefined,
+      () => setRooms(before),
     );
   }
 

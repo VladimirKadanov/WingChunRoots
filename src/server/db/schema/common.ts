@@ -131,6 +131,8 @@ export const PHOTO_CAPTION_MAX = 200;
  * viewer shows (the whole photo, never cropped; never enlarged). DEFAULT, no D number.
  */
 export const PHOTO_FULL_MAX_SIDE = 1280;
+/** M14: the largest rendition the photo routes send (a larger object in the store is refused); M16: the whole photo is encoded to fit it. */
+export const PHOTO_RENDITION_MAX_BYTES = 1024 * 1024;
 /** M16: a school's photos: its logo (at most one) and the photos of its training rooms. */
 export const SCHOOL_PHOTO_KINDS = ['logo', 'room'] as const;
 /** M16: a school photo is shown (`active`), was replaced by a newer logo (`replaced`) or was removed. */

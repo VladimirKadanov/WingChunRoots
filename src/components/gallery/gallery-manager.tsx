@@ -44,7 +44,7 @@ export function GalleryManager({ view }: { view: GalleryView }) {
     focusAfter.current = null;
   }, [photos]);
 
-  async function run(busyText: string, doneText: string, call: () => Promise<Response>, after?: () => void) {
+  async function run(busyText: string, doneText: string, call: () => Promise<Response>, after?: () => void, undo?: () => void) {
     if (busy) return;
     setStatus({ kind: 'busy', text: busyText });
     const outcome = await call().then(
@@ -52,7 +52,11 @@ export function GalleryManager({ view }: { view: GalleryView }) {
       () => 'The connection failed. Try again.',
     );
     if (outcome !== null) {
+      // A refused change shows what the server holds again (code review: a refused reorder kept
+      // the order it had only drawn).
+      undo?.();
       setStatus({ kind: 'refused', text: outcome });
+      router.refresh();
       return;
     }
     after?.();
@@ -78,10 +82,15 @@ export function GalleryManager({ view }: { view: GalleryView }) {
     const target = index + step;
     const button = step < 0 && target > 0 ? 'up' : step > 0 && target < next.length - 1 ? 'down' : step < 0 ? 'down' : 'up';
     focusAfter.current = `${id}-${moved!.id}-${button}`;
+    const before = photos;
     setPhotos(next);
-    void run('Saving the order…', `Moved to place ${target + 1} of ${next.length}.`, () =>
-      callRpc('/api/rpc/gallery/reorder', { photoIds: next.map((p) => p.id) }),
-    ).then(() => undefined);
+    void run(
+      'Saving the order…',
+      `Moved to place ${target + 1} of ${next.length}.`,
+      () => callRpc('/api/rpc/gallery/reorder', { photoIds: next.map((p) => p.id) }),
+      undefined,
+      () => setPhotos(before),
+    );
   }
 
   const inputId = `${id}-file`;

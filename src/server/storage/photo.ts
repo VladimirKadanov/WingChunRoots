@@ -13,7 +13,7 @@
 
 import sharp from 'sharp';
 
-import { PHOTO_FULL_MAX_SIDE, PHOTO_MIN_SIDE, PHOTO_SIZES } from '../db/schema/common';
+import { PHOTO_FULL_MAX_SIDE, PHOTO_MIN_SIDE, PHOTO_RENDITION_MAX_BYTES, PHOTO_SIZES } from '../db/schema/common';
 import { ImageRefused, MAX_IMAGE_PIXELS, sniffMime } from './sanitize';
 
 export type PhotoSize = (typeof PHOTO_SIZES)[number];
@@ -114,6 +114,15 @@ async function uprightSize(bytes: Uint8Array): Promise<{ width: number; height: 
 
 const openImage = (bytes: Uint8Array) => sharp(bytes, { failOn: 'error', limitInputPixels: MAX_IMAGE_PIXELS, animated: false });
 
+/** The whole photo's encodings, tried in turn until one fits PHOTO_RENDITION_MAX_BYTES: [WebP quality, share of the side]. */
+const FULL_ENCODINGS: readonly (readonly [number, number])[] = [
+  [82, 1],
+  [70, 1],
+  [60, 1],
+  [60, 0.75],
+  [50, 0.5],
+];
+
 /**
  * M16 (docs/adr/0019-galleries.md): a photo of a person's gallery or of a school's training room:
  * the centred squares of renderProfilePhoto (so any gallery photo can become the profile photo and
@@ -125,18 +134,27 @@ export async function renderGalleryPhoto(bytes: Uint8Array): Promise<RenderedGal
   const squares = await renderProfilePhoto(bytes);
   const { width, height } = await uprightSize(bytes);
   const scale = Math.min(1, PHOTO_FULL_MAX_SIDE / Math.max(width, height));
-  const target = { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
   try {
-    const out = await openImage(bytes)
-      .rotate()
-      .resize(target.width, target.height, { fit: 'fill' })
-      .toColourspace('srgb')
-      .webp({ quality: 82, effort: 4 })
-      .toBuffer({ resolveWithObject: true });
-    return { ...squares, full: { bytes: new Uint8Array(out.data), width: out.info.width, height: out.info.height } };
+    // The routes send no rendition over PHOTO_RENDITION_MAX_BYTES: a detailed photo is encoded
+    // again at a lower quality, and then smaller, until it fits (code review: a whole photo over
+    // the limit was stored and then never served).
+    for (const [quality, shrink] of FULL_ENCODINGS) {
+      const side = scale * shrink;
+      const target = { width: Math.max(1, Math.round(width * side)), height: Math.max(1, Math.round(height * side)) };
+      const out = await openImage(bytes)
+        .rotate()
+        .resize(target.width, target.height, { fit: 'fill' })
+        .toColourspace('srgb')
+        .webp({ quality, effort: 4 })
+        .toBuffer({ resolveWithObject: true });
+      if (out.data.byteLength <= PHOTO_RENDITION_MAX_BYTES) {
+        return { ...squares, full: { bytes: new Uint8Array(out.data), width: out.info.width, height: out.info.height } };
+      }
+    }
   } catch (error) {
     throw refusal(error);
   }
+  throw new PhotoRefused('too_large');
 }
 
 /**

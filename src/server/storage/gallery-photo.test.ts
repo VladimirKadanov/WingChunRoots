@@ -4,9 +4,10 @@
 // enlarged, and a logo is never cropped. Every image is generated, flat colour, with fictional
 // metadata (./test-images.ts).
 
+import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 
-import { PHOTO_FULL_MAX_SIDE } from '../db/schema/common';
+import { PHOTO_FULL_MAX_SIDE, PHOTO_RENDITION_MAX_BYTES } from '../db/schema/common';
 import { PhotoRefused, renderGalleryPhoto, renderSchoolLogo } from './photo';
 import { alphaAt, containsAscii, imageFacts, jpegWithGps, orientedJpeg, pixelAt, plainImage, pngWithGps, TEST_EXIF_CAMERA } from './test-images';
 
@@ -21,6 +22,25 @@ async function refusalOf(render: () => Promise<unknown>): Promise<string> {
 }
 
 describe('renderGalleryPhoto', () => {
+  it('encodes a detailed photo again until its whole rendition fits the routes\' limit (code review)', async () => {
+    // Pseudo-random pixels from a fixed seed (generated, nothing of a real person): at quality 82
+    // its whole photo is over 1 MB, so the first encoding does not fit.
+    const width = 1280;
+    const height = 1280;
+    const raw = Buffer.alloc(width * height * 3);
+    let seed = 12345;
+    for (let i = 0; i < raw.length; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      raw[i] = (seed >> 16) & 255;
+    }
+    const noisy = new Uint8Array(await sharp(raw, { raw: { width, height, channels: 3 } }).png().toBuffer());
+    expect((await sharp(noisy).webp({ quality: 82, effort: 4 }).toBuffer()).byteLength).toBeGreaterThan(PHOTO_RENDITION_MAX_BYTES);
+    const rendered = await renderGalleryPhoto(noisy);
+    expect(rendered.full.bytes.byteLength).toBeLessThanOrEqual(PHOTO_RENDITION_MAX_BYTES);
+    expect(Math.max(rendered.full.width, rendered.full.height)).toBeLessThanOrEqual(PHOTO_FULL_MAX_SIDE);
+    for (const bytes of Object.values(rendered.renditions)) expect(bytes.byteLength).toBeLessThanOrEqual(PHOTO_RENDITION_MAX_BYTES);
+  });
+
   it('stores the squares and the whole photo as WebP, without EXIF, GPS, XMP or IPTC in any rendition', async () => {
     const original = await jpegWithGps(1600, 900);
     expect(containsAscii(original, TEST_EXIF_CAMERA)).toBe(true);

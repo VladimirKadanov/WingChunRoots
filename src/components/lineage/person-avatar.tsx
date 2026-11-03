@@ -67,6 +67,10 @@ export function PersonAvatar({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={size === 'lg' ? photo.large : photo.small}
+        // M16: the card's 64 px square takes the 512 px rendition on a screen of two or more device
+        // pixels per CSS pixel (code review: the 96 px one was blurry there).
+        srcSet={square ? `${photo.small} 96w, ${photo.large} 512w` : undefined}
+        sizes={square ? `${px}px` : undefined}
         alt={decorative ? '' : name}
         aria-hidden={decorative || undefined}
         width={px}
