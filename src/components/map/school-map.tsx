@@ -13,6 +13,8 @@
 //   location is a solid pin standing on its point, a city-only school a hollow dashed ring at the
 //   city's centre; their names say which ("exact location" / "private club, by invitation"), and
 //   the selected one carries its name beside it. Shape and text, never colour alone.
+// - "Show on the map" in the list (`focus`): the map flies to the school and zooms in to SCHOOL_ZOOM
+//   (src/lib/school-finder.ts), never out; a pin chosen on the map only comes to the centre.
 // - `paddingBottom`: the height of the phone's sheet over the map (MapLibre's padding), so the
 //   centre of the view, and a selected pin moved to it, stay in the part above the sheet; a marker
 //   reached with Tab under the sheet is brought into view, and a control (a zoom button, the
@@ -33,7 +35,7 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react';
 
 import { CityRingMark, ExactPinMark } from '@/components/schools/marks';
 import { cx } from '@/lib/cx';
-import { MAX_ZOOM, MIN_ZOOM } from '@/lib/school-finder';
+import { MAX_ZOOM, MIN_ZOOM, SCHOOL_ZOOM } from '@/lib/school-finder';
 import type { SchoolPinDto } from '@/server/dto/schools';
 import { maplibregl } from './maplibre';
 import { usePageTheme } from './use-theme';
@@ -46,9 +48,21 @@ export interface MapView {
 
 export type Bounds = [west: number, south: number, east: number, north: number];
 
+/** A press of "Show on the map": the school, and a count that tells two presses on it apart. */
+export interface SchoolFocus {
+  id: string;
+  press: number;
+}
+
 export interface SchoolMapProps {
   schools: readonly SchoolPinDto[];
   selectedId: string | null;
+  /**
+   * The last "Show on the map" (the list): the map flies to the school and zooms in to it
+   * (SCHOOL_ZOOM; never out, when the reader is already closer). A pin chosen on the map only
+   * comes to the centre.
+   */
+  focus: SchoolFocus | null;
   onSelect: (id: string) => void;
   styles: { light: string; dark: string };
   /**
@@ -91,7 +105,7 @@ function foldAttribution(container: HTMLElement) {
   container.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
 }
 
-export default function SchoolMap({ schools, selectedId, onSelect, styles, initial, paddingBottom, onViewChange, onFail }: SchoolMapProps) {
+export default function SchoolMap({ schools, selectedId, focus, onSelect, styles, initial, paddingBottom, onViewChange, onFail }: SchoolMapProps) {
   const theme = usePageTheme();
   const map = useRef<MapRef>(null);
   const [loadedStyle, setLoadedStyle] = useState<'light' | 'dark' | null>(null);
@@ -108,6 +122,8 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
   // A selected school comes to the centre of the part of the map above the sheet, and comes back
   // there when the sheet changes height (it stays visible above the sheet). Without a selection a
   // new sheet height only moves the centre of the view (MapLibre's padding).
+  // The zoom the last "Show on the map" asked for, until the reader moves the map themselves.
+  const zoomTarget = useRef<{ id: string; zoom: number } | null>(null);
   const place = useEffectEvent((animate: boolean) => {
     const m = map.current?.getMap();
     if (!m) return;
@@ -116,11 +132,27 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
       m.setPadding(padding(paddingBottom));
       return;
     }
-    m.easeTo({ center: [school.point.lng, school.point.lat], padding: padding(paddingBottom), duration: animate && !reducedMotion() ? 450 : 0 });
+    // A "Show on the map" still under way (the phone's sheet folds down as it starts) keeps its zoom.
+    const zoom = zoomTarget.current?.id === school.id ? zoomTarget.current.zoom : m.getZoom();
+    m.easeTo({ center: [school.point.lng, school.point.lat], zoom, padding: padding(paddingBottom), duration: animate && !reducedMotion() ? 450 : 0 });
   });
   useEffect(() => {
     place(true);
   }, [selectedId, paddingBottom]);
+  // "Show on the map": after place() above (effects run in order), so this move is the one that stays.
+  const zoomToFocus = useEffectEvent(() => {
+    const m = map.current?.getMap();
+    const school = focus ? schools.find((s) => s.id === focus.id) : undefined;
+    if (!m || !school) return;
+    const zoom = Math.max(m.getZoom(), school.precision === 'exact' ? SCHOOL_ZOOM.exact : SCHOOL_ZOOM.city);
+    zoomTarget.current = { id: school.id, zoom };
+    const center: [number, number] = [school.point.lng, school.point.lat];
+    if (reducedMotion()) m.jumpTo({ center, zoom, padding: padding(paddingBottom) });
+    else m.flyTo({ center, zoom, padding: padding(paddingBottom), maxDuration: 2500 });
+  });
+  useEffect(() => {
+    zoomToFocus();
+  }, [focus]);
   useEffect(() => {
     const container = selectedId ? map.current?.getMap().getContainer() : null;
     if (container) foldAttribution(container);
@@ -201,7 +233,10 @@ export default function SchoolMap({ schools, selectedId, onSelect, styles, initi
         }}
         onMoveStart={(event) => {
           setMoving(true);
-          if (event.originalEvent) foldAttribution(event.target.getContainer());
+          if (event.originalEvent) {
+            zoomTarget.current = null;
+            foldAttribution(event.target.getContainer());
+          }
         }}
         onMoveEnd={(event) => {
           setMoving(false);

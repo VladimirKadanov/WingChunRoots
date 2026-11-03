@@ -26,7 +26,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react';
 
-import type { Bounds, MapView } from '@/components/map/school-map';
+import type { Bounds, MapView, SchoolFocus } from '@/components/map/school-map';
 import { SearchIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { DrawerActions } from '@/components/ui/drawer';
@@ -129,6 +129,13 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
   const mapShown = canDraw && !failed;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // "Show on the map" in the list: select the school and bring the map close to it (each press
+  // counts, so a second press on the same school zooms in again after the reader zoomed out).
+  const [focus, setFocus] = useState<SchoolFocus | null>(null);
+  const show = (id: string) => {
+    setSelectedId(id);
+    setFocus((last) => ({ id, press: (last?.press ?? 0) + 1 }));
+  };
   const selected = schools.find((s) => s.id === selectedId) ?? null;
   const [sheetOpen, setSheetOpen] = useState(false);
   const sheet = useRef<DrawerActions>(null);
@@ -222,7 +229,7 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
         <h2 id="school-list-heading" className="sticky top-0 z-10 bg-bg py-3 text-sm font-semibold" data-testid="school-summary">
           {summary}
         </h2>
-        {schools.length > 0 ? <SchoolList schools={schools} selectedId={selectedId} onShow={mapShown ? (id) => setSelectedId(id) : undefined} /> : empty}
+        {schools.length > 0 ? <SchoolList schools={schools} selectedId={selectedId} onShow={mapShown ? show : undefined} /> : empty}
       </aside>
 
       <div ref={setFrame} className="relative min-h-0" data-testid="school-map-frame">
@@ -231,6 +238,7 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
             <SchoolMap
               schools={schools}
               selectedId={selectedId}
+              focus={focus}
               onSelect={select}
               styles={styles}
               initial={initial}
@@ -318,7 +326,7 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
               schools={schools}
               selectedId={selectedId}
               onShow={(id) => {
-                setSelectedId(id);
+                show(id);
                 // Down to the peek, so the map shows the school.
                 sheet.current?.collapse();
               }}
