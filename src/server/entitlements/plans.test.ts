@@ -203,9 +203,17 @@ describe('features of the pilot that are not built yet (review round 1, requirem
 describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
   it('Free Sifu to Professional Sifu: more photos (M16), no student limit and a school pin, nothing planned', () => {
     const benefits = upgradeBenefits('free_sifu', 'pro_sifu');
-    expect(benefits.map((b) => b.feature)).toEqual(['photos', 'approve_students', 'school_map']);
-    expect(benefits[0]).toMatchObject({ from: '2 photos', to: '100 photos', opens: null });
-    expect(benefits[1]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: null });
+    // The benefits the pilot had before M16 first, in the matrix's order; the photos after them.
+    expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos']);
+    expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: null });
+    expect(benefits[2]).toMatchObject({ from: '2 photos', to: '100 photos', opens: null });
+  });
+
+  it('leads with the benefit of the limit that was hit, the rest in the same order', () => {
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'approve_students').map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_map').map((b) => b.feature)).toEqual(['school_map', 'approve_students', 'photos']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'photos').map((b) => b.feature)).toEqual(['photos', 'approve_students', 'school_map']);
+    expect(upgradeBenefits('free_student', 'premium_student', 'photos').map((b) => b.feature)).toEqual(['photos']);
   });
 
   it('never lists a planned feature, for any pair of plans', () => {

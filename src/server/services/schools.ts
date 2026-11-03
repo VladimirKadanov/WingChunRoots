@@ -739,7 +739,7 @@ async function pinOffer(db: Executor, userId: string): Promise<{ canSubmit: bool
       allowance: { current: 0, limit: 0, sentence: `On ${from.name} your school stays a draft that only you see. A public pin needs ${to.name}.` },
       from,
       to,
-      benefits: upgradeBenefits(decision.plan, decision.grantedBy),
+      benefits: upgradeBenefits(decision.plan, decision.grantedBy, 'school_map'),
       waiting: null,
       pilotRequest: await openPilotRequest(db, userId),
     },

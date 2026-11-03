@@ -548,18 +548,30 @@ export interface Benefit {
 }
 
 /**
+ * Features that joined the pilot after M08 (the photo allowance, M16): an upgrade prompt lists
+ * their benefits after the ones the pilot had before, which keep the matrix's order.
+ */
+const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos'];
+
+/**
  * The real benefits of moving from one plan to another (plan §5.6): only features with
  * availability 'now', where `to` gives more. Planned features never appear here; a feature of the
- * pilot that is not built yet carries `opens`, which the prompt shows beside it.
+ * pilot that is not built yet carries `opens`, which the prompt shows beside it. A prompt at a
+ * limit passes that limit's feature as `lead`, so its benefit comes first (the one that was hit);
+ * otherwise the matrix's order, with the features that joined the pilot later after the others.
  */
-export function upgradeBenefits(from: PlanCode, to: PlanCode): Benefit[] {
-  return FEATURES.filter((f) => f.availability === 'now' && improves(f, from, to)).map((f) => ({
-    feature: f.key,
-    label: f.label,
-    from: f.values[from].label,
-    to: f.values[to].label,
-    opens: f.opens ?? null,
-  }));
+export function upgradeBenefits(from: PlanCode, to: PlanCode, lead?: FeatureKey): Benefit[] {
+  const rank = (key: FeatureKey) => (key === lead ? 0 : JOINED_PILOT_LATER.includes(key) ? 2 : 1);
+  return FEATURES.filter((f) => f.availability === 'now' && improves(f, from, to))
+    .map((f, index) => ({ f, index }))
+    .sort((a, b) => rank(a.f.key) - rank(b.f.key) || a.index - b.index)
+    .map(({ f }) => ({
+      feature: f.key,
+      label: f.label,
+      from: f.values[from].label,
+      to: f.values[to].label,
+      opens: f.opens ?? null,
+    }));
 }
 
 /** Plans an admin can grant that give no benefit of the pilot over their free plan (Premium Student). */

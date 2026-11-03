@@ -222,7 +222,7 @@ async function allowanceOf(db: Executor, userId: string): Promise<{ allowance: G
       allowance: { current: used, limit, sentence: text.sentence },
       from,
       to,
-      benefits: upgradeBenefits(decision.plan, decision.grantedBy),
+      benefits: upgradeBenefits(decision.plan, decision.grantedBy, 'photos'),
       waiting: null,
       pilotRequest: await openPilotRequest(db, userId),
     };

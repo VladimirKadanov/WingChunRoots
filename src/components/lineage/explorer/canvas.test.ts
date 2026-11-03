@@ -8,20 +8,23 @@ import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
 import { COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, largeViewStart, ms, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, fullZoomOf, largeViewStart, ms, PHONE_FULL_ZOOM, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
 
+/** The slot of most scenes here: the 200×64 card before M16. The tests of a phone's first view that depend on the card's width use M16's (FULL). */
 const SLOT = { width: 200, height: 64 };
+/** M16's full card (264×64, its square photo; docs/adr/0019-galleries.md). */
+const FULL = NODE_SIZES.full;
 const ROW = 200;
 
 /**
  * A laid-out scene: people by rank and x (the left of their 200×64 slot), the top of their row
  * (y, `rank` × 200 unless given), and teacher → student links.
  */
-function sceneOf(people: readonly { id: string; rank: number; x: number; y?: number }[], links: readonly [string, string][], focusId: string): Scene {
+function sceneOf(people: readonly { id: string; rank: number; x: number; y?: number }[], links: readonly [string, string][], focusId: string, slot: { width: number; height: number } = SLOT): Scene {
   const nodes: SceneNode[] = people.map((p) => {
     const y = p.y ?? p.rank * ROW;
-    const box = { x: p.x, y, ...SLOT };
-    const center = { x: p.x + SLOT.width / 2, y: y + SLOT.height / 2 };
+    const box = { x: p.x, y, ...slot };
+    const center = { x: p.x + slot.width / 2, y: y + slot.height / 2 };
     // The box of each level of detail, centred on the slot (as the layout's scene makes them).
     const centred = (level: DetailLevel): Box => ({ x: center.x - NODE_SIZES[level].width / 2, y: center.y - NODE_SIZES[level].height / 2, ...NODE_SIZES[level] });
     return {
@@ -45,7 +48,7 @@ function sceneOf(people: readonly { id: string; rank: number; x: number; y?: num
     bends: 0,
     path: { type: 'orthogonal', points: [] },
   }));
-  const width = Math.max(...people.map((p) => p.x + SLOT.width));
+  const width = Math.max(...people.map((p) => p.x + slot.width));
   const height = Math.max(...nodes.map((n) => n.y + n.height));
   return {
     version: 1,
@@ -69,7 +72,9 @@ function sceneOf(people: readonly { id: string; rank: number; x: number; y?: num
  * A wide lineage like demo-lineage-b: the root above its five students, who are far apart above
  * their own students (48 people in all).
  */
-function wideLineage(): Scene {
+function wideLineage(slot: { width: number; height: number } = SLOT): Scene {
+  // The column pitch: the slot and the column gap (24).
+  const pitch = slot.width + 24;
   const people = [{ id: 'root', rank: 0, x: 8252 }];
   const links: [string, string][] = [];
   const students = [2019, 4236, 6710, 9028, 13305];
@@ -77,11 +82,11 @@ function wideLineage(): Scene {
     people.push({ id: `s${i}`, rank: 1, x });
     links.push(['root', `s${i}`]);
     for (let j = 0; j < 8; j++) {
-      people.push({ id: `s${i}g${j}`, rank: 2, x: x - 900 + j * 224 });
+      people.push({ id: `s${i}g${j}`, rank: 2, x: x - 4 * pitch - 4 + j * pitch });
       links.push([`s${i}`, `s${i}g${j}`]);
     }
   });
-  return sceneOf(people, links, 'root');
+  return sceneOf(people, links, 'root', slot);
 }
 
 /**
@@ -182,7 +187,7 @@ describe('the first view of a scene', () => {
     expect(wholeFitZoom(scene.nodes, phone)).toBeLessThan(READABLE_ZOOM);
     const start = largeViewStart(scene, new Set(), phone)!;
     expect(start).not.toBeNull();
-    expect(start.zoom).toBe(DETAIL_ZOOM.full);
+    expect(start.zoom).toBe(PHONE_FULL_ZOOM);
     expect(onScreen(scene, 'hub', start, phone)).toBe(true);
     // Its teacher above it, and the students nearest below it (two full cards fit side by side at 390 px).
     expect(onScreen(scene, 'teacher', start, phone)).toBe(true);
@@ -227,7 +232,7 @@ describe('the first view of a scene', () => {
     expect(largeViewStart(scene, new Set(), desktop)).toBeNull();
     expect(wholeFitZoom(scene.nodes, phone)).toBeLessThan(READABLE_ZOOM);
     const start = largeViewStart(scene, new Set(), phone)!;
-    expect(start.zoom).toBe(DETAIL_ZOOM.full);
+    expect(start.zoom).toBe(PHONE_FULL_ZOOM);
     expect(onScreen(scene, 'hub', start, phone)).toBe(true);
   });
 
@@ -240,6 +245,21 @@ describe('the first view of a scene', () => {
     // The threshold is the zoom below which every person is a dot (lodOf).
     expect(READABLE_ZOOM).toBe(DETAIL_ZOOM.compact);
     expect(DETAIL_ZOOM).toEqual({ full: 0.75, compact: 0.4 });
+  });
+
+  it('draws full cards on a phone from a lower zoom, so two of M16\'s cards fit side by side at 390 px (questions/M16.md Q2)', () => {
+    // Desktops and tablets keep 0.75; a pane narrower than 640 px is a phone's.
+    expect(fullZoomOf(1208)).toBe(DETAIL_ZOOM.full);
+    expect(fullZoomOf(640)).toBe(DETAIL_ZOOM.full);
+    expect(fullZoomOf(639)).toBe(PHONE_FULL_ZOOM);
+    expect(fullZoomOf(390)).toBe(PHONE_FULL_ZOOM);
+    // Two full cards and the column gap as wide on screen as two 200 px cards were at 0.75.
+    expect(PHONE_FULL_ZOOM).toBeCloseTo(0.576, 3);
+    expect((2 * FULL.width + 24) * PHONE_FULL_ZOOM).toBeCloseTo((2 * 200 + 24) * DETAIL_ZOOM.full, 9);
+    // Inside the overlays' inset (12 px each side) of a 390 px pane, and of a 360 px one.
+    expect((2 * FULL.width + 24) * PHONE_FULL_ZOOM + 2 * 12).toBeLessThanOrEqual(360);
+    // Still above the zoom of compact chips.
+    expect(PHONE_FULL_ZOOM).toBeGreaterThan(DETAIL_ZOOM.compact);
   });
 
   it('opens the Lineage view on its root with the nearest of its students, in full cards', () => {
@@ -266,7 +286,7 @@ describe('the first view of a scene', () => {
   it('on a phone keeps full cards and the root alone when no student fits beside it', () => {
     const scene = wideLineage();
     // At the top of the pane, 12 px down, and the rows below fill the rest.
-    expect(largeViewStart(scene, new Set(), phone)).toEqual({ x: 8352, y: (600 / 2 - 12) / 0.75, zoom: 0.75 });
+    expect(largeViewStart(scene, new Set(), phone)).toEqual({ x: 8352, y: (600 / 2 - 12) / PHONE_FULL_ZOOM, zoom: PHONE_FULL_ZOOM });
   });
 
   describe('on a phone, with the legend and the zoom buttons over the pane', () => {
@@ -279,7 +299,7 @@ describe('the first view of a scene', () => {
     it('frames the root and its nearest student in full cards, clear of both, and the row below above the legend', () => {
       const scene = lineageA();
       const start = largeViewStart(scene, new Set(), pane)!;
-      expect(start.zoom).toBe(0.75);
+      expect(start.zoom).toBe(PHONE_FULL_ZOOM);
       for (const id of ['root', 'student']) {
         expect(onScreen(scene, id, start, pane), id).toBe(true);
         for (const overlay of pane.overlays) expect(overlap(paneBox(scene, id, start, pane), overlay), `${id} under an overlay`).toBe(false);
@@ -301,20 +321,27 @@ describe('the first view of a scene', () => {
     });
 
     it('moves a centred frame up to keep the overlays\' inset from the zoom buttons', () => {
-      // A student of the second row with two of its own students: 318 by 198 px at 0.75, which
-      // centred on the pane would end 7.5 px above the zoom buttons, closer than their 12 px inset.
-      const scene = { ...wideLineage(), focusId: 's1' };
-      const start = largeViewStart(scene, new Set(), pane)!;
+      // M16's 264 px cards (FULL) on a shorter pane (390 px wide, 456 high; the overlays as the
+      // explorer draws them there): a student of the second row with two of its own students,
+      // 318 by 152 px at PHONE_FULL_ZOOM, which centred on the pane would end under the zoom buttons.
+      const legend456 = { x: 12, y: 380, width: 302, height: 64 };
+      const buttons456 = { x: 332, y: 294, width: 46, height: 134 };
+      const pane456 = { width: 390, height: 456, overlays: [legend456, buttons456] };
+      const scene = { ...wideLineage(FULL), focusId: 's1' };
+      const start = largeViewStart(scene, new Set(), pane456)!;
+      expect(start.zoom).toBe(PHONE_FULL_ZOOM);
+      const centredBottom = (pane456.height + 264 * start.zoom) / 2;
+      expect(centredBottom).toBeGreaterThan(buttons456.y);
       for (const id of ['s1', 's1g4', 's1g5']) {
-        expect(onScreen(scene, id, start, pane), id).toBe(true);
-        for (const overlay of pane.overlays) expect(overlap(paneBox(scene, id, start, pane), overlay), `${id} under an overlay`).toBe(false);
+        expect(onScreen(scene, id, start, pane456), id).toBe(true);
+        for (const overlay of pane456.overlays) expect(overlap(paneBox(scene, id, start, pane456), overlay), `${id} under an overlay`).toBe(false);
       }
-      const bottom = paneBox(scene, 's1g4', start, pane);
-      expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons.y - 12 + 1e-6);
+      const bottom = paneBox(scene, 's1g4', start, pane456);
+      expect(bottom.y + bottom.height).toBeLessThanOrEqual(buttons456.y - 12 + 1e-6);
       // Moved up past the inset until the top row meets the pane's margin, with no empty canvas
-      // above it (b7 of the M06 design review): 3 px higher than the inset alone would put it.
-      expect(paneBox(scene, 'root', start, pane).y).toBeCloseTo(12, 6);
-      expect(buttons.y - 12 - (bottom.y + bottom.height)).toBeCloseTo(3, 0);
+      // above it (b7 of the M06 design review): 2.7 px higher than the inset alone would put it.
+      expect(paneBox(scene, 'root', start, pane456).y).toBeCloseTo(12, 6);
+      expect(buttons456.y - 12 - (bottom.y + bottom.height)).toBeCloseTo(2.7, 1);
     });
   });
 
@@ -323,15 +350,17 @@ describe('the first view of a scene', () => {
      * The person view of demo-two-lineages on a phone as the layout places it: two teachers'
      * teachers, the two teachers, the focus, and its two students (rows 124 px apart).
      */
-    function twoLineages(): Scene {
+    /** Two columns a slot and the column gap (24) apart; `slot` the cards' (the 200 px one unless given). */
+    function twoLineages(slot: { width: number; height: number } = SLOT): Scene {
+      const pitch = slot.width + 24;
       const people = [
         { id: 'root-a', rank: 0, x: 45, y: 12 },
-        { id: 'root-b', rank: 0, x: 269, y: 12 },
+        { id: 'root-b', rank: 0, x: 45 + pitch, y: 12 },
         { id: 'teacher-a', rank: 1, x: 45, y: 136 },
-        { id: 'teacher-b', rank: 1, x: 269, y: 136 },
+        { id: 'teacher-b', rank: 1, x: 45 + pitch, y: 136 },
         { id: 'focus', rank: 2, x: 45, y: 260 },
         { id: 'student-a', rank: 3, x: 12, y: 384 },
-        { id: 'student-b', rank: 3, x: 236, y: 384 },
+        { id: 'student-b', rank: 3, x: 12 + pitch, y: 384 },
       ];
       const links: [string, string][] = [
         ['root-a', 'teacher-a'],
@@ -341,7 +370,7 @@ describe('the first view of a scene', () => {
         ['focus', 'student-a'],
         ['focus', 'student-b'],
       ];
-      return sceneOf(people, links, 'focus');
+      return sceneOf(people, links, 'focus', slot);
     }
     // The pane at 393x659 (an iPhone 15's viewport), 352 px high: the legend wraps to two lines.
     const legend = { x: 12, y: 276, width: 305, height: 64 };
@@ -375,14 +404,28 @@ describe('the first view of a scene', () => {
       expect(start.zoom).toBeGreaterThan((buttons.y - 12 - 12) / 436);
     });
 
-    it('keeps React Flow\'s fit where it draws everyone clear of the overlays: at 390x844, and with nothing over the pane', () => {
-      const scene = twoLineages();
-      // The pane at 390x844 (the legend on two lines there too): compact chips, all of them clear.
+    it('keeps React Flow\'s fit where it draws everyone clear of the overlays: on a tall phone, and with nothing over the pane', () => {
+      // M16's 264 px cards (FULL), side by side: on a phone React Flow's fit draws them as full
+      // cards (PHONE_FULL_ZOOM). The pane at 430x932 (a large phone's viewport, the legend on two
+      // lines): the bottom row ends above the zoom buttons, everyone clear. At 390x844 the right
+      // student's corner would reach under the buttons: there the fit is moved, still in full cards.
+      const scene = twoLineages(FULL);
+      const pane430 = { width: 430, height: 625, overlays: [{ x: 12, y: 549, width: 302, height: 64 }, { x: 372, y: 463, width: 46, height: 134 }] };
+      const fit = wholeFitZoom(scene.nodes, pane430);
+      expect(fit).toBeGreaterThanOrEqual(fullZoomOf(pane430.width));
+      expect(fit).toBeLessThan(DETAIL_ZOOM.full);
+      expect(wholeViewStart(scene, new Set(), pane430)).toBeNull();
+      expect(largeViewStart(scene, new Set(), pane430)).toBeNull();
+      expect(wholeViewStart(scene, new Set(), { width: 390, height: 537 })).toBeNull();
+      expect(wholeViewStart(twoLineages(), new Set(), { width: short.width, height: short.height })).toBeNull();
       const pane390 = { width: 390, height: 537, overlays: [{ x: 12, y: 461, width: 302, height: 64 }, { x: 332, y: 375, width: 46, height: 134 }] };
-      expect(wholeFitZoom(scene.nodes, pane390)).toBeLessThan(DETAIL_ZOOM.full);
-      expect(wholeViewStart(scene, new Set(), pane390)).toBeNull();
-      expect(largeViewStart(scene, new Set(), pane390)).toBeNull();
-      expect(wholeViewStart(scene, new Set(), { width: short.width, height: short.height })).toBeNull();
+      const moved = wholeViewStart(scene, new Set(), pane390)!;
+      expect(moved).not.toBeNull();
+      expect(moved.zoom).toBeGreaterThanOrEqual(PHONE_FULL_ZOOM);
+      for (const n of scene.nodes) {
+        expect(onScreen(scene, n.id, moved, pane390), n.id).toBe(true);
+        for (const overlay of pane390.overlays) expect(overlap(paneBox(scene, n.id, moved, pane390), overlay), `${n.id} under an overlay`).toBe(false);
+      }
     });
 
     it('moves the whole fit up, at its zoom, where it would end under the zoom buttons', () => {
@@ -446,7 +489,7 @@ describe('the first view of a scene', () => {
       expect(wholeViewStart(scene, new Set(), tallLegend)).toBeNull();
       const start = largeViewStart(scene, new Set(), tallLegend)!;
       expect(start).not.toBeNull();
-      expect(start.zoom).toBe(DETAIL_ZOOM.full);
+      expect(start.zoom).toBe(PHONE_FULL_ZOOM);
       expect(onScreen(scene, 'focus', start, tallLegend)).toBe(true);
     });
 

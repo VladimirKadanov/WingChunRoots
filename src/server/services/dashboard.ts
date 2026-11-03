@@ -229,7 +229,7 @@ export async function approvalOffer(
       allowance: { current: decision.current, limit, sentence: text.sentence },
       from,
       to,
-      benefits: upgradeBenefits(decision.plan, decision.grantedBy),
+      benefits: upgradeBenefits(decision.plan, decision.grantedBy, 'approve_students'),
       // No promise of when they can be approved: only that they stay pending and visible.
       waiting: { count: waiting, sentence: waiting === 1 ? 'One student request waits below. It stays pending and visible.' : `${waiting} student requests wait below. They stay pending and visible.` },
       pilotRequest: await openPilotRequest(db, userId),
