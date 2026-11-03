@@ -31,7 +31,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -48,7 +48,7 @@ import type { EntitlementSubject } from '../entitlements/access';
 import { withQuota } from '../entitlements/quota';
 import { logger } from '../log';
 import { getPhotoStore, newStorageKey, type ObjectStore } from '../storage';
-import { PhotoRefused, type PhotoSize, renderProfilePhoto } from '../storage/photo';
+import { PhotoRefused, type PhotoSize, renderGalleryPhoto } from '../storage/photo';
 import { readObjectBytes } from '../storage/read';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
@@ -62,7 +62,7 @@ export const PHOTO_WRONG_TYPE_MESSAGE = 'The contents of this file are not a JPE
 export const NO_OWN_PERSON_MESSAGE = 'You have no profile yet. Finish setting up your profile first.';
 const NOT_FOUND_MESSAGE = 'No such person.';
 
-const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 // --- Input -------------------------------------------------------------------------------------
 
@@ -118,13 +118,14 @@ function notFound(): ServiceError {
   return new ServiceError('NOT_FOUND', NOT_FOUND_MESSAGE);
 }
 
-interface OwnPerson {
+export interface OwnPerson {
   id: string;
   slug: string;
   visibility: string;
 }
 
-async function ownPerson(userId: string): Promise<OwnPerson | null> {
+/** The signed-in account's own person (not deleted), or null. */
+export async function ownPerson(userId: string): Promise<OwnPerson | null> {
   const [row] = await getDb()
     .select({ id: person.id, slug: person.slug, visibility: person.visibility })
     .from(person)
@@ -132,7 +133,8 @@ async function ownPerson(userId: string): Promise<OwnPerson | null> {
   return row ?? null;
 }
 
-const filesOf = (key: string) => PHOTO_SIZES.map((size) => `${key}/${size}`);
+/** The stored files of a photo: its squares and (M16) its whole photo, which a photo of M14 lacks. */
+const filesOf = (key: string) => [...PHOTO_SIZES.map((size) => `${key}/${size}`), `${key}/full`];
 
 /**
  * Deletes the files of photos whose rows are already `removed` (account deletion, src/server/services/
@@ -142,7 +144,7 @@ export async function deletePhotoFiles(photos: readonly { id: string; storageKey
   for (const photo of photos) await deleteFiles(store, photo.storageKey, photo.id);
 }
 
-async function deleteFiles(store: ObjectStore, key: string, photoId: string): Promise<void> {
+export async function deleteFiles(store: ObjectStore, key: string, photoId: string): Promise<void> {
   for (const file of filesOf(key)) {
     await store.delete(file).catch(() => {
       logger().error(`[photos] a stored file of photo ${photoId} could not be removed`);
@@ -151,7 +153,7 @@ async function deleteFiles(store: ObjectStore, key: string, photoId: string): Pr
 }
 
 /** Reads the whole file, refused past the limit (the HTTP layer refused a longer body already). */
-async function fileBytes(file: File): Promise<Uint8Array> {
+export async function fileBytes(file: File): Promise<Uint8Array> {
   if (file.size === 0) throw new ServiceError('BAD_REQUEST', 'This file is empty.', { file: 'This file is empty.' });
   if (file.size > PHOTO_MAX_BYTES) throw new ServiceError('PAYLOAD_TOO_LARGE', PHOTO_TOO_LARGE_MESSAGE, { file: PHOTO_TOO_LARGE_MESSAGE });
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -159,7 +161,7 @@ async function fileBytes(file: File): Promise<Uint8Array> {
   return bytes;
 }
 
-function refusalMessage(error: PhotoRefused): { code: 'UNSUPPORTED_MEDIA_TYPE' | 'BAD_REQUEST'; message: string } {
+export function refusalMessage(error: PhotoRefused): { code: 'UNSUPPORTED_MEDIA_TYPE' | 'BAD_REQUEST'; message: string } {
   switch (error.reason) {
     case 'not_image':
       return { code: 'UNSUPPORTED_MEDIA_TYPE', message: PHOTO_WRONG_TYPE_MESSAGE };
@@ -170,6 +172,20 @@ function refusalMessage(error: PhotoRefused): { code: 'UNSUPPORTED_MEDIA_TYPE' |
     default:
       return { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'This image could not be read. Save it again as JPEG, PNG or WebP.' };
   }
+}
+
+/** Writes every rendition of a gallery photo (the squares and the whole photo) under `key`. */
+export async function putRenditions(store: ObjectStore, key: string, rendered: { renditions: Record<PhotoSize, Uint8Array>; full?: { bytes: Uint8Array } }): Promise<void> {
+  for (const size of PHOTO_SIZES) {
+    await store.put(`${key}/${size}`, rendered.renditions[size], { contentType: 'image/webp', sha256: sha256(rendered.renditions[size]) });
+  }
+  if (rendered.full) await store.put(`${key}/full`, rendered.full.bytes, { contentType: 'image/webp', sha256: sha256(rendered.full.bytes) });
+}
+
+/** M16: the position before every photo of the person's gallery (the first place). */
+export async function firstPosition(tx: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: Record<string, unknown>[] }> }, personId: string): Promise<number> {
+  const result = await tx.execute(sql`SELECT COALESCE(MIN(position), 1) - 1 AS p FROM person_photo WHERE person_id = ${personId}::uuid AND status IN ('active', 'gallery')`);
+  return Number(result.rows[0]?.p ?? 0);
 }
 
 // --- Upload ------------------------------------------------------------------------------------
@@ -190,9 +206,10 @@ export async function uploadPhoto(
   const parsed = photoUploadInput.safeParse(raw);
   if (!parsed.success) throw new ServiceError('BAD_REQUEST', 'Choose a photo.', { file: 'Choose a photo.' });
   const bytes = await fileBytes(parsed.data.file);
-  let rendered: Awaited<ReturnType<typeof renderProfilePhoto>>;
+  // M16: with the whole photo too, as every photo of the gallery (the profile photo is one of them).
+  let rendered: Awaited<ReturnType<typeof renderGalleryPhoto>>;
   try {
-    rendered = await renderProfilePhoto(bytes);
+    rendered = await renderGalleryPhoto(bytes);
   } catch (error) {
     if (error instanceof PhotoRefused) {
       const { code, message } = refusalMessage(error);
@@ -208,12 +225,11 @@ export async function uploadPhoto(
   let previous: { id: string; storageKey: string } | null = null;
   try {
     // Inside the try: a rendition written before a failed one is deleted with it.
-    for (const size of PHOTO_SIZES) {
-      await store.put(`${key}/${size}`, rendered.renditions[size], { contentType: 'image/webp', sha256: sha256(rendered.renditions[size]) });
-    }
+    await putRenditions(store, key, rendered);
     const outcome = await getDb().transaction(async (tx) =>
       // DEFAULT D07: the current photo counts as one against 'photos', which every plan allows;
-      // a replacement of the person's photo adds nothing (the unit is the person).
+      // a replacement of the person's photo adds nothing (the unit is the person). M16: every
+      // other photo of the gallery counts too; only the profile photo is replaced here.
       withQuota(
         tx,
         subject,
@@ -226,11 +242,13 @@ export async function uploadPhoto(
             .for('update');
           if (!locked || locked.claimedBy !== p.user.id || locked.deletedAt) throw new ServiceError('NOT_FOUND', NO_OWN_PERSON_MESSAGE);
           const [old] = await tx
-            .select({ id: personPhoto.id, storageKey: personPhoto.storageKey })
+            .select({ id: personPhoto.id, storageKey: personPhoto.storageKey, position: personPhoto.position })
             .from(personPhoto)
             .where(and(eq(personPhoto.personId, own.id), eq(personPhoto.status, 'active')));
           const now = new Date();
           if (old) await tx.update(personPhoto).set({ status: 'replaced', updatedAt: now }).where(eq(personPhoto.id, old.id));
+          // M16: the new profile photo takes the old one's place in the gallery, or goes first.
+          const position = old ? old.position : await firstPosition(tx, own.id);
           await tx.insert(personPhoto).values({
             id,
             personId: own.id,
@@ -240,6 +258,9 @@ export async function uploadPhoto(
             width: rendered.side,
             height: rendered.side,
             sizeBytes: large.byteLength,
+            fullWidth: rendered.full.width,
+            fullHeight: rendered.full.height,
+            position,
             status: 'active',
             uploadedByUserId: p.user.id,
           });
@@ -255,7 +276,7 @@ export async function uploadPhoto(
             requestId: meta.requestId,
             ipHmac: meta.ipHmac,
           });
-          return old ?? null;
+          return old ? { id: old.id, storageKey: old.storageKey } : null;
         },
         { unit: own.id },
       ),
@@ -433,13 +454,28 @@ export interface OpenPhotoOptions {
   signal?: AbortSignal;
 }
 
-const ADDRESS = {
+export const PHOTO_ADDRESS = {
   id: z.uuid(),
   hash: z.string().regex(new RegExp(`^[0-9a-f]{${PHOTO_HASH_LENGTH}}$`)),
-  file: z.enum(PHOTO_SIZES.map((size) => `${size}.webp`) as [string, ...string[]]),
+  // M16: `full.webp`, the whole photo of a gallery or room photo (the 512 px square of a photo of M14).
+  file: z.enum(['full.webp', ...PHOTO_SIZES.map((size) => `${size}.webp`)] as [string, ...string[]]),
 };
+const ADDRESS = PHOTO_ADDRESS;
 
-const etagMatches = (header: string | null | undefined, etag: string) =>
+/** The stored file of an address's rendition: `<key>/96`, `<key>/512` or `<key>/full` (`<key>/512` without one). */
+export function renditionFile(storageKey: string, file: string, hasFull: boolean): string {
+  const name = file.split('.')[0]!;
+  if (name === 'full') return hasFull ? `${storageKey}/full` : `${storageKey}/512`;
+  return `${storageKey}/${Number(name) as PhotoSize}`;
+}
+
+/** M16: whether v_public_person shows this person (app_public_ro may read it): the rule of the person pages. */
+export async function isPublicPerson(ex: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: Record<string, unknown>[] }> }, personId: string): Promise<boolean> {
+  const result = await ex.execute(sql`SELECT 1 AS one FROM v_public_person WHERE id = ${personId}::uuid`);
+  return result.rows.length > 0;
+}
+
+export const etagMatches = (header: string | null | undefined, etag: string) =>
   (header ?? '').split(',').some((tag) => {
     const trimmed = tag.trim();
     return trimmed === etag || trimmed === `W/${etag}` || trimmed === '*';
@@ -460,23 +496,39 @@ export async function openPhoto(
   options: OpenPhotoOptions = {},
 ): Promise<PhotoFile | null> {
   if (!ADDRESS.id.safeParse(address.id).success || !ADDRESS.hash.safeParse(address.hash).success || !ADDRESS.file.safeParse(address.file).success) return null;
-  const size = Number(address.file.split('.')[0]) as PhotoSize;
+  // M16: the profile photo (active, the one the person points to) or another photo of the gallery.
   const [row] = await getDb()
-    .select({ storageKey: personPhoto.storageKey, sha256: personPhoto.sha256, personId: personPhoto.personId, claimedBy: person.claimedByUserId })
+    .select({
+      storageKey: personPhoto.storageKey,
+      sha256: personPhoto.sha256,
+      personId: personPhoto.personId,
+      status: personPhoto.status,
+      fullWidth: personPhoto.fullWidth,
+      claimedBy: person.claimedByUserId,
+    })
     .from(personPhoto)
-    .innerJoin(person, and(eq(person.id, personPhoto.personId), eq(person.photoId, personPhoto.id), isNull(person.deletedAt)))
-    .where(and(eq(personPhoto.id, address.id), eq(personPhoto.status, 'active')));
+    .innerJoin(person, and(eq(person.id, personPhoto.personId), isNull(person.deletedAt)))
+    .where(
+      and(
+        eq(personPhoto.id, address.id),
+        or(and(eq(personPhoto.status, 'active'), eq(person.photoId, personPhoto.id)), eq(personPhoto.status, 'gallery')),
+      ),
+    );
   if (!row || !row.sha256.startsWith(address.hash)) return null;
   // Public exactly when v_public_person shows the person and this photo (app_public_ro): the rule
-  // of the person pages (src/proxy.ts), so a hidden person's photo is 404 like their page.
-  const isPublic = (await publicPhotoRefs(getPublicDb(), [row.personId])).get(row.personId)?.id === address.id;
+  // of the person pages (src/proxy.ts), so a hidden person's photo is 404 like their page. M16: a
+  // gallery photo when v_public_person shows the person.
+  const isPublic =
+    row.status === 'active'
+      ? (await publicPhotoRefs(getPublicDb(), [row.personId])).get(row.personId)?.id === address.id
+      : await isPublicPerson(getPublicDb(), row.personId);
   if (!isPublic) {
     const isOwn = principal !== null && row.claimedBy === principal.user.id;
     if (!isOwn && !hasStaff2FA(principal)) return null;
   }
   // Checked after the visibility rule, so a 304 tells nobody more than a 404 would.
   if (etagMatches(options.ifNoneMatch, photoEtag(row.sha256))) return { notModified: true, sha256: row.sha256, public: isPublic };
-  const bytes = await readObjectBytes(store, `${row.storageKey}/${size}`, {
+  const bytes = await readObjectBytes(store, renditionFile(row.storageKey, address.file, row.fullWidth !== null), {
     timeoutMs: options.timeoutMs ?? PHOTO_READ_TIMEOUT_MS,
     maxBytes: PHOTO_RENDITION_MAX_BYTES,
     signal: options.signal,

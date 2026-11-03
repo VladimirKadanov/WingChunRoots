@@ -186,11 +186,17 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
       get: {
         operationId: 'photos.image',
         summary:
-          "One rendition of a person's current profile photo (WebP, square, no metadata): everyone for a public person; for a person who is not public only the person's own account and staff; 404 otherwise",
+          "One rendition of a person's current profile photo or (M16) of another photo of their gallery (WebP, no metadata): everyone for a public person; for a person who is not public only the person's own account and staff; 404 otherwise",
         parameters: [
           { name: 'id', in: 'path', required: true, description: 'The photo id (photos.get, or `photo` on a person in any public answer).', schema: { type: 'string', format: 'uuid' } },
           { name: 'hash', in: 'path', required: true, description: "The first 16 hex digits of the photo's content hash.", schema: { type: 'string', pattern: '^[0-9a-f]{16}$' } },
-          { name: 'file', in: 'path', required: true, description: 'The size: the 96 px card thumbnail or the 512 px profile image.', schema: { type: 'string', enum: ['96.webp', '512.webp'] } },
+          {
+            name: 'file',
+            in: 'path',
+            required: true,
+            description: 'The size: the 96 px card thumbnail, the 512 px profile image, or (M16) the whole photo of a gallery photo (the 512 px square for a photo stored before M16).',
+            schema: { type: 'string', enum: ['96.webp', '512.webp', 'full.webp'] },
+          },
         ],
         responses: {
           '200': {
@@ -199,6 +205,35 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
           },
           '304': { description: 'Not modified (If-None-Match matched the ETag).' },
           '404': errorResponse('No such photo, a replaced or removed one, or a person this session may not see (one answer for all).'),
+          '503': errorResponse('The photo store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.'),
+        },
+      },
+    },
+    // M16 (docs/adr/0019-galleries.md): a school's logo and room photos.
+    '/school-photos/{id}/{hash}/{file}': {
+      servers: [{ url: '/api' }],
+      get: {
+        operationId: 'schoolPhotos.image',
+        summary:
+          "One rendition of a school's logo or room photo (WebP, no metadata, no location): everyone for a public school; for a school that is not public only the account that listed it and staff; 404 otherwise",
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'The photo id (`logo` or `photos` of schools.get, or schoolPhotos.get).', schema: { type: 'string', format: 'uuid' } },
+          { name: 'hash', in: 'path', required: true, description: "The first 16 hex digits of the photo's content hash.", schema: { type: 'string', pattern: '^[0-9a-f]{16}$' } },
+          {
+            name: 'file',
+            in: 'path',
+            required: true,
+            description: 'The 96 px or 512 px square (a logo whole on a transparent square), or the whole room photo.',
+            schema: { type: 'string', enum: ['96.webp', '512.webp', 'full.webp'] },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, no-cache for a public school, private, no-store otherwise).',
+            content: { 'image/webp': { schema: { type: 'string', contentMediaType: 'image/webp' } } },
+          },
+          '304': { description: 'Not modified (If-None-Match matched the ETag).' },
+          '404': errorResponse('No such photo, a replaced or removed one, or a school this session may not see (one answer for all).'),
           '503': errorResponse('The photo store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.'),
         },
       },

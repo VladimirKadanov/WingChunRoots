@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 
 import { getPhotoStore, type ObjectStore } from '../storage';
-import { demoPortrait, renderProfilePhoto } from '../storage/photo';
+import { demoLogo, demoPortrait, demoRoom, renderGalleryPhoto, renderSchoolLogo } from '../storage/photo';
 import { uuidv7FromParts } from './ids';
 
 /** The demo people with a photo; the others (demo-root-a, demo-hub-a, ...) keep the monogram. */
@@ -30,30 +30,101 @@ export interface DemoPhoto {
   side: number;
   sizeBytes: number;
   createdAt: Date;
+  /** M16: the whole photo's size (null for a logo). */
+  fullWidth: number | null;
+  fullHeight: number | null;
+  /** M16: the place in the gallery and the caption. */
+  position: number;
+  caption: string | null;
+  /** M16: `profile` (the M14 photo), `gallery` (another photo of the person), `logo` or `room` (a school's). */
+  role: 'profile' | 'gallery' | 'logo' | 'room';
 }
 
-/** Renders the demo photos and writes their files to the photo store; returns their rows' values. */
+/**
+ * M16 (D20): the demo galleries: two more photos (generated rooms) in the gallery of
+ * demo-two-lineages, beside its profile photo, with fictional captions.
+ */
+export const DEMO_GALLERY: readonly { slug: string; captions: readonly (string | null)[] }[] = [
+  { slug: 'demo-two-lineages', captions: ['Demo training hall, morning class', null] },
+];
+
+/**
+ * M16 (D20): the demo schools' logos and room photos (generated, fictional), on `demo-` schools
+ * only: a logo and two rooms for one exact-location school, one room for a city-only school.
+ */
+export const DEMO_SCHOOL_PHOTOS: readonly { slug: string; logo: boolean; rooms: readonly (string | null)[] }[] = [
+  { slug: 'demo-school-sofia', logo: true, rooms: ['Demo main training room', 'Demo wooden dummy corner'] },
+  { slug: 'demo-school-city-only', logo: false, rooms: [null] },
+];
+
+async function putAll(store: ObjectStore, storageKey: string, files: Record<string, Uint8Array>): Promise<void> {
+  for (const [name, bytes] of Object.entries(files)) {
+    await store.put(`${storageKey}/${name}`, bytes, { contentType: 'image/webp', sha256: createHash('sha256').update(bytes).digest('hex') });
+  }
+}
+
+/** One generated demo image through the pipeline of an upload, its files written, its row's values. */
+async function demoPhoto(
+  store: ObjectStore,
+  key: string,
+  index: number,
+  role: DemoPhoto['role'],
+  slug: string,
+  position: number,
+  caption: string | null,
+): Promise<DemoPhoto> {
+  const seed = digest(key);
+  const original = role === 'logo' ? await demoLogo(seed.readUInt32BE(0)) : role === 'profile' ? await demoPortrait(seed.readUInt32BE(0)) : await demoRoom(seed.readUInt32BE(0));
+  const storageKey = `photos/${seed.subarray(4, 28).toString('hex')}`;
+  let side: number;
+  let large: Uint8Array;
+  let full: { width: number; height: number } | null = null;
+  if (role === 'logo') {
+    const rendered = await renderSchoolLogo(original);
+    await putAll(store, storageKey, rendered.renditions);
+    side = rendered.side;
+    large = rendered.renditions[512];
+  } else {
+    const rendered = await renderGalleryPhoto(original);
+    await putAll(store, storageKey, { ...rendered.renditions, full: rendered.full.bytes });
+    side = rendered.side;
+    large = rendered.renditions[512];
+    full = { width: rendered.full.width, height: rendered.full.height };
+  }
+  return {
+    slug,
+    id: uuidv7FromParts(DEMO_PHOTOS_AT.getTime() + index, 0, seed.subarray(24, 32)),
+    storageKey,
+    sha256: createHash('sha256').update(large).digest('hex'),
+    originalSha256: createHash('sha256').update(original).digest('hex'),
+    side,
+    sizeBytes: large.byteLength,
+    createdAt: DEMO_PHOTOS_AT,
+    fullWidth: full?.width ?? null,
+    fullHeight: full?.height ?? null,
+    position,
+    caption,
+    role,
+  };
+}
+
+/**
+ * Renders the demo photos and writes their files to the photo store; returns their rows' values:
+ * the profile photos of M14, then (M16) the other gallery photos and the schools' logos and rooms.
+ */
 export async function writeDemoPhotos(store: ObjectStore = getPhotoStore()): Promise<DemoPhoto[]> {
   const out: DemoPhoto[] = [];
   for (const [index, slug] of DEMO_PHOTO_SLUGS.entries()) {
-    const seed = digest(`wingchunroots:demo-photo:v1:${slug}`);
-    const original = await demoPortrait(seed.readUInt32BE(0));
-    const rendered = await renderProfilePhoto(original);
-    const storageKey = `photos/${seed.subarray(4, 28).toString('hex')}`;
-    for (const [size, bytes] of Object.entries(rendered.renditions)) {
-      await store.put(`${storageKey}/${size}`, bytes, { contentType: 'image/webp', sha256: createHash('sha256').update(bytes).digest('hex') });
-    }
-    const large = rendered.renditions[512];
-    out.push({
-      slug,
-      id: uuidv7FromParts(DEMO_PHOTOS_AT.getTime() + index, 0, seed.subarray(24, 32)),
-      storageKey,
-      sha256: createHash('sha256').update(large).digest('hex'),
-      originalSha256: createHash('sha256').update(original).digest('hex'),
-      side: rendered.side,
-      sizeBytes: large.byteLength,
-      createdAt: DEMO_PHOTOS_AT,
-    });
+    out.push(await demoPhoto(store, `wingchunroots:demo-photo:v1:${slug}`, index, 'profile', slug, 0, null));
+  }
+  let index = 100;
+  for (const g of DEMO_GALLERY) {
+    for (const [i, caption] of g.captions.entries()) out.push(await demoPhoto(store, `wingchunroots:demo-gallery:v1:${g.slug}:${i}`, index++, 'gallery', g.slug, i + 1, caption));
+  }
+  index = 200;
+  for (const s of DEMO_SCHOOL_PHOTOS) {
+    if (s.logo) out.push(await demoPhoto(store, `wingchunroots:demo-school-logo:v1:${s.slug}`, index++, 'logo', s.slug, 0, null));
+    for (const [i, caption] of s.rooms.entries()) out.push(await demoPhoto(store, `wingchunroots:demo-school-room:v1:${s.slug}:${i}`, index++, 'room', s.slug, i, caption));
   }
   return out;
 }

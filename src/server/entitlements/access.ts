@@ -8,7 +8,7 @@
 import { and, countDistinct, eq, inArray, isNull } from 'drizzle-orm';
 
 import { getDb, type Database } from '../db';
-import { authUser, entitlementGrant, person, personPhoto, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
+import { authUser, entitlementGrant, GALLERY_PHOTO_STATUSES, person, personPhoto, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
 import { decide, type EffectivePlan, type EntitlementDecision, type GrantPeriod, grantState, resolveEffectivePlan } from './effective';
 import { feature, type FeatureKey } from './plans';
 
@@ -71,8 +71,14 @@ export async function effectivePlan(subject: UserSubject, options: EntitlementOp
 }
 
 /**
- * M14 (DEFAULT D07): the active profile photos of the account's own person (at most one). The
- * photo gallery of Phase 2 will count its photos here too.
+ * M14 (DEFAULT D07): the active profile photos of the account's own person (at most one). M16
+ * (docs/adr/0019-galleries.md): every photo of the person's gallery counts, the profile photo
+ * among them (statuses `active` and `gallery`). Only person_photo is counted: evidence files are
+ * never photos of a gallery and never count against the allowance (DEFAULT D13), and a school's
+ * logo and room photos (school_photo) have their own limit.
+ *
+ * With `personId` (alreadyCounted): only that person's profile photo, the one photos.upload
+ * replaces, so a replacement adds nothing while a new photo of the gallery always counts.
  */
 async function activePhotos(db: Executor, subject: UserSubject, personId?: string): Promise<number> {
   const [row] = await db
@@ -83,7 +89,7 @@ async function activePhotos(db: Executor, subject: UserSubject, personId?: strin
       and(
         eq(person.claimedByUserId, subject.userId),
         isNull(person.deletedAt),
-        eq(personPhoto.status, 'active'),
+        personId === undefined ? inArray(personPhoto.status, [...GALLERY_PHOTO_STATUSES]) : eq(personPhoto.status, 'active'),
         personId === undefined ? undefined : eq(personPhoto.personId, personId),
       ),
     );
@@ -94,7 +100,7 @@ async function activePhotos(db: Executor, subject: UserSubject, personId?: strin
  * How much of a counted feature the account uses now. Approved students (D06): the distinct
  * students of the account's own person whose relationship is established (verified or in
  * arbitration), whatever its visibility. Photos (M14, DEFAULT D07): the current profile photo of
- * the account's own person counts as one. The other features count nothing in Phase 1.
+ * the account's own person counts as one; M16: with every other photo of its gallery. The other features count nothing in Phase 1.
  */
 export async function currentUse(db: Executor, subject: EntitlementSubject, key: FeatureKey): Promise<number> {
   // An organization counts nothing in M15: its features are not counted allowances.

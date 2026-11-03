@@ -140,3 +140,9 @@ export async function pixelAt(bytes: Uint8Array, x: number, y: number): Promise<
   const i = (y * info.width + x) * info.channels;
   return [data[i]!, data[i + 1]!, data[i + 2]!];
 }
+
+/** M16: the opacity of one pixel of an image (0 to 255; 255 for an image without alpha). */
+export async function alphaAt(bytes: Uint8Array, x: number, y: number): Promise<number> {
+  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return data[(y * info.width + x) * info.channels + 3]!;
+}

@@ -4,6 +4,9 @@
 // everyone; a hidden person's only for its own account and staff with a verified second factor;
 // 404 for everything else (a hidden or missing person, a replaced or removed photo, a wrong hash),
 // one answer for all, as the person pages (plan §6.4). The store is never addressed directly.
+// M16 (docs/adr/0019-galleries.md): the same address serves the other photos of a person's gallery
+// and `full.webp` (the whole photo); GET /api/school-photos/<id>/<hash>/<size>.webp serves a
+// school's logo and room photos (openSchoolPhoto: public while the school is), with these headers.
 //
 // Caching: the address carries the content hash, so a new photo is a new address. A public
 // person's photo may be stored by any cache but is revalidated on every use (`public, no-cache`)
@@ -25,6 +28,7 @@ import { requestLogger } from './log';
 import { sessionHeaders } from './rpc/handler';
 import { requestMeta } from './services/context';
 import { openPhoto, photoEtag } from './services/photos';
+import { openSchoolPhoto } from './services/school-photos';
 import { type ObjectStore, StorageError } from './storage';
 
 export const PUBLIC_PHOTO_CACHE = 'public, no-cache';
@@ -54,6 +58,12 @@ export interface PhotoRequestOptions {
   store?: ObjectStore;
   /** The deadline of the store read (PHOTO_READ_TIMEOUT_MS; tests shorten it). */
   timeoutMs?: number;
+  /**
+   * M16: which photos the address names: a person's (profile and gallery, GET /api/photos/...,
+   * the default) or a school's (logo and room photos, GET /api/school-photos/...). Both follow
+   * the same headers and read rules.
+   */
+  kind?: 'person' | 'school';
 }
 
 export async function handlePhotoRequest(
@@ -64,7 +74,8 @@ export async function handlePhotoRequest(
   const meta = requestMeta(request.headers);
   try {
     const principal = await principalFromHeaders(sessionHeaders(request));
-    const photo = await openPhoto(principal, address, options.store, {
+    const open = options.kind === 'school' ? openSchoolPhoto : openPhoto;
+    const photo = await open(principal, address, options.store, {
       ifNoneMatch: request.headers.get('if-none-match'),
       timeoutMs: options.timeoutMs,
       signal: request.signal,

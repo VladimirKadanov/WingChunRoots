@@ -78,6 +78,7 @@ import type { UpgradeOffer } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
 import { cleanName } from './names';
 import { photoOf, publicPhotoRefs } from './photo-refs';
+import { schoolPhotosOf } from './school-photos';
 import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
@@ -508,6 +509,8 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
         ).rows;
   // M14: the instructors' public photos (v_public_person: public people only, active photos only).
   const photos = await publicPhotoRefs(db, ids);
+  // M16: the school's logo and room photos (the school is public: it is in v_public_school).
+  const gallery = await schoolPhotosOf(db, row.id);
   tagCacheEntry([SCHOOLS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag)]);
   const last = row.last_activity_at instanceof Date ? row.last_activity_at : new Date(row.last_activity_at);
   return toPublicSchoolPage({
@@ -536,6 +539,8 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
         photo: photoOf(photos.get(i.id)),
       };
     }),
+    logo: gallery.logo,
+    photos: gallery.rooms,
   });
 }
 

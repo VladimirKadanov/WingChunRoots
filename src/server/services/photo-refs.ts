@@ -7,7 +7,8 @@ import { type SQL, sql } from 'drizzle-orm';
 
 import type { PhotoDto } from '../dto/public';
 
-type PhotoSize = 96 | 512;
+/** The renditions of a photo: the squares, and (M16) the whole photo of a gallery or room photo. */
+type PhotoSize = 96 | 512 | 'full';
 
 /** The part of the content hash in a photo's address: enough to tell versions apart. */
 export const PHOTO_HASH_LENGTH = 16;
@@ -15,6 +16,11 @@ export const PHOTO_HASH_LENGTH = 16;
 /** The app's own address of one rendition: GET /api/photos/<id>/<hash>/<size>.webp. */
 export function photoUrl(id: string, sha: string, size: PhotoSize): string {
   return `/api/photos/${id}/${sha.slice(0, PHOTO_HASH_LENGTH)}/${size}.webp`;
+}
+
+/** M16: the app's own address of one rendition of a school photo: GET /api/school-photos/<id>/<hash>/<size>.webp. */
+export function schoolPhotoUrl(id: string, sha: string, size: PhotoSize): string {
+  return `/api/school-photos/${id}/${sha.slice(0, PHOTO_HASH_LENGTH)}/${size}.webp`;
 }
 
 /** The DTO of a photo from its id and content hash. */
