@@ -25,7 +25,7 @@ import type { Principal } from '../auth/principal';
 import { startAuthTestDatabase, stopAuthTestDatabase, TEST_APP_URL } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authSession, authUser, notification, person, personName, teachingRelationship } from '../db/schema';
+import { authSession, authUser, notification, person, personName, personPhoto, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleEvidenceDownload, handleEvidenceUpload } from '../evidence-http';
 import { handlePhotoRequest } from '../photo-http';
@@ -34,7 +34,9 @@ import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { recordConsents } from '../services/consent';
 import { uploadEvidence } from '../services/evidence';
+import { addGalleryPhoto } from '../services/gallery';
 import { uploadPhoto } from '../services/photos';
+import { uploadSchoolPhoto } from '../services/school-photos';
 import { plainImage } from '../storage/test-images';
 import { createGrant } from '../services/grants';
 import { requestHistoricalTeacher } from '../services/historical';
@@ -280,6 +282,33 @@ async function withPhoto(label: string, opts: { hidden?: boolean } = {}) {
   // `/api/photos/<id>/<hash>/96.webp` → the route's params.
   const [, , , id, hash] = uploaded.photo.small.split('/');
   return { owner, slug: owner.slug!, address: { id: id!, hash: hash!, file: '96.webp' } };
+}
+
+/** `/api/.../<id>/<hash>/<file>` → the route's params. */
+function addressOf(url: string) {
+  const [, , , id, hash, file] = url.split('/');
+  return { id: id!, hash: hash!, file: file! };
+}
+
+/** M16: an account whose gallery holds its profile photo; its person hidden when `hidden`. */
+async function withGallery(label: string, opts: { hidden?: boolean } = {}) {
+  const owner = await actor(label);
+  const added = await addGalleryPhoto(owner.principal, { file: await photoFile() }, meta);
+  if (opts.hidden) await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, owner.personId!));
+  return { owner, slug: owner.slug!, photoId: added.photo.id, address: addressOf(added.photo.full) };
+}
+
+/** M16: the world's member without photos again (its Free Student allowance is one). */
+async function clearPhotosOf(who: Actor) {
+  await getDb().update(person).set({ photoId: null }).where(eq(person.id, who.personId!));
+  await getDb().update(personPhoto).set({ status: 'removed', removedAt: new Date() }).where(eq(personPhoto.personId, who.personId!));
+}
+
+/** M16: a room photo of a school (listed, public, of a Professional Sifu when `listed`; a draft otherwise). */
+async function schoolWithPhoto(opts: { listed?: boolean } = {}) {
+  const s = await draftSchool(opts.listed ? { pro: true, status: 'active' } : {});
+  const up = await uploadSchoolPhoto(s.owner.principal, { schoolId: s.schoolId, kind: 'room', file: await photoFile() }, meta);
+  return { ...s, photoId: up.room!.id, address: addressOf(up.room!.full) };
 }
 
 /** M15: an organization's application by a new account (its owner); approved when `active`, with Federation when `federation`. */
@@ -654,6 +683,141 @@ const ROWS: Row[] = [
     },
     expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
   },
+  // M16: galleries. A person's gallery follows the person pages; changes are the own person's
+  // only; staff remove anyone's photo with a reason. A school's photos: the account that listed it.
+  {
+    path: 'gallery.mine',
+    make: noInput,
+    expect: { ...signedInOnly, member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'gallery.get', make: async () => ({ input: { slug: (await withGallery('gallery-public')).slug } }), expect: everyone },
+  {
+    path: 'gallery.get (hidden person)',
+    make: async () => {
+      const g = await withGallery('gallery-hidden', { hidden: true });
+      return { owner: g.owner, input: { slug: g.slug } };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'gallery.add',
+    make: async (who) => {
+      if (who === 'member') await clearPhotosOf(world.member);
+      return { owner: await actor('gallery-adder'), input: null };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'gallery.remove',
+    make: async () => {
+      const g = await withGallery('gallery-remover');
+      return { owner: g.owner, input: { photoId: g.photoId } };
+    },
+    // Staff remove another account's photo only with a reason (the row below).
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'BAD_REQUEST', archivist: 'BAD_REQUEST', admin: 'BAD_REQUEST', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: "gallery.remove (another account's photo, with a reason)",
+    make: async () => {
+      const g = await withGallery('gallery-moderated');
+      return { owner: g.owner, input: { photoId: g.photoId, reason: 'A fictional moderation reason.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: 'gallery.update',
+    make: async () => {
+      const g = await withGallery('gallery-captioned');
+      return { owner: g.owner, input: { photoId: g.photoId, caption: 'A fictional caption' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'gallery.reorder',
+    make: async () => {
+      const g = await withGallery('gallery-ordered');
+      return { owner: g.owner, input: { photoIds: [g.photoId] } };
+    },
+    // Another member's list is checked against that member's own gallery, which this photo is not in.
+    expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'gallery.setProfile',
+    make: async () => {
+      const g = await withGallery('gallery-profile');
+      return { owner: g.owner, input: { photoId: g.photoId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'schoolPhotos.get',
+    make: async () => {
+      const s = await schoolWithPhoto();
+      return { owner: s.owner, input: { schoolId: s.schoolId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: 'schoolPhotos.upload',
+    make: async () => {
+      const s = await draftSchool();
+      return { owner: s.owner, input: { schoolId: s.schoolId, kind: 'room' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'schoolPhotos.remove',
+    make: async () => {
+      const s = await schoolWithPhoto();
+      return { owner: s.owner, input: { photoId: s.photoId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'BAD_REQUEST', archivist: 'BAD_REQUEST', admin: 'BAD_REQUEST', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: "schoolPhotos.remove (another account's photo, with a reason)",
+    make: async () => {
+      const s = await schoolWithPhoto();
+      return { owner: s.owner, input: { photoId: s.photoId, reason: 'A fictional moderation reason.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: 'schoolPhotos.update',
+    make: async () => {
+      const s = await schoolWithPhoto();
+      return { owner: s.owner, input: { photoId: s.photoId, caption: 'A fictional caption' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'schoolPhotos.reorder',
+    make: async () => {
+      const s = await schoolWithPhoto();
+      return { owner: s.owner, input: { schoolId: s.schoolId, photoIds: [s.photoId] } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'GET /api/school-photos/{id}/{hash}/{file}',
+    make: async () => ({ input: (await schoolWithPhoto({ listed: true })).address }),
+    expect: { anonymous: 'ok', member: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  {
+    path: 'GET /api/school-photos/{id}/{hash}/{file} (school not public)',
+    make: async () => {
+      const s = await schoolWithPhoto();
+      return { owner: s.owner, input: s.address };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'GET /api/photos/{id}/{hash}/{file} (a hidden person\'s gallery photo, whole)',
+    make: async () => {
+      const g = await withGallery('gallery-served-hidden', { hidden: true });
+      return { owner: g.owner, input: g.address };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
   // the review queue and the archive (staff with a verified second factor)
   { path: 'review.list', make: () => ({ input: {} }), expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {
@@ -991,23 +1155,25 @@ async function viaEvidenceRoute(token: string | null, row: Row, input: unknown):
 }
 
 /** M14: GET /api/photos/<id>/<hash>/<file> with this session. */
-async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }): Promise<string> {
+async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' = 'person'): Promise<string> {
   const headers = new Headers();
   if (token) headers.set('authorization', `Bearer ${token}`);
-  const response = await handlePhotoRequest(new Request(`${TEST_APP_URL}/api/photos/${address.id}/${address.hash}/${address.file}`, { headers }), address);
+  const base = kind === 'school' ? 'school-photos' : 'photos';
+  const response = await handlePhotoRequest(new Request(`${TEST_APP_URL}/api/${base}/${address.id}/${address.hash}/${address.file}`, { headers }), address, { kind });
   await response.arrayBuffer();
   return response.ok ? 'ok' : (STATUS_CODES[response.status] ?? `HTTP ${response.status}`);
 }
 
-/** M14: photos.upload as the native app sends it: multipart/form-data to /api/v1. */
-async function viaPhotoUpload(token: string | null): Promise<string> {
+/** M14: photos.upload as the native app sends it: multipart/form-data to /api/v1 (M16: gallery.add and schoolPhotos.upload too, with their fields). */
+async function viaPhotoUpload(token: string | null, route = '/api/v1/photos/upload', fields: Record<string, string> = {}): Promise<string> {
   const body = new FormData();
+  for (const [name, value] of Object.entries(fields)) body.set(name, value);
   body.set('file', await photoFile());
   const encoded = new Response(body);
   const bytes = await encoded.arrayBuffer();
   const headers = new Headers({ 'content-type': encoded.headers.get('content-type')!, 'content-length': String(bytes.byteLength) });
   if (token) headers.set('authorization', `Bearer ${token}`);
-  const response = await handleApiRequest(new Request(`${TEST_APP_URL}/api/v1/photos/upload`, { method: 'POST', headers, body: bytes }), 'openapi');
+  const response = await handleApiRequest(new Request(`${TEST_APP_URL}${route}`, { method: 'POST', headers, body: bytes }), 'openapi');
   if (response.ok) return 'ok';
   const answer = (await response.json()) as { code?: string };
   return answer.code ?? `HTTP ${response.status}`;
@@ -1088,11 +1254,15 @@ describe('the authorization matrix (M13)', () => {
         if (caller === undefined) throw new Error(`${row.path}: no ${who} in the fixture`);
         actual[who] = row.path.includes('/api/evidence')
           ? await viaEvidenceRoute(caller?.token ?? null, row, made.input)
-          : row.path.includes('/api/photos')
-            ? await viaPhotoRoute(caller?.token ?? null, made.input as { id: string; hash: string; file: string })
+          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos')
+            ? await viaPhotoRoute(caller?.token ?? null, made.input as { id: string; hash: string; file: string }, row.path.includes('/api/school-photos') ? 'school' : 'person')
             : row.path === 'photos.upload'
               ? await viaPhotoUpload(caller?.token ?? null)
-              : await viaRpc(caller?.token ?? null, row.path, made.input);
+              : row.path === 'gallery.add'
+                ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/gallery/add')
+                : row.path === 'schoolPhotos.upload'
+                  ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/schools/photos/upload', made.input as Record<string, string>)
+                  : await viaRpc(caller?.token ?? null, row.path, made.input);
       }
       // Line by line, so a failure shows every role's answer.
       const lines = (answers: Partial<Record<Who, string>>) => ROLES.filter((w) => row.expect[w]).map((w) => `${w}: ${answers[w]}`);
@@ -1298,6 +1468,19 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   {
     action: 'src/app/admin/review/actions.ts#removePhotoAction',
     row: "photos.remove (another account's photo, with a reason)",
+    form: same,
+    roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
+  },
+  // M16: a moderator's "Remove photo" of a gallery photo or a school photo on a case card.
+  {
+    action: 'src/app/admin/review/actions.ts#removeGalleryPhotoAction',
+    row: "gallery.remove (another account's photo, with a reason)",
+    form: same,
+    roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
+  },
+  {
+    action: 'src/app/admin/review/actions.ts#removeSchoolPhotoAction',
+    row: "schoolPhotos.remove (another account's photo, with a reason)",
     form: same,
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
   },
