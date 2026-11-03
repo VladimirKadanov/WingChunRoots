@@ -31,6 +31,12 @@ export const VIEW_WRITE_MS = 500;
  */
 export const MIN_ZOOM = 0;
 export const MAX_ZOOM = 17;
+/**
+ * The zoom that "Show on the map" brings a school to (the finder's list and the school page): the
+ * streets around an exact location, the city around a city-only school (its public point is the
+ * city's centre, so a closer view would suggest an address it does not have).
+ */
+export const SCHOOL_ZOOM = { exact: 14, city: 10 } as const;
 
 export type FinderView = 'map' | 'list';
 

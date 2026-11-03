@@ -18,7 +18,7 @@ import { ErrorPanel } from '@/components/lineage/states';
 import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
-import { finderHref } from '@/lib/school-finder';
+import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
 import type { SchoolPageDto } from '@/server/dto/schools';
 import { loadSchool, locationLine } from './data';
@@ -109,7 +109,7 @@ export default async function SchoolPage({ params }: Props) {
   const { school } = read;
   const exact = school.precision === 'exact';
   // The map around the school's public point: its pin, or its city's centre.
-  const mapHref = finderHref({ lat: school.point.lat, lng: school.point.lng, z: exact ? 14 : 10 });
+  const mapHref = finderHref({ lat: school.point.lat, lng: school.point.lng, z: exact ? SCHOOL_ZOOM.exact : SCHOOL_ZOOM.city });
   const contacts = [
     school.websiteUrl ? { label: 'Website', value: school.websiteUrl, href: school.websiteUrl, testid: 'school-website' } : null,
     school.contactEmail ? { label: 'E-mail', value: school.contactEmail, href: `mailto:${school.contactEmail}`, testid: 'school-email' } : null,
