@@ -6576,6 +6576,29 @@
         }
       }
     },
+    "/gallery/mine": {
+      "get": {
+        "operationId": "gallery.mine",
+        "summary": "Your own gallery, with your plan's photo allowance and, at the limit, the upgrade offer; 404 without a profile yet",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/gallery/{slug}": {
       "get": {
         "operationId": "gallery.get",
