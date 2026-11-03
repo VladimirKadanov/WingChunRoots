@@ -69,4 +69,17 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/people/[slug]/report/actions.ts#reportProfileAction': { rpc: ['reports.create'] },
   // M14: a moderator's removal of a reported profile photo.
   'src/app/admin/review/actions.ts#removePhotoAction': { rpc: ['photos.remove'] },
+  // M15: organizations, their school links and their plan.
+  'src/app/dashboard/organization/actions.ts#applyOrganizationAction': { rpc: ['organizations.apply'] },
+  'src/app/dashboard/organization/actions.ts#updateOrganizationAction': { rpc: ['organizations.update'] },
+  'src/app/dashboard/organization/actions.ts#addOrganizationAdminAction': { rpc: ['organizations.addAdmin'] },
+  'src/app/dashboard/organization/actions.ts#removeOrganizationAdminAction': { rpc: ['organizations.removeAdmin'] },
+  'src/app/dashboard/organization/actions.ts#addOrganizationMemberAction': { rpc: ['organizations.addMember'] },
+  'src/app/dashboard/organization/actions.ts#endOrganizationMemberAction': { rpc: ['organizations.endMember'] },
+  'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction': { rpc: ['organizations.requestSchool'] },
+  'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction': { rpc: ['organizations.endSchoolLink'] },
+  'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction': { rpc: ['organizations.answerSchoolLink'] },
+  'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction': { rpc: ['organizations.endSchoolLink'] },
+  'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction': { rpc: ['organizations.grant'] },
+  'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction': { rpc: ['organizations.revokeGrant'] },
 };

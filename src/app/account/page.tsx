@@ -182,6 +182,10 @@ export default async function AccountPage() {
               <Link href="/account/privacy" className={buttonVariants({ variant: 'secondary' })}>
                 Privacy and consents
               </Link>
+              {/* M15: the organizations this account administers, and the application. */}
+              <Link href="/dashboard/organization" className={buttonVariants({ variant: 'secondary' })} data-testid="account-organizations">
+                Organizations
+              </Link>
               {staff ? (
                 <Link href="/admin" className={buttonVariants({ variant: 'secondary' })}>
                   Administration

@@ -9,17 +9,30 @@ import { and, countDistinct, eq, inArray, isNull } from 'drizzle-orm';
 
 import { getDb, type Database } from '../db';
 import { authUser, entitlementGrant, person, personPhoto, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
-import { decide, type EffectivePlan, type EntitlementDecision, type GrantPeriod, resolveEffectivePlan } from './effective';
-import type { FeatureKey } from './plans';
+import { decide, type EffectivePlan, type EntitlementDecision, type GrantPeriod, grantState, resolveEffectivePlan } from './effective';
+import { feature, type FeatureKey } from './plans';
 
 /** A Drizzle database or an open transaction. */
 export type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
-/** Who holds rights: an account. Organizations (Federation, Phase 3) come later (D12). */
-export interface EntitlementSubject {
+/** An account: its plan comes from its account type and its grants (plan §6.5). */
+export interface UserSubject {
   kind: 'user';
   userId: string;
 }
+
+/**
+ * M15: an organization (D12): its only plan is Federation, held through a grant
+ * (entitlement_grant.subject_organization_id; test or complimentary in the pilot, DEFAULT D09). It
+ * never adds to, or takes from, the plan of any account of its admins (DEFAULT D08).
+ */
+export interface OrganizationSubject {
+  kind: 'organization';
+  organizationId: string;
+}
+
+/** Who holds rights: an account or (M15) an organization. */
+export type EntitlementSubject = UserSubject | OrganizationSubject;
 
 export interface EntitlementOptions {
   /** The transaction of the write the check guards; the shared pool otherwise. */
@@ -50,7 +63,7 @@ export async function grantsOf(db: Executor, userId: string): Promise<GrantPerio
 }
 
 /** The plan in effect for an account now (or at `now`): the free plan of its type as the floor. */
-export async function effectivePlan(subject: EntitlementSubject, options: EntitlementOptions = {}): Promise<EffectivePlan> {
+export async function effectivePlan(subject: UserSubject, options: EntitlementOptions = {}): Promise<EffectivePlan> {
   const db = options.db ?? getDb();
   const [account] = await db.select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, subject.userId));
   if (!account) throw new UnknownSubjectError();
@@ -61,7 +74,7 @@ export async function effectivePlan(subject: EntitlementSubject, options: Entitl
  * M14 (DEFAULT D07): the active profile photos of the account's own person (at most one). The
  * photo gallery of Phase 2 will count its photos here too.
  */
-async function activePhotos(db: Executor, subject: EntitlementSubject, personId?: string): Promise<number> {
+async function activePhotos(db: Executor, subject: UserSubject, personId?: string): Promise<number> {
   const [row] = await db
     .select({ n: countDistinct(personPhoto.id) })
     .from(personPhoto)
@@ -84,6 +97,8 @@ async function activePhotos(db: Executor, subject: EntitlementSubject, personId?
  * the account's own person counts as one. The other features count nothing in Phase 1.
  */
 export async function currentUse(db: Executor, subject: EntitlementSubject, key: FeatureKey): Promise<number> {
+  // An organization counts nothing in M15: its features are not counted allowances.
+  if (subject.kind === 'organization') return 0;
   if (key === 'photos') return activePhotos(db, subject);
   if (key !== 'approve_students') return 0;
   const [row] = await db
@@ -106,6 +121,7 @@ export async function currentUse(db: Executor, subject: EntitlementSubject, key:
  * link of a student who counts adds nothing to the count (D06 counts distinct students).
  */
 export async function alreadyCounted(db: Executor, subject: EntitlementSubject, key: FeatureKey, unit: string): Promise<boolean> {
+  if (subject.kind === 'organization') return false;
   // M14: replacing the profile photo of a person who has one adds nothing (the unit is the person).
   if (key === 'photos') return (await activePhotos(db, subject, unit)) > 0;
   if (key !== 'approve_students') return false;
@@ -136,6 +152,50 @@ export async function requireEntitlement(
   options: EntitlementOptions = {},
 ): Promise<EntitlementDecision> {
   const db = options.db ?? getDb();
+  if (subject.kind === 'organization') {
+    // M15: an organization holds Federation or nothing; without it, Federation is what allows it.
+    const org = await organizationPlan(subject, { db, now: options.now });
+    if (org.plan) return decide(key, org.plan, 0);
+    return { ok: false, code: 'plan', plan: 'federation', limit: 0, current: 0, grantedBy: feature(key).values.federation.included ? 'federation' : null };
+  }
   const { plan } = await effectivePlan(subject, { db, now: options.now });
   return decide(key, plan, await currentUse(db, subject, key));
+}
+
+/** M15: every grant of an organization (any state). */
+export async function organizationGrantsOf(db: Executor, organizationId: string): Promise<GrantPeriod[]> {
+  return db
+    .select({
+      id: entitlementGrant.id,
+      planCode: entitlementGrant.planCode,
+      source: entitlementGrant.source,
+      startsAt: entitlementGrant.startsAt,
+      endsAt: entitlementGrant.endsAt,
+      revokedAt: entitlementGrant.revokedAt,
+    })
+    .from(entitlementGrant)
+    .where(eq(entitlementGrant.subjectOrganizationId, organizationId));
+}
+
+export interface OrganizationPlan {
+  /** 'federation' while an active Federation grant holds, else null (an organization has no free plan). */
+  plan: 'federation' | null;
+  /** The grant that gives it. */
+  grantId: string | null;
+  /** When it stops if nothing changes (null: no end, or no plan). */
+  until: Date | null;
+}
+
+/**
+ * M15: the plan in effect for an organization now: Federation while an active grant of it holds
+ * (the longest-lasting one when several overlap), else none. Only Federation counts: an
+ * organization holds no account's plan (DEFAULT D08).
+ */
+export async function organizationPlan(subject: OrganizationSubject, options: EntitlementOptions = {}): Promise<OrganizationPlan> {
+  const db = options.db ?? getDb();
+  const now = options.now ?? new Date();
+  const active = (await organizationGrantsOf(db, subject.organizationId)).filter((g) => g.planCode === 'federation' && grantState(g, now) === 'active');
+  if (active.length === 0) return { plan: null, grantId: null, until: null };
+  const best = active.reduce((a, b) => (a.endsAt === null ? a : b.endsAt === null || b.endsAt.getTime() > a.endsAt.getTime() ? b : a));
+  return { plan: 'federation', grantId: best.id, until: best.endsAt };
 }

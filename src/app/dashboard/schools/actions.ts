@@ -18,6 +18,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { linkForm } from '../organization/form-ids';
 import { SCHOOL_ACTION_FORM, SCHOOL_FORM } from './form-ids';
 
 const LIST = '/dashboard/schools';
@@ -151,4 +152,35 @@ export async function submitSchoolAction(_previous: FormState, form: FormData): 
 
 export async function confirmSchoolAction(_previous: FormState, form: FormData): Promise<FormState> {
   return listingStep(form, 'confirm');
+}
+
+// --- M15: organization links -------------------------------------------------------------------
+
+/** "Accept" or "Refuse" an organization's link (organizations.answerSchoolLink): the school and its pin do not change. */
+export async function answerOrganizationLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const linkId = textValue(form, 'linkId', 40);
+  const answer = textValue(form, 'answer', 10);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).organizations.answerSchoolLink({ linkId, accept: answer === 'accept' ? true : answer === 'refuse' ? false : (answer as unknown as boolean) });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(`${LIST}#organizations`);
+    const state = formStateFromFailure(error);
+    return formResult({ form: linkForm(linkId), page: LIST, anchor: outcomeTarget(linkForm(linkId), state, true) }, state);
+  }
+  redirect(`${LIST}?organization=${answer === 'accept' ? 'accepted' : 'refused'}#organizations`);
+}
+
+/** "End link" from the school's side (organizations.endSchoolLink). */
+export async function endOrganizationLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const linkId = textValue(form, 'linkId', 40);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).organizations.endSchoolLink({ linkId });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(`${LIST}#organizations`);
+    const state = formStateFromFailure(error);
+    return formResult({ form: linkForm(linkId), page: LIST, anchor: outcomeTarget(linkForm(linkId), state, true) }, state);
+  }
+  redirect(`${LIST}?organization=ended#organizations`);
 }

@@ -26,6 +26,7 @@ import {
   timestamps,
 } from './common';
 import { teachingRelationship } from './lineage';
+import { organization } from './organizations';
 import { person } from './persons';
 import { school } from './schools';
 
@@ -73,6 +74,8 @@ export const reviewCase = pgTable(
     relationshipId: uuid('relationship_id').references(() => teachingRelationship.id, { onDelete: 'set null' }),
     personId: uuid('person_id').references(() => person.id, { onDelete: 'set null' }),
     schoolId: uuid('school_id').references(() => school.id, { onDelete: 'set null' }),
+    // M15: the organization of an organization_application case.
+    organizationId: uuid('organization_id').references(() => organization.id, { onDelete: 'set null' }),
     openedByUserId: uuid('opened_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     assignedToUserId: uuid('assigned_to_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     resolution: text('resolution', { enum: REVIEW_RESOLUTIONS }),
@@ -85,6 +88,7 @@ export const reviewCase = pgTable(
     index('review_case_relationship_id_idx').on(t.relationshipId),
     index('review_case_person_id_idx').on(t.personId),
     index('review_case_school_id_idx').on(t.schoolId),
+    index('review_case_organization_id_idx').on(t.organizationId),
     index('review_case_assigned_to_user_id_idx').on(t.assignedToUserId),
     index('review_case_opened_by_user_id_idx').on(t.openedByUserId),
     // M10a: at most one case of a kind is open for a relationship at a time (a double submit of a
@@ -96,6 +100,10 @@ export const reviewCase = pgTable(
     uniqueIndex('review_case_one_open_per_school_key')
       .on(t.schoolId, t.kind)
       .where(sql`${t.schoolId} IS NOT NULL AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
+    // M15: at most one open application per organization (a double submit cannot open two).
+    uniqueIndex('review_case_one_open_per_organization_key')
+      .on(t.organizationId, t.kind)
+      .where(sql`${t.organizationId} IS NOT NULL AND ${inList(t.status.name, OPEN_REVIEW_CASE_STATUSES)}`),
     // M10b: at most one open instructor verification per person (a double submit cannot open two).
     uniqueIndex('review_case_one_open_instructor_key')
       .on(t.personId)

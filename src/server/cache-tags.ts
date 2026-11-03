@@ -11,3 +11,8 @@ export const EXPLORE_START_TAG = 'explore-start';
  * change to a listing, to a Professional Sifu grant (the pin, DEFAULT D08/D18) or to an account type.
  */
 export const SCHOOLS_TAG = 'schools';
+/**
+ * M15: every public answer about organizations: the list and the organization pages. Dropped by an
+ * approval, an edit of an approved organization, a member or a school link that changes.
+ */
+export const ORGANIZATIONS_TAG = 'organizations';
