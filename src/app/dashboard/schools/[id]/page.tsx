@@ -179,6 +179,19 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
           </Link>
         </p>
       </section>
+
+      {/* M16: the logo and the room photos, on a page of their own (the route budget, as the form). */}
+      <section aria-labelledby="photos-heading" className="grid gap-3" data-testid="school-photos-link-section">
+        <h2 id="photos-heading" className="font-display text-xl">
+          Logo and photos
+        </h2>
+        <p className="max-w-[60ch] text-sm text-fg-muted">The public page shows your school’s logo and up to 12 photos of its rooms once the school is listed.</p>
+        <p>
+          <Link href={`${page}/photos`} className={buttonVariants({ variant: 'secondary' })} data-testid="school-photos-link">
+            Logo and photos
+          </Link>
+        </p>
+      </section>
     </EditorShell>
   );
 }

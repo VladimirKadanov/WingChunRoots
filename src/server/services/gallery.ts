@@ -279,6 +279,14 @@ export async function getGallery(principal: Principal | null, raw: z.input<typeo
   };
 }
 
+/** gallery.mine: the signed-in account's own gallery, with its allowance (404 without a profile yet). */
+export async function getOwnGallery(principal: Principal | null): Promise<GalleryView> {
+  const p = requireUser(principal);
+  const own = await ownPerson(p.user.id);
+  if (!own) throw new ServiceError('NOT_FOUND', NO_OWN_PERSON_MESSAGE);
+  return getGallery(p, { slug: own.slug });
+}
+
 // --- Add ---------------------------------------------------------------------------------------
 
 export interface AddedGalleryPhoto {

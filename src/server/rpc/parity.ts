@@ -69,6 +69,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/people/[slug]/report/actions.ts#reportProfileAction': { rpc: ['reports.create'] },
   // M14: a moderator's removal of a reported profile photo.
   'src/app/admin/review/actions.ts#removePhotoAction': { rpc: ['photos.remove'] },
+  // M16: a moderator's removal of a gallery photo of a reported profile, or of a school's photo.
+  'src/app/admin/review/actions.ts#removeGalleryPhotoAction': { rpc: ['gallery.remove'] },
+  'src/app/admin/review/actions.ts#removeSchoolPhotoAction': { rpc: ['schoolPhotos.remove'] },
   // M15: organizations, their school links and their plan.
   'src/app/dashboard/organization/actions.ts#applyOrganizationAction': { rpc: ['organizations.apply'] },
   'src/app/dashboard/organization/actions.ts#updateOrganizationAction': { rpc: ['organizations.update'] },

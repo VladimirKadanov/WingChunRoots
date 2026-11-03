@@ -17,6 +17,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
+import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { ArrowRightIcon } from '@/components/icons';
 import { LineageKey } from '@/components/lineage/key';
 import { FocusAfterRetry, LineageBoundary } from '@/components/lineage/lineage-boundary';
@@ -41,6 +42,7 @@ import { EmptyState, FailedSections, ProfileError, Section, SectionError } from 
 import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { LineageGraphDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
+import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
 
 export const instant = false;
@@ -216,6 +218,52 @@ function Relations({ profile, teachers: graph, students: page }: { profile: Pers
   );
 }
 
+/**
+ * M16: the person's gallery (gallery.get, the same visibility as the page). A failed read only
+ * leaves the section out; the profile itself is already there.
+ */
+async function readGallery(profile: PersonProfileDto): Promise<GalleryView | null> {
+  if (profile.limited) return null;
+  try {
+    return await (await lineageClient()).gallery.get({ slug: profile.slug });
+  } catch (error) {
+    console.error(`[person-page] the gallery could not be loaded: ${failure(error)}`);
+    return null;
+  }
+}
+
+/** M16: "Photos": the grid and its viewer; for the owner the count and "Manage photos". */
+function Photos({ gallery }: { gallery: GalleryView }) {
+  if (gallery.photos.length === 0 && !gallery.canChange) return null;
+  return (
+    <section aria-labelledby="photos-heading" className="grid gap-4 border-t border-border-subtle pt-6" data-testid="profile-gallery">
+      <h2 id="photos-heading" className="font-display text-2xl">
+        Photos
+        {gallery.photos.length > 0 ? (
+          <span className="text-fg-subtle tabular">
+            <span aria-hidden="true"> · </span>
+            <span className="sr-only">, </span>
+            {gallery.photos.length}
+          </span>
+        ) : null}
+      </h2>
+      {gallery.photos.length > 0 ? (
+        <GalleryGrid photos={gallery.photos} name={gallery.displayName} label={`Photos of ${gallery.displayName}`} />
+      ) : (
+        <p className="text-fg-muted">No photos in your gallery yet.</p>
+      )}
+      {gallery.canChange ? (
+        <p className="flex flex-wrap items-center gap-x-3 text-sm text-fg-muted">
+          {gallery.allowance ? <span data-testid="gallery-allowance">{gallery.allowance.sentence}</span> : null}
+          <Link href="/dashboard/photos" prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="manage-photos">
+            Manage photos
+          </Link>
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function About({ bio }: { bio: string }) {
   return (
     <section aria-labelledby="about-heading" className="grid gap-3 border-t border-border-subtle pt-6">
@@ -248,7 +296,7 @@ export default async function PersonPage({ params }: Props) {
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const relations = await readRelations(profile);
+  const [relations, gallery] = await Promise.all([readRelations(profile), readGallery(profile)]);
   const here = `/people/${profile.slug}`;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
   // cross-lineage curve.
@@ -307,6 +355,7 @@ export default async function PersonPage({ params }: Props) {
         )}
       </LineageBoundary>
       {profile.bio ? <About bio={profile.bio} /> : null}
+      {gallery ? <Photos gallery={gallery} /> : null}
       {/* M10b: "Report profile" for a public profile that is not the viewer's own (one report per
           account and profile; the page asks to sign in first). */}
       {profile.visibility === 'public' && !profile.isOwn && !profile.limited ? (

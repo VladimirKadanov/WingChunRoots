@@ -52,6 +52,7 @@ import {
   gallerySetProfileInput,
   galleryUpdateInput,
   getGallery,
+  getOwnGallery,
   removeGalleryPhoto,
   reorderGallery,
   setProfilePhoto,
@@ -540,6 +541,9 @@ export const router = {
   // every photo counts against the plan's `photos` allowance (DEFAULT D07). The upload is
   // multipart/form-data like photos.upload; the images are served by GET /api/photos/{id}/{hash}/{file}.
   gallery: {
+    mine: signedIn
+      .route({ method: 'GET', path: '/gallery/mine', summary: 'Your own gallery, with your plan\'s photo allowance and, at the limit, the upgrade offer; 404 without a profile yet' })
+      .handler(({ context }) => getOwnGallery(context.principal)),
     get: base
       .route({
         method: 'GET',
