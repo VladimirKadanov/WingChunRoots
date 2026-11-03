@@ -13,7 +13,12 @@ import {
   idColumn,
   inList,
   LOCATION_PRIVACIES,
+  PHOTO_CAPTION_MAX,
+  PHOTO_FULL_MAX_SIDE,
+  PHOTO_REASON_MAX,
   SCHOOL_FORMS,
+  SCHOOL_PHOTO_KINDS,
+  SCHOOL_PHOTO_STATUSES,
   SCHOOL_INSTRUCTOR_ROLES,
   SCHOOL_STATUSES,
   timestamps,
@@ -129,5 +134,66 @@ export const schoolInstructor = pgTable(
     primaryKey({ name: 'school_instructor_pkey', columns: [t.schoolId, t.personId] }),
     index('school_instructor_person_id_idx').on(t.personId),
     check('school_instructor_role_check', inList(t.role.name, SCHOOL_INSTRUCTOR_ROLES)),
+  ],
+);
+
+/**
+ * M16 (docs/adr/0019-galleries.md): a school's logo (kind `logo`, at most one active) and the
+ * photos of its training rooms (kind `room`, at most SCHOOL_ROOM_PHOTOS_MAX active, DEFAULT D07),
+ * a gallery apart from every person's. Stored like profile photos (src/server/storage/photo.ts):
+ * decoded, turned upright, every metadata block (EXIF with its GPS position) dropped and encoded
+ * again as WebP under `<storage_key>/<rendition>` in the photo store, never in the evidence store.
+ * The logo is fitted whole into a transparent square (96 and 512 px); a room photo is a centred
+ * square (96 and 512 px) and the whole photo (`full`, at most PHOTO_FULL_MAX_SIDE). Shown only
+ * while the school is public (v_public_school); a replaced or removed photo keeps its row (who and
+ * why) while its files are deleted. app_public_ro has no right on the table.
+ */
+export const schoolPhoto = pgTable(
+  'school_photo',
+  {
+    id: idColumn(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => school.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: SCHOOL_PHOTO_KINDS }).notNull(),
+    storageKey: text('storage_key').notNull(),
+    sha256: text('sha256').notNull(),
+    originalSha256: text('original_sha256'),
+    // The square renditions' largest side (96 to 512).
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    fullWidth: integer('full_width'),
+    fullHeight: integer('full_height'),
+    sizeBytes: integer('size_bytes').notNull(),
+    caption: text('caption'),
+    position: integer('position').notNull().default(0),
+    status: text('status', { enum: SCHOOL_PHOTO_STATUSES }).notNull().default('active'),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    removedByUserId: uuid('removed_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    removalReason: text('removal_reason'),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('school_photo_storage_key_key').on(t.storageKey),
+    // One logo per school.
+    uniqueIndex('school_photo_one_logo_key').on(t.schoolId).where(sql`${t.kind} = 'logo' AND ${t.status} = 'active'`),
+    index('school_photo_school_idx').on(t.schoolId, t.kind, t.position).where(sql`${t.status} = 'active'`),
+    index('school_photo_uploaded_by_user_id_idx').on(t.uploadedByUserId),
+    index('school_photo_removed_by_user_id_idx').on(t.removedByUserId),
+    check('school_photo_kind_check', inList(t.kind.name, SCHOOL_PHOTO_KINDS)),
+    check('school_photo_status_check', inList(t.status.name, SCHOOL_PHOTO_STATUSES)),
+    check('school_photo_storage_key_format', sql`${t.storageKey} ~ '^photos/[0-9a-f]{48}$'`),
+    check('school_photo_sha256_format', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+    check('school_photo_original_sha256_format', sql`${t.originalSha256} IS NULL OR ${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
+    check('school_photo_square', sql`${t.width} = ${t.height} AND ${t.width} BETWEEN 96 AND 512`),
+    check(
+      'school_photo_full_size',
+      sql`(${t.fullWidth} IS NULL AND ${t.fullHeight} IS NULL) OR (${t.fullWidth} BETWEEN 1 AND ${sql.raw(String(PHOTO_FULL_MAX_SIDE))} AND ${t.fullHeight} BETWEEN 1 AND ${sql.raw(String(PHOTO_FULL_MAX_SIDE))})`,
+    ),
+    check('school_photo_size_check', sql`${t.sizeBytes} > 0`),
+    check('school_photo_caption_length', sql`${t.caption} IS NULL OR char_length(${t.caption}) BETWEEN 1 AND ${sql.raw(String(PHOTO_CAPTION_MAX))}`),
+    check('school_photo_removed_has_time', sql`${t.status} <> 'removed' OR ${t.removedAt} IS NOT NULL`),
+    check('school_photo_reason_length', sql`${t.removalReason} IS NULL OR char_length(${t.removalReason}) BETWEEN 1 AND ${sql.raw(String(PHOTO_REASON_MAX))}`),
   ],
 );
