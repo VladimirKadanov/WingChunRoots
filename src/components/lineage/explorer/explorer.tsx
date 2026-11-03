@@ -577,12 +577,17 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // step behind (plan §5.8 (c), INP). Lighting the routes and dimming the rest restyles every drawn
   // card and link (a card's dim tones are custom properties all its elements inherit): about 1,100
   // elements in the Lineage view of Demo Lineage A, some 70 ms of style and 35 ms of paint at 4x
-  // CPU throttling, inside the click's response. The click paints the selected node's ring and the
-  // panel first; the lit routes follow in a deferred render. Until then the last selection's routes
-  // stay lit, so that first frame restyles nothing else.
+  // CPU throttling, inside the click's response. The click paints the selected node's ring first
+  // (a panel that opens follows a step behind as well: panel.tsx); the lit routes follow in a
+  // deferred render. Until then the last selection's routes stay lit, with the selected person lit
+  // among them (never dimmed under its ring), so that first frame restyles little else.
   const lit = shownFlow && laidOut ? litOf(shownFlow, laidOut.graph, selectedId) : NO_LIGHT;
   const drawnSelection = useDeferredValue(selectedId);
-  const drawnLit = drawnSelection === selectedId || !base || !laidOut ? lit : litOf(selectFlow(base, drawnSelection), laidOut.graph, drawnSelection);
+  const lastLit = drawnSelection === selectedId || !base || !laidOut ? lit : litOf(selectFlow(base, drawnSelection), laidOut.graph, drawnSelection);
+  const drawnLit =
+    lastLit === lit || selectedId === null || lastLit.nodes.size === 0 || lastLit.nodes.has(selectedId)
+      ? lastLit
+      : { ...lastLit, nodes: new Set([...lastLit.nodes, selectedId]) };
   const flow = shownFlow ? litFlow(shownFlow, drawnLit) : null;
   const selected = laidOut && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
   const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
