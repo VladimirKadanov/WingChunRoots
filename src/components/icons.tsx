@@ -73,13 +73,6 @@ export const SunIcon = icon(
   </>,
 );
 export const MoonIcon = icon('Moon', <path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z" />);
-export const SystemThemeIcon = icon(
-  'SystemTheme',
-  <>
-    <circle cx="12" cy="12" r="8" />
-    <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" />
-  </>,
-);
 export const ArrowRightIcon = icon('ArrowRight', <path d="M5 12h14M13 6l6 6-6 6" />, 1.8);
 export const ArrowLeftIcon = icon('ArrowLeft', <path d="M19 12H5M11 6l-6 6 6 6" />, 1.8);
 export const CloseIcon = icon('Close', <path d="M6 6l12 12M18 6L6 18" />, 1.8);

@@ -39,7 +39,7 @@ test('@M00b home page renders in both themes with no axe violations', async ({ p
     backgrounds.add(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
 
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Every teacher, every student, on the record');
-    await expect(page.getByRole('searchbox', { name: 'Search the demo line' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search people, schools and lineages' }).first()).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'How a link earns its seal' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: /^Jade Lantern Hall/ })).toBeVisible();
     await expectNoAxeViolations(page, `/ (${theme})`);
@@ -57,11 +57,17 @@ test('@M00b the theme follows prefers-color-scheme, the manual choice persists a
   await page.emulateMedia({ colorScheme: 'dark' });
   expect(await resolvedTheme(page)).toBe('dark');
 
-  // 2. A manual choice (the visible theme switch: top bar on phones, side rail on desktop).
-  const themeSwitch = page.getByRole('combobox', { name: 'Theme' }).filter({ visible: true });
-  await expect(themeSwitch).toHaveValue('system');
-  await themeSwitch.selectOption('light');
+  // 2. The switch (top bar on phones, side rail on desktop) shows the theme on screen, and follows
+  //    the system too until it is pressed; one press stores the other theme.
+  const themeSwitch = page.getByRole('switch', { name: 'Dark theme' }).filter({ visible: true });
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'true');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'false');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'true');
+  await themeSwitch.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'false');
   expect(await resolvedTheme(page)).toBe('light');
   expect(await themeCookie(page)).toBe('light');
   for (const meta of await page.locator('meta[name="theme-color"]').all()) {
@@ -71,7 +77,7 @@ test('@M00b the theme follows prefers-color-scheme, the manual choice persists a
   // 3. It persists across reloads although the system still prefers dark.
   await page.reload();
   expect(await resolvedTheme(page)).toBe('light');
-  await expect(themeSwitch).toHaveValue('light');
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'false');
 
   // 4. No flash: the document the server sends carries the blocking theme script in <head>,
   //    and the theme is already set when the parser reaches <body>, before anything paints.
@@ -95,11 +101,14 @@ test('@M00b the theme follows prefers-color-scheme, the manual choice persists a
   expect(atFirstBody).toEqual({ theme: 'light', themeColors: [THEME_COLOR.light, THEME_COLOR.light] });
   expect(await resolvedTheme(page)).toBe('light');
 
-  // 5. "Match the system" forgets the choice.
-  await themeSwitch.selectOption('system');
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
-  expect(await themeCookie(page)).toBeUndefined();
+  // 5. A second press stores dark, which stays when the system turns light.
+  await themeSwitch.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await themeCookie(page)).toBe('dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
   expect(await resolvedTheme(page)).toBe('dark');
+  await expect(themeSwitch).toHaveAttribute('aria-checked', 'true');
 });
 
 test.describe('@M00b phone layout', () => {

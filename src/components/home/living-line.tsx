@@ -1,9 +1,9 @@
 'use client';
 
 // The living lineage of the home page: an ink spine of one fictional line, eight generations
-// from Foshan to Sofia, and a demo search. Untraced, the line is a pencil draft: thin strokes in
+// from Foshan to Sofia, and the record's search (the search palette). Untraced, the line is a pencil draft: thin strokes in
 // the solid dimmed tone that keep each link's pattern, with ghost seals (plan §4.7). Tapping a
-// row (or a search result, or "Trace this hall's line" further down) traces the line from the
+// row (or "Trace this hall's line" further down) traces the line from the
 // founder to that person: the strokes ink in at full weight one generation at a time and each
 // seal is pressed in its state's colour after its stroke, within one second and only after a
 // tap (plan §5.8 (e)). The rows beyond the traced person stay in the draft and take the dimmed
@@ -15,14 +15,15 @@
 // keep the even height the server draws the spine for), beside the headline and the search.
 
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { CloseIcon, SearchIcon } from '@/components/icons';
+import { openSearch } from '@/components/shell/search-trigger';
+import { HomeSearch } from './home-search';
 import { InkShapeSvg } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { SEAL_DELAY, evenRows, inkStep, spineGeometry } from '@/components/ink/spine';
 import { TrailChip } from '@/components/ui/trail-chip';
 import { linkStyles } from '@/design/tokens';
 import { cx } from '@/lib/cx';
-import { DEMO_LINE, DEMO_LINE_LINKS, searchDemoLine } from './demo-lineage';
+import { DEMO_LINE, DEMO_LINE_LINKS } from './demo-lineage';
 import { Name, PersonName } from './names';
 import { ROW_TONES, TRACE_LINE_EVENT, type TraceLineDetail } from './trace-line';
 
@@ -31,7 +32,8 @@ const ROW = 64;
 const NODE_OFFSET = 12;
 const STATES = DEMO_LINE_LINKS.map((link) => link.state);
 const EVEN = evenRows(DEMO_LINE.length, ROW, NODE_OFFSET);
-const TRY = ['盧嵐峰', 'Probnova', 'Примеров', 'Vienna'];
+// Names of the demo record (src/server/db/seed), one per way of writing them.
+const TRY = ['Ho Shek Chuk', '何石竹', 'Демов', 'zoeng1 cing4 wing6'];
 const verifiedCount = DEMO_LINE_LINKS.filter((link) => link.state === 'verified').length;
 const reviewCount = DEMO_LINE_LINKS.length - verifiedCount;
 
@@ -69,18 +71,14 @@ function measureRows(list: HTMLOListElement): { ys: number[]; height: number } {
 export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactNode }) {
   const [trail, setTrail] = useState<number[]>([]);
   const [run, setRun] = useState(0);
-  const [query, setQuery] = useState('');
-  const [composing, setComposing] = useState(false);
   const [rowsAt, setRowsAt] = useState(EVEN);
   const rows = useRef<(HTMLButtonElement | null)[]>([]);
   const list = useRef<HTMLOListElement>(null);
   const figure = useRef<HTMLElement>(null);
-  const input = useRef<HTMLInputElement>(null);
   const searchId = useId();
 
   const focus = trail.length ? trail[trail.length - 1]! : null;
   const previous = trail.length > 1 ? trail[trail.length - 2]! : null;
-  const results = composing ? [] : searchDemoLine(query);
   const step = inkStep(focus ?? 0);
   const geometry = spineGeometry(STATES, rowsAt.ys, rowsAt.height);
 
@@ -127,101 +125,23 @@ export function LivingLine({ heading, lede }: { heading: ReactNode; lede: ReactN
 
       <div className="max-w-[40rem] border-t border-border-subtle pt-6 [grid-area:search] xl:max-w-none xl:border-t-0 xl:pt-5">
         {lede}
+        {/* The record's own search (owner request 2026-11-02): it opens the search palette, the
+            same as "Find a name" and Ctrl/⌘+K, over every public person and school. */}
         <search className="mt-6">
-          <label htmlFor={searchId} className="sr-only">
-            Search the demo line
-          </label>
-          <div
-            className={cx(
-              'flex min-h-[54px] items-center gap-2.5 rounded-sm border border-border-strong bg-surface-1 pr-1 pl-4 transition-colors duration-(--duration-fast) focus-within:border-fg',
-              // The system's gold focus ring, on the field's frame (the input itself has none).
-              'has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus',
-            )}
-          >
-            <SearchIcon size={19} className="text-fg-subtle" />
-            <input
-              ref={input}
-              id={searchId}
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onCompositionStart={() => setComposing(true)}
-              onCompositionEnd={() => setComposing(false)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setQuery('');
-                if (e.key === 'Enter' && results[0]) {
-                  e.preventDefault();
-                  trace(DEMO_LINE.indexOf(results[0]), true);
-                  setQuery('');
-                }
-              }}
-              placeholder="Search a name in any script, or a city"
-              autoComplete="off"
-              spellCheck={false}
-              className="min-h-[52px] min-w-0 flex-1 bg-transparent text-field text-fg outline-none placeholder:text-fg-subtle [&::-webkit-search-cancel-button]:appearance-none"
-              aria-describedby={`${searchId}-hint`}
-            />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery('');
-                  input.current?.focus();
-                }}
-                aria-label="Clear the search"
-                className="inline-grid size-11 place-items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg active:bg-surface-pressed"
-              >
-                <CloseIcon size={18} />
-              </button>
-            ) : null}
-          </div>
-          <p id={`${searchId}-hint`} className="mt-2 text-sm text-fg-subtle">
-            Demo: searches the fictional line on this page by name, Chinese characters, Jyutping or city.
+          <HomeSearch />
+          <p className="mt-2 text-sm text-fg-subtle">
+            Searches everyone on the record by name: Latin letters, Chinese characters, Cyrillic, Jyutping or pinyin.
           </p>
-          <p className="sr-only" aria-live="polite">
-            {query.trim() && !composing ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : ''}
-          </p>
-          {query.trim() && !composing ? (
-            results.length ? (
-              <ul className="mt-2 divide-y divide-border-subtle rounded-sm border border-border-subtle bg-surface-1" aria-label="Matches in the demo line">
-                {results.map((person) => (
-                  <li key={person.slug}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trace(DEMO_LINE.indexOf(person), true);
-                        setQuery('');
-                      }}
-                      className="flex min-h-14 w-full flex-col items-start justify-center gap-0.5 px-4 py-2 text-left hover:bg-surface-3 active:bg-surface-pressed"
-                    >
-                      <PersonName name={person.name} original={person.original} className="font-display text-lg" />
-                      <span className="text-sm text-fg-subtle">
-                        {person.city} · {person.role} · from {person.startYear}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 rounded-sm border border-dashed border-border-strong px-4 py-3 text-sm text-fg-muted">
-                <b className="font-semibold text-fg">No one in this line matches “{query.trim()}”.</b> Names are spelled many ways:
-                try the Cantonese romanization, the Chinese characters or a city.
-              </p>
-            )
-          ) : null}
           <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-sm text-fg-subtle">
             <span className="mr-1">Try</span>
             {TRY.map((term) => (
               <button
                 key={term}
                 type="button"
-                onClick={() => {
-                  setQuery(term);
-                  input.current?.focus();
-                }}
+                onClick={() => openSearch(term)}
                 className="min-h-11 px-1.5 text-fg-muted underline decoration-border-strong underline-offset-[5px] hover:text-fg hover:decoration-current"
               >
-                <span lang={/[㐀-鿿]/.test(term) ? 'zh-Hant' : /[Ѐ-ӿ]/.test(term) ? 'bg' : 'en'} translate="no">
+                <span lang={/[㐀-鿿]/.test(term) ? 'zh-Hant' : /[Ѐ-ӿ]/.test(term) ? 'bg' : /\d/.test(term) ? 'yue-Latn' : 'en'} translate="no">
                   {term}
                 </span>
               </button>

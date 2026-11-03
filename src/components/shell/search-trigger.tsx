@@ -23,16 +23,19 @@ const OPEN_EVENT = 'wcr:open-search';
 const loadPalette = () => import('@/components/ui/search-palette');
 const SearchPalette = lazy(loadPalette);
 
-export function openSearch() {
-  window.dispatchEvent(new Event(OPEN_EVENT));
+/** Opens the palette; `query` (the home page's search, its "Try" names) starts it with that text searched. */
+export function openSearch(query = '') {
+  window.dispatchEvent(new CustomEvent<string>(OPEN_EVENT, { detail: query }));
 }
 
 /** Holds the palette for the page: Ctrl/⌘+K, the fields' event, and the palette once it was opened. */
 export function SearchHost() {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [initialQuery, setInitialQuery] = useState('');
   useEffect(() => {
-    const show = () => {
+    const show = (event?: Event) => {
+      setInitialQuery(event instanceof CustomEvent && typeof event.detail === 'string' ? event.detail : '');
       setLoaded(true);
       setOpen(true);
     };
@@ -60,7 +63,7 @@ export function SearchHost() {
   if (!loaded) return null;
   return (
     <Suspense fallback={null}>
-      <SearchPalette open={open} onOpenChange={setOpen} />
+      <SearchPalette open={open} onOpenChange={setOpen} initialQuery={initialQuery} />
     </Suspense>
   );
 }
@@ -73,7 +76,7 @@ export function SearchField({ variant }: { variant: 'bar' | 'rail' }) {
   return (
     <button
       type="button"
-      onClick={openSearch}
+      onClick={() => openSearch()}
       // The palette's code starts loading as soon as the field is approached.
       onPointerEnter={() => void loadPalette()}
       onFocus={() => void loadPalette()}

@@ -30,7 +30,7 @@
 import { Autocomplete } from '@base-ui/react/autocomplete';
 import { Dialog } from '@base-ui/react/dialog';
 import { useRouter } from 'next/navigation';
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 
 import { ArrowRightIcon, CloseIcon, SearchIcon } from '@/components/icons';
 import { Seal } from '@/components/ink/seal';
@@ -256,25 +256,28 @@ export interface SearchPaletteProps {
   onSelect?: (person: PersonHit) => void;
   /** The dialog's name and the field's label in select mode. */
   selectLabel?: string;
+  /** Text the palette opens with, searched at once (the home page's search). Empty: an empty field. */
+  initialQuery?: string;
 }
 
-export default function SearchPalette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person' }: SearchPaletteProps) {
+export default function SearchPalette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person', initialQuery = '' }: SearchPaletteProps) {
   const select = onSelect !== undefined;
   const router = useRouter();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   // The palette loads only in the browser, on first use: the history can be read at once. Select
   // mode shows no history (it is for finding pages again).
   const [recent, setRecent] = useState<string[]>(() => (select ? [] : readRecentSearches()));
-  // Every opening starts afresh: an empty field, and the history as storage has it now (cleared on
-  // sign-out, or by another tab), never the last query and results kept in memory.
+  // Every opening starts afresh: an empty field (or the text it was opened with), and the history
+  // as storage has it now (cleared on sign-out, or by another tab), never the last query and
+  // results kept in memory.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      setQuery('');
+      setQuery(initialQuery);
       setAnswer(null);
       setFailed(false);
       setRecent(select ? [] : readRecentSearches());
@@ -364,6 +367,14 @@ export default function SearchPalette({ open, onOpenChange, onSelect, selectLabe
     if (composing.current) return;
     timer.current = setTimeout(() => void run(q), SEARCH_DEBOUNCE_MS);
   };
+
+  // Opened with a text: it is searched as if it had been typed.
+  const searchInitial = useEffectEvent(() => {
+    if (initialQuery.trim()) schedule(initialQuery);
+  });
+  useEffect(() => {
+    if (open) searchInitial();
+  }, [open, initialQuery]);
 
   const remember = (q: string) => {
     const trimmed = q.trim();
