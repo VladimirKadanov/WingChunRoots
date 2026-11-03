@@ -1,6 +1,6 @@
 /**
  * Milestone M16: the viewer of a gallery (docs/adr/0019-galleries.md), on the seeded gallery of
- * demo-two-lineages (D20: generated images), which no test changes: so it runs in the ordinary
+ * demo-pro-sifu-8 (D20: generated images; Professional Sifu), which no test changes: so it runs in the ordinary
  * projects, on the desktop and on the phones. With the keyboard: Enter on a photo, the arrow keys
  * while the focus is inside the viewer, Esc, and the focus back on the photo. By touch: a tap on a
  * photo and on Previous/Next (44 px), nothing only on hover. The image fits the screen, there is no
@@ -20,7 +20,7 @@ test.beforeEach(async ({ context }) => {
   await giveOwnAddress(context);
 });
 
-const SEEDED = '/people/demo-two-lineages';
+const SEEDED = '/people/demo-pro-sifu-8';
 
 test('@M16 the profile gallery opens in its viewer with the keyboard: Enter, the arrow keys, Esc, and the focus back on the photo', async ({ page }) => {
   await page.goto(SEEDED);

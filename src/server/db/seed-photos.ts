@@ -42,10 +42,12 @@ export interface DemoPhoto {
 
 /**
  * M16 (D20): the demo galleries: two more photos (generated rooms) in the gallery of
- * demo-two-lineages, beside its profile photo, with fictional captions.
+ * demo-pro-sifu-8, beside its profile photo, with fictional captions. Every seeded gallery fits its
+ * account's plan: demo-pro-sifu-8 has Professional Sifu (a grant, 100 photos); demo-two-lineages,
+ * on Free Student (1 photo), keeps its profile photo alone (owner review, 2026-11-03).
  */
 export const DEMO_GALLERY: readonly { slug: string; captions: readonly (string | null)[] }[] = [
-  { slug: 'demo-two-lineages', captions: ['Demo training hall, morning class', null] },
+  { slug: 'demo-pro-sifu-8', captions: ['Demo training hall, morning class', null] },
 ];
 
 /**

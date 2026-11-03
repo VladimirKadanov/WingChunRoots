@@ -21,6 +21,7 @@
 // its magic bytes, the pixel limit, turned upright, every metadata block dropped (EXIF with its GPS
 // position), the squares at 96 and 512 px and the whole photo at most 1280 px, as WebP.
 
+import { allowanceSentence } from '@/lib/allowance-text';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
@@ -205,10 +206,8 @@ async function allowanceOf(db: Executor, userId: string): Promise<{ allowance: G
   const unit = feature('photos').unit!;
   const limit = decision.limit;
   const used = decision.current;
-  const sentence =
-    limit === null
-      ? `You have ${unit.verb} ${used} ${used === 1 ? unit.one : unit.many} on ${from.name}, which has no set limit.`
-      : `You have ${unit.verb} ${used} of ${limit} ${limit === 1 ? unit.one : unit.many} on ${from.name}.`;
+  // Over the limit (a downgrade, an ended grant): "You have 3 photos; Free Student includes 1. …".
+  const sentence = allowanceSentence(unit, used, limit, from.name, true);
   const allowance: GalleryAllowance = { used, limit, planName: from.name, sentence, canAdd: decision.ok };
   let upgrade: UpgradeOffer | null = null;
   // Only at the real limit (plan §5.6): the allowance is used up and a higher plan of the pilot

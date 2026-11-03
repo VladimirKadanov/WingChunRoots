@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { NAV_ITEMS } from '../src/components/shell/nav';
-import { closeHelpers, signInAs } from './helpers/auth';
+import { closeHelpers, signInAsForPages } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, openExplorer, openExplorerList } from './helpers/explorer';
 import { EXPLORER_STATES } from './helpers/m06-states';
 import { openPalette, option, PALETTE_STATES, search, waitForSearchKeys } from './helpers/search';
@@ -36,7 +36,7 @@ for (const size of SCREEN_SIZES) {
       for (const theme of THEMES) {
         test(`${route.path} (${route.name}) at ${size.name} in the ${theme} theme`, { tag: ['@visual'] }, async ({ page }) => {
           await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
-          if (route.signInAs) await signInAs(page, route.signInAs);
+          if (route.signInAs) await signInAsForPages(page, route.signInAs);
           const response = await page.goto(route.path);
           expect(response?.status()).toBe(route.status);
           await page.evaluate(() => document.fonts.ready.then(() => undefined));

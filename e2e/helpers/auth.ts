@@ -287,6 +287,43 @@ export async function signInAs(page: Page, target: SignInTarget, options: { addr
 
 const signedInFor = new WeakMap<Page, SignInTarget>();
 
+type Cookies = Awaited<ReturnType<BrowserContext['cookies']>>;
+/** Per worker: the session cookies of a staff account that signed in with its TOTP code. */
+const staffSessions = new Map<string, Cookies>();
+
+/** Whether the context's session is `email`'s (Better Auth's get-session; null when signed out or revoked). */
+async function sessionIs(page: Page, email: string): Promise<boolean> {
+  const answer = await page.request.get('/api/auth/get-session', { headers: { 'x-forwarded-for': await giveOwnAddress(page.context()) } });
+  if (answer.status() !== 200) return false;
+  const body = (await answer.json().catch(() => null)) as { user?: { email?: string } } | null;
+  return body?.user?.email === email;
+}
+
+/**
+ * signInAs() for the specs that only look at pages (a11y, visual, screenshots): a staff account
+ * signs in with its TOTP code once per worker, and later tests of that worker reuse its session
+ * cookies while the server still accepts them (checked with get-session; a fresh sign-in
+ * otherwise). Each TOTP code works once and the seeded staff share one code per 30 s step
+ * (staffTotpCode), so a sign-in for every route, theme and device made the parallel run wait past
+ * STAFF_CODE_ROUNDS (CI of PR #32, @M08 /admin/grants). The pages are still seen signed in as that
+ * staff account, with its second factor; other accounts sign in as before.
+ */
+export async function signInAsForPages(page: Page, target: SignInTarget): Promise<SignedInAccount> {
+  if (target === 'new') return signInAs(page, target);
+  const slug = slugFor(target);
+  if (!DEMO_STAFF_ACCOUNTS.some((account) => account.slug === slug)) return signInAs(page, target);
+  const account = { email: demoAccountEmail(slug), password: demoPassword(), slug };
+  const kept = staffSessions.get(account.email);
+  if (kept) {
+    await page.context().addCookies(kept);
+    if (await sessionIs(page, account.email)) return account;
+    await page.context().clearCookies({ name: AUTH_COOKIE });
+  }
+  await signInAs(page, target);
+  staffSessions.set(account.email, (await page.context().cookies()).filter((cookie) => AUTH_COOKIE.test(cookie.name)));
+  return account;
+}
+
 /** The session cookies (Better Auth, prefix `wcr.`, COOKIE_PREFIX); not the theme cookie `wcr-theme`. */
 const AUTH_COOKIE = /^(__Secure-)?wcr\./;
 

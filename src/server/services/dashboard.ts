@@ -7,6 +7,7 @@
 // people in its own requests only (D03: a request is visible to the people involved); never
 // cached (no 'use cache': the page reads the session).
 
+import { allowanceSentence } from '@/lib/allowance-text';
 import { and, asc, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 
 import { hasStaff2FA, requireUser } from '../auth/guards';
@@ -105,7 +106,8 @@ export function offerText(key: FeatureKey, current: number, limit: number, from:
   const unit = f.unit ?? { one: 'use', many: 'uses', verb: 'used' };
   return {
     heading: (f.upgradeHeading ?? `More with {plan}`).replace('{plan}', to.name),
-    sentence: `You have ${unit.verb} ${current} of ${limit} ${limit === 1 ? unit.one : unit.many} on ${from.name}.`,
+    // Over the limit (after a downgrade or an ended grant) the facts, never "3 of 1"; photos can be removed to make room.
+    sentence: allowanceSentence(unit, current, limit, from.name, key === 'photos'),
   };
 }
 

@@ -28,6 +28,7 @@ import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { ApproveForm, DeclineForm, EndTrainingForm } from '@/components/relationships/forms';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { allowanceShort } from '@/lib/allowance-text';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -103,8 +104,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
   // (the prompt then lists no benefits).
   const upgradeHref =
     incoming.upgrade && !incoming.upgrade.pilotRequest ? `${PAGE}?${UPGRADE_OPEN_PARAM.name}=${UPGRADE_OPEN_PARAM.value}#${UPGRADE_SUMMARY_ID}` : '/plans';
-  const allowanceText =
-    allowance.limit === null ? `${allowance.approved} approved, no limit on ${allowance.planName}` : `${allowance.approved} of ${allowance.limit} approved on ${allowance.planName}`;
+  const allowanceText = allowanceShort('approved', allowance.approved, allowance.limit, allowance.planName);
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
