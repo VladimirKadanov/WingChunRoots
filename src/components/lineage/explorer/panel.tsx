@@ -179,8 +179,11 @@ export default function ExplorerPanel(props: PanelProps) {
   const body =
     deferred.mode?.kind === subject.mode?.kind && deferred.person?.id === subject.person?.id && deferred.teacher?.id === subject.teacher?.id ? deferred : null;
   // The sheet opens a step behind the selection (plan §5.8 (c), INP): the tap paints the selected
-  // node and its lit routes first, and the Drawer's opening (its measures, the page room it takes,
-  // its history entry) follows in a deferred render. It closes at once.
+  // node first, and the Drawer's opening (its measures, the page room it takes, its history entry)
+  // follows in a deferred render. So does the overlay from md: its mount and the measure of the
+  // room above the legend (useClearHeight), which restyles and lays out the page, came to about a
+  // third of a click's response. Both close at once; a panel already open shows the next subject
+  // in the click's own render.
   const opening = useDeferredValue(live);
   const sheetOpen = live && opening;
   /** The sheet took the focus from the graph where it covers it (onSheetSnap). */
@@ -195,14 +198,14 @@ export default function ExplorerPanel(props: PanelProps) {
   useFocusKept(canvas);
   const router = useRouter();
   const { keepAbove, coverAbove } = useKeepAbove(sheetOpen && !overlay, canvas, subject.person?.id ?? null);
-  useRevealFocused(live && overlay, canvas, live ? `${mode?.kind}:${(person ?? teacher)?.id}` : null);
+  useRevealFocused(sheetOpen && overlay, canvas, live ? `${mode?.kind}:${(person ?? teacher)?.id}` : null);
 
   const kind = viewKind(url);
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
   const centerOn = (id: string) => setUrl(kind === 'lineage' ? { focus: id, lineage: null, page: null, routes: null } : { focus: id, page: null, routes: null });
 
   if (overlay) {
-    if (!live) return null;
+    if (!sheetOpen) return null;
     if (teacher) {
       return (
         <section

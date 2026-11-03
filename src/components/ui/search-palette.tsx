@@ -258,9 +258,14 @@ export interface SearchPaletteProps {
   selectLabel?: string;
   /** Text the palette opens with, searched at once (the home page's search). Empty: an empty field. */
   initialQuery?: string;
+  /**
+   * Keeps the dialog's elements once it has closed, hidden and emptied, so that the next opening
+   * shows them instead of building them anew (the app shell's palette: plan §5.8 (c), INP).
+   */
+  keepMounted?: boolean;
 }
 
-export default function SearchPalette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person', initialQuery = '' }: SearchPaletteProps) {
+export default function SearchPalette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person', initialQuery = '', keepMounted = false }: SearchPaletteProps) {
   const select = onSelect !== undefined;
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
@@ -283,6 +288,18 @@ export default function SearchPalette({ open, onOpenChange, onSelect, selectLabe
       setRecent(select ? [] : readRecentSearches());
     }
   }
+  // Kept mounted: the dialog is on screen from its opening until its closing has ended, and only
+  // then is it the page's search palette (data-testid). Once closed, its query, results and history
+  // are dropped, so its hidden elements hold nothing of the last search, as an unmounted dialog.
+  const [onScreen, setOnScreen] = useState(open);
+  if (open && !onScreen) setOnScreen(true);
+  const closed = () => {
+    setOnScreen(false);
+    setQuery('');
+    setAnswer(null);
+    setFailed(false);
+    setRecent([]);
+  };
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controller = useRef<AbortController | null>(null);
@@ -462,12 +479,18 @@ export default function SearchPalette({ open, onOpenChange, onSelect, selectLabe
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <Dialog.Portal>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : close())}
+      onOpenChangeComplete={(now) => {
+        if (!now && keepMounted) closed();
+      }}
+    >
+      <Dialog.Portal keepMounted={keepMounted}>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-scrim transition-opacity duration-(--duration-base) ease-out data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <Dialog.Viewport className="fixed inset-0 z-50 flex items-stretch justify-center sheet:items-start sheet:px-4 sheet:pt-[max(4rem,env(safe-area-inset-top,0px))] sheet:pb-4">
           <Dialog.Popup
-            data-testid="search-palette"
+            data-testid={onScreen || !keepMounted ? 'search-palette' : undefined}
             aria-describedby={wide ? hintId : undefined}
             className={cx(
               'relative flex w-full flex-col bg-surface-2 text-fg outline-none [--seal-ground:var(--surface-2)]',
