@@ -72,6 +72,7 @@ import { type InkShape, type Point as InkPoint } from '@/design/ink';
 import { type Route, roundedRoute, routeD } from '@/design/ink-route';
 import { linkStyles, motion } from '@/design/tokens';
 import { cx } from '@/lib/cx';
+import { NODE_SIZES } from '@/lib/lineage-layout/presets';
 import { bezierLabelPoint, COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Point, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import type { PhotoDto } from '@/server/dto/public';
@@ -942,6 +943,14 @@ const NARROW_PANE = 640;
 const OVERLAY_GAP = 12;
 /** Every fit of the whole view, the first and the button's: cards never larger than their own size. */
 export const FIT_OPTIONS = { padding: 0.15, maxZoom: 1 } as const;
+
+/**
+ * The smallest zoom (React Flow's minZoom, the zoom-out button and "Fit the whole view"): a full
+ * card at least 20 px wide on screen, as 0.1 gave the 200 px card before M16. With M16's 264 px card
+ * (its square photo, docs/adr/0019-galleries.md) 0.1 would stop "Fit the whole view" short of the
+ * widest rows on a 390 px phone (the twelve students of demo-hub-a).
+ */
+export const MIN_ZOOM = (0.1 * 200) / NODE_SIZES.full.width;
 
 /** Where a view starts: the point at the centre of the pane, and the zoom. */
 export interface ViewStart {
@@ -1928,7 +1937,7 @@ function CanvasFrame({
               multiSelectionKeyCode={null}
               elementsSelectable
               selectNodesOnDrag={false}
-              minZoom={0.1}
+              minZoom={MIN_ZOOM}
               maxZoom={2}
               // FitOnScene places every view, the first included. Not React Flow's fitView: it fits again
               // each time <Activity> shows the graph, over the view the user left.
