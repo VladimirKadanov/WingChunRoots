@@ -11,6 +11,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { UpcomingEvents } from '@/components/events/event-list';
 import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { ArrowLeftIcon } from '@/components/icons';
 import { NameText } from '@/components/account/person-names';
@@ -22,7 +23,7 @@ import { formatDay } from '@/lib/dates';
 import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
 import type { SchoolPageDto } from '@/server/dto/schools';
-import { loadSchool, locationLine } from './data';
+import { loadSchool, loadSchoolEvents, locationLine } from './data';
 
 export const instant = false;
 
@@ -108,6 +109,7 @@ export default async function SchoolPage({ params }: Props) {
   }
 
   const { school } = read;
+  const events = await loadSchoolEvents(school.slug);
   const exact = school.precision === 'exact';
   // The map around the school's public point: its pin, or its city's centre.
   const mapHref = finderHref({ lat: school.point.lat, lng: school.point.lng, z: exact ? SCHOOL_ZOOM.exact : SCHOOL_ZOOM.city });
@@ -251,6 +253,9 @@ export default async function SchoolPage({ params }: Props) {
             <p className="mt-2 text-fg-muted">This school lists no contact yet. Its instructors&apos; profiles may help.</p>
           )}
         </section>
+
+        {/* M17: the school's upcoming events (an event names a school its organizer chose). */}
+        {events && events.items.length > 0 ? <UpcomingEvents items={events.items} total={events.total} allHref={`/events?school=${school.slug}`} /> : null}
 
         <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">Listing last edited or confirmed on {formatDay(school.lastActivityOn)}.</p>
       </div>

@@ -5,6 +5,7 @@
 
 import { cache } from 'react';
 
+import type { EventListDto } from '@/server/dto/events';
 import type { SchoolPageDto } from '@/server/dto/schools';
 import { ORPCError } from '@/server/rpc/server';
 import { failure, lineageClient } from '../../people/[slug]/data';
@@ -21,6 +22,17 @@ export const loadSchool = cache(async (slug: string): Promise<SchoolRead> => {
     return { state: 'failed' };
   }
 });
+
+/** M17: the school's next events (events.list); null when the read fails (the section is left out). */
+export async function loadSchoolEvents(slug: string): Promise<EventListDto | null> {
+  const client = await lineageClient();
+  try {
+    return await client.events.list({ when: 'upcoming', school: slug, limit: 3 });
+  } catch (error) {
+    console.error(`[school-page] the events could not be loaded: ${failure(error)}`);
+    return null;
+  }
+}
 
 /** "Exact location" or "Private club, by invitation", with the city. */
 export function locationLine(school: Pick<SchoolPageDto, 'precision' | 'city' | 'countryCode'>): string {

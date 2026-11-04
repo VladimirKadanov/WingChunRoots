@@ -13,11 +13,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
-import { LineageIcon, MeIcon, SchoolsIcon, SearchIcon } from '@/components/icons';
+import { CalendarIcon, LineageIcon, MeIcon, SchoolsIcon, SearchIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import { NAV_ITEMS } from './nav';
 
-const ICONS = { search: SearchIcon, lineage: LineageIcon, schools: SchoolsIcon, me: MeIcon } as const;
+const ICONS = { search: SearchIcon, lineage: LineageIcon, schools: SchoolsIcon, events: CalendarIcon, me: MeIcon } as const;
 
 const subscribeNever = () => () => {};
 

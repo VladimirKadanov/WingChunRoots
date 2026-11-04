@@ -17,6 +17,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
+import { UpcomingEvents } from '@/components/events/event-list';
 import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { ArrowRightIcon } from '@/components/icons';
 import { LineageKey } from '@/components/lineage/key';
@@ -41,6 +42,7 @@ import { bySeniority, groupRelations, RelationList, type RelationRow, sharedLine
 import { EmptyState, FailedSections, ProfileError, Section, SectionError } from '@/components/lineage/states';
 import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
 import { buttonVariants } from '@/components/ui/button-variants';
+import type { EventListDto } from '@/server/dto/events';
 import type { LineageGraphDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
 import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
@@ -49,6 +51,8 @@ export const instant = false;
 
 /** Students listed on the profile, the earliest first; the list view has them all. */
 const STUDENTS_ON_PROFILE = 12;
+/** M17: the upcoming events on a profile; the rest are one link away. */
+const EVENTS_ON_PROFILE = 3;
 /** A longer text than this is clamped to three lines on the profile, with "Read all". */
 const BIO_CLAMP = 240;
 
@@ -235,6 +239,20 @@ async function readGallery(profile: PersonProfileDto): Promise<GalleryView | nul
   }
 }
 
+/**
+ * M17: the person's upcoming events (as organizer or instructor), from events.list: only events
+ * that name them as a public person. A failed read only leaves the section out.
+ */
+async function readEvents(profile: PersonProfileDto): Promise<EventListDto | null> {
+  if (profile.limited || profile.visibility !== 'public') return null;
+  try {
+    return await (await lineageClient()).events.list({ when: 'upcoming', person: profile.slug, limit: EVENTS_ON_PROFILE });
+  } catch (error) {
+    console.error(`[person-page] the events could not be loaded: ${failure(error)}`);
+    return null;
+  }
+}
+
 /** M16: "Photos": the grid and its viewer; for the owner the count and "Manage photos". */
 function Photos({ gallery }: { gallery: GalleryView }) {
   if (gallery.photos.length === 0 && !gallery.canChange) return null;
@@ -299,7 +317,7 @@ export default async function PersonPage({ params }: Props) {
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const [relations, gallery] = await Promise.all([readRelations(profile), readGallery(profile)]);
+  const [relations, gallery, events] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile)]);
   const here = `/people/${profile.slug}`;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
   // cross-lineage curve.
@@ -359,6 +377,15 @@ export default async function PersonPage({ params }: Props) {
       </LineageBoundary>
       {profile.bio ? <About bio={profile.bio} /> : null}
       {gallery ? <Photos gallery={gallery} /> : null}
+      {events ? (
+        <UpcomingEvents
+          items={events.items}
+          total={events.total}
+          allHref={`/events?person=${profile.slug}`}
+          className="grid gap-1 border-t border-border-subtle pt-6"
+          headingClassName="font-display text-2xl"
+        />
+      ) : null}
       {/* M10b: "Report profile" for a public profile that is not the viewer's own (one report per
           account and profile; the page asks to sign in first). */}
       {profile.visibility === 'public' && !profile.isOwn && !profile.limited ? (
