@@ -34,6 +34,7 @@ import { jobTemplateData } from '../jobs/outbox';
 import type { EmailSendJob } from '../jobs/queues';
 import { recordConsents } from '../services/consent';
 import { uploadEvidence } from '../services/evidence';
+import { createEvent, uploadEventPoster } from '../services/events';
 import { addGalleryPhoto } from '../services/gallery';
 import { uploadPhoto } from '../services/photos';
 import { uploadSchoolPhoto } from '../services/school-photos';
@@ -343,6 +344,26 @@ async function schoolLink() {
   const s = await draftSchool({ pro: true, status: 'active' });
   const link = await requestOrganizationSchool(org.owner.principal, { organizationId: org.organizationId, schoolSlug: s.slug }, meta);
   return { org, school: s, linkId: link.linkId };
+}
+
+/** M17: a Professional Sifu's published event in a city (a year ahead, so it is upcoming); with a poster when `poster`. */
+async function eventOf(opts: { poster?: boolean } = {}) {
+  const owner = await actor('event-owner', { sifu: true });
+  await createGrant(world.admin.principal, { email: owner.email, planCode: 'pro_sifu', reason: 'M17 authorization matrix (fictional)' }, meta);
+  const city = await getDb().execute<{ id: string }>(sql`SELECT id::text FROM place ORDER BY population DESC NULLS LAST, id LIMIT 1`);
+  // A new organizer each time, so the allowance (two a month) is never what refuses a call.
+  const day = `${new Date().getUTCFullYear() + 1}-03-10`;
+  const created = await createEvent(
+    owner.principal,
+    { title: 'Demo Matrix Seminar', kind: 'seminar', startsAt: `${day}T10:00`, endsAt: `${day}T16:00`, placeId: city.rows[0]!.id },
+    meta,
+  );
+  let poster: { id: string; hash: string; file: string } | null = null;
+  if (opts.poster) {
+    const up = await uploadEventPoster(owner.principal, { id: created.id, file: await photoFile() }, meta);
+    poster = addressOf(up.poster!.small);
+  }
+  return { owner, id: created.id, slug: created.slug, placeId: city.rows[0]!.id, day, poster };
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -1085,6 +1106,95 @@ const ROWS: Row[] = [
     },
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
+  // M17: events. The public reads give public DTOs to everyone; a removed event is 404 for everyone.
+  // Changes are the organizer's only (404 for any other account, the same answer as for none);
+  // staff with a verified second factor remove an event with a reason.
+  { path: 'events.list', make: () => ({ input: { when: 'upcoming' } }), expect: everyone },
+  { path: 'events.get', make: async () => ({ input: { slug: (await eventOf()).slug } }), expect: everyone },
+  {
+    path: 'events.get (removed event)',
+    make: async () => {
+      const e = await eventOf();
+      await getDb().execute(sql`UPDATE event SET status = 'removed', removed_at = now() WHERE id = ${e.id}::uuid`);
+      return { owner: e.owner, input: { slug: e.slug } };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'events.mine', make: noInput, expect: own() },
+  { path: 'events.editor', make: () => ({ input: {} }), expect: own() },
+  {
+    path: 'events.editor (an event)',
+    make: async () => {
+      const e = await eventOf();
+      return { owner: e.owner, input: { id: e.id } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'events.create',
+    make: async () => {
+      const e = await eventOf();
+      // The owner's second event in the month of the first: within the allowance of two.
+      return { owner: e.owner, input: { title: 'Demo Matrix Camp', kind: 'camp', startsAt: `${e.day}T10:00`, endsAt: `${e.day}T18:00`, placeId: e.placeId } };
+    },
+    // A Free Student's plan includes no publishing (the plan's refusal, plan §6.5); staff accounts
+    // have no own person to name as the organizer.
+    expect: { ...signedInOnly, owner: 'ok', member: 'ENTITLEMENT_REQUIRED', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'events.update',
+    make: async () => {
+      const e = await eventOf();
+      return { owner: e.owner, input: { id: e.id, title: 'Demo Matrix Seminar, changed', kind: 'seminar', startsAt: `${e.day}T11:00`, endsAt: `${e.day}T16:00`, placeId: e.placeId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'events.cancel',
+    make: async () => {
+      const e = await eventOf();
+      return { owner: e.owner, input: { id: e.id, note: 'A fictional note.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'events.remove',
+    make: async () => {
+      const e = await eventOf();
+      return { owner: e.owner, input: { id: e.id, reason: 'A fictional moderation reason.' } };
+    },
+    expect: { ...staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'events.uploadPoster',
+    make: async () => {
+      const e = await eventOf();
+      return { owner: e.owner, input: { id: e.id } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'events.removePoster',
+    make: async () => {
+      const e = await eventOf({ poster: true });
+      return { owner: e.owner, input: { id: e.id } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'GET /api/event-posters/{id}/{hash}/{file}',
+    make: async () => ({ input: (await eventOf({ poster: true })).poster }),
+    expect: { anonymous: 'ok', member: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  {
+    path: 'GET /api/event-posters/{id}/{hash}/{file} (removed event)',
+    make: async () => {
+      const e = await eventOf({ poster: true });
+      await getDb().execute(sql`UPDATE event SET status = 'removed', removed_at = now() WHERE id = ${e.id}::uuid`);
+      return { owner: e.owner, input: e.poster };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   // the evidence routes outside the router (plan §6.4): streamed only after the permission check
   {
     path: 'GET /api/evidence/{id}',
@@ -1155,10 +1265,10 @@ async function viaEvidenceRoute(token: string | null, row: Row, input: unknown):
 }
 
 /** M14: GET /api/photos/<id>/<hash>/<file> with this session. */
-async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' = 'person'): Promise<string> {
+async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' | 'event' = 'person'): Promise<string> {
   const headers = new Headers();
   if (token) headers.set('authorization', `Bearer ${token}`);
-  const base = kind === 'school' ? 'school-photos' : 'photos';
+  const base = kind === 'school' ? 'school-photos' : kind === 'event' ? 'event-posters' : 'photos';
   const response = await handlePhotoRequest(new Request(`${TEST_APP_URL}/api/${base}/${address.id}/${address.hash}/${address.file}`, { headers }), address, { kind });
   await response.arrayBuffer();
   return response.ok ? 'ok' : (STATUS_CODES[response.status] ?? `HTTP ${response.status}`);
@@ -1254,15 +1364,21 @@ describe('the authorization matrix (M13)', () => {
         if (caller === undefined) throw new Error(`${row.path}: no ${who} in the fixture`);
         actual[who] = row.path.includes('/api/evidence')
           ? await viaEvidenceRoute(caller?.token ?? null, row, made.input)
-          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos')
-            ? await viaPhotoRoute(caller?.token ?? null, made.input as { id: string; hash: string; file: string }, row.path.includes('/api/school-photos') ? 'school' : 'person')
+          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos') || row.path.includes('/api/event-posters')
+            ? await viaPhotoRoute(
+                caller?.token ?? null,
+                made.input as { id: string; hash: string; file: string },
+                row.path.includes('/api/school-photos') ? 'school' : row.path.includes('/api/event-posters') ? 'event' : 'person',
+              )
             : row.path === 'photos.upload'
               ? await viaPhotoUpload(caller?.token ?? null)
               : row.path === 'gallery.add'
                 ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/gallery/add')
                 : row.path === 'schoolPhotos.upload'
                   ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/schools/photos/upload', made.input as Record<string, string>)
-                  : await viaRpc(caller?.token ?? null, row.path, made.input);
+                  : row.path === 'events.uploadPoster'
+                    ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/events/poster/upload', made.input as Record<string, string>)
+                    : await viaRpc(caller?.token ?? null, row.path, made.input);
       }
       // Line by line, so a failure shows every role's answer.
       const lines = (answers: Partial<Record<Who, string>>) => ROLES.filter((w) => row.expect[w]).map((w) => `${w}: ${answers[w]}`);
@@ -1500,6 +1616,11 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction', row: 'organizations.answerSchoolLink', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction', row: 'organizations.grant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction', row: 'organizations.revokeGrant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
+  // M17: events. The forms post the procedures' fields (a city, not online); `party` is not used.
+  { action: 'src/app/dashboard/events/actions.ts#createEventAction', row: 'events.create', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/events/actions.ts#updateEventAction', row: 'events.update', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/events/actions.ts#cancelEventAction', row: 'events.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/events/[slug]/actions.ts#removeEventAction', row: 'events.remove', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'admin'] },
   // The editor saves the account's own person only: the form has no person to choose.
   { action: 'src/app/dashboard/profile/actions.ts#saveProfileAction', row: 'profile.update', form: () => ({ 'names.0.value': 'Demo Profile Person', primary: '0', showPublicly: 'on' }), roles: ['anonymous', 'owner'] },
 ];
