@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-03.1';
+export const PLAN_MATRIX_VERSION = '2026-11-04.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -171,7 +171,8 @@ export interface FeatureDefinition {
   phase: 2 | 3 | 4 | null;
   /**
    * Enforced on the server in Phase 1 (plan §6.5): the five approved students of Free Sifu (D06),
-   * the public school pin of Professional Sifu (from M11) and (from M16) the photo allowance (D07).
+   * the public school pin of Professional Sifu (from M11), (from M16) the photo allowance (D07) and
+   * (from M17) the events a Sifu publishes a month.
    */
   enforced: boolean;
   /**
@@ -401,12 +402,21 @@ export const FEATURES: readonly FeatureDefinition[] = [
     key: 'events',
     source: 'Events',
     label: 'Events',
-    availability: 'planned',
-    phase: 2,
-    enforced: false,
+    // M17 (owner's choice 2026-11-04, docs/adr/0020-events.md): the event calendar is part of the
+    // pilot. Anyone browses it; a Sifu publishes within the plan's allowance, enforced on the server.
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    unit: { one: 'event', many: 'events', verb: 'published' },
+    upgradeHeading: 'Publish events with {plan}',
+    note: 'Anyone can browse the calendar. Publishing needs a Sifu plan that includes it; Professional Sifu counts the events that start in each calendar month.',
+    // `included` is the right to publish: browsing needs no plan, so the Student cells are plain
+    // facts (neutral), as for the school map. DEFAULT M17 (question 1): Professional Sifu counts
+    // the published events that start in one calendar month in the event's own zone. DEFAULT D25:
+    // Federation's "unlimited" is no limit in the pilot (an organization's events, M15 grant).
     values: {
-      free_student: text('Browse'),
-      premium_student: text('Browse and notifications'),
+      free_student: { source: 'Browse', label: 'Browse', included: false, neutral: true },
+      premium_student: { source: 'Browse and notifications', label: 'Browse and notifications', included: false, neutral: true },
       free_sifu: text('No publishing entitlement', 'No publishing', false),
       pro_sifu: { source: 'Up to 2 events per month', label: 'Up to 2 events a month', included: true, limit: 2 },
       federation: text('Unlimited publishing and community push in source', 'Unlimited publishing, with limits still to be defined'),
@@ -548,10 +558,10 @@ export interface Benefit {
 }
 
 /**
- * Features that joined the pilot after M08 (the photo allowance, M16): an upgrade prompt lists
+ * Features that joined the pilot after M08 (the photo allowance, M16; events, M17): an upgrade prompt lists
  * their benefits after the ones the pilot had before, which keep the matrix's order.
  */
-const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos'];
+const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events'];
 
 /**
  * The real benefits of moving from one plan to another (plan §5.6): only features with

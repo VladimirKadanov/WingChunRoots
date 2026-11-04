@@ -19,6 +19,11 @@ export const QUEUE = {
    * (lineage-membership:<id>) through POST /api/internal/revalidate (src/server/jobs/lineage-recompute.ts).
    */
   lineageRecompute: 'lineage.recompute',
+  /**
+   * M17 (DEFAULT M17, question 3): the dashboard notices of a published or cancelled event, to the
+   * Premium Students whose established teacher organizes or teaches it (src/server/jobs/event-notify.ts).
+   */
+  eventsNotify: 'events.notify',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -42,12 +47,19 @@ export interface LineageRecomputeJob {
   lineageIds: string[];
 }
 
+/** The payload of events.notify: the event's id and the change, never its text (plan §6.4). */
+export interface EventsNotifyJob {
+  eventId: string;
+  change: 'published' | 'cancelled';
+}
+
 export interface JobData {
   [QUEUE.emailSend]: EmailSendJob;
   [QUEUE.emailSendFailed]: EmailSendJob;
   [QUEUE.retentionPurge]: Record<string, never>;
   [QUEUE.searchKeysRebuild]: Record<string, never>;
   [QUEUE.lineageRecompute]: LineageRecomputeJob;
+  [QUEUE.eventsNotify]: EventsNotifyJob;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -83,6 +95,8 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
   [QUEUE.searchKeysRebuild, { retryLimit: 3, retryDelay: 60, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
   // M09: a few seconds of work per job; retried briefly when the web process does not answer yet.
   [QUEUE.lineageRecompute, { retryLimit: 5, retryDelay: 10, retryBackoff: true, retryDelayMax: 300, expireInSeconds: 120, deleteAfterSeconds: DAY }],
+  // M17: one insert of notices per job; its payload holds ids only.
+  [QUEUE.eventsNotify, { retryLimit: 5, retryDelay: 10, retryBackoff: true, retryDelayMax: 300, expireInSeconds: 120, deleteAfterSeconds: DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */

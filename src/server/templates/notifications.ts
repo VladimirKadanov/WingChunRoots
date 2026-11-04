@@ -861,6 +861,60 @@ const organizationSchoolAnswered: NotificationTemplate<{ organizationId: string;
   sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000f', decision: 'accepted' },
 };
 
+// --- Events (M17) --------------------------------------------------------------------------------
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const EVENT_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+interface EventNoticeData {
+  eventId: string;
+  slug: string;
+  title: string;
+  /** The first day in the event's own zone, YYYY-MM-DD. */
+  startDay: string;
+}
+
+function eventNotice(template: string, payload: unknown): EventNoticeData {
+  const eventId = uuidOf(template, 'eventId', payload);
+  const { slug, title, startDay } = payloadObject(template, payload);
+  if (typeof slug !== 'string' || slug.length > 200 || !EVENT_SLUG.test(slug)) throw new NotificationDataError(template, 'slug must be an event slug');
+  if (typeof title !== 'string' || title.length < 1 || title.length > 200) throw new NotificationDataError(template, 'title must be a short text');
+  if (typeof startDay !== 'string' || !DAY_KEY.test(startDay)) throw new NotificationDataError(template, 'startDay must be YYYY-MM-DD');
+  return { eventId, slug, title, startDay };
+}
+
+function eventDay(startDay: string): string {
+  const [year, month, day] = startDay.split('-').map(Number);
+  return new Date(Date.UTC(year!, month! - 1, day!)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * "event.published" (DEFAULT M17, question 3): to a Premium Student whose established teacher
+ * organizes or teaches at an event that was just published.
+ */
+const eventPublished: NotificationTemplate<EventNoticeData> = {
+  name: 'event.published',
+  parse: (payload) => eventNotice('event.published', payload),
+  render: ({ slug, title, startDay }) => ({
+    title: 'A teacher of yours has a new event',
+    body: [{ text: `“${title}” starts on ${eventDay(startDay)}. One of your teachers organizes it or teaches at it.` }],
+    action: { label: 'Open the event', href: `/events/${slug}` },
+  }),
+  sample: { eventId: '0190a5c0-0000-7000-8000-0000000000e1', slug: 'demo-seminar-sofia', title: 'Demo seminar in Sofia', startDay: '2027-03-13' },
+};
+
+/** "event.cancelled" (DEFAULT M17, question 3): the same students, when the organizer cancels it. */
+const eventCancelled: NotificationTemplate<EventNoticeData> = {
+  name: 'event.cancelled',
+  parse: (payload) => eventNotice('event.cancelled', payload),
+  render: ({ slug, title, startDay }) => ({
+    title: 'An event was cancelled',
+    body: [{ text: `“${title}”, planned for ${eventDay(startDay)}, was cancelled by its organizer.` }],
+    action: { label: 'Open the event', href: `/events/${slug}` },
+  }),
+  sample: { eventId: '0190a5c0-0000-7000-8000-0000000000e2', slug: 'demo-camp-plovdiv', title: 'Demo summer camp', startDay: '2027-07-01' },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
@@ -887,6 +941,9 @@ export const NOTIFICATION_TEMPLATES = {
   'organization.admin_added': organizationAdminAdded,
   'organization.school_requested': organizationSchoolRequested,
   'organization.school_answered': organizationSchoolAnswered,
+  // M17.
+  'event.published': eventPublished,
+  'event.cancelled': eventCancelled,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

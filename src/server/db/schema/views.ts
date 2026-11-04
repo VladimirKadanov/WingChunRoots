@@ -3,7 +3,7 @@
 // PostgreSQL 16+) and declared here with .existing(), so Drizzle can query them but drizzle-kit
 // never tries to manage them.
 
-import { boolean, jsonb, pgView, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, pgView, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { geographyPoint } from './geography';
 
@@ -114,6 +114,59 @@ export const vPublicOrganization = pgView('v_public_organization', {
   countryCode: text('country_code'),
   websiteUrl: text('website_url'),
   approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+}).existing();
+
+/** M17: a public person or organization named on an event (the organizer, an instructor). */
+export interface PublicEventPerson {
+  id: string;
+  slug: string;
+  display_name: string;
+  lang: string | null;
+}
+
+/**
+ * M17 (docs/adr/0020-events.md): the events the public sees, published or cancelled (never a
+ * removed one), with their public fields only. The organizer and the instructors appear only while
+ * v_public_person (or v_public_organization) shows them; a school only while v_public_school does,
+ * by name and city (never a point); the place by its city and country. No account id, no staff's
+ * reason, no storage key (the poster by id and content hash only). app_public_ro and app_rw read it.
+ */
+export const vPublicEvent = pgView('v_public_event', {
+  id: uuid('id').notNull(),
+  slug: text('slug').notNull(),
+  title: text('title').notNull(),
+  kind: text('kind').notNull(),
+  description: text('description'),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  timezone: text('timezone').notNull(),
+  online: boolean('online').notNull(),
+  venue: text('venue'),
+  placeId: uuid('place_id'),
+  cityName: text('city_name'),
+  countryCode: text('country_code'),
+  externalUrl: text('external_url'),
+  status: text('status').notNull(),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancellationNote: text('cancellation_note'),
+  organizerPersonId: uuid('organizer_person_id'),
+  organizerPersonSlug: text('organizer_person_slug'),
+  organizerPersonName: text('organizer_person_name'),
+  organizerPersonLang: text('organizer_person_lang'),
+  organizationId: uuid('organization_id'),
+  organizationSlug: text('organization_slug'),
+  organizationName: text('organization_name'),
+  schoolId: uuid('school_id'),
+  schoolSlug: text('school_slug'),
+  schoolName: text('school_name'),
+  schoolCity: text('school_city'),
+  instructors: jsonb('instructors').$type<PublicEventPerson[]>().notNull(),
+  posterSha256: text('poster_sha256'),
+  posterWidth: integer('poster_width'),
+  posterHeight: integer('poster_height'),
+  revision: integer('revision').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 }).existing();

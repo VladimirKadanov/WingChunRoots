@@ -86,7 +86,15 @@ export type AuditAction =
   | 'organization.member_end'
   | 'organization.school_request'
   | 'organization.school_answer'
-  | 'organization.school_end';
+  | 'organization.school_end'
+  // M17: events (docs/adr/0020-events.md). The rows carry ids, the kind, the month and the fields
+  // that changed, never a title, a description or a storage key; a staff removal keeps its reason.
+  | 'event.create'
+  | 'event.update'
+  | 'event.cancel'
+  | 'event.remove'
+  | 'event.poster_upload'
+  | 'event.poster_remove';
 
 export interface AuditEntry {
   action: AuditAction;

@@ -20,13 +20,17 @@
 //                  a listing, a Professional Sifu grant or an account type that changes drops it.
 //   organizations  every public answer about organizations (M15): the list and the organization
 //                  pages; an approval, an edit, a member or a school link that changes drops it.
+//   events         every public answer about events (M17): the calendar and the event pages; a
+//                  change to an event drops it. An event's answer also carries the person tags of
+//                  its organizer and instructors, and `schools` / `organizations`, so a profile,
+//                  school or organization that becomes hidden drops the events that name it.
 //
 // The services that change these records (M09 onwards) call invalidatePublic(). Answers for a
 // signed-in participant with their own involved_only relationships are never cached.
 
 import { cacheTag, revalidateTag, updateTag } from 'next/cache';
 
-export { EXPLORE_START_TAG, lineageMembershipTag, lineageTag, ORGANIZATIONS_TAG, personTag, SCHOOLS_TAG } from './cache-tags';
+export { EVENTS_TAG, EXPLORE_START_TAG, lineageMembershipTag, lineageTag, ORGANIZATIONS_TAG, personTag, SCHOOLS_TAG } from './cache-tags';
 
 /** Next.js takes at most 128 tags per cacheTag() call (later calls append). */
 const MAX_TAGS_PER_CALL = 128;
