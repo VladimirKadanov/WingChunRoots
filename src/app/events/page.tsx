@@ -13,7 +13,7 @@ import { ChevronDownIcon } from '@/components/icons';
 import { ErrorPanel } from '@/components/lineage/states';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { formatEventWhen, monthLabel } from '@/lib/event-time';
+import { monthKey, monthLabel } from '@/lib/event-time';
 import { countryName } from '@/lib/regions';
 import { EVENT_KIND_LABELS, type EventListDto, type EventSummaryDto } from '@/server/dto/events';
 import { failure, lineageClient } from '../people/[slug]/data';
@@ -54,7 +54,7 @@ function filtersOf(params: Record<string, string | string[] | undefined>): Filte
   return {
     when: one(params.when) === 'past' ? 'past' : 'upcoming',
     country: /^[A-Z]{2}$/.test(country) ? country : null,
-    kind: kind in EVENT_KIND_LABELS ? (kind as Filters['kind']) : null,
+    kind: Object.hasOwn(EVENT_KIND_LABELS, kind) ? (kind as Filters['kind']) : null,
     format: format === 'online' || format === 'in_person' ? format : null,
     person: SLUG.test(one(params.person) ?? '') && (one(params.person) ?? '').length <= 120 ? one(params.person)! : null,
     school: SLUG.test(one(params.school) ?? '') && (one(params.school) ?? '').length <= 120 ? one(params.school)! : null,
@@ -76,16 +76,23 @@ function hrefOf(f: Filters, change: Partial<Filters> = {}): string {
   return s ? `/events?${s}` : '/events';
 }
 
-/** The items by the month they start in, in their own zone, in the list's order. */
-function byMonth(items: EventSummaryDto[]): { month: string; items: EventSummaryDto[] }[] {
-  const groups: { month: string; items: EventSummaryDto[] }[] = [];
+/**
+ * The items by the month they start in, in their own zone: one section per month (upcoming: the
+ * earliest month first; past: the latest), the items of a month in the list's order. The list is
+ * ordered by the instant, so two events near a month's end in different zones may fall in the
+ * other order of their months; grouping by the key keeps one section (and one heading id) a month.
+ */
+function byMonth(items: EventSummaryDto[], when: Filters['when']): { month: string; items: EventSummaryDto[] }[] {
+  const groups = new Map<string, EventSummaryDto[]>();
   for (const item of items) {
-    const month = formatEventWhen(new Date(item.startsAt), new Date(item.endsAt), item.timezone).month;
-    const last = groups.at(-1);
-    if (last && last.month === month) last.items.push(item);
-    else groups.push({ month, items: [item] });
+    const month = monthKey(new Date(item.startsAt), item.timezone);
+    const group = groups.get(month);
+    if (group) group.push(item);
+    else groups.set(month, [item]);
   }
-  return groups;
+  const months = [...groups.keys()].sort();
+  if (when === 'past') months.reverse();
+  return months.map((month) => ({ month, items: groups.get(month)! }));
 }
 
 const fieldClass = 'block min-h-12 w-full min-w-0 appearance-none rounded-sm border border-border-strong bg-surface-1 px-4 pr-11 text-field text-fg hover:border-fg-muted focus-visible:border-fg';
@@ -227,7 +234,7 @@ export default async function EventsPage({ searchParams }: Props) {
               </div>
             ) : (
               <div data-testid="event-list">
-                {byMonth(list.items).map((group) => (
+                {byMonth(list.items, filters.when).map((group) => (
                   <section key={group.month} aria-labelledby={`month-${group.month}`} className="mt-6">
                     <h2 id={`month-${group.month}`} className="eyebrow border-b border-border-strong pb-2">
                       {monthLabel(group.month)}

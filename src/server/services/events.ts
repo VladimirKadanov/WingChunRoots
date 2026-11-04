@@ -454,10 +454,21 @@ async function administeredOrganizations(db: Executor, userId: string): Promise<
 /** Whether this account may change the event: its Sifu organizer, or an admin of its organization. */
 async function mayChange(db: Executor, userId: string, row: Pick<OwnerRow, 'organizerUserId' | 'organizationId'>): Promise<boolean> {
   if (row.organizationId === null) return row.organizerUserId === userId;
+  // As administeredOrganizations: an approved organization that is not deleted (a suspended one's
+  // events stay as they are, and nobody changes them until it is active again).
   const [admin] = await db
     .select({ id: organizationAdmin.id })
     .from(organizationAdmin)
-    .where(and(eq(organizationAdmin.organizationId, row.organizationId), eq(organizationAdmin.userId, userId), isNull(organizationAdmin.revokedAt)));
+    .innerJoin(organization, eq(organization.id, organizationAdmin.organizationId))
+    .where(
+      and(
+        eq(organizationAdmin.organizationId, row.organizationId),
+        eq(organizationAdmin.userId, userId),
+        isNull(organizationAdmin.revokedAt),
+        eq(organization.status, 'active'),
+        isNull(organization.deletedAt),
+      ),
+    );
   return admin !== undefined;
 }
 
@@ -679,10 +690,10 @@ export async function createEvent(principal: Principal | null, raw: z.input<type
   await checkOrganizerFields(db, f, organizer);
   const month = monthKey(f.startsAt, f.timezone);
   const created = await db.transaction(async (tx) => {
-    if ('organizationId' in organizer) await checkOrganization(tx, organizer.organizationId);
-    else await checkMonth(tx, organizer.userId, month, null);
-    // A form sent twice (a double tap, a resent request) publishes once.
-    const [same] = await tx
+    // A form sent twice (a double tap, a resent request) publishes once: the copy that comes after
+    // the first one's commit finds it (under the same quota lock) instead of a full month.
+    const sameAs = () =>
+      tx
       .select({ id: event.id, slug: event.slug })
       .from(event)
       .where(
@@ -695,9 +706,24 @@ export async function createEvent(principal: Principal | null, raw: z.input<type
           'organizationId' in organizer ? eq(event.organizationId, organizer.organizationId) : isNull(event.organizationId),
         ),
       );
+    try {
+      if ('organizationId' in organizer) await checkOrganization(tx, organizer.organizationId);
+      else await checkMonth(tx, organizer.userId, month, null);
+    } catch (error) {
+      const [earlier] = error instanceof ServiceError && error.code === 'ENTITLEMENT_REQUIRED' ? await sameAs() : [];
+      if (earlier) return { ...earlier, duplicate: true };
+      throw error;
+    }
+    const [same] = await sameAs();
     if (same) return { ...same, duplicate: true };
     const id = uuidv7();
-    const eventSlug = newSlug(f.title);
+    // The random suffix (24 bits) makes a taken slug rare; a taken one is drawn again, never a 500.
+    let eventSlug = newSlug(f.title);
+    for (let i = 0; i < 5; i++) {
+      const [taken] = await tx.select({ id: event.id }).from(event).where(eq(event.slug, eventSlug));
+      if (!taken) break;
+      eventSlug = newSlug(f.title);
+    }
     await tx.insert(event).values({
       id,
       slug: eventSlug,
@@ -768,8 +794,9 @@ export async function updateEvent(principal: Principal | null, raw: z.input<type
     if (!seen.organizationId && month !== before) await checkMonth(tx, p.user.id, month, seen.id);
     const row = await ownEvent(tx, p.user.id, seen.id, true);
     if (row.status !== 'published') throw new ServiceError('CONFLICT', CANCELLED_NO_CHANGE);
-    // Another change moved it in the meantime: the month this check counted is no longer the one left.
-    if (!row.organizationId && monthKey(row.startsAt, row.timezone) !== before && month !== before) {
+    // Another change moved it in the meantime: the month read before (and checked, or kept) is no
+    // longer the event's, so this change would write a month whose allowance nobody counted.
+    if (!row.organizationId && monthKey(row.startsAt, row.timezone) !== before) {
       throw new ServiceError('CONFLICT', 'The event changed in the meantime. Reload the page and try again.');
     }
     const now = new Date();
@@ -1158,7 +1185,9 @@ export async function myEvents(principal: Principal | null): Promise<MyEvents> {
   let upgrade: UpgradeOffer | null = null;
   if (sifu) {
     const planName = planSummary(plan).name;
-    const thisMonth = monthKey(now, 'UTC');
+    // The month that is still current somewhere (UTC−12, the earliest zone): an event of that month
+    // in a zone still in it is shown, whatever the month in UTC (DEFAULT M17, question 1).
+    const thisMonth = monthKey(now, 'Etc/GMT+12');
     const counts = new Map<string, number>([[thisMonth, 0]]);
     for (const r of rows) {
       if (r.organizationId !== null || r.status !== 'published') continue;

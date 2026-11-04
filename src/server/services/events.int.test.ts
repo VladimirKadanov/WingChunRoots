@@ -181,6 +181,33 @@ describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
     expect(row).toEqual({ title: 'Demo August, later', revision: 1 });
   });
 
+  it('a change read before another moved the event is refused, never writing the old month back', async () => {
+    const sifu = await proSifu('events-stale');
+    const moving = await createEvent(sifu.principal, seminar(at('09-03'), at('09-03', '12:00')), meta);
+    let pending: Promise<string> | undefined;
+    await getDb().transaction(async (t) => {
+      // Another request holds the row and moves the event to October while this change waits on it.
+      await t.execute(sql`SELECT id FROM event WHERE id = ${moving.id}::uuid FOR UPDATE`);
+      pending = codeOf(updateEvent(sifu.principal, { id: moving.id, ...seminar(at('09-03'), at('09-03', '12:00')), title: 'Demo stale title' }, meta));
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await t.update(event).set({ startsAt: new Date(`${YEAR}-10-05T08:00:00Z`), endsAt: new Date(`${YEAR}-10-05T10:00:00Z`) }).where(eq(event.id, moving.id));
+    });
+    expect(await pending).toBe('CONFLICT');
+    const [row] = await getDb().select({ startsAt: event.startsAt, title: event.title }).from(event).where(eq(event.id, moving.id));
+    expect(row).toEqual({ startsAt: new Date(`${YEAR}-10-05T08:00:00Z`), title: 'Demo test seminar' });
+  });
+
+  it('a form sent twice at the last place of the month publishes once and answers with the event', async () => {
+    const sifu = await proSifu('events-twice');
+    await createEvent(sifu.principal, seminar(at('11-03'), at('11-03', '12:00')), meta);
+    const form = { ...seminar(at('11-20'), at('11-20', '12:00')), title: 'Demo sent twice' };
+    const first = await createEvent(sifu.principal, form, meta);
+    const again = await createEvent(sifu.principal, form, meta);
+    expect(again.id).toBe(first.id);
+    const [n] = await getDb().select({ n: sql<number>`count(*)::int` }).from(event).where(eq(event.organizerUserId, sifu.account.id));
+    expect(n!.n).toBe(2);
+  });
+
   it('only the organizer changes or cancels an event (404 for anyone else)', async () => {
     const sifu = await proSifu('events-owner');
     const other = await proSifu('events-other');
@@ -301,6 +328,27 @@ describe('notices (DEFAULT M17, question 3)', () => {
     expect((await sendEventNotices(getDb(), { eventId: created.id, change: 'cancelled' })).written).toBe(2);
     const cancelled = await getDb().select({ id: notification.id }).from(notification).where(and(eq(notification.template, 'event.cancelled'), sql`${notification.payload}->>'eventId' = ${created.id}`));
     expect(cancelled).toHaveLength(2);
+  });
+});
+
+describe('cancellation notices', () => {
+  it('go only to the students told of the publication, and never for an event that is over', async () => {
+    const sifu = await proSifu('events-cancel-notice');
+    const premium = await member('events-cancel-premium');
+    await grant(premium.account.id, 'premium_student');
+    await relate(sifu.personId, premium.personId);
+    // Cancelled before the publication's notices went out: nothing at all.
+    const quick = await createEvent(sifu.principal, seminar(at('04-12'), at('04-12', '12:00')), meta);
+    await cancelEvent(sifu.principal, { id: quick.id }, meta);
+    expect((await sendEventNotices(getDb(), { eventId: quick.id, change: 'published' })).skipped).toBe(true);
+    expect((await sendEventNotices(getDb(), { eventId: quick.id, change: 'cancelled' })).written).toBe(0);
+    // Told, then cancelled after it ended: no cancellation notice either.
+    const told = await createEvent(sifu.principal, { ...seminar(at('04-19'), at('04-19', '12:00')), title: 'Demo told' }, meta);
+    expect((await sendEventNotices(getDb(), { eventId: told.id, change: 'published' })).written).toBe(1);
+    await cancelEvent(sifu.principal, { id: told.id }, meta);
+    const after = new Date(`${YEAR}-04-20T00:00:00Z`);
+    expect((await sendEventNotices(getDb(), { eventId: told.id, change: 'cancelled' }, after)).skipped).toBe(true);
+    expect((await sendEventNotices(getDb(), { eventId: told.id, change: 'cancelled' })).written).toBe(1);
   });
 });
 

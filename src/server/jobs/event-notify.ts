@@ -6,14 +6,15 @@
 // `in_arbitration`) organizes the event or teaches at it; one per person, event and change. The
 // event is read from v_public_event, so a removed event, an event of an organization that is no
 // longer approved and an organizer or instructor who is not a public person send nothing: a notice
-// never tells a student about a teacher the public cannot see.
+// never tells a student about a teacher the public cannot see. A cancellation goes only to the
+// students who were told of the publication, and never for an event that is already over.
 //
 // Idempotent: the singleton key of the job (src/server/services/events.ts) keeps one job per event
 // and change while it waits, and the unique index notification_event_once_key keeps one notice per
 // person when the job runs again (ON CONFLICT DO NOTHING). Logs carry the job id and counts, never
 // the event's text or a person's id (plan §6.4).
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { JobWithMetadata } from 'pg-boss';
 
 import { formatEventWhen } from '../../lib/event-time';
@@ -50,6 +51,8 @@ export async function sendEventNotices(db: Database, job: EventsNotifyJob, now =
     .where(eq(vPublicEvent.id, job.eventId));
   // A cancellation after the publication's job was queued: the publication sends nothing any more.
   if (!row || row.status !== job.change) return { written: 0, recipients: 0, skipped: true };
+  // An event that is already over: its cancellation tells nobody anything they can act on.
+  if (job.change === 'cancelled' && row.endsAt.getTime() <= now.getTime()) return { written: 0, recipients: 0, skipped: true };
 
   const teachers = [...new Set([row.organizerPersonId, ...row.instructors.map((i) => i.id)].filter((id): id is string => typeof id === 'string'))];
   if (teachers.length === 0) return { written: 0, recipients: 0, skipped: false };
@@ -83,9 +86,25 @@ export async function sendEventNotices(db: Database, job: EventsNotifyJob, now =
     })
     .from(entitlementGrant)
     .where(inArray(entitlementGrant.subjectUserId, students.map((s) => s.userId)));
-  const premium = students.filter(
+  let premium = students.filter(
     (s) => resolveEffectivePlan(s.accountType, grants.filter((g) => g.subjectUserId === s.userId), now).plan === 'premium_student',
   );
+  // A cancellation goes only to those who were told of the publication: an event cancelled before
+  // its publication's notices went out is never announced as cancelled.
+  if (job.change === 'cancelled' && premium.length > 0) {
+    const told = await db
+      .select({ userId: notification.userId })
+      .from(notification)
+      .where(
+        and(
+          eq(notification.template, 'event.published'),
+          sql`${notification.payload} ->> 'eventId' = ${row.id}`,
+          inArray(notification.userId, premium.map((s) => s.userId)),
+        ),
+      );
+    const toldIds = new Set(told.map((t) => t.userId));
+    premium = premium.filter((s) => toldIds.has(s.userId));
+  }
   if (premium.length === 0) return { written: 0, recipients: 0, skipped: false };
 
   const payload = {

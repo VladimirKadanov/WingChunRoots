@@ -53,7 +53,8 @@ export function EventRow({ event, headingLevel = 3 }: { event: EventSummaryDto; 
         </Heading>
         <p className="text-sm text-fg-muted">
           <time dateTime={event.startsAt}>{when.text}</time>
-          <span title={when.zone}> · {zoneCity(event.timezone)} time</span>
+          {/* The zone's city in words; its full name and offset are on the event's page (no hover-only text). */}
+          <span> · {zoneCity(event.timezone)} time</span>
         </p>
         <p className="text-sm text-fg-muted">
           {placeLine(event)}
