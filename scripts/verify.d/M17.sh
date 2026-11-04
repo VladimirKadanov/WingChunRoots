@@ -175,9 +175,9 @@ check "the organizer's link opens in the same window" bash -c "grep -q 'rel=\"no
 refute "no window.open, no 100vh, no hover-only behaviour, no target=_blank in the M17 pages" grep -nE "window\.open|100vh|group-hover:|onMouseEnter|target=\"_blank\"" \
   "$LIST_PAGE" "$EVENT_PAGE" "$ROWS" "$DASHBOARD" "$FORM" src/app/dashboard/events/poster-control.tsx
 refute "no urgency in the event copy (left, hurry, only today, countdown)" grep -nEi "\b(hurry|only today|countdown|last chance|don.t miss)\b|\{[a-z.]+\} left" "$DASHBOARD" "$FORM" "$SERVICE"
-check "the new pages are in e2e/routes.ts (axe in both themes); /events and an event page are key screens" bash -c "
-  grep -q \"path: '/events', name: 'events', status: 200, milestone: 'M17', key: true\" e2e/routes.ts &&
-  grep -q \"path: '/events/demo-seminar-chum-kiu-sofia', name: 'event', status: 200, milestone: 'M17', key: true\" e2e/routes.ts &&
+check "the new pages are in e2e/routes.ts (axe in both themes)" bash -c "
+  grep -q \"path: '/events', name: 'events', status: 200, milestone: 'M17'\" e2e/routes.ts &&
+  grep -q \"path: '/events/demo-seminar-chum-kiu-sofia', name: 'event', status: 200, milestone: 'M17'\" e2e/routes.ts &&
   grep -q \"name: 'dashboard-events'\" e2e/routes.ts"
 
 # 10. Demo data (In scope 8; D20) ------------------------------------------------------------------

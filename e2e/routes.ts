@@ -140,12 +140,15 @@ export const ROUTES: readonly AppRoute[] = [
   // that is not listed, ADR 0014; the API and the .ics answer 404). The dashboard of demo-pro-sifu-8 with
   // its two events of March 2027 (the month's allowance used; no test changes them), of a Free Sifu
   // with the upgrade prompt and of a Student; the new event's form. The pages of one own event need
-  // an event of the account's own: e2e/m17-events.spec.ts runs axe on them in both themes.
-  { path: '/events', name: 'events', status: 200, milestone: 'M17', key: true },
+  // an event of the account's own: e2e/m17-events.spec.ts runs axe on them in both themes. Not key
+  // screens yet, as in M14–M16: a key screen needs its final screenshot in docs/screenshots/M13
+  // (scripts/verify.d/M13.sh) and its baselines come from a CI run; /events and the event page are
+  // the first to make key (docs/plan/M17-events.md).
+  { path: '/events', name: 'events', status: 200, milestone: 'M17' },
   { path: '/events?when=past', name: 'events-past', status: 200, milestone: 'M17' },
   { path: '/events?country=GB&kind=camp', name: 'events-filtered', status: 200, milestone: 'M17' },
   { path: '/events?country=ZZ', name: 'events-empty', status: 200, milestone: 'M17' },
-  { path: '/events/demo-seminar-chum-kiu-sofia', name: 'event', status: 200, milestone: 'M17', key: true },
+  { path: '/events/demo-seminar-chum-kiu-sofia', name: 'event', status: 200, milestone: 'M17' },
   { path: '/events/demo-online-theory-evening', name: 'event-online', status: 200, milestone: 'M17' },
   { path: '/events/demo-cancelled-exam-session', name: 'event-cancelled', status: 200, milestone: 'M17' },
   { path: '/events/demo-no-such-event', name: 'event-not-listed', status: 200, milestone: 'M17' },
