@@ -31,7 +31,7 @@ async function tabTo(page: Page, selector: string, max = 80) {
 
 const slugs = (page: Page) => page.getByTestId('event-row').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-slug')));
 
-test('@M17 the calendar lists the upcoming events by month and filters them with the keyboard, without JavaScript too', async ({ page }) => {
+test('@M17 the calendar lists the upcoming events by month and filters them with the keyboard', async ({ page }) => {
   await page.goto('/events');
   await expect(page.getByRole('heading', { level: 1, name: 'Events' })).toBeVisible();
   const upcoming = await slugs(page);
@@ -88,7 +88,7 @@ test('@M17 the calendar lists the upcoming events by month and filters them with
 test.describe('without JavaScript', () => {
   test.use({ javaScriptEnabled: false });
 
-  test('@M17 the filter form works as a plain GET form', async ({ page }) => {
+  test('@M17 without JavaScript the filter form works as a plain GET form', async ({ page }) => {
     await page.goto('/events');
     await page.locator('#event-kind').selectOption('seminar');
     await page.getByRole('button', { name: 'Show events' }).click();

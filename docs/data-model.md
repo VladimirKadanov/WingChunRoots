@@ -85,12 +85,19 @@
 | `entitlement_grant` | Право на план (M08): точно един получател (`subject_user_id` или `subject_organization_id`), `plan_code` (`free_student`, `premium_student`, `free_sifu`, `pro_sifu`, `federation`), `source` (`test_grant`, `complimentary`, `stripe`), `starts_at`, `ends_at`, задължителна `reason`, отмяна с `revoked_at`, `revoked_by_user_id` и `revoke_reason` |
 | `pilot_access_request` | Заявка „Request pilot access“ от подканата за по-висок план (M08, план §5.6): `user_id`, `plan_code`, `status` (`open`, `closed`), `closed_at`, `closed_by_user_id`, `grant_id` (правото, с което администраторът я е затворил; празно, когато я е затворил без план, с причина в одита `pilot_access.close`, или когато смяната на вида акаунт я е затворила). Най-много една отворена заявка на акаунт. Не води до плащане ([`docs/entitlements.md`](entitlements.md)) |
 
+### Събития (M17)
+
+| Таблица | Предназначение и важни колони |
+|---|---|
+| `event` | Събитие от календара ([ADR 0020](adr/0020-events.md)): `slug` (уникален), `title` (2–160 знака), `kind` (`seminar`, `camp`, `exam_session`, `other`), `description`, `starts_at` и `ends_at` (`timestamptz`, краят след началото), `timezone` (IANA зоната на събитието; градът я дава, онлайн събитие я избира), `online` или `place_id` (град от `place`; точно едното, онлайн събитие няма `venue`), `venue` (ред, който организаторът публикува сам, никога адресът на школа), `school_id` (по избор), `external_url` (само `https`). Организаторът е **или** акаунт на Sifu (`organizer_user_id`, `organizer_person_id`), **или** организация (`organization_id`; `CHECK event_one_organizer`); `created_by_user_id` е акаунтът, който го е публикувал. `status` (`published`, `cancelled`, `removed`) с `cancelled_at`, `cancelled_by_user_id`, `cancellation_note` (публична) и `removed_at`, `removed_by_user_id`, `removal_reason` (само за одита). Плакатът: `poster_storage_key`, `poster_sha256`, `poster_width`, `poster_height`, `poster_size_bytes` (всички или нито едно). `revision` се вдига при всяка промяна (`SEQUENCE` на `.ics`) |
+| `event_instructor` | До 5 души от архива, които преподават на събитието: `event_id`, `person_id`, `position` (редът) |
+
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
 |---|---|
 | `consent_record` | Дадено или оттеглено съгласие: `user_id`, `kind` (`terms`, `privacy_ack`, `authenticity_declaration`, `age_18_plus`, `publication`; M02), `document_version` (версията на документа от `content/legal/`, например `2026-10-17-draft`), `action` (`granted`, `withdrawn`), `occurred_at`. Редовете не се променят: нова версия или оттегляне е нов ред |
-| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `pilot-access.closed` (до акаунта, когато администратор затвори заявката му без план), `plan.granted` (`payload`: `planCode`, `startsAt`, `endsAt`) и `plan.revoked`; частичният индекс `notification_user_id_unread_idx` брои непрочетените |
+| `notification` | Известия в таблото: `user_id`, `template` (текстовете са в `src/server/templates/`), `payload`, `read_at`. От M08: `pilot-access.requested` (до администраторите), `pilot-access.closed` (до акаунта, когато администратор затвори заявката му без план), `plan.granted` (`payload`: `planCode`, `startsAt`, `endsAt`) и `plan.revoked`; от M17 `event.published` и `event.cancelled` (до Premium Student, чийто установен учител организира събитието или преподава на него; `payload`: `eventId`, `slug`, `title`, `startDay`; по едно на човек и събитие, DEFAULT M17, въпрос 3); частичният индекс `notification_user_id_unread_idx` брои непрочетените |
 | `email_delivery` | Един ред на имейл (M01b: `Mailer` и outbox-ът): `to_email` (`NULL`, след като срокът на пазене изтече; задължителен при `queued`), `template`, `idempotency_key` (уникален), `status` (`queued`, `sent`, `failed`), `attempts` (брой опити, ≥ 0), `last_attempt_at`, `provider_message_id`, `error` (без адреси, до 500 знака), `sent_at` |
 | `audit_log` | Одитен журнал само за добавяне (раздел 6) |
 
@@ -117,7 +124,7 @@
 
 ## 3. Публични изгледи
 
-Анонимното четене минава само през три изгледа. И трите са `security_barrier`, така че филтрите им се прилагат преди условията от заявката.
+Анонимното четене (`app_public_ro`) минава само през четири изгледа: `v_public_person`, `v_public_edge`, `v_public_school` и (от M17) `v_public_event`. Те са `security_barrier`, така че филтрите им се прилагат преди условията от заявката.
 
 | Изглед | Съдържа | Колони |
 |---|---|---|
@@ -126,6 +133,7 @@
 | `v_public_person_key` (M07) | Само ключовете на хората, които `v_public_person` показва; без `security_barrier`, за да се ползват индексите; `SELECT` само за `app_rw` (не за `app_public_ro`) | `person_id`, `person_name_id`, `key`, `key_kind`, `is_primary`, `source` |
 | `v_public_school` | Само `status = 'active'` (до M11 `published`), без изтритите и (от M11, DEFAULT D08/D18) само ако пинът е разрешен: школата няма акаунт, който я е обявил (запис на платформата, фиктивните школи на M01), или този акаунт е Sifu с действащо право `pro_sifu` (започнало, неизтекло и неотнето). Отнемането на правото скрива школата от изгледа и я запазва | `id`, `slug`, `name`, `location_privacy`, `precision` (`exact` или `city`), `public_point` (при `city_only` винаги центроидът на града от `place`, независимо какво пише в `school.public_point`: втора защита след тригера от §5), `place_id`, `city_name`, `country_code`, `description`, `website_url`, `last_activity_at`, `instructor_person_ids` (само публичните инструктори: главният инструктор и онези, чиято учебна връзка с главния инструктор е `verified` или `in_arbitration`, от прегледа на M11), `created_at`, `updated_at`; от M11 накрая `contact_email`, `contact_phone`, `forms_taught` |
 | `v_public_organization` | M15: само `status = 'active'` и без изтритите (`security_barrier`) | `id`, `slug`, `name`, `kind`, `country_code`, `website_url`, `approved_at`, `created_at`, `updated_at`; никога ръководителят от кандидатурата, кандидатът, администраторите или планът; `SELECT` само за `app_rw` (не за `app_public_ro`) |
+| `v_public_event` | M17: само `status` `published` или `cancelled`; събитие на организация само докато организацията е във `v_public_organization` (`security_barrier`) | `id`, `slug`, `title`, `kind`, `description`, `starts_at`, `ends_at`, `timezone`, `online`, `venue`, `place_id`, `city_name`, `country_code`, `external_url`, `status`, `cancelled_at`, `cancellation_note`, организаторът само докато е публичен (`organizer_person_*` от `v_public_person`, `organization_*` от `v_public_organization`), школата само докато е публична (`school_slug`, `school_name`, `school_city`; никога точка), `instructors` (JSON само с публичните инструктори), `poster_sha256`, `poster_width`, `poster_height`, `revision`, `created_at`, `updated_at`; никога акаунтите, причината на персонала или ключът на плаката. `SELECT` за `app_rw` и `app_public_ro` |
 
 Чакащите заявки, отказаните, оттеглените и отменените връзки, хората без публична връзка (например `demo-claim-only-teacher`), точните координати, адресите, доказателствата и одитът не са достъпни за публичната роля по никакъв път.
 
@@ -284,6 +292,8 @@
 
 Паролата на всички е `E2E_PASSWORD`, а TOTP тайната на персонала е `E2E_TOTP_SECRET`, шифрирана с `BETTER_AUTH_SECRET`. Тези стойности са само за локалната среда и CI, генерират се случайно и не са в хранилището; без тях seed-ът пропуска паролите и тайните. Доказателства seed-ът не създава. Единственото право по план е тестовият Professional Sifu на `demo-pro-sifu-8` (M08: от 1.2.2026, без край, дадено от `demo-admin`, с причина „Fictional demo record: …“); `demo-free-sifu-5` е Free Sifu с 5 от 5 одобрени ученици и една чакаща заявка.
 
+Събития (M17): `db:seed` добавя шест измислени събития на фиксирани дати (`demo-seminar-chum-kiu-sofia` и `demo-spring-camp-london` на `demo-pro-sifu-8` в март 2027 — месечната граница е стигната; `demo-online-theory-evening` онлайн; `demo-cancelled-exam-session` отменено; `demo-past-seminar-athens` минало; `demo-federation-summer-camp` на `demo-federation-north`), плакати на две от тях, инструктори и акаунт `demo-premium-student@example.test` (Student с тестов Premium Student, свързан с личност-ученик) с едно известие `event.published`.
+
 ## 10. Решения по подразбиране
 
 | Решение | Как е приложено |
@@ -298,6 +308,7 @@
 | DEFAULT D12 | `organization_membership` (човек), `organization_admin` (акаунт) и `teaching_relationship` са отделни; никое действие на организация не създава, не проверява и не променя учителска връзка (M15, ADR 0018) |
 | DEFAULT D13 | Доказателствата са в отделна таблица и частен бъкет; публичната роля няма достъп до `evidence_file` и `evidence_link` |
 | DEFAULT D16 | `person.birth_date` не се попълва във Фаза 1 |
+| DEFAULT M17 (въпроси 1–3), D25 | `event` се публикува веднага, без преглед; отмененото остава, махнатото е 404; Professional Sifu брои по месеца в зоната на събитието, Federation без граница ([ADR 0020](adr/0020-events.md), `docs/plan/questions/M17.md`) |
 | DEFAULT D08/D18 (M11) | Пинът на школа се показва, докато акаунтът, който я е обявил, има Professional Sifu (`v_public_school`); отнемането на правото скрива пина и запазва школата |
 | DEFAULT D17 | `school.last_activity_at` се обновява само при редакция или потвърждение на школата, никога при вход |
 | DEFAULT D20 | Само явно измислени данни със slug `demo-…` |
