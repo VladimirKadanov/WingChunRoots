@@ -1,7 +1,7 @@
 // /dashboard/events/<id> (milestone M17, In scope 6): one of the account's events (its own, or an
 // organization's it administers): change it, its poster, or cancel it. Only the organizer reaches
 // it (events.editor answers 404 for any other event, one answer for all). A cancelled event is
-// shown, not changed. Reads the session, so it renders per request.
+// shown, not changed. The poster has a page of its own (./poster), which loads the upload control. Reads the session, so it renders per request.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -11,6 +11,7 @@ import { LoadError } from '@/components/account/load-error';
 import { EVENTS_LOAD_ERROR } from '@/components/account/load-errors/events';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { CancelledMark } from '@/components/events/event-list';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
@@ -20,7 +21,6 @@ import { CancelEventForm } from '../cancel-form';
 import { EventForm } from '../event-form';
 import { EVENT_CANCEL_FORM, EVENT_FORM } from '../form-ids';
 import { EventNotFound, EventShell } from '../parts';
-import { PosterControl } from '../poster-control';
 
 export const instant = false;
 
@@ -83,7 +83,17 @@ export default async function EventEditPage({ params, searchParams }: Props) {
         <p className="text-ui text-fg-muted">A cancelled event is not changed any more. Publish a new event for a new date.</p>
       ) : (
         <>
-          <PosterControl eventId={current.id} title={current.title} poster={current.poster} />
+          <section aria-labelledby="event-poster" className="grid gap-2">
+            <h2 id="event-poster" className="font-display text-xl">
+              Poster
+            </h2>
+            <p className="text-sm text-fg-muted">{current.poster ? 'The event has a poster.' : 'The event has no poster yet.'}</p>
+            <p>
+              <Link href={`/dashboard/events/${current.id}/poster`} className={buttonVariants({ variant: 'secondary' })} data-testid="event-poster-link">
+                {current.poster ? 'Change the poster' : 'Add a poster'}
+              </Link>
+            </p>
+          </section>
           <section aria-labelledby="event-edit" className="grid gap-4">
             <h2 id="event-edit" className="font-display text-xl">
               Details

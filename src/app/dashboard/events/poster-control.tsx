@@ -10,10 +10,12 @@ import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 
 import { callRpc, MAX_BYTES, MAX_MB, messageOf, type Status, StatusLine, uploadRpc } from '@/components/gallery/rpc';
-import { PHOTO_ACCEPT } from '@/components/lineage/photo-control';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import type { EventPosterDto } from '@/server/dto/events';
+
+/** The types a poster may be (the server checks the magic bytes again). */
+const POSTER_ACCEPT = 'image/jpeg,image/png,image/webp';
 
 export function PosterControl({ eventId, title, poster }: { eventId: string; title: string; poster: EventPosterDto | null }) {
   const id = useId();
@@ -60,7 +62,7 @@ export function PosterControl({ eventId, title, poster }: { eventId: string; tit
       ) : null}
       <div className="flex flex-wrap gap-3">
         <label className={cx(buttonVariants({ variant: 'secondary' }), 'cursor-pointer has-disabled:cursor-not-allowed has-disabled:opacity-60 has-focus-visible:outline-2')}>
-          <input ref={picker} type="file" accept={PHOTO_ACCEPT} className="sr-only" disabled={busy} onChange={(e) => onFile(e.currentTarget.files?.[0])} data-testid="poster-file" />
+          <input ref={picker} type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={busy} onChange={(e) => onFile(e.currentTarget.files?.[0])} data-testid="poster-file" />
           {poster ? 'Replace the poster' : 'Upload a poster'}
         </label>
         {poster ? (
