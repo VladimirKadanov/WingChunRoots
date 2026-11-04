@@ -115,6 +115,9 @@ test.describe('@M00b phone layout', () => {
   test.use({ viewport: PHONE });
 
   test('@M00b at 390x844 the app shell respects safe-area insets and has no horizontal scroll', async ({ page, browserName }) => {
+    // One loop over every route of e2e/routes.ts: M17 added twelve, and on mobile-webkit in CI the
+    // loop outgrew the default timeout (PR #34). Its checks are the same; only the time grows.
+    test.slow();
     const insets = { top: 47, right: 0, bottom: 34, left: 0 };
     // Chromium can emulate a notch and a home indicator; WebKit outside a device cannot, so
     // there the test checks the viewport, the layout and the scroll only (env() is 0).
@@ -225,6 +228,8 @@ test.describe('@M00b phone layout', () => {
 });
 
 test('@M00b fonts are self-hosted (no requests to fonts.googleapis.com or fonts.gstatic.com)', async ({ page, baseURL }) => {
+  // One loop over every route (see the phone layout test above): time for all of them, same checks.
+  test.slow();
   const requests: string[] = [];
   page.on('request', (request) => requests.push(request.url()));
   const origin = new URL(baseURL!).origin;
