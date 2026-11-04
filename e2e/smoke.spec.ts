@@ -141,14 +141,14 @@ test.describe('@M00b phone layout', () => {
       // replaces the fallback (same layout) a frame or more after load, so a tab found by one
       // call can be gone by the next.
       const nav = page.getByRole('navigation', { name: 'Main' });
-      await expect(nav.getByRole('link').filter({ visible: true })).toHaveCount(4);
+      await expect(nav.getByRole('link').filter({ visible: true })).toHaveCount(5);
       const tabs = await nav.evaluate((el) =>
         [...el.querySelectorAll('a')]
           .map((a) => a.getBoundingClientRect())
           .filter((box) => box.width > 0 && box.height > 0)
           .map((box) => ({ y: box.y, height: box.height })),
       );
-      expect(tabs, `${route.path}: four visible tabs`).toHaveLength(4);
+      expect(tabs, `${route.path}: five visible tabs`).toHaveLength(5);
       for (const box of tabs) {
         expect(box.y + box.height, `${route.path}: tab above the bottom inset`).toBeLessThanOrEqual(bottom + 0.5);
         expect(box.y, `${route.path}: tab on screen`).toBeGreaterThan(PHONE.height / 2);

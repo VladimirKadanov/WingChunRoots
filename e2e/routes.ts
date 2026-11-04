@@ -134,6 +134,25 @@ export const ROUTES: readonly AppRoute[] = [
   // (docs/plan/M16-galleries.md).
   { path: '/dashboard/photos', name: 'dashboard-photos', status: 200, milestone: 'M16', signInAs: 'demo-two-lineages' },
   { path: '/dashboard/photos', name: 'dashboard-photos-no-profile', status: 200, milestone: 'M16', signInAs: 'new' },
+  // M17: the event calendar. The list (upcoming, past, filtered, a filter with no result), the
+  // pages of the seeded events (one with a poster, an online one, a cancelled one) and the page of
+  // an event that is not listed (the same for a removed one: status 200 and noindex, as a school
+  // that is not listed, ADR 0014; the API and the .ics answer 404). The dashboard of demo-pro-sifu-8 with
+  // its two events of March 2027 (the month's allowance used; no test changes them), of a Free Sifu
+  // with the upgrade prompt and of a Student; the new event's form. The pages of one own event need
+  // an event of the account's own: e2e/m17-events.spec.ts runs axe on them in both themes.
+  { path: '/events', name: 'events', status: 200, milestone: 'M17', key: true },
+  { path: '/events?when=past', name: 'events-past', status: 200, milestone: 'M17' },
+  { path: '/events?country=GB&kind=camp', name: 'events-filtered', status: 200, milestone: 'M17' },
+  { path: '/events?country=ZZ', name: 'events-empty', status: 200, milestone: 'M17' },
+  { path: '/events/demo-seminar-chum-kiu-sofia', name: 'event', status: 200, milestone: 'M17', key: true },
+  { path: '/events/demo-online-theory-evening', name: 'event-online', status: 200, milestone: 'M17' },
+  { path: '/events/demo-cancelled-exam-session', name: 'event-cancelled', status: 200, milestone: 'M17' },
+  { path: '/events/demo-no-such-event', name: 'event-not-listed', status: 200, milestone: 'M17' },
+  { path: '/dashboard/events', name: 'dashboard-events', status: 200, milestone: 'M17', signInAs: 'demo-pro-sifu-8' },
+  { path: '/dashboard/events', name: 'dashboard-events-free-sifu', status: 200, milestone: 'M17', signInAs: 'demo-free-sifu-5' },
+  { path: '/dashboard/events', name: 'dashboard-events-student', status: 200, milestone: 'M17', signInAs: 'demo-pending' },
+  { path: '/dashboard/events/new', name: 'dashboard-event-new', status: 200, milestone: 'M17', signInAs: 'demo-pro-sifu-8' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

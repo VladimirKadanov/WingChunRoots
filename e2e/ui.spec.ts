@@ -174,7 +174,7 @@ test.describe('@M00b phone', () => {
     await expect(sheet.getByRole('button', { name: 'Expand' })).toBeInViewport();
     // The tab bar is drawn and tappable, not only in the viewport: nothing of the sheet is
     // painted over it (toBeInViewport checks geometry, not what is on top).
-    expect(await tabsHit(page)).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Me: true']);
+    expect(await tabsHit(page)).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
 
     // At the peek the body is off screen and inert; the page behind takes taps.
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -186,7 +186,7 @@ test.describe('@M00b phone', () => {
     expect(barTop - top).toBeGreaterThan(Math.max(96, header) + 40);
     expect(top + (await sheet.boundingBox())!.height).toBeCloseTo(barTop, 0);
     await expect(sheet.locator('[inert]')).toHaveCount(0);
-    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Me: true']);
+    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
     await sheet.getByRole('button', { name: 'Collapse' }).click();
     expect(barTop - (await settledTop(sheet))).toBeLessThanOrEqual(Math.max(96, header) + 2);
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -426,7 +426,7 @@ test.describe('@M00b phone', () => {
     });
     await page.goto('/');
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    await expect(tabBar(page).getByRole('link').filter({ visible: true })).toHaveCount(4);
+    await expect(tabBar(page).getByRole('link').filter({ visible: true })).toHaveCount(5);
     const lines = await tabBar(page).evaluate((nav) =>
       [...nav.querySelectorAll('a')]
         .filter((a) => a.getBoundingClientRect().width > 0)
@@ -436,7 +436,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size}`;
         }),
     );
-    expect(lines).toEqual(['Explore: 1', 'Lineage: 1', 'Schools: 1', 'Me: 1']);
+    expect(lines).toEqual(['Explore: 1', 'Lineage: 1', 'Schools: 1', 'Events: 1', 'Me: 1']);
   });
 
   test('@M00b form controls use at least 16 px text, so iOS does not zoom into them', async ({ page }) => {
@@ -475,7 +475,7 @@ test.describe('@M00b phone', () => {
       expect(widths[0], `${path}: no horizontal scroll`).toBeLessThanOrEqual(widths[1]!);
       // Tab labels wrap inside their tab instead of being cut. Checked in one step: React replaces
       // the tab list's Suspense fallback with the streamed list after load (see smoke.spec.ts).
-      await expect(tabBar(page).getByRole('link').filter({ visible: true })).toHaveCount(4);
+      await expect(tabBar(page).getByRole('link').filter({ visible: true })).toHaveCount(5);
       const tabs = await tabBar(page).evaluate((nav) =>
         [...nav.querySelectorAll('a')]
           .filter((a) => a.getBoundingClientRect().width > 0 && a.getBoundingClientRect().height > 0)
@@ -490,7 +490,7 @@ test.describe('@M00b phone', () => {
             };
           }),
       );
-      expect(tabs, `${path}: four visible tabs`).toHaveLength(4);
+      expect(tabs, `${path}: five visible tabs`).toHaveLength(5);
       for (const tab of tabs) {
         expect(tab.clipped, `${path}: ${tab.label}`).toBe(false);
         // One word, one line: a label never breaks inside the word at 150 %.
@@ -544,7 +544,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${a.contains(document.elementFromPoint(icon.x + icon.width / 2, icon.top + 1))}`;
         }),
     );
-    expect(icons).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Me: true']);
+    expect(icons).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
     await peek.getByRole('button', { name: 'Close' }).click();
     await expect(peek).toBeHidden();
 
