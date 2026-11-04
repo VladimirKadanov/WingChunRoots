@@ -296,7 +296,10 @@ export function Drawer({
       onOpenChange={setOpen}
       swipeDirection={side ? 'right' : 'down'}
       snapPoints={snapPoints}
-      snapPoint={snapPoints ? snapPoints[Math.min(snapIndex, lastIndex)] : undefined}
+      // Always controlled: null when there are no snap points (a side panel), never undefined, so
+      // switching between the side panel and the bottom sheet (the window crossing the breakpoint)
+      // does not turn a controlled snapPoint into an uncontrolled one (Base UI warns).
+      snapPoint={snapPoints ? (snapPoints[Math.min(snapIndex, lastIndex)] ?? null) : null}
       onSnapPointChange={(point) => {
         const index = point === null || !snapPoints ? -1 : snapPoints.indexOf(point);
         if (index >= 0) setSnapIndex(index);
