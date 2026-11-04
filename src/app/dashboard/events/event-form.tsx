@@ -69,7 +69,7 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
   const found = editor.places.filter((p) => p.found);
   const byCountry = new Map<string, typeof editor.places>();
   for (const p of editor.places.filter((place) => !place.found)) byCountry.set(p.countryCode, [...(byCountry.get(p.countryCode) ?? []), p]);
-  const checked = (id: string) => (values ? values[`instructor.${id}`] === 'on' : (current?.instructorIds ?? []).includes(id));
+  const isChosen = (id: string) => (values ? values[`instructor.${id}`] === 'on' : (current?.instructorIds ?? []).includes(id));
   const zoneHintId = `${fieldId(form, 'startsAt')}-zone`;
 
   return (
@@ -264,7 +264,7 @@ export function EventForm({ editor, publishAs, cityQuery, initial }: EventFormPr
                     type="checkbox"
                     name="instructorIds"
                     value={o.id}
-                    defaultChecked={checked(o.id)}
+                    defaultChecked={isChosen(o.id)}
                     className={boxClass}
                   />
                   <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block forced-colors:peer-checked:hidden" />
