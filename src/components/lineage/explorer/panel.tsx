@@ -9,8 +9,9 @@
 // buttons change stay out of the explorer's first JavaScript. The "Open profile" link comes from
 // the explorer.
 //
-// The body renders a step behind the header (useDeferredValue): a selection draws the ring, the lit
-// routes and the sheet's header at once, the rest of the panel in the next, interruptible render.
+// A selection reaches the panel once the tap's frame, the selected node's ring, is painted
+// (explorer.tsx); the panel's body renders a step behind its header (useAfterPaint), and a sheet
+// that opens opens a step behind that (plan §5.8 (c), INP).
 //
 // The sheet (DEFAULT, no D number unless named):
 // - Its peek (0.15, floored at the measured header) holds the name, Expand, Close and one row of
@@ -45,7 +46,6 @@ import {
   type ReactNode,
   type Ref,
   type RefObject,
-  useDeferredValue,
   useEffect,
   useId,
   useImperativeHandle,
@@ -57,6 +57,7 @@ import {
 import { CheckIcon, CloseIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { Drawer, type DrawerActions, type DrawerChangeDetails, type SnapPoint } from '@/components/ui/drawer';
+import { useAfterPaint } from '@/components/ui/use-after-paint';
 import { releaseLayerEntry } from '@/components/ui/use-back-to-close';
 import { useMediaQuery } from '@/components/ui/use-media-query';
 import type { LineageEdgeDto, LineageGraphDto, LineageNodeDto } from '@/server/dto/public';
@@ -173,18 +174,18 @@ export default function ExplorerPanel(props: PanelProps) {
   const [subject, setSubject] = useState(current);
   if (live && !sameSubject(subject, current)) setSubject(current);
   // The body a step behind the header: rendered when it is the same subject's, else nothing yet.
-  const deferred = useDeferredValue(subject);
+  const deferred = useAfterPaint(subject);
   // By id: an expansion gives the same person a new object (mergeExpansion), and the body, with the
   // focus in it, must not go for a render.
   const body =
     deferred.mode?.kind === subject.mode?.kind && deferred.person?.id === subject.person?.id && deferred.teacher?.id === subject.teacher?.id ? deferred : null;
   // The sheet opens a step behind the selection (plan §5.8 (c), INP): the tap paints the selected
   // node first, and the Drawer's opening (its measures, the page room it takes, its history entry)
-  // follows in a deferred render. So does the overlay from md: its mount and the measure of the
-  // room above the legend (useClearHeight), which restyles and lays out the page, came to about a
-  // third of a click's response. Both close at once; a panel already open shows the next subject
-  // in the click's own render.
-  const opening = useDeferredValue(live);
+  // follows after that frame is painted (useAfterPaint). So does the overlay from md: its mount and
+  // the measure of the room above the legend (useClearHeight), which restyles and lays out the
+  // page, came to about a third of a click's response. Both close at once; a panel already open
+  // shows the next subject as soon as the explorer hands it over.
+  const opening = useAfterPaint(live);
   const sheetOpen = live && opening;
   /** The sheet took the focus from the graph where it covers it (onSheetSnap). */
   const tookFocus = useRef(false);
