@@ -7,18 +7,15 @@
 //
 // One host per page (SearchHost) holds the open state and the shortcut; the fields ask it to open
 // with an event. The palette itself (Base UI Autocomplete in a Dialog) loads on first use, so it
-// adds nothing to a page's first JavaScript (plan §5.8 (c)): it is fetched once the page is idle
-// after loading, and mounted when first opened, after the frame that answers the tap or the key
-// has been painted (INP: building the Dialog and the Autocomplete in that frame held it back);
-// once opened, its dialog stays mounted, hidden and emptied, so a later opening only shows it
-// (INP). Sign-out sends SEARCH_RESET_EVENT:
+// adds nothing to a page's first JavaScript (plan §5.8 (c)), and its first opening builds it once
+// that opening's frame is painted (search-palette.tsx, INP); once opened, its dialog stays mounted,
+// hidden and emptied, so a later opening only shows it (INP). Sign-out sends SEARCH_RESET_EVENT:
 // the host unmounts the palette, so no query, result or recent search of the person who signed
 // out stays in memory for the next one (the shell outlives a soft navigation).
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 import { SearchIcon } from '@/components/icons';
-import { afterPaint } from '@/components/ui/use-after-paint';
 import { cx } from '@/lib/cx';
 import { SEARCH_RESET_EVENT } from '@/lib/recent-searches';
 import { isSearchShortcut } from '@/lib/search-shortcut';
@@ -39,29 +36,15 @@ export function SearchHost() {
   const [loaded, setLoaded] = useState(false);
   const [initialQuery, setInitialQuery] = useState('');
   useEffect(() => {
-    let mounting: (() => void) | null = null;
     const show = (event?: Event) => {
       setInitialQuery(event instanceof CustomEvent && typeof event.detail === 'string' ? event.detail : '');
+      setLoaded(true);
       setOpen(true);
-      // The first opening mounts the palette after this frame (a later one only shows it).
-      mounting ??= afterPaint(() => setLoaded(true));
     };
     const reset = () => {
-      mounting?.();
-      mounting = null;
       setOpen(false);
       setLoaded(false);
     };
-    // The palette's code, fetched once the page has loaded and is idle: the first opening need not
-    // wait for it (a field approached starts it sooner). Safari may lack requestIdleCallback.
-    const idle = 'requestIdleCallback' in window;
-    let fetching: number | undefined;
-    const fetchLater = () => {
-      const fetch = () => void loadPalette();
-      fetching = idle ? window.requestIdleCallback(fetch) : window.setTimeout(fetch, 200);
-    };
-    if (document.readyState === 'complete') fetchLater();
-    else window.addEventListener('load', fetchLater, { once: true });
     const onKey = (event: KeyboardEvent) => {
       // Ctrl/⌘+K, also on a Cyrillic layout (src/lib/search-shortcut.ts).
       if (isSearchShortcut(event)) {
@@ -77,10 +60,6 @@ export function SearchHost() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener(OPEN_EVENT, show);
       window.removeEventListener(SEARCH_RESET_EVENT, reset);
-      window.removeEventListener('load', fetchLater);
-      if (fetching !== undefined && idle) window.cancelIdleCallback(fetching);
-      else if (fetching !== undefined) window.clearTimeout(fetching);
-      mounting?.();
     };
   }, []);
   if (!loaded) return null;
