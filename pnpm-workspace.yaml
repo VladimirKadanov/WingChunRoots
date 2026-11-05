@@ -29,3 +29,9 @@ allowBuilds:
 # releases). 25.12.0 is the newest release before that (docs/adr/0006-design-system.md).
 overrides:
   lighthouse>puppeteer-core: 25.12.0
+# Base UI 1.9.0 attaches its outside-press listeners even when pointer dismissal is disabled, and
+# each click then queries the whole document and forces style and layout (INP of a tap on the
+# explorer with its non-modal sheet open). The patch passes `outsidePress: false` in that case,
+# where the check always answered false (docs/adr/0001-stack.md, docs/perf/web-vitals.md).
+patchedDependencies:
+  '@base-ui/react@1.9.0': patches/@base-ui__react@1.9.0.patch
