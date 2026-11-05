@@ -207,8 +207,10 @@ describe('supervision as app_rw', () => {
       expect(errors).toEqual([]);
       expect(await jobState()).toBeUndefined();
       const schedules = await boss.getSchedules();
-      expect(schedules.map((s) => ({ name: s.name, cron: s.cron, timezone: s.timezone }))).toEqual(
-        SCHEDULES.map(({ queue, cron }) => ({ name: queue, cron, timezone: 'UTC' })),
+      // pg-boss lists the schedules by name (M18 added a second one): compared in that order.
+      const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+      expect(schedules.map((s) => ({ name: s.name, cron: s.cron, timezone: s.timezone })).sort(byName)).toEqual(
+        SCHEDULES.map(({ queue, cron }) => ({ name: queue, cron, timezone: 'UTC' })).sort(byName),
       );
       expect(schedules.map((s) => s.name)).toContain(QUEUE.retentionPurge);
     } finally {
