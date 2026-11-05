@@ -238,6 +238,40 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
         },
       },
     },
+    // M17 (docs/adr/0020-events.md): an event's poster and its calendar file.
+    '/event-posters/{id}/{hash}/{file}': {
+      servers: [{ url: '/api' }],
+      get: {
+        operationId: 'events.poster',
+        summary: "One rendition of an event's poster (WebP, no metadata, no location): everyone while the event is published or cancelled; 404 once it is removed",
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'The event id (`poster` of events.list and events.get carries the whole address).', schema: { type: 'string', format: 'uuid' } },
+          { name: 'hash', in: 'path', required: true, description: "The first 16 hex digits of the poster's content hash.", schema: { type: 'string', pattern: '^[0-9a-f]{16}$' } },
+          { name: 'file', in: 'path', required: true, description: 'The 96 px or 512 px square, or the whole poster.', schema: { type: 'string', enum: ['96.webp', '512.webp', 'full.webp'] } },
+        ],
+        responses: {
+          '200': {
+            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, no-cache).',
+            content: { 'image/webp': { schema: { type: 'string', contentMediaType: 'image/webp' } } },
+          },
+          '304': { description: 'Not modified (If-None-Match matched the ETag).' },
+          '404': errorResponse('No such poster, a replaced one, or an event that was removed (one answer for all).'),
+          '503': errorResponse('The photo store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.'),
+        },
+      },
+    },
+    '/events/{slug}/calendar.ics': {
+      servers: [{ url: '/' }],
+      get: {
+        operationId: 'events.calendar',
+        summary: 'The event as an iCalendar file (RFC 5545): one VEVENT in UTC, STATUS:CANCELLED once cancelled, SEQUENCE the revision; 404 for a removed event',
+        parameters: [{ name: 'slug', in: 'path', required: true, description: 'The event slug.', schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'The calendar file (Content-Type: text/calendar; charset=utf-8).', content: { 'text/calendar': { schema: { type: 'string' } } } },
+          '404': errorResponse('No such event, or one that was removed.'),
+        },
+      },
+    },
   };
   return document;
 }

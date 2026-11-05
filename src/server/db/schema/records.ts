@@ -44,6 +44,11 @@ export const notification = pgTable(
     index('notification_user_id_idx').on(t.userId, t.createdAt),
     // The unread count of the dashboard (M08).
     index('notification_user_id_unread_idx').on(t.userId).where(sql`${t.readAt} IS NULL`),
+    // M17 (DEFAULT M17, question 3): one notice per person, event and change (published or
+    // cancelled), however often the job that sends them runs.
+    uniqueIndex('notification_event_once_key')
+      .on(t.userId, t.template, sql`(${t.payload} ->> 'eventId')`)
+      .where(sql`${t.template} IN ('event.published', 'event.cancelled')`),
   ],
 );
 

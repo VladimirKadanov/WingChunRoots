@@ -26,6 +26,7 @@
 | M14 | [M14 — Снимки на профила](M14-profile-photos.md) | M13 | в изпълнение (клон `m14-profile-photos`) |
 | M15 | [M15 — Организации](M15-organizations.md) | M14 | в изпълнение (клон `m15-organizations`; въпроси в [questions/M15.md](questions/M15.md)) |
 | M16 | [M16 — Галерии](M16-galleries.md) | M15 | в изпълнение (клон `m16-galleries`; въпроси в [questions/M16.md](questions/M16.md)) |
+| M17 | [M17 — Календар на събитията](M17-events.md) | M16 | в изпълнение (клон `m17-events`; въпроси в [questions/M17.md](questions/M17.md)) |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |
 
 След пилота работа извън етапите се записва в ADR и тук:

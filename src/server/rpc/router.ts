@@ -10,6 +10,7 @@
 import { ORPCError, os, type RouterClient, ValidationError } from '@orpc/server';
 
 import { requireStaff2FA, requireUser } from '../auth/guards';
+import { eventListSchema, eventPageSchema } from '../dto/events';
 import type { Principal } from '../auth/principal';
 import { accountOverview, landingInput, landingPath, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
@@ -18,6 +19,27 @@ import type { RequestMeta } from '../services/context';
 import { dashboardOverview } from '../services/dashboard';
 import { discardEvidence, discardInput } from '../services/evidence';
 import { isServiceError } from '../services/errors';
+import {
+  cancelEvent,
+  createEvent,
+  eventCancelInput,
+  eventCreateInput,
+  eventEditor,
+  eventEditorInput,
+  eventGet,
+  eventIdInput,
+  eventPosterUploadInput,
+  eventRemoveInput,
+  eventSlugInput,
+  eventsList,
+  eventsListInput,
+  eventUpdateInput,
+  myEvents,
+  removeEvent,
+  removeEventPoster,
+  updateEvent,
+  uploadEventPoster,
+} from '../services/events';
 import {
   closePilotRequest,
   closePilotRequestInput,
@@ -781,6 +803,68 @@ export const router = {
       .route({ method: 'POST', path: '/admin/organizations/revoke-grant', summary: "Revoke an organization's plan with a reason (admin, audited); members, school links and the public page stay" })
       .input(organizationRevokeInput)
       .handler(({ context, input }) => revokeOrganizationPlan(context.principal, input, context.meta)),
+  },
+  // M17: the event calendar (docs/adr/0020-events.md). The public reads give public DTOs only
+  // (v_public_event); an event is changed and cancelled only by its organizer, removed by staff.
+  events: {
+    list: base
+      .route({
+        method: 'GET',
+        path: '/events',
+        summary: 'Upcoming (still running or later) or past events, by start; filters: country, kind, online or in person, a person or a school; 20 per page',
+      })
+      .input(eventsListInput)
+      .output(eventListSchema)
+      .handler(({ context, input }) => eventsList(context.principal, input)),
+    mine: signedIn
+      .route({
+        method: 'GET',
+        path: '/events/mine',
+        summary: "Your events and the organizations' you administer, your plan's monthly allowance (in each event's own time zone) and, at the limit, the upgrade offer",
+      })
+      .handler(({ context }) => myEvents(context.principal)),
+    editor: signedIn
+      .route({ method: 'GET', path: '/events/editor', summary: 'What the event form offers: kinds, cities, your listed schools, public people to name as instructors, time zones; with `id`, your event to edit (404 for any other)' })
+      .input(eventEditorInput)
+      .handler(({ context, input }) => eventEditor(context.principal, input)),
+    get: base
+      .route({ method: 'GET', path: '/events/{slug}', summary: "An event's public page: dates in its own time zone, city or online, organizer and instructors who are public, school, poster; 404 for a removed one" })
+      .input(eventSlugInput)
+      .output(eventPageSchema)
+      .handler(({ context, input }) => eventGet(context.principal, input)),
+    create: signedIn
+      .route({
+        method: 'POST',
+        path: '/events/create',
+        summary:
+          'Publish an event at once, as your Sifu account or (`organizationId`) an approved organization you administer: Professional Sifu up to 2 a month (in the event\'s time zone), an organization with Federation without a limit (ENTITLEMENT_REQUIRED otherwise); notifies Premium Students of the teachers; audited',
+      })
+      .input(eventCreateInput)
+      .handler(({ context, input }) => createEvent(context.principal, input, context.meta)),
+    update: signedIn
+      .route({ method: 'POST', path: '/events/update', summary: 'Change your event (a move to another month is checked against that month\'s allowance); audited' })
+      .input(eventUpdateInput)
+      .handler(({ context, input }) => updateEvent(context.principal, input, context.meta)),
+    cancel: signedIn
+      .route({ method: 'POST', path: '/events/cancel', summary: 'Cancel your event with an optional public note: it stays shown as Cancelled; notifies Premium Students of the teachers; audited' })
+      .input(eventCancelInput)
+      .handler(({ context, input }) => cancelEvent(context.principal, input, context.meta)),
+    remove: staffWithSecondFactor
+      .route({ method: 'POST', path: '/events/remove', summary: 'Remove an event with a reason kept in the audit log (staff with a verified second factor): 404 everywhere after' })
+      .input(eventRemoveInput)
+      .handler(({ context, input }) => removeEvent(context.principal, input, context.meta)),
+    uploadPoster: signedIn
+      .route({
+        method: 'POST',
+        path: '/events/poster/upload',
+        summary: "Upload or replace your event's poster (multipart `id`, `file`: JPEG, PNG or WebP, at most 5 MB): metadata and location removed, stored as WebP squares and the whole image; apart from every gallery; audited",
+      })
+      .input(eventPosterUploadInput)
+      .handler(({ context, input }) => uploadEventPoster(context.principal, input, context.meta)),
+    removePoster: signedIn
+      .route({ method: 'POST', path: '/events/poster/remove', summary: "Remove your event's poster; audited" })
+      .input(eventIdInput)
+      .handler(({ context, input }) => removeEventPoster(context.principal, input, context.meta)),
   },
   places: {
     search: base

@@ -16,3 +16,9 @@ export const SCHOOLS_TAG = 'schools';
  * approval, an edit of an approved organization, a member or a school link that changes.
  */
 export const ORGANIZATIONS_TAG = 'organizations';
+/**
+ * M17: every public answer about events: the calendar, the event pages and the "Upcoming events" of
+ * a profile or a school. Dropped by any change to an event, and by the changes that decide who or
+ * what an event may show (a person, a school or an organization made public or hidden).
+ */
+export const EVENTS_TAG = 'events';

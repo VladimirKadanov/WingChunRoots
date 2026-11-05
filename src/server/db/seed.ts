@@ -36,6 +36,8 @@ import {
   contentReport,
   emailDelivery,
   entitlementGrant,
+  event,
+  eventInstructor,
   evidenceFile,
   evidenceLink,
   invitation,
@@ -78,6 +80,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   contentReport,
   emailDelivery,
   entitlementGrant,
+  event,
+  eventInstructor,
   evidenceFile,
   evidenceLink,
   invitation,
@@ -271,6 +275,19 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
   await insert(reviewNote, f.reviewNotes);
   await insert(invitation, f.invitations);
   await insert(entitlementGrant, f.entitlementGrants);
+  // M17: the demo events, their generated posters (seed-photos.ts), instructors and the notice.
+  const posters = new Map(photos.filter((ph) => ph.role === 'poster').map((ph) => [ph.slug, ph]));
+  await insert(
+    event,
+    f.events.map((e) => {
+      const poster = posters.get(e.slug);
+      return poster
+        ? { ...e, posterStorageKey: poster.storageKey, posterSha256: poster.sha256, posterWidth: poster.fullWidth, posterHeight: poster.fullHeight, posterSizeBytes: poster.sizeBytes }
+        : e;
+    }),
+  );
+  await insert(eventInstructor, f.eventInstructors);
+  await insert(notification, f.notifications);
   return counts;
 }
 

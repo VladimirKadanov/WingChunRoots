@@ -58,6 +58,15 @@ export const SchoolsIcon = icon(
     <path d="M10 19.5v-5h4v5" />
   </>,
 );
+/** M17: the Events tab and the dates of an event. */
+export const CalendarIcon = icon(
+  'Calendar',
+  <>
+    <rect x="4" y="5.5" width="16" height="14.5" rx="1.5" />
+    <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
+    <path d="M8 14h2M14 14h2M8 17h2" />
+  </>,
+);
 export const MeIcon = icon(
   'Me',
   <>

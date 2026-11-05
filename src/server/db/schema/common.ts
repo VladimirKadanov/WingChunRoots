@@ -184,6 +184,28 @@ export const ORGANIZATION_SCHOOL_STATUSES = ['pending', 'accepted', 'refused', '
 /** M15: the most affiliated schools an application may name (an approximate number). */
 export const ORGANIZATION_SCHOOLS_ESTIMATE_MAX = 100_000;
 
+// --- Events (milestone M17; docs/adr/0020-events.md) -------------------------------------------
+/** M17: what kind of event it is (In scope 1). */
+export const EVENT_KINDS = ['seminar', 'camp', 'exam_session', 'other'] as const;
+/**
+ * M17: an event is shown as soon as it is published (`published`; DEFAULT M17, question 2: no review
+ * first), stays shown as cancelled by its organizer (`cancelled`), or was removed by staff with a
+ * reason (`removed`: 404 everywhere).
+ */
+export const EVENT_STATUSES = ['published', 'cancelled', 'removed'] as const;
+/** M17: the statuses the public sees (v_public_event). */
+export const PUBLIC_EVENT_STATUSES = ['published', 'cancelled'] as const;
+/** M17: at most this many instructors from the archive on one event (In scope 1). */
+export const EVENT_INSTRUCTORS_MAX = 5;
+export const EVENT_TITLE_MAX = 160;
+export const EVENT_DESCRIPTION_MAX = 4000;
+export const EVENT_VENUE_MAX = 200;
+export const EVENT_URL_MAX = 600;
+/** M17: the longest note the organizer gives with a cancellation, and staff with a removal. */
+export const EVENT_REASON_MAX = 1000;
+/** M17: an event lasts at most this many days (a camp of two weeks fits). A default with no D number. */
+export const EVENT_MAX_DAYS = 31;
+
 // --- Entitlements (plan §6.5) ----------------------------------------------------------------------
 export const PLAN_CODES = ['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] as const;
 export const GRANT_SOURCES = ['test_grant', 'complimentary', 'stripe'] as const;

@@ -4,6 +4,7 @@
 export * from './auth';
 export * from './common';
 export * from './entitlements';
+export * from './events';
 export * from './evidence';
 export * from './geography';
 export * from './lineage';

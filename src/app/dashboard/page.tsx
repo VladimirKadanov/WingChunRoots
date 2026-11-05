@@ -222,9 +222,14 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
             ))}
           </ul>
         )}
-        <p>
+        <p className="flex flex-wrap gap-3">
           <Link href="/dashboard/schools" className={buttonVariants({ variant: 'secondary' })} data-testid="manage-schools">
             {schools.length === 0 ? 'List a school' : 'Manage your schools'}
+            <ArrowRightIcon />
+          </Link>
+          {/* M17: the Sifu's events (seminars, camps, exam sessions). */}
+          <Link href="/dashboard/events" className={buttonVariants({ variant: 'secondary' })} data-testid="manage-events">
+            Your events
             <ArrowRightIcon />
           </Link>
         </p>

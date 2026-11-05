@@ -24,8 +24,11 @@ import type {
   authUser,
   consentRecord,
   entitlementGrant,
+  event,
+  eventInstructor,
   invitation,
   lineage,
+  notification,
   organization,
   organizationMembership,
   person,
@@ -113,12 +116,19 @@ export const DEMO_STAFF_ACCOUNTS = [
   { slug: 'demo-archivist', role: 'archivist', name: 'Demo Archivist' },
   { slug: 'demo-moderator', role: 'moderator', name: 'Demo Moderator' },
 ] as const;
+/**
+ * M17 (D20): a Premium Student (a test grant) whose teacher is demo-pro-sifu-8: the account of
+ * one of that Sifu's generated students, so it gets the dashboard notice of the Sifu's events.
+ */
+export const DEMO_PREMIUM_STUDENT = 'demo-premium-student' as const;
 export type DemoAccountSlug =
   | (typeof DEMO_PERSON_ACCOUNT_SLUGS)[number]
-  | (typeof DEMO_STAFF_ACCOUNTS)[number]['slug'];
+  | (typeof DEMO_STAFF_ACCOUNTS)[number]['slug']
+  | typeof DEMO_PREMIUM_STUDENT;
 export const DEMO_ACCOUNT_SLUGS: readonly DemoAccountSlug[] = [
   ...DEMO_PERSON_ACCOUNT_SLUGS,
   ...DEMO_STAFF_ACCOUNTS.map((a) => a.slug),
+  DEMO_PREMIUM_STUDENT,
 ];
 export const demoAccountEmail = (slug: DemoAccountSlug): string => `${slug}@example.test`;
 
@@ -142,6 +152,9 @@ export type InvitationRow = Row<typeof invitation>;
 export type AuthUserRow = Row<typeof authUser>;
 export type ConsentRecordRow = Row<typeof consentRecord>;
 export type EntitlementGrantRow = Row<typeof entitlementGrant>;
+export type EventRow = Row<typeof event>;
+export type EventInstructorRow = Row<typeof eventInstructor>;
+export type NotificationRow = Row<typeof notification>;
 /** A credential account without its password hash, which the seed adds (secret, env-dependent). */
 export type CredentialShell = Omit<Row<typeof authAccount>, 'password'>;
 /** A TOTP row without its encrypted secret and backup codes, which the seed adds. */
@@ -176,6 +189,10 @@ export interface Fixtures {
   twoFactors: TwoFactorShell[];
   /** Account slug → auth_user.id. */
   accounts: Record<DemoAccountSlug, string>;
+  /** M17: the demo events (src/fixtures/events below), their instructors and the Premium Student's notice. */
+  events: EventRow[];
+  eventInstructors: EventInstructorRow[];
+  notifications: NotificationRow[];
 }
 
 type LineageKey = 'a' | 'b' | 'c';
@@ -928,7 +945,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   for (const slug of ANCHOR_PERSON_SLUGS) anchors[slug] = b.bySlug.get(slug)!.row.id;
   for (const slug of ANCHOR_SCHOOL_SLUGS) anchors[slug] = schools.find((s) => s.slug === slug)!.id;
 
-  const { instructorCases, ...accountData } = demoAccounts(seed, b);
+  const { instructorCases, ...accountData } = demoAccounts(seed, b, proStudents[0]!);
   // M16: demo-pro-sifu-8 listed demo-school-sofia (its editor, M11), so a demo account can show
   // the school's "Logo and photos" page (/dashboard/schools/<id>/photos) with the seeded logo and rooms.
   schools.find((s) => s.slug === 'demo-school-sofia')!.createdByUserId = accountData.accounts['demo-pro-sifu-8'];
@@ -953,6 +970,16 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     invitations,
     anchors,
     ...accountData,
+    ...demoEvents(seed, {
+      proSifu: proSifu.row.id,
+      teacherOfProSifu: cjkName.row.id,
+      hubB: hubB.row.id,
+      proStudent: proStudents[1]!.row.id,
+      place: (name) => placeOf(name).place,
+      school: (slug) => schools.find((sc) => sc.slug === slug)!,
+      organization: (slug) => organizations.find((o) => o.slug === slug)!,
+      accounts: accountData.accounts,
+    }),
   };
 }
 
@@ -969,6 +996,7 @@ export const DEMO_SIFU_ACCOUNT_SLUGS: readonly DemoAccountSlug[] = ['demo-free-s
 function demoAccounts(
   seed: number,
   b: Builder,
+  premiumStudent: P,
 ): Pick<Fixtures, 'users' | 'consentRecords' | 'credentials' | 'twoFactors' | 'accounts' | 'entitlementGrants'> & { instructorCases: ReviewCaseRow[] } {
   const idRng = createRandom((seed ^ 0x0acc_0a75) >>> 0);
   let seq = 0;
@@ -1075,7 +1103,195 @@ function demoAccounts(
     createdAt: at,
     updatedAt: at,
   }));
+  // M17: the Premium Student, last in the stream so every id above stays the same.
+  const premiumName = b.names.find((n) => n.personId === premiumStudent.row.id && n.isPrimary)!.value;
+  const premiumId = add(DEMO_PREMIUM_STUDENT, premiumName, 'user');
+  premiumStudent.row.stewardship = 'self';
+  premiumStudent.row.claimedByUserId = premiumId;
+  entitlementGrants.push({
+    id: id(),
+    subjectUserId: premiumId,
+    subjectOrganizationId: null,
+    planCode: 'premium_student',
+    source: 'test_grant',
+    startsAt: at,
+    endsAt: null,
+    grantedByUserId: accounts['demo-admin'],
+    reason: `${FICTIONAL_MARK}: the Premium Student test plan of the demo data.`,
+    revokedAt: null,
+    revokedByUserId: null,
+    revokeReason: null,
+    createdAt: at,
+    updatedAt: at,
+  });
   return { users, consentRecords, credentials, twoFactors, accounts, entitlementGrants, instructorCases };
+}
+
+// --- Events (milestone M17, In scope 8; D20) ---------------------------------------------------
+
+/** The time written on the demo events (fixed, for the content hash). */
+const EVENTS_AT = new Date(Date.UTC(2026, 9, 1));
+
+interface DemoEventRefs {
+  proSifu: string;
+  teacherOfProSifu: string;
+  hubB: string;
+  /** A second student of demo-pro-sifu-8 (not the Premium Student) teaching at a camp. */
+  proStudent: string;
+  place: (asciiName: string) => PlaceRow;
+  school: (slug: string) => SchoolRow;
+  organization: (slug: string) => OrganizationRow;
+  accounts: Record<DemoAccountSlug, string>;
+}
+
+/**
+ * The demo events, on fixed dates: two of demo-pro-sifu-8 in March 2027 (its Professional Sifu
+ * allowance of that month is used up, so a third is refused), one online, one cancelled, one past
+ * and one of the demo organization demo-federation-north; and the Premium Student's notice of the
+ * first. Their ids come from a stream of their own, so nothing above moves. Posters: db:seed
+ * (src/server/db/seed-photos.ts) adds the generated images.
+ */
+function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | 'eventInstructors' | 'notifications'> {
+  const idRng = createRandom((seed ^ 0x0e7e_0017) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(EVENTS_AT.getTime() + seq++, 0, idRng.bytes(8));
+  const at = EVENTS_AT;
+  const sifu = r.accounts['demo-pro-sifu-8'];
+  const base = {
+    description: null,
+    venue: null,
+    schoolId: null,
+    externalUrl: null,
+    organizerUserId: sifu,
+    organizerPersonId: r.proSifu,
+    organizationId: null,
+    createdByUserId: sifu,
+    status: 'published' as const,
+    cancelledAt: null,
+    cancelledByUserId: null,
+    cancellationNote: null,
+    removedAt: null,
+    removedByUserId: null,
+    removalReason: null,
+    posterStorageKey: null,
+    posterSha256: null,
+    posterWidth: null,
+    posterHeight: null,
+    posterSizeBytes: null,
+    revision: 0,
+    createdAt: at,
+    updatedAt: at,
+  };
+  const city = (name: string) => {
+    const p = r.place(name);
+    return { online: false, placeId: p.id, timezone: p.timezone! };
+  };
+  const events: EventRow[] = [
+    {
+      ...base,
+      ...city('Sofia'),
+      id: id(),
+      slug: 'demo-seminar-chum-kiu-sofia',
+      title: 'Demo seminar: Chum Kiu footwork',
+      kind: 'seminar',
+      description: `${FICTIONAL_MARK}. A one-day seminar on the footwork of the second form, for every level.`,
+      // 10:00–17:00 in Sofia (UTC+2 in March).
+      startsAt: new Date('2027-03-13T08:00:00Z'),
+      endsAt: new Date('2027-03-13T15:00:00Z'),
+      venue: 'Demo Community Hall, second floor',
+      schoolId: r.school('demo-school-sofia').id,
+      externalUrl: 'https://example.test/demo-seminar',
+    },
+    {
+      ...base,
+      ...city('London'),
+      id: id(),
+      slug: 'demo-spring-camp-london',
+      title: 'Demo spring camp',
+      kind: 'camp',
+      description: `${FICTIONAL_MARK}. Three days of forms, drills and Chi Sau; the clocks change on the last night.`,
+      // Friday 26 March 09:00 GMT to Sunday 28 March 16:00 BST.
+      startsAt: new Date('2027-03-26T09:00:00Z'),
+      endsAt: new Date('2027-03-28T15:00:00Z'),
+      venue: 'Demo Park Pavilion',
+      schoolId: r.school('demo-school-london').id,
+    },
+    {
+      ...base,
+      id: id(),
+      online: true,
+      placeId: null,
+      timezone: 'Europe/London',
+      slug: 'demo-online-theory-evening',
+      title: 'Demo online theory evening',
+      kind: 'other',
+      description: `${FICTIONAL_MARK}. An evening talk on the principles of the centre line, online.`,
+      startsAt: new Date('2027-04-08T18:00:00Z'),
+      endsAt: new Date('2027-04-08T19:30:00Z'),
+      externalUrl: 'https://example.test/demo-online-evening',
+    },
+    {
+      ...base,
+      ...city('London'),
+      id: id(),
+      slug: 'demo-cancelled-exam-session',
+      title: 'Demo exam session',
+      kind: 'exam_session',
+      startsAt: new Date('2027-05-15T09:00:00Z'),
+      endsAt: new Date('2027-05-15T13:00:00Z'),
+      status: 'cancelled',
+      cancelledAt: at,
+      cancelledByUserId: sifu,
+      cancellationNote: 'Moved to a later date; a new event will follow.',
+      revision: 1,
+    },
+    {
+      ...base,
+      ...city('Athens'),
+      id: id(),
+      slug: 'demo-past-seminar-athens',
+      title: 'Demo seminar in Athens',
+      kind: 'seminar',
+      description: `${FICTIONAL_MARK}. A past seminar, kept in the calendar's past events.`,
+      startsAt: new Date('2026-05-16T07:00:00Z'),
+      endsAt: new Date('2026-05-16T14:00:00Z'),
+    },
+    {
+      ...base,
+      ...city('Berlin'),
+      id: id(),
+      slug: 'demo-federation-summer-camp',
+      title: 'Demo Federation North summer camp',
+      kind: 'camp',
+      description: `${FICTIONAL_MARK}. The summer camp of a demo organization.`,
+      startsAt: new Date('2027-07-02T07:00:00Z'),
+      endsAt: new Date('2027-07-04T14:00:00Z'),
+      organizerUserId: null,
+      organizerPersonId: null,
+      organizationId: r.organization('demo-federation-north').id,
+      createdByUserId: null,
+    },
+  ];
+  const bySlug = (slug: string) => events.find((e) => e.slug === slug)!.id;
+  const instructor = (slug: string, personId: string, position: number): EventInstructorRow => ({ eventId: bySlug(slug), personId, position, createdAt: at, updatedAt: at });
+  const eventInstructors: EventInstructorRow[] = [
+    instructor('demo-seminar-chum-kiu-sofia', r.teacherOfProSifu, 0),
+    instructor('demo-spring-camp-london', r.proStudent, 0),
+    instructor('demo-federation-summer-camp', r.hubB, 0),
+  ];
+  const first = events[0]!;
+  const notifications: NotificationRow[] = [
+    {
+      id: id(),
+      userId: r.accounts[DEMO_PREMIUM_STUDENT],
+      template: 'event.published',
+      payload: { eventId: first.id, slug: first.slug, title: first.title, startDay: '2027-03-13' },
+      readAt: null,
+      createdAt: at,
+      updatedAt: at,
+    },
+  ];
+  return { events, eventInstructors, notifications };
 }
 
 function round5(x: number): number {

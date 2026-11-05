@@ -16,6 +16,7 @@ import { rebuildAllKeys } from '../search/store';
 import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from '../services/retention';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
+import { eventsNotifyHandler } from './event-notify';
 import { lineageRecomputeHandler } from './lineage-recompute';
 import { jobTemplateData } from './outbox';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
@@ -176,6 +177,8 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   await boss.work(QUEUE.searchKeysRebuild, work, searchKeysRebuildHandler(db, log));
   // M09: lineage_membership and the public cache after an approval.
   await boss.work(QUEUE.lineageRecompute, work, lineageRecomputeHandler(db, log));
+  // M17: the dashboard notices of a published or cancelled event.
+  await boss.work(QUEUE.eventsNotify, work, eventsNotifyHandler(db, log));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

@@ -19,7 +19,7 @@ import type { Principal } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
 import { GALLERY_PHOTO_STATUSES } from '../db/schema/common';
-import { authUser, consentRecord, notification, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPhoto, schoolPrivateLocation, teachingRelationship } from '../db/schema';
+import { authUser, consentRecord, event, notification, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPhoto, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
@@ -313,6 +313,46 @@ async function archiveListedSchools(tx: Transaction, userId: string, removedPhot
   return ids.length;
 }
 
+/**
+ * M17 (docs/adr/0020-events.md): the events the account published as a Sifu go with it, as a
+ * listing does: marked removed (404 everywhere), with nothing of the Sifu's left on them (text,
+ * link, venue, poster); the poster files are deleted after the commit (the caller). An
+ * organization's events stay: they are the organization's, and the account that published one is
+ * only cleared (created_by_user_id, ON DELETE SET NULL). Returns the number removed.
+ */
+async function removeOwnEvents(tx: Transaction, userId: string, removedPosters: { id: string; storageKey: string }[]): Promise<number> {
+  const own = await tx
+    .select({ id: event.id, posterStorageKey: event.posterStorageKey })
+    .from(event)
+    .where(and(eq(event.organizerUserId, userId), isNull(event.organizationId)))
+    .for('update');
+  if (own.length === 0) return 0;
+  for (const row of own) if (row.posterStorageKey) removedPosters.push({ id: row.id, storageKey: row.posterStorageKey });
+  const now = new Date();
+  await tx
+    .update(event)
+    .set({
+      status: 'removed',
+      removedAt: now,
+      removedByUserId: null,
+      removalReason: 'The organizer’s account was deleted.',
+      description: null,
+      venue: null,
+      externalUrl: null,
+      cancellationNote: null,
+      organizerUserId: null,
+      cancelledByUserId: null,
+      posterStorageKey: null,
+      posterSha256: null,
+      posterWidth: null,
+      posterHeight: null,
+      posterSizeBytes: null,
+      updatedAt: now,
+    })
+    .where(inArray(event.id, own.map((r) => r.id)));
+  return own.length;
+}
+
 export interface DeletionCarriedOut {
   /** The profile that stays as an unclaimed record, or null when the account had none. */
   personId: string | null;
@@ -329,6 +369,8 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
   let photos: { id: string; storageKey: string }[] = [];
   // M16: the logos and room photos of the schools the account listed.
   const schoolPhotos: { id: string; storageKey: string }[] = [];
+  // M17: the posters of the account's own events.
+  const posters: { id: string; storageKey: string }[] = [];
   try {
     const result = await getDb().transaction(async (tx) => {
       const request = await lockOpenDeletionCase(tx, caseId);
@@ -376,6 +418,7 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
       // Records the account added for other people keep no link to it.
       await tx.update(person).set({ createdByUserId: null }).where(eq(person.createdByUserId, userId));
       const schoolsArchived = await archiveListedSchools(tx, userId, schoolPhotos);
+      const eventsRemoved = await removeOwnEvents(tx, userId, posters);
       const consentsRemoved = (await tx.delete(consentRecord).where(eq(consentRecord.userId, userId))).rowCount ?? 0;
       const now = new Date();
       await tx
@@ -390,13 +433,13 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
         subjectType: 'review_case',
         subjectId: request.id,
         before: { userId, personId: own?.id ?? null, visibility: own?.visibility ?? null },
-        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, photosRemoved: photos.length, consentsRemoved, schoolsArchived },
+        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, photosRemoved: photos.length, consentsRemoved, schoolsArchived, eventsRemoved },
         reason: 'pnpm account:delete (local environment)',
       });
       await tx.delete(authUser).where(eq(authUser.id, userId));
       return { personId: own?.id ?? null, visibility };
     });
-    await deletePhotoFiles([...photos, ...schoolPhotos]);
+    await deletePhotoFiles([...photos, ...schoolPhotos, ...posters]);
     return result;
   } catch (error) {
     if (!isReferencedRowError(error)) throw error;

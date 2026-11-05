@@ -85,4 +85,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction': { rpc: ['organizations.endSchoolLink'] },
   'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction': { rpc: ['organizations.grant'] },
   'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction': { rpc: ['organizations.revokeGrant'] },
+  // M17: events (the poster is uploaded and removed from the browser through /api/rpc).
+  'src/app/dashboard/events/actions.ts#createEventAction': { rpc: ['events.create'] },
+  'src/app/dashboard/events/actions.ts#updateEventAction': { rpc: ['events.update'] },
+  'src/app/dashboard/events/actions.ts#cancelEventAction': { rpc: ['events.cancel'] },
+  'src/app/events/[slug]/actions.ts#removeEventAction': { rpc: ['events.remove'] },
 };

@@ -1,5 +1,5 @@
 // Privacy enforced by the database (milestone M01, Done when 2; plan §6.2, §6.4): the public
-// role sees only the three views, the audit log is append-only, and the views show only what is
+// role sees only the public views (four from M17), the audit log is append-only, and the views show only what is
 // public. Runs against the seeded demo data, connecting with the real role passwords.
 
 import { asc, eq, inArray } from 'drizzle-orm';
@@ -9,7 +9,7 @@ import { generateFixtures } from '../../fixtures/generate';
 import { withClient } from './admin';
 import { createRoleDatabase, type Database } from './index';
 import { rolePassword } from './env';
-import { vPublicEdge, vPublicPerson, vPublicSchool } from './schema';
+import { vPublicEdge, vPublicEvent, vPublicPerson, vPublicSchool } from './schema';
 import { PG, pgError, rows, value } from './test-support';
 import { createTestDatabase, type TestDatabase } from './testing';
 
@@ -51,7 +51,7 @@ describe('app_public_ro', () => {
     });
   });
 
-  it('can read exactly the three public views and the PostGIS catalogue, and write nothing', async () => {
+  it('can read exactly the four public views and the PostGIS catalogue, and write nothing', async () => {
     // Every relation of every non-system schema, so a later GRANT on a private table (invitation,
     // person_claim, ...) fails here whatever the migration's wording.
     const relations = (privilege: string) =>
@@ -75,6 +75,8 @@ describe('app_public_ro', () => {
       'public.geometry_columns',
       'public.spatial_ref_sys',
       'public.v_public_edge',
+      // M17: the public fields of events (docs/adr/0020-events.md).
+      'public.v_public_event',
       'public.v_public_person',
       'public.v_public_school',
     ]);
@@ -98,13 +100,17 @@ describe('app_public_ro', () => {
     });
   });
 
-  it('reads the three public views through Drizzle with a 2 s statement timeout', async () => {
+  it('reads the public views through Drizzle with a 2 s statement timeout', async () => {
     const people = await publicDb.select().from(vPublicPerson).orderBy(asc(vPublicPerson.slug));
     expect(people.length).toBeGreaterThan(500);
     const timeout = await publicDb.$client.query<{ statement_timeout: string }>('SHOW statement_timeout');
     expect(timeout.rows[0]!.statement_timeout).toBe('2s');
     expect((await publicDb.select().from(vPublicEdge).limit(1)).length).toBe(1);
     expect((await publicDb.select().from(vPublicSchool).limit(1)).length).toBe(1);
+    // M17: the demo events, never a removed one.
+    const events = await publicDb.select({ slug: vPublicEvent.slug, status: vPublicEvent.status }).from(vPublicEvent);
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((e) => e.status === 'published' || e.status === 'cancelled')).toBe(true);
   });
 });
 

@@ -13,11 +13,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
-import { LineageIcon, MeIcon, SchoolsIcon, SearchIcon } from '@/components/icons';
+import { CalendarIcon, LineageIcon, MeIcon, SchoolsIcon, SearchIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import { NAV_ITEMS } from './nav';
 
-const ICONS = { search: SearchIcon, lineage: LineageIcon, schools: SchoolsIcon, me: MeIcon } as const;
+const ICONS = { search: SearchIcon, lineage: LineageIcon, schools: SchoolsIcon, events: CalendarIcon, me: MeIcon } as const;
 
 const subscribeNever = () => () => {};
 
@@ -55,12 +55,13 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
               {/* Large text (Android font scale) or a narrow phone: the queries are in em of the
                   label's own size, so they follow the text size. When the widest label ("SCHOOLS",
                   5.7 em with the caption tracking) no longer fits, the tracking tightens (5 em);
-                  below that the label drops the capitals (3.8 em). Only still larger text breaks a
-                  word, and then inside its own tab instead of running into the next. */}
+                  below that the label drops the capitals; and with five tabs (M17) on a 320 px phone
+                  at 150 % text (a tab of about 3.6 em) it is set an eighth smaller. Only still larger
+                  text breaks a word, and then inside its own tab instead of running into the next. */}
               <span
                 className={cx(
                   variant === 'tabs' &&
-                    'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case',
+                    'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em]',
                 )}
               >
                 {item.label}

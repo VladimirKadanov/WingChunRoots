@@ -1,12 +1,15 @@
-// The four destinations of the app shell (Ink Lineage prototype): Explore is the home page; Me
+// The five destinations of the app shell (Ink Lineage prototype): Explore is the home page; Me
 // is the dashboard (M08 review round 1, design-7: /dashboard, with requests and notifications; it
 // links to /account; a visitor without a session is sent to /sign-in); Lineage is the explorer
-// (M05); Schools is the school finder (M11).
+// (M05); Schools is the school finder (M11); Events is the event calendar (M17).
+//
+// DEFAULT M17 (question 4): Events is a fifth tab of its own, between Schools and Me, rather than
+// a section inside another tab.
 
 export interface NavItem {
   href: string;
   label: string;
-  icon: 'search' | 'lineage' | 'schools' | 'me';
+  icon: 'search' | 'lineage' | 'schools' | 'events' | 'me';
   /** Paths that mark this tab as current. */
   match: (pathname: string) => boolean;
   /** False until the destination exists: no prefetch of a page that is not built yet. */
@@ -20,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Explore', icon: 'search', match: (p) => p === '/', built: true },
   { href: '/explore', label: 'Lineage', icon: 'lineage', match: (p) => p.startsWith('/explore') || p.startsWith('/people'), built: true },
   { href: '/schools', label: 'Schools', icon: 'schools', match: (p) => p.startsWith('/schools'), built: true },
+  { href: '/events', label: 'Events', icon: 'events', match: (p) => p === '/events' || p.startsWith('/events/'), built: true },
   {
     href: '/dashboard',
     label: 'Me',
