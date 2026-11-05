@@ -28,7 +28,7 @@ import { hasStaff2FA, requireStaff2FA } from '../auth/guards';
 import type { Principal, StaffRole } from '../auth/principal';
 import { invalidatePublic, ORGANIZATIONS_TAG } from '../cache';
 import { getDb } from '../db';
-import { notification, organization, reviewCase, reviewNote } from '../db/schema';
+import { organization, reviewCase, reviewNote } from '../db/schema';
 import { OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { countryName } from '../../lib/regions';
@@ -38,6 +38,7 @@ import { filesOfCases } from './evidence';
 import { adminIdsOf, APPROVAL_LABELS, ORGANIZATION_KIND_LABELS, type OrganizationStatus, organizationRow } from './organizations';
 import { keyReused } from './relationships';
 import { caseReplayOf, DECIDERS, isCaseKeyConflict, partiesOf, recordCaseEvent } from './review-core';
+import { notifyEach } from './notify';
 
 /** The roles that approve or decline an organization's application. */
 export const APPLICATION_DECIDE_ROLES: readonly StaffRole[] = DECIDERS.organization_application;
@@ -157,7 +158,7 @@ export async function decideOrganizationApplication(principal: Principal | null,
       const orgId = seen.organizationId;
       const admins = await adminIdsOf(tx, orgId);
       const tell = async (decision: 'approved' | 'declined' | 'needs_info') => {
-        if (admins.length > 0) await tx.insert(notification).values(admins.map((userId) => ({ userId, template: 'organization.reviewed', payload: { organizationId: orgId, decision } })));
+        if (admins.length > 0) await notifyEach(tx, admins, 'organization.reviewed', { organizationId: orgId, decision });
       };
       const audit = (auditAction: 'review.needs_info' | 'review.resolve' | 'organization.approve' | 'organization.reject', subjectType: string, subjectId: string, before: Record<string, unknown>, after: Record<string, unknown>, evidenceIds?: string[]) =>
         writeAudit(tx, { action: auditAction, actorUserId: p.user.id, actorRole: p.user.role, subjectType, subjectId, before, after, evidenceIds, requestId: meta.requestId, ipHmac: meta.ipHmac });

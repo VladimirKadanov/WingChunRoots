@@ -25,6 +25,10 @@
 //                            asked for an account. DEFAULT (not a D number; docs/adr/0004-auth.md).
 //                            An account that something else refers to is left alone.
 //
+//   notification             deleted 180 days after it was created once read, 365 days after it
+//                            was created while unread (M18; DEFAULT M18, question 3). The e-mail of
+//                            a notice keeps the rules of email_delivery above (M01b).
+//
 // The periods wait for the legal review (plan §10.2, row 11), like the rest of docs/data-model.md §7.
 //
 // The rows change in batches, each its own statement and transaction, so no statement comes near
@@ -38,6 +42,9 @@ import type { Database } from '../db';
 
 export const EMAIL_DELIVERY_ADDRESS_RETENTION_DAYS = 90;
 export const UNCONFIRMED_ACCOUNT_RETENTION_DAYS = 7;
+/** DEFAULT M18 (question 3): a read notice is kept 180 days, an unread one 365. */
+export const READ_NOTIFICATION_RETENTION_DAYS = 180;
+export const UNREAD_NOTIFICATION_RETENTION_DAYS = 365;
 export const INVITATION_EMAIL_RETENTION_DAYS = 30;
 /** Rows per statement. */
 export const RETENTION_BATCH_SIZE = 1000;
@@ -229,4 +236,28 @@ export async function purgeUnconfirmedAccounts(
     if (rows.length < batchSize) return { accounts, kept };
     after = rows[rows.length - 1]!.id;
   }
+}
+
+/**
+ * Deletes the notices past their retention (M18; DEFAULT M18, question 3): read ones 180 days after
+ * they were created, unread ones 365. Idempotent; returns how many rows went.
+ */
+export async function purgeOldNotifications(
+  db: Database,
+  { batchSize = RETENTION_BATCH_SIZE }: { batchSize?: number } = {},
+): Promise<{ notifications: number }> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('batchSize must be a positive integer');
+  const notifications = await inBatches(
+    db,
+    batchSize,
+    (limit) => sql`
+      DELETE FROM notification
+       WHERE id IN (
+               SELECT id FROM notification
+                WHERE (read_at IS NOT NULL AND created_at < now() - make_interval(days => ${READ_NOTIFICATION_RETENTION_DAYS}))
+                   OR created_at < now() - make_interval(days => ${UNREAD_NOTIFICATION_RETENTION_DAYS})
+                LIMIT ${limit}
+                  FOR UPDATE SKIP LOCKED)`,
+  );
+  return { notifications };
 }

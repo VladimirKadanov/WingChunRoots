@@ -1,7 +1,7 @@
 'use server';
 
 // The dashboard's Server Actions (milestone M08, In scope 4 and 6): thin wrappers over the
-// notifications.markRead and plans.requestPilotAccess procedures (src/server/rpc/parity.ts),
+// notifications.markRead (M18: and notifications.markAllRead) and plans.requestPilotAccess procedures (src/server/rpc/parity.ts),
 // called in-process with this request's session, so the page and /api/v1 run the same checks.
 // A failure never escapes as it is (review round 2, recheck-2; see src/app/admin/grants/actions.ts).
 
@@ -14,6 +14,7 @@ import { textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
 import type { PlanCode } from '@/server/entitlements/plans';
+import type { NotificationCategory } from '@/server/templates/catalog';
 import { formResult, postedByReact } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
@@ -27,13 +28,20 @@ const PAGE = '/dashboard';
  */
 export async function markReadAction(form: FormData): Promise<void> {
   const id = textValue(form, 'id', 64);
-  const input = form.get('all') === 'on' ? { all: true as const } : { ids: [id] };
+  const all = form.get('all') === 'on';
+  // M18: the page the form was on (/dashboard/notifications, a page and a category), and "Mark all as
+  // read" of that category only (notifications.markAllRead).
+  const back = backTo(textValue(form, 'back', 200));
+  const category = textValue(form, 'category', 40);
   const byReact = await postedByReact();
   try {
-    await serverClient(await headers(), await getRequestPrincipal()).notifications.markRead(input);
+    const client = serverClient(await headers(), await getRequestPrincipal());
+    // The procedure checks the category; this only types what the form sent.
+    if (all) await client.notifications.markAllRead(category ? { category: category as NotificationCategory } : {});
+    else await client.notifications.markRead({ ids: [id] });
   } catch (error) {
     unstable_rethrow(error);
-    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fdashboard');
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(back ?? PAGE)}`);
     // A notification that is not the account's own, or an id that is not one: nothing changed.
     // Anything else changed nothing either (one transaction) and was logged by serverClient() in a
     // safe line; it is never rethrown as it is (review round 2, recheck-2). With JavaScript the list
@@ -45,7 +53,14 @@ export async function markReadAction(form: FormData): Promise<void> {
     refresh();
     return;
   }
-  redirect(`${PAGE}#notifications`);
+  redirect(`${back ?? PAGE}#notifications`);
+}
+
+/** The notifications page a form came from, or null for the dashboard (never another path). */
+function backTo(value: string): string | null {
+  if (!value) return null;
+  const url = new URL(value, 'http://local.invalid');
+  return url.origin === 'http://local.invalid' && url.pathname === '/dashboard/notifications' ? `${url.pathname}${url.search}` : null;
 }
 
 /** What follows a pilot access request (review round 2; final check, requirements-5). */

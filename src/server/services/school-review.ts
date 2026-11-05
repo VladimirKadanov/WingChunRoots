@@ -35,7 +35,7 @@ import { hasStaff2FA, requireStaff2FA } from '../auth/guards';
 import type { Principal, StaffRole } from '../auth/principal';
 import { invalidatePublic, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
-import { notification, place, reviewCase, reviewNote, school } from '../db/schema';
+import { place, reviewCase, reviewNote, school } from '../db/schema';
 import { OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { GeoPointDto } from '../dto/schools';
 import { type Executor, requireEntitlement } from '../entitlements/access';
@@ -45,6 +45,7 @@ import { ServiceError } from './errors';
 import { caseReplayOf, DECIDERS, isCaseKeyConflict, recordCaseEvent } from './review-core';
 import { keyReused } from './relationships';
 import { LOCATION_LABELS, SCHOOL_FORM_LABELS, SCHOOL_ROLE_LABELS } from './schools';
+import { notify } from './notify';
 
 /** The roles that approve or return a school listing. */
 export const LISTING_DECIDE_ROLES: readonly StaffRole[] = DECIDERS.school_listing;
@@ -209,7 +210,7 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
         await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body, isInternal: false });
         await recordCaseEvent(tx, { caseId: c.id, action, from: c.status, to: 'needs_info', actor: p, key: input.idempotencyKey });
         await audit('review.needs_info', 'review_case', c.id, { status: c.status }, { status: 'needs_info', schoolId: seen.schoolId });
-        if (owner) await tx.insert(notification).values({ userId: owner, template: 'school.reviewed', payload: { schoolId: seen.schoolId, decision: 'needs_info' } });
+        if (owner) await notify(tx, owner, 'school.reviewed', { schoolId: seen.schoolId, decision: 'needs_info' });
         return { replayed: false, publicChange: false };
       }
 
@@ -230,7 +231,7 @@ export async function decideSchoolListing(principal: Principal | null, input: Li
       await recordCaseEvent(tx, { caseId: c.id, action, from: c.status, to: 'resolved', actor: p, key: input.idempotencyKey });
       await audit(approve ? 'school.publish' : 'school.return', 'school', seen.schoolId, { status: listing.status }, { status: approve ? 'active' : 'draft', caseId: c.id, ...(listed ? { edit: true } : {}) });
       await audit('review.resolve', 'review_case', c.id, { status: c.status }, { status: 'resolved', resolution: approve ? 'approved' : 'rejected', schoolId: seen.schoolId });
-      if (owner) await tx.insert(notification).values({ userId: owner, template: 'school.reviewed', payload: { schoolId: seen.schoolId, decision: approve ? 'approved' : 'returned' } });
+      if (owner) await notify(tx, owner, 'school.reviewed', { schoolId: seen.schoolId, decision: approve ? 'approved' : 'returned' });
       // A new listing goes public when approved; a listed one leaves the map when returned.
       return { replayed: false, publicChange: listed ? !approve : approve };
     });

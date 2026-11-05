@@ -231,3 +231,9 @@ export const CONSENT_KINDS = [
 ] as const;
 export const CONSENT_ACTIONS = ['granted', 'withdrawn'] as const;
 export const EMAIL_STATUSES = ['queued', 'sent', 'failed'] as const;
+/**
+ * M18 (docs/adr/0021-notices.md): the categories of the notification catalog
+ * (src/server/templates/catalog.ts). The account chooses e-mail per category; `security` and
+ * `account` (the legal notices) cannot be switched off.
+ */
+export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events'] as const;

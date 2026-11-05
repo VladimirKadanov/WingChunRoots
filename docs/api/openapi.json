@@ -4777,7 +4777,40 @@
     "/notifications": {
       "get": {
         "operationId": "notifications.list",
-        "summary": "The signed-in account's newest notifications and its unread count",
+        "summary": "The signed-in account's notifications, newest first, 20 a page, optionally of one category (M18), and its unread count",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "security",
+                "account",
+                "plan",
+                "teaching",
+                "review",
+                "schools",
+                "organizations",
+                "events"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -4790,6 +4823,16 @@
                       "not": {}
                     }
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -4837,6 +4880,251 @@
                       "all"
                     ]
                   }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/mark-all-read": {
+      "post": {
+        "operationId": "notifications.markAllRead",
+        "summary": "Mark every own notification read, or every one of a category",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "security",
+                      "account",
+                      "plan",
+                      "teaching",
+                      "review",
+                      "schools",
+                      "organizations",
+                      "events"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/preferences": {
+      "get": {
+        "operationId": "notifications.preferences",
+        "summary": "E-mail on or off per category of notices; security and account are always on; dashboard notices always on",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/preferences/set": {
+      "post": {
+        "operationId": "notifications.setPreference",
+        "summary": "Switch the e-mail of one category on or off (never security or account); old unsubscribe links stop working",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "security",
+                      "account",
+                      "plan",
+                      "teaching",
+                      "review",
+                      "schools",
+                      "organizations",
+                      "events"
+                    ]
+                  },
+                  "email": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "category",
+                  "email"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/unsubscribe": {
+      "get": {
+        "operationId": "notifications.unsubscribeInfo",
+        "summary": "What an unsubscribe link from an e-mail switches off; no sign-in; 404 once the preference changed",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "notifications.unsubscribe",
+        "summary": "Switch off the e-mails of an unsubscribe link's category, without signing in (idempotent)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "token"
                 ]
               }
             }

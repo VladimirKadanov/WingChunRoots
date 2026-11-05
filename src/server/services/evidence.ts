@@ -49,7 +49,7 @@ import { hasStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { evidenceFile, evidenceLink, notification, reviewCase, reviewEvent } from '../db/schema';
+import { evidenceFile, evidenceLink, reviewCase, reviewEvent } from '../db/schema';
 import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES_PER_CASE, EVIDENCE_NAME_MAX, OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
@@ -58,6 +58,7 @@ import { getEvidenceStore, newStorageKey, type ObjectStore } from '../storage';
 import { type EvidenceMime, EXTENSION, ImageRefused, isImage, MAX_IMAGE_PIXELS, reencodeImage, sniffMime } from '../storage/sanitize';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { notify } from './notify';
 
 /** The int4 namespace of the per-account upload lock: pg_advisory_xact_lock(EVIDENCE_LOCK_SPACE, hashtext(user)). */
 const EVIDENCE_LOCK_SPACE = 10;
@@ -453,7 +454,7 @@ async function attachToOpenCase(tx: Transaction, open: OpenCase, fileId: string,
     await tx.insert(reviewEvent).values({ reviewCaseId: open.id, action: 'evidence', fromStatus: open.status, toStatus: status, actorUserId: userId, actorRole: principal.user.role });
   }
   if (open.assignedToUserId) {
-    await tx.insert(notification).values({ userId: open.assignedToUserId, template: 'review.updated', payload: { caseId: open.id, change: 'evidence' } });
+    await notify(tx, open.assignedToUserId, 'review.updated', { caseId: open.id, change: 'evidence' });
   }
 }
 

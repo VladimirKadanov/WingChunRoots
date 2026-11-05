@@ -30,9 +30,12 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard'] },
   'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
   // M08: plans, test plans and notifications.
-  'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead'] },
+  'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead', 'notifications.markAllRead'] },
   'src/app/dashboard/actions.ts#requestPilotAccessAction': { rpc: ['plans.requestPilotAccess'] },
   'src/app/dashboard/settings/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
+  // M18: notice e-mail preferences and the one-press unsubscribe.
+  'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },
+  'src/app/unsubscribe/actions.ts#unsubscribeAction': { rpc: ['notifications.unsubscribe'] },
   'src/app/admin/grants/actions.ts#createGrantAction': { rpc: ['grants.create'] },
   'src/app/admin/grants/actions.ts#revokeGrantAction': { rpc: ['grants.revoke'] },
   'src/app/admin/grants/actions.ts#closeRequestAction': { rpc: ['grants.closeRequest'] },

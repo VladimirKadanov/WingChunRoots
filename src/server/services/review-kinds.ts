@@ -27,8 +27,8 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import { writeAudit } from '../audit';
 import type { Principal } from '../auth/principal';
-import { authUser, contentReport, notification, person, personClaim, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
-import { enqueue, queueEmail, type Transaction } from '../jobs/outbox';
+import { authUser, contentReport, person, personClaim, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
+import { enqueue, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
@@ -36,6 +36,7 @@ import { filesOfCases } from './evidence';
 import { neighbourTags } from './profile';
 import { accountOf, namesFor, publicTags, recordEvent, type RelRow, url } from './relationships';
 import { type CaseRow, recordCaseEvent } from './review-core';
+import { notify } from './notify';
 
 export interface KindDecisionInput {
   decision: 'verify' | 'reject' | 'needs_info';
@@ -106,15 +107,18 @@ async function emailOf(tx: Transaction, userId: string | null): Promise<{ id: st
 async function tellClaimant(tx: Transaction, c: CaseRow, decision: 'approved' | 'rejected' | 'needs_info', eventKey: string): Promise<void> {
   const claimant = await emailOf(tx, c.openedByUserId);
   if (!claimant) return;
-  await tx.insert(notification).values({ userId: claimant.id, template: 'claim.decided', payload: { caseId: c.id, decision } });
   const teacherNames = c.personId ? await namesFor(tx, c.personId) : [];
-  if (teacherNames.length === 0) return;
-  await queueEmail(tx, {
-    template: 'claim-decided',
-    to: claimant.email,
-    userId: claimant.id,
-    idempotencyKey: `claim-decided:${eventKey}`,
-    data: { decision, teacherNames, url: url(decision === 'approved' ? '/dashboard/students/requests' : `/dashboard/cases/${c.id}`) },
+  // No e-mail without the teacher's name.
+  await notify(tx, claimant.id, 'claim.decided', { caseId: c.id, decision }, {
+    ...(teacherNames.length > 0
+      ? {
+          email: {
+            template: 'claim-decided',
+            idempotencyKey: `claim-decided:${eventKey}`,
+            data: { decision, teacherNames, url: url(decision === 'approved' ? '/dashboard/students/requests' : `/dashboard/cases/${c.id}`) },
+          },
+        }
+      : {}),
   });
 }
 
@@ -145,7 +149,7 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
     });
     await tellClaimant(tx, c, 'rejected', eventId);
     const student = await accountOf(tx, row.studentPersonId);
-    if (student) await tx.insert(notification).values({ userId: student.id, template: 'invitation.claimed', payload: { relationshipId: row.id, stage: 'refused' } });
+    if (student) await notify(tx, student.id, 'invitation.claimed', { relationshipId: row.id, stage: 'refused' });
     return NONE;
   }
 
@@ -192,9 +196,9 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
   });
   await tellClaimant(tx, c, 'approved', eventId);
   // The teacher now answers the request as in M09: it waits in their queue.
-  await tx.insert(notification).values({ userId: claimant.id, template: 'relationship.requested', payload: { relationshipId: row.id, resubmitted: false } });
+  await notify(tx, claimant.id, 'relationship.requested', { relationshipId: row.id, resubmitted: false });
   const student = await accountOf(tx, row.studentPersonId);
-  if (student) await tx.insert(notification).values({ userId: student.id, template: 'invitation.claimed', payload: { relationshipId: row.id, stage: 'approved' } });
+  if (student) await notify(tx, student.id, 'invitation.claimed', { relationshipId: row.id, stage: 'approved' });
   return NONE;
 }
 
@@ -203,14 +207,13 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
 async function tellInstructor(tx: Transaction, c: CaseRow, decision: 'verified' | 'rejected' | 'needs_info', eventKey: string): Promise<void> {
   const sifu = await emailOf(tx, c.openedByUserId);
   if (!sifu) return;
-  await tx.insert(notification).values({ userId: sifu.id, template: 'instructor.decided', payload: { caseId: c.id, decision } });
   const recipientNames = c.personId ? await namesFor(tx, c.personId) : [];
-  await queueEmail(tx, {
-    template: 'instructor-decided',
-    to: sifu.email,
-    userId: sifu.id,
-    idempotencyKey: `instructor-decided:${eventKey}`,
-    data: { decision, url: url('/dashboard/instructor'), ...(recipientNames.length > 0 ? { recipientNames } : {}) },
+  await notify(tx, sifu.id, 'instructor.decided', { caseId: c.id, decision }, {
+    email: {
+      template: 'instructor-decided',
+      idempotencyKey: `instructor-decided:${eventKey}`,
+      data: { decision, url: url('/dashboard/instructor'), ...(recipientNames.length > 0 ? { recipientNames } : {}) },
+    },
   });
 }
 
@@ -278,22 +281,25 @@ export async function tellDisputeParties(
   ] as const) {
     const account = await accountOf(tx, personId);
     if (!account) continue;
-    await tx.insert(notification).values({ userId: account.id, template: 'relationship.arbitration', payload: { relationshipId: row.id, caseId, stage, reason } });
-    if (otherNames.length === 0) continue;
-    await queueEmail(tx, {
-      template: 'relationship-arbitration',
-      to: account.email,
-      userId: account.id,
-      idempotencyKey: `relationship-arbitration:${eventKey}:${role}`,
-      data: {
-        stage,
-        role,
-        otherNames: [...otherNames],
-        lineageName: row.lineageName,
-        reason,
-        url: url(`/dashboard/cases/${caseId}`),
-        ...(ownNames.length > 0 ? { recipientNames: [...ownNames] } : {}),
-      },
+    // No e-mail without the other party's name.
+    await notify(tx, account.id, 'relationship.arbitration', { relationshipId: row.id, caseId, stage, reason }, {
+      ...(otherNames.length > 0
+        ? {
+            email: {
+              template: 'relationship-arbitration',
+              idempotencyKey: `relationship-arbitration:${eventKey}:${role}`,
+              data: {
+                stage,
+                role,
+                otherNames: [...otherNames],
+                lineageName: row.lineageName,
+                reason,
+                url: url(`/dashboard/cases/${caseId}`),
+                ...(ownNames.length > 0 ? { recipientNames: [...ownNames] } : {}),
+              },
+            },
+          }
+        : {}),
     });
   }
 }

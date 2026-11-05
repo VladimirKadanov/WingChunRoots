@@ -37,6 +37,7 @@ import { and, eq } from 'drizzle-orm';
 
 import { getDb } from '../db';
 import { authAccount, authUser } from '../db/schema';
+import { sendSecurityNotice } from '../services/security-notices';
 import { sendAccountExistsEmail, sendFinishSignUpEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
 import { authSecret } from './env';
 import { requestScope } from './request-scope';
@@ -83,6 +84,8 @@ export async function onPasswordReset({ user }: { user: { id: string; email: str
   await clear(signInKey(user.email));
   const scope = requestScope();
   if (scope) scope.resetEmail = user.email;
+  // M18: the password changed through the e-mailed link (the security notice, e-mailed always).
+  await sendSecurityNotice(user.id, 'security.password-changed');
 }
 
 /** Better Auth's answer to a token it cannot use (verify-email's redirectOnError, INVALID_TOKEN). */

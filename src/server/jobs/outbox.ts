@@ -10,7 +10,7 @@ import type { Database } from '../db';
 import { emailDelivery } from '../db/schema';
 import { checkAddress, checkIdempotencyKey, checkSameEmail } from '../mail/mailer';
 import { seal, unseal } from '../mail/seal';
-import type { SendInput } from '../mail/types';
+import type { MailUnsubscribe, SendInput } from '../mail/types';
 import { EMAIL_TEMPLATES, type EmailTemplateName, isEmailTemplateName, TemplateDataError } from '../templates/email';
 import type { EmailTemplate } from '../templates/email/types';
 import { getProducer } from './boss';
@@ -96,6 +96,17 @@ export async function queueEmail<N extends EmailTemplateName>(
     checkSameEmail(existing, { to, template: input.template });
     return { deliveryId: existing.id, queued: false };
   }
-  await enqueue(tx, QUEUE.emailSend, jobPayload(created.id, input.template, data), {}, boss);
+  const payload = jobPayload(created.id, input.template, data);
+  // M18: the unsubscribe link travels sealed, bound to this delivery.
+  if (input.unsubscribe) payload.unsubscribe = seal({ ...input.unsubscribe }, created.id);
+  await enqueue(tx, QUEUE.emailSend, payload, {}, boss);
   return { deliveryId: created.id, queued: true };
+}
+
+/** The unsubscribe link of a job (M18), or undefined. Throws SealError when it cannot be opened. */
+export function jobUnsubscribe(job: EmailSendJob): MailUnsubscribe | undefined {
+  if (!job.unsubscribe) return undefined;
+  const { url, oneClickUrl, category } = unseal(job.unsubscribe, job.deliveryId);
+  if (typeof url !== 'string' || typeof oneClickUrl !== 'string' || typeof category !== 'string') return undefined;
+  return { url, oneClickUrl, category };
 }

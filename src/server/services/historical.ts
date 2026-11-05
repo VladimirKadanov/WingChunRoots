@@ -30,7 +30,7 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authUser, notification, person, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
+import { authUser, person, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import { EVIDENCE_MAX_FILES_PER_CASE, STAFF_ROLES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
@@ -62,6 +62,7 @@ import {
   writePeriods,
 } from './relationships';
 import { ServiceError } from './errors';
+import { notifyEach } from './notify';
 
 /** The longest note a student sends with a claim. */
 export const CLAIM_NOTE_MAX = 2000;
@@ -203,7 +204,7 @@ async function tellReviewers(tx: Transaction, caseId: string): Promise<void> {
     .from(authUser)
     .where(and(inArray(authUser.role, STAFF_ROLES.filter((r) => r !== 'moderator')), eq(authUser.banned, false)))
     .limit(200);
-  if (reviewers.length > 0) await tx.insert(notification).values(reviewers.map((r) => ({ userId: r.id, template: 'review.opened', payload: { caseId } })));
+  if (reviewers.length > 0) await notifyEach(tx, reviewers.map((r) => r.id), 'review.opened', { caseId });
 }
 
 /**

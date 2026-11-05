@@ -6,7 +6,8 @@
 // attribute and translate="no" when the dashboard renders it (plan §5.3).
 
 import { formatDay, untilPlanEnd } from '../../lib/dates';
-import { GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
+import { PLAN_CODES } from '../db/schema/common';
+import { feature, type FeatureKey, GRANTABLE_PLANS, type PlanCode, PLANS, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from './email/types';
 import { rejectionReasonText } from './relationships';
 
@@ -915,6 +916,236 @@ const eventCancelled: NotificationTemplate<EventNoticeData> = {
   sample: { eventId: '0190a5c0-0000-7000-8000-0000000000e2', slug: 'demo-camp-plovdiv', title: 'Demo summer camp', startDay: '2027-07-01' },
 };
 
+// --- Lifecycle notices (M18; docs/adr/0021-notices.md) -------------------------------------------
+//
+// Security notices are e-mailed always and never switched off (In scope 5). They say what changed
+// and what to do if it was not you; never an IP address, a place or a device (plan §6.4).
+
+const SECURITY_PAGE = { label: 'Open Security', href: '/account/security' } as const;
+const NOT_YOU = 'If this was not you, reset your password from the sign-in page and check your two-factor authentication.';
+
+function emptyPayload(template: string, payload: unknown): Record<string, never> {
+  if (payload !== undefined && payload !== null && (typeof payload !== 'object' || Array.isArray(payload))) {
+    throw new NotificationDataError(template, 'payload must be an object');
+  }
+  return {};
+}
+
+function securityNotice(name: string, title: string, text: string): NotificationTemplate<Record<string, never>> {
+  return {
+    name,
+    parse: (payload) => emptyPayload(name, payload),
+    render: () => ({ title, body: [{ text: `${text} ${NOT_YOU}` }], action: SECURITY_PAGE }),
+    sample: {},
+  };
+}
+
+/** "security.password-changed": the password was changed (Security) or reset through the e-mailed link. */
+const securityPasswordChanged = securityNotice(
+  'security.password-changed',
+  'Your password was changed',
+  'The password of your WingChunRoots account was changed.',
+);
+/** "security.two-factor-enabled": two-factor authentication was turned on. */
+const securityTwoFactorEnabled = securityNotice(
+  'security.two-factor-enabled',
+  'Two-factor authentication turned on',
+  'Two-factor authentication is now on for your account: signing in asks for a code from your authenticator app.',
+);
+/** "security.two-factor-disabled": two-factor authentication was turned off. */
+const securityTwoFactorDisabled = securityNotice(
+  'security.two-factor-disabled',
+  'Two-factor authentication turned off',
+  'Two-factor authentication is now off for your account: signing in asks only for your password.',
+);
+/** "security.backup-codes": new backup codes replaced the old ones. */
+const securityBackupCodes = securityNotice(
+  'security.backup-codes',
+  'New backup codes',
+  'New backup codes were made for your account. The earlier codes no longer work.',
+);
+
+/**
+ * "security.email-changed": the account's e-mail address changed, to the new address and to the
+ * old one (`side`). No address in the text: the old address reads that it no longer signs in.
+ */
+const securityEmailChanged: NotificationTemplate<{ side: 'old' | 'new' }> = {
+  name: 'security.email-changed',
+  parse(payload) {
+    const side = payloadObject('security.email-changed', payload).side;
+    if (side !== 'old' && side !== 'new') throw new NotificationDataError('security.email-changed', 'side must be old or new');
+    return { side };
+  },
+  render: ({ side }) => ({
+    title: 'E-mail address changed',
+    body: [
+      {
+        text:
+          side === 'new'
+            ? `This is now the e-mail address of your WingChunRoots account. ${NOT_YOU}`
+            : `The e-mail address of your WingChunRoots account was changed, and this address no longer signs in. ${NOT_YOU}`,
+      },
+    ],
+    action: SECURITY_PAGE,
+  }),
+  sample: { side: 'new' },
+};
+
+function anyPlan(template: string, key: string, value: unknown): PlanCode {
+  if (typeof value !== 'string' || !(PLAN_CODES as readonly string[]).includes(value)) throw new NotificationDataError(template, `${key} must be a plan`);
+  return value as PlanCode;
+}
+
+function requiredDate(template: string, key: string, value: unknown): string {
+  const date = optionalDate(template, key, value);
+  if (date === null) throw new NotificationDataError(template, `${key} must be a date`);
+  return date;
+}
+
+interface PlanEndNotice {
+  grantId: string;
+  planCode: PlanCode;
+  endsAt: string;
+  /** The free plan the account has after the end (its account type when the job ran). */
+  nextPlanCode: PlanCode;
+}
+
+function planEndNotice(template: string, payload: unknown): PlanEndNotice {
+  const data = payloadObject(template, payload);
+  return {
+    grantId: uuidOf(template, 'grantId', payload),
+    planCode: grantablePlan(template, data.planCode),
+    endsAt: requiredDate(template, 'endsAt', data.endsAt),
+    nextPlanCode: anyPlan(template, 'nextPlanCode', data.nextPlanCode),
+  };
+}
+
+/** What stays after a plan ends (D06, D08): said the same way before and after the end. */
+function whatStays(planCode: PlanCode, next: PlanCode): string {
+  return PLANS[planCode].audience === 'sifu'
+    ? `Every confirmed link stays confirmed and public, and nothing you added is deleted: your schools stay listed and your photos and events stay. New approvals, photos and events follow the limits of ${PLANS[next].name}.`
+    : `Your profile, your photos and every confirmed link stay as they are. New photos follow the limits of ${PLANS[next].name}.`;
+}
+
+/**
+ * "plan.expiring" (M18, In scope 5): once per grant, when the daily job finds that it ends within 7
+ * days. The date and what stays; never a countdown (CLAUDE.md §11).
+ */
+const planExpiring: NotificationTemplate<PlanEndNotice> = {
+  name: 'plan.expiring',
+  parse: (payload) => planEndNotice('plan.expiring', payload),
+  render: ({ planCode, endsAt, nextPlanCode }) => ({
+    title: `Your pilot plan has an end date: ${PLANS[planCode].name}`,
+    body: [{ text: `Your pilot plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+    action: SEE_YOUR_PLAN,
+  }),
+  sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f1', planCode: 'pro_sifu', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_sifu' },
+};
+
+/** "plan.expired" (M18, In scope 5): once per grant, after its end. */
+const planExpired: NotificationTemplate<PlanEndNotice> = {
+  name: 'plan.expired',
+  parse: (payload) => planEndNotice('plan.expired', payload),
+  render: ({ planCode, endsAt, nextPlanCode }) => ({
+    title: `Pilot plan ended: ${PLANS[planCode].name}`,
+    body: [{ text: `Your pilot plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+    action: SEE_YOUR_PLAN,
+  }),
+  sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f2', planCode: 'premium_student', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_student' },
+};
+
+/** The features whose limit sends a notice (DEFAULT M18, question 2): students (D06), photos (D07), events (M17). */
+export const LIMIT_FEATURES = ['approve_students', 'photos', 'events'] as const satisfies readonly FeatureKey[];
+export type LimitFeature = (typeof LIMIT_FEATURES)[number];
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+interface LimitReached {
+  feature: LimitFeature;
+  planCode: PlanCode;
+  limit: number;
+  /** The lowest plan that allows more (the upgrade prompt of M08), or null when none does. */
+  upgradeTo: PlanCode | null;
+  /** The month (UTC) of the notice: one per feature and month. */
+  month: string;
+}
+
+/**
+ * "limit.reached" (DEFAULT M18, question 2): in the dashboard only, once per feature and month,
+ * when an action meets a real limit of the plan (a quota, never a feature the plan lacks). The
+ * prompt of M08: only benefits with availability 'now' (upgradeBenefits), led by the one that was
+ * hit, and how to ask for pilot access; nothing is charged, and nothing says hurry (CLAUDE.md §11).
+ */
+const limitReached: NotificationTemplate<LimitReached> = {
+  name: 'limit.reached',
+  parse(payload) {
+    const data = payloadObject('limit.reached', payload);
+    if (typeof data.feature !== 'string' || !(LIMIT_FEATURES as readonly string[]).includes(data.feature)) {
+      throw new NotificationDataError('limit.reached', 'feature must be one with a limit');
+    }
+    if (typeof data.limit !== 'number' || !Number.isInteger(data.limit) || data.limit < 0) throw new NotificationDataError('limit.reached', 'limit must be a whole number');
+    if (typeof data.month !== 'string' || !MONTH_KEY.test(data.month)) throw new NotificationDataError('limit.reached', 'month must be YYYY-MM');
+    return {
+      feature: data.feature as LimitFeature,
+      planCode: anyPlan('limit.reached', 'planCode', data.planCode),
+      limit: data.limit,
+      upgradeTo: data.upgradeTo === null || data.upgradeTo === undefined ? null : anyPlan('limit.reached', 'upgradeTo', data.upgradeTo),
+      month: data.month,
+    };
+  },
+  render: ({ feature: key, planCode, upgradeTo }) => {
+    const f = feature(key);
+    const own = f.values[planCode].label;
+    const benefits = upgradeTo ? upgradeBenefits(planCode, upgradeTo, key) : [];
+    const offer =
+      upgradeTo && benefits.length > 0
+        ? ` ${PLANS[upgradeTo].name} gives ${benefits.map((b) => `${b.label}: ${b.to}`).join('; ')}. During the pilot you can ask an administrator for it; nothing is charged.`
+        : '';
+    return {
+      title: `Plan limit reached: ${f.label}`,
+      body: [{ text: `${PLANS[planCode].name} includes ${own.charAt(0).toLowerCase()}${own.slice(1)}, and that limit is reached. Nothing you already have changes.${offer}` }],
+      action: upgradeTo ? { label: 'Compare plans', href: '/plans' } : SEE_YOUR_PLAN,
+    };
+  },
+  sample: { feature: 'events', planCode: 'pro_sifu', limit: 2, upgradeTo: null, month: '2027-03' },
+};
+
+/** What staff can remove with a reason (M18, In scope 5): an event, a profile or gallery photo, a school's photo. */
+export const REMOVED_CONTENT = ['event', 'photo', 'school_photo'] as const;
+type RemovedContent = (typeof REMOVED_CONTENT)[number];
+const REMOVED_LABEL: Record<RemovedContent, { what: string; action: { label: string; href: string } }> = {
+  event: { what: 'One of your events', action: { label: 'See your events', href: '/dashboard/events' } },
+  photo: { what: 'One of your photos', action: { label: 'See your photos', href: '/dashboard/photos' } },
+  school_photo: { what: 'A photo of your school', action: { label: 'See your schools', href: '/dashboard/schools' } },
+};
+
+/**
+ * "content.removed" (M18, In scope 5): to the owner, when staff with a verified second factor
+ * remove their content with a reason. The reason is the staff's words to the owner; no name of
+ * the staff member. A statement of reasons is never switched off (category `account`).
+ */
+const contentRemoved: NotificationTemplate<{ content: RemovedContent; reason: string; title: string | null }> = {
+  name: 'content.removed',
+  parse(payload) {
+    const data = payloadObject('content.removed', payload);
+    if (typeof data.content !== 'string' || !(REMOVED_CONTENT as readonly string[]).includes(data.content)) {
+      throw new NotificationDataError('content.removed', 'content must be an event or a photo');
+    }
+    if (typeof data.reason !== 'string' || data.reason.trim() === '' || data.reason.length > 1000) throw new NotificationDataError('content.removed', 'reason must be a text');
+    const title = typeof data.title === 'string' && data.title.trim() !== '' && data.title.length <= 200 ? data.title.trim() : null;
+    return { content: data.content as RemovedContent, reason: data.reason.trim(), title };
+  },
+  render: ({ content, reason, title }) => ({
+    title: 'Removed by the moderators',
+    body: [
+      {
+        text: `${content === 'event' && title ? `Your event “${title}”` : REMOVED_LABEL[content].what} was removed by the WingChunRoots moderators. Their reason: “${reason}”`,
+      },
+    ],
+    action: REMOVED_LABEL[content].action,
+  }),
+  sample: { content: 'event', reason: 'The date and the place do not match the poster.', title: 'Demo seminar in Sofia' },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
@@ -944,6 +1175,16 @@ export const NOTIFICATION_TEMPLATES = {
   // M17.
   'event.published': eventPublished,
   'event.cancelled': eventCancelled,
+  // M18.
+  'security.password-changed': securityPasswordChanged,
+  'security.two-factor-enabled': securityTwoFactorEnabled,
+  'security.two-factor-disabled': securityTwoFactorDisabled,
+  'security.backup-codes': securityBackupCodes,
+  'security.email-changed': securityEmailChanged,
+  'plan.expiring': planExpiring,
+  'plan.expired': planExpired,
+  'limit.reached': limitReached,
+  'content.removed': contentRemoved,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

@@ -60,7 +60,7 @@ import type { Principal } from '../auth/principal';
 import { invalidatePublic, ORGANIZATIONS_TAG, personTag, SCHOOLS_TAG, tagCacheEntry } from '../cache';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authUser, notification, organization, organizationAdmin, organizationMembership, organizationSchool, reviewCase, reviewEvent, reviewNote, school } from '../db/schema';
+import { authUser, organization, organizationAdmin, organizationMembership, organizationSchool, reviewCase, reviewEvent, reviewNote, school } from '../db/schema';
 import {
   EVIDENCE_MAX_FILES_PER_CASE,
   OPEN_REVIEW_CASE_STATUSES,
@@ -75,6 +75,8 @@ import { type OrganizationListDto, type OrganizationPageDto, toPublicOrganizatio
 import { type Executor, organizationPlan } from '../entitlements/access';
 import { PLANS } from '../entitlements/plans';
 import { CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
+import type { Transaction } from '../jobs/outbox';
+import type { NotificationKind } from '../templates/catalog';
 import { COUNTRIES, isCountryCode } from './account';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
@@ -84,6 +86,7 @@ import { cleanName } from './names';
 import { photoOf, publicPhotoRefs } from './photo-refs';
 import { idempotencyKey, keyReused } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
+import { notify, notifyEach } from './notify';
 
 // --- Words ---------------------------------------------------------------------------------------
 
@@ -350,9 +353,9 @@ async function requireAdministration(tx: Executor, org: OrgRow): Promise<void> {
   }
 }
 
-async function tellAdmins(tx: Executor, organizationId: string, template: string, payload: Record<string, unknown>, except: readonly string[] = []): Promise<void> {
+async function tellAdmins(tx: Transaction, organizationId: string, template: NotificationKind, payload: Record<string, unknown>, except: readonly string[] = []): Promise<void> {
   const ids = (await adminIdsOf(tx, organizationId)).filter((id) => !except.includes(id));
-  if (ids.length > 0) await tx.insert(notification).values(ids.map((userId) => ({ userId, template, payload })));
+  if (ids.length > 0) await notifyEach(tx, ids, template, payload);
 }
 
 function organizationSlug(name: string): string {
@@ -844,7 +847,7 @@ export async function addOrganizationAdmin(principal: Principal | null, raw: z.i
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    await tx.insert(notification).values({ userId: account.id, template: 'organization.admin_added', payload: { organizationId: org.id } });
+    await notify(tx, account.id, 'organization.admin_added', { organizationId: org.id });
     return { adminId };
   });
 }
@@ -1026,7 +1029,7 @@ export async function requestOrganizationSchool(principal: Principal | null, raw
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });
-      await tx.insert(notification).values({ userId: target.created_by_user_id, template: 'organization.school_requested', payload: { linkId } });
+      await notify(tx, target.created_by_user_id, 'organization.school_requested', { linkId });
       return { linkId, status: 'pending' as const };
     });
   } catch (error) {

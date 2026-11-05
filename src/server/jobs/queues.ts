@@ -24,6 +24,11 @@ export const QUEUE = {
    * Premium Students whose established teacher organizes or teaches it (src/server/jobs/event-notify.ts).
    */
   eventsNotify: 'events.notify',
+  /**
+   * M18: once a day, the notices of plan grants that end within 7 days and of those that have ended
+   * (src/server/jobs/plan-expiry.ts).
+   */
+  plansExpiry: 'plans.expiry',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -35,6 +40,11 @@ export interface EmailSendJob {
   data: unknown;
   /** The template's secret fields (account links), sealed for this delivery (src/server/mail/seal.ts). */
   sealed?: string;
+  /**
+   * M18: the unsubscribe link of an e-mail whose category can be switched off (MailUnsubscribe),
+   * sealed for this delivery like a token: whoever holds it switches the category off.
+   */
+  unsubscribe?: string;
 }
 
 /**
@@ -60,6 +70,7 @@ export interface JobData {
   [QUEUE.searchKeysRebuild]: Record<string, never>;
   [QUEUE.lineageRecompute]: LineageRecomputeJob;
   [QUEUE.eventsNotify]: EventsNotifyJob;
+  [QUEUE.plansExpiry]: Record<string, never>;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -97,12 +108,16 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
   [QUEUE.lineageRecompute, { retryLimit: 5, retryDelay: 10, retryBackoff: true, retryDelayMax: 300, expireInSeconds: 120, deleteAfterSeconds: DAY }],
   // M17: one insert of notices per job; its payload holds ids only.
   [QUEUE.eventsNotify, { retryLimit: 5, retryDelay: 10, retryBackoff: true, retryDelayMax: 300, expireInSeconds: 120, deleteAfterSeconds: DAY }],
+  // M18: a daily pass over the grants that end; idempotent by its notice keys.
+  [QUEUE.plansExpiry, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */
 export const SCHEDULES: ReadonlyArray<{ queue: QueueName; cron: string }> = [
   // Daily at 03:17 UTC, away from the top of the hour.
   { queue: QUEUE.retentionPurge, cron: '17 3 * * *' },
+  // M18: daily at 06:41 UTC, the notices of plans that end.
+  { queue: QUEUE.plansExpiry, cron: '41 6 * * *' },
 ];
 
 /**

@@ -40,7 +40,7 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authUser, invitation, lineage, notification, person, personClaim, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
+import { authUser, invitation, lineage, person, personClaim, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import { EVIDENCE_MAX_FILES_PER_CASE, OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { queueEmail, type Transaction } from '../jobs/outbox';
@@ -74,6 +74,7 @@ import {
   writePeriods,
 } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
+import { notify } from './notify';
 
 /** DEFAULT (the milestone's brief): an invitation link works for 14 days, once. */
 export const INVITATION_DAYS = 14;
@@ -644,7 +645,7 @@ export async function acceptInvitation(principal: Principal | null, raw: z.input
       });
       const student = await tx.select({ id: person.claimedByUserId }).from(person).where(eq(person.id, rel.studentPersonId));
       await tellStaff(tx, caseId, 'person_claim', [p.user.id, ...(student[0]?.id ? [student[0].id] : [])]);
-      if (student[0]?.id) await tx.insert(notification).values({ userId: student[0].id, template: 'invitation.claimed', payload: { relationshipId: rel.id, stage: 'claimed' } });
+      if (student[0]?.id) await notify(tx, student[0].id, 'invitation.claimed', { relationshipId: rel.id, stage: 'claimed' });
       return { caseId, replayed: false };
     });
     return outcome;

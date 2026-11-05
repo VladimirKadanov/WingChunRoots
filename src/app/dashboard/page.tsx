@@ -426,7 +426,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
               <StudentLists overview={overview} />
             )}
           </div>
-          <Notifications />
+          <Notifications allHref="/dashboard/notifications" />
         </div>
       </div>
     </NotificationsProvider>

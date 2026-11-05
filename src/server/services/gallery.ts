@@ -43,8 +43,9 @@ import type { RequestMeta } from './context';
 import { offerText, type UpgradeOffer } from './dashboard';
 import { ServiceError } from './errors';
 import { photoUrl } from './photo-refs';
-import { deleteFiles, fileBytes, isPublicPerson, NO_OWN_PERSON_MESSAGE, ownPerson, photoGetInput, putRenditions, refusalMessage, sha256 } from './photos';
+import { deleteFiles, fileBytes, isPublicPerson, NO_OWN_PERSON_MESSAGE, ownPerson, photoGetInput, putRenditions, refusalMessage, sha256, tellPhotoOwner } from './photos';
 import { openPilotRequest, planSummary } from './plans';
+import { withLimitNotice } from './limit-notices';
 
 const NOT_FOUND_MESSAGE = 'No such person.';
 const NO_PHOTO_MESSAGE = 'No such photo in your gallery.';
@@ -295,11 +296,20 @@ export interface AddedGalleryPhoto {
 }
 
 /**
+ * M18 (In scope 5; DEFAULT M18, question 2): addGalleryPhoto is addToGallery below; a refusal at a used-up allowance of the
+ * plan also leaves one notice a month in the dashboard (src/server/services/limit-notices.ts).
+ */
+export async function addGalleryPhoto(principal: Principal | null, raw: z.input<typeof galleryAddInput>, meta: RequestMeta, store: ObjectStore = getPhotoStore()): Promise<AddedGalleryPhoto> {
+  const p = requireUser(principal);
+  return withLimitNotice(p.user.id, 'photos', () => addToGallery(p, raw, meta, store));
+}
+
+/**
  * gallery.add: a new photo at the end of the own gallery. The first photo of a person without a
  * profile photo becomes the profile photo. Refused with ENTITLEMENT_REQUIRED (and the refusal of
  * requireEntitlement in `details`) when the plan's allowance is used up (DEFAULT D07).
  */
-export async function addGalleryPhoto(
+async function addToGallery(
   principal: Principal | null,
   raw: z.input<typeof galleryAddInput>,
   meta: RequestMeta,
@@ -450,6 +460,8 @@ export async function removeGalleryPhoto(
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
+    // M18 (In scope 5): the owner is told of a staff removal, with the reason.
+    if (asStaff) await tellPhotoOwner(tx, row.personId, p.user.id, current.id, reason);
     return current;
   });
   if (removed) {

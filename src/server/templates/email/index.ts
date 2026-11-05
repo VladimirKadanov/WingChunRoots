@@ -3,6 +3,7 @@
 // only place with the text of e-mails (plan §6.1). Rendering runs in the worker.
 
 import { render } from '@react-email/render';
+import { createElement } from 'react';
 
 import { accountExists } from './account-exists';
 import { claimDecided } from './claim-decided';
@@ -10,12 +11,14 @@ import { finishSignUp } from './finish-sign-up';
 import { instructorDecided } from './instructor-decided';
 import { invitation } from './invitation';
 import { mailCheck } from './mail-check';
+import { notice } from './notice';
 import { relationshipApproved } from './relationship-approved';
 import { relationshipArbitration } from './relationship-arbitration';
 import { relationshipRejected } from './relationship-rejected';
 import { relationshipRequested } from './relationship-requested';
 import { resetPassword } from './reset-password';
 import { reviewDecided } from './review-decided';
+import { UnsubscribeContext, type UnsubscribeLink } from './components';
 import { type EmailTemplate, TemplateDataError } from './types';
 import { verifyEmail } from './verify-email';
 
@@ -27,6 +30,8 @@ export type { FinishSignUpData } from './finish-sign-up';
 export type { InstructorDecidedData } from './instructor-decided';
 export type { InvitationData } from './invitation';
 export type { MailCheckData } from './mail-check';
+export type { NoticeData, NoticeSegment } from './notice';
+export type { UnsubscribeLink } from './components';
 export type { RelationshipApprovedData } from './relationship-approved';
 export type { RelationshipArbitrationData } from './relationship-arbitration';
 export type { RelationshipRejectedData } from './relationship-rejected';
@@ -53,6 +58,8 @@ export const EMAIL_TEMPLATES = {
   'claim-decided': claimDecided,
   'instructor-decided': instructorDecided,
   'relationship-arbitration': relationshipArbitration,
+  // M18: the e-mail of a notice without a dedicated e-mail (src/server/templates/catalog.ts).
+  notice,
 } as const;
 
 export type EmailTemplateName = keyof typeof EMAIL_TEMPLATES;
@@ -71,13 +78,15 @@ export interface RenderedEmail {
 
 /**
  * Renders `template` with untrusted `data` (JSON from the queue). Throws TemplateDataError for an
- * unknown template or data the template refuses.
+ * unknown template or data the template refuses. `unsubscribe` (M18) adds the footer's unsubscribe
+ * link of an e-mail whose category can be switched off.
  */
-export async function renderEmail(template: string, data: unknown): Promise<RenderedEmail> {
+export async function renderEmail(template: string, data: unknown, options: { unsubscribe?: UnsubscribeLink } = {}): Promise<RenderedEmail> {
   if (!isEmailTemplateName(template)) throw new TemplateDataError(template, 'unknown template');
   const definition = EMAIL_TEMPLATES[template] as EmailTemplate<unknown>;
   const parsed = definition.parse(data);
-  const element = definition.render(parsed);
+  // M18: the layout shows the unsubscribe link of this delivery (components.tsx).
+  const element = createElement(UnsubscribeContext, { value: options.unsubscribe ?? null }, definition.render(parsed));
   const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
   return { subject: definition.subject(parsed), html, text };
 }
