@@ -92,7 +92,8 @@ const mailed = (category: NotificationCategory, email: Exclude<EmailChannel, nul
 /**
  * Every kind of notice. The kinds of M02–M17 keep their channels: a dedicated e-mail stays the one
  * it was, a dashboard-only notice stays dashboard-only, except the four that M18 adds an e-mail to
- * (In scope 5): relationship.ended, invitation.claimed, school.reviewed and organization.reviewed.
+ * (In scope 5): relationship.ended, invitation.claimed, school.reviewed and organization.reviewed
+ * (DEFAULT M18, question 4: every stage and decision, not only the accepting ones).
  */
 export const NOTIFICATION_CATALOG = {
   // M01b, M07, M08: system and staff notices, and the plan notices of an admin's grant.

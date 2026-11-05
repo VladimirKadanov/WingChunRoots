@@ -81,7 +81,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                     href={pageHref(c)}
                     aria-current={current ? 'page' : undefined}
                     className={cx(
-                      'inline-flex min-h-11 items-center gap-1.5 rounded-sm border px-3 text-sm',
+                      'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-sm border px-3 text-sm',
                       // The chosen one is said with a heavier border and a mark, not by colour alone.
                       current ? 'border-2 border-fg px-[11px] font-semibold' : 'border-border-strong text-fg-muted hover:border-fg-muted hover:text-fg',
                     )}

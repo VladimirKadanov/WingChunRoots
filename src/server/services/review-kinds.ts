@@ -281,8 +281,9 @@ export async function tellDisputeParties(
   ] as const) {
     const account = await accountOf(tx, personId);
     if (!account) continue;
+    const notice = { template: 'relationship.arbitration', payload: { relationshipId: row.id, caseId, stage, reason } } as const;
     // No e-mail without the other party's name.
-    await notify(tx, account.id, 'relationship.arbitration', { relationshipId: row.id, caseId, stage, reason }, {
+    await notify(tx, account.id, notice.template, notice.payload, {
       ...(otherNames.length > 0
         ? {
             email: {

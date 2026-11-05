@@ -1,7 +1,7 @@
 // Building blocks of the e-mail templates (React Email). Plain inline styles: mail clients ignore
 // most CSS; the colours keep a contrast of at least 4.5:1 on white (plan §5.2).
 
-import { createContext, type ReactNode, use } from 'react';
+import type { ReactNode } from 'react';
 import { Body, Container, Head, Hr, Html, Link, Preview, Section, Text } from 'react-email';
 
 import type { NameData } from './types';
@@ -21,8 +21,10 @@ export const textStyle = { fontSize: '16px', lineHeight: '24px', color: '#1f2328
 
 /**
  * M18 (In scope 4): the unsubscribe link of an e-mail whose category can be switched off. renderEmail()
- * provides it for the delivery (src/server/templates/email/index.ts), so every template shows it in
- * the footer without a field of its own; the Mailer adds List-Unsubscribe from the same link.
+ * gives it to the template's EmailLayout for the delivery (src/server/templates/email/index.ts), so
+ * every template shows it in the footer without a field of its own; the Mailer adds
+ * List-Unsubscribe from the same link. A prop, not a React context: the templates are imported by
+ * Server Components too, where createContext is not available.
  */
 export interface UnsubscribeLink {
   /** APP_URL/unsubscribe?token=…: a page that switches the category off with one press, no sign-in. */
@@ -31,10 +33,7 @@ export interface UnsubscribeLink {
   category: string;
 }
 
-export const UnsubscribeContext = createContext<UnsubscribeLink | null>(null);
-
-function UnsubscribeFooter() {
-  const link = use(UnsubscribeContext);
+function UnsubscribeFooter({ link }: { link: UnsubscribeLink | undefined }) {
   if (!link) return null;
   return (
     <Text style={styles.footer}>
@@ -48,7 +47,7 @@ function UnsubscribeFooter() {
 }
 
 /** The frame of every e-mail: language, preview line, brand line and footer. */
-export function EmailLayout({ preview, children }: { preview: string; children: ReactNode }) {
+export function EmailLayout({ preview, children, unsubscribe }: { preview: string; children: ReactNode; unsubscribe?: UnsubscribeLink }) {
   return (
     <Html lang="en" dir="ltr">
       <Head />
@@ -62,7 +61,7 @@ export function EmailLayout({ preview, children }: { preview: string; children: 
             WingChunRoots documents Wing Chun teaching lineages. You received this e-mail because of an action on
             WingChunRoots.
           </Text>
-          <UnsubscribeFooter />
+          <UnsubscribeFooter link={unsubscribe} />
         </Container>
       </Body>
     </Html>

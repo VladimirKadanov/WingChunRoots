@@ -1073,7 +1073,7 @@ interface LimitReached {
  * "limit.reached" (DEFAULT M18, question 2): in the dashboard only, once per feature and month,
  * when an action meets a real limit of the plan (a quota, never a feature the plan lacks). The
  * prompt of M08: only benefits with availability 'now' (upgradeBenefits), led by the one that was
- * hit, and how to ask for pilot access; nothing is charged, and nothing says hurry (CLAUDE.md §11).
+ * hit, and how to ask for pilot access; nothing is charged, and nothing presses for time (CLAUDE.md §11).
  */
 const limitReached: NotificationTemplate<LimitReached> = {
   name: 'limit.reached',

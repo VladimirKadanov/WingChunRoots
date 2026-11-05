@@ -141,7 +141,8 @@ export function NotificationEmailsForm({ categories, initial }: { categories: re
         <ul className="grid">
           {open.map((c) => {
             const name = `email:${c.category}`;
-            const checked = state.values?.[name] ? state.values[name] === 'on' : c.email;
+            // The account's stored choice (or the category's default, DEFAULT M18 question 1), shown as it is.
+            const emailOn = state.values?.[name] ? state.values[name] === 'on' : c.email;
             const id = `${form}-${c.category}`;
             return (
               <li key={c.category} className="border-b border-border-subtle py-2 last:border-b-0">
@@ -151,9 +152,9 @@ export function NotificationEmailsForm({ categories, initial }: { categories: re
                     id={id}
                     type="checkbox"
                     name={name}
-                    defaultChecked={checked}
+                    defaultChecked={emailOn}
                     // Remounted with the saved value, so a refused save shows what is stored.
-                    key={`${c.category}-${String(checked)}`}
+                    key={`${c.category}-${String(emailOn)}`}
                     className="mt-0.5 size-5 shrink-0 cursor-pointer accent-fg"
                   />
                   <span className="grid gap-0.5">

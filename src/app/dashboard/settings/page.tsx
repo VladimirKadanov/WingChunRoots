@@ -51,7 +51,8 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
   const query = await searchParams;
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
   const client = serverClient(await headers(), guard.principal);
-  const [mine, preferences] = await Promise.all([pageRead(client.plans.mine()), pageRead(client.notifications.preferences())]);
+  const mine = await pageRead(client.plans.mine());
+  const preferences = mine ? await pageRead(client.notifications.preferences()) : null;
   if (!mine || !preferences) return <LoadError {...SETTINGS_LOAD_ERROR} retryHref="/dashboard/settings" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
 

@@ -9,6 +9,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 
+import { ArrivalFocus } from '@/components/account/arrival-focus';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { ORPCError, serverClient } from '@/server/rpc/server';
 import { unsubscribeAction } from './actions';
@@ -45,64 +46,66 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <div className="max-w-[40rem]" data-testid="unsubscribe">
-        <p className="eyebrow">E-mail settings</p>
-        {result.state === 'ready' ? (
-          <>
-            <h1 className="mt-2 font-display text-feature">Unsubscribe from {result.label} e-mails</h1>
-            <p className="mt-4 text-ui text-fg-muted">
-              Press the button to stop the e-mails about {result.label.toLowerCase()}. The notices still appear in your dashboard, and
-              security and account e-mails keep coming.
-            </p>
-            {pressFailed ? (
-              <p role="alert" className="mt-4 rounded-sm border-l-4 border-danger bg-surface-2 px-4 py-3 text-sm">
-                That did not work. Nothing was changed; try again.
+      <ArrivalFocus arrival={result.state === 'done' ? 'done' : null}>
+        <div className="max-w-[40rem]" data-testid="unsubscribe">
+          <p className="eyebrow">E-mail settings</p>
+          {result.state === 'ready' ? (
+            <>
+              <h1 className="mt-2 font-display text-feature">Unsubscribe from {result.label} e-mails</h1>
+              <p className="mt-4 text-ui text-fg-muted">
+                Press the button to stop the e-mails about {result.label.toLowerCase()}. The notices still appear in your dashboard, and
+                security and account e-mails keep coming.
               </p>
-            ) : null}
-            <form action={unsubscribeAction} className="mt-6">
-              <input type="hidden" name="token" value={token} />
-              <button type="submit" className={buttonVariants({ variant: 'primary' })}>
-                Unsubscribe
-              </button>
-            </form>
-          </>
-        ) : result.state === 'done' ? (
-          <>
-            {/* Takes the focus after the press, with and without JavaScript. */}
-            <h1 className="mt-2 font-display text-feature" tabIndex={-1} autoFocus data-testid="unsubscribed">
-              {result.label} e-mails are off
-            </h1>
-            <p className="mt-4 text-ui">
-              You will not get e-mails about {result.label.toLowerCase()} any more. They still appear as notices in your dashboard, and
-              security and account e-mails keep coming.
-            </p>
-            <p className="mt-3 text-ui text-fg-muted">
-              To get them by e-mail again, sign in and tick {result.label} under Notifications in{' '}
-              <Link href="/dashboard/settings#notifications-heading" className="link">
-                Account type and plan
-              </Link>
-              .
-            </p>
-          </>
-        ) : result.state === 'stale' ? (
-          <>
-            <h1 className="mt-2 font-display text-feature">This link no longer works</h1>
-            <p className="mt-4 text-ui text-fg-muted">
-              Your e-mail settings changed after this e-mail was sent, or the link is not complete. Sign in and choose your e-mails under
-              Notifications in{' '}
-              <Link href="/dashboard/settings#notifications-heading" className="link">
-                Account type and plan
-              </Link>
-              .
-            </p>
-          </>
-        ) : (
-          <>
-            <h1 className="mt-2 font-display text-feature">Something went wrong</h1>
-            <p className="mt-4 text-ui text-fg-muted">We could not read this link just now. Nothing was changed. Try again in a moment.</p>
-          </>
-        )}
-      </div>
+              {pressFailed ? (
+                <p role="alert" className="mt-4 rounded-sm border-l-4 border-danger bg-surface-2 px-4 py-3 text-sm">
+                  That did not work. Nothing was changed; try again.
+                </p>
+              ) : null}
+              <form action={unsubscribeAction} className="mt-6">
+                <input type="hidden" name="token" value={token} />
+                <button type="submit" className={buttonVariants({ variant: 'primary' })}>
+                  Unsubscribe
+                </button>
+              </form>
+            </>
+          ) : result.state === 'done' ? (
+            <>
+              {/* Takes the focus after the press, with JavaScript (ArrivalFocus) and without (autofocus). */}
+              <h1 className="mt-2 font-display text-feature" tabIndex={-1} autoFocus data-arrival data-testid="unsubscribed">
+                {result.label} e-mails are off
+              </h1>
+              <p className="mt-4 text-ui">
+                You will not get e-mails about {result.label.toLowerCase()} any more. They still appear as notices in your dashboard, and
+                security and account e-mails keep coming.
+              </p>
+              <p className="mt-3 text-ui text-fg-muted">
+                To get them by e-mail again, sign in and tick {result.label} under Notifications in{' '}
+                <Link href="/dashboard/settings#notifications-heading" className="link">
+                  Account type and plan
+                </Link>
+                .
+              </p>
+            </>
+          ) : result.state === 'stale' ? (
+            <>
+              <h1 className="mt-2 font-display text-feature">This link no longer works</h1>
+              <p className="mt-4 text-ui text-fg-muted">
+                Your e-mail settings changed after this e-mail was sent, or the link is not complete. Sign in and choose your e-mails under
+                Notifications in{' '}
+                <Link href="/dashboard/settings#notifications-heading" className="link">
+                  Account type and plan
+                </Link>
+                .
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="mt-2 font-display text-feature">Something went wrong</h1>
+              <p className="mt-4 text-ui text-fg-muted">We could not read this link just now. Nothing was changed. Try again in a moment.</p>
+            </>
+          )}
+        </div>
+      </ArrivalFocus>
     </div>
   );
 }

@@ -58,6 +58,15 @@ describe('e-mail templates', () => {
         }
       });
 
+      it('M18: shows the unsubscribe link of the delivery in the footer only when it has one', async () => {
+        const url = 'http://localhost:3000/unsubscribe?token=demo-token';
+        const linked = await renderEmail(name, template.sample, { unsubscribe: { url, category: 'Teachers and students' } });
+        expect(linked.text).toContain('Unsubscribe from Teachers and students e-mails');
+        expect(linked.html).toContain(`href="${url}"`);
+        const plain = await renderEmail(name, template.sample);
+        expect(plain.text).not.toContain('Unsubscribe');
+      });
+
       it('shows every name with its lang attribute and translate="no"', async () => {
         const { html } = await renderEmail(name, template.sample);
         const sampleNames = names(template.sample);

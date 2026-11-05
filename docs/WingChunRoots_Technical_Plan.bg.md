@@ -1076,6 +1076,7 @@ M00 копира този подраздел дословно в `docs/plan/RULE
 | M15 | [`docs/plan/M15-organizations.md`](plan/M15-organizations.md) — Организации (искане на собственика от 02.11.2026, след Фаза 1) | `m15-organizations` | — | D03, D04, D08, D09, D12, D13, D25 |
 | M16 | [`docs/plan/M16-galleries.md`](plan/M16-galleries.md) — Галерии (решения на собственика от 03.11.2026, след Фаза 1) | `m16-galleries` | — | D07, D13, D20 |
 | M17 | [`docs/plan/M17-events.md`](plan/M17-events.md) — Календар на събитията (избор на собственика от 04.11.2026, Фаза 2) | `m17-events` | — | D20, D25 |
+| M18 | [`docs/plan/M18-notices.md`](plan/M18-notices.md) — Известия за жизнения цикъл (избор на собственика от 05.11.2026, Фаза 2) | `m18-notices` | — | D06, D07, D08, D19, D20 |
 | Отложен | [`docs/plan/deferred-hosting.md`](plan/deferred-hosting.md) — Хостинг и разгръщане (след решение на собственика) | — | — | D24 |
 
 ---

@@ -86,7 +86,7 @@ import { type EvidenceFileView, fileView, filesOfCases, filesOfRelationships } f
 import { pgErrorOf, ServiceError } from './errors';
 import { planSummary } from './plans';
 import { neighbourTags } from './profile';
-import { withLimitNotice } from './limit-notices';
+import { tellLimitReached } from './limit-notices';
 
 export type RelationshipStatus = (typeof RELATIONSHIP_STATUSES)[number];
 export type RelationshipRole = 'student' | 'teacher' | 'reviewer';
@@ -1178,15 +1178,6 @@ export async function publicTags(tx: Executor, row: Pick<RelRow, 'teacherPersonI
 // --- approve -----------------------------------------------------------------------------------
 
 /**
- * M18 (In scope 5; DEFAULT M18, question 2): approveRelationship is approveAsTeacher below; a refusal at a used-up allowance of the
- * plan also leaves one notice a month in the dashboard (src/server/services/limit-notices.ts).
- */
-export async function approveRelationship(principal: Principal | null, raw: z.input<typeof relationshipActionInput>, meta: RequestMeta): Promise<RelationshipResult> {
-  const p = requireUser(principal);
-  return withLimitNotice(p.user.id, 'approve_students', () => approveAsTeacher(p, raw, meta));
-}
-
-/**
  * relationships.approve: the teacher confirms the request (see the top of this file for the order
  * of the checks). The link becomes verified and public, both people public (except a profile whose
  * owner withdrew its publication: DEFAULT D03, docs/plan/questions/M07.md), and both sides get a
@@ -1194,7 +1185,7 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
  * requireEntitlement()'s refusal (`data.entitlement`) for the upgrade prompt. Approving a request
  * that is verified already changes nothing and sends nothing.
  */
-async function approveAsTeacher(principal: Principal | null, raw: z.input<typeof relationshipActionInput>, meta: RequestMeta): Promise<RelationshipResult> {
+export async function approveRelationship(principal: Principal | null, raw: z.input<typeof relationshipActionInput>, meta: RequestMeta): Promise<RelationshipResult> {
   const p = requireUser(principal);
   const parsed = relationshipActionInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
@@ -1263,6 +1254,9 @@ async function approveAsTeacher(principal: Principal | null, raw: z.input<typeof
     return { relationship: await viewOf(db, outcome.id, viewer), replayed: outcome.replayed };
   } catch (error) {
     if (isKeyConflict(error)) throw keyReused();
+    // M18 (In scope 5; DEFAULT M18, question 2): at a used-up allowance, one dashboard notice a month
+    // (src/server/services/limit-notices.ts), written after the rollback.
+    await tellLimitReached(p.user.id, 'approve_students', error);
     throw error;
   }
 }

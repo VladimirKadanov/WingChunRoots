@@ -33,7 +33,7 @@ import { signUnsubscribeToken } from './unsubscribe';
 export type NoticeProducer = Parameters<typeof queueEmail>[2];
 
 /**
- * DEFAULT M18 (In scope 2): the e-mails of one template that one account gets in an hour, at most.
+ * DEFAULT M18 (question 7): the e-mails of one template that one account gets in an hour, at most.
  * Above the busiest real use (a teacher approving a class), below a flood.
  */
 export const NOTICE_EMAIL_HOURLY_CAP = 20;

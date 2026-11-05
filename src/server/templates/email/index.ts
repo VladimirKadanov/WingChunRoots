@@ -3,7 +3,7 @@
 // only place with the text of e-mails (plan §6.1). Rendering runs in the worker.
 
 import { render } from '@react-email/render';
-import { createElement } from 'react';
+import { cloneElement, isValidElement, type ReactElement } from 'react';
 
 import { accountExists } from './account-exists';
 import { claimDecided } from './claim-decided';
@@ -18,7 +18,9 @@ import { relationshipRejected } from './relationship-rejected';
 import { relationshipRequested } from './relationship-requested';
 import { resetPassword } from './reset-password';
 import { reviewDecided } from './review-decided';
-import { UnsubscribeContext, type UnsubscribeLink } from './components';
+import { AccountLinkEmail } from './account-link';
+import { EmailLayout, type UnsubscribeLink } from './components';
+import { RelationshipEmail } from './relationship-link';
 import { type EmailTemplate, TemplateDataError } from './types';
 import { verifyEmail } from './verify-email';
 
@@ -81,12 +83,22 @@ export interface RenderedEmail {
  * unknown template or data the template refuses. `unsubscribe` (M18) adds the footer's unsubscribe
  * link of an e-mail whose category can be switched off.
  */
+/** The roots of a template that take the unsubscribe link (M18). */
+const LAYOUTS: ReadonlySet<unknown> = new Set([EmailLayout, AccountLinkEmail, RelationshipEmail]);
+
 export async function renderEmail(template: string, data: unknown, options: { unsubscribe?: UnsubscribeLink } = {}): Promise<RenderedEmail> {
   if (!isEmailTemplateName(template)) throw new TemplateDataError(template, 'unknown template');
   const definition = EMAIL_TEMPLATES[template] as EmailTemplate<unknown>;
   const parsed = definition.parse(data);
-  // M18: the layout shows the unsubscribe link of this delivery (components.tsx).
-  const element = createElement(UnsubscribeContext, { value: options.unsubscribe ?? null }, definition.render(parsed));
+  // M18: the layout shows the unsubscribe link of this delivery (components.tsx). Every template's
+  // root is EmailLayout or one of the two frames that pass it on (templates.test.ts renders each
+  // template with a link).
+  const rendered = definition.render(parsed);
+  let element = rendered;
+  if (options.unsubscribe) {
+    if (!isValidElement(rendered) || !LAYOUTS.has(rendered.type)) throw new Error(`renderEmail: ${template} does not render EmailLayout at its root`);
+    element = cloneElement(rendered as ReactElement<{ unsubscribe?: UnsubscribeLink }>, { unsubscribe: options.unsubscribe });
+  }
   const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
   return { subject: definition.subject(parsed), html, text };
 }

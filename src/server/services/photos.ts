@@ -144,8 +144,9 @@ const filesOf = (key: string) => [...PHOTO_SIZES.map((size) => `${key}/${size}`)
  * privacy.ts): best effort, after the transaction that changed the rows has committed.
  */
 /**
- * M18 (In scope 5): the account that owns a person is told that staff removed one of its photos,
- * with the reason; never the staff member's own person, once per photo. Shared by the gallery.
+ * M18 (In scope 5; DEFAULT M18, question 6): the account that owns a person is told that staff
+ * removed one of its photos, with the reason; never the staff member's own person, once per photo.
+ * Shared by the gallery.
  */
 export async function tellPhotoOwner(tx: Transaction, personId: string, staffUserId: string, photoId: string, reason: string): Promise<void> {
   const [owner] = await tx.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, personId));

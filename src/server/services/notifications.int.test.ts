@@ -29,6 +29,7 @@ import {
 import { NOTICE_EMAIL_HOURLY_CAP, notify } from './notify';
 import { purgeOldNotifications } from './retention';
 import { createUser, principalOf } from './relationships.test-support';
+import { sendEmailChangedNotice, sendSecurityNotice } from './security-notices';
 import { signUnsubscribeToken } from './unsubscribe';
 
 vi.mock('next/cache', () => ({
@@ -143,6 +144,27 @@ describe('notify()', () => {
     expect(emailed).toBe(NOTICE_EMAIL_HOURLY_CAP);
     expect(await notices(a.id)).toHaveLength(NOTICE_EMAIL_HOURLY_CAP + 1);
     expect(await deliveries(a.id)).toHaveLength(NOTICE_EMAIL_HOURLY_CAP);
+  });
+});
+
+describe('security notices (In scope 5)', () => {
+  it('two-factor and backup-code changes are noticed and e-mailed, and never throw', async () => {
+    const a = await account('security');
+    await sendSecurityNotice(a.id, 'security.two-factor-enabled');
+    await sendSecurityNotice(a.id, 'security.backup-codes');
+    await sendSecurityNotice('0192f0c4-0000-7000-8000-00000000beef', 'security.two-factor-disabled');
+    expect((await notices(a.id)).map((n) => n.template).sort()).toEqual(['security.backup-codes', 'security.two-factor-enabled']);
+    expect(await deliveries(a.id)).toHaveLength(2);
+  });
+
+  it('a change of address tells the new address and the old one, with no address in the notice (DEFAULT M18, question 5)', async () => {
+    const a = await account('email-changed');
+    const old = 'm18-old-address@wingchunroots.test';
+    await sendEmailChangedNotice(a.id, old);
+    const [row] = await notices(a.id);
+    expect(row).toMatchObject({ template: 'security.email-changed', payload: { side: 'new' } });
+    expect(JSON.stringify(row!.payload)).not.toContain('@');
+    expect((await deliveries(a.id)).map((d) => d.toEmail).sort()).toEqual([a.email, old].sort());
   });
 });
 

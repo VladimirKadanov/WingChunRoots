@@ -22,7 +22,7 @@ import { resolveEffectivePlan } from '../entitlements/effective';
 import { notify } from '../services/notify';
 import { QUEUE } from './queues';
 
-/** DEFAULT M18 (In scope 5): the notice of an end comes 7 days before it. */
+/** DEFAULT M18 (question 7): the notice of an end comes 7 days before it. */
 export const PLAN_EXPIRY_NOTICE_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

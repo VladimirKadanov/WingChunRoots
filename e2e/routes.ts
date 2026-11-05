@@ -156,6 +156,14 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/events', name: 'dashboard-events-free-sifu', status: 200, milestone: 'M17', signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard/events', name: 'dashboard-events-student', status: 200, milestone: 'M17', signInAs: 'demo-pending' },
   { path: '/dashboard/events/new', name: 'dashboard-event-new', status: 200, milestone: 'M17', signInAs: 'demo-pro-sifu-8' },
+  // Notices (M18): every notice of demo-two-lineages, an account no test signs in as (its expired
+  // grant, the limit notice, the removed photo; the Plan e-mail off), a category, and the empty
+  // state of another; the unsubscribe page of a link that is not one (the page of a good link needs
+  // a token: e2e/m18-notices.spec.ts runs axe on it in both themes).
+  { path: '/dashboard/notifications', name: 'dashboard-notifications', status: 200, milestone: 'M18', key: true, signInAs: 'demo-two-lineages' },
+  { path: '/dashboard/notifications?category=plan', name: 'dashboard-notifications-plan', status: 200, milestone: 'M18', signInAs: 'demo-two-lineages' },
+  { path: '/dashboard/notifications?category=organizations', name: 'dashboard-notifications-empty', status: 200, milestone: 'M18', signInAs: 'demo-two-lineages' },
+  { path: '/unsubscribe', name: 'unsubscribe-stale', status: 200, milestone: 'M18' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */
