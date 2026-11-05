@@ -71,9 +71,11 @@ Prices are source proposals in USD, not approved launch prices. Quotas are the l
 | Digital passport | Basic | Full timeline | Basic instructor record | Full instructor record | Administrative dashboard |
 | Digital successor | No | No | No | Yes | Yes |
 | Marketplace | Buyer | Buyer | No selling entitlement | Up to 20 listings | Global brand catalog |
-| Events | Browse | Browse and notifications | No publishing entitlement | Up to 2 events per month | Unlimited publishing and community push in source |
+| Events | Browse | Browse and notifications | No publishing entitlement | Up to 3 events per month | Unlimited publishing and community push in source |
 | Lineage poster ordering | No | Personal | No | School | Federation |
 | Almanac inclusion | Purchase only | Name only | Name and lineage | Full page with photo and biography | Premium branded section |
+
+The Tier 3 Events cell was “Up to 2 events per month” in the source; the owner raised it to 3 on 2026-11-05.
 
 Almanac inclusion also requires consent and the appropriate verification. Tier 4 includes bulk CSV/Excel import, digital certificate issuance, organization analytics by country and city, and administration of affiliated schools.
 
@@ -303,7 +305,7 @@ Downgrade destinations need an explicit rule now that a Free Sifu plan exists. E
 
 - Publish seminars, camps, examination sessions and other approved community events.
 - Include organizer, instructor, date, time, location, description, poster and event link.
-- Apply Tier 3’s two-event monthly allowance and the Tier 4 policy.
+- Apply Tier 3’s three-event monthly allowance (owner decision 2026-11-05; the source said two) and the Tier 4 policy.
 - Allow general viewing and premium student notifications.
 - Support federation announcements to its community.
 - Record attendance in passports where appropriate.

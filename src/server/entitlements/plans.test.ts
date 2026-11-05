@@ -124,8 +124,8 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     expect(FREE_SIFU_STUDENT_LIMIT).toBe(FEATURES.find((f) => f.key === 'approve_students')!.values.free_sifu.limit);
     expect(limits('photos')).toEqual([1, 10, 2, 100, null]);
     expect(limits('videos')).toEqual([0, 2, 0, 20, null]);
-    // M17: Professional Sifu publishes up to 2 events a month; Federation has no limit (DEFAULT D25).
-    expect(limits('events')).toEqual([undefined, undefined, undefined, 2, undefined]);
+    // M17: Professional Sifu publishes up to 3 events a month (owner decision 2026-11-05); Federation has no limit (DEFAULT D25).
+    expect(limits('events')).toEqual([undefined, undefined, undefined, 3, undefined]);
     expect(PLAN_ORDER.map((code) => FEATURES.find((f) => f.key === 'events')!.values[code].included)).toEqual([false, false, false, true, true]);
     expect(DOWNGRADE_RULES.enforcedInPhase1).toBe(false);
   });
@@ -164,7 +164,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-04.1', digest: '2a5a6906036dc7b12e1c8f343e21c93affe70fda4af60bd5ab01c6cb70a74b53' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-05.1', digest: 'c3bb252a28e5aa1f05d1836a954395429c5cb0e5969d18e05ce4d187239fb9cb' });
   });
 });
 
@@ -212,7 +212,7 @@ describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
     expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos', 'events']);
     expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: null });
     expect(benefits[2]).toMatchObject({ from: '2 photos', to: '100 photos', opens: null });
-    expect(benefits[3]).toMatchObject({ from: 'No publishing', to: 'Up to 2 events a month', opens: null });
+    expect(benefits[3]).toMatchObject({ from: 'No publishing', to: 'Up to 3 events a month', opens: null });
   });
 
   it('leads with the benefit of the limit that was hit, the rest in the same order', () => {
