@@ -50,6 +50,7 @@ import { type Account, createUser, key, meta, newLineage, ongoingFrom, principal
 import { grantOrganizationPlan } from '../services/organization-grants';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
 import { createSchool } from '../services/schools';
+import { signUnsubscribeToken } from '../services/unsubscribe';
 import { SIGN_UP_CONSENTS } from '../legal/documents';
 import { handleApiRequest } from './handler';
 import { SERVER_ACTION_TARGETS } from './parity';
@@ -513,6 +514,14 @@ const ROWS: Row[] = [
     // Another account's ids mark nothing (the service matches the caller's own rows only).
     expect: { ...own(), owner: 'ok' },
   },
+  // M18: "Mark all as read", the e-mail preferences and the one-press unsubscribe (no sign-in: the
+  // link's token is the authority, for its own account and category only).
+  { path: 'notifications.markAllRead', make: () => ({ input: { category: 'plan' } }), expect: own() },
+  { path: 'notifications.preferences', make: noInput, expect: own() },
+  { path: 'notifications.setPreference', make: () => ({ input: { category: 'events', email: true } }), expect: own() },
+  ...(['notifications.unsubscribeInfo', 'notifications.unsubscribe'] as const).map(
+    (p): Row => ({ path: p, make: async () => ({ input: { token: signUnsubscribeToken({ userId: (await actor('unsubscribed')).id, category: 'teaching', version: 0 }) } }), expect: everyone }),
+  ),
   // teacher requests
   {
     path: 'relationships.request',
@@ -1552,6 +1561,16 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner'],
     call: (fn, form) => fn(form),
   },
+  {
+    action: 'src/app/dashboard/actions.ts#markReadAction',
+    row: 'notifications.markAllRead',
+    form: (i) => ({ all: 'on', category: String(i.category) }),
+    roles: ['anonymous', 'member'],
+    call: (fn, form) => fn(form),
+  },
+  // M18: an empty form switches off every category that can be (its procedure is the last call).
+  { action: 'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
+  { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/dashboard/settings/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
