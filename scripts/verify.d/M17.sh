@@ -105,10 +105,10 @@ check "the .ics route is built from the public page's data and is 404 for an eve
   grep -q 'loadEvent' '$ICS_ROUTE' && grep -q \"read.state === 'none'\" '$ICS_ROUTE' && grep -q 'text/calendar' '$ICS_ROUTE'"
 
 # 4. The plan's allowance (In scope 2; DEFAULT M17 question 1, DEFAULT D25) ------------------------
-check "events is available now and enforced, with the Professional Sifu limit of 2 a month" bash -c "
-  f=src/server/entitlements/plans.ts; awk '/^    key: .events.,/{on=1} on && /availability: .now.,/{a=1} on && /enforced: true,/{e=1} on && /limit: 2 }/{l=1} on && /^  \\},/{exit} END{exit !(a && e && l)}' \"\$f\""
+check "events is available now and enforced, with the Professional Sifu limit of 3 a month (owner decision 2026-11-05)" bash -c "
+  f=src/server/entitlements/plans.ts; awk '/^    key: .events.,/{on=1} on && /availability: .now.,/{a=1} on && /enforced: true,/{e=1} on && /limit: 3 }/{l=1} on && /^  \\},/{exit} END{exit !(a && e && l)}' \"\$f\""
 check "the plan matrix version was bumped and docs/entitlements.md says what changed" bash -c "
-  grep -q \"PLAN_MATRIX_VERSION = '2026-11-04.1'\" src/server/entitlements/plans.ts && grep -q '2026-11-04.1' docs/entitlements.md"
+  grep -q \"PLAN_MATRIX_VERSION = '2026-11-05.1'\" src/server/entitlements/plans.ts && grep -q '2026-11-04.1' docs/entitlements.md && grep -q '2026-11-05.1' docs/entitlements.md"
 check "the count is under the quota lock, in the event's own zone, published events only" bash -c "
   grep -q 'lockQuota' $SERVICE && grep -q 'async function publishedInMonth' $SERVICE && grep -q 'monthKey(f.startsAt, f.timezone)' $SERVICE &&
   grep -q 'DEFAULT M17 (question 1)' $TIME"
@@ -183,7 +183,7 @@ check "the new pages are in e2e/routes.ts (axe in both themes)" bash -c "
 # 10. Demo data (In scope 8; D20) ------------------------------------------------------------------
 check "the demo events are fictional demo- records on fixed dates; a demo Premium Student" bash -c "
   f=src/fixtures/generate.ts; grep -q \"slug: 'demo-seminar-chum-kiu-sofia'\" \"\$f\" && grep -q \"slug: 'demo-cancelled-exam-session'\" \"\$f\" &&
-  grep -q \"slug: 'demo-federation-summer-camp'\" \"\$f\" && grep -q \"DEMO_PREMIUM_STUDENT = 'demo-premium-student'\" \"\$f\" &&
+  grep -q \"slug: 'demo-federation-summer-camp'\" \"\$f\" && grep -q \"slug: 'demo-grading-day-sofia'\" \"\$f\" && grep -q \"DEMO_PREMIUM_STUDENT = 'demo-premium-student'\" \"\$f\" &&
   ! awk '/function demoEvents/{f=1} f{print} f && /^}/{exit}' \"\$f\" | grep -oE \"slug: '[^']+'\" | grep -v \"slug: 'demo-\""
 
 # 11. E2E and integration titles (Done when 3) -----------------------------------------------------
@@ -191,7 +191,7 @@ titles=(
   "$CAL_SPEC|@M17 the calendar lists the upcoming events by month and filters them with the keyboard"
   "$CAL_SPEC|@M17 without JavaScript the filter form works as a plain GET form"
   "$CAL_SPEC|@M17 an event page shows its dates in its own zone, links its people, and gives an .ics file and JSON-LD with the city only"
-  "$SPEC|@M17 a Professional Sifu publishes two events in a month, the third is refused, and a Premium Student is told"
+  "$SPEC|@M17 a Professional Sifu publishes three events in a month, the fourth is refused, and a Premium Student is told"
   "$SPEC|@M17 a Free Sifu cannot publish: the upgrade prompt shows only benefits that exist now, and the API refuses"
   "$SPEC|@M17 staff with a verified second factor remove an event with a reason; it is gone and the audit log keeps the reason"
 )
@@ -203,8 +203,8 @@ check "the writing M17 spec runs in the exclusive run (PUBLIC_WRITE_SPECS); the 
   grep -qE \"^export const PUBLIC_WRITE_SPECS = \\[.*'\\*\\*/m17-events\\.spec\\.ts'.*\\] as const;\$\" e2e/projects.ts &&
   ! grep -q 'm17-calendar' e2e/projects.ts"
 int_titles=(
-  "$INT|two a month; the third is refused with ENTITLEMENT_REQUIRED and no upgrade above Professional Sifu"
-  "$INT|two publications at once never pass the limit together (the quota lock)"
+  "$INT|three a month; the fourth is refused with ENTITLEMENT_REQUIRED and no upgrade above Professional Sifu"
+  "$INT|publications at once never pass the limit together (the quota lock): 3 pass, the 4th is refused"
   "$INT|counts the month in the event’s own zone, not in UTC"
   "$INT|a move to a full month is refused; a change inside the month is not"
   "$INT|an organization publishes only with Federation, then without a limit (DEFAULT D25)"

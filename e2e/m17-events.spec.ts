@@ -1,8 +1,8 @@
 /**
  * Milestone M17: the event calendar, the specs that write (docs/adr/0020-events.md). A new
- * Professional Sifu publishes an event with the form, a second through the API, and the third in
- * the same month is refused (DEFAULT M17, question 1: two a month, counted in the event's own
- * zone), while another month still has room; a Premium Student whose established teacher the Sifu
+ * Professional Sifu publishes an event with the form, a second and a third through the API, and
+ * the fourth in the same month is refused (DEFAULT M17, question 1: three a month, owner decision
+ * 2026-11-05, counted in the event's own zone), while another month still has room; a Premium Student whose established teacher the Sifu
  * is gets a dashboard notice of the publication and of the cancellation (DEFAULT M17, question 3).
  * A Free Sifu cannot publish and sees the upgrade prompt, with only the benefits that exist now. A
  * member of staff with a verified second factor removes an event with a reason: it is gone from the
@@ -77,7 +77,7 @@ async function publishWithForm(page: Page, title: string, day: string) {
   await form.getByRole('button', { name: 'Publish the event' }).click();
 }
 
-test('@M17 a Professional Sifu publishes two events in a month, the third is refused, and a Premium Student is told', async ({ page, browser }) => {
+test('@M17 a Professional Sifu publishes three events in a month, the fourth is refused, and a Premium Student is told', async ({ page, browser }) => {
   test.setTimeout(180_000);
   const admin = await signedIn(browser, 'admin');
   const pupil = await freshContext(browser);
@@ -139,29 +139,34 @@ test('@M17 a Professional Sifu publishes two events in a month, the third is ref
     // The Premium Student is told (the job worker writes the notice).
     await expectNotice(pupil.page, 'A teacher of yours has a new event', first);
 
-    // The second through the API (/api/v1, the same service).
+    // The second and the third through the API (/api/v1, the same service).
     const sofia = await placeOf(page.request, 'Sofia', 'BG');
-    const second = await apiPost(page, '/events/create', {
-      title: 'Demo second seminar of the tests',
-      kind: 'seminar',
-      startsAt: `${YEAR}-03-25T10:00`,
-      endsAt: `${YEAR}-03-25T17:00`,
-      placeId: sofia.id,
-      instructorIds: [],
-    });
-    expect(second.status(), await second.text()).toBe(200);
+    for (const [title, day] of [
+      ['Demo second seminar of the tests', '03-18'],
+      ['Demo third seminar of the tests', '03-25'],
+    ] as const) {
+      const created = await apiPost(page, '/events/create', {
+        title,
+        kind: 'seminar',
+        startsAt: `${YEAR}-${day}T10:00`,
+        endsAt: `${YEAR}-${day}T17:00`,
+        placeId: sofia.id,
+        instructorIds: [],
+      });
+      expect(created.status(), await created.text()).toBe(200);
+    }
 
-    // The third in March: refused, in words on the field, with the decision for a machine.
+    // The fourth in March: refused, in words on the field, with the decision for a machine.
     await page.goto('/dashboard/events');
-    await expect(page.locator(`[data-month="${YEAR}-03"]`)).toContainText('2 of 2 published');
+    await expect(page.locator(`[data-month="${YEAR}-03"]`)).toContainText('3 of 3 published');
     await expect(page.locator(`[data-month="${YEAR}-03"]`)).toHaveAttribute('data-remaining', '0');
     await expect(page.getByTestId('upgrade-prompt')).toHaveCount(0);
     await page.getByTestId('new-event').click();
-    await publishWithForm(page, 'Demo third seminar of the tests', '03-29');
+    await publishWithForm(page, 'Demo fourth seminar of the tests', '03-29');
     await expect(page).toHaveURL(/\/dashboard\/events\/new/);
-    await expect(page.getByTestId('event-form')).toContainText('You have published 2 of 2 events starting in March 2028 on Professional Sifu.');
+    await expect(page.getByTestId('event-form')).toContainText('You have published 3 of 3 events starting in March 2028 on Professional Sifu.');
     const refused = await apiPost(page, '/events/create', {
-      title: 'Demo third seminar of the tests',
+      title: 'Demo fourth seminar of the tests',
       kind: 'seminar',
       startsAt: `${YEAR}-03-30T10:00`,
       endsAt: `${YEAR}-03-30T17:00`,
@@ -170,7 +175,7 @@ test('@M17 a Professional Sifu publishes two events in a month, the third is ref
     expect(refused.status()).toBe(403);
     const body = (await refused.json()) as { code: string; data: { entitlement: Record<string, unknown> } };
     expect(body.code).toBe('ENTITLEMENT_REQUIRED');
-    expect(body.data.entitlement).toMatchObject({ ok: false, code: 'quota', key: 'events', month: `${YEAR}-03`, limit: 2, current: 2 });
+    expect(body.data.entitlement).toMatchObject({ ok: false, code: 'quota', key: 'events', month: `${YEAR}-03`, limit: 3, current: 3 });
     // April still has room.
     await page.goto('/dashboard/events/new');
     await publishWithForm(page, 'Demo April seminar of the tests', '04-08');
@@ -188,7 +193,7 @@ test('@M17 a Professional Sifu publishes two events in a month, the third is ref
       await expectNoAxeViolations(page, `own event, cancelled (${theme})`);
     }
     await page.goto('/dashboard/events');
-    await expect(page.locator(`[data-month="${YEAR}-03"]`)).toContainText('1 of 2 published');
+    await expect(page.locator(`[data-month="${YEAR}-03"]`)).toContainText('2 of 3 published');
     for (const theme of THEMES) {
       await switchColorScheme(page, theme);
       await expectNoAxeViolations(page, `dashboard events, with events (${theme})`);
