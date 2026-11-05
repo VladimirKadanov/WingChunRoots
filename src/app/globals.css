@@ -395,7 +395,9 @@
    takes --dim-stroke and keeps its shape, its lines at 1 px; a plain stroke keeps its pattern at
    1 px in --dim-stroke; a person's text takes --dim-text, their frame stays --dim-frame (the
    focus keeps its heavier frame, in the dim text tone), and the seals and state words lose their
-   colour as `tone="dim"` seals do (.seal-dim). */
+   colour as `tone="dim"` seals do (.seal-dim). The selected person is never dimmed: a tap draws
+   their ring before their routes are lit (explorer.tsx), and lighting them there (data-lit, with
+   its halo filter) inside the tap's frame cost WebKit a restack of the whole viewport. */
 [data-canvas-frame][data-highlighting] [data-edge]:not([data-lit]) > [data-edge-ink] {
   color: var(--dim-stroke);
 }
@@ -413,7 +415,7 @@
 [data-canvas-frame][data-highlighting] [data-edge][data-stroke="arbitration"]:not([data-lit]) > [data-edge-core] {
   stroke-width: 1px;
 }
-[data-canvas-frame][data-highlighting] [data-person-node]:not([data-lit]),
+[data-canvas-frame][data-highlighting] .react-flow__node:not(.selected) [data-person-node]:not([data-lit]),
 [data-canvas-frame][data-highlighting] [data-summary-node] {
   --fg: var(--dim-text);
   --verified: var(--dim-stroke);

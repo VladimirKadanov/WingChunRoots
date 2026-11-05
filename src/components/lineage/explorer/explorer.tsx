@@ -584,14 +584,14 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // CPU throttling. The panel's update renders the next person's header, and measures the room
   // the canvas keeps above the sheet (panel.tsx useKeepAbove), which lays out the whole page: on
   // a phone with the sheet open that was a third of the tap's response. Until then the last
-  // selection's routes stay lit, with the selected person lit among them (never dimmed under its
-  // ring), so that first frame restyles little else. A cleared selection closes the panel at once.
+  // selection's routes stay lit; the selected person is never dimmed under their ring (globals.css,
+  // M06 route highlight), and is lit with their routes, so that first frame restyles little else and
+  // adds no halo (a filter: WebKit restacks the whole viewport for one). A cleared selection closes
+  // the panel at once.
   const drawnSelection = useAfterPaint(selectedId);
   const drawnFlow = drawnSelection === selectedId ? shownFlow : base ? selectFlow(base, drawnSelection) : null;
   const lit = drawnFlow && laidOut ? litOf(drawnFlow, laidOut.graph, drawnSelection) : NO_LIGHT;
-  const drawnLit =
-    selectedId === null || lit.nodes.size === 0 || lit.nodes.has(selectedId) ? lit : { ...lit, nodes: new Set([...lit.nodes, selectedId]) };
-  const flow = shownFlow ? litFlow(shownFlow, drawnLit) : null;
+  const flow = shownFlow ? litFlow(shownFlow, lit) : null;
   const panelId = selectedId === null ? null : drawnSelection;
   const selected = laidOut && panelId ? laidOut.graph.nodes.find((n) => n.id === panelId) ?? null : null;
   const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
@@ -736,7 +736,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   actions={actions}
                   notice={expansions.notice}
                   anchorId={laidOut.anchorId}
-                  highlighting={drawnLit.nodes.size > 0}
+                  highlighting={lit.nodes.size > 0}
                   panel={panelHandle}
                   handle={canvasHandle}
                 >
