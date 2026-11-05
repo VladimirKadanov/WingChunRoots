@@ -69,3 +69,4 @@ M17 и всички етапи преди него, слети в `main`.
 - 2026-11-05 — E2E `@M18` (`e2e/m18-notices.spec.ts`: имейлът при сменена парола, изключена категория, отписване от писмото, страницата с клавиатура), маршрутите и ключовият екран `/dashboard/notifications`, ADR 0021, `docs/plan/questions/M18.md`, ръководствата, `docs/data-model.md`, `docs/entitlements.md`, `scripts/verify.d/M18.sh`
 - 2026-11-05 — снимките на ключовия екран `dashboard-notifications` (`docs/screenshots/M18/`, `docs/screenshots/M13/`)
 - 2026-11-05 — поправки след прегледа на кода: известието при изключен втори фактор, писмата за сигурност извън бюджета, краят само на действащ грант, „Mark all as read“ на категория, тялото `List-Unsubscribe=One-Click` (RFC 8058)
+- 2026-11-05 — `scripts/verify.sh M18`: PASS; всички `scripts/verify.d/M*.sh` минават; E2E `@M01b`, `@M02`, `@M08`, `@M09`, `@M17` минават
