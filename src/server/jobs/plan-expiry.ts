@@ -7,6 +7,8 @@
 //   grant has had its own notice (plan.revoked, M08).
 // - Expiring: the grant is in effect now (started) and ends in the next 7 days. Ended: it ended in
 //   the last 7 days (a missed day of the job catches up; an older end is not announced late).
+// - Only a grant that gives the account its plan until the end (not one of the other account type,
+//   nor one under a higher grant): the account is told only of a plan it has.
 // - The plan the account has after the end is the plan in effect at that instant without this grant
 //   (its other grants and its account type): when another grant of the same plan carries it on,
 //   nothing ends, and no notice is sent.
@@ -71,7 +73,11 @@ export async function sendPlanEndNotices(db: Database, now = new Date(), boss?: 
     const accountType = typeOf.get(userId);
     if (!accountType) continue;
     const endsAt = grant.endsAt!;
-    const others = grants.filter((g) => g.subjectUserId === userId && g.id !== grant.id);
+    const own = grants.filter((g) => g.subjectUserId === userId);
+    // Only a grant that is the account's plan up to its end: not one kept for the other account
+    // type, nor one a higher grant overshadows.
+    if (resolveEffectivePlan(accountType, own, new Date(endsAt.getTime() - 1)).plan !== grant.planCode) continue;
+    const others = own.filter((g) => g.id !== grant.id);
     const next = resolveEffectivePlan(accountType, others, endsAt).plan;
     // Another grant of the same plan carries it on: nothing ends.
     if (next === grant.planCode) continue;

@@ -140,10 +140,6 @@ export async function ownPerson(userId: string): Promise<OwnPerson | null> {
 const filesOf = (key: string) => [...PHOTO_SIZES.map((size) => `${key}/${size}`), `${key}/full`];
 
 /**
- * Deletes the files of photos whose rows are already `removed` (account deletion, src/server/services/
- * privacy.ts): best effort, after the transaction that changed the rows has committed.
- */
-/**
  * M18 (In scope 5; DEFAULT M18, question 6): the account that owns a person is told that staff
  * removed one of its photos, with the reason; never the staff member's own person, once per photo.
  * Shared by the gallery.
@@ -154,6 +150,10 @@ export async function tellPhotoOwner(tx: Transaction, personId: string, staffUse
   await notify(tx, owner.userId, 'content.removed', { content: 'photo', reason }, { key: `content.removed:photo:${photoId}` });
 }
 
+/**
+ * Deletes the files of photos whose rows are already `removed` (account deletion, src/server/services/
+ * privacy.ts): best effort, after the transaction that changed the rows has committed.
+ */
 export async function deletePhotoFiles(photos: readonly { id: string; storageKey: string }[], store: ObjectStore = getPhotoStore()): Promise<void> {
   for (const photo of photos) await deleteFiles(store, photo.storageKey, photo.id);
 }

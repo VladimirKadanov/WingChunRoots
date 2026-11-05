@@ -7,8 +7,19 @@ import { ORPCError, serverClient } from '@/server/rpc/server';
 
 const TEXT = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 
+/** RFC 8058 §3.2: the POST carries `List-Unsubscribe=One-Click` (urlencoded or multipart). */
+async function isOneClick(request: Request): Promise<boolean> {
+  try {
+    return (await request.formData()).get('List-Unsubscribe') === 'One-Click';
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
   const token = new URL(request.url).searchParams.get('token') ?? '';
+  // Anything else (a scanner, an empty POST) switches nothing off.
+  if (!(await isOneClick(request))) return new Response('Send List-Unsubscribe=One-Click, or open the address to unsubscribe.\n', { status: 400, headers: TEXT });
   try {
     const done = await serverClient(request.headers, null).notifications.unsubscribe({ token });
     return new Response(`${done.label} e-mails are off.\n`, { status: 200, headers: TEXT });

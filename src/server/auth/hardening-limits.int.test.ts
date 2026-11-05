@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { getDb } from '../db';
 import { withClient } from '../db/admin';
-import { authSession, authTwoFactor, authUser, emailDelivery } from '../db/schema';
+import { authSession, authTwoFactor, authUser, emailDelivery, notification } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { generateBackupCodes } from './credentials';
 import { handleAuthRequest } from './route';
@@ -253,6 +253,9 @@ describe('the second factor of a session that has passed it (fix round 3)', () =
     const confirmed = await authFetch(browser, '/two-factor/verify-totp', { body: { code: await totpCode(secret) } });
     expect(confirmed.status, JSON.stringify(confirmed.data)).toBe(200);
     expect((await userRow(member.id))?.twoFactorEnabled).toBe(true);
+    // M18: both changes are told (turning it off replaces the session first).
+    const told = await getDb().select({ template: notification.template }).from(notification).where(eq(notification.userId, member.id));
+    expect(told.map((n) => n.template).sort()).toEqual(['security.two-factor-disabled', 'security.two-factor-enabled']);
   });
 });
 

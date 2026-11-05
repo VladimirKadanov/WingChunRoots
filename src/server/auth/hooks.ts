@@ -423,7 +423,10 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
     const notice = right ? SECURITY_NOTICE_OF[ctx.path] : undefined;
     if (notice) {
       const userId =
-        ctx.path === '/change-password' ? (returned as { user?: { id?: unknown } } | undefined)?.user?.id : (await sessionOf(ctx))?.user.id;
+        ctx.path === '/change-password'
+          ? (returned as { user?: { id?: unknown } } | undefined)?.user?.id
+          : // Turning 2FA off replaces the session (the request's cookie names a deleted one): its new session first.
+            (ctx.context.newSession?.user.id ?? (await sessionOf(ctx))?.user.id);
       if (typeof userId === 'string') await sendSecurityNotice(userId, notice);
     }
     return;

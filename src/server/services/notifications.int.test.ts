@@ -137,13 +137,15 @@ describe('notify()', () => {
     expect(await send('0192f0c4-0000-7000-8000-00000000dead', 'security.backup-codes', {})).toEqual({ notified: false, emailed: false });
   });
 
-  it(`e-mails at most ${NOTICE_EMAIL_HOURLY_CAP} of one template to one account in an hour; the notices stay`, async () => {
+  it(`e-mails at most ${NOTICE_EMAIL_HOURLY_CAP} of one template to one account in an hour; the notices stay; security always goes out`, async () => {
     const a = await account('budget');
     let emailed = 0;
-    for (let i = 0; i <= NOTICE_EMAIL_HOURLY_CAP; i++) if ((await send(a.id, 'security.backup-codes', {}, `test:budget:${i}`)).emailed) emailed++;
+    for (let i = 0; i <= NOTICE_EMAIL_HOURLY_CAP; i++) if ((await send(a.id, 'plan.expiring', planEnd, `test:budget:${i}`)).emailed) emailed++;
     expect(emailed).toBe(NOTICE_EMAIL_HOURLY_CAP);
     expect(await notices(a.id)).toHaveLength(NOTICE_EMAIL_HOURLY_CAP + 1);
     expect(await deliveries(a.id)).toHaveLength(NOTICE_EMAIL_HOURLY_CAP);
+    // The budget of the shared notice e-mail is spent, and a security e-mail still goes out.
+    expect(await send(a.id, 'security.password-changed', {}, 'test:budget:security')).toEqual({ notified: true, emailed: true });
   });
 });
 
@@ -282,7 +284,7 @@ describe('the end of a plan (plans.expiry, In scope 5)', () => {
     expect(await deliveries(a.id)).toHaveLength(2);
   });
 
-  it('nothing for a grant carried on by another of the same plan, a revoked one, a far end or an old end', async () => {
+  it('nothing for a grant carried on by another of the same plan, a revoked one, one not in effect, a far end or an old end', async () => {
     const now = new Date();
     const carried = await account('expiry-carried');
     await grant(carried.id, new Date(now.getTime() - 20 * DAY), new Date(now.getTime() + 2 * DAY));
@@ -294,10 +296,13 @@ describe('the end of a plan (plans.expiry, In scope 5)', () => {
     await grant(far.id, new Date(now.getTime() - 20 * DAY), new Date(now.getTime() + 30 * DAY));
     const old = await account('expiry-old');
     await grant(old.id, new Date(now.getTime() - 40 * DAY), new Date(now.getTime() - 10 * DAY));
+    const dormant = await account('expiry-dormant');
+    // A Professional Sifu grant on a Student account: kept for the other type, never in effect.
+    await grant(dormant.id, new Date(now.getTime() - 20 * DAY), new Date(now.getTime() + 2 * DAY), 'pro_sifu');
     const open = await account('expiry-open');
     await grant(open.id, new Date(now.getTime() - 20 * DAY), null);
     await sendPlanEndNotices(getDb(), now);
-    for (const x of [carried, revoked, far, old, open]) expect(await notices(x.id), x.email).toHaveLength(0);
+    for (const x of [carried, revoked, far, old, dormant, open]) expect(await notices(x.id), x.email).toHaveLength(0);
   });
 });
 

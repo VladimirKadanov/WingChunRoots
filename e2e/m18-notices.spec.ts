@@ -147,6 +147,8 @@ test('@M18 the e-mail’s unsubscribe link switches its category off without sig
 
     // The one-click POST of a mail client: the same link answers that it is off, again and again.
     const oneClickUrl = new URL(oneClick!);
+    // A POST without List-Unsubscribe=One-Click (a link scanner) is refused (RFC 8058 §3.2).
+    expect((await visitor.request.post(`${oneClickUrl.pathname}${oneClickUrl.search}`)).status()).toBe(400);
     const posted = await visitor.request.post(`${oneClickUrl.pathname}${oneClickUrl.search}`, { form: { 'List-Unsubscribe': 'One-Click' } });
     expect(posted.status()).toBe(200);
     // A token that is not one: 404, nothing named.

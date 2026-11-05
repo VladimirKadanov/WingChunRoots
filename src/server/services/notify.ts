@@ -12,6 +12,7 @@
 // - Budgets: at most NOTICE_EMAIL_HOURLY_CAP e-mails of one template to one account in an hour (the
 //   rule of the account e-mails of M02, src/server/auth/emails.ts), counted under an advisory lock
 //   per account and template. A notice over the budget stays in the dashboard; only its e-mail drops.
+//   Security and account e-mails (categories that cannot be switched off) are always sent.
 // - A deleted account (no row) or a blocked one (banned) gets nothing: no notice, no e-mail.
 // - Unsubscribe: an e-mail whose category can be switched off carries a one-press link and the
 //   List-Unsubscribe headers (src/server/services/unsubscribe.ts), sealed in the job.
@@ -161,7 +162,8 @@ export async function notify(
   const preference = await preferenceOf(tx, userId, entry.category);
   if (!emailWanted(kind, preference.email)) return { notified: true, emailed: false };
   const template = entry.email === 'notice' ? 'notice' : entry.email;
-  if (!(await withinBudget(tx, userId, template))) {
+  // Security and account e-mails are never dropped: no other notice can spend their budget.
+  if (CATEGORIES[entry.category].optOut && !(await withinBudget(tx, userId, template))) {
     log(kind, userId, 'e-mail dropped, the hourly budget of the account is spent');
     return { notified: true, emailed: false };
   }

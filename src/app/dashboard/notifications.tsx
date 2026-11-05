@@ -169,7 +169,7 @@ export function Notifications({ heading = 'Notifications', back, category = null
           </span>
         </h2>
         <span className="flex flex-wrap items-center gap-x-4">
-          {unread > 0 && (!category || items.some((item) => !item.readAt)) ? (
+          {unread > 0 ? (
             <form action={markReadAction} onSubmit={(event) => submit(event, ALL)}>
               <input type="hidden" name="all" value="on" />
               {category ? <input type="hidden" name="category" value={category} /> : null}
