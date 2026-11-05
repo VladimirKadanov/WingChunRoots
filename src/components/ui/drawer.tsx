@@ -442,7 +442,12 @@ let openings = 0;
 /** Air between a focused page control and a non-modal sheet, for the 2 px focus ring and its offset. */
 const FOCUS_AIR = 8;
 
-/** Writes the newest open sheet's room on <html>, or removes it when no sheet is open. */
+/**
+ * Writes the newest open sheet's room on <html>, or removes it when no sheet is open. Only what
+ * changed is written (plan §5.8 (c), INP): a custom property on <html> is inherited by every
+ * element of the page, so each change restyles the whole page (in the explorer's Lineage view,
+ * over a thousand elements of the graph), and a room that stays the same must cost nothing.
+ */
 function publishRooms() {
   const root = document.documentElement;
   const all = [...rooms.values()].sort((a, b) => a.order - b.order);
@@ -457,11 +462,55 @@ function publishRooms() {
     ['--sheet-page-cover', page?.clear == null || !page.covers ? null : px(page.clear)],
     ['--sheet-page-inline', px(page?.inline)],
   ] as const) {
+    if ((root.style.getPropertyValue(name) || null) === value) continue;
     if (value) root.style.setProperty(name, value);
     else root.style.removeProperty(name);
   }
-  root.toggleAttribute('data-sheet-full', !!newest?.full);
+  if (root.hasAttribute('data-sheet-full') !== !!newest?.full) root.toggleAttribute('data-sheet-full', !!newest?.full);
 }
+
+let publishQueued = false;
+/**
+ * publishRooms once this task's microtasks run: a sheet whose room effect runs again (its snap
+ * point or its elements changed) takes its room away in the cleanup and gives it back in the
+ * effect, and the page must not see it go and come back (two restyles of the whole page).
+ */
+function queuePublishRooms() {
+  if (publishQueued) return;
+  publishQueued = true;
+  queueMicrotask(() => {
+    publishQueued = false;
+    publishRooms();
+  });
+}
+
+/**
+ * Base UI registers the Drawer's swipe properties (CSS.registerProperty, not inherited) when its
+ * first popup mounts, and each registration restyles the whole page: in the explorer that was the
+ * first selection on a phone, whose sheet opened with five restyles of the whole graph (plan §5.8
+ * (c), INP). The same registrations are made here once, when this module loads (before anyone
+ * selects), so Base UI's own, later, find them made (it ignores the error) and restyle nothing.
+ * They stay as Base UI makes them (@base-ui/react drawer/popup/DrawerPopup.mjs,
+ * removeCSSVariableInheritance).
+ */
+function registerSwipeProperties() {
+  if (typeof CSS === 'undefined' || !('registerProperty' in CSS)) return;
+  const properties = [
+    { name: '--drawer-swipe-movement-x', syntax: '<length>', initialValue: '0px' },
+    { name: '--drawer-swipe-movement-y', syntax: '<length>', initialValue: '0px' },
+    { name: '--drawer-snap-point-offset', syntax: '<length>', initialValue: '0px' },
+    { name: '--drawer-swipe-progress', syntax: '<number>', initialValue: '0' },
+    { name: '--drawer-swipe-strength', syntax: '<number>', initialValue: '1' },
+  ];
+  for (const property of properties) {
+    try {
+      CSS.registerProperty({ ...property, inherits: false });
+    } catch {
+      // Registered already (by Base UI, or by this module evaluated again).
+    }
+  }
+}
+registerSwipeProperties();
 
 /** The top safe-area inset in px (env() is readable only through a box that uses it). */
 function topInset(): number {
@@ -518,6 +567,11 @@ function useSheetRoom(
     let offset: string | null = null;
     let inset = 0;
     const measure = (force: boolean) => {
+      // A sheet kept mounted is still hidden in the render that opens it (Base UI shows it a
+      // render later): measured there it has no size, which published, for a moment, a sheet that
+      // covers the whole window (and restyled the whole page twice). The size observer below
+      // measures it once it is shown.
+      if (popup.hidden || viewport.hidden) return;
       if (side) {
         rooms.set(key, { order: order.current, modal, clear: null, inline: popup.offsetWidth, head: null, full: false, covers: false });
         publishRooms();
@@ -563,7 +617,8 @@ function useSheetRoom(
       styles.disconnect();
       sizes?.disconnect();
       rooms.delete(key);
-      publishRooms();
+      // Not written at once: when the effect runs again, its measure gives the room back first.
+      queuePublishRooms();
     };
   }, [key, open, side, modal, viewport, popup, header, rest, coverAbove]);
 }
