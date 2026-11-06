@@ -31,6 +31,7 @@ import type {
   notification,
   notificationPreference,
   organization,
+  organizationAdmin,
   organizationMembership,
   person,
   personBio,
@@ -122,14 +123,27 @@ export const DEMO_STAFF_ACCOUNTS = [
  * one of that Sifu's generated students, so it gets the dashboard notice of the Sifu's events.
  */
 export const DEMO_PREMIUM_STUDENT = 'demo-premium-student' as const;
+/**
+ * Owner request of 2026-11-06 (one test account of every kind, deleted before go-live; D20): the
+ * kinds no account above covers. None has an archive record. demo-federation-owner owns
+ * demo-federation-north, which holds a Federation test plan; demo-organization-admin is an admin
+ * (not owner) of it; demo-new-member has only signed up (no profile, no plan beyond Free Student).
+ */
+export const DEMO_EXTRA_ACCOUNTS = [
+  { slug: 'demo-federation-owner', name: 'Demo Federation Owner' },
+  { slug: 'demo-organization-admin', name: 'Demo Organization Admin' },
+  { slug: 'demo-new-member', name: 'Demo New Member' },
+] as const;
 export type DemoAccountSlug =
   | (typeof DEMO_PERSON_ACCOUNT_SLUGS)[number]
   | (typeof DEMO_STAFF_ACCOUNTS)[number]['slug']
-  | typeof DEMO_PREMIUM_STUDENT;
+  | typeof DEMO_PREMIUM_STUDENT
+  | (typeof DEMO_EXTRA_ACCOUNTS)[number]['slug'];
 export const DEMO_ACCOUNT_SLUGS: readonly DemoAccountSlug[] = [
   ...DEMO_PERSON_ACCOUNT_SLUGS,
   ...DEMO_STAFF_ACCOUNTS.map((a) => a.slug),
   DEMO_PREMIUM_STUDENT,
+  ...DEMO_EXTRA_ACCOUNTS.map((a) => a.slug),
 ];
 export const demoAccountEmail = (slug: DemoAccountSlug): string => `${slug}@example.test`;
 
@@ -147,6 +161,7 @@ export type SchoolPrivateLocationRow = Row<typeof schoolPrivateLocation>;
 export type SchoolInstructorRow = Row<typeof schoolInstructor>;
 export type OrganizationRow = Row<typeof organization>;
 export type OrganizationMembershipRow = Row<typeof organizationMembership>;
+export type OrganizationAdminRow = Row<typeof organizationAdmin>;
 export type ReviewCaseRow = Row<typeof reviewCase>;
 export type ReviewNoteRow = Row<typeof reviewNote>;
 export type InvitationRow = Row<typeof invitation>;
@@ -177,6 +192,8 @@ export interface Fixtures {
   schoolInstructors: SchoolInstructorRow[];
   organizations: OrganizationRow[];
   organizationMemberships: OrganizationMembershipRow[];
+  /** The authority of the demo organization accounts (owner request of 2026-11-06). */
+  organizationAdmins: OrganizationAdminRow[];
   reviewCases: ReviewCaseRow[];
   reviewNotes: ReviewNoteRow[];
   invitations: InvitationRow[];
@@ -965,6 +982,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     accounts: accountData.accounts,
   });
   const notices = demoNotices(seed, accountData.accounts);
+  const organizationAccess = demoOrganizationAccess(seed, organizations, accountData.accounts);
   return {
     seed,
     lineages: [b.lineages.a, b.lineages.b, b.lineages.c],
@@ -980,13 +998,14 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     schoolInstructors,
     organizations,
     organizationMemberships,
+    organizationAdmins: organizationAccess.organizationAdmins,
     reviewCases: [...reviewCases, ...instructorCases],
     reviewNotes,
     invitations,
     anchors,
     ...accountData,
     ...events,
-    entitlementGrants: [...accountData.entitlementGrants, ...notices.entitlementGrants],
+    entitlementGrants: [...accountData.entitlementGrants, ...notices.entitlementGrants, ...organizationAccess.entitlementGrants],
     notifications: [...events.notifications, ...notices.notifications],
     notificationPreferences: notices.notificationPreferences,
   };
@@ -1133,6 +1152,8 @@ function demoAccounts(
     createdAt: at,
     updatedAt: at,
   });
+  // Owner request of 2026-11-06: the extra accounts, after every id above so none of them moves.
+  for (const extra of DEMO_EXTRA_ACCOUNTS) add(extra.slug, extra.name, 'user');
   return { users, consentRecords, credentials, twoFactors, accounts, entitlementGrants, instructorCases };
 }
 
@@ -1635,3 +1656,55 @@ export function serializeLineageExport(e: LineageExport): string {
 
 /** Repository path of the exported graph. */
 export const LINEAGE_EXPORT_PATH = 'fixtures/lineage-600.json';
+
+const ORGANIZATION_ACCESS_AT = new Date(Date.UTC(2026, 10, 6));
+
+/**
+ * Owner request of 2026-11-06: demo-federation-owner owns demo-federation-north, which holds a
+ * Federation test plan with no end; demo-organization-admin is an admin of it, added by the owner.
+ * Ids from a stream of their own.
+ */
+function demoOrganizationAccess(
+  seed: number,
+  organizations: OrganizationRow[],
+  accounts: Record<DemoAccountSlug, string>,
+): Pick<Fixtures, 'organizationAdmins' | 'entitlementGrants'> {
+  const idRng = createRandom((seed ^ 0x0e7e_0019) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(ORGANIZATION_ACCESS_AT.getTime() + seq++, 0, idRng.bytes(8));
+  const at = ORGANIZATION_ACCESS_AT;
+  const federation = organizations.find((o) => o.slug === 'demo-federation-north')!;
+  const owner = accounts['demo-federation-owner'];
+  const adminRow = (userId: string, role: OrganizationAdminRow['role'], grantedByUserId: string | null): OrganizationAdminRow => ({
+    id: id(),
+    organizationId: federation.id,
+    userId,
+    role,
+    grantedByUserId,
+    revokedAt: null,
+    revokedByUserId: null,
+    createdAt: at,
+    updatedAt: at,
+  });
+  return {
+    organizationAdmins: [adminRow(owner, 'owner', null), adminRow(accounts['demo-organization-admin'], 'admin', owner)],
+    entitlementGrants: [
+      {
+        id: id(),
+        subjectUserId: null,
+        subjectOrganizationId: federation.id,
+        planCode: 'federation',
+        source: 'test_grant',
+        startsAt: at,
+        endsAt: null,
+        grantedByUserId: accounts['demo-admin'],
+        reason: `${FICTIONAL_MARK}: the Federation test plan of the demo data.`,
+        revokedAt: null,
+        revokedByUserId: null,
+        revokeReason: null,
+        createdAt: at,
+        updatedAt: at,
+      },
+    ],
+  };
+}

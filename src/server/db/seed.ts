@@ -273,6 +273,7 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
   );
   await insert(organization, f.organizations);
   await insert(organizationMembership, f.organizationMemberships);
+  await insert(organizationAdmin, f.organizationAdmins);
   await insert(reviewCase, f.reviewCases);
   await insert(reviewNote, f.reviewNotes);
   await insert(invitation, f.invitations);
