@@ -19,6 +19,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm install --global pnpm@12.14.0 && npm cache clean --force
 WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm applies patchedDependencies (pnpm-workspace.yaml) at install; every stage below installs.
+COPY patches ./patches
 
 # Every dependency, for the build.
 FROM base AS deps
