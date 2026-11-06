@@ -13,6 +13,9 @@
 //   call fails, says so in words ("Could not mark it as read. …") while the item turns back to New;
 // - after the optimistic render the focus moves to the next unread item's "Mark as read" (or to the
 //   heading when none is left); after a failure it goes back to the item's button.
+//
+// M18: the same list on /dashboard/notifications, one page of one category or of all (`view`): its
+// heading, the page it comes back to without JavaScript, and "Mark all as read" of that category.
 
 import Link from 'next/link';
 import { createContext, type FormEvent, type ReactNode, type RefObject, startTransition, use, useEffect, useOptimistic, useRef, useState } from 'react';
@@ -42,6 +45,20 @@ interface NotificationsState {
 
 const NotificationsContext = createContext<NotificationsState | null>(null);
 
+/** Where the list is shown (M18): the dashboard's newest, or one page of /dashboard/notifications. */
+export interface NotificationsView {
+  /** The section's heading (default "Notifications"). */
+  heading?: string;
+  /** The page a form post without JavaScript comes back to (a /dashboard path). */
+  back?: string;
+  /** "Mark all as read" marks only this category's notices. */
+  category?: string | null;
+  /** The text of an empty list. */
+  empty?: string;
+  /** The dashboard's link to every notice. */
+  allHref?: string;
+}
+
 function useNotifications(): NotificationsState {
   const value = use(NotificationsContext);
   if (!value) throw new Error('useNotifications() outside <NotificationsProvider>');
@@ -61,9 +78,15 @@ function nextUnread(items: Items, id: string): string | null {
 export function NotificationsProvider({ list, children }: { list: NotificationList; children: ReactNode }) {
   // The server counts every unread notification (the list shows the newest 20): marking one read
   // takes one off that count, and "Mark all as read" brings it to zero, beyond the 20 shown too.
+  // With a category (M18), "Mark all as read" marks that category only: the count loses the ones shown
+  // until the server's answer brings the exact number.
+  const filtered = list.category !== null && list.category !== undefined;
   const [{ items, unread }, markOptimistic] = useOptimistic({ items: list.items, unread: list.unread }, (current, id: string) => {
     const readAt = new Date().toISOString();
-    if (id === ALL) return { items: current.items.map((item) => (item.readAt ? item : { ...item, readAt })), unread: 0 };
+    if (id === ALL) {
+      const shown = current.items.filter((item) => !item.readAt).length;
+      return { items: current.items.map((item) => (item.readAt ? item : { ...item, readAt })), unread: filtered ? Math.max(0, current.unread - shown) : 0 };
+    }
     if (!current.items.some((item) => item.id === id && !item.readAt)) return current;
     return { items: current.items.map((item) => (item.id === id ? { ...item, readAt } : item)), unread: Math.max(0, current.unread - 1) };
   });
@@ -71,7 +94,8 @@ export function NotificationsProvider({ list, children }: { list: NotificationLi
   const focusRef = useRef<{ target: string | null } | null>(null);
 
   function markRead(id: string, form: FormData) {
-    const left = id === ALL ? 0 : Math.max(0, unread - (items.some((item) => item.id === id && !item.readAt) ? 1 : 0));
+    const shown = items.filter((item) => !item.readAt).length;
+    const left = id === ALL ? (filtered ? Math.max(0, unread - shown) : 0) : Math.max(0, unread - (items.some((item) => item.id === id && !item.readAt) ? 1 : 0));
     // The button goes away with the "New" state: the focus moves on after the optimistic render.
     focusRef.current = { target: id === ALL ? null : nextUnread(items, id) };
     // An urgent update, outside the transition: a state update inside it would wait for the server.
@@ -103,7 +127,7 @@ export function UnreadLink() {
   );
 }
 
-export function Notifications() {
+export function Notifications({ heading = 'Notifications', back, category = null, empty, allHref }: NotificationsView = {}) {
   const { items, unread, status, markRead, focusRef } = useNotifications();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -132,7 +156,7 @@ export function Notifications() {
           tabIndex={-1}
           className="flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-2xl outline-offset-4"
         >
-          Notifications
+          {heading}
           <span data-testid="unread-count" className="inline-flex items-center gap-1.5 font-sans text-sm font-semibold">
             {unread > 0 ? (
               <>
@@ -144,14 +168,23 @@ export function Notifications() {
             )}
           </span>
         </h2>
-        {unread > 0 ? (
-          <form action={markReadAction} onSubmit={(event) => submit(event, ALL)}>
-            <input type="hidden" name="all" value="on" />
-            <button id={markReadId(ALL)} type="submit" className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3')}>
-              Mark all as read
-            </button>
-          </form>
-        ) : null}
+        <span className="flex flex-wrap items-center gap-x-4">
+          {unread > 0 ? (
+            <form action={markReadAction} onSubmit={(event) => submit(event, ALL)}>
+              <input type="hidden" name="all" value="on" />
+              {category ? <input type="hidden" name="category" value={category} /> : null}
+              {back ? <input type="hidden" name="back" value={back} /> : null}
+              <button id={markReadId(ALL)} type="submit" className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3')}>
+                Mark all as read
+              </button>
+            </form>
+          ) : null}
+          {allHref ? (
+            <Link href={allHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="all-notifications-link">
+              See all notifications
+            </Link>
+          ) : null}
+        </span>
       </header>
       <p
         role="status"
@@ -164,7 +197,7 @@ export function Notifications() {
       {items.length === 0 ? (
         <p className="flex items-start gap-2 text-ui text-fg-muted">
           <BellIcon size={20} className="mt-0.5" />
-          <span>No notifications yet. Answers to your requests and news about your plan appear here.</span>
+          <span>{empty ?? 'No notifications yet. Answers to your requests and news about your plan appear here.'}</span>
         </p>
       ) : (
         <ul className="grid">
@@ -189,6 +222,7 @@ export function Notifications() {
                     {isNew ? (
                       <form action={markReadAction} onSubmit={(event) => submit(event, item.id)}>
                         <input type="hidden" name="id" value={item.id} />
+                        {back ? <input type="hidden" name="back" value={back} /> : null}
                         <button id={markReadId(item.id)} type="submit" className={cx(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3')}>
                           Mark as read<span className="sr-only"> ({item.title})</span>
                         </button>

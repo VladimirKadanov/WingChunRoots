@@ -13,12 +13,13 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
-import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeUnconfirmedAccounts } from '../services/retention';
+import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeUnconfirmedAccounts } from '../services/retention';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
 import { lineageRecomputeHandler } from './lineage-recompute';
-import { jobTemplateData } from './outbox';
+import { planExpiryHandler } from './plan-expiry';
+import { jobTemplateData, jobUnsubscribe } from './outbox';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
 export interface WorkerOptions {
@@ -57,8 +58,10 @@ export function emailSendHandler(db: Database, mailer: Mailer, log: (line: strin
         continue;
       }
       let data: unknown;
+      let unsubscribe: ReturnType<typeof jobUnsubscribe>;
       try {
         data = jobTemplateData(job.data);
+        unsubscribe = jobUnsubscribe(job.data);
       } catch (error) {
         if (!(error instanceof SealError)) throw error;
         // Another MAIL_SEAL_KEY or a changed payload: retrying cannot help.
@@ -73,6 +76,7 @@ export function emailSendHandler(db: Database, mailer: Mailer, log: (line: strin
           data: data as never,
           idempotencyKey: row.idempotencyKey,
           userId: row.userId,
+          ...(unsubscribe ? { unsubscribe } : {}),
         });
         log(`${QUEUE.emailSend}: job ${job.id}: delivery ${result.deliveryId} ${result.status}${result.duplicate ? ' (already decided)' : ''}`);
       } catch (error) {
@@ -129,6 +133,9 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         );
         const unconfirmed = await purgeUnconfirmedAccounts(db);
         log(`${QUEUE.retentionPurge}: deleted ${unconfirmed.accounts} unconfirmed account(s), kept ${unconfirmed.kept} still referred to`);
+        // M18 (DEFAULT M18, question 3): read notices after 180 days, unread ones after 365.
+        const notices = await purgeOldNotifications(db);
+        log(`${QUEUE.retentionPurge}: deleted ${notices.notifications} old notification(s)`);
       } catch (error) {
         const code = failureCode(error);
         const last = job.retryCount >= job.retryLimit;
@@ -178,7 +185,9 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   // M09: lineage_membership and the public cache after an approval.
   await boss.work(QUEUE.lineageRecompute, work, lineageRecomputeHandler(db, log));
   // M17: the dashboard notices of a published or cancelled event.
-  await boss.work(QUEUE.eventsNotify, work, eventsNotifyHandler(db, log));
+  await boss.work(QUEUE.eventsNotify, work, eventsNotifyHandler(db, log, boss));
+  // M18: the notices of plans that end soon or have ended.
+  await boss.work(QUEUE.plansExpiry, work, planExpiryHandler(db, log, boss));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

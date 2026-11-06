@@ -59,7 +59,6 @@ import {
   authUser,
   invitation,
   lineage,
-  notification,
   person,
   personClaim,
   personName,
@@ -75,17 +74,19 @@ import {
 import { EVIDENCE_MAX_FILES_PER_CASE, OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, type RELATIONSHIP_STATUSES } from '../db/schema/common';
 import { effectivePlan, type Executor } from '../entitlements/access';
 import { withQuota } from '../entitlements/quota';
-import { enqueue, queueEmail, type Transaction } from '../jobs/outbox';
+import { enqueue, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
 import type { NameData } from '../templates/email/types';
 import { REJECTION_REASON_CODES, type RejectionReason, rejectionReasonText, isRejectionReason } from '../templates/relationships';
 import { CLAIM_REFUSED_TEXT, CLAIM_STATUS_LABELS, type ReviewCaseStatus } from '../templates/review';
 import type { RequestMeta } from './context';
 import { approvalOffer, peopleRefs, type PersonRef, type UpgradeOffer, waitingRequests } from './dashboard';
+import { notify } from './notify';
 import { type EvidenceFileView, fileView, filesOfCases, filesOfRelationships } from './evidence';
 import { pgErrorOf, ServiceError } from './errors';
 import { planSummary } from './plans';
 import { neighbourTags } from './profile';
+import { tellLimitReached } from './limit-notices';
 
 export type RelationshipStatus = (typeof RELATIONSHIP_STATUSES)[number];
 export type RelationshipRole = 'student' | 'teacher' | 'reviewer';
@@ -921,26 +922,28 @@ async function tellTeacher(
 ) {
   const teacher = await accountOf(tx, rel.teacherPersonId);
   if (!teacher) return;
-  await tx.insert(notification).values({ userId: teacher.id, template: 'relationship.requested', payload: { relationshipId: rel.id, resubmitted } });
-  if (!email) return;
+  const payload = { relationshipId: rel.id, resubmitted };
   // As for an approval: no e-mail without the student's name, and no greeting without the teacher's.
-  const studentNames = await namesFor(tx, rel.studentPersonId);
-  if (studentNames.length === 0) return;
+  const studentNames = email ? await namesFor(tx, rel.studentPersonId) : [];
+  if (studentNames.length === 0) {
+    await notify(tx, teacher.id, 'relationship.requested', payload);
+    return;
+  }
   const recipientNames = await namesFor(tx, rel.teacherPersonId);
   const starts = rows.map((r) => (r.startsOn ? toPrefix(r.startsOn, r.precision as 'year' | 'month' | 'day') : null)).filter((s): s is string => s !== null);
   const first = starts.sort((a, b) => `${a}-01-01`.slice(0, 10).localeCompare(`${b}-01-01`.slice(0, 10)))[0];
-  await queueEmail(tx, {
-    template: 'relationship-requested',
-    to: teacher.email,
-    userId: teacher.id,
-    idempotencyKey: `relationship-requested:${eventId}`,
-    data: {
-      studentNames,
-      trainingStart: first ? formatPartialDate(first) : 'Dates not given',
-      lineageName: rel.lineageName,
-      resubmitted,
-      queueUrl: url('/dashboard/students/requests'),
-      ...(recipientNames.length > 0 ? { recipientNames } : {}),
+  await notify(tx, teacher.id, 'relationship.requested', payload, {
+    email: {
+      template: 'relationship-requested',
+      idempotencyKey: `relationship-requested:${eventId}`,
+      data: {
+        studentNames,
+        trainingStart: first ? formatPartialDate(first) : 'Dates not given',
+        lineageName: rel.lineageName,
+        resubmitted,
+        queueUrl: url('/dashboard/students/requests'),
+        ...(recipientNames.length > 0 ? { recipientNames } : {}),
+      },
     },
   });
 }
@@ -1251,6 +1254,9 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
     return { relationship: await viewOf(db, outcome.id, viewer), replayed: outcome.replayed };
   } catch (error) {
     if (isKeyConflict(error)) throw keyReused();
+    // M18 (In scope 5; DEFAULT M18, question 2): at a used-up allowance, one dashboard notice a month
+    // (src/server/services/limit-notices.ts), written after the rollback.
+    await tellLimitReached(p.user.id, 'approve_students', error);
     throw error;
   }
 }
@@ -1326,20 +1332,23 @@ async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: st
     ['teacher', teacher, studentNames, teacherNames],
   ] as const) {
     if (!account) continue;
-    await tx.insert(notification).values({ userId: account.id, template: 'relationship.approved', payload: { relationshipId: row.id, role: side } });
-    if (other.length === 0) continue;
-    await queueEmail(tx, {
-      template: 'relationship-approved',
-      to: account.email,
-      userId: account.id,
-      idempotencyKey: `relationship-approved:${eventId}:${side}`,
-      data: {
-        role: side,
-        otherNames: [...other],
-        lineageName: row.lineageName,
-        url: url(side === 'student' ? '/dashboard/teachers' : '/dashboard/students/requests'),
-        ...(own.length > 0 ? { recipientNames: [...own] } : {}),
-      },
+    await notify(tx, account.id, 'relationship.approved', { relationshipId: row.id, role: side }, {
+      // No e-mail without the other person's name.
+      ...(other.length > 0
+        ? {
+            email: {
+              template: 'relationship-approved',
+              idempotencyKey: `relationship-approved:${eventId}:${side}`,
+              data: {
+                role: side,
+                otherNames: [...other],
+                lineageName: row.lineageName,
+                url: url(side === 'student' ? '/dashboard/teachers' : '/dashboard/students/requests'),
+                ...(own.length > 0 ? { recipientNames: [...own] } : {}),
+              },
+            },
+          }
+        : {}),
     });
   }
   // The derived lineage_membership, from the worker (plan §6.3, §6.4), which then drops only that
@@ -1387,25 +1396,27 @@ export async function rejectRelationship(principal: Principal | null, raw: z.inp
       });
       const student = await accountOf(tx, row.studentPersonId);
       if (student) {
-        await tx.insert(notification).values({ userId: student.id, template: 'relationship.rejected', payload: { relationshipId: row.id, reason: input.reason } });
         const teacherNames = await namesFor(tx, row.teacherPersonId);
         const studentNames = await namesFor(tx, row.studentPersonId);
-        if (teacherNames.length > 0) {
-          await queueEmail(tx, {
-            template: 'relationship-rejected',
-            to: student.email,
-            userId: student.id,
-            idempotencyKey: `relationship-rejected:${eventId}`,
-            data: {
-              teacherNames,
-              reason: rejectionReasonText(input.reason),
-              lineageName: row.lineageName,
-              // The form, filled in with the request as it was sent (the notification links there too).
-              url: url(`/dashboard/teachers/new?resubmit=${row.id}`),
-              ...(studentNames.length > 0 ? { recipientNames: studentNames } : {}),
-            },
-          });
-        }
+        await notify(tx, student.id, 'relationship.rejected', { relationshipId: row.id, reason: input.reason }, {
+          // No e-mail without the teacher's name.
+          ...(teacherNames.length > 0
+            ? {
+                email: {
+                  template: 'relationship-rejected',
+                  idempotencyKey: `relationship-rejected:${eventId}`,
+                  data: {
+                    teacherNames,
+                    reason: rejectionReasonText(input.reason),
+                    lineageName: row.lineageName,
+                    // The form, filled in with the request as it was sent (the notification links there too).
+                    url: url(`/dashboard/teachers/new?resubmit=${row.id}`),
+                    ...(studentNames.length > 0 ? { recipientNames: studentNames } : {}),
+                  },
+                },
+              }
+            : {}),
+        });
       }
       return { id: row.id, replayed: false };
     });
@@ -1461,11 +1472,11 @@ export async function withdrawRelationship(principal: Principal | null, raw: z.i
           .where(inArray(reviewCase.id, closed.map((c) => c.id)));
       }
       for (const c of closed) {
-        if (c.assignedTo) await tx.insert(notification).values({ userId: c.assignedTo, template: 'review.updated', payload: { caseId: c.id, change: 'withdrawn' } });
+        if (c.assignedTo) await notify(tx, c.assignedTo, 'review.updated', { caseId: c.id, change: 'withdrawn' });
         if (c.kind === 'person_claim') {
           await tx.update(personClaim).set({ status: 'withdrawn', decidedAt: now, updatedAt: now }).where(and(eq(personClaim.reviewCaseId, c.id), eq(personClaim.status, 'pending')));
           await tx.insert(reviewEvent).values({ reviewCaseId: c.id, action: 'withdraw', fromStatus: c.status, toStatus: 'dismissed', actorUserId: p.user.id, actorRole: p.user.role });
-          if (c.openedBy) await tx.insert(notification).values({ userId: c.openedBy, template: 'claim.decided', payload: { caseId: c.id, decision: 'closed' } });
+          if (c.openedBy) await notify(tx, c.openedBy, 'claim.decided', { caseId: c.id, decision: 'closed' });
         }
       }
       const revoked =
@@ -1643,7 +1654,8 @@ export async function endRelationship(principal: Principal | null, raw: z.input<
         ipHmac: meta.ipHmac,
       });
       const other = await accountOf(tx, role === 'teacher' ? row.studentPersonId : row.teacherPersonId);
-      if (other) await tx.insert(notification).values({ userId: other.id, template: 'relationship.ended', payload: { relationshipId: row.id, by: role } });
+      // M18: e-mailed too (category teaching), keyed by the event so a resent form tells once.
+      if (other) await notify(tx, other.id, 'relationship.ended', { relationshipId: row.id, by: role }, { key: `relationship.ended:${row.id}:${input.idempotencyKey}` });
       return { id: row.id, replayed: false, tags: await publicTags(tx, row) };
     });
     if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');

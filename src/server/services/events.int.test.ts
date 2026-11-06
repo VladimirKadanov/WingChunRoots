@@ -139,6 +139,26 @@ describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
     expect(mine.events).toHaveLength(4);
   });
 
+  it('M18: a refusal at the limit leaves one dashboard notice a month; a plan without events leaves none', async () => {
+    const sifu = await proSifu('events-limit-notice');
+    let refused = 0;
+    for (let day = 1; day <= 12 && refused < 2; day++) {
+      const d = String(day).padStart(2, '0');
+      const result = await codeOf(createEvent(sifu.principal, { ...seminar(at(`05-${d}`), at(`05-${d}`, '17:00')), title: `Demo May seminar ${d}` }, meta));
+      if (result === 'ENTITLEMENT_REQUIRED') refused++;
+      else expect(result).toBe('ok');
+    }
+    expect(refused).toBe(2);
+    const notices = await getDb().select().from(notification).where(and(eq(notification.userId, sifu.account.id), eq(notification.template, 'limit.reached')));
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.payload).toMatchObject({ feature: 'events', planCode: 'pro_sifu', upgradeTo: null });
+    expect(notices[0]!.dedupeKey).toMatch(/^limit\.reached:events:\d{4}-\d{2}$/);
+
+    const free = await member('events-free-no-notice', { sifu: true });
+    expect(await codeOf(createEvent(free.principal, seminar(at('05-10'), at('05-10', '12:00')), meta))).toBe('ENTITLEMENT_REQUIRED');
+    expect(await getDb().select().from(notification).where(eq(notification.userId, free.account.id))).toHaveLength(0);
+  });
+
   it('a cancelled event does not count', async () => {
     const sifu = await proSifu('events-cancel-count');
     const one = await createEvent(sifu.principal, seminar(at('05-01'), at('05-01', '12:00')), meta);

@@ -4,7 +4,7 @@
 
 import { Button, Link, Text } from 'react-email';
 
-import { EmailLayout, PersonName, textStyle } from './components';
+import { EmailLayout, type UnsubscribeLink, PersonName, textStyle } from './components';
 import type { NameData } from './types';
 
 const buttonStyle = {
@@ -23,6 +23,7 @@ const linkStyle = { color: '#0b57d0', wordBreak: 'break-all' } as const;
 
 export function AccountLinkEmail({
   preview,
+  unsubscribe,
   recipientNames,
   intro,
   action,
@@ -31,6 +32,8 @@ export function AccountLinkEmail({
   notExpected,
 }: {
   preview: string;
+  /** M18: the unsubscribe link of the delivery (renderEmail), for the layout's footer. */
+  unsubscribe?: UnsubscribeLink;
   recipientNames: NameData[];
   intro: string;
   action: string;
@@ -39,7 +42,7 @@ export function AccountLinkEmail({
   notExpected: string;
 }) {
   return (
-    <EmailLayout preview={preview}>
+    <EmailLayout preview={preview} unsubscribe={unsubscribe}>
       <Text style={textStyle}>
         {recipientNames.length > 0 ? (
           <>

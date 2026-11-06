@@ -29,6 +29,7 @@ import type {
   invitation,
   lineage,
   notification,
+  notificationPreference,
   organization,
   organizationMembership,
   person,
@@ -155,6 +156,7 @@ export type EntitlementGrantRow = Row<typeof entitlementGrant>;
 export type EventRow = Row<typeof event>;
 export type EventInstructorRow = Row<typeof eventInstructor>;
 export type NotificationRow = Row<typeof notification>;
+export type NotificationPreferenceRow = Row<typeof notificationPreference>;
 /** A credential account without its password hash, which the seed adds (secret, env-dependent). */
 export type CredentialShell = Omit<Row<typeof authAccount>, 'password'>;
 /** A TOTP row without its encrypted secret and backup codes, which the seed adds. */
@@ -193,6 +195,8 @@ export interface Fixtures {
   events: EventRow[];
   eventInstructors: EventInstructorRow[];
   notifications: NotificationRow[];
+  /** M18: the demo account's choices of notice e-mail (a category switched off). */
+  notificationPreferences: NotificationPreferenceRow[];
 }
 
 type LineageKey = 'a' | 'b' | 'c';
@@ -950,6 +954,17 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   // the school's "Logo and photos" page (/dashboard/schools/<id>/photos) with the seeded logo and rooms.
   schools.find((s) => s.slug === 'demo-school-sofia')!.createdByUserId = accountData.accounts['demo-pro-sifu-8'];
 
+  const events = demoEvents(seed, {
+    proSifu: proSifu.row.id,
+    teacherOfProSifu: cjkName.row.id,
+    hubB: hubB.row.id,
+    proStudent: proStudents[1]!.row.id,
+    place: (name) => placeOf(name).place,
+    school: (slug) => schools.find((sc) => sc.slug === slug)!,
+    organization: (slug) => organizations.find((o) => o.slug === slug)!,
+    accounts: accountData.accounts,
+  });
+  const notices = demoNotices(seed, accountData.accounts);
   return {
     seed,
     lineages: [b.lineages.a, b.lineages.b, b.lineages.c],
@@ -970,16 +985,10 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     invitations,
     anchors,
     ...accountData,
-    ...demoEvents(seed, {
-      proSifu: proSifu.row.id,
-      teacherOfProSifu: cjkName.row.id,
-      hubB: hubB.row.id,
-      proStudent: proStudents[1]!.row.id,
-      place: (name) => placeOf(name).place,
-      school: (slug) => schools.find((sc) => sc.slug === slug)!,
-      organization: (slug) => organizations.find((o) => o.slug === slug)!,
-      accounts: accountData.accounts,
-    }),
+    ...events,
+    entitlementGrants: [...accountData.entitlementGrants, ...notices.entitlementGrants],
+    notifications: [...events.notifications, ...notices.notifications],
+    notificationPreferences: notices.notificationPreferences,
   };
 }
 
@@ -1289,6 +1298,7 @@ function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | '
       template: 'event.published',
       payload: { eventId: first.id, slug: first.slug, title: first.title, startDay: '2027-03-13' },
       readAt: null,
+      dedupeKey: null,
       createdAt: at,
       updatedAt: at,
     },
@@ -1308,6 +1318,67 @@ function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | '
     venue: 'Demo Community Hall, second floor',
   });
   return { events, eventInstructors, notifications };
+}
+
+// --- Notices (milestone M18, In scope 11; D20) ---------------------------------------------------
+
+const NOTICES_AT = new Date(Date.UTC(2026, 9, 24));
+/** The account of the M18 demo notices: no test signs in as it, so its dashboard is free to show them. */
+export const DEMO_NOTICE_ACCOUNT = 'demo-two-lineages' as const satisfies DemoAccountSlug;
+
+/**
+ * The M18 demo data, on fixed dates, all on demo-two-lineages (a Free Student): a Premium Student
+ * test grant that ran out on 2026-10-31 with its two notices (7 days before, read, and at the end),
+ * the notice at the photo limit of Free Student in October 2026, a profile photo removed by the
+ * moderators with its reason, and the Plan category's e-mail switched off. The ended grant leaves
+ * the account's plan as it was (Free Student); the keys match the job's (src/server/jobs/
+ * plan-expiry.ts), so it never sends these again. Ids from a stream of their own.
+ */
+function demoNotices(seed: number, accounts: Record<DemoAccountSlug, string>): Pick<Fixtures, 'entitlementGrants' | 'notifications' | 'notificationPreferences'> {
+  const idRng = createRandom((seed ^ 0x0e7e_0018) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(NOTICES_AT.getTime() + seq++, 0, idRng.bytes(8));
+  const userId = accounts[DEMO_NOTICE_ACCOUNT];
+  const day = (d: number) => new Date(Date.UTC(2026, 9, d));
+  const endsAt = day(31);
+  const grantId = id();
+  const entitlementGrants: EntitlementGrantRow[] = [
+    {
+      id: grantId,
+      subjectUserId: userId,
+      subjectOrganizationId: null,
+      planCode: 'premium_student',
+      source: 'test_grant',
+      startsAt: day(1),
+      endsAt,
+      grantedByUserId: accounts['demo-admin'],
+      reason: `${FICTIONAL_MARK}: a Premium Student test plan of one month (M18 demo data).`,
+      revokedAt: null,
+      revokedByUserId: null,
+      revokeReason: null,
+      createdAt: day(1),
+      updatedAt: day(1),
+    },
+  ];
+  const notice = (template: string, payload: Record<string, unknown>, dedupeKey: string, at: Date, readAt: Date | null): NotificationRow => ({
+    id: id(),
+    userId,
+    template,
+    payload,
+    readAt,
+    dedupeKey,
+    createdAt: at,
+    updatedAt: readAt ?? at,
+  });
+  const ending = { grantId, planCode: 'premium_student', endsAt: endsAt.toISOString(), nextPlanCode: 'free_student' };
+  const notifications: NotificationRow[] = [
+    notice('plan.expiring', ending, `plan.expiring:${grantId}`, day(24), day(25)),
+    notice('limit.reached', { feature: 'photos', planCode: 'free_student', limit: 1, upgradeTo: 'premium_student', month: '2026-10' }, 'limit.reached:photos:2026-10', day(27), null),
+    notice('content.removed', { content: 'photo', reason: 'The photo shows a poster, not the person.' }, `content.removed:photo:${id()}`, day(29), null),
+    notice('plan.expired', ending, `plan.expired:${grantId}`, endsAt, null),
+  ];
+  const notificationPreferences: NotificationPreferenceRow[] = [{ userId, category: 'plan', email: false, version: 1, createdAt: day(26), updatedAt: day(26) }];
+  return { entitlementGrants, notifications, notificationPreferences };
 }
 
 function round5(x: number): number {

@@ -16,7 +16,7 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
-import { auditLog, authUser, notification, person, pilotAccessRequest, reviewCase } from '../db/schema';
+import { auditLog, authUser, person, pilotAccessRequest, reviewCase } from '../db/schema';
 import { ACCOUNT_TYPES } from '../db/schema/common';
 import { effectivePlan, type Executor, grantsOf } from '../entitlements/access';
 import { grantState } from '../entitlements/effective';
@@ -38,6 +38,7 @@ import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 import { neighbourTags } from './profile';
+import { notifyEach } from './notify';
 
 /** The label every price carries (plan §5.6, DEFAULT D09). */
 export const PROPOSED_PRICE_LABEL = 'Proposed price (not final)';
@@ -408,13 +409,7 @@ export async function requestPilotAccess(principal: Principal | null, raw: unkno
       if (admins.length > 0) {
         // No name in the payload: the admins' list looks the requester up when it is read
         // (services/notifications.ts), so no copy of a name outlives the account (plan §6.4).
-        await tx.insert(notification).values(
-          admins.map((admin) => ({
-            userId: admin.id,
-            template: 'pilot-access.requested',
-            payload: { requestId: request.id, planCode },
-          })),
-        );
+        await notifyEach(tx, admins.map((admin) => admin.id), 'pilot-access.requested', { requestId: request.id, planCode });
       }
       // The audit keeps ids and the plan, never a name (plan §6.4).
       await writeAudit(tx, {

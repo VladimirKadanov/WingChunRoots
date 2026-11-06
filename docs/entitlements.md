@@ -205,6 +205,11 @@
 | `grants.closeRequest` | `POST /admin/grants/close-request` | администратор с проверен втори фактор |
 | `notifications.list` | `GET /notifications` | влязъл акаунт |
 | `notifications.markRead` | `POST /notifications/mark-read` | влязъл акаунт, само собствените известия |
+| `notifications.markAllRead` | `POST /notifications/mark-all-read` | влязъл акаунт, само собствените известия (M18; по избор на една категория) |
+| `notifications.preferences` | `GET /notifications/preferences` | влязъл акаунт, само собственият избор (M18) |
+| `notifications.setPreference` | `POST /notifications/preferences/set` | влязъл акаунт; `security` и `account` не се изключват (M18) |
+| `notifications.unsubscribeInfo` | `GET /notifications/unsubscribe` | всеки с валиден токен за отписване (M18, без вход) |
+| `notifications.unsubscribe` | `POST /notifications/unsubscribe` | всеки с валиден токен за отписване; само категорията и акаунтът на токена (M18, без вход) |
 | `dashboard.overview` | `GET /dashboard` | влязъл акаунт |
 
 ## 10. Без изкуствена спешност (`copy.no-fomo.test.ts`)

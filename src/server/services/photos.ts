@@ -46,6 +46,7 @@ import { SLUG_PATTERN } from '../db/schema/persons';
 import type { PhotoDto } from '../dto/public';
 import type { EntitlementSubject } from '../entitlements/access';
 import { withQuota } from '../entitlements/quota';
+import type { Transaction } from '../jobs/outbox';
 import { logger } from '../log';
 import { getPhotoStore, newStorageKey, type ObjectStore } from '../storage';
 import { PhotoRefused, type PhotoSize, renderGalleryPhoto } from '../storage/photo';
@@ -53,6 +54,8 @@ import { readObjectBytes } from '../storage/read';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { PHOTO_HASH_LENGTH, photoDto, publicPhotoRefs } from './photo-refs';
+import { withLimitNotice } from './limit-notices';
+import { notify } from './notify';
 
 export { photoDto, photoUrl, publicPhotoRefs } from './photo-refs';
 
@@ -137,6 +140,17 @@ export async function ownPerson(userId: string): Promise<OwnPerson | null> {
 const filesOf = (key: string) => [...PHOTO_SIZES.map((size) => `${key}/${size}`), `${key}/full`];
 
 /**
+ * M18 (In scope 5; DEFAULT M18, question 6): the account that owns a person is told that staff
+ * removed one of its photos, with the reason; never the staff member's own person, once per photo.
+ * Shared by the gallery.
+ */
+export async function tellPhotoOwner(tx: Transaction, personId: string, staffUserId: string, photoId: string, reason: string): Promise<void> {
+  const [owner] = await tx.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, personId));
+  if (!owner?.userId || owner.userId === staffUserId) return;
+  await notify(tx, owner.userId, 'content.removed', { content: 'photo', reason }, { key: `content.removed:photo:${photoId}` });
+}
+
+/**
  * Deletes the files of photos whose rows are already `removed` (account deletion, src/server/services/
  * privacy.ts): best effort, after the transaction that changed the rows has committed.
  */
@@ -191,10 +205,19 @@ export async function firstPosition(tx: { execute: (q: ReturnType<typeof sql>) =
 // --- Upload ------------------------------------------------------------------------------------
 
 /**
+ * M18 (In scope 5; DEFAULT M18, question 2): uploadPhoto is uploadProfilePhoto below; a refusal at a used-up allowance of the
+ * plan also leaves one notice a month in the dashboard (src/server/services/limit-notices.ts).
+ */
+export async function uploadPhoto(principal: Principal | null, raw: z.input<typeof photoUploadInput>, meta: RequestMeta, store: ObjectStore = getPhotoStore()): Promise<UploadedPhoto> {
+  const p = requireUser(principal);
+  return withLimitNotice(p.user.id, 'photos', () => uploadProfilePhoto(p, raw, meta, store));
+}
+
+/**
  * Uploads or replaces the profile photo of the signed-in account's own person (see the top of
  * this file for the order of the checks). Returns the new photo's addresses; never a storage key.
  */
-export async function uploadPhoto(
+async function uploadProfilePhoto(
   principal: Principal | null,
   raw: z.input<typeof photoUploadInput>,
   meta: RequestMeta,
@@ -377,6 +400,8 @@ export async function removePhoto(
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
+    // M18 (In scope 5): the owner of the profile is told of a staff removal, with the reason.
+    if (asStaff) await tellPhotoOwner(tx, target.id, p.user.id, current.id, reason);
     return current;
   });
   if (removed) {

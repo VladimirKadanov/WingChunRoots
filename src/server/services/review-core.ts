@@ -14,12 +14,13 @@ import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { Principal, StaffRole } from '../auth/principal';
 import { uuidv7 } from '../db/ids';
-import { authUser, notification, organization, organizationAdmin, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
+import { authUser, organization, organizationAdmin, person, reviewCase, reviewEvent, teachingRelationship } from '../db/schema';
 import { OPEN_REVIEW_CASE_STATUSES, type REVIEW_EVENT_ACTIONS, STAFF_ROLES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
 import type { ReviewCaseKind, ReviewCaseStatus } from '../templates/review';
 import { pgErrorOf, ServiceError } from './errors';
+import { notify, notifyEach } from './notify';
 
 export type ReviewEventAction = (typeof REVIEW_EVENT_ACTIONS)[number];
 
@@ -206,11 +207,11 @@ export async function tellStaff(tx: Transaction, caseId: string, kind: ReviewCas
     .from(authUser)
     .where(and(inArray(authUser.role, [...roles]), eq(authUser.banned, false)))
     .limit(200);
-  const rows = staff.filter((s) => !exclude.includes(s.id)).map((s) => ({ userId: s.id, template: 'review.opened', payload: { caseId, kind } }));
-  if (rows.length > 0) await tx.insert(notification).values(rows);
+  const ids = staff.filter((s) => !exclude.includes(s.id)).map((s) => s.id);
+  if (ids.length > 0) await notifyEach(tx, ids, 'review.opened', { caseId, kind });
 }
 
 /** The reviewer a case is assigned to is told that a party answered (evidence, a reply). */
 export async function tellAssignee(tx: Transaction, c: Pick<CaseRow, 'id' | 'assignedToUserId'>, change: 'evidence' | 'withdrawn'): Promise<void> {
-  if (c.assignedToUserId) await tx.insert(notification).values({ userId: c.assignedToUserId, template: 'review.updated', payload: { caseId: c.id, change } });
+  if (c.assignedToUserId) await notify(tx, c.assignedToUserId, 'review.updated', { caseId: c.id, change });
 }

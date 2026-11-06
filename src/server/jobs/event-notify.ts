@@ -13,13 +13,18 @@
 // and change while it waits, and the unique index notification_event_once_key keeps one notice per
 // person when the job runs again (ON CONFLICT DO NOTHING). Logs carry the job id and counts, never
 // the event's text or a person's id (plan §6.4).
+//
+// M18: the notices go through notify() (src/server/services/notify.ts) with the key
+// `<change>:<event id>`, so a student who switched e-mail on for Events (off by default, as in
+// M17) gets the e-mail too, once.
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { JobWithMetadata } from 'pg-boss';
+import type { JobWithMetadata, PgBoss } from 'pg-boss';
 
 import { formatEventWhen } from '../../lib/event-time';
 import type { Database } from '../db';
 import { authUser, entitlementGrant, notification, person, teachingRelationship, vPublicEvent } from '../db/schema';
+import { notifyEach } from '../services/notify';
 import { PUBLIC_RELATIONSHIP_STATUSES } from '../db/schema/common';
 import { resolveEffectivePlan } from '../entitlements/effective';
 import { type EventsNotifyJob, QUEUE } from './queues';
@@ -34,7 +39,7 @@ export interface EventNoticeResult {
 }
 
 /** Writes the notices of one change of one event. */
-export async function sendEventNotices(db: Database, job: EventsNotifyJob, now = new Date()): Promise<EventNoticeResult> {
+export async function sendEventNotices(db: Database, job: EventsNotifyJob, now = new Date(), boss?: PgBoss): Promise<EventNoticeResult> {
   const [row] = await db
     .select({
       id: vPublicEvent.id,
@@ -114,20 +119,16 @@ export async function sendEventNotices(db: Database, job: EventsNotifyJob, now =
     startDay: formatEventWhen(row.startsAt, row.endsAt, row.timezone).startDay,
   };
   const template = job.change === 'published' ? 'event.published' : 'event.cancelled';
-  const written = await db
-    .insert(notification)
-    .values(premium.map((s) => ({ userId: s.userId, template, payload })))
-    .onConflictDoNothing()
-    .returning({ id: notification.id });
-  return { written: written.length, recipients: premium.length, skipped: false };
+  const written = await db.transaction((tx) => notifyEach(tx, premium.map((s) => s.userId), template, payload, { key: `${template}:${row.id}`, boss }));
+  return { written, recipients: premium.length, skipped: false };
 }
 
 /** Handles events.notify. A failure is logged and rethrown with its code only (plan §6.4). */
-export function eventsNotifyHandler(db: Database, log: (line: string) => void) {
+export function eventsNotifyHandler(db: Database, log: (line: string) => void, boss?: PgBoss) {
   return async (jobs: JobWithMetadata<EventsNotifyJob>[]): Promise<void> => {
     for (const job of jobs) {
       try {
-        const result = await sendEventNotices(db, job.data);
+        const result = await sendEventNotices(db, job.data, new Date(), boss);
         log(
           result.skipped
             ? `${QUEUE.eventsNotify}: job ${job.id}: nothing to send`

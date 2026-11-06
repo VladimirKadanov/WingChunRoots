@@ -29,6 +29,7 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: erased 0 delivery address(es), 0 invitation address(es)',
       'retention.purge: deleted 0 expired session(s), 0 expired verification value(s), 0 expired throttle row(s)',
       'retention.purge: deleted 0 unconfirmed account(s), kept 0 still referred to',
+      'retention.purge: deleted 0 old notification(s)',
     ]);
   });
 

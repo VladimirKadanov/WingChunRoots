@@ -2,7 +2,7 @@
 // most CSS; the colours keep a contrast of at least 4.5:1 on white (plan §5.2).
 
 import type { ReactNode } from 'react';
-import { Body, Container, Head, Hr, Html, Preview, Section, Text } from 'react-email';
+import { Body, Container, Head, Hr, Html, Link, Preview, Section, Text } from 'react-email';
 
 import type { NameData } from './types';
 
@@ -19,8 +19,35 @@ const styles = {
 
 export const textStyle = { fontSize: '16px', lineHeight: '24px', color: '#1f2328', margin: '0 0 16px' } as const;
 
+/**
+ * M18 (In scope 4): the unsubscribe link of an e-mail whose category can be switched off. renderEmail()
+ * gives it to the template's EmailLayout for the delivery (src/server/templates/email/index.ts), so
+ * every template shows it in the footer without a field of its own; the Mailer adds
+ * List-Unsubscribe from the same link. A prop, not a React context: the templates are imported by
+ * Server Components too, where createContext is not available.
+ */
+export interface UnsubscribeLink {
+  /** APP_URL/unsubscribe?token=…: a page that switches the category off with one press, no sign-in. */
+  url: string;
+  /** The category's label (src/server/templates/catalog.ts). */
+  category: string;
+}
+
+function UnsubscribeFooter({ link }: { link: UnsubscribeLink | undefined }) {
+  if (!link) return null;
+  return (
+    <Text style={styles.footer}>
+      You get this e-mail because e-mail is on for {link.category} notices. To stop these e-mails, open{' '}
+      <Link href={link.url} style={{ color: '#0b57d0' }}>
+        Unsubscribe from {link.category} e-mails
+      </Link>{' '}
+      and press the button; no sign-in is needed. You can turn them on again in Account type and plan, under Notifications.
+    </Text>
+  );
+}
+
 /** The frame of every e-mail: language, preview line, brand line and footer. */
-export function EmailLayout({ preview, children }: { preview: string; children: ReactNode }) {
+export function EmailLayout({ preview, children, unsubscribe }: { preview: string; children: ReactNode; unsubscribe?: UnsubscribeLink }) {
   return (
     <Html lang="en" dir="ltr">
       <Head />
@@ -34,6 +61,7 @@ export function EmailLayout({ preview, children }: { preview: string; children: 
             WingChunRoots documents Wing Chun teaching lineages. You received this e-mail because of an action on
             WingChunRoots.
           </Text>
+          <UnsubscribeFooter link={unsubscribe} />
         </Container>
       </Body>
     </Html>

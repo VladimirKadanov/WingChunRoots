@@ -4,6 +4,7 @@
 // that type, is audited, and verifies nothing (DEFAULT D04): a Sifu without an approved instructor
 // verification shows as "Instructor (unverified)" (DEFAULT D04/D13). From Sifu to Student every
 // confirmed link stays confirmed (DEFAULT D06/D08). Reads the session: rendered per request.
+// M18: the e-mail settings of the notices (section Notifications).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -20,7 +21,8 @@ import { FREE_SIFU_STUDENT_LIMIT } from '@/server/entitlements/plans';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { AccountTypeForm } from './forms';
+import { NOTIFICATIONS_FORM } from './form-ids';
+import { AccountTypeForm, NotificationEmailsForm } from './forms';
 
 export const instant = false;
 
@@ -48,8 +50,10 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
-  const mine = await pageRead(serverClient(await headers(), guard.principal).plans.mine());
-  if (!mine) return <LoadError {...SETTINGS_LOAD_ERROR} retryHref="/dashboard/settings" />;
+  const client = serverClient(await headers(), guard.principal);
+  const mine = await pageRead(client.plans.mine());
+  const preferences = mine ? await pageRead(client.notifications.preferences()) : null;
+  if (!mine || !preferences) return <LoadError {...SETTINGS_LOAD_ERROR} retryHref="/dashboard/settings" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
 
   return (
@@ -134,6 +138,20 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
                 Back to your dashboard
               </Link>
             </p>
+          </Section>
+
+          {/* M18 (In scope 3; DEFAULT M18, question 1): e-mail per category; the dashboard always. */}
+          <Section id="notifications-heading" title="Notifications">
+            <div className="grid gap-5">
+              <p className="max-w-[60ch] text-ui text-fg-muted">
+                Every notice appears in your{' '}
+                <Link href="/dashboard/notifications" className="link">
+                  notifications
+                </Link>
+                . Choose which of them also come by e-mail. Each e-mail you can switch off has an unsubscribe link at the bottom.
+              </p>
+              <NotificationEmailsForm categories={preferences.categories} initial={await readFormResult(NOTIFICATIONS_FORM, query.outcome)} />
+            </div>
           </Section>
         </div>
       </div>

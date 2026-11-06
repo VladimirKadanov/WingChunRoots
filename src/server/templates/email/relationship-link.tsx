@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react';
 import { Button, Link, Text } from 'react-email';
 
-import { EmailLayout, PersonName, textStyle } from './components';
+import { EmailLayout, type UnsubscribeLink, PersonName, textStyle } from './components';
 import { type NameData, parseObject, TemplateDataError } from './types';
 
 const buttonStyle = {
@@ -24,19 +24,22 @@ const linkStyle = { color: '#0b57d0', wordBreak: 'break-all' } as const;
 
 export function RelationshipEmail({
   preview,
+  unsubscribe,
   recipientNames,
   children,
   action,
   url,
 }: {
   preview: string;
+  /** M18: the unsubscribe link of the delivery (renderEmail), for the layout's footer. */
+  unsubscribe?: UnsubscribeLink;
   recipientNames: NameData[];
   children: ReactNode;
   action: string;
   url: string;
 }) {
   return (
-    <EmailLayout preview={preview}>
+    <EmailLayout preview={preview} unsubscribe={unsubscribe}>
       <Text style={textStyle}>
         {recipientNames.length > 0 ? (
           <>

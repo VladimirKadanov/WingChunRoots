@@ -43,6 +43,19 @@ export interface SendInput<N extends EmailTemplateName = EmailTemplateName> {
   idempotencyKey: string;
   /** The account the e-mail belongs to, when there is one. */
   userId?: string | null;
+  /**
+   * M18 (In scope 4): the unsubscribe link of an e-mail whose category can be switched off. The
+   * footer shows `url` (a page with one button); List-Unsubscribe names `oneClickUrl`, which a
+   * mail client POSTs to (RFC 8058). Built by src/server/services/notify.ts; travels sealed in the job.
+   */
+  unsubscribe?: MailUnsubscribe;
+}
+
+export interface MailUnsubscribe {
+  url: string;
+  oneClickUrl: string;
+  /** The category's label, for the footer. */
+  category: string;
 }
 
 export interface SendResult {

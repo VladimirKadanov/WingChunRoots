@@ -44,14 +44,15 @@
 //   /reset-password                the browser that used the e-mailed link becomes a known one (the
 //                                  address comes from onPasswordReset through the request scope).
 //   password-gated endpoints       as for sign-in (INVALID_PASSWORD keeps the reservation); the
-//                                  browser that changed the password stays a known one.
+//                                  browser that changed the password stays a known one. A change
+//                                  that succeeded sends its security notice (M18).
 //   /two-factor/verify-totp        the session that proved the second factor gets
 //   /two-factor/verify-backup-code two_factor_verified_at (requireStaff2FA() checks it); a wrong code
 //                                  keeps the session's reservation, anything else gives it back; the
 //                                  claim on a TOTP code is kept only when the code was accepted.
 // databaseHooks
 //   user.create.after              the sign-up ticks become consent_record rows (consent.grant).
-//   user.update.after              auth.2fa.enable in the audit log.
+//   user.update.after              auth.2fa.enable in the audit log, and its security notice (M18).
 //   session.create.before          ip_address holds the ip_hmac, never the address (plan §6.4).
 //
 // Ending every session on a role change and when 2FA is turned on is a database trigger
@@ -70,6 +71,7 @@ import { getDb } from '../db';
 import { authAccount, authSession, authTwoFactor, authUser, emailDelivery } from '../db/schema';
 import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../services/consent';
 import { requestMeta } from '../services/context';
+import { type SecurityKind, sendSecurityNotice } from '../services/security-notices';
 import { normalizeBackupCode } from './credentials';
 import { isPublicDeployment } from './env';
 import { clientIp, ipHmac } from './ip';
@@ -86,6 +88,12 @@ const SECOND_FACTOR_PATHS = new Set([VERIFY_TOTP_PATH, VERIFY_BACKUP_CODE_PATH])
  * keeps the list complete, hardening-lockout.int.test.ts tests what they count.
  */
 export const PASSWORD_GATED_PATHS = new Set(['/two-factor/enable', '/two-factor/disable', '/two-factor/generate-backup-codes', '/change-password']);
+/** M18: the security notice of a password-gated change that succeeded. */
+const SECURITY_NOTICE_OF: Readonly<Record<string, SecurityKind>> = {
+  '/change-password': 'security.password-changed',
+  '/two-factor/disable': 'security.two-factor-disabled',
+  '/two-factor/generate-backup-codes': 'security.backup-codes',
+};
 /** Of those, the ones that hand out a second factor: a staff session must have passed it first. */
 const SECOND_FACTOR_ISSUING_PATHS = new Set(['/two-factor/enable', '/two-factor/generate-backup-codes']);
 /** The two-factor plugin's cookie for a sign-in waiting for its second factor. */
@@ -410,6 +418,17 @@ export const afterHook = createAuthMiddleware(async (ctx) => {
     // A new password ends the account's known browsers; the one that chose it stays known.
     const email = (returned as { user?: { email?: unknown } } | undefined)?.user?.email;
     if (right && ctx.path === '/change-password' && typeof email === 'string') await rememberDevice(ctx, email);
+    // M18: the security notice of the change (e-mailed always). Turning 2FA on is told when the
+    // first code confirms it (afterUserUpdate), not when the setup starts here.
+    const notice = right ? SECURITY_NOTICE_OF[ctx.path] : undefined;
+    if (notice) {
+      const userId =
+        ctx.path === '/change-password'
+          ? (returned as { user?: { id?: unknown } } | undefined)?.user?.id
+          : // Turning 2FA off replaces the session (the request's cookie names a deleted one): its new session first.
+            (ctx.context.newSession?.user.id ?? (await sessionOf(ctx))?.user.id);
+      if (typeof userId === 'string') await sendSecurityNotice(userId, notice);
+    }
     return;
   }
 
@@ -489,6 +508,8 @@ export async function afterUserUpdate(
     requestId: meta.requestId,
     ipHmac: meta.ipHmac,
   });
+  // M18: the security notice (e-mailed always).
+  await sendSecurityNotice(user.id, 'security.two-factor-enabled');
 }
 
 /**

@@ -61,10 +61,10 @@ import { hasStaff2FA, requireStaff2FA } from '../auth/guards';
 import type { Principal, StaffRole } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
-import { authUser, contentReport, evidenceLink, invitation, lineage, notification, person, personBio, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
+import { authUser, contentReport, evidenceLink, invitation, lineage, person, personBio, personName, reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import { OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, REVIEW_CASE_KINDS, REVIEW_CASE_STATUSES } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
-import { enqueue, queueEmail, type Transaction } from '../jobs/outbox';
+import { enqueue, type Transaction } from '../jobs/outbox';
 import { QUEUE } from '../jobs/queues';
 import { writePersonKeys } from '../search/store';
 import { REPORT_REASON_LABELS, REVIEW_KIND_LABELS, REVIEW_STATUS_LABELS, type ReviewCaseKind, type ReviewCaseStatus } from '../templates/review';
@@ -78,6 +78,7 @@ import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPT
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import { decideKind } from './review-kinds';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
+import { notify } from './notify';
 import {
   accountOf,
   closesCycle,
@@ -871,16 +872,20 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
 async function tellStudent(tx: Transaction, row: RelRow, decision: 'verified' | 'rejected' | 'needs_info', eventId: string): Promise<void> {
   const student = await accountOf(tx, row.studentPersonId);
   if (!student) return;
-  await tx.insert(notification).values({ userId: student.id, template: 'review.decided', payload: { relationshipId: row.id, decision } });
   const teacherNames = await namesFor(tx, row.teacherPersonId);
-  if (teacherNames.length === 0) return;
+  const payload = { relationshipId: row.id, decision };
+  // No e-mail without the teacher's name.
+  if (teacherNames.length === 0) {
+    await notify(tx, student.id, 'review.decided', payload);
+    return;
+  }
   const recipientNames = await namesFor(tx, row.studentPersonId);
-  await queueEmail(tx, {
-    template: 'review-decided',
-    to: student.email,
-    userId: student.id,
-    idempotencyKey: `review-decided:${eventId}`,
-    data: { decision, teacherNames, lineageName: row.lineageName, url: url('/dashboard/teachers'), ...(recipientNames.length > 0 ? { recipientNames } : {}) },
+  await notify(tx, student.id, 'review.decided', payload, {
+    email: {
+      template: 'review-decided',
+      idempotencyKey: `review-decided:${eventId}`,
+      data: { decision, teacherNames, lineageName: row.lineageName, url: url('/dashboard/teachers'), ...(recipientNames.length > 0 ? { recipientNames } : {}) },
+    },
   });
 }
 

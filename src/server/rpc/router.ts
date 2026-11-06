@@ -93,7 +93,20 @@ import {
   uploadSchoolPhoto,
 } from '../services/school-photos';
 import { myReports, reportInput, reportProfile } from '../services/reports';
-import { listNotifications, markNotificationsRead, markReadInput } from '../services/notifications';
+import {
+  listNotifications,
+  listNotificationsInput,
+  markAllNotificationsRead,
+  markAllReadInput,
+  markNotificationsRead,
+  markReadInput,
+  notificationPreferences,
+  setNotificationPreference,
+  setPreferenceInput,
+  unsubscribe,
+  unsubscribeInfo,
+  unsubscribeInput,
+} from '../services/notifications';
 import { myPlan, planCatalog, requestPilotAccess, requestPilotAccessInput, setAccountType, setAccountTypeInput } from '../services/plans';
 import {
   approveRelationship,
@@ -409,12 +422,41 @@ export const router = {
   },
   notifications: {
     list: base
-      .route({ method: 'GET', path: '/notifications', summary: "The signed-in account's newest notifications and its unread count" })
-      .handler(({ context }) => listNotifications(context.principal)),
+      .route({
+        method: 'GET',
+        path: '/notifications',
+        summary: "The signed-in account's notifications, newest first, 20 a page, optionally of one category (M18), and its unread count",
+      })
+      .input(listNotificationsInput)
+      .handler(({ context, input }) => listNotifications(context.principal, input)),
     markRead: signedIn
       .route({ method: 'POST', path: '/notifications/mark-read', summary: 'Mark own notifications read: some by id, or all' })
       .input(markReadInput)
       .handler(({ context, input }) => markNotificationsRead(context.principal, input)),
+    // M18: lifecycle notices (docs/adr/0021-notices.md).
+    markAllRead: signedIn
+      .route({ method: 'POST', path: '/notifications/mark-all-read', summary: 'Mark every own notification read, or every one of a category' })
+      .input(markAllReadInput)
+      .handler(({ context, input }) => markAllNotificationsRead(context.principal, input)),
+    preferences: signedIn
+      .route({
+        method: 'GET',
+        path: '/notifications/preferences',
+        summary: 'E-mail on or off per category of notices; security and account are always on; dashboard notices always on',
+      })
+      .handler(({ context }) => notificationPreferences(context.principal)),
+    setPreference: signedIn
+      .route({ method: 'POST', path: '/notifications/preferences/set', summary: 'Switch the e-mail of one category on or off (never security or account); old unsubscribe links stop working' })
+      .input(setPreferenceInput)
+      .handler(({ context, input }) => setNotificationPreference(context.principal, input)),
+    unsubscribeInfo: base
+      .route({ method: 'GET', path: '/notifications/unsubscribe', summary: 'What an unsubscribe link from an e-mail switches off; no sign-in; 404 once the preference changed' })
+      .input(unsubscribeInput)
+      .handler(({ input }) => unsubscribeInfo(input)),
+    unsubscribe: base
+      .route({ method: 'POST', path: '/notifications/unsubscribe', summary: "Switch off the e-mails of an unsubscribe link's category, without signing in (idempotent)" })
+      .input(unsubscribeInput)
+      .handler(({ input }) => unsubscribe(input)),
   },
   // M09: teacher requests and independent approvals (plan §6.3, §6.7). Every mutation takes an
   // idempotency key; the services check who may do what (relationships.ts, the authorization matrix).

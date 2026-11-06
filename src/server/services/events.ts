@@ -101,6 +101,8 @@ import {
   sha256,
 } from './photos';
 import { openPilotRequest, planSummary } from './plans';
+import { withLimitNotice } from './limit-notices';
+import { notify } from './notify';
 
 // --- Limits and words ----------------------------------------------------------------------------
 
@@ -667,10 +669,19 @@ export interface CreatedEvent {
 }
 
 /**
+ * M18 (In scope 5; DEFAULT M18, question 2): createEvent is publishEvent below; a refusal at a used-up allowance of the
+ * plan also leaves one notice a month in the dashboard (src/server/services/limit-notices.ts).
+ */
+export async function createEvent(principal: Principal | null, raw: z.input<typeof eventCreateInput>, meta: RequestMeta): Promise<CreatedEvent> {
+  const p = requireUser(principal);
+  return withLimitNotice(p.user.id, 'events', () => publishEvent(p, raw, meta));
+}
+
+/**
  * events.create: published at once (DEFAULT M17, question 2). As the account's own Sifu events
  * (with its person) or, with `organizationId`, as an approved organization it administers.
  */
-export async function createEvent(principal: Principal | null, raw: z.input<typeof eventCreateInput>, meta: RequestMeta): Promise<CreatedEvent> {
+async function publishEvent(principal: Principal | null, raw: z.input<typeof eventCreateInput>, meta: RequestMeta): Promise<CreatedEvent> {
   const p = requireUser(principal);
   const parsed = eventCreateInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
@@ -774,8 +785,17 @@ export async function createEvent(principal: Principal | null, raw: z.input<type
   return { id: created.id, slug: created.slug };
 }
 
-/** events.update: the organizer changes the event; a move to another month counts again (DEFAULT M17, question 1). */
+/**
+ * M18 (In scope 5; DEFAULT M18, question 2): updateEvent is changeEvent below; a refusal at a used-up allowance of the
+ * plan also leaves one notice a month in the dashboard (src/server/services/limit-notices.ts).
+ */
 export async function updateEvent(principal: Principal | null, raw: z.input<typeof eventUpdateInput>, meta: RequestMeta): Promise<CreatedEvent> {
+  const p = requireUser(principal);
+  return withLimitNotice(p.user.id, 'events', () => changeEvent(p, raw, meta));
+}
+
+/** events.update: the organizer changes the event; a move to another month counts again (DEFAULT M17, question 1). */
+async function changeEvent(principal: Principal | null, raw: z.input<typeof eventUpdateInput>, meta: RequestMeta): Promise<CreatedEvent> {
   const p = requireUser(principal);
   const parsed = eventUpdateInput.safeParse(raw);
   if (!parsed.success) {
@@ -926,6 +946,11 @@ export async function removeEvent(
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
+    // M18 (In scope 5): the organizer (or, for an organization's event, the account that published
+    // it) is told, with the reason; once per event.
+    const [owner] = await tx.select({ organizer: event.organizerUserId, creator: event.createdByUserId, title: event.title }).from(event).where(eq(event.id, row.id));
+    const to = owner?.organizer ?? owner?.creator ?? null;
+    if (to) await notify(tx, to, 'content.removed', { content: 'event', reason, title: owner!.title }, { key: `content.removed:event:${row.id}` });
     return { row, removed: true };
   });
   if (removed.removed) {

@@ -1,10 +1,10 @@
 // Consents, notifications, e-mail deliveries and the audit log (plan §6.2, §6.6).
 
 import { sql } from 'drizzle-orm';
-import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
-import { CONSENT_ACTIONS, CONSENT_KINDS, EMAIL_STATUSES, idColumn, inList, timestamps } from './common';
+import { CONSENT_ACTIONS, CONSENT_KINDS, EMAIL_STATUSES, idColumn, inList, NOTIFICATION_CATEGORIES, timestamps } from './common';
 
 /** Consent given or withdrawn: kind, document version, time and who (plan §6.2). */
 export const consentRecord = pgTable(
@@ -38,10 +38,17 @@ export const notification = pgTable(
     template: text('template').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     readAt: timestamp('read_at', { withTimezone: true }),
+    // M18 (src/server/services/notify.ts): the sender's key for "once": one notice per account and
+    // key, however often the job or the action that sends it runs. Built from ids, never from text.
+    dedupeKey: text('dedupe_key'),
     ...timestamps(),
   },
   (t) => [
     index('notification_user_id_idx').on(t.userId, t.createdAt),
+    uniqueIndex('notification_dedupe_key').on(t.userId, t.dedupeKey).where(sql`${t.dedupeKey} IS NOT NULL`),
+    // M18 (DEFAULT M18, question 3): the retention job deletes read notices after 180 days and
+    // unread ones after 365, by creation time.
+    index('notification_created_at_idx').on(t.createdAt),
     // The unread count of the dashboard (M08).
     index('notification_user_id_unread_idx').on(t.userId).where(sql`${t.readAt} IS NULL`),
     // M17 (DEFAULT M17, question 3): one notice per person, event and change (published or
@@ -49,6 +56,32 @@ export const notification = pgTable(
     uniqueIndex('notification_event_once_key')
       .on(t.userId, t.template, sql`(${t.payload} ->> 'eventId')`)
       .where(sql`${t.template} IN ('event.published', 'event.cancelled')`),
+  ],
+);
+
+/**
+ * M18 (DEFAULT M18, question 1): the account's choice of e-mail for one category of notices. No row
+ * means the catalog's default (src/server/templates/catalog.ts). Dashboard notices are always on.
+ * `version` grows with every change, and an unsubscribe link carries the version it was made for,
+ * so a link stops working once the preference has changed (src/server/services/unsubscribe.ts).
+ */
+export const notificationPreference = pgTable(
+  'notification_preference',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    category: text('category', { enum: NOTIFICATION_CATEGORIES }).notNull(),
+    email: boolean('email').notNull(),
+    version: integer('version').notNull().default(1),
+    ...timestamps(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.category], name: 'notification_preference_pkey' }),
+    check('notification_preference_category_check', inList(t.category.name, NOTIFICATION_CATEGORIES)),
+    // Security and the legal notices of the account are never switched off (In scope 3).
+    check('notification_preference_locked_categories', sql`${t.email} OR ${t.category} NOT IN ('security', 'account')`),
+    check('notification_preference_version_positive', sql`${t.version} > 0`),
   ],
 );
 

@@ -44,6 +44,7 @@ import {
   lineage,
   lineageMembership,
   notification,
+  notificationPreference,
   organization,
   organizationAdmin,
   organizationMembership,
@@ -88,6 +89,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   lineage,
   lineageMembership,
   notification,
+  notificationPreference,
   organization,
   organizationAdmin,
   organizationMembership,
@@ -288,6 +290,8 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
   );
   await insert(eventInstructor, f.eventInstructors);
   await insert(notification, f.notifications);
+  // M18: the demo account's notice e-mail choice.
+  await insert(notificationPreference, f.notificationPreferences);
   return counts;
 }
 

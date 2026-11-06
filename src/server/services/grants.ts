@@ -16,13 +16,14 @@ import { requireStaff2FA } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
-import { authUser, entitlementGrant, notification, pilotAccessRequest } from '../db/schema';
+import { authUser, entitlementGrant, pilotAccessRequest } from '../db/schema';
 import { type Executor, grantsOf } from '../entitlements/access';
 import { type GrantState, grantState } from '../entitlements/effective';
 import { type AccountType, GRANTABLE_PLANS, type PlanCode, PLANS, PLANS_WITHOUT_PILOT_BENEFITS } from '../entitlements/plans';
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { notify } from './notify';
 
 /**
  * M11: a Professional Sifu grant shows or hides the school pins of its account (v_public_school,
@@ -454,12 +455,8 @@ export async function createGrant(principal: Principal | null, raw: unknown, met
       .update(pilotAccessRequest)
       .set({ status: 'closed', closedAt: now, closedByUserId: actor.user.id, grantId, updatedAt: now })
       .where(and(eq(pilotAccessRequest.userId, account.id), eq(pilotAccessRequest.status, 'open'), answers));
-    await tx.insert(notification).values({
-      userId: account.id,
-      template: 'plan.granted',
-      // The start too: a grant that starts later must not read as a plan the account has now.
-      payload: { planCode: input.planCode, startsAt: startsAt!.toISOString(), endsAt: endsAt?.toISOString() ?? null },
-    });
+    // The start too: a grant that starts later must not read as a plan the account has now.
+    await notify(tx, account.id, 'plan.granted', { planCode: input.planCode, startsAt: startsAt!.toISOString(), endsAt: endsAt?.toISOString() ?? null });
     // The answer is read in the same transaction (review round 2, recheck-2): a failure anywhere,
     // this read included, changes nothing, so a form can say so.
     return rowById(tx, grantId, now);
@@ -516,7 +513,7 @@ export async function revokeGrant(principal: Principal | null, raw: unknown, met
     });
     // The account hears of every revocation (active or scheduled, in effect or kept for the other
     // account type): it is the account's plan either way.
-    await tx.insert(notification).values({ userId: grant.subjectUserId, template: 'plan.revoked', payload: { planCode: grant.planCode } });
+    await notify(tx, grant.subjectUserId, 'plan.revoked', { planCode: grant.planCode });
     // In the same transaction, as in createGrant (review round 2, recheck-2).
     return rowById(tx, grantId, now);
   });
@@ -578,7 +575,7 @@ export async function closePilotRequest(principal: Principal | null, raw: unknow
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    await tx.insert(notification).values({ userId: request.userId, template: 'pilot-access.closed', payload: { planCode: request.planCode } });
+    await notify(tx, request.userId, 'pilot-access.closed', { planCode: request.planCode });
     return { id: requestId, email: account.email, planCode: request.planCode, planName: PLANS[request.planCode].name, closedAt: now.toISOString() };
   });
 }

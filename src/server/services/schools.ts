@@ -55,7 +55,7 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic, lineageMembershipTag, personTag, SCHOOLS_TAG, tagCacheEntry } from '../cache';
 import { getDb } from '../db';
-import { auditLog, authUser, notification, person, place, reviewCase, school, schoolInstructor, schoolPrivateLocation } from '../db/schema';
+import { auditLog, authUser, person, place, reviewCase, school, schoolInstructor, schoolPrivateLocation } from '../db/schema';
 import { LOCATION_PRIVACIES, OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, SCHOOL_FORMS, SCHOOL_INSTRUCTOR_ROLES, SCHOOL_STATUSES } from '../db/schema/common';
 import {
   type GeoPointDto,
@@ -82,6 +82,7 @@ import { schoolPhotosOf } from './school-photos';
 import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
+import { notify, notifyEach } from './notify';
 
 // --- Constants ---------------------------------------------------------------------------------
 
@@ -1119,14 +1120,14 @@ async function openReReview(tx: Transaction, schoolId: string, p: Principal): Pr
 }
 
 /** Every moderator and administrator: they review listings (the queue's notification). */
-async function tellListingReviewers(tx: Executor, caseId: string, exceptUserId: string): Promise<void> {
+async function tellListingReviewers(tx: Transaction, caseId: string, exceptUserId: string): Promise<void> {
   const reviewers = await tx
     .select({ id: authUser.id })
     .from(authUser)
     .where(and(inArray(authUser.role, ['moderator', 'admin']), eq(authUser.banned, false)))
     .limit(200);
   const to = reviewers.filter((r) => r.id !== exceptUserId);
-  if (to.length > 0) await tx.insert(notification).values(to.map((r) => ({ userId: r.id, template: 'school.submitted', payload: { caseId } })));
+  if (to.length > 0) await notifyEach(tx, to.map((r) => r.id), 'school.submitted', { caseId });
 }
 
 export interface SchoolSubmitted extends SchoolSaved {
@@ -1180,7 +1181,7 @@ export async function submitSchool(principal: Principal | null, raw: z.input<typ
           requestId: meta.requestId,
           ipHmac: meta.ipHmac,
         });
-        if (open.assignedToUserId) await tx.insert(notification).values({ userId: open.assignedToUserId, template: 'school.submitted', payload: { caseId: open.id } });
+        if (open.assignedToUserId) await notify(tx, open.assignedToUserId, 'school.submitted', { caseId: open.id });
         return { id: row.id, slug: row.slug, status: row.status, caseId: open.id, replayed: false };
       }
       if (row.status !== 'draft') throw new ServiceError('CONFLICT', row.status === 'active' ? 'This school is already listed.' : 'This school cannot be sent for review now.');

@@ -37,6 +37,7 @@ import { readObjectBytes } from '../storage/read';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { schoolPhotoUrl } from './photo-refs';
+import { notify } from './notify';
 import {
   deleteFiles,
   etagMatches,
@@ -372,6 +373,13 @@ export async function removeSchoolPhoto(
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
+    // M18 (In scope 5): the Sifu who listed the school is told of a staff removal, with the reason.
+    if (asStaff) {
+      const [owner] = await tx.select({ userId: school.createdByUserId }).from(school).where(eq(school.id, row.schoolId));
+      if (owner?.userId && owner.userId !== p.user.id) {
+        await notify(tx, owner.userId, 'content.removed', { content: 'school_photo', reason }, { key: `content.removed:school_photo:${current.id}` });
+      }
+    }
     return current;
   });
   if (removed) {

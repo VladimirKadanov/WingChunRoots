@@ -136,7 +136,7 @@ export function createMailer({ db, transport, from }: { db: Database; transport:
       const recorded = { attempts: sql`${emailDelivery.attempts} + 1`, lastAttemptAt: sql`now()` };
       let rendered;
       try {
-        rendered = await renderEmail(row.template, input.data);
+        rendered = await renderEmail(row.template, input.data, input.unsubscribe ? { unsubscribe: { url: input.unsubscribe.url, category: input.unsubscribe.category } } : {});
       } catch (error) {
         if (!(error instanceof TemplateDataError)) throw error;
         // Data the template refuses never improves: fail now, without retries.
@@ -160,6 +160,10 @@ export function createMailer({ db, transport, from }: { db: Database; transport:
             'Auto-Submitted': 'auto-generated',
             'X-WingChunRoots-Delivery': row.id,
             'X-WingChunRoots-Template': row.template,
+            // M18 (In scope 4): one-click unsubscribe (RFC 8058) for a category that can be switched off.
+            ...(input.unsubscribe
+              ? { 'List-Unsubscribe': `<${input.unsubscribe.oneClickUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+              : {}),
           },
         });
         await tx

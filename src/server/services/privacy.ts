@@ -19,7 +19,7 @@ import type { Principal } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
 import { GALLERY_PHOTO_STATUSES } from '../db/schema/common';
-import { authUser, consentRecord, event, notification, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPhoto, schoolPrivateLocation, teachingRelationship } from '../db/schema';
+import { authUser, consentRecord, event, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPhoto, schoolPrivateLocation, teachingRelationship } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
@@ -30,6 +30,7 @@ import { queueRecomputeForPerson } from './lineage-membership';
 import { deletePhotoFiles } from './photos';
 import { neighbourTags, setOwnVisibility } from './profile';
 import { isReferencedRowError } from './retention';
+import { notifyEach } from './notify';
 
 /** The consents an account may withdraw and keep its account: everything the sign-up does not require. */
 export const OPTIONAL_CONSENTS = ['publication', 'privacy_ack'] as const satisfies readonly ConsentKind[];
@@ -208,7 +209,7 @@ export async function requestAccountDeletion(principal: Principal | null, raw: u
     const admins = await tx.select({ id: authUser.id }).from(authUser).where(eq(authUser.role, 'admin'));
     if (admins.length > 0) {
       // No name or address in the payload: the admin page looks the account up when it is read.
-      await tx.insert(notification).values(admins.map((admin) => ({ userId: admin.id, template: 'account.deletion-requested', payload: { caseId: request.id } })));
+      await notifyEach(tx, admins.map((admin) => admin.id), 'account.deletion-requested', { caseId: request.id });
     }
     await writeAudit(tx, {
       action: 'account.deletion_request',
