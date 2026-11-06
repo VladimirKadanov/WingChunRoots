@@ -10,6 +10,8 @@ import {
   ANCHOR_PERSON_SLUGS,
   ANCHOR_SCHOOL_SLUGS,
   coversAllStatuses,
+  DEMO_ACCOUNT_SLUGS,
+  demoAccountEmail,
   FICTIONAL_MARK,
   fixtureStats,
   generateFixtures,
@@ -235,6 +237,33 @@ describe('anchor records', () => {
   it('every school is in a GeoNames city of the default countries', () => {
     const countries = new Set(f.places.filter((p) => f.schools.some((s) => s.placeId === p.id)).map((p) => p.countryCode));
     for (const c of countries) expect(['BG', 'GR', 'DE', 'GB', 'US', 'HK']).toContain(c);
+  });
+});
+
+describe('demo accounts (one of every kind, owner request of 2026-11-06)', () => {
+  const userById = new Map(f.users.map((u) => [u.id, u]));
+  const federation = f.organizations.find((o) => o.slug === 'demo-federation-north')!;
+
+  it('has one sign-in account per slug, all at example.test', () => {
+    expect(f.users.map((u) => u.email).sort()).toEqual(DEMO_ACCOUNT_SLUGS.map(demoAccountEmail).sort());
+  });
+
+  it('covers every plan, account type, staff role and organization role', () => {
+    const plans = new Set(f.entitlementGrants.filter((g) => g.endsAt === null).map((g) => g.planCode));
+    expect([...plans].sort()).toEqual(['federation', 'premium_student', 'pro_sifu']);
+    expect(new Set(f.users.map((u) => u.accountType))).toEqual(new Set(['student', 'sifu']));
+    expect(new Set(f.users.map((u) => u.role))).toEqual(new Set(['user', 'moderator', 'archivist', 'admin']));
+    expect(f.organizationAdmins.map((a) => [userById.get(a.userId)!.email, a.organizationId, a.role])).toEqual([
+      ['demo-federation-owner@example.test', federation.id, 'owner'],
+      ['demo-organization-admin@example.test', federation.id, 'admin'],
+    ]);
+    expect(f.entitlementGrants.find((g) => g.planCode === 'federation')!.subjectOrganizationId).toBe(federation.id);
+  });
+
+  it('leaves demo-new-member without a profile record or a plan', () => {
+    const newMember = f.users.find((u) => u.email === 'demo-new-member@example.test')!;
+    expect(f.persons.some((p) => p.claimedByUserId === newMember.id)).toBe(false);
+    expect(f.entitlementGrants.some((g) => g.subjectUserId === newMember.id)).toBe(false);
   });
 });
 
