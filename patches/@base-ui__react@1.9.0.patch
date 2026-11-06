@@ -1,0 +1,32 @@
+diff --git a/dialog/root/useDialogRoot.js b/dialog/root/useDialogRoot.js
+index 154f8d6a4dcf37c8130c4d5754a69cee74ed525e..775047466ea18d7130c73cb08cf6da01ab7338e1 100644
+--- a/dialog/root/useDialogRoot.js
++++ b/dialog/root/useDialogRoot.js
+@@ -38,7 +38,10 @@ function DialogInteractions({
+         touch: 'sloppy'
+       };
+     },
+-    outsidePress(event) {
++    // Patched (WingChunRoots, plan §5.8 (c) INP): with pointer dismissal disabled this check
++    // always answers false, so no outside-press listeners are attached at all; otherwise each
++    // click outside ran querySelectorAll over the document and forced style and layout.
++    outsidePress: disablePointerDismissal ? false : function outsidePress(event) {
+       if (!store.context.outsidePressEnabledRef.current) {
+         return false;
+       }
+diff --git a/dialog/root/useDialogRoot.mjs b/dialog/root/useDialogRoot.mjs
+index fc5f8ce29872c25b11e5a2d8b8c84b62235a4ead..94ed5754a9c3c127f97fe8d3a5a39d329772eb11 100644
+--- a/dialog/root/useDialogRoot.mjs
++++ b/dialog/root/useDialogRoot.mjs
+@@ -32,7 +32,10 @@ export function DialogInteractions({
+         touch: 'sloppy'
+       };
+     },
+-    outsidePress(event) {
++    // Patched (WingChunRoots, plan §5.8 (c) INP): with pointer dismissal disabled this check
++    // always answers false, so no outside-press listeners are attached at all; otherwise each
++    // click outside ran querySelectorAll over the document and forced style and layout.
++    outsidePress: disablePointerDismissal ? false : function outsidePress(event) {
+       if (!store.context.outsidePressEnabledRef.current) {
+         return false;
+       }

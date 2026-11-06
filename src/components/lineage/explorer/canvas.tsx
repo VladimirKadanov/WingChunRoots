@@ -1954,6 +1954,12 @@ function CanvasFrame({
               selectionKeyCode={null}
               multiSelectionKeyCode={null}
               elementsSelectable
+              // A selection keeps every node's z-index (plan §5.8 (c), INP). React Flow raises the
+              // selected node (z-index 1000, and the last one back to 0): in WebKit each change
+              // re-sorts the stacking order of the whole viewport, every person and link in it,
+              // with the lit routes' halos (filters) on screen, inside the tap's frame. The cards
+              // never overlap (the layout keeps them apart), so none needs raising.
+              elevateNodesOnSelect={false}
               selectNodesOnDrag={false}
               minZoom={MIN_ZOOM}
               maxZoom={2}

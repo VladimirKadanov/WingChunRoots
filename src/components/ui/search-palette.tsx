@@ -37,6 +37,7 @@ import { Seal } from '@/components/ink/seal';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { cx } from '@/lib/cx';
 import { RECENT_SEARCHES_MAX, readRecentSearches, writeRecentSearches } from '@/lib/recent-searches';
+import { afterPaint } from './use-after-paint';
 import { releaseLayerEntry, useBackToClose } from './use-back-to-close';
 import { useMediaQuery } from './use-media-query';
 
@@ -265,7 +266,21 @@ export interface SearchPaletteProps {
   keepMounted?: boolean;
 }
 
-export default function SearchPalette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person', initialQuery = '', keepMounted = false }: SearchPaletteProps) {
+/**
+ * The palette. Mounted open (its first use: the shell loads it on first opening, src/components/
+ * shell/search-trigger.tsx), it is built once the frame that answers the tap or the key has been
+ * painted (plan §5.8 (c), INP): building the Dialog and the Autocomplete, their focus move and the
+ * page's scroll lock held that frame back. Mounted closed, it is built at once.
+ */
+export default function SearchPalette(props: SearchPaletteProps) {
+  const [built, setBuilt] = useState(!props.open);
+  useEffect(() => {
+    if (!built) return afterPaint(() => setBuilt(true));
+  }, [built]);
+  return built ? <Palette {...props} /> : null;
+}
+
+function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person', initialQuery = '', keepMounted = false }: SearchPaletteProps) {
   const select = onSelect !== undefined;
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
