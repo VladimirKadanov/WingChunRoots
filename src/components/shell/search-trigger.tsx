@@ -7,7 +7,8 @@
 //
 // One host per page (SearchHost) holds the open state and the shortcut; the fields ask it to open
 // with an event. The palette itself (Base UI Autocomplete in a Dialog) loads on first use, so it
-// adds nothing to a page's first JavaScript (plan §5.8 (c)); once opened, its dialog stays mounted,
+// adds nothing to a page's first JavaScript (plan §5.8 (c)), and its first opening builds it once
+// that opening's frame is painted (search-palette.tsx, INP); once opened, its dialog stays mounted,
 // hidden and emptied, so a later opening only shows it (INP). Sign-out sends SEARCH_RESET_EVENT:
 // the host unmounts the palette, so no query, result or recent search of the person who signed
 // out stays in memory for the next one (the shell outlives a soft navigation).
