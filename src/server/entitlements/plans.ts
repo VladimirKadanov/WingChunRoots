@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-04.1';
+export const PLAN_MATRIX_VERSION = '2026-11-05.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -412,13 +412,14 @@ export const FEATURES: readonly FeatureDefinition[] = [
     note: 'Anyone can browse the calendar. Publishing needs a Sifu plan that includes it; Professional Sifu counts the events that start in each calendar month.',
     // `included` is the right to publish: browsing needs no plan, so the Student cells are plain
     // facts (neutral), as for the school map. DEFAULT M17 (question 1): Professional Sifu counts
-    // the published events that start in one calendar month in the event's own zone. DEFAULT D25:
+    // the published events that start in one calendar month in the event's own zone; 3 a month
+    // (owner decision 2026-11-05, was 2 in the specification's source). DEFAULT D25:
     // Federation's "unlimited" is no limit in the pilot (an organization's events, M15 grant).
     values: {
       free_student: { source: 'Browse', label: 'Browse', included: false, neutral: true },
       premium_student: { source: 'Browse and notifications', label: 'Browse and notifications', included: false, neutral: true },
       free_sifu: text('No publishing entitlement', 'No publishing', false),
-      pro_sifu: { source: 'Up to 2 events per month', label: 'Up to 2 events a month', included: true, limit: 2 },
+      pro_sifu: { source: 'Up to 3 events per month', label: 'Up to 3 events a month', included: true, limit: 3 },
       federation: text('Unlimited publishing and community push in source', 'Unlimited publishing, with limits still to be defined'),
     },
   },

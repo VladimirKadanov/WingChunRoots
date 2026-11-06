@@ -11443,7 +11443,7 @@
     "/events/create": {
       "post": {
         "operationId": "events.create",
-        "summary": "Publish an event at once, as your Sifu account or (`organizationId`) an approved organization you administer: Professional Sifu up to 2 a month (in the event's time zone), an organization with Federation without a limit (ENTITLEMENT_REQUIRED otherwise); notifies Premium Students of the teachers; audited",
+        "summary": "Publish an event at once, as your Sifu account or (`organizationId`) an approved organization you administer: Professional Sifu up to 3 a month (in the event's time zone), an organization with Federation without a limit (ENTITLEMENT_REQUIRED otherwise); notifies Premium Students of the teachers; audited",
         "requestBody": {
           "required": true,
           "content": {

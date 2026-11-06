@@ -1145,10 +1145,12 @@ interface DemoEventRefs {
 }
 
 /**
- * The demo events, on fixed dates: two of demo-pro-sifu-8 in March 2027 (its Professional Sifu
- * allowance of that month is used up, so a third is refused), one online, one cancelled, one past
- * and one of the demo organization demo-federation-north; and the Premium Student's notice of the
- * first. Their ids come from a stream of their own, so nothing above moves. Posters: db:seed
+ * The demo events, on fixed dates: three of demo-pro-sifu-8 in March 2027 (its Professional Sifu
+ * allowance of that month, 3 since the owner's decision of 2026-11-05, is used up, so a fourth is
+ * refused), one online, one cancelled, one past and one of the demo organization
+ * demo-federation-north; and the Premium Student's notice of the first. Their ids come from a
+ * stream of their own, so nothing above moves; the third March event takes its id after the
+ * notice's, so the ids from before it stay as they were. Posters: db:seed
  * (src/server/db/seed-photos.ts) adds the generated images.
  */
 function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | 'eventInstructors' | 'notifications'> {
@@ -1291,6 +1293,20 @@ function demoEvents(seed: number, r: DemoEventRefs): Pick<Fixtures, 'events' | '
       updatedAt: at,
     },
   ];
+  // The third of demo-pro-sifu-8 in March 2027 (the allowance of 3, owner decision 2026-11-05).
+  events.push({
+    ...base,
+    ...city('Sofia'),
+    id: id(),
+    slug: 'demo-grading-day-sofia',
+    title: 'Demo grading day in Sofia',
+    kind: 'exam_session',
+    description: `${FICTIONAL_MARK}. A morning of demo gradings for the first two forms.`,
+    // 10:00–13:00 in Sofia (UTC+2 in March).
+    startsAt: new Date('2027-03-20T08:00:00Z'),
+    endsAt: new Date('2027-03-20T11:00:00Z'),
+    venue: 'Demo Community Hall, second floor',
+  });
   return { events, eventInstructors, notifications };
 }
 

@@ -1,5 +1,5 @@
 // /dashboard/events (milestone M17, In scope 6; plan §5.6): the events the account published, as a
-// Sifu or for an organization it administers, and what its plan allows: Professional Sifu up to 2
+// Sifu or for an organization it administers, and what its plan allows: Professional Sifu up to 3
 // events that start in a calendar month (DEFAULT M17, question 1), counted in each event's own zone,
 // shown month by month; an organization with Federation without a limit (DEFAULT D25). The upgrade
 // prompt shows only at the real limit, a plan without publishing (Free Sifu), and only with benefits

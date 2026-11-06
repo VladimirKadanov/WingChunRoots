@@ -292,7 +292,7 @@
 
 Паролата на всички е `E2E_PASSWORD`, а TOTP тайната на персонала е `E2E_TOTP_SECRET`, шифрирана с `BETTER_AUTH_SECRET`. Тези стойности са само за локалната среда и CI, генерират се случайно и не са в хранилището; без тях seed-ът пропуска паролите и тайните. Доказателства seed-ът не създава. Единственото право по план е тестовият Professional Sifu на `demo-pro-sifu-8` (M08: от 1.2.2026, без край, дадено от `demo-admin`, с причина „Fictional demo record: …“); `demo-free-sifu-5` е Free Sifu с 5 от 5 одобрени ученици и една чакаща заявка.
 
-Събития (M17): `db:seed` добавя шест измислени събития на фиксирани дати (`demo-seminar-chum-kiu-sofia` и `demo-spring-camp-london` на `demo-pro-sifu-8` в март 2027 — месечната граница е стигната; `demo-online-theory-evening` онлайн; `demo-cancelled-exam-session` отменено; `demo-past-seminar-athens` минало; `demo-federation-summer-camp` на `demo-federation-north`), плакати на две от тях, инструктори и акаунт `demo-premium-student@example.test` (Student с тестов Premium Student, свързан с личност-ученик) с едно известие `event.published`.
+Събития (M17): `db:seed` добавя седем измислени събития на фиксирани дати (`demo-seminar-chum-kiu-sofia`, `demo-grading-day-sofia` и `demo-spring-camp-london` на `demo-pro-sifu-8` в март 2027 — месечната граница от 3 е стигната (решение на собственика от 05.11.2026); `demo-online-theory-evening` онлайн; `demo-cancelled-exam-session` отменено; `demo-past-seminar-athens` минало; `demo-federation-summer-camp` на `demo-federation-north`), плакати на две от тях, инструктори и акаунт `demo-premium-student@example.test` (Student с тестов Premium Student, свързан с личност-ученик) с едно известие `event.published`.
 
 ## 10. Решения по подразбиране
 

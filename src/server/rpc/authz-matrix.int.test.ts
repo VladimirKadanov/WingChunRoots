@@ -351,7 +351,7 @@ async function eventOf(opts: { poster?: boolean } = {}) {
   const owner = await actor('event-owner', { sifu: true });
   await createGrant(world.admin.principal, { email: owner.email, planCode: 'pro_sifu', reason: 'M17 authorization matrix (fictional)' }, meta);
   const city = await getDb().execute<{ id: string }>(sql`SELECT id::text FROM place ORDER BY population DESC NULLS LAST, id LIMIT 1`);
-  // A new organizer each time, so the allowance (two a month) is never what refuses a call.
+  // A new organizer each time, so the allowance (three a month) is never what refuses a call.
   const day = `${new Date().getUTCFullYear() + 1}-03-10`;
   const created = await createEvent(
     owner.principal,
@@ -1134,7 +1134,7 @@ const ROWS: Row[] = [
     path: 'events.create',
     make: async () => {
       const e = await eventOf();
-      // The owner's second event in the month of the first: within the allowance of two.
+      // The owner's second event in the month of the first: within the allowance of three.
       return { owner: e.owner, input: { title: 'Demo Matrix Camp', kind: 'camp', startsAt: `${e.day}T10:00`, endsAt: `${e.day}T18:00`, placeId: e.placeId } };
     },
     // A Free Student's plan includes no publishing (the plan's refusal, plan §6.5); staff accounts

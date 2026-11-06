@@ -19,8 +19,8 @@
 //   events.remove      with a reason (audited); a removed event is 404 everywhere
 //
 // The plan (DEFAULT M17, question 1; plan §6.5): a Sifu's events count against `events`: Professional
-// Sifu publishes up to 2 that start in one calendar month in the event's own zone (published ones:
-// a cancelled or removed event frees its place). The count and the write share the quota lock
+// Sifu publishes up to 3 (the matrix's limit; owner decision 2026-11-05) that start in one calendar
+// month in the event's own zone (published ones: a cancelled or removed event frees its place). The count and the write share the quota lock
 // (lockQuota, READ COMMITTED), so two publications at once never pass the limit together; a move
 // to another month counts again. Free Sifu and Student accounts are refused with the
 // machine-readable decision (ENTITLEMENT_REQUIRED). An organization publishes only while it holds
@@ -126,6 +126,9 @@ function posterDto(id: string, sha: string | null, width: number | null, height:
   if (!sha || !width || !height) return null;
   return { small: eventPosterUrl(id, sha, 96), large: eventPosterUrl(id, sha, 512), full: eventPosterUrl(id, sha, 'full'), width, height };
 }
+
+/** Professional Sifu's events a month, from the matrix (owner decision 2026-11-05: 3). */
+const PRO_SIFU_EVENTS_A_MONTH = feature('events').values.pro_sifu.limit;
 
 /** The sentence of a refusal at the month's limit (Professional Sifu, DEFAULT M17, question 1). */
 export function monthFullMessage(limit: number, month: string, planName: string): string {
@@ -519,7 +522,7 @@ async function checkMonth(tx: Transaction, userId: string, month: string, except
   if (decision.ok) return;
   if (accountType === 'student') throw entitlementError(decision, month, STUDENT_CANNOT_PUBLISH);
   if (decision.code === 'quota') throw entitlementError(decision, month, monthFullMessage(decision.limit ?? 0, month, planSummary(plan).name));
-  throw entitlementError(decision, month, `${planSummary(plan).name} includes no publishing of events. Professional Sifu publishes up to 2 a month.`);
+  throw entitlementError(decision, month, `${planSummary(plan).name} includes no publishing of events. Professional Sifu publishes up to ${PRO_SIFU_EVENTS_A_MONTH} a month.`);
 }
 
 /** An organization publishes only while it holds Federation (DEFAULT D25: then without a limit). */
@@ -1211,7 +1214,7 @@ export async function myEvents(principal: Principal | null): Promise<MyEvents> {
       upgrade = {
         feature: 'events',
         heading: (feature('events').upgradeHeading ?? 'More with {plan}').replace('{plan}', to.name),
-        allowance: { current: 0, limit: 0, sentence: `On ${from.name} you can browse the calendar but not publish. ${to.name} publishes up to 2 events a month.` },
+        allowance: { current: 0, limit: 0, sentence: `On ${from.name} you can browse the calendar but not publish. ${to.name} publishes up to ${feature('events').values[decision.grantedBy].limit} events a month.` },
         from,
         to,
         benefits: upgradeBenefits(decision.plan, decision.grantedBy, 'events'),
