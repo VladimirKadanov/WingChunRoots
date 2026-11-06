@@ -138,7 +138,7 @@ export const ROUTES: readonly AppRoute[] = [
   // pages of the seeded events (one with a poster, an online one, a cancelled one) and the page of
   // an event that is not listed (the same for a removed one: status 200 and noindex, as a school
   // that is not listed, ADR 0014; the API and the .ics answer 404). The dashboard of demo-pro-sifu-8 with
-  // its two events of March 2027 (the month's allowance used; no test changes them), of a Free Sifu
+  // its three events of March 2027 (the month's allowance used; no test changes them), of a Free Sifu
   // with the upgrade prompt and of a Student; the new event's form. The pages of one own event need
   // an event of the account's own: e2e/m17-events.spec.ts runs axe on them in both themes. Not key
   // screens yet, as in M14–M16: a key screen needs its final screenshot in docs/screenshots/M13

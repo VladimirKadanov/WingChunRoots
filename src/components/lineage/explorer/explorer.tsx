@@ -21,12 +21,13 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { createParser, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
-import { Activity, type ReactNode, useDeferredValue, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Activity, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { useAfterPaint } from '@/components/ui/use-after-paint';
 import { cx } from '@/lib/cx';
 import { computeRanks } from '@/lib/lineage-layout/ranks';
 import type { Scene } from '@/lib/lineage-layout/types';
@@ -574,23 +575,25 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   if (laidOut && base && !kept) setFlowOf({ laidOut, showHistorical, base });
   // M06 seam: select-lit. The selection's routes of descent are lit, the rest dimmed (package B).
   const shownFlow = base ? selectFlow(base, selectedId) : null;
-  // The panel lists this selection's routes at once (`lit.routes`); the canvas draws them lit a
-  // step behind (plan §5.8 (c), INP). Lighting the routes and dimming the rest restyles every drawn
-  // card and link (a card's dim tones are custom properties all its elements inherit): about 1,100
+  // The click paints only the selected node's ring (plan §5.8 (c), INP); the rest of a selection
+  // follows once that frame is painted (useAfterPaint): the lit routes, and the panel with this
+  // person (a panel already open shows the last one until then; one that opens follows a step
+  // later still: panel.tsx). Lighting the routes and dimming the rest restyles every drawn card
+  // and link (a card's dim tones are custom properties all its elements inherit): about 1,100
   // elements in the Lineage view of Demo Lineage A, some 70 ms of style and 35 ms of paint at 4x
-  // CPU throttling, inside the click's response. The click paints the selected node's ring first
-  // (a panel that opens follows a step behind as well: panel.tsx); the lit routes follow in a
-  // deferred render. Until then the last selection's routes stay lit, with the selected person lit
-  // among them (never dimmed under its ring), so that first frame restyles little else.
-  const lit = shownFlow && laidOut ? litOf(shownFlow, laidOut.graph, selectedId) : NO_LIGHT;
-  const drawnSelection = useDeferredValue(selectedId);
-  const lastLit = drawnSelection === selectedId || !base || !laidOut ? lit : litOf(selectFlow(base, drawnSelection), laidOut.graph, drawnSelection);
-  const drawnLit =
-    lastLit === lit || selectedId === null || lastLit.nodes.size === 0 || lastLit.nodes.has(selectedId)
-      ? lastLit
-      : { ...lastLit, nodes: new Set([...lastLit.nodes, selectedId]) };
-  const flow = shownFlow ? litFlow(shownFlow, drawnLit) : null;
-  const selected = laidOut && selectedId ? laidOut.graph.nodes.find((n) => n.id === selectedId) ?? null : null;
+  // CPU throttling. The panel's update renders the next person's header, and measures the room
+  // the canvas keeps above the sheet (panel.tsx useKeepAbove), which lays out the whole page: on
+  // a phone with the sheet open that was a third of the tap's response. Until then the last
+  // selection's routes stay lit; the selected person is never dimmed under their ring (globals.css,
+  // M06 route highlight), and is lit with their routes, so that first frame restyles little else and
+  // adds no halo (a filter: WebKit restacks the whole viewport for one). A cleared selection closes
+  // the panel at once.
+  const drawnSelection = useAfterPaint(selectedId);
+  const drawnFlow = drawnSelection === selectedId ? shownFlow : base ? selectFlow(base, drawnSelection) : null;
+  const lit = drawnFlow && laidOut ? litOf(drawnFlow, laidOut.graph, drawnSelection) : NO_LIGHT;
+  const flow = shownFlow ? litFlow(shownFlow, lit) : null;
+  const panelId = selectedId === null ? null : drawnSelection;
+  const selected = laidOut && panelId ? laidOut.graph.nodes.find((n) => n.id === panelId) ?? null : null;
   const selectedMore = selected ? laidOut?.more.get(selected.id) ?? 0 : 0;
   const selectedGeneration = selected ? flow?.nodes.find((n) => n.id === selected.id)?.data.generation ?? null : null;
   const focusNode = graph?.nodes.find((n) => n.id === focus) ?? null;
@@ -733,7 +736,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                   actions={actions}
                   notice={expansions.notice}
                   anchorId={laidOut.anchorId}
-                  highlighting={drawnLit.nodes.size > 0}
+                  highlighting={lit.nodes.size > 0}
                   panel={panelHandle}
                   handle={canvasHandle}
                 >

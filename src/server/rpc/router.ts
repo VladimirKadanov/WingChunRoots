@@ -879,7 +879,7 @@ export const router = {
         method: 'POST',
         path: '/events/create',
         summary:
-          'Publish an event at once, as your Sifu account or (`organizationId`) an approved organization you administer: Professional Sifu up to 2 a month (in the event\'s time zone), an organization with Federation without a limit (ENTITLEMENT_REQUIRED otherwise); notifies Premium Students of the teachers; audited',
+          'Publish an event at once, as your Sifu account or (`organizationId`) an approved organization you administer: Professional Sifu up to 3 a month (in the event\'s time zone), an organization with Federation without a limit (ENTITLEMENT_REQUIRED otherwise); notifies Premium Students of the teachers; audited',
       })
       .input(eventCreateInput)
       .handler(({ context, input }) => createEvent(context.principal, input, context.meta)),

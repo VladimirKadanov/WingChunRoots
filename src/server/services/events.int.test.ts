@@ -1,5 +1,5 @@
 // The event calendar (milestone M17, In scope 2, 3, 4, 7 and 9; docs/adr/0020-events.md) against
-// PostGIS, on the seeded demo data: the Professional Sifu allowance of 2 a month counted in the
+// PostGIS, on the seeded demo data: the Professional Sifu allowance of 3 a month counted in the
 // event's own zone (DEFAULT M17, question 1) under the quota lock, so two publications at once never
 // pass it together; a move to another month counts again; an organization publishes only with
 // Federation, then without a limit (DEFAULT D25); Free Sifu and Student accounts are refused with a
@@ -123,19 +123,20 @@ async function relate(teacherPersonId: string, studentPersonId: string, status: 
 }
 
 describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
-  it('two a month; the third is refused with ENTITLEMENT_REQUIRED and no upgrade above Professional Sifu', async () => {
+  it('three a month; the fourth is refused with ENTITLEMENT_REQUIRED and no upgrade above Professional Sifu', async () => {
     const sifu = await proSifu('events-pro');
     expect(await codeOf(createEvent(sifu.principal, seminar(at('03-06'), at('03-06', '17:00')), meta))).toBe('ok');
-    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('03-20'), at('03-20', '17:00')), title: 'Demo second seminar' }, meta))).toBe('ok');
-    const third = await refusal(createEvent(sifu.principal, { ...seminar(at('03-27'), at('03-27', '17:00')), title: 'Demo third seminar' }, meta));
-    expect(third.code).toBe('ENTITLEMENT_REQUIRED');
-    expect(third.details.entitlement).toMatchObject({ ok: false, code: 'quota', key: 'events', month: `${YEAR}-03`, limit: 2, current: 2 });
+    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('03-13'), at('03-13', '17:00')), title: 'Demo second seminar' }, meta))).toBe('ok');
+    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('03-20'), at('03-20', '17:00')), title: 'Demo third seminar' }, meta))).toBe('ok');
+    const fourth = await refusal(createEvent(sifu.principal, { ...seminar(at('03-27'), at('03-27', '17:00')), title: 'Demo fourth seminar' }, meta));
+    expect(fourth.code).toBe('ENTITLEMENT_REQUIRED');
+    expect(fourth.details.entitlement).toMatchObject({ ok: false, code: 'quota', key: 'events', month: `${YEAR}-03`, limit: 3, current: 3 });
     // Another month still has room.
     expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('04-10'), at('04-10', '17:00')), title: 'Demo April seminar' }, meta))).toBe('ok');
     const mine = await myEvents(sifu.principal);
-    expect(mine.allowance?.limit).toBe(2);
+    expect(mine.allowance?.limit).toBe(3);
     expect(mine.upgrade).toBeNull();
-    expect(mine.events).toHaveLength(3);
+    expect(mine.events).toHaveLength(4);
   });
 
   it('M18: a refusal at the limit leaves one dashboard notice a month; a plan without events leaves none', async () => {
@@ -162,27 +163,30 @@ describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
     const sifu = await proSifu('events-cancel-count');
     const one = await createEvent(sifu.principal, seminar(at('05-01'), at('05-01', '12:00')), meta);
     await createEvent(sifu.principal, { ...seminar(at('05-02'), at('05-02', '12:00')), title: 'Demo second' }, meta);
+    await createEvent(sifu.principal, { ...seminar(at('05-03'), at('05-03', '12:00')), title: 'Demo third' }, meta);
     await cancelEvent(sifu.principal, { id: one.id, note: 'Moved to a later date.' }, meta);
-    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('05-03'), at('05-03', '12:00')), title: 'Demo third' }, meta))).toBe('ok');
+    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('05-04'), at('05-04', '12:00')), title: 'Demo fourth' }, meta))).toBe('ok');
+    // The month is full again: the next one is refused.
+    expect(await codeOf(createEvent(sifu.principal, { ...seminar(at('05-05'), at('05-05', '12:00')), title: 'Demo fifth' }, meta))).toBe('ENTITLEMENT_REQUIRED');
   });
 
-  it('two publications at once never pass the limit together (the quota lock)', async () => {
+  it('publications at once never pass the limit together (the quota lock): 3 pass, the 4th is refused', async () => {
     const sifu = await proSifu('events-race');
-    await createEvent(sifu.principal, seminar(at('06-05'), at('06-05', '12:00')), meta);
     const results = await Promise.all(
-      ['Demo race one', 'Demo race two', 'Demo race three'].map((title, i) => codeOf(createEvent(sifu.principal, { ...seminar(at(`06-1${i}`), at(`06-1${i}`, '12:00')), title }, meta))),
+      ['Demo race one', 'Demo race two', 'Demo race three', 'Demo race four'].map((title, i) => codeOf(createEvent(sifu.principal, { ...seminar(at(`06-1${i}`), at(`06-1${i}`, '12:00')), title }, meta))),
     );
-    expect(results.filter((r) => r === 'ok')).toHaveLength(1);
-    expect(results.filter((r) => r === 'ENTITLEMENT_REQUIRED')).toHaveLength(2);
+    expect(results.filter((r) => r === 'ok')).toHaveLength(3);
+    expect(results.filter((r) => r === 'ENTITLEMENT_REQUIRED')).toHaveLength(1);
     const [row] = await getDb().select({ n: sql<number>`count(*)::int` }).from(event).where(eq(event.organizerUserId, sifu.account.id));
-    expect(row!.n).toBe(2);
+    expect(row!.n).toBe(3);
   });
 
   it('counts the month in the event’s own zone, not in UTC', async () => {
     const sifu = await proSifu('events-zone');
     await createEvent(sifu.principal, seminar(at('03-03'), at('03-03', '12:00')), meta);
     await createEvent(sifu.principal, { ...seminar(at('03-04'), at('03-04', '12:00')), title: 'Demo second' }, meta);
-    // 1 April 01:30 in Sofia is still 31 March in UTC: it counts in April.
+    await createEvent(sifu.principal, { ...seminar(at('03-05'), at('03-05', '12:00')), title: 'Demo third' }, meta);
+    // March is full. 1 April 01:30 in Sofia is still 31 March in UTC: it counts in April.
     const april = await createEvent(sifu.principal, { ...seminar(at('04-01', '01:30'), at('04-01', '03:00')), title: 'Demo night class' }, meta);
     const [row] = await getDb().select({ startsAt: event.startsAt }).from(event).where(eq(event.id, april.id));
     expect(row!.startsAt.toISOString().slice(0, 10)).toBe(`${YEAR}-03-31`);
@@ -192,6 +196,7 @@ describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
     const sifu = await proSifu('events-move');
     await createEvent(sifu.principal, seminar(at('07-01'), at('07-01', '12:00')), meta);
     await createEvent(sifu.principal, { ...seminar(at('07-02'), at('07-02', '12:00')), title: 'Demo second' }, meta);
+    await createEvent(sifu.principal, { ...seminar(at('07-03'), at('07-03', '12:00')), title: 'Demo third' }, meta);
     const august = await createEvent(sifu.principal, { ...seminar(at('08-01'), at('08-01', '12:00')), title: 'Demo August' }, meta);
     expect(await codeOf(updateEvent(sifu.principal, { id: august.id, ...seminar(at('08-15'), at('08-15', '12:00')), title: 'Demo August, later' }, meta))).toBe('ok');
     const moved = await refusal(updateEvent(sifu.principal, { id: august.id, ...seminar(at('07-20'), at('07-20', '12:00')), title: 'Demo August' }, meta));
@@ -220,12 +225,13 @@ describe('the Professional Sifu allowance (DEFAULT M17, question 1)', () => {
   it('a form sent twice at the last place of the month publishes once and answers with the event', async () => {
     const sifu = await proSifu('events-twice');
     await createEvent(sifu.principal, seminar(at('11-03'), at('11-03', '12:00')), meta);
+    await createEvent(sifu.principal, { ...seminar(at('11-04'), at('11-04', '12:00')), title: 'Demo second' }, meta);
     const form = { ...seminar(at('11-20'), at('11-20', '12:00')), title: 'Demo sent twice' };
     const first = await createEvent(sifu.principal, form, meta);
     const again = await createEvent(sifu.principal, form, meta);
     expect(again.id).toBe(first.id);
     const [n] = await getDb().select({ n: sql<number>`count(*)::int` }).from(event).where(eq(event.organizerUserId, sifu.account.id));
-    expect(n!.n).toBe(2);
+    expect(n!.n).toBe(3);
   });
 
   it('only the organizer changes or cancels an event (404 for anyone else)', async () => {
@@ -283,12 +289,13 @@ describe('who may publish', () => {
     expect(refused.code).toBe('ENTITLEMENT_REQUIRED');
     expect(refused.details.entitlement).toMatchObject({ grantedBy: 'federation' });
     await grantOrganizationPlan(admin.principal, { organizationId: org!.id, reason: 'M17 test plan (fictional)' }, meta);
-    for (const day of ['11-02', '11-03', '11-04']) expect(await codeOf(asOrg(day, `Demo association day ${day}`))).toBe('ok');
+    // More than Professional Sifu's 3 a month.
+    for (const day of ['11-02', '11-03', '11-04', '11-05']) expect(await codeOf(asOrg(day, `Demo association day ${day}`))).toBe('ok');
     // Not an admin of it: a field error, nothing published.
     const stranger = await createUser('events-org-stranger');
     expect(await codeOf(createEvent(principalOf(stranger), { ...seminar(at('11-05'), at('11-05', '12:00')), organizationId: org!.id }, meta))).toBe('BAD_REQUEST');
     const list = await eventsList(null, { when: 'upcoming', country: 'BG', limit: 50 });
-    expect(list.items.filter((i) => i.organizer?.kind === 'organization' && i.organizer.slug === 'demo-association-south')).toHaveLength(3);
+    expect(list.items.filter((i) => i.organizer?.kind === 'organization' && i.organizer.slug === 'demo-association-south')).toHaveLength(4);
   });
 });
 
@@ -420,13 +427,16 @@ describe('account deletion', () => {
 });
 
 describe('the demo events (D20)', () => {
-  it('two of demo-pro-sifu-8 in March 2027, one online, one cancelled, one past, one of an organization', async () => {
+  it('three of demo-pro-sifu-8 in March 2027, one online, one cancelled, one past, one of an organization', async () => {
     const upcoming = await eventsList(null, { when: 'upcoming', limit: 50 });
     const past = await eventsList(null, { when: 'past', limit: 50 });
     const slugs = [...upcoming.items, ...past.items].map((e) => e.slug);
-    for (const slug of ['demo-seminar-chum-kiu-sofia', 'demo-spring-camp-london', 'demo-online-theory-evening', 'demo-cancelled-exam-session', 'demo-past-seminar-athens', 'demo-federation-summer-camp']) {
+    for (const slug of ['demo-seminar-chum-kiu-sofia', 'demo-spring-camp-london', 'demo-grading-day-sofia', 'demo-online-theory-evening', 'demo-cancelled-exam-session', 'demo-past-seminar-athens', 'demo-federation-summer-camp']) {
       expect(slugs).toContain(slug);
     }
+    // The month's allowance of demo-pro-sifu-8 is used up: three published events start in March 2027.
+    const march = upcoming.items.filter((e) => e.organizer?.slug === 'demo-pro-sifu-8' && e.status === 'published' && e.startsAt.startsWith('2027-03'));
+    expect(march.map((e) => e.slug).sort()).toEqual(['demo-grading-day-sofia', 'demo-seminar-chum-kiu-sofia', 'demo-spring-camp-london']);
     expect(past.items.map((e) => e.slug)).toContain('demo-past-seminar-athens');
     const online = upcoming.items.find((e) => e.slug === 'demo-online-theory-evening')!;
     expect(online).toMatchObject({ online: true, city: null, countryCode: null });
