@@ -22,7 +22,8 @@ import { readExtract } from '../geo/extract-file';
 import { loadPlaces } from '../geo/places';
 import { recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { contentHash, withClient } from './admin';
-import { type DemoCertificateFile, type DemoPhoto, writeDemoCertificates, writeDemoPhotos } from './seed-photos';
+import { type DemoCertificateFile, writeDemoCertificates } from './seed-certificates';
+import { type DemoPhoto, writeDemoPhotos } from './seed-photos';
 import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
 import {
   auditLog,
@@ -309,7 +310,7 @@ async function load(
   await insert(notification, f.notifications);
   // M18: the demo account's notice e-mail choice.
   await insert(notificationPreference, f.notificationPreferences);
-  // M19: the demo passports; a certificate only with its generated files (seed-photos.ts), in the
+  // M19: the demo passports; a certificate only with its generated files (seed-certificates.ts), in the
   // order of DEMO_CERTIFICATES.
   await insert(passportRank, f.passportRanks);
   await insert(passportExam, f.passportExams);

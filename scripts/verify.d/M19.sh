@@ -173,7 +173,7 @@ check "the demo passports: fixed dates, ids of their own, fictional" bash -c "
   ! grep -q 'new Date()' /tmp/m19-demo.\$\$; rc=\$?; rm -f /tmp/m19-demo.\$\$; exit \$rc"
 check "one private and one public generated certificate, written to the private store" bash -c "
   grep -q \"visibility: 'public'\" src/fixtures/generate.ts && grep -q \"key: 'private', title: 'Demo first aid course certificate', visibility: 'private'\" src/fixtures/generate.ts &&
-  grep -q 'export async function writeDemoCertificates(store: ObjectStore = getEvidenceStore())' src/server/db/seed-photos.ts && grep -q 'export async function demoCertificate' src/server/storage/photo.ts"
+  grep -q 'export async function writeDemoCertificates(store: ObjectStore = getEvidenceStore())' src/server/db/seed-certificates.ts && grep -q 'export async function demoCertificate' src/server/storage/photo.ts"
 check "db:seed loads the passports and empties them" bash -c "
   f=src/server/db/seed.ts; grep -q 'await insert(passportRank, f.passportRanks);' \$f && grep -q 'await insert(eventAttendance, f.eventAttendances);' \$f &&
   awk '/^export const RESETTABLE_TABLES/{f=1} f && /passportCertificate,/{found=1} f && /^\\];/{exit} END{exit !found}' \$f"

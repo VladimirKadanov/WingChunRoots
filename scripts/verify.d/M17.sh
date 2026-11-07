@@ -107,8 +107,12 @@ check "the .ics route is built from the public page's data and is 404 for an eve
 # 4. The plan's allowance (In scope 2; DEFAULT M17 question 1, DEFAULT D25) ------------------------
 check "events is available now and enforced, with the Professional Sifu limit of 3 a month (owner decision 2026-11-05)" bash -c "
   f=src/server/entitlements/plans.ts; awk '/^    key: .events.,/{on=1} on && /availability: .now.,/{a=1} on && /enforced: true,/{e=1} on && /limit: 3 }/{l=1} on && /^  \\},/{exit} END{exit !(a && e && l)}' \"\$f\""
+# The version is 2026-11-05.1 or a later one (M19 raised it to 2026-11-07.1); docs/entitlements.md
+# keeps the rows of M17 and of the owner decision of 2026-11-05 either way.
 check "the plan matrix version was bumped and docs/entitlements.md says what changed" bash -c "
-  grep -q \"PLAN_MATRIX_VERSION = '2026-11-05.1'\" src/server/entitlements/plans.ts && grep -q '2026-11-04.1' docs/entitlements.md && grep -q '2026-11-05.1' docs/entitlements.md"
+  v=\$(sed -n \"s/^export const PLAN_MATRIX_VERSION = '\\(.*\\)';\$/\\1/p\" src/server/entitlements/plans.ts) &&
+  [ -n \"\$v\" ] && [ \"\$(printf '%s\\n' 2026-11-05.1 \"\$v\" | sort | head -1)\" = 2026-11-05.1 ] &&
+  grep -q '2026-11-04.1' docs/entitlements.md && grep -q '2026-11-05.1' docs/entitlements.md && grep -q \"\$v\" docs/entitlements.md"
 check "the count is under the quota lock, in the event's own zone, published events only" bash -c "
   grep -q 'lockQuota' $SERVICE && grep -q 'async function publishedInMonth' $SERVICE && grep -q 'monthKey(f.startsAt, f.timezone)' $SERVICE &&
   grep -q 'DEFAULT M17 (question 1)' $TIME"

@@ -181,7 +181,7 @@ export type PassportRankRow = Row<typeof passportRank>;
 export type PassportExamRow = Row<typeof passportExam>;
 export type PassportSkillRow = Row<typeof passportSkill>;
 export type EventAttendanceRow = Row<typeof eventAttendance>;
-/** A demo certificate without its files, which db:seed generates and writes (src/server/db/seed-photos.ts). */
+/** A demo certificate without its files, which db:seed generates and writes (src/server/db/seed-certificates.ts). */
 export type PassportCertificateShell = Omit<Row<typeof passportCertificate>, 'storageKey' | 'sha256' | 'width' | 'height' | 'sizeBytes'>;
 /** A credential account without its password hash, which the seed adds (secret, env-dependent). */
 export type CredentialShell = Omit<Row<typeof authAccount>, 'password'>;
