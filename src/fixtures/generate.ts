@@ -25,6 +25,7 @@ import type {
   consentRecord,
   entitlementGrant,
   event,
+  eventAttendance,
   eventInstructor,
   invitation,
   lineage,
@@ -33,6 +34,10 @@ import type {
   organization,
   organizationAdmin,
   organizationMembership,
+  passportCertificate,
+  passportExam,
+  passportRank,
+  passportSkill,
   person,
   personBio,
   personName,
@@ -172,6 +177,12 @@ export type EventRow = Row<typeof event>;
 export type EventInstructorRow = Row<typeof eventInstructor>;
 export type NotificationRow = Row<typeof notification>;
 export type NotificationPreferenceRow = Row<typeof notificationPreference>;
+export type PassportRankRow = Row<typeof passportRank>;
+export type PassportExamRow = Row<typeof passportExam>;
+export type PassportSkillRow = Row<typeof passportSkill>;
+export type EventAttendanceRow = Row<typeof eventAttendance>;
+/** A demo certificate without its files, which db:seed generates and writes (src/server/db/seed-certificates.ts). */
+export type PassportCertificateShell = Omit<Row<typeof passportCertificate>, 'storageKey' | 'sha256' | 'width' | 'height' | 'sizeBytes'>;
 /** A credential account without its password hash, which the seed adds (secret, env-dependent). */
 export type CredentialShell = Omit<Row<typeof authAccount>, 'password'>;
 /** A TOTP row without its encrypted secret and backup codes, which the seed adds. */
@@ -214,6 +225,12 @@ export interface Fixtures {
   notifications: NotificationRow[];
   /** M18: the demo account's choices of notice e-mail (a category switched off). */
   notificationPreferences: NotificationPreferenceRow[];
+  /** M19: the demo training passports (demoPassport below). */
+  passportRanks: PassportRankRow[];
+  passportExams: PassportExamRow[];
+  passportSkills: PassportSkillRow[];
+  passportCertificates: PassportCertificateShell[];
+  eventAttendances: EventAttendanceRow[];
 }
 
 type LineageKey = 'a' | 'b' | 'c';
@@ -983,6 +1000,17 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   });
   const notices = demoNotices(seed, accountData.accounts);
   const organizationAccess = demoOrganizationAccess(seed, organizations, accountData.accounts);
+  const passports = demoPassport(seed, {
+    premium: proStudents[0]!.row.id,
+    premiumTeacher: proSifu.row.id,
+    examiner: cjkName.row.id,
+    free: twoLineages.row.id,
+    freeTeacher: teachersA[1]!.row.id,
+    freeExaminer: teachersB[2]!.row.id,
+    federation: organizations.find((o) => o.slug === 'demo-federation-north')!.id,
+    pastEvent: events.events.find((e) => e.slug === 'demo-past-seminar-athens')!.id,
+    accounts: accountData.accounts,
+  });
   return {
     seed,
     lineages: [b.lineages.a, b.lineages.b, b.lineages.c],
@@ -1008,6 +1036,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     entitlementGrants: [...accountData.entitlementGrants, ...notices.entitlementGrants, ...organizationAccess.entitlementGrants],
     notifications: [...events.notifications, ...notices.notifications],
     notificationPreferences: notices.notificationPreferences,
+    ...passports,
   };
 }
 
@@ -1707,4 +1736,103 @@ function demoOrganizationAccess(
       },
     ],
   };
+}
+
+// --- Training passports (milestone M19, In scope 9; D20) -----------------------------------------
+
+/** The time written on the demo passports (fixed, for the content hash). */
+const PASSPORT_AT = new Date(Date.UTC(2026, 10, 7));
+
+/** The demo passport's people (the Premium Student, its teacher, the Free Student) and its event. */
+interface DemoPassportRefs {
+  /** The person of demo-premium-student (a student of demo-pro-sifu-8). */
+  premium: string;
+  premiumTeacher: string;
+  /** demo-cjk-name: the teacher of demo-pro-sifu-8, public, the examiner. */
+  examiner: string;
+  /** demo-two-lineages: a Free Student (its Premium test plan ended on 2026-10-31, M18). */
+  free: string;
+  freeTeacher: string;
+  freeExaminer: string;
+  federation: string;
+  pastEvent: string;
+  accounts: Record<DemoAccountSlug, string>;
+}
+
+/** The demo certificates: their generated images are written by db:seed (src/server/db/seed-photos.ts). */
+export const DEMO_CERTIFICATES = [
+  { key: 'public', title: 'Demo second level certificate', visibility: 'public', on: '2025-09-01', precision: 'month' },
+  { key: 'private', title: 'Demo first aid course certificate', visibility: 'private', on: '2024-01-01', precision: 'year' },
+] as const;
+
+/**
+ * The M19 demo data, on fixed dates (fictional, D20). demo-premium-student (Premium Student) has a
+ * full passport recorded by demo-pro-sifu-8: two ranks (the current one awarded by
+ * demo-federation-north), an examination with demo-cjk-name as the examiner, a form approved and
+ * one still being learned, a public and a private certificate, and the past seminar in Athens.
+ * demo-two-lineages (Free Student since its test plan ended) has a basic passport: its current rank
+ * is shown; its older rank, its examination and its form are public but kept hidden by the plan
+ * (DEFAULT M19, question 3; D08). Ids from a stream of their own, so nothing above moves.
+ */
+function demoPassport(
+  seed: number,
+  r: DemoPassportRefs,
+): Pick<Fixtures, 'passportRanks' | 'passportExams' | 'passportSkills' | 'passportCertificates' | 'eventAttendances'> {
+  const idRng = createRandom((seed ^ 0x0e7e_001a) >>> 0);
+  let seq = 0;
+  const at = PASSPORT_AT;
+  const id = () => uuidv7FromParts(at.getTime() + seq++, 0, idRng.bytes(8));
+  const sifu = r.accounts['demo-pro-sifu-8'];
+  const shared = (personId: string, createdByUserId: string | null, minutes: number) => {
+    const createdAt = new Date(at.getTime() - 86_400_000 + minutes * 60_000);
+    return {
+      id: id(),
+      personId,
+      visibility: 'public' as const,
+      status: 'active' as const,
+      createdByUserId,
+      withdrawnAt: null,
+      withdrawnByUserId: null,
+      removedAt: null,
+      removedByUserId: null,
+      removalReason: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  };
+  const correction = { correctionNote: null, correctionAt: null };
+  const passportRanks: PassportRankRow[] = [
+    { ...shared(r.premium, sifu, 1), ...correction, rank: 'First level', organizationId: null, on: '2023-05-01', precision: 'month', teacherPersonId: r.premiumTeacher },
+    { ...shared(r.premium, sifu, 2), ...correction, rank: 'Second level', organizationId: r.federation, on: '2025-09-14', precision: 'day', teacherPersonId: r.premiumTeacher },
+    { ...shared(r.free, null, 3), ...correction, rank: 'Beginner level', organizationId: null, on: '2021-01-01', precision: 'year', teacherPersonId: r.freeTeacher },
+    { ...shared(r.free, null, 4), ...correction, rank: 'First level', organizationId: null, on: '2024-03-01', precision: 'month', teacherPersonId: r.freeTeacher },
+  ];
+  const passportExams: PassportExamRow[] = [
+    {
+      ...shared(r.premium, sifu, 5),
+      ...correction,
+      awardedRank: 'Second level',
+      on: '2025-09-14',
+      precision: 'day',
+      examinerPersonId: r.examiner,
+      organizationId: r.federation,
+      teacherPersonId: r.premiumTeacher,
+    },
+    { ...shared(r.free, null, 6), ...correction, awardedRank: 'First level', on: '2024-03-01', precision: 'month', examinerPersonId: r.freeExaminer, organizationId: null, teacherPersonId: r.freeTeacher },
+  ];
+  const passportSkills: PassportSkillRow[] = [
+    { ...shared(r.premium, sifu, 7), ...correction, name: 'Siu Nim Tao', progress: 'approved', on: '2023-01-01', precision: 'year', teacherPersonId: r.premiumTeacher, organizationId: null },
+    { ...shared(r.premium, sifu, 8), ...correction, name: 'Chum Kiu', progress: 'learning', on: '2025-10-01', precision: 'month', teacherPersonId: r.premiumTeacher, organizationId: null },
+    { ...shared(r.free, null, 9), ...correction, name: 'Siu Nim Tao', progress: 'approved', on: '2022-01-01', precision: 'year', teacherPersonId: r.freeTeacher, organizationId: null },
+  ];
+  const premiumAccount = r.accounts[DEMO_PREMIUM_STUDENT];
+  const passportCertificates: PassportCertificateShell[] = DEMO_CERTIFICATES.map((c, i) => ({
+    ...shared(r.premium, premiumAccount, 10 + i),
+    visibility: c.visibility,
+    title: c.title,
+    on: c.on,
+    precision: c.precision,
+  }));
+  const eventAttendances: EventAttendanceRow[] = [{ ...shared(r.premium, sifu, 12), eventId: r.pastEvent, teacherPersonId: r.premiumTeacher }];
+  return { passportRanks, passportExams, passportSkills, passportCertificates, eventAttendances };
 }

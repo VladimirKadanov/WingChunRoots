@@ -67,7 +67,7 @@ export const DEMO_SCHOOL_PHOTOS: readonly { slug: string; logo: boolean; rooms: 
 /** M17 (D20): the demo events with a generated poster (an abstract room, never a photograph). */
 export const DEMO_EVENT_POSTERS: readonly string[] = ['demo-seminar-chum-kiu-sofia', 'demo-federation-summer-camp'];
 
-async function putAll(store: ObjectStore, storageKey: string, files: Record<string, Uint8Array>): Promise<void> {
+export async function putAll(store: ObjectStore, storageKey: string, files: Record<string, Uint8Array>): Promise<void> {
   for (const [name, bytes] of Object.entries(files)) {
     await store.put(`${storageKey}/${name}`, bytes, { contentType: 'image/webp', sha256: createHash('sha256').update(bytes).digest('hex') });
   }

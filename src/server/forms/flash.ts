@@ -87,6 +87,14 @@ export function outcomeUrl(page: string, id: string, anchor = ''): string {
  */
 export async function formResult(place: FormPlace, state: FormState): Promise<FormState> {
   if (await postedByReact()) return state;
+  return keepFormResult(place, state);
+}
+
+/**
+ * Keeps `state` for the page and sends the browser there, whoever posted: for a form rendered by a
+ * Server Component (no client module), whose answer React does not read, so the page shows it.
+ */
+export async function keepFormResult(place: FormPlace, state: FormState): Promise<never> {
   const clean = cleanState(state);
   if (!clean) redirect(place.page);
   const id = randomBytes(12).toString('base64url');

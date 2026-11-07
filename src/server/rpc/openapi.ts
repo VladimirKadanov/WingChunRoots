@@ -260,6 +260,29 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
         },
       },
     },
+    // M19 (docs/adr/0022-passport.md): a passport's scanned certificate, from the private store.
+    '/certificates/{id}/{hash}/{file}': {
+      servers: [{ url: '/api' }],
+      get: {
+        operationId: 'passport.certificate',
+        summary:
+          "One rendition of a passport's scanned certificate (WebP, no metadata, no location): everyone while the profile shows it (a public entry of a public person on a plan with the full passport); otherwise only the student's own account and their teachers; 404 for anyone else",
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'The certificate id (`image` of an entry of passport.get or passport.mine carries the whole address).', schema: { type: 'string', format: 'uuid' } },
+          { name: 'hash', in: 'path', required: true, description: "The first 16 hex digits of the certificate's content hash.", schema: { type: 'string', pattern: '^[0-9a-f]{16}$' } },
+          { name: 'file', in: 'path', required: true, description: 'The 96 px or 512 px square, or the whole scan.', schema: { type: 'string', enum: ['96.webp', '512.webp', 'full.webp'] } },
+        ],
+        responses: {
+          '200': {
+            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, no-cache while the profile shows it, private, no-store otherwise).',
+            content: { 'image/webp': { schema: { type: 'string', contentMediaType: 'image/webp' } } },
+          },
+          '304': { description: 'Not modified (If-None-Match matched the ETag).' },
+          '404': errorResponse('No such certificate, a removed one, or one this session may not see (one answer for all).'),
+          '503': errorResponse('The store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.'),
+        },
+      },
+    },
     '/events/{slug}/calendar.ics': {
       servers: [{ url: '/' }],
       get: {

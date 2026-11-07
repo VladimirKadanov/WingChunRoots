@@ -206,6 +206,33 @@ export const EVENT_REASON_MAX = 1000;
 /** M17: an event lasts at most this many days (a camp of two weeks fits). A default with no D number. */
 export const EVENT_MAX_DAYS = 31;
 
+// --- Training passport (milestone M19; docs/adr/0022-passport.md) ---------------------------------
+/**
+ * M19: who sees an entry of the passport. The student decides (In scope 2): `public` shows it on
+ * the profile (within the plan, In scope 4), `private` only to the student, the teachers and the
+ * organization that wrote it. DEFAULT M19 (question 5): a teacher's entry starts public, a
+ * certificate private.
+ */
+export const PASSPORT_VISIBILITIES = ['private', 'public'] as const;
+/**
+ * M19: an entry is shown (`active`), was withdrawn by whoever wrote it (`withdrawn`: kept, shown to
+ * nobody), or was removed by staff with a reason (`removed`: audited, shown to nobody). Nothing is
+ * deleted, a downgrade only hides (DEFAULT D08).
+ */
+export const PASSPORT_STATUSES = ['active', 'withdrawn', 'removed'] as const;
+/** M19: a form or skill is being learned, or the teacher approved it. */
+export const SKILL_PROGRESSES = ['learning', 'approved'] as const;
+/** M19: the kinds of entry of a passport (the API's `kind`). */
+export const PASSPORT_ENTRY_KINDS = ['rank', 'exam', 'skill', 'certificate', 'attendance'] as const;
+/** M19: the longest rank, awarded rank, form or skill. */
+export const PASSPORT_TEXT_MAX = 120;
+/** M19: the longest proposed correction and the longest reason of staff. */
+export const PASSPORT_NOTE_MAX = 1000;
+/** M19: the longest title of a certificate. */
+export const PASSPORT_TITLE_MAX = 200;
+/** DEFAULT M19 (question 4): at most this many certificates kept on one passport (removed ones apart). */
+export const PASSPORT_CERTIFICATES_MAX = 20;
+
 // --- Entitlements (plan §6.5) ----------------------------------------------------------------------
 export const PLAN_CODES = ['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] as const;
 export const GRANT_SOURCES = ['test_grant', 'complimentary', 'stripe'] as const;

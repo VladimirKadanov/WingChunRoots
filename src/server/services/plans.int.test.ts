@@ -140,7 +140,8 @@ describe('plans.catalog and plans.mine', () => {
     const features = result.data.features as { key: string; availability: string }[];
     // M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): the photo allowance is available now.
     // M17 (owner's choice 2026-11-04, docs/adr/0020-events.md): and the event calendar.
-    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'events']);
+    // M19 (owner's choice 2026-11-07, docs/adr/0022-passport.md): and the training passport.
+    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'passport', 'events']);
   });
 
   it('plans.mine needs a session; a new account is a Student on Free Student', async () => {

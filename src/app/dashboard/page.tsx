@@ -232,6 +232,11 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
             Your events
             <ArrowRightIcon />
           </Link>
+          {/* M19: the Sifu records in their students' passports. */}
+          <Link href="/dashboard/students" className={buttonVariants({ variant: 'secondary' })} data-testid="manage-student-passports">
+            Your students’ passports
+            <ArrowRightIcon />
+          </Link>
         </p>
       </Section>
     </>
@@ -349,6 +354,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             {staffOnly ? null : (
               <Link href="/dashboard/teachers" className="link inline-flex min-h-11 items-center">
                 Your teachers
+              </Link>
+            )}
+            {/* M19: the own training passport. */}
+            {staffOnly ? null : (
+              <Link href="/dashboard/passport" className="link inline-flex min-h-11 items-center" data-testid="dashboard-passport">
+                Training passport
               </Link>
             )}
             <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">

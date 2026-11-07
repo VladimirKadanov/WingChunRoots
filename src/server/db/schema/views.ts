@@ -170,3 +170,38 @@ export const vPublicEvent = pgView('v_public_event', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 }).existing();
+
+/**
+ * M19 (docs/adr/0022-passport.md): the active, public entries of the passports of people
+ * v_public_person shows, one row per entry and `kind` (rank, exam, skill, certificate, attendance).
+ * An examiner or a teacher appears only while v_public_person shows them, an organization only
+ * while v_public_organization does, an event only while v_public_event shows it published. Never an
+ * account, a storage key (a certificate by id and content hash only), a proposed correction or a
+ * reason of staff. Only app_rw reads it: the passport service filters it by the plan of the
+ * passport's account (In scope 4), so app_public_ro keeps exactly its views.
+ */
+export const vPublicPassport = pgView('v_public_passport', {
+  kind: text('kind').notNull(),
+  id: uuid('id').notNull(),
+  personId: uuid('person_id').notNull(),
+  onDate: text('on_date'),
+  precision: text('precision').notNull(),
+  title: text('title'),
+  progress: text('progress'),
+  organizationSlug: text('organization_slug'),
+  organizationName: text('organization_name'),
+  examinerPersonId: uuid('examiner_person_id'),
+  examinerSlug: text('examiner_slug'),
+  examinerName: text('examiner_name'),
+  examinerLang: text('examiner_lang'),
+  teacherPersonId: uuid('teacher_person_id'),
+  teacherSlug: text('teacher_slug'),
+  teacherName: text('teacher_name'),
+  teacherLang: text('teacher_lang'),
+  eventSlug: text('event_slug'),
+  eventKind: text('event_kind'),
+  certificateSha256: text('certificate_sha256'),
+  certificateWidth: integer('certificate_width'),
+  certificateHeight: integer('certificate_height'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}).existing();
