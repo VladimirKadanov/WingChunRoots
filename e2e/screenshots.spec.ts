@@ -518,7 +518,9 @@ const STATES: readonly ScreenState[] = [
         SELECT p.id::text AS id FROM person p JOIN auth_user u ON u.id = p.claimed_by_user_id WHERE u.email = 'demo-premium-student@example.test'`);
       expect(rows.rows).toHaveLength(1);
       await signInAs(page, 'demo-pro-sifu-8');
-      await page.goto(`/dashboard/students?student=${rows.rows[0]!.id}#student`);
+      // No #student: a full-page capture of a scrolled page draws the sticky rail and the hidden
+      // skip link in the middle of the shot.
+      await page.goto(`/dashboard/students?student=${rows.rows[0]!.id}`);
       await expect(page.getByTestId('passport-rank-form').filter({ visible: true })).toBeVisible();
     },
   },
