@@ -93,4 +93,14 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/events/actions.ts#updateEventAction': { rpc: ['events.update'] },
   'src/app/dashboard/events/actions.ts#cancelEventAction': { rpc: ['events.cancel'] },
   'src/app/events/[slug]/actions.ts#removeEventAction': { rpc: ['events.remove'] },
+  // M19: the training passport (certificates are uploaded and removed from the browser through /api/rpc).
+  'src/app/dashboard/passport/actions.ts#setVisibilityAction': { rpc: ['passport.setVisibility'] },
+  'src/app/dashboard/passport/actions.ts#proposeCorrectionAction': { rpc: ['passport.updateEntry'] },
+  'src/app/dashboard/students/actions.ts#addRankAction': { rpc: ['passport.addRank'] },
+  'src/app/dashboard/students/actions.ts#addExamAction': { rpc: ['passport.addExam'] },
+  'src/app/dashboard/students/actions.ts#addSkillAction': { rpc: ['passport.addSkill'] },
+  'src/app/dashboard/students/actions.ts#updateEntryAction': { rpc: ['passport.updateEntry'] },
+  'src/app/dashboard/students/actions.ts#withdrawEntryAction': { rpc: ['passport.withdrawEntry'] },
+  'src/app/dashboard/students/actions.ts#markAttendanceAction': { rpc: ['passport.markAttendance'] },
+  'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction': { rpc: ['passport.remove'] },
 };

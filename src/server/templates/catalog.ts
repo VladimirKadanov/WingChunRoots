@@ -52,7 +52,7 @@ export const CATEGORIES: Readonly<Record<NotificationCategory, CategoryDefinitio
   plan: { label: 'Plan', description: 'Your plan, its end date, and the limits of your plan.', optOut: true, emailDefault: true },
   teaching: {
     label: 'Teachers and students',
-    description: 'Requests, approvals, invitations and ended training between you and your teachers or students.',
+    description: 'Requests, approvals, invitations, ended training and training passport entries between you and your teachers or students.',
     optOut: true,
     emailDefault: true,
   },
@@ -139,6 +139,9 @@ export const NOTIFICATION_CATALOG = {
   'plan.expired': mailed('plan', 'notice'),
   'limit.reached': dashboardOnly('plan'),
   'content.removed': mailed('account', 'notice'),
+  // M19: the training passport, between teachers and students (docs/adr/0022-passport.md).
+  'passport.entry-added': mailed('teaching', 'notice'),
+  'passport.correction': mailed('teaching', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

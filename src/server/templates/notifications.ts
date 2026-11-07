@@ -1109,13 +1109,17 @@ const limitReached: NotificationTemplate<LimitReached> = {
   sample: { feature: 'events', planCode: 'pro_sifu', limit: 2, upgradeTo: null, month: '2027-03' },
 };
 
-/** What staff can remove with a reason (M18, In scope 5): an event, a profile or gallery photo, a school's photo. */
-export const REMOVED_CONTENT = ['event', 'photo', 'school_photo'] as const;
+/**
+ * What staff can remove with a reason (M18, In scope 5): an event, a profile or gallery photo, a
+ * school's photo; M19: an entry of a training passport.
+ */
+export const REMOVED_CONTENT = ['event', 'photo', 'school_photo', 'passport_entry'] as const;
 type RemovedContent = (typeof REMOVED_CONTENT)[number];
 const REMOVED_LABEL: Record<RemovedContent, { what: string; action: { label: string; href: string } }> = {
   event: { what: 'One of your events', action: { label: 'See your events', href: '/dashboard/events' } },
   photo: { what: 'One of your photos', action: { label: 'See your photos', href: '/dashboard/photos' } },
   school_photo: { what: 'A photo of your school', action: { label: 'See your schools', href: '/dashboard/schools' } },
+  passport_entry: { what: 'An entry of your training passport', action: { label: 'Open your passport', href: '/dashboard/passport' } },
 };
 
 /**
@@ -1144,6 +1148,62 @@ const contentRemoved: NotificationTemplate<{ content: RemovedContent; reason: st
     action: REMOVED_LABEL[content].action,
   }),
   sample: { content: 'event', reason: 'The date and the place do not match the poster.', title: 'Demo seminar in Sofia' },
+};
+
+// --- Training passport (M19; docs/adr/0022-passport.md) ---------------------------------------------
+
+/** The kinds of entry a teacher writes (M19, In scope 2); a certificate is the student's own. */
+export const PASSPORT_WRITTEN_KINDS = ['rank', 'exam', 'skill', 'attendance'] as const;
+type PassportWrittenKind = (typeof PASSPORT_WRITTEN_KINDS)[number];
+const PASSPORT_KIND_WORDS: Record<PassportWrittenKind, string> = {
+  rank: 'a rank',
+  exam: 'an examination',
+  skill: 'a form or skill',
+  attendance: 'your attendance at an event',
+};
+
+interface PassportNoticeData {
+  kind: PassportWrittenKind;
+  /** The rank, the awarded rank, the form or skill, or the event's title, as written. */
+  title: string;
+}
+
+function passportNotice(template: string, payload: unknown): PassportNoticeData {
+  const { kind, title } = payloadObject(template, payload);
+  if (typeof kind !== 'string' || !(PASSPORT_WRITTEN_KINDS as readonly string[]).includes(kind)) throw new NotificationDataError(template, 'kind must be a kind of passport entry');
+  if (typeof title !== 'string' || title.trim() === '' || title.length > 200) throw new NotificationDataError(template, 'title must be a short text');
+  return { kind: kind as PassportWrittenKind, title: title.trim() };
+}
+
+/**
+ * "passport.entry-added" (M19, In scope 2): to the student, when a teacher or an organization's
+ * admin records a rank, an examination, a form or skill, or attendance at an event. The student
+ * decides whether it is public.
+ */
+const passportEntryAdded: NotificationTemplate<PassportNoticeData> = {
+  name: 'passport.entry-added',
+  parse: (payload) => passportNotice('passport.entry-added', payload),
+  render: ({ kind, title }) => ({
+    title: 'New in your training passport',
+    body: [{ text: `Your teacher recorded ${PASSPORT_KIND_WORDS[kind]}: “${title}”. You choose whether it shows on your profile.` }],
+    action: { label: 'Open your passport', href: '/dashboard/passport' },
+  }),
+  sample: { kind: 'rank', title: 'Demo second level' },
+};
+
+/**
+ * "passport.correction" (M19, In scope 2): to whoever wrote an entry, when the student proposes a
+ * correction. The proposal itself is read in the dashboard, never in the notice or its e-mail.
+ */
+const passportCorrection: NotificationTemplate<PassportNoticeData> = {
+  name: 'passport.correction',
+  parse: (payload) => passportNotice('passport.correction', payload),
+  render: ({ kind, title }) => ({
+    title: 'A student proposes a correction',
+    body: [{ text: `A student of yours proposes a correction to ${PASSPORT_KIND_WORDS[kind]} you recorded: “${title}”.` }],
+    action: { label: 'Open your students', href: '/dashboard/students' },
+  }),
+  sample: { kind: 'exam', title: 'Demo first level' },
 };
 
 /** Every notification template, by name (= template.name). */
@@ -1185,6 +1245,9 @@ export const NOTIFICATION_TEMPLATES = {
   'plan.expired': planExpired,
   'limit.reached': limitReached,
   'content.removed': contentRemoved,
+  // M19.
+  'passport.entry-added': passportEntryAdded,
+  'passport.correction': passportCorrection,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

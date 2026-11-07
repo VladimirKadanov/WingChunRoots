@@ -7,7 +7,7 @@ import type { Database } from '../db';
 import { uuidv7 } from '../db/ids';
 import type { Transaction } from '../jobs/outbox';
 
-/** The actions of M02, M07, M08, M09, M10a, M11, M14 and M15; later milestones add theirs (plan §6.6). */
+/** The actions of M02, M07, M08, M09, M10a, M11, M14, M15 and later milestones (plan §6.6). */
 export type AuditAction =
   | 'role.change'
   | 'consent.grant'
@@ -94,7 +94,19 @@ export type AuditAction =
   | 'event.cancel'
   | 'event.remove'
   | 'event.poster_upload'
-  | 'event.poster_remove';
+  | 'event.poster_remove'
+  // M19: the training passport (docs/adr/0022-passport.md). The rows carry ids, the kind, the
+  // visibility and the names of the fields that changed, never a rank, a title, a correction or a
+  // storage key; a staff removal keeps its reason.
+  | 'passport.add'
+  | 'passport.update'
+  | 'passport.correction'
+  | 'passport.withdraw'
+  | 'passport.visibility'
+  | 'passport.certificate_upload'
+  | 'passport.certificate_remove'
+  | 'passport.attendance'
+  | 'passport.remove';
 
 export interface AuditEntry {
   action: AuditAction;

@@ -9,6 +9,7 @@ export * from './evidence';
 export * from './geography';
 export * from './lineage';
 export * from './organizations';
+export * from './passport';
 export * from './persons';
 export * from './records';
 export * from './schools';

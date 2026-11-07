@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-05.1';
+export const PLAN_MATRIX_VERSION = '2026-11-07.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -80,7 +80,7 @@ export const PLANS: Readonly<Record<PlanCode, PlanDefinition>> = {
     rank: 1,
     availability: 'now',
     price: proposal(4),
-    summary: 'A full training passport, media and event notifications, once they arrive.',
+    summary: 'A full training passport, more photos and notices of your teachers’ events; videos once they arrive.',
   },
   free_sifu: {
     code: 'free_sifu',
@@ -172,7 +172,7 @@ export interface FeatureDefinition {
   /**
    * Enforced on the server in Phase 1 (plan §6.5): the five approved students of Free Sifu (D06),
    * the public school pin of Professional Sifu (from M11), (from M16) the photo allowance (D07) and
-   * (from M17) the events a Sifu publishes a month.
+   * (from M17) the events a Sifu publishes a month and (from M19) what of the passport the profile shows.
    */
   enforced: boolean;
   /**
@@ -357,14 +357,23 @@ export const FEATURES: readonly FeatureDefinition[] = [
     key: 'passport',
     source: 'Digital passport',
     label: 'Training passport',
-    availability: 'planned',
-    phase: 2,
-    enforced: false,
+    // M19 (owner's pick 2026-11-07, docs/adr/0022-passport.md): the training passport is part of
+    // the pilot. What the profile shows of it follows the plan of the passport's account, decided
+    // on the server (src/server/services/passport.ts). DEFAULT M19 (question 3): the free plans show
+    // the current rank, the teachers with their periods and the year training began; Premium
+    // Student and Professional Sifu the whole timeline (examinations, forms and skills,
+    // certificates, events). "Instructor record" means a Sifu records for their own students, which
+    // the pilot does not limit. A free account's entries are kept and hidden, never deleted (D08).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'Your full training passport with {plan}',
+    note: 'Your teachers record your ranks, examinations and skills; you choose what is public. Free plans show the current rank, your teachers and the year you began; nothing is deleted on any plan.',
     values: {
-      free_student: text('Basic'),
-      premium_student: text('Full timeline'),
-      free_sifu: text('Basic instructor record'),
-      pro_sifu: text('Full instructor record'),
+      free_student: text('Basic', 'Basic: rank, teachers and start year'),
+      premium_student: text('Full timeline', 'Full timeline'),
+      free_sifu: text('Basic instructor record', 'Basic, and you record for your students'),
+      pro_sifu: text('Full instructor record', 'Full timeline, and you record for your students'),
       federation: text('Administrative dashboard'),
     },
   },
@@ -559,10 +568,10 @@ export interface Benefit {
 }
 
 /**
- * Features that joined the pilot after M08 (the photo allowance, M16; events, M17): an upgrade prompt lists
+ * Features that joined the pilot after M08 (the photo allowance, M16; events, M17; the passport, M19): an upgrade prompt lists
  * their benefits after the ones the pilot had before, which keep the matrix's order.
  */
-const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events'];
+const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events', 'passport'];
 
 /**
  * The real benefits of moving from one plan to another (plan §5.6): only features with
@@ -589,3 +598,16 @@ export function upgradeBenefits(from: PlanCode, to: PlanCode, lead?: FeatureKey)
 export const PLANS_WITHOUT_PILOT_BENEFITS: readonly PlanCode[] = GRANTABLE_PLANS.filter(
   (code) => upgradeBenefits(freePlanFor(PLANS[code].audience === 'sifu' ? 'sifu' : 'student'), code).length === 0,
 );
+
+/**
+ * M19 (DEFAULT M19, question 3): how much of a passport the profile shows on a plan: `basic` (the
+ * current rank, the teachers with their periods, the year training began) or `full` (also the
+ * examinations, forms and skills, certificates and events). Every entry is kept on every plan; a
+ * lower plan only hides (DEFAULT D08).
+ */
+export type PassportLevel = 'basic' | 'full';
+export const FULL_PASSPORT_PLANS: readonly PlanCode[] = ['premium_student', 'pro_sifu', 'federation'];
+
+export function passportLevel(plan: PlanCode): PassportLevel {
+  return FULL_PASSPORT_PLANS.includes(plan) ? 'full' : 'basic';
+}
