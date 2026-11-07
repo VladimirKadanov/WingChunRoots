@@ -1112,7 +1112,7 @@ Lighthouse в мобилен профил за всеки основен мар�
 
 ### Персонал и модерация
 
-Модератор или администратор с потвърден втори фактор вижда на профила формата **Remove a passport entry**: избира запис, пише причина (**Reason**) и натиска **Remove the entry** (процедурата `passport.remove`). Записът става `removed` и не се показва никому, причината е в одита, а собственикът получава известие `content.removed` с нея (без вашето име). Файловете на махнат сертификат се трият. Одитът пази и `passport.add`, `passport.update`, `passport.withdraw`, `passport.visibility`, `passport.correction`, `passport.attendance`, `passport.certificate_upload` и `passport.certificate_remove`, само с идентификатори, без имена или текст на записа. В лога има само идентификатори.
+Модератор или администратор с потвърден втори фактор вижда на профила, в раздела **Training passport**, част **Moderation**: избира запис (**Entry**), пише причина (**Reason**) и натиска **Remove the entry** (процедурата `passport.remove`). Записът става `removed` и не се показва никому, причината е в одита, а собственикът получава известие `content.removed` с нея (без вашето име). Файловете на махнат сертификат се трият. Одитът пази и `passport.add`, `passport.update`, `passport.withdraw`, `passport.visibility`, `passport.correction`, `passport.attendance`, `passport.certificate_upload` и `passport.certificate_remove`, само с идентификатори, без имена или текст на записа. В лога има само идентификатори.
 
 ### Демо данни и проверка
 

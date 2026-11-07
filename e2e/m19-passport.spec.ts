@@ -119,6 +119,19 @@ test('@M19 a teacher records a rank and an examination; the student is told and 
     } finally {
       await visitor.context.close();
     }
+
+    // Staff with a verified second factor remove an entry with a reason; without a reason it is
+    // refused on the profile, in words (the form is a Server Component: no client module for visitors).
+    await admin.page.goto(`/people/${student.person.slug}`);
+    const moderation = admin.page.getByTestId('passport-remove-form');
+    await moderation.getByLabel('Entry').selectOption({ label: 'Rank: Demo first level (2019)' });
+    await moderation.getByRole('button', { name: 'Remove the entry' }).click();
+    await expect(admin.page.getByTestId('passport-remove-form').locator('#passport-remove-reason-error')).toBeVisible();
+    await admin.page.getByTestId('passport-remove-form').getByLabel('Reason').fill('Demo moderation test: the entry is not about this person.');
+    await admin.page.getByTestId('passport-remove-form').getByRole('button', { name: 'Remove the entry' }).click();
+    await expect(admin.page.getByTestId('passport-removed')).toHaveText('The entry was removed. Its owner was told why.');
+    await expect(admin.page.getByTestId('passport-current-rank')).not.toContainText('Demo first level');
+    await axeBothThemes(admin.page, 'profile passport, staff moderation');
   } finally {
     await admin.context.close();
     await pupil.context.close();
