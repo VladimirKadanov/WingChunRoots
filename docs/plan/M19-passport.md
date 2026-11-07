@@ -58,3 +58,4 @@ M18 и всички етапи преди него, слети в `main`.
 
 - 2026-11-07 — файлът на етапа (собственикът избра „Training passport“)
 - 2026-11-07 — схема `passport_*` и `event_attendance`, изглед `v_public_passport`, услугата, процедурите `passport.*` и Server Actions (typecheck, lint, unit — зелени)
+- 2026-11-07 — профилната секция „Training passport“, `/dashboard/passport`, записът на учителя в `/dashboard/students`, демо паспортите (сертификатите в частното хранилище), `passport.int.test.ts` и редовете в матрицата на правата (unit, int — зелени)

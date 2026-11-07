@@ -22,7 +22,7 @@ import { readExtract } from '../geo/extract-file';
 import { loadPlaces } from '../geo/places';
 import { recomputeLineageMembership } from '../jobs/lineage-recompute';
 import { contentHash, withClient } from './admin';
-import { type DemoPhoto, writeDemoPhotos } from './seed-photos';
+import { type DemoCertificateFile, type DemoPhoto, writeDemoCertificates, writeDemoPhotos } from './seed-photos';
 import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
 import {
   auditLog,
@@ -37,6 +37,7 @@ import {
   emailDelivery,
   entitlementGrant,
   event,
+  eventAttendance,
   eventInstructor,
   evidenceFile,
   evidenceLink,
@@ -49,6 +50,10 @@ import {
   organizationAdmin,
   organizationMembership,
   organizationSchool,
+  passportCertificate,
+  passportExam,
+  passportRank,
+  passportSkill,
   person,
   personBio,
   personClaim,
@@ -82,6 +87,7 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   emailDelivery,
   entitlementGrant,
   event,
+  eventAttendance,
   eventInstructor,
   evidenceFile,
   evidenceLink,
@@ -94,6 +100,10 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   organizationAdmin,
   organizationMembership,
   organizationSchool,
+  passportCertificate,
+  passportExam,
+  passportRank,
+  passportSkill,
   person,
   personBio,
   personClaim,
@@ -184,7 +194,13 @@ async function credentialRows(f: Fixtures, creds: DemoCredentials): Promise<Cred
 }
 
 /** Loads `fixtures` through an open client that is already `migrator`. */
-async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: readonly DemoPhoto[] = []): Promise<Record<string, number>> {
+async function load(
+  client: Client,
+  f: Fixtures,
+  creds: CredentialRows,
+  photos: readonly DemoPhoto[] = [],
+  certificates: readonly DemoCertificateFile[] = [],
+): Promise<Record<string, number>> {
   const db = drizzle({ client });
   const counts: Record<string, number> = {};
   const insert = async <T extends PgTable>(table: T, rows: readonly InferInsertModel<T>[]) => {
@@ -293,6 +309,19 @@ async function load(client: Client, f: Fixtures, creds: CredentialRows, photos: 
   await insert(notification, f.notifications);
   // M18: the demo account's notice e-mail choice.
   await insert(notificationPreference, f.notificationPreferences);
+  // M19: the demo passports; a certificate only with its generated files (seed-photos.ts), in the
+  // order of DEMO_CERTIFICATES.
+  await insert(passportRank, f.passportRanks);
+  await insert(passportExam, f.passportExams);
+  await insert(passportSkill, f.passportSkills);
+  await insert(
+    passportCertificate,
+    f.passportCertificates.flatMap((c, i) => {
+      const file = certificates[i];
+      return file ? [{ ...c, storageKey: file.storageKey, sha256: file.sha256, width: file.width, height: file.height, sizeBytes: file.sizeBytes }] : [];
+    }),
+  );
+  await insert(eventAttendance, f.eventAttendances);
   return counts;
 }
 
@@ -315,6 +344,13 @@ export async function seedDatabase(
   } catch (error) {
     creds.skipped.push(`demo photos (the photo store could not be written: ${error instanceof Error ? error.name : 'error'})`);
   }
+  // M19: the demo certificates' files, in the private store; without one the passports have none.
+  let certificates: DemoCertificateFile[] = [];
+  try {
+    certificates = await writeDemoCertificates();
+  } catch (error) {
+    creds.skipped.push(`demo certificates (the private store could not be written: ${error instanceof Error ? error.name : 'error'})`);
+  }
   return withClient(
     url,
     async (client) => {
@@ -331,7 +367,7 @@ export async function seedDatabase(
       let counts: Record<string, number>;
       try {
         await client.query(`TRUNCATE TABLE ${names}`);
-        counts = await load(client, fixtures, creds, photos);
+        counts = await load(client, fixtures, creds, photos, certificates);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');

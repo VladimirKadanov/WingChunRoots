@@ -9,8 +9,9 @@
 
 import { createHash } from 'node:crypto';
 
-import { getPhotoStore, type ObjectStore } from '../storage';
-import { demoLogo, demoPortrait, demoRoom, renderGalleryPhoto, renderSchoolLogo } from '../storage/photo';
+import { DEMO_CERTIFICATES } from '../../fixtures/generate';
+import { getEvidenceStore, getPhotoStore, type ObjectStore } from '../storage';
+import { demoCertificate, demoLogo, demoPortrait, demoRoom, renderGalleryPhoto, renderSchoolLogo } from '../storage/photo';
 import { uuidv7FromParts } from './ids';
 
 /** The demo people with a photo; the others (demo-root-a, demo-hub-a, ...) keep the monogram. */
@@ -141,5 +142,39 @@ export async function writeDemoPhotos(store: ObjectStore = getPhotoStore()): Pro
   }
   index = 300;
   for (const slug of DEMO_EVENT_POSTERS) out.push(await demoPhoto(store, `wingchunroots:demo-event-poster:v1:${slug}`, index++, 'poster', slug, 0, null));
+  return out;
+}
+
+/** M19: the files of a demo certificate (the values its row takes from them). */
+export interface DemoCertificateFile {
+  key: (typeof DEMO_CERTIFICATES)[number]['key'];
+  storageKey: string;
+  sha256: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+}
+
+/**
+ * M19 (D20): renders the demo certificates (src/fixtures/generate.ts DEMO_CERTIFICATES) through the
+ * pipeline of an upload and writes their files to the private store (the evidence bucket, never
+ * the photo store: a private certificate is served only through the app, ADR 0022).
+ */
+export async function writeDemoCertificates(store: ObjectStore = getEvidenceStore()): Promise<DemoCertificateFile[]> {
+  const out: DemoCertificateFile[] = [];
+  for (const c of DEMO_CERTIFICATES) {
+    const seed = digest(`wingchunroots:demo-certificate:v1:${c.key}`);
+    const rendered = await renderGalleryPhoto(await demoCertificate(seed.readUInt32BE(0)));
+    const storageKey = `certificates/${seed.subarray(4, 28).toString('hex')}`;
+    await putAll(store, storageKey, { ...rendered.renditions, full: rendered.full.bytes });
+    out.push({
+      key: c.key,
+      storageKey,
+      sha256: createHash('sha256').update(rendered.full.bytes).digest('hex'),
+      width: rendered.full.width,
+      height: rendered.full.height,
+      sizeBytes: rendered.full.bytes.byteLength,
+    });
+  }
   return out;
 }

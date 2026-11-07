@@ -40,6 +40,7 @@ import { uploadPhoto } from '../services/photos';
 import { uploadSchoolPhoto } from '../services/school-photos';
 import { plainImage } from '../storage/test-images';
 import { createGrant } from '../services/grants';
+import { addRank, uploadCertificate } from '../services/passport';
 import { requestHistoricalTeacher } from '../services/historical';
 import { requestInstructorVerification } from '../services/instructor';
 import { inviteTeacher } from '../services/invitations';
@@ -365,6 +366,37 @@ async function eventOf(opts: { poster?: boolean } = {}) {
     poster = addressOf(up.poster!.small);
   }
   return { owner, id: created.id, slug: created.slug, placeId: city.rows[0]!.id, day, poster };
+}
+
+/**
+ * M19: a teacher (the `owner`, who records) and their student (the `party`) with a verified
+ * relationship; the student on Premium Student when `full`; a rank the teacher recorded.
+ */
+async function passportOf(opts: { full?: boolean; hidden?: boolean } = {}) {
+  const teacher = await actor('passport-teacher', { sifu: true });
+  const student = await actor('passport-student');
+  const lineageId = await newLineage('m19-authz');
+  await getDb().insert(teachingRelationship).values({ teacherPersonId: teacher.personId!, studentPersonId: student.personId!, lineageId, status: 'verified', visibility: 'public' });
+  if (opts.full) await createGrant(world.admin.principal, { email: student.email, planCode: 'premium_student', reason: 'M19 authorization matrix (fictional)' }, meta);
+  const rank = await addRank(teacher.principal, { personId: student.personId!, rank: 'Demo matrix level', date: '2020' }, meta);
+  if (opts.hidden) await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, student.personId!));
+  return { teacher, student, rankId: rank.id };
+}
+
+/** M19: a certificate of the student (private unless `public`, on Premium Student). */
+async function certificateOf(opts: { public?: boolean } = {}) {
+  const p = await passportOf({ full: true });
+  const up = await uploadCertificate(p.student.principal, { file: await photoFile(), title: 'Demo matrix certificate', visibility: opts.public ? 'public' : 'private' }, meta);
+  return { ...p, certificateId: up.id, address: addressOf(up.image.small) };
+}
+
+/** M19: a past published event the teacher organized (moved a year back after it was created). */
+async function pastEventOf() {
+  const p = await passportOf();
+  const e = await eventOf();
+  await getDb().execute(sql`UPDATE event SET organizer_person_id = ${p.teacher.personId}::uuid, organizer_user_id = ${p.teacher.id}::uuid,
+    starts_at = starts_at - interval '2 years', ends_at = ends_at - interval '2 years' WHERE id = ${e.id}::uuid`);
+  return { ...p, eventId: e.id };
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -1204,6 +1236,121 @@ const ROWS: Row[] = [
     },
     expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  // M19: the training passport. passport.get is a public DTO for everyone (404 for a person who is
+  // not public); the writes are the verified teacher's (the student is refused, FORBIDDEN, anyone
+  // else 404); the visibility and the certificates are the student's own; staff with a verified
+  // second factor remove an entry with a reason. A private certificate is served to the student
+  // and their teachers only, the same 404 for everyone else.
+  { path: 'passport.get', make: async () => ({ input: { slug: (await passportOf()).student.slug } }), expect: everyone },
+  {
+    path: 'passport.get (person not public)',
+    make: async () => {
+      const p = await passportOf({ hidden: true });
+      return { owner: p.student, party: p.teacher, input: { slug: p.student.slug } };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  // Staff accounts have no profile, so no passport of their own.
+  { path: 'passport.mine', make: noInput, expect: { ...signedInOnly, member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' } },
+  { path: 'passport.students', make: () => ({ input: {} }), expect: own() },
+  {
+    path: 'passport.students (a student)',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.teacher, party: p.student, input: { personId: p.student.personId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  ...(
+    [
+      ['passport.addRank', { rank: 'Demo matrix second level', date: '2021' }],
+      ['passport.addExam', { awardedRank: 'Demo matrix second level', date: '2021-05' }],
+      ['passport.addSkill', { name: 'Demo matrix form', progress: 'learning', date: '2021' }],
+    ] as const
+  ).map(
+    ([path, fields]): Row => ({
+      path,
+      make: async () => {
+        const p = await passportOf();
+        return { owner: p.teacher, party: p.student, input: { personId: p.student.personId, ...fields } };
+      },
+      expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+    }),
+  ),
+  {
+    path: 'passport.updateEntry',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.teacher, party: p.student, input: { kind: 'rank', id: p.rankId, rank: 'Demo matrix level, changed', date: '2019' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'passport.updateEntry (a correction)',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.student, party: p.teacher, input: { kind: 'rank', id: p.rankId, correction: 'A fictional correction.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'passport.withdrawEntry',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.teacher, party: p.student, input: { kind: 'rank', id: p.rankId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'passport.setVisibility',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.student, party: p.teacher, input: { kind: 'rank', id: p.rankId, visibility: 'private' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  // Through /api/v1 as multipart (viaPhotoUpload): the account's own passport; staff have none.
+  { path: 'passport.uploadCertificate', make: () => ({ input: {} }), expect: { ...signedInOnly, member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' } },
+  {
+    path: 'passport.removeCertificate',
+    make: async () => {
+      const c = await certificateOf();
+      return { owner: c.student, party: c.teacher, input: { id: c.certificateId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'passport.markAttendance',
+    make: async () => {
+      const e = await pastEventOf();
+      return { owner: e.teacher, party: e.student, input: { eventId: e.eventId, personIds: [e.student.personId] } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'passport.remove',
+    make: async () => {
+      const p = await passportOf();
+      return { owner: p.teacher, party: p.student, input: { kind: 'rank', id: p.rankId, reason: 'A fictional moderation reason.' } };
+    },
+    expect: { ...staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }), owner: 'FORBIDDEN', party: 'FORBIDDEN' },
+  },
+  {
+    path: 'GET /api/certificates/{id}/{hash}/{file}',
+    make: async () => {
+      const c = await certificateOf();
+      return { owner: c.student, party: c.teacher, input: c.address };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', party: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'GET /api/certificates/{id}/{hash}/{file} (public, on Premium Student)',
+    make: async () => {
+      const c = await certificateOf({ public: true });
+      return { owner: c.student, party: c.teacher, input: c.address };
+    },
+    expect: { anonymous: 'ok', member: 'ok', owner: 'ok', party: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
   // the evidence routes outside the router (plan §6.4): streamed only after the permission check
   {
     path: 'GET /api/evidence/{id}',
@@ -1274,10 +1421,10 @@ async function viaEvidenceRoute(token: string | null, row: Row, input: unknown):
 }
 
 /** M14: GET /api/photos/<id>/<hash>/<file> with this session. */
-async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' | 'event' = 'person'): Promise<string> {
+async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' | 'event' | 'certificate' = 'person'): Promise<string> {
   const headers = new Headers();
   if (token) headers.set('authorization', `Bearer ${token}`);
-  const base = kind === 'school' ? 'school-photos' : kind === 'event' ? 'event-posters' : 'photos';
+  const base = kind === 'school' ? 'school-photos' : kind === 'event' ? 'event-posters' : kind === 'certificate' ? 'certificates' : 'photos';
   const response = await handlePhotoRequest(new Request(`${TEST_APP_URL}/api/${base}/${address.id}/${address.hash}/${address.file}`, { headers }), address, { kind });
   await response.arrayBuffer();
   return response.ok ? 'ok' : (STATUS_CODES[response.status] ?? `HTTP ${response.status}`);
@@ -1373,11 +1520,11 @@ describe('the authorization matrix (M13)', () => {
         if (caller === undefined) throw new Error(`${row.path}: no ${who} in the fixture`);
         actual[who] = row.path.includes('/api/evidence')
           ? await viaEvidenceRoute(caller?.token ?? null, row, made.input)
-          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos') || row.path.includes('/api/event-posters')
+          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos') || row.path.includes('/api/event-posters') || row.path.includes('/api/certificates')
             ? await viaPhotoRoute(
                 caller?.token ?? null,
                 made.input as { id: string; hash: string; file: string },
-                row.path.includes('/api/school-photos') ? 'school' : row.path.includes('/api/event-posters') ? 'event' : 'person',
+                row.path.includes('/api/school-photos') ? 'school' : row.path.includes('/api/event-posters') ? 'event' : row.path.includes('/api/certificates') ? 'certificate' : 'person',
               )
             : row.path === 'photos.upload'
               ? await viaPhotoUpload(caller?.token ?? null)
@@ -1387,7 +1534,9 @@ describe('the authorization matrix (M13)', () => {
                   ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/schools/photos/upload', made.input as Record<string, string>)
                   : row.path === 'events.uploadPoster'
                     ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/events/poster/upload', made.input as Record<string, string>)
-                    : await viaRpc(caller?.token ?? null, row.path, made.input);
+                    : row.path === 'passport.uploadCertificate'
+                      ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/passport/certificate/upload', made.input as Record<string, string>)
+                      : await viaRpc(caller?.token ?? null, row.path, made.input);
       }
       // Line by line, so a failure shows every role's answer.
       const lines = (answers: Partial<Record<Who, string>>) => ROLES.filter((w) => row.expect[w]).map((w) => `${w}: ${answers[w]}`);
@@ -1640,6 +1789,31 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/events/actions.ts#updateEventAction', row: 'events.update', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/events/actions.ts#cancelEventAction', row: 'events.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/events/[slug]/actions.ts#removeEventAction', row: 'events.remove', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'admin'] },
+  // M19: the passport forms post the procedures' fields; the entry of the staff form is "kind:id".
+  { action: 'src/app/dashboard/passport/actions.ts#setVisibilityAction', row: 'passport.setVisibility', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/passport/actions.ts#proposeCorrectionAction', row: 'passport.updateEntry (a correction)', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/students/actions.ts#addRankAction', row: 'passport.addRank', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/students/actions.ts#addExamAction', row: 'passport.addExam', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/students/actions.ts#addSkillAction', row: 'passport.addSkill', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/dashboard/students/actions.ts#updateEntryAction',
+    row: 'passport.updateEntry',
+    form: (i) => ({ kind: String(i.kind), id: String(i.id), title: String(i.rank), date: String(i.date) }),
+    roles: ['anonymous', 'member', 'party', 'owner'],
+  },
+  { action: 'src/app/dashboard/students/actions.ts#withdrawEntryAction', row: 'passport.withdrawEntry', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/dashboard/students/actions.ts#markAttendanceAction',
+    row: 'passport.markAttendance',
+    form: (i) => ({ eventId: String(i.eventId), personId: String((i.personIds as string[])[0]) }),
+    roles: ['anonymous', 'member', 'owner'],
+  },
+  {
+    action: 'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction',
+    row: 'passport.remove',
+    form: (i) => ({ entry: `${String(i.kind)}:${String(i.id)}`, reason: String(i.reason), slug: 'demo-matrix' }),
+    roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'admin'],
+  },
   // The editor saves the account's own person only: the form has no person to choose.
   { action: 'src/app/dashboard/profile/actions.ts#saveProfileAction', row: 'profile.update', form: () => ({ 'names.0.value': 'Demo Profile Person', primary: '0', showPublicly: 'on' }), roles: ['anonymous', 'owner'] },
 ];

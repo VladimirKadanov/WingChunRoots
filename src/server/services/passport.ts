@@ -736,7 +736,15 @@ export interface PassportStudents {
   students: PassportStudent[];
   /** The organizations the account administers (approved), to name as the issuer. */
   organizations: { id: string; name: string }[];
-  selected: { student: PassportStudent; entries: StudentEntry[]; events: PastEvent[] } | null;
+  selected: { student: PassportStudent; entries: StudentEntry[]; events: PastEvent[]; examiners: PassportExaminer[] } | null;
+}
+
+/** A person the form offers as the examiner: this account's own person, its teachers and the student's other teachers. */
+export interface PassportExaminer {
+  personId: string;
+  name: PassportPersonDto['name'];
+  /** "You", "Your teacher", "Their teacher". */
+  note: string;
 }
 
 interface StudentRow extends Record<string, unknown> {
@@ -827,10 +835,32 @@ export async function passportStudents(principal: Principal | null, raw: z.input
              AND (e.organizer_person_id = ${own}::uuid OR EXISTS (SELECT 1 FROM event_instructor i WHERE i.event_id = e.id AND i.person_id = ${own}::uuid))
            ORDER BY e.starts_at DESC, e.id LIMIT 20`)
       : { rows: [] };
+    // DEFAULT M19 (question 6): the examiner is chosen among the people the writer knows on the
+    // record (themself, their teachers, the student's other teachers), never a free search.
+    const examinerRows = await db.execute<{ id: string; name: string | null; lang: string | null; note: string }>(sql`
+      SELECT DISTINCT ON (p.id) p.id,
+             (SELECT n.value FROM person_name n WHERE n.person_id = p.id AND n.is_primary LIMIT 1) AS name,
+             (SELECT n.lang FROM person_name n WHERE n.person_id = p.id AND n.is_primary LIMIT 1) AS lang,
+             c.note
+        FROM (
+          SELECT ${own ?? null}::uuid AS id, 'You' AS note, 0 AS rank
+          UNION ALL
+          SELECT r.teacher_person_id, 'Your teacher', 1 FROM teaching_relationship r
+           WHERE ${own ? sql`r.student_person_id = ${own}::uuid` : sql`false`} AND r.status = 'verified'
+          UNION ALL
+          SELECT r.teacher_person_id, 'Their teacher', 2 FROM teaching_relationship r
+           WHERE r.student_person_id = ${student.personId}::uuid AND r.status = 'verified'
+        ) c JOIN person p ON p.id = c.id AND p.deleted_at IS NULL
+       WHERE p.id <> ${student.personId}::uuid
+       ORDER BY p.id, c.rank`);
+    const examiners = examinerRows.rows
+      .map((r) => ({ personId: r.id, name: { value: r.name ?? 'Unnamed person', lang: r.lang ?? 'und-Latn', script: 'Latn' as const }, note: r.note }))
+      .sort((a, b) => (a.note === 'You' ? -1 : b.note === 'You' ? 1 : a.name.value.localeCompare(b.name.value, 'en')));
     selected = {
       student,
       entries: timelineByYear(entries).flatMap((y) => y.items),
       events: events.rows.map((e) => ({ id: e.id, slug: e.slug, title: e.title, dateText: formatPartialDate(e.day), attended: e.attended })),
+      examiners,
     };
   }
   return { hasProfile: own !== null || organizations.length > 0, students, organizations, selected };
@@ -976,10 +1006,11 @@ export async function updateEntry(principal: Principal | null, raw: z.input<type
       }
       return { kind: input.kind, id: entry.id, correction: true };
     }
-    if (input.correction !== undefined && input.correction !== null) throw new ServiceError('FORBIDDEN', 'Only the student proposes a correction to their own passport.');
+    // Anyone who neither owns nor wrote it gets the answer of an entry that is not there.
     const may = await mayChange(tx, p.user.id, entry);
-    if (may === 'arbitration') throw new ServiceError('FORBIDDEN', ARBITRATION_READ_ONLY);
     if (may === 'no') throw notFound();
+    if (input.correction !== undefined && input.correction !== null) throw new ServiceError('FORBIDDEN', 'Only the student proposes a correction to their own passport.');
+    if (may === 'arbitration') throw new ServiceError('FORBIDDEN', ARBITRATION_READ_ONLY);
     const changes: Record<string, unknown> = {};
     const changed: string[] = [];
     if (input.date !== undefined) {

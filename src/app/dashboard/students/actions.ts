@@ -35,10 +35,14 @@ async function client() {
   return serverClient(await headers(), await getRequestPrincipal());
 }
 
-async function failed(error: unknown, form: string, page: string, values: Record<string, string>): Promise<FormState> {
+async function failed(error: unknown, form: string, page: string, values: Record<string, string>, rename: Record<string, string> = {}): Promise<FormState> {
   unstable_rethrow(error);
   if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
   const state = formStateFromFailure(error, values);
+  // A field the procedure names otherwise than the form (the entry's title) points at the form's own.
+  if (state.status === 'error' && state.fields) {
+    state.fields = Object.fromEntries(Object.entries(state.fields).map(([name, text]) => [rename[name] ?? name, text]));
+  }
   return formResult({ form, page, anchor: outcomeTarget(form, state, false) }, state);
 }
 
@@ -115,7 +119,7 @@ export async function updateEntryAction(_previous: FormState, form: FormData): P
   try {
     await (await client()).passport.updateEntry(input as Parameters<Awaited<ReturnType<typeof client>>['passport']['updateEntry']>[0]);
   } catch (error) {
-    return failed(error, ENTRY_FORM, pageOf(personId), values);
+    return failed(error, ENTRY_FORM, `${pageOf(personId)}&edit=${uuidOrEmpty(id)}`, values, { rank: 'title', awardedRank: 'title', name: 'title' });
   }
   redirect(`${pageOf(personId)}&changed=1#entry-${uuidOrEmpty(id)}`);
 }
