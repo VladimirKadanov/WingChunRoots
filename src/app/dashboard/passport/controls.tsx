@@ -76,7 +76,7 @@ export function CertificateUpload({ count, limit }: { count: number; limit: numb
       date: String(data.get('date') ?? '') || null,
       visibility: data.get('visibility') === 'public' ? 'public' : 'private',
     };
-    const outcome = await uploadRpc('/api/rpc/passport/certificate/upload', fields, file).then(
+    const outcome = await uploadRpc('/api/rpc/passport/uploadCertificate', fields, file).then(
       async (response) => (response.ok ? null : await messageOf(response, 'That did not work. Try again.')),
       () => 'The connection failed. Try again.',
     );
@@ -177,7 +177,7 @@ export function RemoveCertificateButton({ id, title }: { id: string; title: stri
           onClick={async () => {
             if (busy) return;
             setStatus({ kind: 'busy', text: 'Removing the certificate…' });
-            const outcome = await callRpc('/api/rpc/passport/certificate/remove', { id }).then(
+            const outcome = await callRpc('/api/rpc/passport/removeCertificate', { id }).then(
               async (response) => (response.ok ? null : await messageOf(response, 'That did not work. Try again.')),
               () => 'The connection failed. Try again.',
             );

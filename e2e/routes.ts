@@ -164,6 +164,20 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/notifications?category=plan', name: 'dashboard-notifications-plan', status: 200, milestone: 'M18', signInAs: 'demo-two-lineages' },
   { path: '/dashboard/notifications?category=organizations', name: 'dashboard-notifications-empty', status: 200, milestone: 'M18', signInAs: 'demo-two-lineages' },
   { path: '/unsubscribe', name: 'unsubscribe-stale', status: 200, milestone: 'M18' },
+  // The training passport (M19): the profile of the seeded Premium Student (demo-premium-student's
+  // person, demo-b-166 with seed 20261016) with the full timeline, and demo-two-lineages above with
+  // the basic one (M04's key screen); the own passport of the Premium Student, of the Free Student
+  // (entries kept but hidden by the plan, the upgrade prompt) and of an account without a profile;
+  // the teacher's list of students (demo-pro-sifu-8) and of a student account without any. No test
+  // changes these accounts' passports (e2e/m19-passport.spec.ts uses accounts of its own). The
+  // teacher's entry forms need a student's id: a screen state (e2e/screenshots.spec.ts), and the
+  // spec runs axe on them in both themes. Key screens: their baselines come from a CI run.
+  { path: '/people/demo-b-166', name: 'person-passport', status: 200, milestone: 'M19', key: true },
+  { path: '/dashboard/passport', name: 'dashboard-passport', status: 200, milestone: 'M19', key: true, signInAs: 'demo-premium-student' },
+  { path: '/dashboard/passport', name: 'dashboard-passport-basic', status: 200, milestone: 'M19', signInAs: 'demo-two-lineages' },
+  { path: '/dashboard/passport', name: 'dashboard-passport-no-profile', status: 200, milestone: 'M19', signInAs: 'new' },
+  { path: '/dashboard/students', name: 'dashboard-students', status: 200, milestone: 'M19', key: true, signInAs: 'demo-pro-sifu-8' },
+  { path: '/dashboard/students', name: 'dashboard-students-none', status: 200, milestone: 'M19', signInAs: 'demo-pending' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

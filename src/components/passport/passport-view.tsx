@@ -66,7 +66,7 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
     parts.push(
       <span key="examiner">
         Examiner:{' '}
-        <Link href={`/people/${entry.examiner.slug}`} prefetch={false} className="link">
+        <Link href={`/people/${entry.examiner.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
           <NameText name={entry.examiner.name} />
         </Link>
       </span>,
@@ -76,7 +76,7 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
     parts.push(
       <span key="teacher">
         {entry.kind === 'attendance' ? 'Marked by ' : 'Recorded by '}
-        <Link href={`/people/${entry.teacher.slug}`} prefetch={false} className="link">
+        <Link href={`/people/${entry.teacher.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
           <NameText name={entry.teacher.name} />
         </Link>
       </span>,
@@ -86,7 +86,7 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
     parts.push(
       <span key="organization">
         {entry.kind === 'attendance' ? '' : 'Organization: '}
-        <Link href={`/organizations/${entry.organization.slug}`} prefetch={false} className="link">
+        <Link href={`/organizations/${entry.organization.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
           {entry.organization.name}
         </Link>
       </span>,
@@ -95,7 +95,7 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
   if (entry.event) {
     parts.push(
       <span key="event">
-        <Link href={`/events/${entry.event.slug}`} prefetch={false} className="link">
+        <Link href={`/events/${entry.event.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
           {entry.event.kindLabel} page
         </Link>
       </span>,
@@ -103,7 +103,7 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
   }
   if (parts.length === 0) return null;
   return (
-    <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
+    <p className="flex flex-wrap items-center gap-x-4 text-sm text-fg-muted">
       {parts.map((part, i) => (
         <span key={i}>{part}</span>
       ))}

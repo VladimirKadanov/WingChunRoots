@@ -508,6 +508,20 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByTestId('last-backup-time')).toBeVisible();
     },
   },
+  {
+    // M19: the teacher's entry forms: demo-pro-sifu-8 on the passport of its student
+    // demo-premium-student (the seeded full passport); nothing is recorded.
+    name: 'dashboard-students-entry',
+    milestone: 'M19',
+    async reach(page) {
+      const rows = await getDb().execute<{ id: string }>(sql`
+        SELECT p.id::text AS id FROM person p JOIN auth_user u ON u.id = p.claimed_by_user_id WHERE u.email = 'demo-premium-student@example.test'`);
+      expect(rows.rows).toHaveLength(1);
+      await signInAs(page, 'demo-pro-sifu-8');
+      await page.goto(`/dashboard/students?student=${rows.rows[0]!.id}#student`);
+      await expect(page.getByTestId('passport-rank-form').filter({ visible: true })).toBeVisible();
+    },
+  },
 ];
 
 /**
