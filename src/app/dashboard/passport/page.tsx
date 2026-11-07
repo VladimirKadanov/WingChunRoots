@@ -77,7 +77,7 @@ function Summary({ view }: { view: MyPassport }) {
         <div className="grid gap-1 sm:col-span-2">
           <dt className="eyebrow">Teachers</dt>
           {view.teachers.map((t) => (
-            <dd key={t.person.slug} className="text-ui">
+            <dd key={`${t.person.slug}:${t.lineage}`} className="text-ui">
               <Link href={`/people/${t.person.slug}`} className="link inline-flex min-h-11 items-center">
                 <span lang={t.person.name.lang} translate="no">
                   {t.person.name.value}

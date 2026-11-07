@@ -25,7 +25,8 @@ const uuidOrEmpty = (value: string) => (UUID.test(value) ? value : '');
 const uuidOrNull = (value: string) => (UUID.test(value) ? value : null);
 
 /** The student's page: /dashboard/students?student=<person id>. */
-const pageOf = (personId: string) => (UUID.test(personId) ? `${LIST}?student=${personId}` : LIST);
+// Always with a query, since callers append `&recorded=…` and the like.
+const pageOf = (personId: string) => (UUID.test(personId) ? `${LIST}?student=${personId}` : `${LIST}?`);
 
 function signInAgain(next: string): never {
   redirect(`/sign-in?next=${encodeURIComponent(next)}`);

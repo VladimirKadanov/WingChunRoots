@@ -337,7 +337,11 @@ async function mayChange(db: Executor, userId: string, entry: EntryRow): Promise
     if (relationship === 'verified') return 'yes';
     if (relationship === 'in_arbitration') return 'arbitration';
   }
-  if (entry.organization_id && (await administers(db, userId, entry.organization_id))) return 'yes';
+  // An entry the organization recorded (no teacher on it), for a current member: any admin of it.
+  // An entry a teacher recorded and named an organization on stays the teacher's alone.
+  if (entry.teacher_person_id === null && entry.organization_id && (await administers(db, userId, entry.organization_id)) && (await isMember(db, entry.organization_id, entry.person_id))) {
+    return 'yes';
+  }
   return 'no';
 }
 
@@ -532,13 +536,15 @@ interface OwnRow extends EntrySource {
   correction_note: string | null;
   correction_at: string | Date | null;
   writer_organization: boolean;
+  organization_id: string | null;
+  teacher_person_id: string | null;
 }
 
 /**
  * Every active entry of a passport with what only its student and teachers see: the visibility, a
  * proposed correction, who wrote it. The examiner only while public (In scope 8); the teacher by
  * name, a person of the student's own relationship (DEFAULT D03). `organizationIds` keeps only the
- * entries of those organizations (an organization's admin who is not the student's teacher).
+ * entries those organizations recorded (an organization's admin who is not the student's teacher).
  */
 async function ownEntries(db: Executor, personId: string, organizationIds: readonly string[] | null = null): Promise<OwnRow[]> {
   const name = (alias: string) => sql.raw(`(SELECT n."value" FROM "person_name" n WHERE n."person_id" = ${alias}."id" AND n."is_primary" LIMIT 1)`);
@@ -547,14 +553,14 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
     SELECT 'rank' AS kind, r.id, r.awarded_on AS on_date, r.precision, r.rank AS title, NULL AS progress, o.slug AS organization_slug, o.name AS organization_name,
            NULL AS examiner_slug, NULL AS examiner_name, NULL AS examiner_lang, tp.slug AS teacher_slug, ${name('tp')} AS teacher_name, ${lang('tp')} AS teacher_lang,
            NULL AS event_slug, NULL AS event_kind, NULL AS certificate_sha256, NULL::int AS certificate_width, NULL::int AS certificate_height, r.created_at,
-           r.visibility, r.created_by_user_id, r.correction_note, r.correction_at, (r.teacher_person_id IS NULL) AS writer_organization, r.organization_id
+           r.visibility, r.created_by_user_id, r.correction_note, r.correction_at, (r.teacher_person_id IS NULL) AS writer_organization, r.organization_id, r.teacher_person_id
       FROM passport_rank r LEFT JOIN v_public_organization o ON o.id = r.organization_id LEFT JOIN person tp ON tp.id = r.teacher_person_id AND tp.deleted_at IS NULL
      WHERE r.person_id = ${personId}::uuid AND r.status = 'active'
     UNION ALL
     SELECT 'exam', x.id, x.exam_on, x.precision, x.awarded_rank, NULL, o.slug, o.name,
            ep.slug, ep.display_name, ${lang('ep')}, tp.slug, ${name('tp')}, ${lang('tp')},
            NULL, NULL, NULL, NULL::int, NULL::int, x.created_at,
-           x.visibility, x.created_by_user_id, x.correction_note, x.correction_at, (x.teacher_person_id IS NULL), x.organization_id
+           x.visibility, x.created_by_user_id, x.correction_note, x.correction_at, (x.teacher_person_id IS NULL), x.organization_id, x.teacher_person_id
       FROM passport_exam x LEFT JOIN v_public_organization o ON o.id = x.organization_id LEFT JOIN v_public_person ep ON ep.id = x.examiner_person_id
            LEFT JOIN person tp ON tp.id = x.teacher_person_id AND tp.deleted_at IS NULL
      WHERE x.person_id = ${personId}::uuid AND x.status = 'active'
@@ -562,26 +568,28 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
     SELECT 'skill', k.id, k.since_on, k.precision, k.name, k.progress, o.slug, o.name,
            NULL, NULL, NULL, tp.slug, ${name('tp')}, ${lang('tp')},
            NULL, NULL, NULL, NULL::int, NULL::int, k.created_at,
-           k.visibility, k.created_by_user_id, k.correction_note, k.correction_at, (k.teacher_person_id IS NULL), k.organization_id
+           k.visibility, k.created_by_user_id, k.correction_note, k.correction_at, (k.teacher_person_id IS NULL), k.organization_id, k.teacher_person_id
       FROM passport_skill k LEFT JOIN v_public_organization o ON o.id = k.organization_id LEFT JOIN person tp ON tp.id = k.teacher_person_id AND tp.deleted_at IS NULL
      WHERE k.person_id = ${personId}::uuid AND k.status = 'active'
     UNION ALL
     SELECT 'certificate', c.id, c.issued_on, c.precision, c.title, NULL, NULL, NULL,
            NULL, NULL, NULL, NULL, NULL, NULL,
            NULL, NULL, c.sha256, c.width, c.height, c.created_at,
-           c.visibility, c.created_by_user_id, NULL, NULL, false, NULL
+           c.visibility, c.created_by_user_id, NULL, NULL, false, NULL, NULL::uuid
       FROM passport_certificate c
      WHERE c.person_id = ${personId}::uuid AND c.status = 'active'
     UNION ALL
     SELECT 'attendance', a.id, (e.starts_at AT TIME ZONE e.timezone)::date, 'day', e.title, NULL, NULL, NULL,
            NULL, NULL, NULL, tp.slug, ${name('tp')}, ${lang('tp')},
            e.slug, e.kind, NULL, NULL::int, NULL::int, a.created_at,
-           a.visibility, a.created_by_user_id, NULL, NULL, false, NULL
+           a.visibility, a.created_by_user_id, NULL, NULL, false, NULL, a.teacher_person_id
       FROM event_attendance a JOIN event e ON e.id = a.event_id AND e.status <> 'removed' LEFT JOIN person tp ON tp.id = a.teacher_person_id AND tp.deleted_at IS NULL
      WHERE a.person_id = ${personId}::uuid AND a.status = 'active'`);
-  const rows = result.rows as (OwnRow & { organization_id: string | null })[];
+  const rows = result.rows as OwnRow[];
   if (organizationIds === null) return rows;
-  return rows.filter((r) => r.organization_id !== null && organizationIds.includes(r.organization_id));
+  // Only what the organization itself recorded: an entry a teacher wrote and named the
+  // organization on stays the teacher's (and, while private, out of the admin's sight).
+  return rows.filter((r) => r.writer_organization && r.organization_id !== null && organizationIds.includes(r.organization_id));
 }
 
 export interface OwnPassportEntry extends PassportEntryDto {
@@ -775,7 +783,7 @@ export async function passportStudents(principal: Principal | null, raw: z.input
      WHERE a.user_id = ${p.user.id}::uuid AND a.revoked_at IS NULL AND o.status = 'active' AND o.deleted_at IS NULL ORDER BY o.name, o.id`);
   const organizations = orgs.rows;
   const orgIds = organizations.map((o) => o.id);
-  const result = await db.execute<StudentRow>(sql`
+  const studentRows = (only: string | null) => db.execute<StudentRow>(sql`
     WITH taught AS (
       SELECT DISTINCT ON (r.student_person_id) r.student_person_id AS person_id, r.status AS relationship
         FROM teaching_relationship r
@@ -794,9 +802,10 @@ export async function passportStudents(principal: Principal | null, raw: z.input
            t.relationship, m.organization_ids
       FROM person p LEFT JOIN taught t ON t.person_id = p.id LEFT JOIN members m ON m.person_id = p.id
      WHERE p.deleted_at IS NULL AND (t.person_id IS NOT NULL OR m.person_id IS NOT NULL) ${own ? sql`AND p.id <> ${own}::uuid` : sql``}
+           ${only ? sql`AND p.id = ${only}::uuid` : sql``}
      ORDER BY name, p.id
      LIMIT ${PASSPORT_STUDENTS_LIMIT}`);
-  const students: PassportStudent[] = result.rows.map((r) => {
+  const toStudent = (r: StudentRow): PassportStudent => {
     const memberOf = organizations.filter((o) => (r.organization_ids ?? []).includes(o.id));
     return {
       personId: r.person_id,
@@ -806,10 +815,12 @@ export async function passportStudents(principal: Principal | null, raw: z.input
       organizations: memberOf,
       canRecord: r.relationship === 'verified' || memberOf.length > 0,
     };
-  });
+  };
+  const students: PassportStudent[] = (await studentRows(null)).rows.map(toStudent);
   let selected: PassportStudents['selected'] = null;
   if (input.personId) {
-    const student = students.find((s) => s.personId === input.personId);
+    // A student beyond the listed ones (more than PASSPORT_STUDENTS_LIMIT) is still theirs.
+    const student = students.find((s) => s.personId === input.personId) ?? (await studentRows(input.personId)).rows.map(toStudent)[0];
     if (!student) throw notFound(NO_STUDENT);
     const { level } = await planOf(db, student.personId);
     const shown = await db.execute(sql`SELECT 1 AS one FROM v_public_person WHERE id = ${student.personId}::uuid`);
@@ -817,13 +828,14 @@ export async function passportStudents(principal: Principal | null, raw: z.input
     const rows = await ownEntries(db, student.personId, student.relationship ? null : student.organizations.map((o) => o.id));
     const currentPublic = currentOf(rows.filter((r) => r.kind === 'rank' && r.visibility === 'public').map(entryOf));
     const entries: StudentEntry[] = [];
+    const memberOf = student.organizations.map((o) => o.id);
     for (const row of rows) {
       const base = ownEntryOf(row, level, shown.rows.length > 0, currentPublic?.id ?? null);
-      let canChange = false;
-      if (row.kind !== 'certificate') {
-        const entry = await loadEntry(db, row.kind, row.id);
-        canChange = entry !== null && (await mayChange(db, p.user.id, entry)) === 'yes';
-      }
+      // The rule of mayChange, from what is already known here (no query per entry).
+      const canChange =
+        row.kind !== 'certificate' &&
+        ((own !== null && row.teacher_person_id === own && student.relationship === 'verified') ||
+          (row.writer_organization && row.organization_id !== null && memberOf.includes(row.organization_id)));
       entries.push({ ...base, canChange });
     }
     const events = own

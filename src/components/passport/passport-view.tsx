@@ -140,7 +140,7 @@ function TeacherList({ teachers }: { teachers: PassportTeacherDto[] }) {
   return (
     <ul className="grid gap-3" aria-label="Teachers and periods of training">
       {teachers.map((t) => (
-        <li key={t.person.slug} className="grid gap-0.5">
+        <li key={`${t.person.slug}:${t.lineage}`} className="grid gap-0.5">
           <Link href={`/people/${t.person.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center font-display text-lg">
             <NameText name={t.person.name} />
           </Link>

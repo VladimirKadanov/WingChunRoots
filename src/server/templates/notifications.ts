@@ -1185,7 +1185,8 @@ const passportEntryAdded: NotificationTemplate<PassportNoticeData> = {
   parse: (payload) => passportNotice('passport.entry-added', payload),
   render: ({ kind, title }) => ({
     title: 'New in your training passport',
-    body: [{ text: `Your teacher recorded ${PASSPORT_KIND_WORDS[kind]}: “${title}”. You choose whether it shows on your profile.` }],
+    // A teacher or an organization's admin: the notice names neither, so it is right for both.
+    body: [{ text: `Your teacher or organization recorded ${PASSPORT_KIND_WORDS[kind]}: “${title}”. You choose whether it shows on your profile.` }],
     action: { label: 'Open your passport', href: '/dashboard/passport' },
   }),
   sample: { kind: 'rank', title: 'Demo second level' },

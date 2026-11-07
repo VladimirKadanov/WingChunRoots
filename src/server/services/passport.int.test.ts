@@ -169,6 +169,19 @@ describe('who writes (DEFAULT M19, question 1)', () => {
     expect((await refusal(addRank(admin.principal, { personId: outsider.personId, rank: 'Demo level', date: null, organizationId: org!.id }, meta))).code).toBe('NOT_FOUND');
     const students = await passportStudents(admin.principal, { personId: memberStudent.personId });
     expect(students.selected?.entries.map((e) => [e.id, e.canChange])).toEqual([[written.id, true]]);
+
+    // A teacher's entry that names the organization stays the teacher's: the admin neither sees
+    // it (it may be private) nor changes or withdraws it.
+    const teacher = await member('org-member-teacher', { sifu: true });
+    await relate(teacher.personId, memberStudent.personId);
+    const teachers = await addRank(teacher.principal, { personId: memberStudent.personId, rank: 'Demo teacher level', date: '2025', organizationId: org!.id }, meta);
+    const again = await passportStudents(admin.principal, { personId: memberStudent.personId });
+    expect(again.selected?.entries.map((e) => e.id)).toEqual([written.id]);
+    expect((await refusal(withdrawEntry(admin.principal, { kind: 'rank', id: teachers.id }, meta))).code).toBe('NOT_FOUND');
+    expect((await refusal(updateEntry(admin.principal, { kind: 'rank', id: teachers.id, rank: 'Demo changed' }, meta))).code).toBe('NOT_FOUND');
+    const byTeacher = await passportStudents(teacher.principal, { personId: memberStudent.personId });
+    expect(byTeacher.selected?.entries.find((e) => e.id === teachers.id)?.canChange).toBe(true);
+    expect(byTeacher.selected?.entries.find((e) => e.id === written.id)?.canChange).toBe(false);
   });
 
   it('dates as precise as known: a date after today and a malformed one are refused', async () => {
