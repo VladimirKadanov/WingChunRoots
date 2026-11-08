@@ -213,6 +213,26 @@ describe('idempotent reruns and the clock (In scope 2)', () => {
     expect(audits).toHaveLength(1);
   });
 
+  it('a confirmation that commits while the job runs wins: the job writes nothing for that school', async () => {
+    const s = await listedSchool('race', '120 days', { stage: 'awaiting_confirmation', awaitingFor: '20 days' });
+    let job: Promise<unknown> | undefined;
+    // The confirmation holds the row (as schools.confirm does inside its transaction) while the job
+    // reaches its UPDATE, which waits for it and then finds its conditions no longer hold.
+    await getDb().transaction(async (tx) => {
+      await tx.execute(sql`
+        UPDATE school SET last_activity_at = now(), activity_stage = 'current', activity_awaiting_since = NULL, activity_hidden_at = NULL
+         WHERE id = ${s.id}::uuid`);
+      job = run();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    await job;
+    expect(await stageOf(s.id)).toMatchObject({ stage: 'current', awaitingSince: null, hiddenAt: null });
+    expect(await isPublic(s.id)).toBe(true);
+    expect((await noticesOf(s.sifu.account.id)).filter((n) => n.template === 'school.activity-hidden')).toHaveLength(0);
+    const audits = await getDb().select().from(auditLog).where(and(eq(auditLog.subjectId, s.id), eq(auditLog.action, 'school.activity_hidden')));
+    expect(audits).toHaveLength(0);
+  });
+
   it('ages come from the database clock: a worker whose clock runs ahead moves nothing early; a last activity in the future is younger', async () => {
     const young = await listedSchool('clock', '80 days');
     const future = await listedSchool('future', '-2 days');

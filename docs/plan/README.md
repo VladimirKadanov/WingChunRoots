@@ -29,6 +29,7 @@
 | M17 | [M17 — Календар на събитията](M17-events.md) | M16 | в изпълнение (клон `m17-events`; въпроси в [questions/M17.md](questions/M17.md)) |
 | M18 | [M18 — Известия за жизнения цикъл](M18-notices.md) | M17 | в изпълнение (клон `m18-notices`; въпроси в [questions/M18.md](questions/M18.md)) |
 | M19 | [M19 — Кунг Фу паспорт](M19-passport.md) | M18 | в изпълнение (клон `m19-passport`; въпроси в [questions/M19.md](questions/M19.md)) |
+| M20 | [M20 — Проверка за активност на школите](M20-school-activity.md) | M19 | в изпълнение (клон `m20-school-activity`; въпроси в [questions/M20.md](questions/M20.md)) |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |
 
 След пилота работа извън етапите се записва в ADR и тук:

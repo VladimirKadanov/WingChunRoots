@@ -51,7 +51,7 @@
 
 **Изтриване на акаунта на Сифу** (прегледът на M11, security-1): `pnpm account:delete` архивира всяка школа на акаунта, преди акаунтът да изчезне: статус `archived` и изтрита (извън `v_public_school`), отворените ѝ случаи `school_listing` се затварят като `dismissed`, контактите, уебсайтът, описанието, частната точка и инструкторите се махат (`public_point` се връща в центъра на града), а `created_by_user_id` става `NULL`. Само `NULL` без архивиране би превърнало обявена школа в запис на платформата, публичен без Professional Sifu.
 
-`last_activity_at` се мести само при редакция или потвърждение „Confirm it is current“, никога при вход (**DEFAULT D17**; интеграционен тест). Проверката 90/105 дни е във Фаза 2.
+`last_activity_at` се мести само при редакция или потвърждение „Confirm it is current“ (от M20 „This listing is current“), никога при вход (**DEFAULT D17**; интеграционен тест). Проверката 90/105 дни е във Фаза 2: реализирана в M20, [ADR 0023](0023-school-activity.md).
 
 Всички действия са oRPC процедури в `/api/rpc` и `/api/v1` (`schools.create`, `update`, `submit`, `confirm`, `mine`, `edit`, `options`, `search`, `inViewport`, `get`, `sitemap`, `places.search`); Server Actions само ги обвиват (`src/server/rpc/parity.ts`).
 
