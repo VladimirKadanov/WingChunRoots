@@ -199,6 +199,7 @@ import {
   submitSchool,
   updateSchool,
 } from '../services/schools';
+import { adminSchools, adminSchoolsInput } from '../services/school-activity';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import {
@@ -793,9 +794,22 @@ export const router = {
       .input(schoolIdInput)
       .handler(({ context, input }) => submitSchool(context.principal, input, context.meta)),
     confirm: signedIn
-      .route({ method: 'POST', path: '/schools/confirm', summary: 'Confirm that a listed school is current (last activity, D17)' })
+      .route({
+        method: 'POST',
+        path: '/schools/confirm',
+        summary: 'Confirm that a listed school is current ("This listing is current"): last activity moves (D17) and the activity check starts again, which shows a hidden school while its other conditions hold (D18)',
+      })
       .input(schoolIdInput)
       .handler(({ context, input }) => confirmSchool(context.principal, input, context.meta)),
+    // M20: the activity check of the listed schools, for the moderators and administrators.
+    adminList: staffWithSecondFactor
+      .route({
+        method: 'GET',
+        path: '/admin/schools',
+        summary: 'The listed schools with their activity check (current, awaiting confirmation from day 90, hidden from day 105), optionally one stage (moderator or admin with a verified second factor)',
+      })
+      .input(adminSchoolsInput.optional())
+      .handler(({ context, input }) => adminSchools(context.principal, input ?? {})),
   },
   // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
   // an organization's admin reaches only the organizations they administer (404 for any other).

@@ -125,6 +125,15 @@ export default async function AdminPage() {
         </Link>
         <p className="text-sm text-fg-muted">The job queue, failed jobs and e-mails, and the time of the last local backup.</p>
       </div>
+      {/* M20: the activity check of the listed schools, for moderators and administrators. */}
+      {guard.principal?.user.role === 'admin' || guard.principal?.user.role === 'moderator' ? (
+        <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+          <Link href="/admin/schools" className={buttonVariants({ variant: 'secondary' })} data-testid="admin-schools-link">
+            School activity
+          </Link>
+          <p className="text-sm text-fg-muted">The listed schools awaiting their Sifu’s confirmation, and those hidden from the map until it comes.</p>
+        </div>
+      ) : null}
       {/* M08: the administrators' tool for test plans. */}
       {guard.principal?.user.role === 'admin' ? (
         <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">

@@ -19,6 +19,7 @@ import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
 import { lineageRecomputeHandler } from './lineage-recompute';
 import { planExpiryHandler } from './plan-expiry';
+import { schoolActivityHandler } from './school-activity';
 import { jobTemplateData, jobUnsubscribe } from './outbox';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
@@ -188,6 +189,8 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   await boss.work(QUEUE.eventsNotify, work, eventsNotifyHandler(db, log, boss));
   // M18: the notices of plans that end soon or have ended.
   await boss.work(QUEUE.plansExpiry, work, planExpiryHandler(db, log, boss));
+  // M20: the activity check of the listed schools (DEFAULT D17, D18).
+  await boss.work(QUEUE.schoolsActivity, work, schoolActivityHandler(db, log, boss));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

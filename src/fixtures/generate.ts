@@ -56,6 +56,8 @@ import {
   PUBLIC_RELATIONSHIP_STATUSES,
   PUBLISHABLE_RELATIONSHIP_STATUSES,
   RELATIONSHIP_STATUSES,
+  SCHOOL_CONFIRM_GRACE_DAYS,
+  SCHOOL_HIDDEN_DAYS,
 } from '../server/db/schema/common';
 import { consentVersion, SIGN_UP_CONSENTS } from '../server/legal/documents';
 import { GEONAMES_CITIES, type GeoNamesCity } from './geonames-cities';
@@ -892,6 +894,10 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       contactPhone: null,
       formsTaught: ['siu_nim_tao', 'chum_kiu'],
       lastActivityAt: at,
+      // M20: the activity check leaves the platform's records alone (no listing account to ask).
+      activityStage: 'current',
+      activityAwaitingSince: null,
+      activityHiddenAt: null,
       createdByUserId: null,
       createdAt: at,
       updatedAt: at,
@@ -1000,6 +1006,11 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   });
   const notices = demoNotices(seed, accountData.accounts);
   const organizationAccess = demoOrganizationAccess(seed, organizations, accountData.accounts);
+  const activity = demoSchoolActivity(seed, {
+    owner: accountData.accounts['demo-pro-sifu-8'],
+    instructor: proSifu.row.id,
+    city: (name) => placeOf(name),
+  });
   const passports = demoPassport(seed, {
     premium: proStudents[0]!.row.id,
     premiumTeacher: proSifu.row.id,
@@ -1021,9 +1032,9 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     trainingPeriods: b.periods,
     relationshipEvents: b.events,
     places,
-    schools,
-    schoolPrivateLocations,
-    schoolInstructors,
+    schools: [...schools, ...activity.schools],
+    schoolPrivateLocations: [...schoolPrivateLocations, ...activity.schoolPrivateLocations],
+    schoolInstructors: [...schoolInstructors, ...activity.schoolInstructors],
     organizations,
     organizationMemberships,
     organizationAdmins: organizationAccess.organizationAdmins,
@@ -1034,10 +1045,118 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     ...accountData,
     ...events,
     entitlementGrants: [...accountData.entitlementGrants, ...notices.entitlementGrants, ...organizationAccess.entitlementGrants],
-    notifications: [...events.notifications, ...notices.notifications],
+    notifications: [...events.notifications, ...notices.notifications, ...activity.notifications],
     notificationPreferences: notices.notificationPreferences,
     ...passports,
   };
+}
+
+// --- M20: school activity checks (docs/adr/0023-school-activity.md) --------------------------------
+
+/** Fixed time of the M20 demo schools: 2026-11-08T00:00:00Z. */
+const SCHOOL_ACTIVITY_AT = new Date(Date.UTC(2026, 10, 8));
+/** M20 (D20): the two demo schools of the activity check, listed by demo-pro-sifu-8. */
+export const DEMO_ACTIVITY_SCHOOLS = { awaiting: 'demo-school-awaiting-birmingham', hidden: 'demo-school-hidden-munich' } as const;
+
+interface DemoSchoolActivityRefs {
+  /** demo-pro-sifu-8: the listing account (Professional Sifu, so only the stage decides the pin). */
+  owner: string;
+  /** Its person: the head instructor. */
+  instructor: string;
+  city: (name: string) => { place: PlaceRow; city: GeoNamesCity };
+}
+
+/**
+ * M20 (D20): one listed school awaiting confirmation (no activity since 3 August 2026, asked on 2
+ * November; still public) and one hidden by the check (no activity since 1 July 2026, asked on 30
+ * September, hidden on 15 October; kept), both of demo-pro-sifu-8, with the notices the daily job
+ * sent (read, so no other demo screen changes). Fixed dates; ids from a stream of their own, so no
+ * other fixture id moves. A daily job run after 16 November 2026 hides the first one too, as it
+ * would any listing (docs/guides/admin-guide.bg.md §6).
+ */
+function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtures, 'schools' | 'schoolPrivateLocations' | 'schoolInstructors' | 'notifications'> {
+  const idRng = createRandom((seed ^ 0x0e7e_0020) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(SCHOOL_ACTIVITY_AT.getTime() + seq++, 0, idRng.bytes(8));
+  const at = (iso: string) => new Date(iso);
+  const specs = [
+    {
+      slug: DEMO_ACTIVITY_SCHOOLS.awaiting,
+      name: 'Demo Wing Chun Club Birmingham',
+      city: 'Birmingham',
+      created: at('2026-05-04T09:00:00Z'),
+      last: at('2026-08-03T09:00:00Z'),
+      awaiting: at('2026-11-02T05:23:00Z'),
+      hidden: null,
+    },
+    {
+      slug: DEMO_ACTIVITY_SCHOOLS.hidden,
+      name: 'Demo Kwoon Munich',
+      city: 'Munich',
+      created: at('2026-04-06T09:00:00Z'),
+      last: at('2026-07-01T09:00:00Z'),
+      awaiting: at('2026-09-30T05:23:00Z'),
+      hidden: at('2026-10-15T05:23:00Z'),
+    },
+  ] as const;
+  const schools: SchoolRow[] = [];
+  const schoolPrivateLocations: SchoolPrivateLocationRow[] = [];
+  const schoolInstructors: SchoolInstructorRow[] = [];
+  const notifications: NotificationRow[] = [];
+  const notice = (template: string, payload: Record<string, unknown>, dedupeKey: string, createdAt: Date): NotificationRow => ({
+    id: id(),
+    userId: r.owner,
+    template,
+    payload,
+    readAt: new Date(createdAt.getTime() + 3_600_000),
+    dedupeKey,
+    createdAt,
+    updatedAt: new Date(createdAt.getTime() + 3_600_000),
+  });
+  for (const spec of specs) {
+    const { place, city } = r.city(spec.city);
+    const schoolId = id();
+    // A made-up exact point about a kilometre from the city centroid (fixed, not drawn).
+    const exact = { lng: round5(city.lng + 0.012), lat: round5(city.lat + 0.008) };
+    schools.push({
+      id: schoolId,
+      slug: spec.slug,
+      name: spec.name,
+      placeId: place.id,
+      locationPrivacy: 'exact',
+      publicPoint: exact,
+      status: 'active',
+      description: `${FICTIONAL_MARK}: a made-up school in a real city, for the activity check (M20).`,
+      websiteUrl: null,
+      contactEmail: `${spec.slug}@example.test`,
+      contactPhone: null,
+      formsTaught: ['siu_nim_tao', 'chum_kiu', 'biu_jee'],
+      lastActivityAt: spec.last,
+      activityStage: spec.hidden ? 'hidden' : 'awaiting_confirmation',
+      activityAwaitingSince: spec.awaiting,
+      activityHiddenAt: spec.hidden,
+      createdByUserId: r.owner,
+      createdAt: spec.created,
+      updatedAt: spec.last,
+      deletedAt: null,
+    });
+    schoolPrivateLocations.push({ schoolId, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: spec.created, updatedAt: spec.last });
+    schoolInstructors.push({ schoolId, personId: r.instructor, role: 'head_instructor', createdAt: spec.created, updatedAt: spec.created });
+    const key = `${schoolId}:${spec.last.getTime()}`;
+    const confirmBy = new Date(Math.max(spec.last.getTime() + SCHOOL_HIDDEN_DAYS * 86_400_000, spec.awaiting.getTime() + SCHOOL_CONFIRM_GRACE_DAYS * 86_400_000));
+    notifications.push(
+      notice(
+        'school.activity-awaiting',
+        { schoolId, name: spec.name, lastActivityAt: spec.last.toISOString(), confirmBy: confirmBy.toISOString(), organizationId: null },
+        `school.activity-awaiting:${key}`,
+        spec.awaiting,
+      ),
+    );
+    if (spec.hidden) {
+      notifications.push(notice('school.activity-hidden', { schoolId, name: spec.name, lastActivityAt: spec.last.toISOString() }, `school.activity-hidden:${key}`, spec.hidden));
+    }
+  }
+  return { schools, schoolPrivateLocations, schoolInstructors, notifications };
 }
 
 /** The Sifu accounts of the demo data (M08): the others are Student accounts. */

@@ -4,5 +4,5 @@
 
 /** The school form of /dashboard/schools/new and /dashboard/schools/<id>. */
 export const SCHOOL_FORM = 'school';
-/** The listing's one-button forms: "Send for review" and "Confirm it is current". */
+/** The listing's one-button forms: "Send for review" and "This listing is current". */
 export const SCHOOL_ACTION_FORM = 'school-listing';

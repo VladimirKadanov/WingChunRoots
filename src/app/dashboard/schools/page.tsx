@@ -1,7 +1,9 @@
 // /dashboard/schools (milestone M11, In scope 2 and 3; plan §5.6): the schools a Sifu listed, each
 // with its status (draft, waiting for review, listed) and whether its pin is on the public map:
 // a listed school's pin shows while the account that listed it holds Professional Sifu (DEFAULT
-// D08/D18). "List a school" opens the form. A Student account, or an account without a profile,
+// D08/D18). M20: a listed school awaiting confirmation (day 90) or hidden from the map by the
+// activity check (day 105) says so with a mark, words and the date (DEFAULT D17); its page has the
+// confirmation. "List a school" opens the form. A Student account, or an account without a profile,
 // is told what comes first. Reads the session, so it renders per request.
 
 import type { Metadata } from 'next';
@@ -12,6 +14,7 @@ import { LoadError } from '@/components/account/load-error';
 import { SCHOOLS_LOAD_ERROR } from '@/components/account/load-errors/schools';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { ArrowRightIcon, PlusIcon } from '@/components/icons';
+import { ActivityState } from '@/components/schools/activity-state';
 import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
@@ -99,7 +102,7 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
           ) : (
             <ul className="grid" data-testid="own-schools">
               {mine.schools.map((s) => (
-                <li key={s.id} className="grid gap-1.5 border-b border-border-subtle py-4" data-testid="own-school" data-status={s.status} data-pin={s.pin}>
+                <li key={s.id} className="grid gap-1.5 border-b border-border-subtle py-4" data-testid="own-school" data-status={s.status} data-pin={s.pin} data-activity={s.activity.stage}>
                   <Link href={`${PAGE}/${s.id}`} className="link inline-flex min-h-11 items-center font-display text-lg [overflow-wrap:anywhere]">
                     {s.name}
                   </Link>
@@ -110,6 +113,15 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
                   <p className="text-sm" data-testid="own-school-pin">
                     {PIN_TEXT[s.pin]}
                   </p>
+                  {s.status === 'active' && s.activity.stage !== 'current' ? (
+                    <p className="text-sm font-semibold">
+                      <ActivityState stage={s.activity.stage} testId="own-school-activity">
+                        {s.activity.stage === 'hidden' && s.activity.hiddenAt
+                          ? `Hidden from the map since ${formatDay(s.activity.hiddenAt)}: confirm the listing to show it again`
+                          : `Awaiting confirmation since ${formatDay(s.activity.awaitingSince ?? s.activity.lastActivityAt)}: please confirm the listing is current`}
+                      </ActivityState>
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>

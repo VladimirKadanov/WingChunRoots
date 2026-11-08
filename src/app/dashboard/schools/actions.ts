@@ -126,7 +126,7 @@ export async function updateSchoolAction(_previous: FormState, form: FormData): 
   redirect(`${page}?saved=1#outcome`);
 }
 
-/** The one-button forms of the listing: "Send for review" (schools.submit) and "Confirm it is current" (schools.confirm). */
+/** The one-button forms of the listing: "Send for review" (schools.submit) and "This listing is current" (schools.confirm). */
 async function listingStep(form: FormData, step: 'submit' | 'confirm'): Promise<FormState> {
   const id = textValue(form, 'id', 40);
   const page = UUID.test(id) ? pageOf(id) : LIST;

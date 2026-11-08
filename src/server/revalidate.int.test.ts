@@ -63,6 +63,16 @@ describe('POST /api/internal/revalidate', () => {
     ]);
   });
 
+  it('with the secret: `schools` (M20: the activity check hid a school) expires at once, not stale', async () => {
+    process.env.MAIL_SEAL_KEY = SEAL;
+    delete process.env.INTERNAL_REVALIDATE_SECRET;
+    const response = await POST(post({ tags: ['schools'] }, `Bearer ${revalidateSecret()}`));
+    expect(response.status).toBe(200);
+    expect(calls.revalidated).toEqual([['schools', { expire: 0 }]]);
+    // Another word is still not a tag.
+    expect((await POST(post({ tags: ['events'] }, `Bearer ${revalidateSecret()}`))).status).toBe(400);
+  });
+
   it('with the secret: refuses a body that is not a list of known tags, or too many', async () => {
     process.env.MAIL_SEAL_KEY = SEAL;
     const auth = `Bearer ${revalidateSecret()}`;

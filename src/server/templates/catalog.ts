@@ -62,7 +62,7 @@ export const CATEGORIES: Readonly<Record<NotificationCategory, CategoryDefinitio
     optOut: true,
     emailDefault: true,
   },
-  schools: { label: 'Schools', description: 'The review of the schools you listed.', optOut: true, emailDefault: true },
+  schools: { label: 'Schools', description: 'The review of the schools you listed, and the requests to confirm that a listing is current.', optOut: true, emailDefault: true },
   organizations: { label: 'Organizations', description: 'The review of your organization and its schools.', optOut: true, emailDefault: true },
   events: {
     label: 'Events',
@@ -142,6 +142,10 @@ export const NOTIFICATION_CATALOG = {
   // M19: the training passport, between teachers and students (docs/adr/0022-passport.md).
   'passport.entry-added': mailed('teaching', 'notice'),
   'passport.correction': mailed('teaching', 'notice'),
+  // M20: the activity check of a listed school (docs/adr/0023-school-activity.md; DEFAULT D17):
+  // e-mailed by default in the Schools category, which the account may switch off.
+  'school.activity-awaiting': mailed('schools', 'notice'),
+  'school.activity-hidden': mailed('schools', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;
