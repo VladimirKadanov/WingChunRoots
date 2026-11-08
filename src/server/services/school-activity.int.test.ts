@@ -336,12 +336,32 @@ describe('restore (In scope 4; DEFAULT D17, D18)', () => {
     await run();
     expect((await stageOf(s.id)).stage).toBe('hidden');
     expect((await mySchools(s.sifu.principal)).schools.find((x) => x.id === s.id)!.pin).toBe('activity_hidden');
+    // Never on the map, so never told it leaves the map (DEFAULT D18).
+    const [hiddenNotice] = (await noticesOf(s.sifu.account.id)).filter((n) => n.template === 'school.activity-hidden');
+    expect(hiddenNotice!.payload).toMatchObject({ onMap: false });
+    expect(renderNotification('school.activity-hidden', hiddenNotice!.payload).title).toBe('Your school listing is marked as not current');
     await confirmSchool(s.sifu.principal, { id: s.id }, meta);
     expect((await stageOf(s.id)).stage).toBe('current');
     expect(await isPublic(s.id)).toBe(false);
     expect((await mySchools(s.sifu.principal)).schools.find((x) => x.id === s.id)!.pin).toBe('needs_plan');
     await proGrant(s.sifu.account.id);
     expect(await isPublic(s.id)).toBe(true);
+  });
+
+  it('a cache drop lost by a failed run is sent again by the retry', async () => {
+    const s = await listedSchool('retry', '120 days', { stage: 'awaiting_confirmation', awaitingFor: '20 days' });
+    await expect(
+      run({
+        revalidate: async () => {
+          throw new Error('web process unreachable');
+        },
+      }),
+    ).rejects.toThrow('web process unreachable');
+    expect((await stageOf(s.id)).stage).toBe('hidden');
+    const sent: string[][] = [];
+    const retried = await run({ revalidate: async (tags) => void sent.push(tags) });
+    expect(retried.hidden).toBe(0);
+    expect(sent).toEqual([['schools']]);
   });
 
   it('a hidden school whose listing is moderated away stays off the map after a confirmation is refused', async () => {
@@ -431,9 +451,13 @@ describe('schools.adminList (In scope 6)', () => {
     const awaiting = await adminSchools(admin.principal, { stage: 'awaiting_confirmation' });
     expect(awaiting.schools.length).toBeGreaterThan(0);
     expect(awaiting.schools.every((x) => x.activity.stage === 'awaiting_confirmation' && x.activity.hiddenFrom !== null)).toBe(true);
-    // The longest without activity first.
-    const times = all.schools.map((x) => Date.parse(x.activity.lastActivityAt));
-    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    // Hidden, then awaiting, then current; the listings of accounts before the platform's records;
+    // within each, the longest without activity first.
+    const rank = { hidden: 0, awaiting_confirmation: 1, current: 2 } as const;
+    const keys = all.schools.map((x) => [rank[x.activity.stage], x.listedByAccount ? 0 : 1, Date.parse(x.activity.lastActivityAt)] as const);
+    const order = (a: readonly number[], b: readonly number[]) => a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!;
+    expect([...keys].sort(order)).toEqual(keys);
+    expect(all.schools[0]!.activity.stage).toBe('hidden');
     const archivist = await staff('m20-archivist', 'archivist');
     await expect(adminSchools(archivist.principal)).rejects.toMatchObject({ code: 'FORBIDDEN' });
     const unverified = await staff('m20-admin-no2fa', 'admin', { unverified: true });

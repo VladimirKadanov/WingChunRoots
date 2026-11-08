@@ -183,8 +183,10 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
         {listed && activity.stage !== 'current' ? (
           <div className="grid gap-2 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="school-activity-note">
             <p className="max-w-[60ch]">
-              {activity.stage === 'hidden'
-                ? `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}, so the pin and the listing are not shown on the public map and list. Nothing is deleted. If the school still trains, confirm the listing or edit its details to show it again.`
+              {!editor.canSubmit
+                ? `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}. If the school still trains, confirm the listing or change its details. Nothing is deleted.`
+                : activity.stage === 'hidden'
+                ? `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}, so the pin and the listing are not shown on the public map and list. Nothing is deleted. If the school still trains, confirm the listing or change its details to show it again.`
                 : `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}. If the school still trains, confirm the listing. Without a confirmation by about ${formatDay(activity.hiddenFrom ?? activity.lastActivityAt)}, it is no longer shown on the public map and list until you confirm it. Nothing is deleted.`}
             </p>
             {/* DEFAULT D18: a Free Sifu's confirmation is recorded and unlocks no pin. */}

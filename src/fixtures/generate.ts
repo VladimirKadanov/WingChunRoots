@@ -1147,13 +1147,13 @@ function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtu
     notifications.push(
       notice(
         'school.activity-awaiting',
-        { schoolId, name: spec.name, lastActivityAt: spec.last.toISOString(), confirmBy: confirmBy.toISOString(), organizationId: null },
+        { schoolId, name: spec.name, lastActivityAt: spec.last.toISOString(), confirmBy: confirmBy.toISOString(), organizationId: null, onMap: true },
         `school.activity-awaiting:${key}`,
         spec.awaiting,
       ),
     );
     if (spec.hidden) {
-      notifications.push(notice('school.activity-hidden', { schoolId, name: spec.name, lastActivityAt: spec.last.toISOString() }, `school.activity-hidden:${key}`, spec.hidden));
+      notifications.push(notice('school.activity-hidden', { schoolId, name: spec.name, lastActivityAt: spec.last.toISOString(), onMap: true }, `school.activity-hidden:${key}`, spec.hidden));
     }
   }
   return { schools, schoolPrivateLocations, schoolInstructors, notifications };

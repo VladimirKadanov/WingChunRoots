@@ -1,6 +1,7 @@
 // /admin/schools (milestone M20; specification §7.3; docs/adr/0023-school-activity.md): the listed
 // schools with their activity check, for moderators and administrators with a verified second
-// factor (schools.adminList). The longest without an edit or a confirmation first; a filter by
+// factor (schools.adminList). Hidden, then awaiting, then current, the longest without an edit or a
+// confirmation first within each; a filter by
 // stage (links, so it works without JavaScript): current, awaiting confirmation (from day 90; the
 // Sifu was asked) and hidden from the map (from day 105; kept). Each stage in words with a mark,
 // never colour alone. Staff see the school's name, city and dates only: no contact and no point.
@@ -124,7 +125,7 @@ export default async function AdminSchoolsPage({ searchParams }: { searchParams:
             ))}
           </ul>
         )}
-        {view.truncated ? <p className="mt-4 text-sm text-fg-muted">The first 200 schools are shown, the longest without activity first.</p> : null}
+        {view.truncated ? <p className="mt-4 text-sm text-fg-muted">The first 200 schools are shown: hidden, then awaiting confirmation, then current, the longest without activity first.</p> : null}
       </div>
     </div>
   );

@@ -78,6 +78,18 @@ describe('the activity notices', () => {
     expect(text('school.activity-hidden', payload)).toContain('This listing is current');
   });
 
+  it('never tells a listing that was not on the map (a Free Sifu, DEFAULT D18) that it leaves the map', () => {
+    const awaitingText = text('school.activity-awaiting', { ...awaiting, organizationId: null, onMap: false });
+    expect(awaitingText).toContain('It is not on the public map now, because a public pin needs Professional Sifu');
+    expect(awaitingText).not.toContain('no longer shown');
+    const payload = { schoolId: awaiting.schoolId, name: 'Demo Wing Chun Hall', lastActivityAt: '2026-07-01T09:00:00.000Z', onMap: false };
+    expect(renderNotification('school.activity-hidden', payload).title).toBe('Your school listing is marked as not current');
+    expect(text('school.activity-hidden', payload)).not.toContain('no longer shown');
+    // An older payload without the flag reads as on the map.
+    expect(text('school.activity-hidden', { ...payload, onMap: undefined })).toContain('no longer shown on the public map');
+    expect(() => renderNotification('school.activity-hidden', { ...payload, onMap: 'no' })).toThrow();
+  });
+
   it('carries no countdown, urgency or blame', () => {
     const all = [
       text('school.activity-awaiting', { ...awaiting, organizationId: null }),

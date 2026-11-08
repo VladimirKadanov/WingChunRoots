@@ -41,7 +41,7 @@
 //
 // Logs carry counts and ids only, never a name or a point (plan §6.4).
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -149,12 +149,39 @@ async function organizationAdminsOf(db: Executor, schoolId: string, ownerId: str
   return result.rows.map((r) => ({ userId: r.user_id, organizationId: r.organization_id }));
 }
 
+/** Whether v_public_school shows the school now (the plan, the listing, the stage). */
+async function onPublicMap(db: Executor, schoolId: string): Promise<boolean> {
+  const result = await db.execute<{ shown: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM v_public_school v WHERE v.id = ${schoolId}::uuid) AS shown`);
+  return result.rows[0]?.shown === true;
+}
+
+/** Whether a school was hidden in the last day: a retried run drops the cache again for it. */
+async function hiddenRecently(db: Database, at: SQL): Promise<boolean> {
+  try {
+    const result = await db.execute<{ recent: boolean }>(sql`
+      SELECT EXISTS (SELECT 1 FROM school s WHERE ${CHECKED} AND s.activity_stage = 'hidden' AND s.activity_hidden_at > ${at} - interval '1 day') AS recent`);
+    return result.rows[0]?.recent === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Runs both passes once: day 90 (awaiting) first, then day 105 (hidden). */
 export async function runSchoolActivityCheck(db: Database, options: SchoolActivityOptions = {}): Promise<SchoolActivityResult> {
   const batch = options.batch ?? 500;
   const at = options.now ? sql`${options.now.toISOString()}::timestamptz` : sql`now()`;
   const result: SchoolActivityResult = { awaiting: 0, hidden: 0, notices: 0 };
+  try {
+    await askAndHide(db, options, batch, at, result);
+  } finally {
+    // After a failure too, and on a retry: a school hidden by an earlier attempt (whose cache drop
+    // was lost) is dropped from the public cache again, as lineageRecomputeHandler does.
+    if (options.revalidate && (result.hidden > 0 || (await hiddenRecently(db, at)))) await options.revalidate([SCHOOLS_TAG]);
+  }
+  return result;
+}
 
+async function askAndHide(db: Database, options: SchoolActivityOptions, batch: number, at: SQL, result: SchoolActivityResult): Promise<void> {
   // Day 90: ask the owner. The candidates first (the partial index), then each school on its own.
   const awaitingCondition = sql`${CHECKED} AND s.activity_stage = 'current' AND s.last_activity_at <= ${at} - make_interval(days => ${SCHOOL_AWAITING_DAYS})`;
   const toAsk = await db.execute<{ id: string }>(sql`SELECT s.id FROM school s WHERE ${awaitingCondition} ORDER BY s.last_activity_at, s.id LIMIT ${batch}`);
@@ -170,7 +197,9 @@ export async function runSchoolActivityCheck(db: Database, options: SchoolActivi
       const last = asDate(row.last_activity_at);
       const confirmBy = hiddenFrom(last, asDate(row.activity_awaiting_since!));
       const key = `school.activity-awaiting:${row.id}:${last.getTime()}`;
-      const payload = { schoolId: row.id, name: row.name, lastActivityAt: last.toISOString(), confirmBy: confirmBy.toISOString() };
+      // A listing that is not on the public map (a Free Sifu's, DEFAULT D18) is told so, never that it leaves the map.
+      const onMap = await onPublicMap(tx, row.id);
+      const payload = { schoolId: row.id, name: row.name, lastActivityAt: last.toISOString(), confirmBy: confirmBy.toISOString(), onMap };
       await writeAudit(tx, {
         action: 'school.activity_awaiting',
         actorUserId: null,
@@ -181,7 +210,8 @@ export async function runSchoolActivityCheck(db: Database, options: SchoolActivi
         after: { activityStage: 'awaiting_confirmation', lastActivityAt: last.toISOString() },
       });
       if ((await notify(tx, row.owner, 'school.activity-awaiting', { ...payload, organizationId: null }, { key, boss: options.boss })).notified) result.notices += 1;
-      for (const admin of await organizationAdminsOf(tx, row.id, row.owner)) {
+      // The organization admins are told only about a school the public sees on the map.
+      for (const admin of onMap ? await organizationAdminsOf(tx, row.id, row.owner) : []) {
         // The key (and so the e-mail's) names the organization and the admin: one each.
         result.notices += await notifyEach(tx, [admin.userId], 'school.activity-awaiting', { ...payload, organizationId: admin.organizationId }, {
           key: `${key}:${admin.organizationId}:${admin.userId}`,
@@ -198,6 +228,8 @@ export async function runSchoolActivityCheck(db: Database, options: SchoolActivi
   const toHide = await db.execute<{ id: string }>(sql`SELECT s.id FROM school s WHERE ${hiddenCondition} ORDER BY s.last_activity_at, s.id LIMIT ${batch}`);
   for (const { id } of toHide.rows) {
     await db.transaction(async (tx) => {
+      // Whether hiding takes it off the public map, or it was not on it (a Free Sifu's, DEFAULT D18).
+      const onMap = await onPublicMap(tx, id);
       const moved = await tx.execute<MovedRow>(sql`
         UPDATE school s SET activity_stage = 'hidden', activity_hidden_at = ${at}
          WHERE s.id = ${id}::uuid AND ${hiddenCondition}
@@ -219,14 +251,12 @@ export async function runSchoolActivityCheck(db: Database, options: SchoolActivi
         tx,
         row.owner,
         'school.activity-hidden',
-        { schoolId: row.id, name: row.name, lastActivityAt: last.toISOString() },
+        { schoolId: row.id, name: row.name, lastActivityAt: last.toISOString(), onMap },
         { key: `school.activity-hidden:${row.id}:${last.getTime()}`, boss: options.boss },
       );
       if (notice.notified) result.notices += 1;
     });
   }
-  if (result.hidden > 0 && options.revalidate) await options.revalidate([SCHOOLS_TAG]);
-  return result;
 }
 
 // --- Staff: the listed schools by stage --------------------------------------------------------------
@@ -257,13 +287,14 @@ export interface AdminSchools {
   truncated: boolean;
 }
 
-/** At most this many schools in the staff list (the most overdue first). */
+/** At most this many schools in the staff list (hidden and awaiting first). */
 export const ADMIN_SCHOOL_LIMIT = 200;
 
 /**
  * schools.adminList: the listed schools with their activity stage, for moderators and
- * administrators with a verified second factor (they moderate listings, M11). The longest without
- * activity first; `stage` filters. No contact, no point, no account: the name, the city and dates.
+ * administrators with a verified second factor (they moderate listings, M11). Hidden first, then
+ * awaiting, then current; the listings of accounts before the platform's records; within each, the
+ * longest without activity first; `stage` filters. No contact, no point, no account: the name, the city and dates.
  */
 export async function adminSchools(principal: Principal | null, raw: z.input<typeof adminSchoolsInput> = {}): Promise<AdminSchools> {
   requireStaff2FA(principal, ['moderator', 'admin']);
@@ -288,11 +319,14 @@ export async function adminSchools(principal: Principal | null, raw: z.input<typ
     activity_hidden_at: Date | string | null;
   }>(sql`
     SELECT s.id, s.slug, s.name, p.name AS city, p.country_code, s.created_by_user_id IS NOT NULL AS listed,
-           EXISTS (SELECT 1 FROM v_public_school v WHERE v.id = s.id) AS public,
+           v.id IS NOT NULL AS public,
            s.activity_stage, s.last_activity_at, s.activity_awaiting_since, s.activity_hidden_at
       FROM school s JOIN place p ON p.id = s.place_id
+      LEFT JOIN v_public_school v ON v.id = s.id
      WHERE s.status = 'active' AND s.deleted_at IS NULL ${stage === 'all' ? sql`` : sql`AND s.activity_stage = ${stage}`}
-     ORDER BY s.last_activity_at, s.name, s.id
+     -- Hidden, then awaiting, then current; the schools the check moves before the platform's records.
+     ORDER BY CASE s.activity_stage WHEN 'hidden' THEN 0 WHEN 'awaiting_confirmation' THEN 1 ELSE 2 END,
+              (s.created_by_user_id IS NULL), s.last_activity_at, s.name, s.id
      LIMIT ${ADMIN_SCHOOL_LIMIT + 1}`);
   const rows = result.rows.slice(0, ADMIN_SCHOOL_LIMIT);
   return {
