@@ -182,7 +182,11 @@ export async function runSchoolActivityCheck(db: Database, options: SchoolActivi
       });
       if ((await notify(tx, row.owner, 'school.activity-awaiting', { ...payload, organizationId: null }, { key, boss: options.boss })).notified) result.notices += 1;
       for (const admin of await organizationAdminsOf(tx, row.id, row.owner)) {
-        result.notices += await notifyEach(tx, [admin.userId], 'school.activity-awaiting', { ...payload, organizationId: admin.organizationId }, { key: `${key}:${admin.organizationId}`, boss: options.boss });
+        // The key (and so the e-mail's) names the organization and the admin: one each.
+        result.notices += await notifyEach(tx, [admin.userId], 'school.activity-awaiting', { ...payload, organizationId: admin.organizationId }, {
+          key: `${key}:${admin.organizationId}:${admin.userId}`,
+          boss: options.boss,
+        });
       }
     });
   }
