@@ -54,11 +54,11 @@ export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
  * arbitration) or schools (M11: an approved listing, a pin hidden by a revoked plan). A new public
  * link changes the explorer's start list and counts, a new school the finder's lists and the
  * sitemap, an approved organization (M15) the organization list, a school's photos (M16) its page, a published
- * or removed event (M17) the calendar and the pages that list it, and all of them the public pages
+ * or removed event (M17) the calendar and the pages that list it, a school hidden and shown again by its activity check (M20) the map, the list and the sitemap, and all of them the public pages
  * other specs and the visual regression compare, so they run
  * with the exclusive specs, after the ordinary run.
  */
-export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts', '**/m14-photos.spec.ts', '**/m15-organizations.spec.ts', '**/m16-galleries.spec.ts', '**/m17-events.spec.ts', '**/m19-passport.spec.ts'] as const;
+export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts', '**/m14-photos.spec.ts', '**/m15-organizations.spec.ts', '**/m16-galleries.spec.ts', '**/m17-events.spec.ts', '**/m19-passport.spec.ts', '**/m20-school-activity.spec.ts'] as const;
 /** Everything the `exclusive` project runs, and the ordinary projects leave out. */
 export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
 /** The pilot path of plan §2.2 (M13): only the pilot run (PW_PILOT=1) runs it. */

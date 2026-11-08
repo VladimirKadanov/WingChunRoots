@@ -178,6 +178,15 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/passport', name: 'dashboard-passport-no-profile', status: 200, milestone: 'M19', signInAs: 'new' },
   { path: '/dashboard/students', name: 'dashboard-students', status: 200, milestone: 'M19', key: true, signInAs: 'demo-pro-sifu-8' },
   { path: '/dashboard/students', name: 'dashboard-students-none', status: 200, milestone: 'M19', signInAs: 'demo-pending' },
+  // The activity check of the listed schools (M20; DEFAULT D17): the owner's list of demo-pro-sifu-8
+  // with its two demo schools in the check (demo-school-awaiting-birmingham awaiting confirmation,
+  // demo-school-hidden-munich hidden from the map; fixed dates, no test changes them), and the
+  // staff page with every listed school and a filter by stage. The owner's page of each school
+  // needs its id: screen states (e2e/screenshots.spec.ts), and e2e/m20-school-activity.spec.ts runs
+  // axe on the page of a hidden school in both themes. Key screens: their baselines come from a CI run.
+  { path: '/dashboard/schools', name: 'dashboard-schools-activity', status: 200, milestone: 'M20', key: true, signInAs: 'demo-pro-sifu-8' },
+  { path: '/admin/schools', name: 'admin-schools', status: 200, milestone: 'M20', key: true, signInAs: 'admin' },
+  { path: '/admin/schools?stage=hidden', name: 'admin-schools-hidden', status: 200, milestone: 'M20', signInAs: 'admin' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */
