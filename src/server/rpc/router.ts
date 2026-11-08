@@ -11,6 +11,7 @@ import { ORPCError, os, type RouterClient, ValidationError } from '@orpc/server'
 
 import { requireStaff2FA, requireUser } from '../auth/guards';
 import { eventListSchema, eventPageSchema } from '../dto/events';
+import { passportSchema } from '../dto/passport';
 import type { Principal } from '../auth/principal';
 import { accountOverview, landingInput, landingPath, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
@@ -51,6 +52,33 @@ import {
   revokeGrantInput,
 } from '../services/grants';
 import { historicalClaimInput, requestHistoricalTeacher } from '../services/historical';
+import {
+  addExam,
+  addExamInput,
+  addRank,
+  addRankInput,
+  addSkill,
+  addSkillInput,
+  certificateIdInput,
+  certificateUploadInput,
+  markAttendance,
+  markAttendanceInput,
+  myPassport,
+  passportGet,
+  passportRemoveInput,
+  passportSlugInput,
+  passportStudents,
+  passportStudentsInput,
+  removeCertificate,
+  removePassportEntry,
+  setVisibility,
+  setVisibilityInput,
+  updateEntry,
+  updateEntryInput,
+  uploadCertificate,
+  withdrawEntry,
+  withdrawEntryInput,
+} from '../services/passport';
 import { arbitrateInput, arbitrateRelationship } from '../services/arbitration';
 import { caseIdInput, caseReplyInput, getPartyCase, myCases, replyToCase } from '../services/cases';
 import { instructorOverview, instructorRequestInput, requestInstructorVerification } from '../services/instructor';
@@ -907,6 +935,91 @@ export const router = {
       .route({ method: 'POST', path: '/events/poster/remove', summary: "Remove your event's poster; audited" })
       .input(eventIdInput)
       .handler(({ context, input }) => removeEventPoster(context.principal, input, context.meta)),
+  },
+  // M19: the training passport (docs/adr/0022-passport.md). passport.get gives the public DTO only
+  // (public entries of public people, as the plan of the passport's account shows them); the
+  // teacher or the issuing organization records, the student decides what is public.
+  passport: {
+    get: base
+      .route({
+        method: 'GET',
+        path: '/passport/{slug}',
+        summary:
+          "A public person's training passport as their plan shows it: the current rank, the teachers with their periods and the year training began; on Premium Student and Professional Sifu also the timeline of examinations, forms and skills, certificates and events. Public entries only; 404 for a person who is not public",
+      })
+      .input(passportSlugInput)
+      .output(passportSchema)
+      .handler(({ context, input }) => passportGet(context.principal, input)),
+    mine: signedIn
+      .route({
+        method: 'GET',
+        path: '/passport/mine',
+        summary: 'Your own passport: every entry with its visibility, whether your profile shows it on your plan, proposed corrections, certificates and, where entries are kept but hidden by the plan, the upgrade offer',
+      })
+      .handler(({ context }) => myPassport(context.principal)),
+    students: signedIn
+      .route({
+        method: 'GET',
+        path: '/passport/students',
+        summary:
+          'The students you record for (your established students, and members of the approved organizations you administer); with `personId`, their entries you may see and change and your past events for attendance',
+      })
+      .input(passportStudentsInput)
+      .handler(({ context, input }) => passportStudents(context.principal, input)),
+    addRank: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/rank/add',
+        summary:
+          "Record a rank for your student (their teacher, while the relationship is verified) or for a member of an organization you administer (`organizationId`); never your own; the student is told; audited",
+      })
+      .input(addRankInput)
+      .handler(({ context, input }) => addRank(context.principal, input, context.meta)),
+    addExam: signedIn
+      .route({ method: 'POST', path: '/passport/exam/add', summary: 'Record an examination: date (as precise as known), the awarded rank, optionally the examiner (a person of the archive) and the organization; as for addRank' })
+      .input(addExamInput)
+      .handler(({ context, input }) => addExam(context.principal, input, context.meta)),
+    addSkill: signedIn
+      .route({ method: 'POST', path: '/passport/skill/add', summary: 'Record a form or skill, learning or approved; as for addRank' })
+      .input(addSkillInput)
+      .handler(({ context, input }) => addSkill(context.principal, input, context.meta)),
+    updateEntry: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/entry/update',
+        summary: 'Change a rank, examination or skill you recorded (settles a proposed correction); the student sends only `correction`, which tells whoever recorded it; audited',
+      })
+      .input(updateEntryInput)
+      .handler(({ context, input }) => updateEntry(context.principal, input, context.meta)),
+    withdrawEntry: signedIn
+      .route({ method: 'POST', path: '/passport/entry/withdraw', summary: 'Withdraw an entry you recorded: kept, shown to nobody; audited' })
+      .input(withdrawEntryInput)
+      .handler(({ context, input }) => withdrawEntry(context.principal, input, context.meta)),
+    setVisibility: signedIn
+      .route({ method: 'POST', path: '/passport/entry/visibility', summary: 'Make an entry of your own passport private or public; audited' })
+      .input(setVisibilityInput)
+      .handler(({ context, input }) => setVisibility(context.principal, input, context.meta)),
+    uploadCertificate: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/certificate/upload',
+        summary:
+          'Upload a scanned certificate to your passport (multipart `file`: JPEG, PNG or WebP, at most 5 MB; `title`, `date`, `visibility`, private by default): metadata and location removed, kept in the private store, at most 20; a scanned document, not a certificate this platform issues; audited',
+      })
+      .input(certificateUploadInput)
+      .handler(({ context, input }) => uploadCertificate(context.principal, input, context.meta)),
+    removeCertificate: signedIn
+      .route({ method: 'POST', path: '/passport/certificate/remove', summary: 'Remove a certificate of your passport: its files are deleted, the record kept; audited' })
+      .input(certificateIdInput)
+      .handler(({ context, input }) => removeCertificate(context.principal, input, context.meta)),
+    markAttendance: signedIn
+      .route({ method: 'POST', path: '/passport/attendance/mark', summary: 'Mark your own established students as attending a past event you organized or taught at; once per event and student; audited' })
+      .input(markAttendanceInput)
+      .handler(({ context, input }) => markAttendance(context.principal, input, context.meta)),
+    remove: staffWithSecondFactor
+      .route({ method: 'POST', path: '/passport/remove', summary: 'Remove any passport entry with a reason kept in the audit log and sent to its owner (staff with a verified second factor)' })
+      .input(passportRemoveInput)
+      .handler(({ context, input }) => removePassportEntry(context.principal, input, context.meta)),
   },
   places: {
     search: base

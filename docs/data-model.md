@@ -92,6 +92,18 @@
 | `event` | Събитие от календара ([ADR 0020](adr/0020-events.md)): `slug` (уникален), `title` (2–160 знака), `kind` (`seminar`, `camp`, `exam_session`, `other`), `description`, `starts_at` и `ends_at` (`timestamptz`, краят след началото), `timezone` (IANA зоната на събитието; градът я дава, онлайн събитие я избира), `online` или `place_id` (град от `place`; точно едното, онлайн събитие няма `venue`), `venue` (ред, който организаторът публикува сам, никога адресът на школа), `school_id` (по избор), `external_url` (само `https`). Организаторът е **или** акаунт на Sifu (`organizer_user_id`, `organizer_person_id`), **или** организация (`organization_id`; `CHECK event_one_organizer`); `created_by_user_id` е акаунтът, който го е публикувал. `status` (`published`, `cancelled`, `removed`) с `cancelled_at`, `cancelled_by_user_id`, `cancellation_note` (публична) и `removed_at`, `removed_by_user_id`, `removal_reason` (само за одита). Плакатът: `poster_storage_key`, `poster_sha256`, `poster_width`, `poster_height`, `poster_size_bytes` (всички или нито едно). `revision` се вдига при всяка промяна (`SEQUENCE` на `.ics`) |
 | `event_instructor` | До 5 души от архива, които преподават на събитието: `event_id`, `person_id`, `position` (редът) |
 
+### Паспорт (M19)
+
+Всички пет таблици имат общите колони на запис ([ADR 0022](adr/0022-passport.md)): `person_id` (ученикът), `visibility` (`private`, `public`), `status` (`active`, `withdrawn`, `removed`), `created_by_user_id`, `withdrawn_at`/`withdrawn_by_user_id`, `removed_at`/`removed_by_user_id`, `removal_reason` (само за одита) и времената. Датата е първият ден на периода плюс `precision` (`year`, `month`, `day`, `unknown`; `unknown` само без дата — правилото на `training_period`). Нищо не се трие (D08): `app_rw` няма `DELETE`, а `app_public_ro` няма достъп.
+
+| Таблица | Предназначение и важни колони |
+|---|---|
+| `passport_rank` | Степен: `rank` (текст), `awarded_on` с точност, `organization_id` (одобрена организация, по избор), `teacher_person_id`, предложената поправка `correction_note`, `correction_at` (изчиства се при промяна) |
+| `passport_exam` | Изпит: `exam_on`, `awarded_rank`, `examiner_person_id` (личност от архива, по избор), организация, учител, поправка |
+| `passport_skill` | Форма или умение: `name`, `progress` (`learning`, `approved`), `since_on`, учител, организация, поправка |
+| `passport_certificate` | Сканиран сертификат: `title`, `issued_on`, `storage_key` (`certificates/<48 hex>`, само в частното хранилище на доказателствата), `sha256`, `width`, `height`, `size_bytes`; по подразбиране `private`. До 20 активни на паспорт (`PASSPORT_CERTIFICATES_MAX`). Отделно от галериите и доказателствата (D13) |
+| `event_attendance` | Участие в минало публикувано събитие: `event_id`, учителят, който го е отбелязал; частичният уникален индекс `event_attendance_active_key` пази едно активно участие на събитие и личност |
+
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
@@ -125,7 +137,7 @@
 
 ## 3. Публични изгледи
 
-Анонимното четене (`app_public_ro`) минава само през четири изгледа: `v_public_person`, `v_public_edge`, `v_public_school` и (от M17) `v_public_event`. Те са `security_barrier`, така че филтрите им се прилагат преди условията от заявката.
+Анонимното четене (`app_public_ro`) минава само през четири изгледа: `v_public_person`, `v_public_edge`, `v_public_school` и (от M17) `v_public_event`; изгледите на M15 и M19 (`v_public_organization`, `v_public_passport`) са само за `app_rw`. Те са `security_barrier`, така че филтрите им се прилагат преди условията от заявката.
 
 | Изглед | Съдържа | Колони |
 |---|---|---|
@@ -135,6 +147,7 @@
 | `v_public_school` | Само `status = 'active'` (до M11 `published`), без изтритите и (от M11, DEFAULT D08/D18) само ако пинът е разрешен: школата няма акаунт, който я е обявил (запис на платформата, фиктивните школи на M01), или този акаунт е Sifu с действащо право `pro_sifu` (започнало, неизтекло и неотнето). Отнемането на правото скрива школата от изгледа и я запазва | `id`, `slug`, `name`, `location_privacy`, `precision` (`exact` или `city`), `public_point` (при `city_only` винаги центроидът на града от `place`, независимо какво пише в `school.public_point`: втора защита след тригера от §5), `place_id`, `city_name`, `country_code`, `description`, `website_url`, `last_activity_at`, `instructor_person_ids` (само публичните инструктори: главният инструктор и онези, чиято учебна връзка с главния инструктор е `verified` или `in_arbitration`, от прегледа на M11), `created_at`, `updated_at`; от M11 накрая `contact_email`, `contact_phone`, `forms_taught` |
 | `v_public_organization` | M15: само `status = 'active'` и без изтритите (`security_barrier`) | `id`, `slug`, `name`, `kind`, `country_code`, `website_url`, `approved_at`, `created_at`, `updated_at`; никога ръководителят от кандидатурата, кандидатът, администраторите или планът; `SELECT` само за `app_rw` (не за `app_public_ro`) |
 | `v_public_event` | M17: само `status` `published` или `cancelled`; събитие на организация само докато организацията е във `v_public_organization` (`security_barrier`) | `id`, `slug`, `title`, `kind`, `description`, `starts_at`, `ends_at`, `timezone`, `online`, `venue`, `place_id`, `city_name`, `country_code`, `external_url`, `status`, `cancelled_at`, `cancellation_note`, организаторът само докато е публичен (`organizer_person_*` от `v_public_person`, `organization_*` от `v_public_organization`), школата само докато е публична (`school_slug`, `school_name`, `school_city`; никога точка), `instructors` (JSON само с публичните инструктори), `poster_sha256`, `poster_width`, `poster_height`, `revision`, `created_at`, `updated_at`; никога акаунтите, причината на персонала или ключът на плаката. `SELECT` за `app_rw` и `app_public_ro` |
+| `v_public_passport` | M19: петте вида записи от паспорта (`kind`: `rank`, `exam`, `skill`, `certificate`, `attendance`), само `status = 'active'` и `visibility = 'public'`, само на личности от `v_public_person` (`security_barrier`) | `kind`, `id`, `person_id`, `on_date` и `precision`, `title`, `progress`, `organization_slug`, `organization_name` (само от `v_public_organization`), `examiner_*` и `teacher_*` (само през `v_public_person`), `event_slug`, `event_kind` (само публикувано събитие; денят е в собствената му зона), `certificate_sha256`, `certificate_width`, `certificate_height`, `created_at`; никога ключът на файла, причината, поправката или акаунтът. `SELECT` само за `app_rw` (не за `app_public_ro`) |
 
 Чакащите заявки, отказаните, оттеглените и отменените връзки, хората без публична връзка (например `demo-claim-only-teacher`), точните координати, адресите, доказателствата и одитът не са достъпни за публичната роля по никакъв път.
 
@@ -269,6 +282,10 @@
 
 - `*_m18_notices`: таблицата `notification_preference` с `CHECK` за категорията, за двете категории, които не се изключват, и за версията; `notification.dedupe_key` с частичния уникален индекс `notification_dedupe_key` и индексът `notification_created_at_idx`; накрая, на ръка, правата: `app_rw` чете и пише `notification_preference`, а `REVOKE ALL` я затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 
+Миграцията в M19 (след тази на M18):
+
+- `*_m19_passport`: таблиците `passport_rank`, `passport_exam`, `passport_skill`, `passport_certificate` и `event_attendance` с `CHECK` за видимостта, състоянието, точността на датата, прогреса и файла на сертификата; частичният уникален индекс `event_attendance_active_key`; изгледът `v_public_passport` (`security_barrier`); накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE` (без `DELETE`) върху таблиците и `SELECT` върху изгледа, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
+
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 
 Базата трябва да е с UTF-8 и локал `C.UTF-8`: при `LC_CTYPE=C` `pg_trgm` не извлича триграми от кирилица и китайски (`scripts/db-env-check.sh` и интеграционните тестове го проверяват с `show_trgm('Тестов')`).
@@ -302,6 +319,8 @@
 Събития (M17): `db:seed` добавя седем измислени събития на фиксирани дати (`demo-seminar-chum-kiu-sofia`, `demo-grading-day-sofia` и `demo-spring-camp-london` на `demo-pro-sifu-8` в март 2027 — месечната граница от 3 е стигната (решение на собственика от 05.11.2026); `demo-online-theory-evening` онлайн; `demo-cancelled-exam-session` отменено; `demo-past-seminar-athens` минало; `demo-federation-summer-camp` на `demo-federation-north`), плакати на две от тях, инструктори и акаунт `demo-premium-student@example.test` (Student с тестов Premium Student, свързан с личност-ученик) с едно известие `event.published`.
 
 Известия (M18): всичко е на акаунта `demo-two-lineages@example.test` (Free Student, в който никой тест не влиза), на фиксирани дати: тестов Premium Student от 1.10.2026 до 31.10.2026 (изтекъл, планът остава Free Student) с известията `plan.expiring` (24.10, прочетено) и `plan.expired` (31.10) и техните ключове (задачата `plans.expiry` не ги праща втори път); `limit.reached` за снимките (октомври 2026); `content.removed` за махната снимка с причина; изключен имейл за категорията `plan`.
+
+Паспорт (M19, фиксирани дати): `demo-premium-student` (личността `demo-b-166`, Premium Student) има пълен паспорт, вписан от `demo-pro-sifu-8`: степените „First level“ (май 2023) и „Second level“ (14.9.2025, от `demo-federation-north`), изпит с `demo-cjk-name` като изпитващ, одобрена форма „Siu Nim Tao“ и форма „Chum Kiu“ в процес, публичен и частен генериран сертификат (файловете са в хранилището на доказателствата) и участие в `demo-past-seminar-athens`. `demo-two-lineages` (Free Student) има основен паспорт: профилът показва само текущата степен и учителите, а изпитът и умението са пазени, но скрити.
 
 ## 10. Решения по подразбиране
 

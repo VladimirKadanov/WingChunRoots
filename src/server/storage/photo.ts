@@ -282,6 +282,32 @@ export async function demoRoom(seed: number, width = 1200, height = 800): Promis
   return new Uint8Array(await sharp(Buffer.from(svg)).png().toBuffer());
 }
 
+/**
+ * M19 (D20): a generated, fictional scanned certificate: a bordered paper sheet in landscape, bars
+ * in place of lines of text (no words, no names) and a red seal. Never a real document.
+ */
+export async function demoCertificate(seed: number, width = 1400, height = 1000): Promise<Uint8Array> {
+  const next = seeded(seed);
+  const paper = ['#f6f0e1', '#f3ead6', '#f8f3e8'][Math.floor(next() * 3)]!;
+  const ink = ['#1f1b16', '#2a3a3a', '#3b2f25'][Math.floor(next() * 3)]!;
+  const parts = [
+    `<rect width="${width}" height="${height}" fill="#d9d2c3"/>`,
+    `<rect x="40" y="40" width="${width - 80}" height="${height - 80}" fill="${paper}"/>`,
+    `<rect x="80" y="80" width="${width - 160}" height="${height - 160}" fill="none" stroke="${ink}" stroke-width="10"/>`,
+    `<rect x="100" y="100" width="${width - 200}" height="${height - 200}" fill="none" stroke="${ink}" stroke-width="3"/>`,
+    `<rect x="${width / 2 - 260}" y="190" width="520" height="44" rx="8" fill="${ink}"/>`,
+  ];
+  for (let i = 0; i < 5; i++) {
+    const w = Math.round(500 + next() * 400);
+    parts.push(`<rect x="${Math.round(width / 2 - w / 2)}" y="${330 + i * 70}" width="${w}" height="18" rx="6" fill="${ink}" opacity="0.55"/>`);
+  }
+  parts.push(`<rect x="200" y="${height - 230}" width="300" height="6" fill="${ink}"/>`);
+  parts.push(`<circle cx="${width - 300}" cy="${height - 250}" r="86" fill="#a3281a" opacity="0.92"/>`);
+  parts.push(`<rect x="${width - 340}" y="${height - 290}" width="80" height="80" rx="6" fill="none" stroke="${paper}" stroke-width="8"/>`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join('')}</svg>`;
+  return new Uint8Array(await sharp(Buffer.from(svg)).png().toBuffer());
+}
+
 /** M16 (D20): a generated, fictional school logo: a red seal with a ring and bars, wider than high. */
 export async function demoLogo(seed: number): Promise<Uint8Array> {
   const next = seeded(seed);

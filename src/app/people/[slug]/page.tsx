@@ -12,6 +12,9 @@
 // in the browser as the catchError boundary's Retry button, which fetches the page again.
 //
 // M10b: "Report profile" under a public profile that is not the viewer's own (/people/<slug>/report).
+// M19: the "Training passport" section (passport.get: the public DTO only, as the plan of the
+// person's account shows it); "Manage your passport" on one's own; staff with a verified second
+// factor can remove an entry it shows.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -36,6 +39,7 @@ import {
 } from '@/components/lineage/person-header';
 import { PersonLayout } from '@/components/lineage/person-layout';
 import { PhotoControl } from '@/components/lineage/photo-control';
+import { PassportView } from '@/components/passport/passport-view';
 import { LineageName } from '@/components/lineage/person-name';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
 import { bySeniority, groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
@@ -43,9 +47,15 @@ import { EmptyState, FailedSections, ProfileError, Section, SectionError } from 
 import { asStudentEdges, kindsOf, sameNameNotes, startYear } from '@/components/lineage/status';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { EventListDto } from '@/server/dto/events';
+import { PASSPORT_KIND_LABELS, type PassportDto } from '@/server/dto/passport';
 import type { LineageGraphDto, PersonProfileDto, StudentsPageDto } from '@/server/dto/public';
+import { hasStaff2FA } from '@/server/auth/guards';
+import { getRequestPrincipal } from '@/server/auth/web';
+import { readFormResult } from '@/server/forms/flash';
 import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
+import { PASSPORT_REMOVE_FORM } from './form-ids';
+import { PassportRemoveForm } from './passport-remove-form';
 
 export const instant = false;
 
@@ -61,7 +71,7 @@ const RELATION_HEADINGS = [
   { id: 'students-heading', title: 'Students' },
 ] as const;
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const read = await profileFor(params);
@@ -253,6 +263,35 @@ async function readEvents(profile: PersonProfileDto): Promise<EventListDto | nul
   }
 }
 
+/**
+ * M19: the person's training passport (passport.get: public people only, the public DTO). A failed
+ * read only leaves the section out.
+ */
+async function readPassport(profile: PersonProfileDto): Promise<PassportDto | null> {
+  if (profile.limited || profile.visibility !== 'public') return null;
+  try {
+    return await (await lineageClient()).passport.get({ slug: profile.slug });
+  } catch (error) {
+    if (failure(error) === 'NOT_FOUND') return null;
+    console.error(`[person-page] the passport could not be loaded: ${failure(error)}`);
+    return null;
+  }
+}
+
+/** The entries staff can remove: those the profile shows. */
+function removableEntries(passport: PassportDto): { value: string; label: string }[] {
+  const all = [...(passport.currentRank ? [passport.currentRank] : []), ...passport.timeline.flatMap((y) => y.items)];
+  const seen = new Set<string>();
+  return all
+    .filter((e) => {
+      const key = `${e.kind}:${e.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((e) => ({ value: `${e.kind}:${e.id}`, label: `${PASSPORT_KIND_LABELS[e.kind]}: ${e.title} (${e.dateText})` }));
+}
+
 /** M16: "Photos": the grid and its viewer; for the owner the count and "Manage photos". */
 function Photos({ gallery }: { gallery: GalleryView }) {
   if (gallery.photos.length === 0 && !gallery.canChange) return null;
@@ -312,13 +351,17 @@ function About({ bio }: { bio: string }) {
   );
 }
 
-export default async function PersonPage({ params }: Props) {
+export default async function PersonPage({ params, searchParams }: Props) {
   const read = await profileFor(params);
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const [relations, gallery, events] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile)]);
+  const [relations, gallery, events, passport] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile), readPassport(profile)]);
   const here = `/people/${profile.slug}`;
+  const query = await searchParams;
+  const passportStaff = passport !== null && hasStaff2FA(await getRequestPrincipal());
+  const removable = passportStaff ? removableEntries(passport) : [];
+  const removeOutcome = removable.length > 0 ? await readFormResult(PASSPORT_REMOVE_FORM, query.outcome) : null;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
   // cross-lineage curve.
   const shownEdges = relations.ok
@@ -376,6 +419,36 @@ export default async function PersonPage({ params }: Props) {
         )}
       </LineageBoundary>
       {profile.bio ? <About bio={profile.bio} /> : null}
+      {passport ? (
+        <PassportView
+          passport={passport}
+          own={profile.isOwn}
+          footer={
+            <>
+              {query['passport-removed'] === '1' && passportStaff ? (
+                <p role="status" className="text-sm font-semibold" data-testid="passport-removed">
+                  The entry was removed. Its owner was told why.
+                </p>
+              ) : null}
+              {profile.isOwn ? (
+                <p className="text-sm">
+                  <Link href="/dashboard/passport" prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="manage-passport">
+                    Manage your passport
+                  </Link>
+                </p>
+              ) : null}
+              {removable.length > 0 ? (
+                <section aria-labelledby="passport-moderation" className="grid gap-3 rounded-sm border border-border-strong p-4" data-testid="passport-moderation">
+                  <h3 id="passport-moderation" className="font-display text-lg">
+                    Moderation
+                  </h3>
+                  <PassportRemoveForm slug={profile.slug} entries={removable} initial={removeOutcome} />
+                </section>
+              ) : null}
+            </>
+          }
+        />
+      ) : null}
       {gallery ? <Photos gallery={gallery} /> : null}
       {events ? (
         <UpcomingEvents

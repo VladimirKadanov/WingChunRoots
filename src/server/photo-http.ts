@@ -9,6 +9,9 @@
 // school's logo and room photos (openSchoolPhoto: public while the school is), with these headers.
 // M17 (docs/adr/0020-events.md): GET /api/event-posters/<id>/<hash>/<size>.webp serves an event's
 // poster (openEventPoster: public while the event is in v_public_event; 404 once it is removed).
+// M19 (docs/adr/0022-passport.md): GET /api/certificates/<id>/<hash>/<size>.webp serves a passport's
+// scanned certificate from the private store (openCertificate): `public, no-cache` while the profile
+// shows it; otherwise only to its student and their teachers, `private, no-store`; 404 for anyone else.
 //
 // Caching: the address carries the content hash, so a new photo is a new address. A public
 // person's photo may be stored by any cache but is revalidated on every use (`public, no-cache`)
@@ -30,6 +33,7 @@ import { requestLogger } from './log';
 import { sessionHeaders } from './rpc/handler';
 import { requestMeta } from './services/context';
 import { openEventPoster } from './services/events';
+import { openCertificate } from './services/passport';
 import { openPhoto, photoEtag } from './services/photos';
 import { openSchoolPhoto } from './services/school-photos';
 import { type ObjectStore, StorageError } from './storage';
@@ -64,9 +68,10 @@ export interface PhotoRequestOptions {
   /**
    * M16: which photos the address names: a person's (profile and gallery, GET /api/photos/...,
    * the default) or a school's (logo and room photos, GET /api/school-photos/...). Both follow
-   * the same headers and read rules. M17: an event's poster (GET /api/event-posters/...).
+   * the same headers and read rules. M17: an event's poster (GET /api/event-posters/...). M19: a
+   * passport's certificate (GET /api/certificates/...), from the private store.
    */
-  kind?: 'person' | 'school' | 'event';
+  kind?: 'person' | 'school' | 'event' | 'certificate';
 }
 
 export async function handlePhotoRequest(
@@ -77,7 +82,8 @@ export async function handlePhotoRequest(
   const meta = requestMeta(request.headers);
   try {
     const principal = await principalFromHeaders(sessionHeaders(request));
-    const open = options.kind === 'school' ? openSchoolPhoto : options.kind === 'event' ? openEventPoster : openPhoto;
+    const open =
+      options.kind === 'school' ? openSchoolPhoto : options.kind === 'event' ? openEventPoster : options.kind === 'certificate' ? openCertificate : openPhoto;
     const photo = await open(principal, address, options.store, {
       ifNoneMatch: request.headers.get('if-none-match'),
       timeoutMs: options.timeoutMs,
