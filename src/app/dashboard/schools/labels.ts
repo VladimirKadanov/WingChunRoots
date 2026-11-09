@@ -5,4 +5,6 @@ export const PIN_TEXT = {
   shown: 'On the public map',
   needs_plan: 'Not on the map: a public pin needs Professional Sifu',
   not_listed: 'Not on the map until the listing is approved',
+  // M20 (DEFAULT D17): the activity check hid it; "This listing is current" shows it again.
+  activity_hidden: 'Not on the map: hidden until you confirm the listing is current',
 } as const;

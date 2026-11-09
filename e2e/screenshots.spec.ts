@@ -524,6 +524,23 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByTestId('passport-rank-form').filter({ visible: true })).toBeVisible();
     },
   },
+  ...(['awaiting', 'hidden'] as const).map(
+    (stage): ScreenState => ({
+      // M20: the owner's page of a demo school in the activity check, as demo-pro-sifu-8 sees it:
+      // demo-school-awaiting-birmingham (awaiting confirmation, still on the map) and
+      // demo-school-hidden-munich (hidden from the map, kept), with "This listing is current".
+      name: `dashboard-school-${stage}`,
+      milestone: 'M20',
+      async reach(page) {
+        const slug = stage === 'awaiting' ? 'demo-school-awaiting-birmingham' : 'demo-school-hidden-munich';
+        const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM school WHERE slug = ${slug}`);
+        expect(rows.rows).toHaveLength(1);
+        await signInAs(page, 'demo-pro-sifu-8');
+        await page.goto(`/dashboard/schools/${rows.rows[0]!.id}`);
+        await expect(page.getByTestId('school-activity').filter({ visible: true })).toHaveAttribute('data-activity', stage === 'awaiting' ? 'awaiting_confirmation' : 'hidden');
+      },
+    }),
+  ),
 ];
 
 /**

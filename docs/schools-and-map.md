@@ -15,7 +15,8 @@
 | Решение | Какво прави приложението | Къде |
 |---|---|---|
 | DEFAULT D08/D18 | Пинът се показва, докато акаунтът, обявил школата, има Professional Sifu; отнемането скрива пина (и публичната страница) и запазва школата | `v_public_school` в миграцията на M11, `src/server/services/schools.ts` |
-| DEFAULT D17 | `last_activity_at` се мести само при редакция или „Confirm it is current“, никога при вход | `src/server/services/schools.ts` |
+| DEFAULT D17 | `last_activity_at` се мести само при редакция или „This listing is current“ (до M20 „Confirm it is current“), никога при вход. От M20: ден 90 → `awaiting_confirmation`, ден 105 → `hidden` (ADR 0023) | `src/server/services/schools.ts`, `src/server/services/school-activity.ts` |
+| DEFAULT D18 (M20) | Потвърждение или редакция връщат пина само ако обявата е активна, одобрена и акаунтът има Professional Sifu | `src/server/services/schools.ts`, `v_public_school` |
 | DEFAULT D12 | Пинове чрез федерация няма до Фаза 3; брои се само акаунтът, обявил школата | `src/server/services/schools.ts`, миграцията на M11, ADR 0014 §3 |
 | DEFAULT (M11 In scope 1) | Извлечение от GeoNames за BG, GR, DE, GB, US, HK | `src/server/geo/geonames.ts` |
 | DEFAULT (без D номер) | Стиловете на OpenFreeMap: Positron (светла тема) и Dark (тъмна) | `src/server/geo/map-styles.ts` |
@@ -85,7 +86,7 @@ E2E тестът `@M11 demo-school-city-only: …` търси точната т�
 2. Free Sifu: на страницата на школата вижда `<UpgradePrompt>` с „Request pilot access“; `schools.submit` отговаря `ENTITLEMENT_REQUIRED`.
 3. Pro Sifu: „Send for review“ → `pending_review` и случай `school_listing`.
 4. Модератор или администратор в `/admin/review`: „Approve the listing“ (школата става `active`, пинът се показва), „Return it to draft“ (с причина) или „Ask for more information“ (въпрос към Сифу; той изпраща обявата отново).
-5. Обявена школа: „Confirm it is current“ мести `last_activity_at`. Редакциите ѝ се виждат веднага, а редакция на името, града, режима на местоположението, точната точка, уебсайта или инструкторите отваря отново преглед на обявата (един отворен случай на школа: втора редакция се присъединява към него). Школата остава на картата с редакцията; „Approve the listing“ я оставя обявена, „Return it to draft“ (с причина) я сваля от картата. Контактите, описанието и формите не отварят преглед.
+5. Обявена школа: „This listing is current“ мести `last_activity_at` и връща етапа `current` (M20). Редакциите ѝ се виждат веднага, а редакция на името, града, режима на местоположението, точната точка, уебсайта или инструкторите отваря отново преглед на обявата (един отворен случай на школа: втора редакция се присъединява към него). Школата остава на картата с редакцията; „Approve the listing“ я оставя обявена, „Return it to draft“ (с причина) я сваля от картата. Контактите, описанието и формите не отварят преглед.
 6. Решението носи версията на обявата, която проверяващият е видял (`review.decide` `schoolVersion`): обява, сменена след отварянето на случая, се отказва с `CONFLICT`, одобрение без версия — с `BAD_REQUEST`.
 7. Историята на случая е в `review_event`, както при другите видове от M10b: `open` (изпращането или редакцията, която отваря преглед), `assign`/`unassign`, `needs_info`, `evidence` (Сифу изпраща обявата отново след въпрос), `approve` и `reject`. Решението пази ключа си за идемпотентност там: същият ключ със същото решение по същия случай е повторение, а ключ, вече ползван от този проверяващ за друго действие (например за `assign` или за друго решение), се отказва с `CONFLICT`.
 
@@ -110,3 +111,7 @@ E2E тестът `@M11 demo-school-city-only: …` търси точната т�
 - **E2E** (`e2e/m11-schools.spec.ts`, проектът `exclusive`, защото одобрената обява прави школа публична): дванадесетте заглавия на етапа и записът на изгледа в адреса. `e2e/m11-finder.spec.ts` (търсенето остава след ход на картата, принудителни цветове, телефонът: всички школи в първия изглед, пинът над листа, фокус само върху непокрити контроли, атрибуцията, стъпките на листа) и `e2e/m11-finder-a11y.spec.ts` (текст 150 % и 200 %, разстояние без място, принудителни цветове в списъка и формата, фокусът в картата за пина).
 - **Бюджет:** `scripts/check-bundle-budget.mjs` (маршрутите и `LAZY_ONLY`).
 - **Проверка на етапа:** `scripts/verify.d/M11.sh`.
+
+## Проверка за активност (M20)
+
+Подробно в [ADR 0023](adr/0023-school-activity.md). Обявена школа на акаунт има записан етап `school.activity_stage`. Дневната задача `schools.activity` (05:23 UTC) я мести в `awaiting_confirmation` на ден 90 без редакция или потвърждение и праща `school.activity-awaiting` на собственика и на администраторите на организациите с приета връзка. На ден 105, и не по-рано от 14 дни след молбата, я мести в `hidden` и праща `school.activity-hidden`. `v_public_school` не връща скрита школа, затова картата, списъкът, търсенето, страницата, sitemap, Open Graph, JSON-LD и страниците на организации и събития я губят без собствен филтър. След скриване задачата изчиства кеша `schools`. „This listing is current“, истинска редакция или изпращане за преглед връщат `current`. Персоналът вижда етапите на `/admin/schools`. Тестове: `src/server/services/school-activity.int.test.ts`, `src/server/services/school-activity.test.ts`, `e2e/m20-school-activity.spec.ts`, `e2e/m20-school-activity-view.spec.ts`.

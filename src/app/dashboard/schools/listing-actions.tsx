@@ -1,8 +1,9 @@
 'use client';
 
 // The listing's one-button forms (milestone M11, In scope 2 and 3): "Send for review"
-// (schools.submit, which needs Professional Sifu) and "Confirm it is current" (schools.confirm,
-// which moves last_activity_at, D17). Thin Server Actions; without JavaScript a failure comes back
+// (schools.submit, which needs Professional Sifu) and "This listing is current" (schools.confirm,
+// which moves last_activity_at, D17, and starts the activity check again, M20: the primary action
+// while a listing awaits confirmation or is hidden). Thin Server Actions; without JavaScript a failure comes back
 // as a kept result (src/server/forms/flash.ts).
 
 import { useActionState } from 'react';
@@ -12,14 +13,26 @@ import { type FormState, IDLE } from '@/lib/form-state';
 import { confirmSchoolAction, submitSchoolAction } from './actions';
 import { SCHOOL_ACTION_FORM } from './form-ids';
 
-export function ListingAction({ schoolId, step, label, initial }: { schoolId: string; step: 'submit' | 'confirm'; label: string; initial: FormState | null }) {
+export function ListingAction({
+  schoolId,
+  step,
+  label,
+  initial,
+  variant = step === 'submit' ? 'primary' : 'secondary',
+}: {
+  schoolId: string;
+  step: 'submit' | 'confirm';
+  label: string;
+  initial: FormState | null;
+  variant?: 'primary' | 'secondary';
+}) {
   const [state, action, pending] = useActionState(step === 'submit' ? submitSchoolAction : confirmSchoolAction, initial ?? IDLE);
   useFocusOnError(SCHOOL_ACTION_FORM, state);
   return (
     <form id={SCHOOL_ACTION_FORM} action={action} className="grid justify-items-start gap-3" data-testid={`school-${step}`}>
       <FormMessage form={SCHOOL_ACTION_FORM} state={state} single />
       <input type="hidden" name="id" value={schoolId} />
-      <SubmitButton pending={pending} pendingLabel={step === 'submit' ? 'Sending…' : 'Confirming…'} variant={step === 'submit' ? 'primary' : 'secondary'}>
+      <SubmitButton pending={pending} pendingLabel={step === 'submit' ? 'Sending…' : 'Confirming…'} variant={variant}>
         {label}
       </SubmitButton>
     </form>

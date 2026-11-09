@@ -17,6 +17,7 @@ import {
   PHOTO_FULL_MAX_SIDE,
   PHOTO_REASON_MAX,
   SCHOOL_FORMS,
+  SCHOOL_ACTIVITY_STAGES,
   SCHOOL_PHOTO_KINDS,
   SCHOOL_PHOTO_STATUSES,
   SCHOOL_INSTRUCTOR_ROLES,
@@ -86,6 +87,15 @@ export const school = pgTable(
     formsTaught: text('forms_taught', { enum: SCHOOL_FORMS }).array().notNull().default([]),
     // DEFAULT D17: changes only when the school is edited or confirmed, never on sign-in.
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
+    // M20 (DEFAULT D17, D18; docs/adr/0023-school-activity.md): the stage of the activity check,
+    // stored, so every public read filters one indexed column (v_public_school) and nothing is
+    // computed from dates at read time. Only the daily job (src/server/services/school-activity.ts)
+    // moves a school forward; an edit or a confirmation by its listing account sets it back.
+    activityStage: text('activity_stage', { enum: SCHOOL_ACTIVITY_STAGES }).notNull().default('current'),
+    /** When the job asked the owner to confirm the listing (awaiting_confirmation, and hidden after it). */
+    activityAwaitingSince: timestamp('activity_awaiting_since', { withTimezone: true }),
+    /** When the job hid the public pin and listing. */
+    activityHiddenAt: timestamp('activity_hidden_at', { withTimezone: true }),
     createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     ...timestamps(),
     deletedAt: deletedAt(),
@@ -99,6 +109,17 @@ export const school = pgTable(
     check('school_slug_format', sql`${t.slug} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`),
     check('school_location_privacy_check', inList(t.locationPrivacy.name, LOCATION_PRIVACIES)),
     check('school_status_check', inList(t.status.name, SCHOOL_STATUSES)),
+    check('school_activity_stage_check', inList(t.activityStage.name, SCHOOL_ACTIVITY_STAGES)),
+    check(
+      'school_activity_stage_times',
+      sql`(${t.activityStage} = 'current' AND ${t.activityAwaitingSince} IS NULL AND ${t.activityHiddenAt} IS NULL)
+        OR (${t.activityStage} = 'awaiting_confirmation' AND ${t.activityAwaitingSince} IS NOT NULL AND ${t.activityHiddenAt} IS NULL)
+        OR (${t.activityStage} = 'hidden' AND ${t.activityAwaitingSince} IS NOT NULL AND ${t.activityHiddenAt} IS NOT NULL)`,
+    ),
+    // M20: the daily job's two passes (listed schools of an account, by stage and age).
+    index('school_activity_check_idx')
+      .on(t.activityStage, t.lastActivityAt)
+      .where(sql`${t.status} = 'active' AND ${t.deletedAt} IS NULL AND ${t.createdByUserId} IS NOT NULL`),
     check('school_name_length', sql`char_length(${t.name}) BETWEEN 2 AND 120`),
     check('school_forms_taught_check', sql`${t.formsTaught} <@ ARRAY[${sql.raw(SCHOOL_FORMS.map((f) => `'${f}'`).join(', '))}]::text[]`),
   ],

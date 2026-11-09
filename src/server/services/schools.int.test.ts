@@ -144,7 +144,8 @@ describe('the lineage filter (lineage_membership from v_public_edge)', () => {
     const a = await schoolsSearch(null, { lineageRootId: rootOf('demo-root-a') });
     const b = await schoolsSearch(null, { lineageRootId: rootOf('demo-root-b') });
     expect(a.schools.map((s) => s.slug).sort()).toEqual(['demo-school-new-york', 'demo-school-sofia', 'demo-school-two-lineages']);
-    expect(b.schools.map((s) => s.slug).sort()).toEqual(['demo-school-athens', 'demo-school-kowloon', 'demo-school-london', 'demo-school-two-lineages']);
+    expect(b.schools.map((s) => s.slug).sort()).toEqual(['demo-school-athens', 'demo-school-awaiting-birmingham', 'demo-school-kowloon', 'demo-school-london', 'demo-school-two-lineages']);
+    // M20: the awaiting demo school stays public; the hidden one (demo-school-hidden-munich, same lineage) does not appear.
     expect(a.lineage).toMatchObject({ rootSlug: 'demo-root-a' });
     const sofia = await cityOf('Sofia', 'BG');
     const near = await schoolsSearch(null, { center: sofia, radiusKm: 50, lineageRootId: rootOf('demo-root-b') });

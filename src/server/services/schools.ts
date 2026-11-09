@@ -38,6 +38,9 @@
 //                                    §6.5), otherwise ENTITLEMENT_REQUIRED and the upgrade prompt
 //   schools.confirm                  "This listing is current": last_activity_at (D17)
 // DEFAULT D17: last_activity_at changes only on an edit or a confirmation, never on sign-in.
+// M20 (docs/adr/0023-school-activity.md): each of them also sets the activity check back to
+// `current` (ACTIVITY_RESET, src/server/services/school-activity.ts), which shows a school the
+// daily job hid again, while every other condition of the pin holds (DEFAULT D18).
 // DEFAULT D08/D18: the pin shows while the account that listed the school holds Professional Sifu;
 // revoking the grant hides the pin and keeps the school (v_public_school).
 // DEFAULT D12: no pins through an organization before Phase 3; only the listing account counts.
@@ -83,6 +86,7 @@ import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
 import { notify, notifyEach } from './notify';
+import { ACTIVITY_RESET, activityOf, type SchoolActivity } from './school-activity';
 
 // --- Constants ---------------------------------------------------------------------------------
 
@@ -574,8 +578,11 @@ export async function placesSearch(_principal: Principal | null, raw: z.input<ty
 
 // --- The owner's side --------------------------------------------------------------------------
 
-/** Whether a listed school's pin is on the map now, and why not. */
-export type PinState = 'shown' | 'needs_plan' | 'not_listed';
+/**
+ * Whether a listed school's pin is on the map now, and why not. M20: `activity_hidden` when the
+ * activity check hid it (DEFAULT D17); a confirmation shows it again while the plan allows a pin.
+ */
+export type PinState = 'shown' | 'needs_plan' | 'not_listed' | 'activity_hidden';
 
 export interface OwnSchoolItem {
   id: string;
@@ -588,6 +595,8 @@ export interface OwnSchoolItem {
   locationPrivacy: (typeof LOCATION_PRIVACIES)[number];
   pin: PinState;
   lastActivityAt: string;
+  /** M20: the activity check (its stage and dates). */
+  activity: SchoolActivity;
 }
 
 export interface SchoolEditorView {
@@ -612,6 +621,8 @@ export interface SchoolEditorView {
     statusLabel: string;
     pin: PinState;
     lastActivityAt: string;
+    /** M20: the activity check (its stage and dates). */
+    activity: SchoolActivity;
   } | null;
   /**
    * The cities the form offers: the matches of `city` (the editor's "Find a city or town"), the
@@ -663,9 +674,10 @@ async function publicIds(db: Executor, ids: readonly string[]): Promise<Set<stri
   return new Set(result.rows.map((r) => r.id));
 }
 
-function pinState(status: (typeof SCHOOL_STATUSES)[number], shown: boolean): PinState {
+function pinState(status: (typeof SCHOOL_STATUSES)[number], shown: boolean, stage: SchoolActivity['stage']): PinState {
   if (status !== 'active') return 'not_listed';
-  return shown ? 'shown' : 'needs_plan';
+  if (shown) return 'shown';
+  return stage === 'hidden' ? 'activity_hidden' : 'needs_plan';
 }
 
 /** schools.mine: the schools the signed-in account listed. */
@@ -682,6 +694,9 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
       status: school.status,
       locationPrivacy: school.locationPrivacy,
       lastActivityAt: school.lastActivityAt,
+      activityStage: school.activityStage,
+      activityAwaitingSince: school.activityAwaitingSince,
+      activityHiddenAt: school.activityHiddenAt,
     })
     .from(school)
     .innerJoin(place, eq(place.id, school.placeId))
@@ -703,8 +718,9 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
       status: r.status,
       statusLabel: STATUS_LABELS[r.status],
       locationPrivacy: r.locationPrivacy,
-      pin: pinState(r.status, shown.has(r.id)),
+      pin: pinState(r.status, shown.has(r.id), r.activityStage),
       lastActivityAt: r.lastActivityAt.toISOString(),
+      activity: activityOf(r),
     })),
   };
 }
@@ -760,6 +776,9 @@ interface OwnedRow {
   description: string | null;
   formsTaught: (typeof SCHOOL_FORMS)[number][];
   lastActivityAt: Date;
+  activityStage: SchoolActivity['stage'];
+  activityAwaitingSince: Date | null;
+  activityHiddenAt: Date | null;
 }
 
 async function ownedSchool(db: Executor, userId: string, id: string, lock = false): Promise<OwnedRow | null> {
@@ -777,6 +796,9 @@ async function ownedSchool(db: Executor, userId: string, id: string, lock = fals
       description: school.description,
       formsTaught: school.formsTaught,
       lastActivityAt: school.lastActivityAt,
+      activityStage: school.activityStage,
+      activityAwaitingSince: school.activityAwaitingSince,
+      activityHiddenAt: school.activityHiddenAt,
     })
     .from(school)
     .where(and(eq(school.id, id), eq(school.createdByUserId, userId), isNull(school.deletedAt)));
@@ -877,8 +899,9 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
       instructorIds: instructors.map((i) => i.id).filter((id) => id !== ownId),
       status: row.status,
       statusLabel: STATUS_LABELS[row.status],
-      pin: pinState(row.status, shown.has(row.id)),
+      pin: pinState(row.status, shown.has(row.id), row.activityStage),
       lastActivityAt: row.lastActivityAt.toISOString(),
+      activity: activityOf(row),
     },
     places: await editorPlaces(db, row.placeId, parsed.data.city),
     instructorOptions: options,
@@ -1073,6 +1096,8 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
         description: input.description,
         formsTaught: input.formsTaught,
         lastActivityAt: now,
+        // M20 (DEFAULT D17): an edit is activity, so the activity check starts again.
+        ...ACTIVITY_RESET,
         // Always later than the version a reviewer may hold, also within one millisecond.
         updatedAt: sql`greatest(now(), ${school.updatedAt} + interval '1 microsecond')`,
       })
@@ -1089,8 +1114,8 @@ export async function updateSchool(principal: Principal | null, raw: z.input<typ
       actorRole: p.user.role,
       subjectType: 'school',
       subjectId: row.id,
-      before: { status: row.status },
-      after: { status: row.status, changed, ...(reReview ? { reviewCaseId: reReview } : {}) },
+      before: { status: row.status, ...(row.activityStage !== 'current' ? { activityStage: row.activityStage } : {}) },
+      after: { status: row.status, changed, ...(reReview ? { reviewCaseId: reReview } : {}), ...(row.activityStage !== 'current' ? { activityStage: 'current' } : {}) },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
@@ -1186,7 +1211,8 @@ export async function submitSchool(principal: Principal | null, raw: z.input<typ
       }
       if (row.status !== 'draft') throw new ServiceError('CONFLICT', row.status === 'active' ? 'This school is already listed.' : 'This school cannot be sent for review now.');
       const now = new Date();
-      await tx.update(school).set({ status: 'pending_review', lastActivityAt: now, updatedAt: now }).where(eq(school.id, row.id));
+      // M20: sending it is activity too; a listing returned to draft starts the check again.
+      await tx.update(school).set({ status: 'pending_review', lastActivityAt: now, updatedAt: now, ...ACTIVITY_RESET }).where(eq(school.id, row.id));
       const [created] = await tx
         .insert(reviewCase)
         .values({ kind: 'school_listing', status: 'open', schoolId: row.id, openedByUserId: p.user.id })
@@ -1213,7 +1239,13 @@ export async function submitSchool(principal: Principal | null, raw: z.input<typ
   }
 }
 
-/** schools.confirm: "This listing is current" on a listed school (D17: last_activity_at). */
+/**
+ * schools.confirm: "This listing is current" on a listed school (D17: last_activity_at). M20: it
+ * also sets the activity check back to `current`, so a school awaiting confirmation stays shown and
+ * a hidden one is public again, while the account holds Professional Sifu and the listing is
+ * active (DEFAULT D18: a Free Sifu's confirmation is recorded and unlocks no pin). It also works
+ * on a listed school that is current (the date moves).
+ */
 export async function confirmSchool(principal: Principal | null, raw: z.input<typeof schoolIdInput>, meta: RequestMeta): Promise<SchoolSaved> {
   const p = requireUser(principal);
   const parsed = schoolIdInput.safeParse(raw);
@@ -1224,14 +1256,15 @@ export async function confirmSchool(principal: Principal | null, raw: z.input<ty
     if (!row) throw notFound();
     if (row.status !== 'active') throw new ServiceError('CONFLICT', 'Only a listed school is confirmed as current.');
     const now = new Date();
-    await tx.update(school).set({ lastActivityAt: now, updatedAt: now }).where(eq(school.id, row.id));
+    await tx.update(school).set({ lastActivityAt: now, updatedAt: now, ...ACTIVITY_RESET }).where(eq(school.id, row.id));
     await writeAudit(tx, {
       action: 'school.confirm',
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'school',
       subjectId: row.id,
-      after: { status: row.status },
+      before: { activityStage: row.activityStage },
+      after: { status: row.status, activityStage: 'current' },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });

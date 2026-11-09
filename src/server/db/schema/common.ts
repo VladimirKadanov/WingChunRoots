@@ -162,6 +162,23 @@ export const SCHOOL_STATUSES = ['draft', 'pending_review', 'active', 'hidden', '
 /** M11: the forms a school teaches (the six forms of Wing Chun), stored by key, shown in English. */
 export const SCHOOL_FORMS = ['siu_nim_tao', 'chum_kiu', 'biu_jee', 'muk_yan_jong', 'luk_dim_boon_kwan', 'baat_jaam_do'] as const;
 export const SCHOOL_INSTRUCTOR_ROLES = ['head_instructor', 'instructor', 'assistant'] as const;
+/**
+ * M20 (docs/adr/0023-school-activity.md): the activity check of a listed school (specification
+ * §7.3). `current` while its listing account edited or confirmed it within SCHOOL_AWAITING_DAYS;
+ * `awaiting_confirmation` from day 90, when the owner is asked to confirm it (still public); `hidden`
+ * from day 105, off every public answer (v_public_school) and never deleted. A confirmation or an
+ * edit sets it back to `current` (DEFAULT D17, D18).
+ */
+export const SCHOOL_ACTIVITY_STAGES = ['current', 'awaiting_confirmation', 'hidden'] as const;
+/** DEFAULT D17: a listed school waits for its owner's confirmation from this many days without activity. */
+export const SCHOOL_AWAITING_DAYS = 90;
+/** DEFAULT D17: its public pin and listing are hidden from this many days without activity. */
+export const SCHOOL_HIDDEN_DAYS = 105;
+/**
+ * DEFAULT D17: the owner always has at least this many days between the request to confirm and the
+ * hiding, also when the daily job ran late (a missed run never hides a school without notice).
+ */
+export const SCHOOL_CONFIRM_GRACE_DAYS = SCHOOL_HIDDEN_DAYS - SCHOOL_AWAITING_DAYS - 1;
 
 // --- Organizations (M01 skeleton; M15 application, review and administration; DEFAULT D12) -------------
 export const ORGANIZATION_KINDS = ['federation', 'association', 'school_group'] as const;

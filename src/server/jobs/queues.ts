@@ -29,6 +29,11 @@ export const QUEUE = {
    * (src/server/jobs/plan-expiry.ts).
    */
   plansExpiry: 'plans.expiry',
+  /**
+   * M20 (DEFAULT D17, D18): once a day, the activity check of the listed schools: day 90 asks the
+   * owner to confirm the listing, day 105 hides its pin (src/server/jobs/school-activity.ts).
+   */
+  schoolsActivity: 'schools.activity',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -71,6 +76,7 @@ export interface JobData {
   [QUEUE.lineageRecompute]: LineageRecomputeJob;
   [QUEUE.eventsNotify]: EventsNotifyJob;
   [QUEUE.plansExpiry]: Record<string, never>;
+  [QUEUE.schoolsActivity]: Record<string, never>;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -110,6 +116,8 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
   [QUEUE.eventsNotify, { retryLimit: 5, retryDelay: 10, retryBackoff: true, retryDelayMax: 300, expireInSeconds: 120, deleteAfterSeconds: DAY }],
   // M18: a daily pass over the grants that end; idempotent by its notice keys.
   [QUEUE.plansExpiry, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
+  // M20: a daily pass over the listed schools; idempotent by their stages and the notice keys.
+  [QUEUE.schoolsActivity, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */
@@ -118,6 +126,8 @@ export const SCHEDULES: ReadonlyArray<{ queue: QueueName; cron: string }> = [
   { queue: QUEUE.retentionPurge, cron: '17 3 * * *' },
   // M18: daily at 06:41 UTC, the notices of plans that end.
   { queue: QUEUE.plansExpiry, cron: '41 6 * * *' },
+  // M20: daily at 05:23 UTC, the activity check of the listed schools.
+  { queue: QUEUE.schoolsActivity, cron: '23 5 * * *' },
 ];
 
 /**

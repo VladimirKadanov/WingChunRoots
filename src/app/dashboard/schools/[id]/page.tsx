@@ -1,7 +1,11 @@
 // /dashboard/schools/[id] (milestone M11, In scope 2 and 3): one of the Sifu's schools. The listing
 // at the top: its status, whether its pin is on the public map, the reviewers' question or reason,
 // and the next step: "Send for review" (needs Professional Sifu; a Free Sifu sees <UpgradePrompt>
-// instead, DEFAULT D08/D18), or "Confirm it is current" for a listed school (D17). Below, the
+// instead, DEFAULT D08/D18), or "This listing is current" for a listed school (D17). M20: the
+// activity check of a listed school (awaiting confirmation from day 90, hidden from the map from day
+// 105, DEFAULT D17) with its mark, its words and its dates, and then the confirmation is the
+// page's primary action; a Free Sifu is told that the confirmation is recorded and unlocks no pin
+// (DEFAULT D18). Below, the
 // school's details with "Edit the details" (./edit: the school form, schools.update): a page of its
 // own, so neither page's first JavaScript carries both the form and the upgrade prompt (the route
 // budget, ADR 0014). Only the account that listed the school reaches it (404 otherwise). Reads the
@@ -17,6 +21,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM } from '@/components/plans/form-ids';
 import { OutcomeNote } from '@/components/relationships/parts';
+import { ActivityState } from '@/components/schools/activity-state';
 import { LocationTag } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
@@ -69,6 +74,8 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
   const one = (key: string) => (typeof query[key] === 'string' ? query[key] : null);
   const review = editor.review;
   const draft = school.status === 'draft';
+  const listed = school.status === 'active';
+  const activity = school.activity;
   // A question on a new listing, or on a listed school's edit (schools.update reopens the review).
   const needsInfo = (school.status === 'pending_review' || school.status === 'active') && review?.status === 'needs_info';
   const editUnderReview = school.status === 'active' && (review?.status === 'open' || review?.status === 'in_review');
@@ -99,7 +106,13 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
       ) : one('sent') ? (
         <OutcomeNote testId="school-sent">Sent for review. A moderator checks the listing; you get a notification when it is decided.</OutcomeNote>
       ) : one('confirmed') ? (
-        <OutcomeNote testId="school-confirmed">Confirmed: the listing shows it was checked today.</OutcomeNote>
+        <OutcomeNote testId="school-confirmed">
+          {school.pin === 'shown'
+            ? 'Confirmed: the listing is current as of today, and its pin is on the public map.'
+            : school.pin === 'needs_plan'
+              ? 'Confirmed: the listing is current as of today. The confirmation is recorded; a public pin needs Professional Sifu.'
+              : 'Confirmed: the listing is current as of today.'}
+        </OutcomeNote>
       ) : null}
 
       <section aria-labelledby="listing-heading" className="grid gap-3 rounded-sm border border-border-subtle p-4" data-testid="school-listing" data-status={school.status} data-pin={school.pin}>
@@ -115,8 +128,25 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
           <dd>
             <LocationTag precision={school.locationPrivacy === 'exact' ? 'exact' : 'city'} />
           </dd>
-          <dt className="text-fg-muted">Last activity</dt>
-          <dd>{formatDay(school.lastActivityAt)}</dd>
+          {listed ? (
+            <>
+              <dt className="text-fg-muted">Activity</dt>
+              <dd data-testid="school-activity" data-activity={activity.stage}>
+                <ActivityState stage={activity.stage}>
+                  {activity.stage === 'hidden' && activity.hiddenAt
+                    ? `Hidden from the map since ${formatDay(activity.hiddenAt)}`
+                    : activity.stage === 'awaiting_confirmation' && activity.awaitingSince
+                      ? `Awaiting confirmation since ${formatDay(activity.awaitingSince)}`
+                      : `Current: last edited or confirmed ${formatDay(activity.lastActivityAt)}`}
+                </ActivityState>
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt className="text-fg-muted">Last activity</dt>
+              <dd>{formatDay(school.lastActivityAt)}</dd>
+            </>
+          )}
           {review ? (
             <>
               <dt className="text-fg-muted">Review</dt>
@@ -150,7 +180,22 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
             <p className="text-sm text-fg-muted">This account cannot send a school for review.</p>
           )
         ) : null}
-        {school.status === 'active' ? <ListingAction schoolId={school.id} step="confirm" label="Confirm it is current" initial={listingOutcome} /> : null}
+        {listed && activity.stage !== 'current' ? (
+          <div className="grid gap-2 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="school-activity-note">
+            <p className="max-w-[60ch]">
+              {!editor.canSubmit
+                ? `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}. If the school still trains, confirm the listing or change its details. Nothing is deleted.`
+                : activity.stage === 'hidden'
+                ? `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}, so the pin and the listing are not shown on the public map and list. Nothing is deleted. If the school still trains, confirm the listing or change its details to show it again.`
+                : `There has been no edit or confirmation since ${formatDay(activity.lastActivityAt)}. If the school still trains, confirm the listing. Without a confirmation by about ${formatDay(activity.hiddenFrom ?? activity.lastActivityAt)}, it is no longer shown on the public map and list until you confirm it. Nothing is deleted.`}
+            </p>
+            {/* DEFAULT D18: a Free Sifu's confirmation is recorded and unlocks no pin. */}
+            {!editor.canSubmit ? <p className="max-w-[60ch] text-fg-muted">Your confirmation is recorded either way. A public pin also needs Professional Sifu.</p> : null}
+          </div>
+        ) : null}
+        {listed ? (
+          <ListingAction schoolId={school.id} step="confirm" label="This listing is current" variant={activity.stage === 'current' ? 'secondary' : 'primary'} initial={listingOutcome} />
+        ) : null}
         {school.pin === 'shown' ? (
           <p>
             <Link href={`/schools/${school.slug}`} className="link inline-flex min-h-11 items-center" data-testid="public-school-link">

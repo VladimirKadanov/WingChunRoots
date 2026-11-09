@@ -1005,6 +1005,20 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  {
+    // M20: a school the activity check hid; only its listing account confirms it (and shows it again).
+    path: 'schools.confirm (hidden by the activity check)',
+    make: async () => {
+      const s = await draftSchool({ pro: true, status: 'active' });
+      await getDb().execute(sql`
+        UPDATE school SET activity_stage = 'hidden', activity_awaiting_since = now() - interval '20 days', activity_hidden_at = now() - interval '5 days'
+         WHERE id = ${s.schoolId}::uuid`);
+      return { owner: s.owner, input: { id: s.schoolId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  // M20: the activity check of the listed schools, for the roles that moderate listings.
+  { path: 'schools.adminList', make: () => ({ input: { stage: 'hidden' } }), expect: staffOnly({ moderator: 'ok', admin: 'ok' }) },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own

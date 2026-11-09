@@ -1207,6 +1207,108 @@ const passportCorrection: NotificationTemplate<PassportNoticeData> = {
   sample: { kind: 'exam', title: 'Demo first level' },
 };
 
+// --- School activity checks (M20; docs/adr/0023-school-activity.md) -------------------------------
+
+/** What a school activity notice carries: the school by id and name, and its dates (no point, no contact). */
+interface SchoolActivityNotice {
+  schoolId: string;
+  /** The school's name as listed (any script; quoted in the text). */
+  name: string;
+  /** When its listing account last edited or confirmed it. */
+  lastActivityAt: string;
+  /**
+   * Whether the public saw it on the map when the notice was written. False for a listing whose
+   * account lacks Professional Sifu (DEFAULT D18): it is never told that it leaves the map. A
+   * payload without it is read as true.
+   */
+  onMap: boolean;
+}
+
+function schoolActivityNotice(template: string, payload: unknown): SchoolActivityNotice {
+  const data = payloadObject(template, payload);
+  if (typeof data.name !== 'string' || data.name.trim() === '' || data.name.length > 200) throw new NotificationDataError(template, 'name must be a short text');
+  if (data.onMap !== undefined && typeof data.onMap !== 'boolean') throw new NotificationDataError(template, 'onMap must be true or false');
+  return {
+    schoolId: uuidOf(template, 'schoolId', payload),
+    name: data.name.trim(),
+    lastActivityAt: requiredDate(template, 'lastActivityAt', data.lastActivityAt),
+    onMap: data.onMap !== false,
+  };
+}
+
+/**
+ * "school.activity-awaiting" (M20; specification §7.3, DEFAULT D17): once per school and period
+ * without activity, when the daily job finds that its listing account has not edited or confirmed
+ * it for 90 days. To that account, which can confirm it, and to the admins of the organizations the
+ * school accepted a link from (`organizationId`), who are told only. A calm request with the date by
+ * which to answer; never a countdown, a warning sign or blame (CLAUDE.md §11).
+ */
+const schoolActivityAwaiting: NotificationTemplate<SchoolActivityNotice & { confirmBy: string; organizationId: string | null }> = {
+  name: 'school.activity-awaiting',
+  parse(payload) {
+    const data = payloadObject('school.activity-awaiting', payload);
+    return {
+      ...schoolActivityNotice('school.activity-awaiting', payload),
+      confirmBy: requiredDate('school.activity-awaiting', 'confirmBy', data.confirmBy),
+      organizationId: data.organizationId === undefined || data.organizationId === null ? null : uuidOf('school.activity-awaiting', 'organizationId', payload),
+    };
+  },
+  render: ({ schoolId, name, lastActivityAt, confirmBy, organizationId, onMap }) =>
+    organizationId
+      ? {
+          title: 'A school of your organization: listing to confirm',
+          body: [
+            {
+              text: `The listing of “${name}” was last edited or confirmed on ${formatDay(lastActivityAt)}. Its Sifu has been asked to confirm that it is current. You do not need to do anything; if it is not confirmed by about ${formatDay(confirmBy)}, it is no longer shown on the public map and list until its Sifu confirms it. Nothing is deleted.`,
+            },
+          ],
+          action: { label: 'See your organization', href: ORGANIZATION_PAGE(organizationId) },
+        }
+      : {
+          title: 'Is your school listing still current?',
+          body: [
+            {
+              text: onMap
+                ? `The listing of “${name}” was last edited or confirmed on ${formatDay(lastActivityAt)}. If the school still trains, press “This listing is current” on its page, or change its details. If it is not confirmed by about ${formatDay(confirmBy)}, it is no longer shown on the public map and list until you confirm it. Nothing is deleted, and signing in alone does not count as a confirmation.`
+                : `The listing of “${name}” was last edited or confirmed on ${formatDay(lastActivityAt)}. If the school still trains, press “This listing is current” on its page, or change its details. It is not on the public map now, because a public pin needs Professional Sifu; your confirmation is recorded either way. Nothing is deleted, and signing in alone does not count as a confirmation.`,
+            },
+          ],
+          action: { label: 'Confirm the listing', href: `/dashboard/schools/${schoolId}` },
+        },
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000c1', name: 'Demo Wing Chun Hall', lastActivityAt: '2026-08-03T09:00:00.000Z', confirmBy: '2026-11-16T09:00:00.000Z', organizationId: null, onMap: true },
+};
+
+/**
+ * "school.activity-hidden" (M20; specification §7.3, DEFAULT D17, D18): once per school and period
+ * without activity, to its listing account, when the daily job takes the pin and the listing off
+ * the public map and list on day 105. What happened, that nothing is deleted and how to show it again.
+ */
+const schoolActivityHidden: NotificationTemplate<SchoolActivityNotice> = {
+  name: 'school.activity-hidden',
+  parse: (payload) => schoolActivityNotice('school.activity-hidden', payload),
+  render: ({ schoolId, name, lastActivityAt, onMap }) =>
+    onMap
+      ? {
+          title: 'Your school listing is not shown for now',
+          body: [
+            {
+              text: `The listing of “${name}” was last edited or confirmed on ${formatDay(lastActivityAt)}, so it is no longer shown on the public map and list. Nothing is deleted. To show it again, press “This listing is current” on its page, or change its details; the pin returns while your plan includes a public pin.`,
+            },
+          ],
+          action: { label: 'Show it again', href: `/dashboard/schools/${schoolId}` },
+        }
+      : {
+          title: 'Your school listing is marked as not current',
+          body: [
+            {
+              text: `The listing of “${name}” was last edited or confirmed on ${formatDay(lastActivityAt)}, so it is marked as not current. It was not on the public map, because a public pin needs Professional Sifu. Nothing is deleted. To mark it current, press “This listing is current” on its page, or change its details.`,
+            },
+          ],
+          action: { label: 'Confirm the listing', href: `/dashboard/schools/${schoolId}` },
+        },
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000c2', name: 'Demo Wing Chun Hall', lastActivityAt: '2026-07-01T09:00:00.000Z', onMap: true },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
@@ -1249,6 +1351,9 @@ export const NOTIFICATION_TEMPLATES = {
   // M19.
   'passport.entry-added': passportEntryAdded,
   'passport.correction': passportCorrection,
+  // M20.
+  'school.activity-awaiting': schoolActivityAwaiting,
+  'school.activity-hidden': schoolActivityHidden,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

@@ -49,6 +49,10 @@ export type AuditAction =
   | 'school.confirm'
   | 'school.publish'
   | 'school.return'
+  // M20: the activity check (docs/adr/0023-school-activity.md): the daily job's stages, by the
+  // system (no actor). The rows carry the stage and the dates, never a name or a point.
+  | 'school.activity_awaiting'
+  | 'school.activity_hidden'
   // M10b: invitations, profile claims, instructor verification, reports and arbitration (plan §6.6, §6.7).
   | 'invitation.create'
   | 'invitation.revoke'

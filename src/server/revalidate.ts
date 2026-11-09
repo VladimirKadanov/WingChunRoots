@@ -10,8 +10,10 @@
 // - The secret travels as `Authorization: Bearer <secret>` and is compared in constant time; a
 //   request without it is refused with 401 before its body is read.
 // - The body is `{ "tags": [...] }`: only the tag shapes of src/server/cache.ts (person:<uuid>,
-//   lineage:<uuid>, lineage-membership:<uuid>, explore-start), at most MAX_TAGS. Nothing else can be
-//   revalidated through it. The worker sends only lineage-membership:<uuid> (M09 review, requirements-1).
+//   lineage:<uuid>, lineage-membership:<uuid>, explore-start and, from M20, schools), at most
+//   MAX_TAGS. Nothing else can be revalidated through it. The worker sends lineage-membership:<uuid>
+//   after a recompute (M09 review, requirements-1) and `schools` after the activity check hides a
+//   school (M20, src/server/jobs/school-activity.ts).
 // - Reachable only on the Compose network once the app runs there (M12: the route is not exposed
 //   through the public proxy); in the tests on localhost (APP_URL).
 //
@@ -21,7 +23,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { appUrl } from './auth/env';
-import { EXPLORE_START_TAG } from './cache-tags';
+import { EXPLORE_START_TAG, SCHOOLS_TAG } from './cache-tags';
 
 type Env = Record<string, string | undefined>;
 
@@ -55,7 +57,7 @@ export function revalidateUrl(env: Env = process.env): string {
 
 /** Whether `tag` is one of the cache tags of src/server/cache.ts. */
 export function isCacheTag(tag: unknown): tag is string {
-  return typeof tag === 'string' && (tag === EXPLORE_START_TAG || TAG.test(tag));
+  return typeof tag === 'string' && (tag === EXPLORE_START_TAG || tag === SCHOOLS_TAG || TAG.test(tag));
 }
 
 function json(status: number, body: unknown): Response {
