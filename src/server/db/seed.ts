@@ -71,8 +71,11 @@ import {
   schoolInstructor,
   schoolPhoto,
   schoolPrivateLocation,
+  schoolScheduleSlot,
+  schoolStatDay,
   teachingRelationship,
   trainingPeriod,
+  trialInquiry,
 } from './schema';
 
 /** Every application table except audit_log: what db:seed empties before it loads. */
@@ -121,8 +124,11 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   schoolInstructor,
   schoolPhoto,
   schoolPrivateLocation,
+  schoolScheduleSlot,
+  schoolStatDay,
   teachingRelationship,
   trainingPeriod,
+  trialInquiry,
 ];
 
 /** Every application table, sorted by name: the input of the content hash. */
@@ -323,6 +329,10 @@ async function load(
     }),
   );
   await insert(eventAttendance, f.eventAttendances);
+  // M21: demo-school-sofia's schedule, its trial lesson requests and its counters.
+  await insert(schoolScheduleSlot, f.schoolScheduleSlots);
+  await insert(trialInquiry, f.trialInquiries);
+  await insert(schoolStatDay, f.schoolStatDays);
   return counts;
 }
 
