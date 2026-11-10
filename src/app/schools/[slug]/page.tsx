@@ -7,6 +7,10 @@
 // A missing address, a school that is not public (a draft, under review, or a pin whose Sifu no
 // longer holds Professional Sifu) and a malformed slug all show the same "not listed" state,
 // never indexed. A read that fails shows an error state with Retry (plan §5.6).
+//
+// M21 (docs/adr/0024-trial-lessons.md): the schedule and fees, the trial lesson action (trial.options:
+// a request, a sign-in link that comes back here, or why not), and the stats beacon (a page view,
+// a click on a contact; src/components/schools/school-beacon.tsx).
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -17,13 +21,15 @@ import { ArrowLeftIcon } from '@/components/icons';
 import { NameText } from '@/components/account/person-names';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
+import { SchoolBeacon } from '@/components/schools/school-beacon';
 import { LocationTag } from '@/components/schools/school-list';
+import { ScheduleAndFees, TrialAction } from '@/components/schools/school-schedule';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
 import type { SchoolPageDto } from '@/server/dto/schools';
-import { loadSchool, loadSchoolEvents, locationLine } from './data';
+import { loadSchool, loadSchoolEvents, loadTrialOptions, locationLine } from './data';
 
 export const instant = false;
 
@@ -109,7 +115,7 @@ export default async function SchoolPage({ params }: Props) {
   }
 
   const { school } = read;
-  const events = await loadSchoolEvents(school.slug);
+  const [events, trial] = await Promise.all([loadSchoolEvents(school.slug), loadTrialOptions(school.slug)]);
   const exact = school.precision === 'exact';
   // The map around the school's public point: its pin, or its city's centre.
   const mapHref = finderHref({ lat: school.point.lat, lng: school.point.lng, z: exact ? SCHOOL_ZOOM.exact : SCHOOL_ZOOM.city });
@@ -121,6 +127,7 @@ export default async function SchoolPage({ params }: Props) {
 
   return (
     <article className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14" data-testid="school-page" data-precision={school.precision}>
+      <SchoolBeacon schoolId={school.id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(school)).replace(/</g, '\\u003c') }} />
       <header className="max-w-[46rem]">
         <Back />
@@ -232,6 +239,10 @@ export default async function SchoolPage({ params }: Props) {
           </section>
         ) : null}
 
+        <ScheduleAndFees school={school} />
+
+        <TrialAction slug={school.slug} options={trial} />
+
         <section aria-labelledby="school-contact">
           <h2 id="school-contact" className="font-display text-xl">
             Contact
@@ -242,7 +253,7 @@ export default async function SchoolPage({ params }: Props) {
                 <div key={c.label} className="contents">
                   <dt className="py-2.5 text-sm text-fg-muted">{c.label}</dt>
                   <dd className="min-w-0">
-                    <a href={c.href} rel={c.label === 'Website' ? 'nofollow noopener' : undefined} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" data-testid={c.testid}>
+                    <a href={c.href} rel={c.label === 'Website' ? 'nofollow noopener' : undefined} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" data-testid={c.testid} data-school-contact>
                       {c.value}
                     </a>
                   </dd>

@@ -847,7 +847,7 @@ export const router = {
         method: 'GET',
         path: '/schools/mine/{id}/stats',
         summary:
-          'The last 12 weeks of one of your schools by ISO week: public page views, map pin or card opens, contact or website clicks and trial lesson requests (Professional Sifu; otherwise no numbers and the upgrade offer); 404 for any other school',
+          'The last 12 weeks of one of your schools by ISO week: public page views, map pin or card opens, contact or website clicks and trial lesson requests, ending with the week of `weekOf` (YYYY-MM-DD; this week when left out) (Professional Sifu; otherwise no numbers and the upgrade offer); 404 for any other school',
       })
       .input(schoolStatsInput)
       .handler(({ context, input }) => schoolStats(context.principal, input)),

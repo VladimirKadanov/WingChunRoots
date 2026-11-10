@@ -8,6 +8,9 @@
 //
 // Success goes to the school's page in the dashboard with what happened (?saved=1, ?sent=1,
 // ?confirmed=1), by the school's id only.
+//
+// M21: the schedule and fees (schools.updateSchedule) and the answers to trial lesson requests
+// (trial.answer, trial.decline, trial.close).
 
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
@@ -19,7 +22,10 @@ import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { linkForm } from '../organization/form-ids';
-import { SCHOOL_ACTION_FORM, SCHOOL_FORM } from './form-ids';
+import { SCHEDULE_FORM, SCHOOL_ACTION_FORM, SCHOOL_FORM, trialForm } from './form-ids';
+
+/** M21: the rows of the schedule form at most (the 30 slots a schedule holds, and none more). */
+const SCHEDULE_ROWS_MAX = 30;
 
 const LIST = '/dashboard/schools';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -183,4 +189,97 @@ export async function endOrganizationLinkAction(_previous: FormState, form: Form
     return formResult({ form: linkForm(linkId), page: LIST, anchor: outcomeTarget(linkForm(linkId), state, true) }, state);
   }
   redirect(`${LIST}?organization=ended#organizations`);
+}
+
+// --- M21: trial lesson requests and the schedule ----------------------------------------------
+
+/**
+ * One trial lesson request in the school's inbox: "Answer" (trial.answer, with the reply),
+ * "Decline" (trial.decline, with the text as the reason) or "Close" (trial.close), by the button
+ * pressed. Back to the inbox with what happened.
+ */
+export async function decideTrialAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const schoolId = textValue(form, 'schoolId', 40);
+  const inquiryId = textValue(form, 'inquiryId', 40);
+  const decision = textValue(form, 'decision', 10);
+  const text = textValue(form, 'reply', 1200);
+  const inbox = UUID.test(schoolId) ? `${pageOf(schoolId)}/inquiries` : LIST;
+  const formId = trialForm(UUID.test(inquiryId) ? inquiryId : 'none');
+  try {
+    const client = serverClient(await headers(), await getRequestPrincipal());
+    if (decision === 'answer') await client.trial.answer({ inquiryId, reply: text || null });
+    else if (decision === 'decline') await client.trial.decline({ inquiryId, reason: text || null });
+    else if (decision === 'close') await client.trial.close({ inquiryId });
+    else return { status: 'error', message: 'Choose Answer, Decline or Close.' };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(inbox);
+    const state = formStateFromFailure(error, text ? { reply: text } : undefined);
+    const fields = { ...state.fields };
+    if (fields.reason) {
+      fields.reply = fields.reason;
+      delete fields.reason;
+    }
+    const hidden = fields.inquiryId;
+    delete fields.inquiryId;
+    const shown: FormState = state.status === 'error' ? { ...state, fields, ...(hidden ? { message: hidden } : {}) } : state;
+    return formResult({ form: formId, page: inbox, anchor: outcomeTarget(formId, shown, true) }, shown);
+  }
+  redirect(`${inbox}?done=${decision === 'answer' ? 'answered' : decision === 'decline' ? 'declined' : 'closed'}#outcome`);
+}
+
+/**
+ * "Save the schedule" of /dashboard/schools/<id>/schedule (schools.updateSchedule). The form has
+ * rows of day, start, end and label; a row left wholly empty is dropped, and the errors of the rows
+ * sent are shown at the rows they came from.
+ */
+export async function updateScheduleAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const id = textValue(form, 'id', 40);
+  const page = UUID.test(id) ? pageOf(id) : LIST;
+  const edit = UUID.test(id) ? `${page}/schedule` : LIST;
+  const values: Record<string, string> = {};
+  const rows = Math.min(Number.parseInt(textValue(form, 'rows', 4), 10) || 0, SCHEDULE_ROWS_MAX);
+  const slots: { weekday: number; startsAt: string; endsAt: string; label: string | null }[] = [];
+  // The row each sent slot came from, so an error at slots.<n> goes back to its row.
+  const rowOf: number[] = [];
+  for (let row = 0; row < rows; row++) {
+    const weekday = textValue(form, `slot.${row}.weekday`, 2);
+    const startsAt = textValue(form, `slot.${row}.startsAt`, 8);
+    const endsAt = textValue(form, `slot.${row}.endsAt`, 8);
+    const label = textValue(form, `slot.${row}.label`, 120);
+    if (!weekday && !startsAt && !endsAt && !label) continue;
+    for (const [name, value] of [
+      ['weekday', weekday],
+      ['startsAt', startsAt],
+      ['endsAt', endsAt],
+      ['label', label],
+    ] as const) {
+      if (value) values[`slot.${row}.${name}`] = value;
+    }
+    slots.push({ weekday: Number.parseInt(weekday, 10) || 0, startsAt, endsAt, label: label || null });
+    rowOf.push(row);
+  }
+  values.rows = String(rows);
+  const fees = textValue(form, 'fees', 1000);
+  if (fees) values.fees = fees;
+  const firstTrialFree = form.get('firstTrialFree') === 'on';
+  if (firstTrialFree) values.firstTrialFree = 'on';
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).schools.updateSchedule({ id, slots, fees: fees || null, firstTrialFree });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(edit);
+    const state = formStateFromFailure(error, { ...values, id });
+    const fields: Record<string, string> = {};
+    for (const [key, message] of Object.entries(state.fields ?? {})) {
+      const match = /^slots\.(\d+)\.(\w+)$/.exec(key);
+      if (match) fields[`slot.${rowOf[Number(match[1])] ?? 0}.${match[2]}`] = message;
+      else if (key === 'slots') fields['slot.0.weekday'] = message;
+      else if (key === 'id') state.message = message;
+      else fields[key] = message;
+    }
+    const shown: FormState = state.status === 'error' ? { ...state, fields } : state;
+    return formResult({ form: SCHEDULE_FORM, page: edit, anchor: outcomeTarget(SCHEDULE_FORM, shown, false) }, shown);
+  }
+  redirect(`${page}?schedule=1#outcome`);
 }

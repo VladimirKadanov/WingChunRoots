@@ -7,6 +7,7 @@ import { cache } from 'react';
 
 import type { EventListDto } from '@/server/dto/events';
 import type { SchoolPageDto } from '@/server/dto/schools';
+import type { TrialOptions } from '@/server/services/trial-lessons';
 import { ORPCError } from '@/server/rpc/server';
 import { failure, lineageClient } from '../../people/[slug]/data';
 
@@ -37,4 +38,20 @@ export async function loadSchoolEvents(slug: string): Promise<EventListDto | nul
 /** "Exact location" or "Private club, by invitation", with the city. */
 export function locationLine(school: Pick<SchoolPageDto, 'precision' | 'city' | 'countryCode'>): string {
   return school.precision === 'exact' ? `${school.city}, ${school.countryCode} · Exact location` : `${school.city}, ${school.countryCode} · Private club, by invitation (city only)`;
+}
+
+/**
+ * M21: what this viewer may do about a trial lesson at the school (trial.options): sign in, send a
+ * request, or why not. Null when the read fails (the section then offers the request page, which
+ * says what it can).
+ */
+export async function loadTrialOptions(slug: string): Promise<TrialOptions | null> {
+  const client = await lineageClient();
+  try {
+    return await client.trial.options({ slug });
+  } catch (error) {
+    if (error instanceof ORPCError && error.code === 'NOT_FOUND') return null;
+    console.error(`[school-page] the trial lesson options could not be loaded: ${failure(error)}`);
+    return null;
+  }
 }

@@ -30,6 +30,8 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: deleted 0 expired session(s), 0 expired verification value(s), 0 expired throttle row(s)',
       'retention.purge: deleted 0 unconfirmed account(s), kept 0 still referred to',
       'retention.purge: deleted 0 old notification(s)',
+      // M21: closed trial lesson requests after a year, school counters after 400 days.
+      'retention.purge: deleted 0 closed trial lesson request(s), 0 old school counter(s)',
     ]);
   });
 

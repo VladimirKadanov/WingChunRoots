@@ -364,6 +364,8 @@ export interface TrialInbox {
   status: z.output<typeof trialInboxInput>['status'];
   counts: Record<TrialStatus, number>;
   inquiries: InboxInquiry[];
+  /** The longest reply or reason. */
+  limits: { reply: number };
 }
 
 /** trial.inbox: see the top of this file. 404 for anyone but the school's handlers. */
@@ -391,6 +393,7 @@ export async function trialInbox(principal: Principal | null, raw: z.input<typeo
     role: handler.role,
     status,
     counts,
+    limits: { reply: TRIAL_REPLY_MAX },
     inquiries: rows.map((r) => ({
       id: r.id,
       status: r.status,

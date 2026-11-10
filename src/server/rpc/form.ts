@@ -30,6 +30,20 @@ export async function pageRead<T>(read: Promise<T>): Promise<T | null> {
 }
 
 /**
+ * M21: pageRead() for a page about one object: `missing` when the procedure answers NOT_FOUND or
+ * BAD_REQUEST (the page's "not found" state), `value` null when the read failed unexpectedly (its
+ * error state), the value otherwise. Any other refusal is rethrown, as pageRead() does.
+ */
+export async function pageReadOne<T>(read: Promise<T>): Promise<{ missing: true; value: null } | { missing: false; value: T | null }> {
+  try {
+    return { missing: false, value: await pageRead(read) };
+  } catch (error) {
+    if (rpcErrorCode(error) === 'NOT_FOUND' || rpcErrorCode(error) === 'BAD_REQUEST') return { missing: true, value: null };
+    throw error;
+  }
+}
+
+/**
  * The form state for a refused procedure call (an ORPCError below 500), or null for anything else.
  * An unexpected failure reaches a caller as a bare 500 (./failure-log.ts) and is not a refusal: its
  * "Internal server error" is no message for a form (M08 final check, security-1).

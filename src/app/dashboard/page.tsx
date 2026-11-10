@@ -362,6 +362,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                 Training passport
               </Link>
             )}
+            {/* M21: the trial lesson requests the account sent. */}
+            {staffOnly ? null : (
+              <Link href="/dashboard/trial-lessons" className="link inline-flex min-h-11 items-center" data-testid="dashboard-trial-lessons">
+                Trial lesson requests
+              </Link>
+            )}
             <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
               Account type and plan
             </Link>
