@@ -120,7 +120,11 @@ check "the student never records their own; arbitration reads only" bash -c "
 check "passport is available now and enforced; the full passport is Premium Student, Professional Sifu and Federation" bash -c "
   awk '/^    key: .passport.,/{f=1} f && /availability: .now.,/{a=1} f && /enforced: true,/{b=1} f && /^  \\},/{exit} END{exit !(a && b)}' $PLANS &&
   grep -qF \"FULL_PASSPORT_PLANS: readonly PlanCode[] = ['premium_student', 'pro_sifu', 'federation']\" $PLANS"
-check "PLAN_MATRIX_VERSION was raised for M19" grep -qF "PLAN_MATRIX_VERSION = '2026-11-07.1'" "$PLANS"
+# The version is 2026-11-07.1 or a later one (M21 raised it to 2026-11-10.1); docs/entitlements.md
+# keeps the M19 row either way.
+check "PLAN_MATRIX_VERSION was raised for M19" bash -c "
+  v=\$(sed -n \"s/^export const PLAN_MATRIX_VERSION = '\\(.*\\)';\$/\\1/p\" $PLANS) &&
+  [ -n \"\$v\" ] && [ \"\$(printf '%s\\n' 2026-11-07.1 \"\$v\" | sort | head -1)\" = 2026-11-07.1 ] && grep -q '2026-11-07.1' docs/entitlements.md"
 check "experience only as precise as the dates (whole years with about; months only month to month)" bash -c "
   grep -q \"start.precision !== 'year' && end !== null && end.precision !== 'year'\" $TIME && grep -qF 'about \${plural(years' $TIME"
 for q in 1 2 3 4 5 6; do
