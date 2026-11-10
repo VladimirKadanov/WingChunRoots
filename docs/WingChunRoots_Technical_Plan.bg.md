@@ -1079,6 +1079,7 @@ M00 копира този подраздел дословно в `docs/plan/RULE
 | M18 | [`docs/plan/M18-notices.md`](plan/M18-notices.md) — Известия за жизнения цикъл (избор на собственика от 05.11.2026, Фаза 2) | `m18-notices` | — | D06, D07, D08, D19, D20 |
 | M19 | [`docs/plan/M19-passport.md`](plan/M19-passport.md) — Кунг Фу паспорт (избор на собственика от 07.11.2026, Фаза 2) | `m19-passport` | — | D08, D13, D20, D21 |
 | M20 | [`docs/plan/M20-school-activity.md`](plan/M20-school-activity.md) — Проверка за активност на школите (90/105 дни; Фаза 2, §2.4) | `m20-school-activity` | — | D17, D18, D20 |
+| M21 | [`docs/plan/M21-trial-lessons.md`](plan/M21-trial-lessons.md) — Пробни тренировки, график и такси, основна статистика на школите (Фаза 2, §2.4; §1) | `m21-trial-lessons` | — | D08, D17, D18, D20 |
 | Отложен | [`docs/plan/deferred-hosting.md`](plan/deferred-hosting.md) — Хостинг и разгръщане (след решение на собственика) | — | — | D24 |
 
 ---
