@@ -33,6 +33,7 @@ import type { DrawerActions } from '@/components/ui/drawer';
 import { useMediaQuery } from '@/components/ui/use-media-query';
 import { cx } from '@/lib/cx';
 import { DEFAULT_RADIUS_KM, distanceKm, finderHref, searchKey, VIEW_WRITE_MS, viewAddress } from '@/lib/school-finder';
+import { trackSchool } from '@/lib/school-beacon';
 import type { GeoPointDto, SchoolPinDto } from '@/server/dto/schools';
 import { locationText, SchoolList } from './school-list';
 
@@ -133,6 +134,8 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
   // counts, so a second press on the same school zooms in again after the reader zoomed out).
   const [focus, setFocus] = useState<SchoolFocus | null>(null);
   const show = (id: string) => {
+    // M21: an opening of the school's card on the map counts for its stats (counts only).
+    if (id !== selectedId) trackSchool(id, 'pin_open');
     setSelectedId(id);
     setFocus((last) => ({ id, press: (last?.press ?? 0) + 1 }));
   };
@@ -193,6 +196,8 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
   }, []);
 
   const select = (id: string) => {
+    // M21: an opening of the school's pin counts for its stats (counts only).
+    if (id !== selectedId) trackSchool(id, 'pin_open');
     setSelectedId(id);
     if (!wide) setSheetOpen(true);
   };
