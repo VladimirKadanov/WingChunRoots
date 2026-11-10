@@ -43,3 +43,10 @@ export function parseIsoDay(value: string): Date | null {
   const date = new Date(`${value}T00:00:00Z`);
   return Number.isNaN(date.getTime()) || isoDay(date) !== value ? null : date;
 }
+
+/** A day of the calendar (never 2026-02-31, which PostgreSQL refuses), from 1970 on. */
+export function isCalendarDay(d: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < '1970-01-01') return false;
+  const ms = Date.parse(`${d}T00:00:00Z`);
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === d;
+}

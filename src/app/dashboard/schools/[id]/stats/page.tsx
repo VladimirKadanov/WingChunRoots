@@ -16,7 +16,7 @@ import { PageRedirect } from '@/components/account/page-redirect';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { buttonVariants } from '@/components/ui/button-variants';
-import { formatShortDay } from '@/lib/dates';
+import { formatShortDay, isCalendarDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { pageReadOne } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
@@ -32,7 +32,6 @@ export const metadata: Metadata = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const COLUMNS = [
   ['pageViews', 'Page views'],
@@ -100,7 +99,7 @@ export default async function SchoolStatsPage({ params, searchParams }: Props) {
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   if (!valid) return <SchoolNotFound />;
   const query = await searchParams;
-  const weekOf = typeof query.week === 'string' && DAY.test(query.week) ? query.week : null;
+  const weekOf = typeof query.week === 'string' && isCalendarDay(query.week) ? query.week : null;
   const { missing, value: view } = await pageReadOne(serverClient(await headers(), guard.principal) .schools.stats({ id, weekOf }));
   if (missing) return <SchoolNotFound />;
   if (!view) return <LoadError {...SCHOOL_STATS_LOAD_ERROR} retryHref={weekOf ? `${statsPage}?week=${weekOf}` : statsPage} />;

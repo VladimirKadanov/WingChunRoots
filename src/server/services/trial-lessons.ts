@@ -64,8 +64,12 @@ export const TRIAL_STATUS_LABELS: Record<TrialStatus, string> = {
 };
 
 const NO_SCHOOL = 'No such school.';
+/** Stands for "no listing account" where a query excludes the owner. */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 const NO_INQUIRY = 'No such trial lesson request.';
 const PHONE = /^\+?[0-9 ()./-]{5,40}$/;
+/** A phone the school can dial: at least five digits among the separators. */
+const PHONE_DIGITS = /(?:\d\D*){5}/;
 
 const text = (max: number, message: string) =>
   z
@@ -84,12 +88,15 @@ export const trialRequestInput = z
     preferredTimes: text(TRIAL_PREFERRED_MAX, `Use at most ${TRIAL_PREFERRED_MAX} characters.`),
     message: text(TRIAL_MESSAGE_MAX, `Use at most ${TRIAL_MESSAGE_MAX} characters.`),
     contactMethod: z.enum(TRIAL_CONTACT_METHODS, { error: 'Choose how the school may reach you.' }),
-    phone: text(40, 'Use at most 40 characters.'),
+    // Read only when the contact is by phone: a value left in the field after choosing e-mail is ignored.
+    phone: z.string().max(1000, { error: 'Use at most 40 characters.' }).nullish(),
   })
+  .transform((input) => ({ ...input, phone: input.contactMethod === 'phone' && input.phone ? input.phone.normalize('NFC').trim() || null : null }))
   .superRefine((input, ctx) => {
     if (input.contactMethod !== 'phone') return;
     if (!input.phone) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Give the phone number the school may call.' });
-    else if (!PHONE.test(input.phone)) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Use digits, spaces and + ( ) - only.' });
+    else if (input.phone.length > 40) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Use at most 40 characters.' });
+    else if (!PHONE.test(input.phone) || !PHONE_DIGITS.test(input.phone)) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Use digits, spaces and + ( ) - only.' });
   });
 export type TrialRequestInput = z.input<typeof trialRequestInput>;
 
@@ -142,7 +149,7 @@ type Refusal = 'unconfirmed' | 'no_profile' | 'own_school' | 'open' | 'limit';
 const REFUSAL_TEXT: Record<Refusal, string> = {
   unconfirmed: 'Confirm your e-mail address and the confirmations of sign-up (18 or older among them) first.',
   no_profile: 'Set up your profile first: the school sees the name of your profile.',
-  own_school: 'This is your own school, so there is no trial lesson to request.',
+  own_school: 'This is your own school or one your organization lists, so there is no trial lesson to request.',
   open: 'You already have a request at this school that waits for an answer. It is in your trial lesson requests.',
   limit: `You have sent ${TRIAL_DAILY_LIMIT} trial lesson requests in the last 24 hours. Send the next one later.`,
 };
@@ -165,7 +172,11 @@ async function refusalOf(db: Executor, p: Principal, s: PublicSchoolRow): Promis
   const name = await senderNameOf(db, p.user.id);
   if (!p.user.emailVerified || (await missingRequiredConsents(db as never, p.user.id)).length > 0) return { refusal: 'unconfirmed', name, openId: null };
   if (!name) return { refusal: 'no_profile', name, openId: null };
-  if (s.owner === p.user.id) return { refusal: 'own_school', name, openId: null };
+  // Its own school: the listing account, or an admin of an organization the school accepted, who
+  // handles the school's requests and would answer their own (DEFAULT M21, question 3).
+  if (s.owner === p.user.id || (await organizationAdminsOf(db, s.id, s.owner ?? NIL_UUID)).some((a) => a.userId === p.user.id)) {
+    return { refusal: 'own_school', name, openId: null };
+  }
   const openId = await openInquiryOf(db, s.id, p.user.id);
   if (openId) return { refusal: 'open', name, openId };
   if ((await sentInLastDay(db, p.user.id)) >= TRIAL_DAILY_LIMIT) return { refusal: 'limit', name, openId: null };
@@ -261,9 +272,11 @@ export async function requestTrial(principal: Principal | null, raw: TrialReques
       if (!isStaffRole(p.user.role)) await countSchoolEvent(tx, s.id, 'trial_inquiry');
       const payload = { schoolId: s.id, inquiryId: id, name: s.name };
       if (s.owner) await notify(tx, s.owner, 'school.trial-requested', payload, { key: `school.trial-requested:${id}` });
-      for (const admin of await organizationAdminsOf(tx, s.id, s.owner ?? '00000000-0000-0000-0000-000000000000')) {
-        if (admin.userId === p.user.id) continue;
-        await notifyEach(tx, [admin.userId], 'school.trial-requested', payload, { key: `school.trial-requested:${id}:${admin.organizationId}:${admin.userId}` });
+      // One notice per admin, also for an admin of two linked organizations.
+      const admins = new Set((await organizationAdminsOf(tx, s.id, s.owner ?? NIL_UUID)).map((a) => a.userId));
+      for (const adminId of admins) {
+        if (adminId === p.user.id) continue;
+        await notifyEach(tx, [adminId], 'school.trial-requested', payload, { key: `school.trial-requested:${id}:${adminId}` });
       }
       return { id, schoolId: s.id, slug: s.slug, status: 'open' as const };
     });
@@ -339,7 +352,7 @@ async function schoolHandler(db: Executor, schoolId: string, userId: string): Pr
   const row = result.rows[0];
   if (!row) return null;
   if (row.owner === userId) return { ...row, role: 'owner' };
-  const admins = await organizationAdminsOf(db, row.id, row.owner ?? '00000000-0000-0000-0000-000000000000');
+  const admins = await organizationAdminsOf(db, row.id, row.owner ?? NIL_UUID);
   return admins.some((a) => a.userId === userId) ? { ...row, role: 'organization' } : null;
 }
 

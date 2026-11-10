@@ -202,9 +202,10 @@ export async function updateSchoolSchedule(principal: Principal | null, raw: Sch
     if (!EDITABLE.includes(row.status)) throw new ServiceError('CONFLICT', 'A moderator hid this school or it is archived: it cannot be edited.');
     const before = await scheduleOf(tx, row.id);
     const key = (s: { weekday: number; startsAt: string; endsAt: string; label: string | null }) => `${s.weekday}|${s.startsAt}|${s.endsAt}|${s.label ?? ''}`;
-    const sorted = [...input.slots].sort((a, b) => a.weekday - b.weekday || a.startsAt.localeCompare(b.startsAt));
+    const sorted = [...input.slots].sort((a, b) => a.weekday - b.weekday || a.startsAt.localeCompare(b.startsAt) || key(a).localeCompare(key(b)));
     const changed: string[] = [];
-    if (before.map(key).join('\n') !== sorted.map(key).join('\n')) changed.push('schedule');
+    // The same rows in another order are the same schedule (two classes may share a day and a time).
+    if (before.map(key).sort().join('\n') !== sorted.map(key).sort().join('\n')) changed.push('schedule');
     if (row.fees !== input.fees) changed.push('fees');
     if (row.firstTrialFree !== input.firstTrialFree) changed.push('firstTrialFree');
     if (changed.length === 0) return { saved: { id: row.id, slug: row.slug, changed }, publicChange: false };

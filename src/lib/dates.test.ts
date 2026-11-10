@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDay, formatShortDay, isoDay, lastDayOf, parseIsoDay, untilPlanEnd } from './dates';
+import { formatDay, formatShortDay, isCalendarDay, isoDay, lastDayOf, parseIsoDay, untilPlanEnd } from './dates';
 
 describe('dates', () => {
   it('formats a day in UTC', () => {
@@ -24,5 +24,14 @@ describe('dates', () => {
     expect(parseIsoDay('2026-02-30')).toBeNull();
     expect(parseIsoDay('18.10.2026')).toBeNull();
     expect(parseIsoDay('')).toBeNull();
+  });
+
+  it('isCalendarDay: days of the calendar only (M21, the ?week= of the school stats)', () => {
+    expect(isCalendarDay('2026-11-08')).toBe(true);
+    expect(isCalendarDay('2028-02-29')).toBe(true);
+    expect(isCalendarDay('2026-02-31')).toBe(false);
+    expect(isCalendarDay('2026-13-01')).toBe(false);
+    expect(isCalendarDay('0000-01-01')).toBe(false);
+    expect(isCalendarDay('2026-1-8')).toBe(false);
   });
 });

@@ -19,6 +19,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
+import { isCalendarDay } from '../../lib/dates';
 import { requireUser } from '../auth/guards';
 import { isStaffRole, type Principal } from '../auth/principal';
 import { getDb } from '../db';
@@ -107,7 +108,8 @@ export const schoolStatsInput = z.object({
   weekOf: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, { error: 'Give a day as YYYY-MM-DD.' })
-    .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), { error: 'Give a day as YYYY-MM-DD.' })
+    // A day of the calendar (never 2026-02-31, which PostgreSQL refuses), from 1970 on.
+    .refine(isCalendarDay, { error: 'Give a day as YYYY-MM-DD.' })
     .nullish(),
 });
 

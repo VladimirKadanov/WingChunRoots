@@ -167,9 +167,10 @@ describe('trial lesson requests: who may send one', () => {
     const s = await listedSchool('fields');
     const student = await sender('fields-student');
     await expect(requestTrial(student.principal, { schoolId: s.id, contactMethod: 'phone' }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { phone: expect.any(String) } });
+    await expect(requestTrial(student.principal, { schoolId: s.id, contactMethod: 'phone', phone: '(-----)' }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { phone: expect.any(String) } });
     await expect(requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email', message: 'x'.repeat(1001) }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST', fields: { message: expect.any(String) } });
     // By e-mail, the contact is the account's own address, whatever else is sent.
-    const sent = await requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email', phone: '+000 000 0002' }, meta);
+    const sent = await requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email', phone: `+000 000 0002 ${'0'.repeat(60)}` }, meta);
     const [row] = await getDb().select().from(trialInquiry).where(eq(trialInquiry.id, sent.id));
     expect(row!.contactValue).toBe(student.account.email);
   });
@@ -238,14 +239,20 @@ describe('trial lesson requests: who reads and answers one', () => {
     expect(asOther).not.toContain(student.account.email);
   });
 
-  it('an organization admin who sends a request at a linked school is not told of their own request', async () => {
+  it('an admin of a linked organization handles the requests and sends none there; an admin of two linked organizations is told once', async () => {
     const s = await listedSchool('org-self');
     const orgAdmin = await sender('org-self-admin');
-    const org = await getDb().execute<{ id: string }>(sql`SELECT id FROM organization WHERE status = 'active' ORDER BY slug LIMIT 1`);
-    await getDb().execute(sql`INSERT INTO organization_admin (organization_id, user_id, role) VALUES (${org.rows[0]!.id}::uuid, ${orgAdmin.account.id}::uuid, 'admin')`);
-    await getDb().execute(sql`INSERT INTO organization_school (organization_id, school_id, status, answered_at) VALUES (${org.rows[0]!.id}::uuid, ${s.id}::uuid, 'accepted', now())`);
-    await requestTrial(orgAdmin.principal, { schoolId: s.id, contactMethod: 'email' }, meta);
-    expect(await noticesOf(orgAdmin.account.id, 'school.trial-requested')).toEqual([]);
+    const student = await sender('org-self-student');
+    const orgs = await getDb().execute<{ id: string }>(sql`SELECT id FROM organization WHERE status = 'active' AND deleted_at IS NULL ORDER BY slug LIMIT 2`);
+    expect(orgs.rows).toHaveLength(2);
+    for (const org of orgs.rows) {
+      await getDb().execute(sql`INSERT INTO organization_admin (organization_id, user_id, role) VALUES (${org.id}::uuid, ${orgAdmin.account.id}::uuid, 'admin')`);
+      await getDb().execute(sql`INSERT INTO organization_school (organization_id, school_id, status, answered_at) VALUES (${org.id}::uuid, ${s.id}::uuid, 'accepted', now())`);
+    }
+    expect((await trialOptions(orgAdmin.principal, { slug: s.slug })).state).toBe('own_school');
+    await expect(requestTrial(orgAdmin.principal, { schoolId: s.id, contactMethod: 'email' }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email' }, meta);
+    expect(await noticesOf(orgAdmin.account.id, 'school.trial-requested')).toHaveLength(1);
     expect(await noticesOf(s.sifu.account.id, 'school.trial-requested')).toHaveLength(1);
   });
 
