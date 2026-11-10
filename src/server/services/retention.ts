@@ -29,6 +29,11 @@
 //                            was created while unread (M18; DEFAULT M18, question 3). The e-mail of
 //                            a notice keeps the rules of email_delivery above (M01b).
 //
+//   trial_inquiry            deleted 365 days after it closed (answered, declined or closed; M21,
+//                            DEFAULT M21 question 5): the sender's name, contact and message go
+//                            with it. An open inquiry is never deleted by age.
+//   school_stat_day          deleted 400 days after its day (M21, DEFAULT M21 question 7).
+//
 // The periods wait for the legal review (plan §10.2, row 11), like the rest of docs/data-model.md §7.
 //
 // The rows change in batches, each its own statement and transaction, so no statement comes near
@@ -39,6 +44,9 @@
 import { sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '../db';
+import { SCHOOL_STATS_RETENTION_DAYS, TRIAL_INQUIRY_RETENTION_DAYS } from '../db/schema/common';
+
+export { SCHOOL_STATS_RETENTION_DAYS, TRIAL_INQUIRY_RETENTION_DAYS };
 
 export const EMAIL_DELIVERY_ADDRESS_RETENTION_DAYS = 90;
 export const UNCONFIRMED_ACCOUNT_RETENTION_DAYS = 7;
@@ -260,4 +268,39 @@ export async function purgeOldNotifications(
                   FOR UPDATE SKIP LOCKED)`,
   );
   return { notifications };
+}
+
+/**
+ * M21 (DEFAULT M21, questions 5 and 7): deletes the trial lesson inquiries closed more than
+ * TRIAL_INQUIRY_RETENTION_DAYS ago and the school counters older than SCHOOL_STATS_RETENTION_DAYS
+ * (UTC days). Idempotent; returns how many rows went.
+ */
+export async function purgeOldTrialData(
+  db: Database,
+  { batchSize = RETENTION_BATCH_SIZE }: { batchSize?: number } = {},
+): Promise<{ inquiries: number; counters: number }> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('batchSize must be a positive integer');
+  const inquiries = await inBatches(
+    db,
+    batchSize,
+    (limit) => sql`
+      DELETE FROM trial_inquiry
+       WHERE id IN (
+               SELECT id FROM trial_inquiry
+                WHERE status <> 'open' AND closed_at < now() - make_interval(days => ${TRIAL_INQUIRY_RETENTION_DAYS})
+                LIMIT ${limit}
+                  FOR UPDATE SKIP LOCKED)`,
+  );
+  const counters = await inBatches(
+    db,
+    batchSize,
+    (limit) => sql`
+      DELETE FROM school_stat_day
+       WHERE (school_id, day) IN (
+               SELECT school_id, day FROM school_stat_day
+                WHERE day < (now() AT TIME ZONE 'UTC')::date - ${SCHOOL_STATS_RETENTION_DAYS}::int
+                LIMIT ${limit}
+                  FOR UPDATE SKIP LOCKED)`,
+  );
+  return { inquiries, counters };
 }

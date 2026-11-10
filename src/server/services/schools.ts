@@ -87,6 +87,8 @@ import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
 import { notify, notifyEach } from './notify';
 import { ACTIVITY_RESET, activityOf, type SchoolActivity } from './school-activity';
+import { publicScheduleOf } from './school-schedule';
+import { openTrialCounts } from './trial-lessons';
 
 // --- Constants ---------------------------------------------------------------------------------
 
@@ -516,6 +518,8 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
   const photos = await publicPhotoRefs(db, ids);
   // M16: the school's logo and room photos (the school is public: it is in v_public_school).
   const gallery = await schoolPhotosOf(db, row.id);
+  // M21: the schedule and fees (public listing content of a school the view shows).
+  const timetable = await publicScheduleOf(db, row.id);
   tagCacheEntry([SCHOOLS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag)]);
   const last = row.last_activity_at instanceof Date ? row.last_activity_at : new Date(row.last_activity_at);
   return toPublicSchoolPage({
@@ -546,6 +550,10 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     }),
     logo: gallery.logo,
     photos: gallery.rooms,
+    schedule: timetable.schedule,
+    timezone: timetable.timezone,
+    fees: timetable.fees,
+    firstTrialFree: timetable.firstTrialFree,
   });
 }
 
@@ -597,6 +605,8 @@ export interface OwnSchoolItem {
   lastActivityAt: string;
   /** M20: the activity check (its stage and dates). */
   activity: SchoolActivity;
+  /** M21: the trial lesson requests that wait for an answer. */
+  openTrialRequests: number;
 }
 
 export interface SchoolEditorView {
@@ -706,6 +716,10 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
     db,
     rows.map((r) => r.id),
   );
+  const trials = await openTrialCounts(
+    db,
+    rows.map((r) => r.id),
+  );
   return {
     accountType: await accountTypeOf(db, p.user.id),
     hasProfile: (await ownPersonId(db, p.user.id)) !== null,
@@ -721,6 +735,7 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
       pin: pinState(r.status, shown.has(r.id), r.activityStage),
       lastActivityAt: r.lastActivityAt.toISOString(),
       activity: activityOf(r),
+      openTrialRequests: trials.get(r.id) ?? 0,
     })),
   };
 }

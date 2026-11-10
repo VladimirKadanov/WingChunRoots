@@ -53,6 +53,13 @@ export type AuditAction =
   // system (no actor). The rows carry the stage and the dates, never a name or a point.
   | 'school.activity_awaiting'
   | 'school.activity_hidden'
+  // M21 (docs/adr/0024-trial-lessons.md): the schedule and fees of a listing (the fields that
+  // changed), and the trial lesson inquiries (ids and states only, never a name, a contact or a message).
+  | 'school.schedule_update'
+  | 'trial.request'
+  | 'trial.answer'
+  | 'trial.decline'
+  | 'trial.close'
   // M10b: invitations, profile claims, instructor verification, reports and arbitration (plan §6.6, §6.7).
   | 'invitation.create'
   | 'invitation.revoke'

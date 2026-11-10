@@ -13,7 +13,7 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
-import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeUnconfirmedAccounts } from '../services/retention';
+import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
@@ -137,6 +137,9 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         // M18 (DEFAULT M18, question 3): read notices after 180 days, unread ones after 365.
         const notices = await purgeOldNotifications(db);
         log(`${QUEUE.retentionPurge}: deleted ${notices.notifications} old notification(s)`);
+        // M21: closed trial lesson inquiries after 365 days, school counters after 400.
+        const trial = await purgeOldTrialData(db);
+        log(`${QUEUE.retentionPurge}: deleted ${trial.inquiries} closed trial lesson request(s), ${trial.counters} old school counter(s)`);
       } catch (error) {
         const code = failureCode(error);
         const last = job.retryCount >= job.retryLimit;
