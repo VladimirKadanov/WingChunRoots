@@ -86,7 +86,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
       expect(projects.map((p) => p.name)).toEqual(['exclusive']);
       const [exclusive] = projects;
       expect(exclusive?.testMatch).toEqual(EXCLUSIVE_SPECS);
-      // The table-locking specs (M08) and the specs that make links, schools, photos, events or passports public (M09–M19), or hide and show a school by its activity check (M20).
+      // The table-locking specs (M08) and the specs that make links, schools, photos, events or passports public (M09–M19), or hide and show a school by its activity check (M20), or list a school with its schedule and trial requests (M21).
       expect(exclusive?.testMatch).toEqual([
         EXCLUSIVE_SPEC,
         '**/m09-requests.spec.ts',
@@ -99,6 +99,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/m17-events.spec.ts',
         '**/m19-passport.spec.ts',
         '**/m20-school-activity.spec.ts',
+        '**/m21-trial-lessons.spec.ts',
       ]);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);

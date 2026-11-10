@@ -187,6 +187,18 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/schools', name: 'dashboard-schools-activity', status: 200, milestone: 'M20', key: true, signInAs: 'demo-pro-sifu-8' },
   { path: '/admin/schools', name: 'admin-schools', status: 200, milestone: 'M20', key: true, signInAs: 'admin' },
   { path: '/admin/schools?stage=hidden', name: 'admin-schools-hidden', status: 200, milestone: 'M20', signInAs: 'admin' },
+  // Trial lessons, the schedule and fees, and the school stats (M21, docs/adr/0024-trial-lessons.md):
+  // the trial lesson form of demo-school-sofia as demo-pending (nothing sent: the tests that send use
+  // accounts of their own, in the exclusive run), the same page for demo-root-a, whose request there
+  // is open, and the sender's list of demo-premium-student (its answered request), of demo-root-a
+  // (its open one) and of an account without any. demo-school-sofia's own page above shows its
+  // schedule and fees. The owner's inbox, schedule and statistics need the school's id: screen
+  // states (e2e/screenshots.spec.ts), and e2e/m21-trial-lessons-view.spec.ts runs axe on them in
+  // both themes. Key screens: their baselines come from a CI run.
+  { path: '/schools/demo-school-sofia/trial', name: 'school-trial', status: 200, milestone: 'M21', key: true, signInAs: 'demo-pending' },
+  { path: '/schools/demo-school-sofia/trial', name: 'school-trial-open', status: 200, milestone: 'M21', signInAs: 'user' },
+  { path: '/dashboard/trial-lessons', name: 'dashboard-trial-lessons', status: 200, milestone: 'M21', key: true, signInAs: 'demo-premium-student' },
+  { path: '/dashboard/trial-lessons', name: 'dashboard-trial-lessons-empty', status: 200, milestone: 'M21', signInAs: 'demo-pending' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

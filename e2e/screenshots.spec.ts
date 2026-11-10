@@ -541,6 +541,24 @@ const STATES: readonly ScreenState[] = [
       },
     }),
   ),
+  ...(['inquiries', 'schedule', 'stats'] as const).map(
+    (screen): ScreenState => ({
+      // M21: the owner's trial lesson requests, schedule and statistics of demo-school-sofia, as
+      // demo-pro-sifu-8 sees them (the seeded requests and counters; the statistics of the seeded
+      // weeks, so the screen does not move with the clock). Nothing is answered or saved.
+      name: `dashboard-school-${screen}`,
+      milestone: 'M21',
+      async reach(page) {
+        const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM school WHERE slug = 'demo-school-sofia'`);
+        expect(rows.rows).toHaveLength(1);
+        await signInAs(page, 'demo-pro-sifu-8');
+        const id = rows.rows[0]!.id;
+        await page.goto(screen === 'stats' ? `/dashboard/schools/${id}/stats?week=2026-11-08` : `/dashboard/schools/${id}/${screen}`);
+        const testId = screen === 'inquiries' ? 'trial-inquiries' : screen === 'schedule' ? 'schedule-form' : 'school-stats';
+        await expect(page.getByTestId(testId).filter({ visible: true })).toBeVisible();
+      },
+    }),
+  ),
 ];
 
 /**

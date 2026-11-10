@@ -160,7 +160,8 @@ export default async function SchoolStatsPage({ params, searchParams }: Props) {
             Page views by week, {range}; each bar has its number. The table below has every count.
           </figcaption>
         </figure>
-        <div className="overflow-x-auto">
+        {/* Scrolls sideways on a narrow phone: a region that a keyboard can reach and scroll. */}
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Counts by week">
           <table className="w-full min-w-[34rem] border-collapse text-left text-sm" data-testid="stats-table">
             <caption className="sr-only">Counts by week, {range}</caption>
             <thead>
