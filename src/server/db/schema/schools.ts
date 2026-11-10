@@ -5,7 +5,7 @@
 // city_only whoever writes the row, so the radius query of plan §6.3 can run on public_point.
 
 import { sql } from 'drizzle-orm';
-import { check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
 import {
@@ -16,6 +16,7 @@ import {
   PHOTO_CAPTION_MAX,
   PHOTO_FULL_MAX_SIDE,
   PHOTO_REASON_MAX,
+  SCHOOL_FEES_MAX,
   SCHOOL_FORMS,
   SCHOOL_ACTIVITY_STAGES,
   SCHOOL_PHOTO_KINDS,
@@ -99,9 +100,15 @@ export const school = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     ...timestamps(),
     deletedAt: deletedAt(),
+    // M21 (docs/adr/0024-trial-lessons.md; DEFAULT M21, question 1): the fees as one short free
+    // text, and whether the first trial lesson is free. Plain listing content: every listed school,
+    // no plan gate; shown on the public page. The weekly schedule is school_schedule_slot.
+    feesText: text('fees_text'),
+    firstTrialFree: boolean('first_trial_free').notNull().default(false),
   },
   (t) => [
     uniqueIndex('school_slug_key').on(t.slug),
+    check('school_fees_text_length', sql`${t.feesText} IS NULL OR char_length(${t.feesText}) BETWEEN 1 AND ${sql.raw(String(SCHOOL_FEES_MAX))}`),
     index('school_place_id_idx').on(t.placeId),
     index('school_status_idx').on(t.status),
     index('school_created_by_user_id_idx').on(t.createdByUserId),
