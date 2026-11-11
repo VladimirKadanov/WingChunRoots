@@ -237,6 +237,9 @@ import {
 } from '../services/billing';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
+import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
+import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
+import { claimsInput, leaveInput, leaveOrganization, myMemberships, organizationClaims, withdrawClaim, withdrawClaimInput } from '../services/organization-separation';
 import {
   addAdminInput,
   addMemberInput,
@@ -1068,6 +1071,54 @@ export const router = {
       .route({ method: 'POST', path: '/admin/organizations/revoke-grant', summary: "Revoke an organization's plan with a reason (admin, audited); members, school links and the public page stay" })
       .input(organizationRevokeInput)
       .handler(({ context, input }) => revokeOrganizationPlan(context.principal, input, context.meta)),
+  },
+  // M24: organization tools (docs/adr/0027-organization-tools.md): the bulk import, the analytics,
+  // the heatmap and the separation rules. Every procedure checks the account itself; another
+  // organization's import, claim or numbers are 404, the same answer as for none.
+  organizationTools: {
+    imports: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/imports', summary: "The organization's bulk imports, newest first, and the template's columns (its admins only)" })
+      .input(importListInput)
+      .handler(({ context, input }) => listImports(context.principal, input)),
+    importGet: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/imports/{importId}', summary: 'One import with its rows and their errors; the parsed fields only while the preview is open' })
+      .input(importIdInput)
+      .handler(({ context, input }) => getImport(context.principal, input)),
+    importPreview: signedIn
+      .route({ method: 'POST', path: '/organizations/imports/preview', summary: 'Check a CSV file of the template (base64) row by row and keep the preview for 24 hours; nothing is imported yet (approval and the Federation plan)' })
+      .input(importPreviewInput)
+      .handler(({ context, input }) => previewImport(context.principal, input, context.meta)),
+    importCommit: signedIn
+      .route({ method: 'POST', path: '/organizations/imports/commit', summary: "Import a preview's valid rows: private, unclaimed records, memberships and teacher claims that are never verified relationships (audited)" })
+      .input(importIdInput)
+      .handler(({ context, input }) => commitImport(context.principal, input, context.meta)),
+    importDiscard: signedIn
+      .route({ method: 'POST', path: '/organizations/imports/discard', summary: 'End a preview without importing anything; its rows are cleared (audited)' })
+      .input(importIdInput)
+      .handler(({ context, input }) => discardImport(context.principal, input, context.meta)),
+    claims: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/claims', summary: "The organization's teacher claims from its imports: claimed by the organization, never verified (its admins only)" })
+      .input(claimsInput)
+      .handler(({ context, input }) => organizationClaims(context.principal, input)),
+    withdrawClaim: signedIn
+      .route({ method: 'POST', path: '/organizations/claims/withdraw', summary: "Withdraw one of the organization's teacher claims (audited)" })
+      .input(withdrawClaimInput)
+      .handler(({ context, input }) => withdrawClaim(context.principal, input, context.meta)),
+    analytics: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/analytics', summary: "Counts of the organization's own members, schools, public verification states and claims, by country, city and month (Federation plan)" })
+      .input(insightsInput)
+      .handler(({ context, input }) => organizationAnalytics(context.principal, input)),
+    heatmap: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/heatmap', summary: "The density of the organization's linked schools in squares of 1°, at their cities' centres; squares under 3 schools are counted by country only (Federation plan)" })
+      .input(insightsInput)
+      .handler(({ context, input }) => organizationHeatmap(context.principal, input)),
+    memberships: base
+      .route({ method: 'GET', path: '/organizations/memberships', summary: "The signed-in account's own memberships, what each organization records about it, and the separation rules" })
+      .handler(({ context }) => myMemberships(context.principal)),
+    leave: signedIn
+      .route({ method: 'POST', path: '/organizations/memberships/leave', summary: "End your own membership today; the organization's fields and claims about you go, your teachers, students and profile stay (audited)" })
+      .input(leaveInput)
+      .handler(({ context, input }) => leaveOrganization(context.principal, input, context.meta)),
   },
   // M17: the event calendar (docs/adr/0020-events.md). The public reads give public DTOs only
   // (v_public_event); an event is changed and cancelled only by its organizer, removed by staff.

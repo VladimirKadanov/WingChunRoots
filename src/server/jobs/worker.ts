@@ -13,7 +13,7 @@ import { describeError, MailBusyError, MailInputError } from '../mail/mailer';
 import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
-import { purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
+import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
@@ -141,6 +141,9 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         // M21: closed trial lesson inquiries after 365 days, school counters after 400.
         const trial = await purgeOldTrialData(db);
         log(`${QUEUE.retentionPurge}: deleted ${trial.inquiries} closed trial lesson request(s), ${trial.counters} old school counter(s)`);
+        // M24: organization import previews past their 24 hours (their rows' data cleared).
+        const imports = await expireOrganizationImports(db);
+        log(`${QUEUE.retentionPurge}: ended ${imports.imports} expired organization import preview(s)`);
       } catch (error) {
         const code = failureCode(error);
         const last = job.retryCount >= job.retryLimit;

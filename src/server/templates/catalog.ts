@@ -137,6 +137,9 @@ export const NOTIFICATION_CATALOG = {
   'organization.admin_added': dashboardOnly('organizations'),
   'organization.school_requested': dashboardOnly('organizations'),
   'organization.school_answered': dashboardOnly('organizations'),
+  // M24: separations (DEFAULT M24 question 10: in the dashboard, no e-mail).
+  'organization.member_left': dashboardOnly('organizations'),
+  'organization.membership_ended': dashboardOnly('organizations'),
   // M17: events (DEFAULT M17, question 3: e-mail off by default; an account may switch it on).
   'event.published': mailed('events', 'notice'),
   'event.cancelled': mailed('events', 'notice'),

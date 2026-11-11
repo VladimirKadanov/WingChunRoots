@@ -98,6 +98,13 @@ export type AuditAction =
   | 'organization.school_request'
   | 'organization.school_answer'
   | 'organization.school_end'
+  // M24: organization tools (docs/adr/0027-organization-tools.md). The rows carry ids, counts,
+  // statuses and the file's SHA-256, never a name, a rank, a city or a line of the file.
+  | 'organization.import_preview'
+  | 'organization.import_commit'
+  | 'organization.import_discard'
+  | 'organization.claim_withdraw'
+  | 'organization.member_leave'
   // M17: events (docs/adr/0020-events.md). The rows carry ids, the kind, the month and the fields
   // that changed, never a title, a description or a storage key; a staff removal keeps its reason.
   | 'event.create'
