@@ -46,7 +46,9 @@ import { requestInstructorVerification } from '../services/instructor';
 import { inviteTeacher } from '../services/invitations';
 import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
-import { assignReviewCase } from '../services/review';
+import { assignReviewCase, decideReviewCase } from '../services/review';
+import { reportLineage } from '../services/disputes';
+import { answerNomination, nominateSuccessor } from '../services/succession';
 import { type Account, createUser, key, meta, newLineage, ongoingFrom, principalOf } from '../services/relationships.test-support';
 import { grantOrganizationPlan } from '../services/organization-grants';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
@@ -423,6 +425,55 @@ async function subscriptionOf(opts: { cancelled?: boolean } = {}) {
   const { subscription } = await paidSubscription(owner.principal, 'premium_student');
   if (opts.cancelled) await cancelSubscription(owner.principal, { subscriptionId: subscription.id }, meta);
   return { owner, subscriptionId: subscription.id };
+}
+
+/**
+ * M25: a Professional Sifu (the `owner`) and their verified student on Premium Student (the
+ * `party`); the student nominated as successor when `nominated`, the nomination accepted when
+ * `accepted`, and the owner's account without activity for 200 days when `inactive`.
+ */
+async function successionOf(opts: { nominated?: boolean; accepted?: boolean; inactive?: boolean } = {}) {
+  const teacher = await actor('succession-owner', { sifu: true });
+  const student = await actor('succession-heir');
+  await createGrant(world.admin.principal, { email: teacher.email, planCode: 'pro_sifu', reason: 'M25 authorization matrix (fictional)' }, meta);
+  await createGrant(world.admin.principal, { email: student.email, planCode: 'premium_student', reason: 'M25 authorization matrix (fictional)' }, meta);
+  const lineageId = await newLineage('m25-authz');
+  await getDb().insert(teachingRelationship).values({ teacherPersonId: teacher.personId!, studentPersonId: student.personId!, lineageId, status: 'verified', visibility: 'public' });
+  let nominationId = uuidv7();
+  if (opts.nominated || opts.accepted) {
+    nominationId = (await nominateSuccessor(teacher.principal, { successorPersonId: student.personId! }, meta)).nomination.id;
+  }
+  if (opts.accepted) await answerNomination(student.principal, { nominationId, answer: 'accept' }, meta);
+  if (opts.inactive) {
+    await getDb().execute(sql`UPDATE auth_user SET last_active_at = now() - interval '200 days' WHERE id = ${teacher.id}::uuid`);
+    await getDb().execute(sql`UPDATE auth_session SET updated_at = now() - interval '200 days', created_at = now() - interval '200 days' WHERE user_id = ${teacher.id}::uuid`);
+  }
+  return { teacher, student, nominationId };
+}
+
+/** M25: a public shared archival record (unclaimed), its slug and id. */
+async function sharedRecord() {
+  const id = uuidv7();
+  const slug = `demo-shared-record-${randomBytes(4).toString('hex')}`;
+  await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'unknown' });
+  await getDb().insert(personName).values({ personId: id, value: 'Demo Shared Record', script: 'Latn', lang: 'en', isPrimary: true });
+  return { id, slug };
+}
+
+/** M25: a lineage dispute report by a new account (the `owner`), not upheld by the world's moderator. */
+async function refusedReport() {
+  const r = await verifiedLink();
+  const reporter = await actor('lineage-reporter');
+  const file = await upload(reporter);
+  const sent = await reportLineage(reporter.principal, { relationshipId: r.relationshipId, grounds: 'wrong_dates', details: 'A fictional report.', evidenceIds: [file.id], idempotencyKey: key() }, meta);
+  await assignReviewCase(world.moderator.principal, { caseId: sent.caseId, assigneeId: world.moderator.id, idempotencyKey: key() }, meta);
+  await decideReviewCase(world.moderator.principal, { caseId: sent.caseId, decision: 'reject', reason: 'The fictional evidence does not show it.', idempotencyKey: key() }, meta);
+  return { reporter, caseId: sent.caseId };
+}
+
+/** M25: evidence uploaded by the caller of a row (no file for a visitor without a session). */
+async function evidenceOf(caller: Actor | null | undefined): Promise<string[]> {
+  return caller ? [(await upload(caller)).id] : [uuidv7()];
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -1549,6 +1600,95 @@ const ROWS: Row[] = [
     },
     expect: { anonymous: 'ok', member: 'ok', owner: 'ok', party: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
   },
+  // M25: governance. Succession: the owner nominates and revokes, only the nominee answers and
+  // requests (with evidence, after more than 180 days of the owner's inactivity here); anyone else
+  // gets 404 for a nomination. Disputes, appeals and record proposals: any signed-in account.
+  { path: 'succession.mine', make: noInput, expect: own() },
+  {
+    path: 'succession.nominate',
+    make: async () => {
+      const s = await successionOf();
+      return { owner: s.teacher, party: s.student, input: { successorPersonId: s.student.personId } };
+    },
+    // A Premium Student and a Free Student have no successor to name; staff accounts have no profile.
+    expect: { ...signedInOnly, owner: 'ok', party: 'ENTITLEMENT_REQUIRED', member: 'ENTITLEMENT_REQUIRED', moderator: 'CONFLICT', archivist: 'CONFLICT', admin: 'CONFLICT', adminNo2fa: 'CONFLICT' },
+  },
+  {
+    path: 'succession.answer',
+    make: async () => {
+      const s = await successionOf({ nominated: true });
+      return { owner: s.teacher, party: s.student, input: { nominationId: s.nominationId, answer: 'accept' } };
+    },
+    expect: { ...signedInOnly, party: 'ok', owner: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'succession.revoke',
+    make: async () => {
+      const s = await successionOf({ accepted: true });
+      return { owner: s.teacher, party: s.student, input: { nominationId: s.nominationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'succession.request',
+    make: async (who) => {
+      const s = await successionOf({ accepted: true, inactive: true });
+      const caller = who === 'owner' ? s.teacher : who === 'party' ? s.student : who === 'anonymous' ? null : worldActor(who);
+      return {
+        owner: s.teacher,
+        party: s.student,
+        input: { nominationId: s.nominationId, basis: 'inactivity', note: 'A fictional request.', evidenceIds: await evidenceOf(caller), idempotencyKey: key() },
+      };
+    },
+    expect: { ...signedInOnly, party: 'ok', owner: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'disputes.relationships',
+    make: async () => ({ input: { slug: (await verifiedLink()).student.slug } }),
+    expect: own(),
+  },
+  {
+    path: 'disputes.report',
+    make: async (who) => {
+      const r = await verifiedLink();
+      const caller = who === 'owner' ? r.teacher : who === 'party' ? r.student : who === 'anonymous' ? null : worldActor(who);
+      return {
+        owner: r.teacher,
+        party: r.student,
+        input: { relationshipId: r.relationshipId, grounds: 'never_trained', details: 'A fictional report.', evidenceIds: await evidenceOf(caller), idempotencyKey: key() },
+      };
+    },
+    expect: { ...own(), owner: 'ok', party: 'ok' },
+  },
+  {
+    path: 'appeals.create',
+    make: async () => {
+      const c = await refusedReport();
+      return { owner: c.reporter, input: { caseId: c.caseId, grounds: 'A fictional appeal.', idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'records.history', make: async () => ({ input: { slug: (await sharedRecord()).slug } }), expect: everyone },
+  {
+    path: 'records.history (a record that is not public)',
+    make: async () => ({ input: { slug: (await historicalClaim()).recordSlug } }),
+    // Staff with the second factor read the history of any record; nobody else learns it exists.
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'records.proposeOptions', make: async () => ({ input: { slug: (await sharedRecord()).slug } }), expect: own() },
+  {
+    path: 'records.proposeOptions (a record kept by its own person)',
+    make: async () => ({ input: { slug: (await actor('self-kept')).slug } }),
+    expect: own('FORBIDDEN'),
+  },
+  {
+    path: 'records.propose',
+    make: async () => {
+      const r = await sharedRecord();
+      return { input: { personId: r.id, primaryName: 'Demo Shared Record Corrected', lifeStatus: 'unknown', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
+    },
+    expect: own(),
+  },
   // the evidence routes outside the router (plan §6.4): streamed only after the permission check
   {
     path: 'GET /api/evidence/{id}',
@@ -2029,6 +2169,24 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/billing/test-checkout/[id]/actions.ts#testPayAction', row: 'billing.testPay', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/admin/billing/[id]/actions.ts#moveTestClockAction', row: 'billing.testClock', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
+  // M25: the governance forms post the procedures' fields (the files' ids as the evidence field does).
+  { action: 'src/app/dashboard/succession/actions.ts#nominateSuccessorAction', row: 'succession.nominate', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/succession/actions.ts#answerNominationAction', row: 'succession.answer', form: same, roles: ['anonymous', 'member', 'owner', 'party'] },
+  { action: 'src/app/dashboard/succession/actions.ts#revokeNominationAction', row: 'succession.revoke', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/dashboard/succession/actions.ts#requestSuccessionAction',
+    row: 'succession.request',
+    form: (i) => ({ ...same(i), evidenceIds: (i.evidenceIds as string[])[0]! }),
+    roles: ['anonymous', 'member', 'owner', 'party'],
+  },
+  {
+    action: 'src/app/people/[slug]/dispute/actions.ts#reportLineageAction',
+    row: 'disputes.report',
+    form: (i) => ({ ...same(i), evidenceIds: (i.evidenceIds as string[])[0]!, slug: 'demo-matrix' }),
+    roles: ['anonymous', 'member'],
+  },
+  { action: 'src/app/dashboard/cases/[id]/actions.ts#appealDecisionAction', row: 'appeals.create', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/people/[slug]/record/actions.ts#proposeRecordAction', row: 'records.propose', form: (i) => ({ ...same(i), slug: 'demo-matrix' }), roles: ['anonymous', 'member'] },
   // The editor saves the account's own person only: the form has no person to choose.
   { action: 'src/app/dashboard/profile/actions.ts#saveProfileAction', row: 'profile.update', form: () => ({ 'names.0.value': 'Demo Profile Person', primary: '0', showPublicly: 'on' }), roles: ['anonymous', 'owner'] },
 ];
