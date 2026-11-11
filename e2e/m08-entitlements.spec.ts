@@ -543,10 +543,26 @@ test('@M08 "Request pilot access" notifies admins and creates no charge', async 
   const again = await apiPost(page, '/plans/request-pilot-access', { planCode: 'pro_sifu' });
   expect(again.status(), await again.text()).toBe(200);
   expect(await again.json()).toMatchObject({ created: false, charged: false, request: { id: requestId } });
-  const paymentTables = await getDb().execute(sql`
+  // M22 (payments in test mode, docs/adr/0025-billing.md) adds exactly its six billing tables and no
+  // other payment table (scripts/verify.d/M08.sh checks the same); asking for pilot access writes
+  // nothing to any of them for this account.
+  const paymentTables = await getDb().execute<{ table_name: string }>(sql`
     SELECT table_name FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name ~ '(payment|charge|invoice|subscription|checkout|billing)'`);
-  expect(paymentTables.rows).toEqual([]);
+     WHERE table_schema = 'public' AND table_name ~ '(payment|charge|invoice|subscription|checkout|billing)'
+     ORDER BY table_name`);
+  expect(paymentTables.rows.map((row) => row.table_name)).toEqual([
+    'billing_checkout',
+    'billing_customer',
+    'billing_event',
+    'billing_invoice',
+    'billing_subscription',
+    'billing_test_subscription',
+  ]);
+  const billingRows = await getDb().execute<{ rows: number }>(sql`
+    SELECT ((SELECT count(*) FROM billing_customer WHERE subject_user_id = ${sifu.userId})
+          + (SELECT count(*) FROM billing_checkout WHERE subject_user_id = ${sifu.userId})
+          + (SELECT count(*) FROM billing_subscription WHERE subject_user_id = ${sifu.userId}))::int AS rows`);
+  expect(billingRows.rows[0]!.rows).toBe(0);
 
   // The open request is shown from then on; nothing is charged.
   await page.reload();
