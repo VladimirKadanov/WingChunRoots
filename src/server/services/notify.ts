@@ -57,8 +57,8 @@ export interface NotifyOptions {
   /** The worker's own pg-boss (jobs); the services use this process's producer. */
   boss?: NoticeProducer;
   /**
-   * M23: the key is shared by several recipients (notifyEach), so the e-mail's idempotency key
-   * carries the account too: one key per e-mail, as the mail outbox requires.
+   * M23: the key is shared by several recipients (notifyEach), so the e-mail's idempotency key is
+   * the notice's own id: one key per e-mail, as the mail outbox requires.
    */
   sharedKey?: boolean;
 }
@@ -175,7 +175,9 @@ export async function notify(
   const unsubscribe = CATEGORIES[entry.category].optOut ? { unsubscribe: unsubscribeLink(userId, entry.category, preference.version) } : {};
   try {
     if (entry.email === 'notice') {
-      const base = options.key && options.sharedKey ? `notice:${kind}:${options.key}:${userId}` : `notice:${kind}:${options.key ?? written.id}`;
+      // A key shared by several recipients names the notice itself: the notice is already one per
+      // account and key, and the mail outbox needs one key per e-mail (of at most 200 characters).
+      const base = `notice:${kind}:${options.key && !options.sharedKey ? options.key : written.id}`;
       await queueEmail(
         tx,
         { template: 'notice', to: account.email, userId, idempotencyKey: base, data: await noticeData(tx, userId, kind, payload), ...unsubscribe },
