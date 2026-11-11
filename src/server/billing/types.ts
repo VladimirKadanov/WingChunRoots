@@ -156,6 +156,8 @@ export interface BillingProvider {
   /**
    * Moves the subscription to another price of the same audience (Federation month ↔ year): now, with
    * proration and a new period from now, or at the end of the period (M23; DEFAULT M23, question 2).
+   * DEFAULT M22 (question 4), no change offered while Federation was not sold, ends with M23, which
+   * sells Federation monthly and yearly.
    */
   changePlan(subscriptionId: string, change: PlanChange): Promise<SubscriptionSnapshot>;
   /** M23: takes back a change scheduled for the period end. The new state. */
