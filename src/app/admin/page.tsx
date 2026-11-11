@@ -143,6 +143,15 @@ export default async function AdminPage() {
           <p className="text-sm text-fg-muted">Give and revoke test plans of the pilot, and answer pilot access requests.</p>
         </div>
       ) : null}
+      {/* M22: the subscriptions in test mode and their provider events (read-only). */}
+      {guard.principal?.user.role === 'admin' ? (
+        <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+          <Link href="/admin/billing" className={buttonVariants({ variant: 'secondary' })} data-testid="admin-billing-link">
+            Subscriptions
+          </Link>
+          <p className="text-sm text-fg-muted">Paid plans in test mode, their state and their provider events; the test clock. No real charge.</p>
+        </div>
+      ) : null}
       {/* M15: organizations, their approval and their plan. */}
       {guard.principal?.user.role === 'admin' ? (
         <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">

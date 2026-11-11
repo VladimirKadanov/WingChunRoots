@@ -2,6 +2,7 @@
 // without media_asset (Phase 2). drizzle.config.ts points drizzle-kit at this file.
 
 export * from './auth';
+export * from './billing';
 export * from './common';
 export * from './entitlements';
 export * from './events';

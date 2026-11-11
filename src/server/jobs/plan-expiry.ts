@@ -14,12 +14,17 @@
 //   nothing ends, and no notice is sent.
 // - Idempotent: the key `plan.expiring:<grant id>` or `plan.expired:<grant id>` makes one notice per
 //   grant and step, however often the job runs. Logs carry counts only (plan §6.4).
+// - M22 (docs/adr/0025-billing.md): the grant of a paid subscription (source 'stripe') ends at its
+//   paid-through date, which a renewal moves on. It is announced here only when its subscription
+//   was cancelled at the period end (the notice says "your plan", not "your pilot plan"); a renewing
+//   or unpaid subscription is not, since its notices are the billing ones (billing.payment-failed,
+//   billing.ended).
 
 import { and, gt, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import type { JobWithMetadata, PgBoss } from 'pg-boss';
 
 import type { Database } from '../db';
-import { authUser, entitlementGrant } from '../db/schema';
+import { authUser, billingSubscription, entitlementGrant } from '../db/schema';
 import { resolveEffectivePlan } from '../entitlements/effective';
 import { notify } from '../services/notify';
 import { QUEUE } from './queues';
@@ -38,7 +43,14 @@ export async function sendPlanEndNotices(db: Database, now = new Date(), boss?: 
   const soon = new Date(now.getTime() + PLAN_EXPIRY_NOTICE_DAYS * DAY_MS);
   const since = new Date(now.getTime() - PLAN_EXPIRY_NOTICE_DAYS * DAY_MS);
   const ending = await db
-    .select({ id: entitlementGrant.id, subjectUserId: entitlementGrant.subjectUserId, planCode: entitlementGrant.planCode, startsAt: entitlementGrant.startsAt, endsAt: entitlementGrant.endsAt })
+    .select({
+      id: entitlementGrant.id,
+      subjectUserId: entitlementGrant.subjectUserId,
+      planCode: entitlementGrant.planCode,
+      source: entitlementGrant.source,
+      startsAt: entitlementGrant.startsAt,
+      endsAt: entitlementGrant.endsAt,
+    })
     .from(entitlementGrant)
     .where(
       and(
@@ -54,6 +66,15 @@ export async function sendPlanEndNotices(db: Database, now = new Date(), boss?: 
   const userIds = [...new Set(ending.map((g) => g.subjectUserId!))];
   const accounts = await db.select({ id: authUser.id, accountType: authUser.accountType }).from(authUser).where(inArray(authUser.id, userIds));
   const typeOf = new Map(accounts.map((a) => [a.id, a.accountType]));
+  const paidIds = ending.filter((g) => g.source === 'stripe').map((g) => g.id);
+  const subscriptions =
+    paidIds.length === 0
+      ? []
+      : await db
+          .select({ grantId: billingSubscription.grantId, status: billingSubscription.status, cancelAtPeriodEnd: billingSubscription.cancelAtPeriodEnd, endReason: billingSubscription.endReason })
+          .from(billingSubscription)
+          .where(inArray(billingSubscription.grantId, paidIds));
+  const subscriptionOf = new Map(subscriptions.map((s) => [s.grantId, s]));
   const grants = await db
     .select({
       id: entitlementGrant.id,
@@ -73,6 +94,14 @@ export async function sendPlanEndNotices(db: Database, now = new Date(), boss?: 
     const accountType = typeOf.get(userId);
     if (!accountType) continue;
     const endsAt = grant.endsAt!;
+    let paid = false;
+    if (grant.source === 'stripe') {
+      const sub = subscriptionOf.get(grant.id);
+      // Only a cancellation at the period end (M22): a renewing or unpaid subscription has its own notices.
+      const cancelled = sub !== undefined && sub.status !== 'past_due' && (sub.status === 'canceled' ? sub.endReason === 'canceled' : sub.cancelAtPeriodEnd);
+      if (!cancelled) continue;
+      paid = true;
+    }
     const own = grants.filter((g) => g.subjectUserId === userId);
     // Only a grant that is the account's plan up to its end: not one kept for the other account
     // type, nor one a higher grant overshadows.
@@ -87,7 +116,7 @@ export async function sendPlanEndNotices(db: Database, now = new Date(), boss?: 
         tx,
         userId,
         step,
-        { grantId: grant.id, planCode: grant.planCode, endsAt: endsAt.toISOString(), nextPlanCode: next },
+        { grantId: grant.id, planCode: grant.planCode, endsAt: endsAt.toISOString(), nextPlanCode: next, ...(paid ? { paid: true } : {}) },
         { key: `${step}:${grant.id}`, boss },
       ),
     );

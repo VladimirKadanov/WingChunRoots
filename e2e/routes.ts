@@ -199,6 +199,18 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/schools/demo-school-sofia/trial', name: 'school-trial-open', status: 200, milestone: 'M21', signInAs: 'user' },
   { path: '/dashboard/trial-lessons', name: 'dashboard-trial-lessons', status: 200, milestone: 'M21', key: true, signInAs: 'demo-premium-student' },
   { path: '/dashboard/trial-lessons', name: 'dashboard-trial-lessons-empty', status: 200, milestone: 'M21', signInAs: 'demo-pending' },
+  // Payments in test mode (M22, docs/adr/0025-billing.md): the billing page of demo-premium-student
+  // (its active Premium Student subscription and its payment), of demo-free-sifu-5 (its ended
+  // Professional Sifu subscription, kept, and the offer of the plan again) and of an account without
+  // any; the administrator's list of subscriptions (not a key screen: the exclusive run adds rows).
+  // The demo dates follow the day of the seed (src/fixtures/billing.ts), so the visual regression
+  // hides them ([data-visual-date], e2e/visual.css). The test checkout and the page of one
+  // subscription need an id: screen states (e2e/screenshots.spec.ts), and the M22 specs run axe on
+  // them in both themes. Key screens: their baselines come from a CI run.
+  { path: '/dashboard/billing', name: 'dashboard-billing', status: 200, milestone: 'M22', key: true, signInAs: 'demo-premium-student' },
+  { path: '/dashboard/billing', name: 'dashboard-billing-ended', status: 200, milestone: 'M22', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/dashboard/billing?plan=premium_student', name: 'dashboard-billing-none', status: 200, milestone: 'M22', signInAs: 'demo-pending' },
+  { path: '/admin/billing', name: 'admin-billing', status: 200, milestone: 'M22', signInAs: 'admin' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

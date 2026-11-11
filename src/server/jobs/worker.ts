@@ -18,6 +18,7 @@ import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
 import { lineageRecomputeHandler } from './lineage-recompute';
+import { billingEventHandler, billingGraceHandler } from './billing';
 import { planExpiryHandler } from './plan-expiry';
 import { schoolActivityHandler } from './school-activity';
 import { jobTemplateData, jobUnsubscribe } from './outbox';
@@ -194,6 +195,9 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   await boss.work(QUEUE.plansExpiry, work, planExpiryHandler(db, log, boss));
   // M20: the activity check of the listed schools (DEFAULT D17, D18).
   await boss.work(QUEUE.schoolsActivity, work, schoolActivityHandler(db, log, boss));
+  // M22: the provider events of a subscription in test mode, and the end of a grace period.
+  await boss.work(QUEUE.billingEvent, work, billingEventHandler(db, log, boss));
+  await boss.work(QUEUE.billingGrace, work, billingGraceHandler(db, log, boss));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

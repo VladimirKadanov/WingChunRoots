@@ -1,0 +1,33 @@
+{
+  "id": "evt_1DemoSubUpdated0000000001",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1794470400,
+  "livemode": false,
+  "type": "customer.subscription.updated",
+  "data": {
+    "object": {
+      "id": "sub_1DemoSubscription000000001",
+      "object": "subscription",
+      "customer": "cus_DemoCustomer0001",
+      "status": "active",
+      "cancel_at_period_end": true,
+      "canceled_at": 1794470400,
+      "ended_at": null,
+      "metadata": { "checkout_ref": "0190a5c0-0000-7000-8000-00000000c0de" },
+      "items": {
+        "object": "list",
+        "data": [
+          {
+            "id": "si_DemoItem0001",
+            "object": "subscription_item",
+            "current_period_start": 1793865600,
+            "current_period_end": 1796544000,
+            "price": { "id": "price_DemoPrice0001", "object": "price", "product": "prod_DemoProduct0001", "unit_amount": 1900, "currency": "usd", "recurring": { "interval": "month", "interval_count": 1 } }
+          }
+        ]
+      }
+    },
+    "previous_attributes": { "cancel_at_period_end": false }
+  }
+}

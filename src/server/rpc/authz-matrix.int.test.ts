@@ -52,6 +52,8 @@ import { grantOrganizationPlan } from '../services/organization-grants';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
 import { createSchool } from '../services/schools';
 import { requestTrial } from '../services/trial-lessons';
+import { cancelSubscription, startCheckout } from '../services/billing';
+import { paidSubscription } from '../services/billing.test-support';
 import { signUnsubscribeToken } from '../services/unsubscribe';
 import { SIGN_UP_CONSENTS } from '../legal/documents';
 import { handleApiRequest } from './handler';
@@ -406,6 +408,21 @@ async function pastEventOf() {
   await getDb().execute(sql`UPDATE event SET organizer_person_id = ${p.teacher.personId}::uuid, organizer_user_id = ${p.teacher.id}::uuid,
     starts_at = starts_at - interval '2 years', ends_at = ends_at - interval '2 years' WHERE id = ${e.id}::uuid`);
   return { ...p, eventId: e.id };
+}
+
+/** M22: an open test checkout of a new Student account (the `owner`). */
+async function openCheckoutOf() {
+  const owner = await actor('billing-checkout');
+  const checkout = await startCheckout(owner.principal, { planCode: 'premium_student' }, meta);
+  return { owner, checkoutId: checkout.checkoutId };
+}
+
+/** M22: a paid test subscription of a new Student account (the `owner`), cancelled at the period end when `cancelled`. */
+async function subscriptionOf(opts: { cancelled?: boolean } = {}) {
+  const owner = await actor('billing-subscriber');
+  const { subscription } = await paidSubscription(owner.principal, 'premium_student');
+  if (opts.cancelled) await cancelSubscription(owner.principal, { subscriptionId: subscription.id }, meta);
+  return { owner, subscriptionId: subscription.id };
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -1128,6 +1145,63 @@ const ROWS: Row[] = [
       return { owner: t.school.owner, party: t.sender, input: { inquiryId: t.inquiryId } };
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  // M22: paid plans in test mode. `owner` holds the checkout or subscription; anyone else gets 404.
+  { path: 'billing.mine', make: noInput, expect: own() },
+  {
+    path: 'billing.checkout',
+    make: async () => ({ owner: await actor('billing-buyer', { sifu: true }), input: { planCode: 'pro_sifu' } }),
+    // Only the paid plan of one's own account type: the shared member is a Student account.
+    expect: { ...signedInOnly, owner: 'ok', member: 'BAD_REQUEST' },
+  },
+  {
+    path: 'billing.testCheckout',
+    make: async () => {
+      const c = await openCheckoutOf();
+      return { owner: c.owner, input: { checkoutId: c.checkoutId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  {
+    path: 'billing.testPay',
+    make: async () => {
+      const c = await openCheckoutOf();
+      return { owner: c.owner, input: { checkoutId: c.checkoutId, card: 'succeeds' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  {
+    path: 'billing.cancel',
+    make: async () => {
+      const s = await subscriptionOf();
+      return { owner: s.owner, input: { subscriptionId: s.subscriptionId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'billing.resume',
+    make: async () => {
+      const s = await subscriptionOf({ cancelled: true });
+      return { owner: s.owner, input: { subscriptionId: s.subscriptionId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  { path: 'billing.adminList', make: () => ({ input: {} }), expect: staffOnly({ admin: 'ok' }) },
+  {
+    path: 'billing.adminGet',
+    make: async () => {
+      const s = await subscriptionOf();
+      return { owner: s.owner, input: { subscriptionId: s.subscriptionId } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'billing.testClock',
+    make: async () => {
+      const s = await subscriptionOf();
+      return { owner: s.owner, input: { subscriptionId: s.subscriptionId, step: 'period_end' } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
@@ -1949,6 +2023,12 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: (i) => ({ entry: `${String(i.kind)}:${String(i.id)}`, reason: String(i.reason), slug: 'demo-matrix' }),
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'admin'],
   },
+  // M22: the billing forms post the procedures' fields; the checkout redirects to its page.
+  { action: 'src/app/dashboard/billing/actions.ts#startCheckoutAction', row: 'billing.checkout', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/billing/actions.ts#cancelSubscriptionAction', row: 'billing.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/billing/test-checkout/[id]/actions.ts#testPayAction', row: 'billing.testPay', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/admin/billing/[id]/actions.ts#moveTestClockAction', row: 'billing.testClock', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   // The editor saves the account's own person only: the form has no person to choose.
   { action: 'src/app/dashboard/profile/actions.ts#saveProfileAction', row: 'profile.update', form: () => ({ 'names.0.value': 'Demo Profile Person', primary: '0', showPublicly: 'on' }), roles: ['anonymous', 'owner'] },
 ];

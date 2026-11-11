@@ -179,6 +179,7 @@ interface PlanGranted {
 
 /** The plan notifications lead to the account's plan, not to the dashboard they are shown on. */
 const SEE_YOUR_PLAN = { label: 'See your plan', href: '/dashboard/settings' } as const;
+const SEE_YOUR_BILLING = { label: 'Open billing', href: '/dashboard/billing' } as const;
 
 /**
  * "plan.granted": to the account an admin gave a test or complimentary plan (M08). A grant that
@@ -1008,6 +1009,8 @@ interface PlanEndNotice {
   endsAt: string;
   /** The free plan the account has after the end (its account type when the job ran). */
   nextPlanCode: PlanCode;
+  /** M22: a paid subscription (test mode) cancelled at its period end, not a pilot grant. */
+  paid?: boolean;
 }
 
 function planEndNotice(template: string, payload: unknown): PlanEndNotice {
@@ -1017,6 +1020,7 @@ function planEndNotice(template: string, payload: unknown): PlanEndNotice {
     planCode: grantablePlan(template, data.planCode),
     endsAt: requiredDate(template, 'endsAt', data.endsAt),
     nextPlanCode: anyPlan(template, 'nextPlanCode', data.nextPlanCode),
+    ...(data.paid === true ? { paid: true } : {}),
   };
 }
 
@@ -1034,11 +1038,18 @@ function whatStays(planCode: PlanCode, next: PlanCode): string {
 const planExpiring: NotificationTemplate<PlanEndNotice> = {
   name: 'plan.expiring',
   parse: (payload) => planEndNotice('plan.expiring', payload),
-  render: ({ planCode, endsAt, nextPlanCode }) => ({
-    title: `Your pilot plan has an end date: ${PLANS[planCode].name}`,
-    body: [{ text: `Your pilot plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
-    action: SEE_YOUR_PLAN,
-  }),
+  render: ({ planCode, endsAt, nextPlanCode, paid }) =>
+    paid
+      ? {
+          title: `Your plan has an end date: ${PLANS[planCode].name}`,
+          body: [{ text: `You cancelled ${PLANS[planCode].name}, so it does not renew. It runs until ${formatDay(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)} You can resume it before then.` }],
+          action: SEE_YOUR_BILLING,
+        }
+      : {
+          title: `Your pilot plan has an end date: ${PLANS[planCode].name}`,
+          body: [{ text: `Your pilot plan ${PLANS[planCode].name} runs ${untilPlanEnd(endsAt)}. After that your account has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          action: SEE_YOUR_PLAN,
+        },
   sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f1', planCode: 'pro_sifu', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_sifu' },
 };
 
@@ -1046,11 +1057,18 @@ const planExpiring: NotificationTemplate<PlanEndNotice> = {
 const planExpired: NotificationTemplate<PlanEndNotice> = {
   name: 'plan.expired',
   parse: (payload) => planEndNotice('plan.expired', payload),
-  render: ({ planCode, endsAt, nextPlanCode }) => ({
-    title: `Pilot plan ended: ${PLANS[planCode].name}`,
-    body: [{ text: `Your pilot plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
-    action: SEE_YOUR_PLAN,
-  }),
+  render: ({ planCode, endsAt, nextPlanCode, paid }) =>
+    paid
+      ? {
+          title: `Plan ended: ${PLANS[planCode].name}`,
+          body: [{ text: `Your cancelled plan ${PLANS[planCode].name} ran until ${formatDay(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          action: SEE_YOUR_BILLING,
+        }
+      : {
+          title: `Pilot plan ended: ${PLANS[planCode].name}`,
+          body: [{ text: `Your pilot plan ${PLANS[planCode].name} ran ${untilPlanEnd(endsAt)}. Your account now has ${PLANS[nextPlanCode].name}. ${whatStays(planCode, nextPlanCode)}` }],
+          action: SEE_YOUR_PLAN,
+        },
   sample: { grantId: '0190a5c0-0000-7000-8000-0000000000f2', planCode: 'premium_student', endsAt: '2027-01-01T00:00:00.000Z', nextPlanCode: 'free_student' },
 };
 
@@ -1381,6 +1399,132 @@ const schoolTrialDeclined: NotificationTemplate<TrialNotice & { reason: string |
   sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', inquiryId: '0190a5c0-0000-7000-8000-0000000000d2', name: 'Demo Wing Chun Hall', reason: null },
 };
 
+// --- Billing (M22; docs/adr/0025-billing.md) ------------------------------------------------------
+// Test mode only: every text says so. The date and what happens, never a countdown (CLAUDE.md §11).
+
+const PAID_PLANS = ['premium_student', 'pro_sifu', 'federation'] as const satisfies readonly PlanCode[];
+const NO_CHARGE = 'This is test mode: no real charge is ever made.';
+
+interface BillingNotice {
+  subscriptionId: string;
+  planCode: (typeof PAID_PLANS)[number];
+}
+
+function billingNotice(template: string, payload: unknown): BillingNotice & { data: Record<string, unknown> } {
+  const data = payloadObject(template, payload);
+  if (typeof data.planCode !== 'string' || !(PAID_PLANS as readonly string[]).includes(data.planCode)) throw new NotificationDataError(template, 'planCode must be a paid plan');
+  return { subscriptionId: uuidOf(template, 'subscriptionId', payload), planCode: data.planCode as BillingNotice['planCode'], data };
+}
+
+/** "billing.started" (M22): the subscription is active after a successful test checkout. */
+const billingStarted: NotificationTemplate<BillingNotice & { renewsOn: string; cancelAtPeriodEnd: boolean }> = {
+  name: 'billing.started',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.started', payload);
+    return { ...base, renewsOn: requiredDate('billing.started', 'renewsOn', data.renewsOn), cancelAtPeriodEnd: data.cancelAtPeriodEnd === true };
+  },
+  render: ({ planCode, renewsOn, cancelAtPeriodEnd }) => ({
+    title: `Your plan is now ${PLANS[planCode].name}`,
+    body: [
+      {
+        text: `${PLANS[planCode].name} is active now. ${cancelAtPeriodEnd ? `It runs until ${formatDay(renewsOn)} and does not renew.` : `It renews on ${formatDay(renewsOn)}; you can cancel at any time.`} ${NO_CHARGE}`,
+      },
+    ],
+    action: SEE_YOUR_BILLING,
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', renewsOn: '2027-01-15T10:00:00.000Z', cancelAtPeriodEnd: false },
+};
+
+/** "billing.cancel-scheduled" (M22): cancelled at the end of the period; access stays until then. */
+const billingCancelScheduled: NotificationTemplate<BillingNotice & { endsOn: string }> = {
+  name: 'billing.cancel-scheduled',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.cancel-scheduled', payload);
+    return { ...base, endsOn: requiredDate('billing.cancel-scheduled', 'endsOn', data.endsOn) };
+  },
+  render: ({ planCode, endsOn }) => ({
+    title: `${PLANS[planCode].name} will not renew`,
+    body: [
+      {
+        text: `You cancelled ${PLANS[planCode].name}. You keep it until ${formatDay(endsOn)}, and it does not renew after that. Nothing you added is deleted. You can resume it before then. ${NO_CHARGE}`,
+      },
+    ],
+    action: SEE_YOUR_BILLING,
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', endsOn: '2027-01-15T10:00:00.000Z' },
+};
+
+/** "billing.resumed" (M22): a cancellation at the period end was taken back. */
+const billingResumed: NotificationTemplate<BillingNotice & { renewsOn: string }> = {
+  name: 'billing.resumed',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.resumed', payload);
+    return { ...base, renewsOn: requiredDate('billing.resumed', 'renewsOn', data.renewsOn) };
+  },
+  render: ({ planCode, renewsOn }) => ({
+    title: `${PLANS[planCode].name} renews again`,
+    body: [{ text: `You resumed ${PLANS[planCode].name}. It renews on ${formatDay(renewsOn)}. ${NO_CHARGE}` }],
+    action: SEE_YOUR_BILLING,
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'premium_student', renewsOn: '2027-01-15T10:00:00.000Z' },
+};
+
+/** "billing.payment-failed" (M22; DEFAULT M22, question 5): a renewal failed; access stays for the grace period. */
+const billingPaymentFailed: NotificationTemplate<BillingNotice & { accessUntil: string }> = {
+  name: 'billing.payment-failed',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.payment-failed', payload);
+    return { ...base, accessUntil: requiredDate('billing.payment-failed', 'accessUntil', data.accessUntil) };
+  },
+  render: ({ planCode, accessUntil }) => ({
+    title: `The renewal of ${PLANS[planCode].name} did not go through`,
+    body: [
+      {
+        text: `The test payment for the renewal of ${PLANS[planCode].name} failed. You keep the plan until ${formatDay(accessUntil)}. If the payment does not go through by then, the plan ends; nothing you added is deleted. ${NO_CHARGE}`,
+      },
+    ],
+    action: SEE_YOUR_BILLING,
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', accessUntil: '2027-01-22T10:00:00.000Z' },
+};
+
+/** "billing.payment-recovered" (M22): a failed renewal was paid within the grace period. */
+const billingPaymentRecovered: NotificationTemplate<BillingNotice & { renewsOn: string }> = {
+  name: 'billing.payment-recovered',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.payment-recovered', payload);
+    return { ...base, renewsOn: requiredDate('billing.payment-recovered', 'renewsOn', data.renewsOn) };
+  },
+  render: ({ planCode, renewsOn }) => ({
+    title: `${PLANS[planCode].name} is paid`,
+    body: [{ text: `The renewal of ${PLANS[planCode].name} went through. It renews next on ${formatDay(renewsOn)}. ${NO_CHARGE}` }],
+    action: SEE_YOUR_BILLING,
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', renewsOn: '2027-02-15T10:00:00.000Z' },
+};
+
+const BILLING_END_REASONS = ['unpaid', 'provider'] as const;
+
+/** "billing.ended" (M22): a subscription ended for another reason than a cancellation at its period end. */
+const billingEnded: NotificationTemplate<BillingNotice & { endedAt: string; reason: (typeof BILLING_END_REASONS)[number] }> = {
+  name: 'billing.ended',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.ended', payload);
+    if (typeof data.reason !== 'string' || !(BILLING_END_REASONS as readonly string[]).includes(data.reason)) throw new NotificationDataError('billing.ended', 'reason must be unpaid or provider');
+    return { ...base, endedAt: requiredDate('billing.ended', 'endedAt', data.endedAt), reason: data.reason as (typeof BILLING_END_REASONS)[number] };
+  },
+  render: ({ planCode, endedAt, reason }) => ({
+    title: `${PLANS[planCode].name} ended`,
+    body: [
+      {
+        text: `${reason === 'unpaid' ? `The renewal of ${PLANS[planCode].name} was not paid in time, so the plan ended on ${formatDay(endedAt)}.` : `${PLANS[planCode].name} ended on ${formatDay(endedAt)}.`} ${whatStays(planCode, PLANS[planCode].audience === 'sifu' ? 'free_sifu' : PLANS[planCode].audience === 'student' ? 'free_student' : planCode)} You can choose the plan again on the plans page. ${NO_CHARGE}`,
+      },
+    ],
+    action: SEE_YOUR_BILLING,
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', endedAt: '2027-01-22T10:00:00.000Z', reason: 'unpaid' },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
@@ -1430,6 +1574,13 @@ export const NOTIFICATION_TEMPLATES = {
   'school.trial-requested': schoolTrialRequested,
   'school.trial-answered': schoolTrialAnswered,
   'school.trial-declined': schoolTrialDeclined,
+  // M22.
+  'billing.started': billingStarted,
+  'billing.cancel-scheduled': billingCancelScheduled,
+  'billing.resumed': billingResumed,
+  'billing.payment-failed': billingPaymentFailed,
+  'billing.payment-recovered': billingPaymentRecovered,
+  'billing.ended': billingEnded,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

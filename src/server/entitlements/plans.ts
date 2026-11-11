@@ -547,6 +547,38 @@ export function formatPrice(price: PlanPrice): string {
   return price.yearlyUsd === null ? monthly : `${monthly} or $${price.yearlyUsd} a year`;
 }
 
+// --- Billing in test mode (M22; docs/adr/0025-billing.md) --------------------------------------------
+
+/** M22: the label of every billing screen and checkout (with "Proposed price (not final)" beside a price). */
+export const TEST_MODE_LABEL = 'Test mode, no real charge';
+
+export type BillingInterval = 'month' | 'year';
+
+/**
+ * M22 (DEFAULT D09): what a checkout of `code` charges in test mode, in US cents: the proposed
+ * monthly price, or the proposed yearly price where the matrix names one (Federation). Null for a
+ * free plan or an interval the plan has no price for.
+ */
+export function billingPrice(code: PlanCode, interval: BillingInterval): { amountCents: number; currency: 'usd' } | null {
+  const price = PLANS[code].price;
+  if (price.monthlyUsd === 0) return null;
+  const usd = interval === 'month' ? price.monthlyUsd : price.yearlyUsd;
+  return usd === null ? null : { amountCents: Math.round(usd * 100), currency: 'usd' };
+}
+
+/** M22: the paid plans of an audience that a checkout offers now (availability 'now', a price above zero). */
+export function purchasablePlans(audience: PlanDefinition['audience']): PlanCode[] {
+  return plansFor(audience)
+    .filter((p) => p.availability === 'now' && p.price.monthlyUsd > 0)
+    .map((p) => p.code);
+}
+
+/** "$19.00" (cents of US dollars); another currency reads "19.00 EUR". */
+export function formatAmount(cents: number, currency: string): string {
+  const value = (cents / 100).toFixed(2);
+  return currency.toLowerCase() === 'usd' ? `$${value}` : `${value} ${currency.toUpperCase()}`;
+}
+
 /**
  * Whether `to` gives more of a feature than `from`: a higher or unlimited allowance, or included
  * where `from` is not. A different text between two included values counts as more when `to`

@@ -1,0 +1,24 @@
+{
+  "id": "evt_1DemoInvoiceFailed0000001",
+  "object": "event",
+  "created": 1796544100,
+  "livemode": false,
+  "type": "invoice.payment_failed",
+  "data": {
+    "object": {
+      "id": "in_1DemoInvoice00000000001",
+      "object": "invoice",
+      "customer": "cus_DemoCustomer0001",
+      "customer_email": "demo-buyer@example.test",
+      "customer_name": "Demo Buyer",
+      "amount_due": 1900,
+      "amount_paid": 0,
+      "currency": "usd",
+      "created": 1796544000,
+      "parent": { "type": "subscription_details", "subscription_details": { "subscription": "sub_1DemoSubscription000000001" } },
+      "lines": { "object": "list", "data": [{ "id": "il_DemoLine0001", "period": { "start": 1796544000, "end": 1799222400 } }] },
+      "payment_settings": { "payment_method_types": ["card"] },
+      "last_finalization_error": null
+    }
+  }
+}

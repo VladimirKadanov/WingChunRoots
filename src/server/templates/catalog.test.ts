@@ -30,8 +30,8 @@ describe('notification catalog', () => {
     expect(isNotificationKind('no.such-kind')).toBe(false);
   });
 
-  it('puts every kind in one of the eight categories, and every category has a kind', () => {
-    expect(NOTIFICATION_CATEGORIES).toEqual(['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events']);
+  it('puts every kind in one of the nine categories, and every category has a kind', () => {
+    expect(NOTIFICATION_CATEGORIES).toEqual(['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing']);
     for (const kind of KINDS) expect(isNotificationCategory(catalogEntry(kind).category), kind).toBe(true);
     for (const category of NOTIFICATION_CATEGORIES) expect(kindsOf(category).length, category).toBeGreaterThan(0);
   });
@@ -53,6 +53,16 @@ describe('notification catalog', () => {
       expect(emailWanted(kind, false), kind).toBe(true);
     }
     expect(emailWanted('content.removed', false)).toBe(true);
+  });
+
+  it('never lets the billing notices be switched off, and e-mails every one of them (M22; DEFAULT M22, question 6)', () => {
+    expect(CATEGORIES.billing.optOut).toBe(false);
+    expect(CATEGORIES.billing.emailDefault).toBe(true);
+    expect(kindsOf('billing').sort()).toEqual(['billing.cancel-scheduled', 'billing.ended', 'billing.payment-failed', 'billing.payment-recovered', 'billing.resumed', 'billing.started']);
+    for (const kind of kindsOf('billing')) {
+      expect(catalogEntry(kind).email, kind).toBe('notice');
+      expect(emailWanted(kind, false), kind).toBe(true);
+    }
   });
 
   it('has e-mail on by default for plan, teaching, review, schools and organizations, and off for events (DEFAULT M18, question 1)', () => {

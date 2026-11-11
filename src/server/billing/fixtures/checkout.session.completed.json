@@ -1,0 +1,20 @@
+{
+  "id": "evt_1DemoCheckoutDone00000001",
+  "object": "event",
+  "created": 1793865600,
+  "livemode": false,
+  "type": "checkout.session.completed",
+  "data": {
+    "object": {
+      "id": "cs_test_DemoSession0001",
+      "object": "checkout.session",
+      "mode": "subscription",
+      "client_reference_id": "0190a5c0-0000-7000-8000-00000000c0de",
+      "customer": "cus_DemoCustomer0001",
+      "subscription": "sub_1DemoSubscription000000001",
+      "customer_details": { "email": "demo-buyer@example.test", "name": "Demo Buyer", "address": { "city": "Demo City", "country": "BG" }, "phone": null },
+      "payment_status": "paid",
+      "status": "complete"
+    }
+  }
+}

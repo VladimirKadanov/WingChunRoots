@@ -39,6 +39,8 @@ ip_hmac_key="$(random_hex 32)"
 mail_seal_key="$(random_hex 32)"
 e2e_password="wcr-$(random_hex 12)"
 e2e_totp_secret="$(random_hex 20)"
+# M22: the HMAC key of the test billing provider's events (local only; never a real service's secret).
+billing_test_webhook_secret="$(random_hex 32)"
 
 # Portable lookup (macOS ships bash 3.2, which has no associative arrays).
 value_for() {
@@ -69,6 +71,7 @@ value_for() {
     MAIL_SEAL_KEY) echo "$mail_seal_key" ;;
     E2E_PASSWORD) echo "$e2e_password" ;;
     E2E_TOTP_SECRET) echo "$e2e_totp_secret" ;;
+    BILLING_TEST_WEBHOOK_SECRET) echo "$billing_test_webhook_secret" ;;
     *) return 1 ;;
   esac
 }
@@ -81,7 +84,7 @@ umask 077
 if [ -f .env ] && [ "${1:-}" != "--force" ]; then
   added=()
   for name in DB_MIGRATOR_PASSWORD DB_APP_RW_PASSWORD DB_APP_PUBLIC_RO_PASSWORD MAIL_TRANSPORT \
-    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET S3_ENDPOINT; do
+    APP_URL BETTER_AUTH_SECRET IP_HMAC_KEY MAIL_SEAL_KEY E2E_PASSWORD E2E_TOTP_SECRET S3_ENDPOINT BILLING_TEST_WEBHOOK_SECRET; do
     if grep -q "^${name}=$" .env.example && ! grep -q "^${name}=" .env; then
       # Keep the last existing line intact when the file does not end with a newline.
       [ -z "$(tail -c 1 .env)" ] || echo >> .env

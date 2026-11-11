@@ -290,6 +290,43 @@ export const ACCOUNT_TYPES = ['student', 'sifu'] as const;
 /** A request for pilot access to a plan (M08): open until an admin grants that plan or closes it. */
 export const PILOT_REQUEST_STATUSES = ['open', 'closed'] as const;
 
+// --- Billing (milestone M22; docs/adr/0025-billing.md) ----------------------------------------------
+/**
+ * M22: who takes the payments. `test` is the local test provider (the default, and the only one CI
+ * uses: a test checkout page inside the app, no real charge); `stripe` is the Stripe adapter, with
+ * test keys (sk_test_) only (src/server/billing/config.ts).
+ */
+export const BILLING_PROVIDERS = ['test', 'stripe'] as const;
+export const BILLING_INTERVALS = ['month', 'year'] as const;
+/**
+ * M22: a subscription as the app knows it from the provider's events. `incomplete`: started, not
+ * paid; `active`: paid through current_period_end; `past_due`: a renewal failed, access kept for the
+ * grace period; `canceled`: ended (terminal: no later event brings it back).
+ */
+export const BILLING_SUBSCRIPTION_STATUSES = ['incomplete', 'active', 'past_due', 'canceled'] as const;
+/** The statuses that give access: at most one such subscription per account or organization. */
+export const BILLING_LIVE_STATUSES = ['active', 'past_due'] as const;
+/** M22: why a subscription ended: cancelled at the period end, unpaid after the grace, or by the provider. */
+export const BILLING_END_REASONS = ['canceled', 'unpaid', 'provider'] as const;
+/** M22: a checkout the app started: open until paid (completed) or replaced or past its time (expired). */
+export const BILLING_CHECKOUT_STATUSES = ['open', 'completed', 'expired'] as const;
+/**
+ * M22: what applying a stored provider event did. `pending` until the job ran; `applied`;
+ * `stale` (older than the state the app holds, or after the end); `unknown` (no subscription or
+ * checkout of this app); `mismatch` (the event names another account's customer or checkout:
+ * nothing changes); `ignored` (a type with nothing to apply); `conflict` (the account already has a
+ * live subscription).
+ */
+export const BILLING_EVENT_OUTCOMES = ['pending', 'applied', 'stale', 'unknown', 'mismatch', 'ignored', 'conflict'] as const;
+export const BILLING_INVOICE_STATUSES = ['paid', 'failed'] as const;
+/**
+ * M22: the test cards of the test provider (never a card number in a request or a row): one that
+ * succeeds, one that is declined at checkout, and one that succeeds at checkout and fails at renewal.
+ */
+export const BILLING_TEST_CARDS = ['succeeds', 'declines', 'fails_at_renewal'] as const;
+/** M22 (DEFAULT D08; DEFAULT M22 question 5): after a failed renewal, access stays this many days. */
+export const BILLING_GRACE_DAYS = 7;
+
 // --- Accounts (Better Auth, M02; plan §3.2) ----------------------------------------------------------
 export const USER_ROLES = ['user', 'moderator', 'archivist', 'admin'] as const;
 /** Staff roles: only for an account with two_factor_enabled (CHECK auth_user_staff_needs_2fa). */
@@ -312,4 +349,9 @@ export const EMAIL_STATUSES = ['queued', 'sent', 'failed'] as const;
  * (src/server/templates/catalog.ts). The account chooses e-mail per category; `security` and
  * `account` (the legal notices) cannot be switched off.
  */
-export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events'] as const;
+export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing'] as const;
+/**
+ * The categories whose e-mail is never switched off: security, the legal notices of the account and
+ * (M22, DEFAULT M22 question 6) billing, whose notices say what happens to a payment and to access.
+ */
+export const LOCKED_NOTIFICATION_CATEGORIES = ['security', 'account', 'billing'] as const;

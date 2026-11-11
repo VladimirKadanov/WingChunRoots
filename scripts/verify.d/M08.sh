@@ -274,7 +274,17 @@ if [ -n "${TEST_DATABASE_URL:-}" ]; then
              AND table_name ~ '(payment|charge|invoice|subscription|checkout|billing)')" 2>/dev/null)"
   check "auth_user.account_type with its CHECK; the one-open-request and unread indexes exist" test "$(echo "$facts" | cut -d' ' -f1-3)" = "1 1 2"
   check "app_rw reads and writes pilot_access_request; app_public_ro has no privilege on it" test "$(echo "$facts" | cut -d' ' -f4-5)" = "t f"
-  check "there is no payment, charge, invoice, subscription or billing table (no charge in the pilot)" test "$(echo "$facts" | cut -d' ' -f6)" = "0"
+  if [ -f scripts/verify.d/M22.sh ]; then
+    # M22 (payments in test mode, docs/adr/0025-billing.md) adds exactly its six billing tables, and
+    # no other payment table; scripts/verify.d/M22.sh checks that they never charge for real.
+    billing_tables="$(psql_url "$TEST_DATABASE_URL" -X -q -At -c "
+      SELECT string_agg(table_name, ' ' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'public'
+         AND table_name ~ '(payment|charge|invoice|subscription|checkout|billing)'" 2>/dev/null)"
+    check "the only payment tables are the six of M22 (test mode), and no other payment, charge, invoice, subscription or billing table" \
+      test "$billing_tables" = "billing_checkout billing_customer billing_event billing_invoice billing_subscription billing_test_subscription"
+  else
+    check "there is no payment, charge, invoice, subscription or billing table (no charge in the pilot)" test "$(echo "$facts" | cut -d' ' -f6)" = "0"
+  fi
   seeded="$(psql_url "$TEST_DATABASE_URL" -X -q -At -F ' ' -c "
     SELECT (SELECT count(*) FROM entitlement_grant g JOIN auth_user u ON u.id = g.subject_user_id
              WHERE u.email = 'demo-pro-sifu-8@example.test' AND g.plan_code = 'pro_sifu' AND g.source = 'test_grant' AND g.revoked_at IS NULL),

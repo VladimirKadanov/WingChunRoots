@@ -119,8 +119,17 @@ describe('notify()', () => {
     }
     await expect(getDb().insert(notificationPreference).values({ userId: a.id, category: 'security', email: false })).rejects.toThrow();
     const { categories } = await notificationPreferences(a.principal);
-    expect(categories.filter((c) => c.locked).map((c) => c.category)).toEqual(['security', 'account']);
+    // M22 adds billing to the locked categories (the next test).
+    expect(categories.filter((c) => c.locked).map((c) => c.category)).toEqual(['security', 'account', 'billing']);
     expect(categories.find((c) => c.category === 'events')).toMatchObject({ email: false, chosen: false });
+  });
+
+  it('never lets billing e-mails be switched off either (M22; DEFAULT M22, question 6)', async () => {
+    const a = await account('locked-billing');
+    await expect(setNotificationPreference(a.principal, { category: 'billing', email: false })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(getDb().insert(notificationPreference).values({ userId: a.id, category: 'billing', email: false })).rejects.toThrow();
+    const { categories } = await notificationPreferences(a.principal);
+    expect(categories.find((c) => c.category === 'billing')).toMatchObject({ locked: true, email: true });
   });
 
   it('a blocked or deleted account gets nothing; an expired block lets it through', async () => {

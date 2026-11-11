@@ -10,6 +10,7 @@
 
 import path from 'node:path';
 
+import { checkBillingSettings } from './server/billing/config';
 import { closeDb, getDb } from './server/db';
 import { loadDotEnv } from './server/db/dotenv';
 import { appRwUrl, createBoss } from './server/jobs/boss';
@@ -22,6 +23,8 @@ const log = (line: string) => logger().info(`worker: ${line}`);
 async function main(): Promise<void> {
   loadDotEnv(path.resolve('.env'));
   configureLogger({ service: 'worker' });
+  // M22: the worker applies provider events; it refuses a live payment key as the web process does.
+  checkBillingSettings();
   const config = mailConfig();
   const transport = createTransportFromConfig(config);
   const db = getDb();

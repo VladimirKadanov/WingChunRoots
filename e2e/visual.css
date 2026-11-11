@@ -7,3 +7,10 @@
 input::placeholder {
   color: transparent !important;
 }
+
+/* M22: the dates of the demo subscriptions follow the day of the seed (src/fixtures/billing.ts),
+   so they change every day without any change in the app; their text keeps its space. */
+[data-visual-date],
+[data-visual-date] * {
+  color: transparent !important;
+}
