@@ -125,7 +125,20 @@ export type AuditAction =
   | 'billing.resume'
   | 'billing.subscription'
   | 'billing.grace_end'
-  | 'billing.test_clock';
+  | 'billing.test_clock'
+  // M25: governance (docs/adr/0028-governance.md). The rows carry ids, states, the basis and the
+  // number of days without activity, never a name, a reason of a party or a file name.
+  | 'succession.nominate'
+  | 'succession.answer'
+  | 'succession.revoke'
+  | 'succession.request'
+  | 'succession.transfer'
+  | 'dispute.report'
+  | 'dispute.decide'
+  | 'appeal.create'
+  | 'appeal.decide'
+  | 'record.propose'
+  | 'record.decide';
 
 export interface AuditEntry {
   action: AuditAction;

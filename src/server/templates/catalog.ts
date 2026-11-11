@@ -172,6 +172,18 @@ export const NOTIFICATION_CATALOG = {
   'billing.payment-failed': mailed('billing', 'notice'),
   'billing.payment-recovered': mailed('billing', 'notice'),
   'billing.ended': mailed('billing', 'notice'),
+  // M25: governance (docs/adr/0028-governance.md; DEFAULT M25, question 6). A nomination and its
+  // answer are between a teacher and a student (Teachers and students); a succession request and
+  // its decision change who administers a school, so they are account notices whose e-mail is never
+  // switched off; reports, appeals and proposals are reviews.
+  'succession.nominated': mailed('teaching', 'notice'),
+  'succession.answered': mailed('teaching', 'notice'),
+  'succession.revoked': mailed('teaching', 'notice'),
+  'succession.requested': mailed('account', 'notice'),
+  'succession.decided': mailed('account', 'notice'),
+  'dispute.decided': mailed('review', 'notice'),
+  'appeal.decided': mailed('review', 'notice'),
+  'proposal.decided': mailed('review', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

@@ -509,6 +509,11 @@ const OPENED_KINDS = {
   profile_report: { title: 'New profile report', body: 'A member reported a profile. It waits in the review queue.' },
   // M15.
   organization_application: { title: 'New organization application', body: 'An organization applied to be listed. It waits in the review queue.' },
+  // M25.
+  succession_request: { title: 'New succession request', body: 'A nominated successor asked to take over an owner’s administration, with evidence. It waits in the review queue.' },
+  lineage_report: { title: 'New lineage dispute report', body: 'A member reported a teaching relationship, with evidence. Nothing changed yet; it waits in the review queue.' },
+  decision_appeal: { title: 'New appeal', body: 'A party appealed a decision. Another member of staff than the one who decided reviews it.' },
+  record_proposal: { title: 'New archival record proposal', body: 'A member proposed a change to a shared archival record. It waits in the review queue.' },
 } as const;
 type OpenedKind = keyof typeof OPENED_KINDS;
 
@@ -1526,6 +1531,149 @@ const billingEnded: NotificationTemplate<BillingNotice & { endedAt: string; reas
 };
 
 /** Every notification template, by name (= template.name). */
+// --- Governance (M25; docs/adr/0028-governance.md) ------------------------------------------------
+// Neutral words: a decision has reasons, an unsuccessful report counts against no one, and
+// inactivity is never treated as a death. No names, only ids and states (the pages show the rest).
+
+const SUCCESSION_PAGE = '/dashboard/succession';
+
+function idOf(template: string, payload: unknown, key: string): string {
+  const value = payloadObject(template, payload)[key];
+  if (typeof value !== 'string' || !UUID.test(value)) throw new NotificationDataError(template, `${key} must be a UUID`);
+  return value;
+}
+
+function oneOf<T extends string>(template: string, payload: unknown, key: string, values: readonly T[]): T {
+  const value = payloadObject(template, payload)[key];
+  if (typeof value !== 'string' || !(values as readonly string[]).includes(value)) throw new NotificationDataError(template, `${key} must be one of ${values.join(', ')}`);
+  return value as T;
+}
+
+/** "succession.nominated" (M25): to the student an owner nominated as their digital successor. */
+const successionNominated: NotificationTemplate<{ nominationId: string }> = {
+  name: 'succession.nominated',
+  parse: (payload) => ({ nominationId: idOf('succession.nominated', payload, 'nominationId') }),
+  render: () => ({
+    title: 'You were nominated as a digital successor',
+    body: [{ text: 'One of your teachers asked you to be their digital successor: if they die or stop using WingChunRoots, you may ask the administrators to pass their school or organization administration to you. You can accept or decline. Accepting changes nothing now.' }],
+    action: { label: 'See the nomination', href: SUCCESSION_PAGE },
+  }),
+  sample: { nominationId: '0190a5c0-0000-7000-8000-0000000000e1' },
+};
+
+/** "succession.answered" (M25): to the owner, when the nominee accepts or declines. */
+const successionAnswered: NotificationTemplate<{ nominationId: string; answer: 'accepted' | 'declined' }> = {
+  name: 'succession.answered',
+  parse: (payload) => ({ nominationId: idOf('succession.answered', payload, 'nominationId'), answer: oneOf('succession.answered', payload, 'answer', ['accepted', 'declined'] as const) }),
+  render: ({ answer }) => ({
+    title: answer === 'accepted' ? 'Your successor accepted' : 'Your nominee declined',
+    body: [{ text: answer === 'accepted' ? 'The student you nominated accepted to be your digital successor. You can revoke the nomination at any time.' : 'The student you nominated declined to be your digital successor. You can nominate another of your verified students.' }],
+    action: { label: 'Open Succession', href: SUCCESSION_PAGE },
+  }),
+  sample: { nominationId: '0190a5c0-0000-7000-8000-0000000000e1', answer: 'accepted' },
+};
+
+/** "succession.revoked" (M25): to the nominee, when the owner revokes the nomination. */
+const successionRevoked: NotificationTemplate<{ nominationId: string }> = {
+  name: 'succession.revoked',
+  parse: (payload) => ({ nominationId: idOf('succession.revoked', payload, 'nominationId') }),
+  render: () => ({
+    title: 'A nomination as successor was revoked',
+    body: [{ text: 'Your teacher revoked your nomination as their digital successor. Your training record and your relationship with them do not change.' }],
+    action: { label: 'Open Succession', href: SUCCESSION_PAGE },
+  }),
+  sample: { nominationId: '0190a5c0-0000-7000-8000-0000000000e1' },
+};
+
+/** "succession.requested" (M25): to the owner, when their accepted successor sends a succession request. */
+const successionRequested: NotificationTemplate<{ requestId: string; basis: 'reported_death' | 'inactivity' }> = {
+  name: 'succession.requested',
+  parse: (payload) => ({ requestId: idOf('succession.requested', payload, 'requestId'), basis: oneOf('succession.requested', payload, 'basis', ['reported_death', 'inactivity'] as const) }),
+  render: () => ({
+    title: 'A succession request about your administration',
+    body: [{ text: 'Your digital successor asked the administrators to pass your school or organization administration to them. Nothing changes unless an administrator approves it after checking the evidence. If you still use your account, say so in Succession: you can revoke the nomination, which closes the request.' }],
+    action: { label: 'Open Succession', href: SUCCESSION_PAGE },
+  }),
+  sample: { requestId: '0190a5c0-0000-7000-8000-0000000000e2', basis: 'inactivity' },
+};
+
+/** "succession.decided" (M25): to the successor and the owner, when an administrator decides a succession request. */
+const successionDecided: NotificationTemplate<{ caseId: string; decision: 'approved' | 'rejected'; role: 'successor' | 'owner' }> = {
+  name: 'succession.decided',
+  parse: (payload) => ({
+    caseId: caseIdOf('succession.decided', payload),
+    decision: oneOf('succession.decided', payload, 'decision', ['approved', 'rejected'] as const),
+    role: oneOf('succession.decided', payload, 'role', ['successor', 'owner'] as const),
+  }),
+  render: ({ caseId, decision, role }) => ({
+    title: decision === 'approved' ? 'Succession approved' : 'Succession request not approved',
+    body: [
+      {
+        text:
+          decision === 'approved'
+            ? role === 'successor'
+              ? 'An administrator approved your succession request: the school and organization administration of your teacher is yours now. Their historical record, students and relationships stay as they are.'
+              : 'An administrator approved the succession request of your successor: your school and organization administration passed to them. Your historical record and your relationships stay as they are; an administrator can help if this is wrong.'
+            : role === 'successor'
+              ? 'An administrator did not approve your succession request. Their reason is on the case page.'
+              : 'An administrator did not approve the succession request about your administration. Nothing changed.',
+      },
+    ],
+    action: role === 'successor' ? { label: 'Open the case', href: `/dashboard/cases/${caseId}` } : { label: 'Open Succession', href: SUCCESSION_PAGE },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-0000000000e3', decision: 'approved', role: 'successor' },
+};
+
+/** "dispute.decided" (M25): to the member who sent a lineage dispute report, when a moderator decides it. */
+const disputeDecided: NotificationTemplate<{ caseId: string; outcome: 'upheld' | 'not_upheld' }> = {
+  name: 'dispute.decided',
+  parse: (payload) => ({ caseId: caseIdOf('dispute.decided', payload), outcome: oneOf('dispute.decided', payload, 'outcome', ['upheld', 'not_upheld'] as const) }),
+  render: ({ caseId, outcome }) => ({
+    title: outcome === 'upheld' ? 'Your report opened an arbitration' : 'Your report was reviewed',
+    body: [
+      {
+        text:
+          outcome === 'upheld'
+            ? 'A moderator found that your evidence needs a formal review: the relationship is now in arbitration, and both people are asked for evidence.'
+            : 'A moderator reviewed your report and the relationship stays as it is. Their reason is on the case page. A report that is not upheld does not count against you. You can appeal once.',
+      },
+    ],
+    action: { label: 'Open the case', href: `/dashboard/cases/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-0000000000e4', outcome: 'not_upheld' },
+};
+
+/** "appeal.decided" (M25): to the party who appealed, when another member of staff decides the appeal. */
+const appealDecided: NotificationTemplate<{ caseId: string; outcome: 'upheld' | 'rejected' }> = {
+  name: 'appeal.decided',
+  parse: (payload) => ({ caseId: caseIdOf('appeal.decided', payload), outcome: oneOf('appeal.decided', payload, 'outcome', ['upheld', 'rejected'] as const) }),
+  render: ({ caseId, outcome }) => ({
+    title: outcome === 'upheld' ? 'Your appeal was upheld' : 'Your appeal was not upheld',
+    body: [
+      {
+        text:
+          outcome === 'upheld'
+            ? 'Another member of staff reviewed your appeal and reopened the decision: it is decided again, by someone other than who decided it first.'
+            : 'Another member of staff reviewed your appeal and the decision stands. Their reason is on the case page.',
+      },
+    ],
+    action: { label: 'Open the case', href: `/dashboard/cases/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-0000000000e5', outcome: 'rejected' },
+};
+
+/** "proposal.decided" (M25): to the member who proposed a change to an archival record. */
+const proposalDecided: NotificationTemplate<{ caseId: string; decision: 'approved' | 'rejected' }> = {
+  name: 'proposal.decided',
+  parse: (payload) => ({ caseId: caseIdOf('proposal.decided', payload), decision: oneOf('proposal.decided', payload, 'decision', ['approved', 'rejected'] as const) }),
+  render: ({ caseId, decision }) => ({
+    title: decision === 'approved' ? 'Your proposed change was applied' : 'Your proposed change was not applied',
+    body: [{ text: decision === 'approved' ? 'An archivist approved your change to the archival record. It is in the record’s change history.' : 'An archivist did not apply your change to the archival record. Their reason is on the case page.' }],
+    action: { label: 'Open the case', href: `/dashboard/cases/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-0000000000e6', decision: 'approved' },
+};
+
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,
@@ -1581,6 +1729,15 @@ export const NOTIFICATION_TEMPLATES = {
   'billing.payment-failed': billingPaymentFailed,
   'billing.payment-recovered': billingPaymentRecovered,
   'billing.ended': billingEnded,
+  // M25.
+  'succession.nominated': successionNominated,
+  'succession.answered': successionAnswered,
+  'succession.revoked': successionRevoked,
+  'succession.requested': successionRequested,
+  'succession.decided': successionDecided,
+  'dispute.decided': disputeDecided,
+  'appeal.decided': appealDecided,
+  'proposal.decided': proposalDecided,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

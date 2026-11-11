@@ -27,7 +27,8 @@ import { uuidv7 } from '../db/ids';
 import { reviewCase, reviewNote, teachingRelationship } from '../db/schema';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
-import { fieldErrors, idempotencyKey, isKeyConflict, keyReused, publicTags, recordEvent, rowById } from './relationships';
+import { fieldErrors, idempotencyKey, isKeyConflict, keyReused, publicTags, recordEvent, type RelRow, rowById } from './relationships';
+import type { Transaction } from '../jobs/outbox';
 import { caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, recordCaseEvent } from './review-core';
 import { tellDisputeParties } from './review-kinds';
 
@@ -75,28 +76,7 @@ export async function arbitrateRelationship(principal: Principal | null, raw: z.
       if (row.status !== 'verified') {
         throw new ServiceError('CONFLICT', row.status === 'in_arbitration' ? 'This relationship is already in arbitration.' : 'Only a verified relationship can be set in arbitration.');
       }
-      const now = new Date();
-      await tx.update(teachingRelationship).set({ status: 'in_arbitration', statusReason: 'arbitration', updatedAt: now }).where(eq(teachingRelationship.id, row.id));
-      await recordEvent(tx, { relationshipId: row.id, from: 'verified', to: 'in_arbitration', actor: p, role: p.user.role, reason: 'arbitration', key: input.idempotencyKey });
-      const caseId = uuidv7();
-      // DEFAULT D19: the case asks both parties for evidence at once (needs_info), and is the
-      // moderator's own until they give it to another reviewer.
-      await tx.insert(reviewCase).values({ id: caseId, kind: 'relationship_dispute', status: 'needs_info', relationshipId: row.id, openedByUserId: p.user.id, assignedToUserId: p.user.id });
-      await tx.insert(reviewNote).values({ reviewCaseId: caseId, authorUserId: p.user.id, body: input.reason, isInternal: false });
-      const eventId = await recordCaseEvent(tx, { caseId, action: 'open', from: null, to: 'needs_info', actor: p, key: input.idempotencyKey });
-      await writeAudit(tx, {
-        action: 'relationship.arbitration',
-        actorUserId: p.user.id,
-        actorRole: p.user.role,
-        subjectType: 'teaching_relationship',
-        subjectId: row.id,
-        before: { status: 'verified', visibility: row.visibility },
-        after: { status: 'in_arbitration', visibility: row.visibility, caseId },
-        reason: input.reason,
-        requestId: meta.requestId,
-        ipHmac: meta.ipHmac,
-      });
-      await tellDisputeParties(tx, row, caseId, 'opened', input.reason, eventId);
+      const caseId = await openArbitration(tx, p, row, input.reason, input.idempotencyKey, meta);
       return { caseId, replayed: false, tags: await publicTags(tx, row) };
     });
     if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
@@ -107,4 +87,36 @@ export async function arbitrateRelationship(principal: Principal | null, raw: z.
     if (pg?.code === '23505' && pg.constraint === 'review_case_one_open_per_relationship_key') throw new ServiceError('CONFLICT', 'This relationship is already in arbitration.');
     throw error;
   }
+}
+
+/**
+ * M25: the writes of an arbitration, in the caller's transaction, once it holds the relationship
+ * (FOR UPDATE) and has checked who acts: review.arbitrate above, and a lineage dispute report a
+ * moderator upholds (governance-review.ts). Returns the dispute's case id.
+ */
+export async function openArbitration(tx: Transaction, p: Principal, row: RelRow, reason: string, key: string, meta: RequestMeta): Promise<string> {
+  const input = { reason, idempotencyKey: key };
+  const now = new Date();
+  await tx.update(teachingRelationship).set({ status: 'in_arbitration', statusReason: 'arbitration', updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+  await recordEvent(tx, { relationshipId: row.id, from: 'verified', to: 'in_arbitration', actor: p, role: p.user.role, reason: 'arbitration', key: input.idempotencyKey });
+  const caseId = uuidv7();
+  // DEFAULT D19: the case asks both parties for evidence at once (needs_info), and is the
+  // moderator's own until they give it to another reviewer.
+  await tx.insert(reviewCase).values({ id: caseId, kind: 'relationship_dispute', status: 'needs_info', relationshipId: row.id, openedByUserId: p.user.id, assignedToUserId: p.user.id });
+  await tx.insert(reviewNote).values({ reviewCaseId: caseId, authorUserId: p.user.id, body: input.reason, isInternal: false });
+  const eventId = await recordCaseEvent(tx, { caseId, action: 'open', from: null, to: 'needs_info', actor: p, key: input.idempotencyKey });
+  await writeAudit(tx, {
+    action: 'relationship.arbitration',
+    actorUserId: p.user.id,
+    actorRole: p.user.role,
+    subjectType: 'teaching_relationship',
+    subjectId: row.id,
+    before: { status: 'verified', visibility: row.visibility },
+    after: { status: 'in_arbitration', visibility: row.visibility, caseId },
+    reason: input.reason,
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  await tellDisputeParties(tx, row, caseId, 'opened', input.reason, eventId);
+  return caseId;
 }

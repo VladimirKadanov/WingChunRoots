@@ -28,12 +28,15 @@ import { CLAIM_STATUS_LABELS, REVIEW_KIND_LABELS, type ReviewCaseKind, type Revi
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
+import { type AppealState, appealStateOf } from './disputes';
 import { caseHasRoom, type EvidenceFileView, fileView, filesOfCases } from './evidence';
 import { fieldErrors, idempotencyKey, keyReused, namesFor, rowById } from './relationships';
 import { type CaseRow, caseById, caseNotFound, caseReplayOf, isCaseKeyConflict, isOpenCase, partiesOf, recordCaseEvent, tellAssignee } from './review-core';
 
 export const CASE_REPLY_MAX = 2000;
-const PARTY_KINDS: readonly ReviewCaseKind[] = ['person_claim', 'instructor_verification', 'relationship_dispute', 'organization_application'];
+/** M25: the governance cases an account opens, which it follows here as their claimant. */
+const OPENED_KINDS = ['person_claim', 'instructor_verification', 'organization_application', 'succession_request', 'lineage_report', 'decision_appeal', 'record_proposal'] as const;
+const PARTY_KINDS: readonly ReviewCaseKind[] = [...OPENED_KINDS, 'relationship_dispute'];
 
 export const caseIdInput = z.object({ id: z.uuid({ error: 'No such case.' }) });
 
@@ -71,6 +74,8 @@ export interface PartyCaseView extends PartyCaseRow {
   decision: { resolution: 'approved' | 'rejected'; reason: string | null } | null;
   open: boolean;
   canAddFiles: boolean;
+  /** M25: whether this decision can be appealed by this party, and the appeal of it. */
+  appeal: AppealState | null;
 }
 
 /** The viewer's side of a case, or null when they are none of its parties. */
@@ -117,7 +122,7 @@ export async function myCases(principal: Principal | null): Promise<{ cases: Par
     .from(reviewCase)
     .where(
       or(
-        and(inArray(reviewCase.kind, ['person_claim', 'instructor_verification', 'organization_application']), eq(reviewCase.openedByUserId, p.user.id)),
+        and(inArray(reviewCase.kind, [...OPENED_KINDS]), eq(reviewCase.openedByUserId, p.user.id)),
         disputed ? and(eq(reviewCase.kind, 'relationship_dispute'), inArray(reviewCase.relationshipId, disputed)) : sql`false`,
       ),
     )
@@ -166,6 +171,7 @@ export async function getPartyCase(principal: Principal | null, raw: z.input<typ
     decision: c.resolution ? { resolution: c.resolution, reason: c.resolutionReason } : null,
     open,
     canAddFiles: room,
+    appeal: await appealStateOf(db, c, p.user.id),
   };
 }
 

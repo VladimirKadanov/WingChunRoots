@@ -46,6 +46,14 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
   // M15: an organization's application is about identity and authenticity, like an instructor's
   // (DEFAULT, docs/adr/0018-organizations.md): an archivist or an administrator decides it.
   organization_application: ['archivist', 'admin'],
+  // M25 (docs/adr/0028-governance.md). DEFAULT M25 (question 1): the "board" of specification §15
+  // is the administrators. A lineage dispute report is a dispute: moderators and administrators. An
+  // appeal is decided by the deciders of the appealed kind, never by its first decider
+  // (governance-review.ts checks both). A shared record changes only by an archivist (plan §6.6).
+  succession_request: ['admin'],
+  lineage_report: ['moderator', 'admin'],
+  decision_appeal: ['moderator', 'archivist', 'admin'],
+  record_proposal: ['archivist'],
 };
 
 /**
@@ -53,7 +61,7 @@ export const DECIDERS: Readonly<Record<Exclude<ReviewCaseKind, 'deletion_request
  * the reviewer of a dispute opens both sides' files (evidence.ts accessOfFiles), so a reviewer who
  * cannot decide it never holds it. The other kinds: any reviewer, who may ask for information.
  */
-export const ASSIGNED_TO_DECIDERS: ReadonlySet<ReviewCaseKind> = new Set(['relationship_dispute', 'profile_report']);
+export const ASSIGNED_TO_DECIDERS: ReadonlySet<ReviewCaseKind> = new Set(['relationship_dispute', 'profile_report', 'succession_request', 'lineage_report']);
 
 /** The roles a case of `kind` may be assigned to. */
 export function assignableRoles(kind: ReviewCaseKind): readonly StaffRole[] {

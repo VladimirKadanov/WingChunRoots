@@ -52,7 +52,7 @@ export interface KindDecisionOutcome {
 const NONE: KindDecisionOutcome = { tags: [] };
 
 /** needs_info on any kind: the question as a note the parties read, the case waits for them. */
-async function askParties(tx: Transaction, p: Principal, c: CaseRow, input: KindDecisionInput, meta: RequestMeta): Promise<void> {
+export async function askParties(tx: Transaction, p: Principal, c: CaseRow, input: KindDecisionInput, meta: RequestMeta): Promise<void> {
   await tx.update(reviewCase).set({ status: 'needs_info', updatedAt: new Date() }).where(eq(reviewCase.id, c.id));
   await tx.insert(reviewNote).values({ reviewCaseId: c.id, authorUserId: p.user.id, body: input.reason!, isInternal: false });
   await recordCaseEvent(tx, { caseId: c.id, action: 'needs_info', from: c.status, to: 'needs_info', actor: p, key: input.idempotencyKey });
@@ -70,7 +70,7 @@ async function askParties(tx: Transaction, p: Principal, c: CaseRow, input: Kind
 }
 
 /** Closes the case with its resolution and writes review.resolve; returns the review_event id. */
-async function resolveCase(
+export async function resolveCase(
   tx: Transaction,
   p: Principal,
   c: CaseRow,
