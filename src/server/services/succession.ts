@@ -73,6 +73,7 @@ export const successionRequestInput = nominationIdInput.extend({
  * Whole days since the account's last activity: its last sign-in (auth_user.last_active_at, kept
  * after a sign-out) or its newest session's last refresh, whichever is later; the account's
  * creation when neither is known. Never a reason by itself to change anything (see the top).
+ * DEFAULT M25 (question 9): measured from sign-ins and session refreshes, checked again at approval.
  */
 export async function inactiveDaysOf(db: Executor, userId: string): Promise<number> {
   const rows = await db.execute<{ days: number }>(sql`

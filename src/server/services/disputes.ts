@@ -156,7 +156,8 @@ export async function reportLineage(principal: Principal | null, raw: z.input<ty
       if (open) throw new ServiceError('CONFLICT', 'You have reported this relationship already. The moderators have your report.');
       if ((await dailyLimit(tx, lineageReport, p.user.id)) >= GOVERNANCE_DAILY_LIMIT) throw new ServiceError('TOO_MANY_REQUESTS', 'You have sent several reports today. You can send another one tomorrow.');
       const caseId = uuidv7();
-      // No relationship on the case: the reported people are not its parties and never read it.
+      // No relationship on the case: the reported people are not its parties and never read it
+      // (DEFAULT M25, question 11).
       await tx.insert(reviewCase).values({ id: caseId, kind: 'lineage_report', status: 'open', openedByUserId: p.user.id });
       const evidenceError = await linkFilesToCase(tx, p.user.id, caseId, input.evidenceIds);
       if (evidenceError) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { evidenceIds: evidenceError });

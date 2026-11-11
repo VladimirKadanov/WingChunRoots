@@ -120,6 +120,19 @@
 | `billing_invoice` | Фактурите на доставчика, т.е. историята на плащанията. Колони: `subscription_id` (`CASCADE`), `provider_invoice_id` (уникален за доставчика), `status` (`paid`, `failed`), `amount_cents`, `currency`, `period_start`, `period_end`, `issued_at` |
 | `billing_test_subscription` | Страната на тестовия доставчик (`src/server/billing/test-provider.ts`): идентификаторът при доставчика, клиентът, `checkout_ref` (уникален), планът, сумата, тестовата карта (`succeeds`, `declines`, `fails_at_renewal`; никога номер), състоянието, периодът и версията. Таблиците на приложението никога не я четат |
 
+### Управление (M25)
+
+[ADR 0028](adr/0028-governance.md). Всяко решение е `review_case` от новите видове `succession_request`, `lineage_report`, `decision_appeal` и `record_proposal`; таблиците по-долу пазят за какво е случаят. `app_rw` има `SELECT`, `INSERT`, `UPDATE`, `DELETE`, освен на `record_revision` (само `SELECT` и `INSERT`). `REVOKE ALL` ги затваря за `app_public_ro`. `review_event.action` допуска и `reopen` (уважено обжалване). `auth_user.last_active_at` е последното влизане (пише се при създаване на сесия; миграцията го попълва от сесиите).
+
+| Таблица | Предназначение и важни колони |
+|---|---|
+| `succession_nomination` | Номинация на дигитален наследник: собственикът (`owner_user_id`, `owner_person_id`), наследникът (`successor_user_id`, `successor_person_id`), `status` (`pending`, `accepted`, `declined`, `revoked`), `responded_at`, `revoked_at` (`CHECK`: попълнено точно при `revoked`). Частичният уникален индекс `succession_nomination_one_live_key` пуска една жива (`pending`, `accepted`) номинация на собственик; `CHECK` собственикът не е наследникът |
+| `succession_request` | Молба за поемане: `nomination_id`, `review_case_id` (уникален), молителят, собственикът (и двете `SET NULL`), `basis` (`reported_death`, `inactivity`), `inactive_days` (дните без активност в момента на молбата), `status` (`pending`, `approved`, `rejected`, `withdrawn`), `decided_at`, `transferred` (JSON: идентификаторите на прехвърлените школи и организации). Една чакаща молба на номинация |
+| `lineage_report` | Доклад за грешна връзка: `relationship_id` (`SET NULL`), `reporter_user_id` (`SET NULL`), `review_case_id`, `grounds` (`never_trained`, `wrong_teacher`, `wrong_dates`, `other`), `status` (`open`, `upheld`, `not_upheld`). Един отворен доклад на акаунт и връзка. Случаят няма `relationship_id`: докладваните не са страни |
+| `decision_appeal` | Обжалване: `appealed_case_id`, `appealed_kind`, `decision_event_id` (уникален: едно обжалване на решение), `review_case_id`, `appellant_user_id`, `original_decider_user_id` (той никога не решава обжалването), `status` (`pending`, `upheld`, `rejected`) |
+| `record_proposal` | Предложение за промяна на общ архивен запис: `person_id`, `proposer_user_id`, `review_case_id`, `proposed` и `base` (JSON с редактируемите полета: име, оригинално име и писменост, жизнен статус, биография), `status`. Едно чакащо предложение на акаунт и запис |
+| `record_revision` | Историята на промените на архивен запис, само за добавяне: `person_id`, `source` (`archival_edit`, `proposal`), `actor_user_id`, `review_case_id`, `changed` (имената на полетата), `before`, `after`, `reason` (`CHECK` не е празна). Разделяне на организация никога не я пипа |
+
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
@@ -238,6 +251,8 @@
 | Изборът за имейл | `notification_preference` | Докато акаунтът съществува (`CASCADE`) |
 | Заявка за пробна тренировка: име, контакт, съобщение | `trial_inquiry` | M21 (DEFAULT M21, въпрос 5): 365 дни след затварянето ѝ (отговорена, отказана или затворена); отворена заявка се пази, докато школата я обработи. Изтриване на акаунта или школата я изтрива (`CASCADE`). Изпълнява го `retention.purge` (`purgeOldTrialData`) |
 | Абонамент, checkout, фактури и събития на доставчика | `billing_*` | M22: докато акаунтът (или организацията) съществува. Изтриването на акаунта първо прекратява живия абонамент при доставчика (иначе нищо не се трие), после трие клиента, checkout-ите, абонаментите и фактурите (`CASCADE`). Събитията остават без връзка (`SET NULL`), защото почистеното им копие не съдържа лични данни. Данни за карта никога не се пазят. Изтичането на абонамент не трие нищо (D08) |
+| Номинации, молби за наследяване, доклади, обжалвания и предложения | `succession_*`, `lineage_report`, `decision_appeal`, `record_proposal` | M25: без срок, като случаите в опашката; изтриване на акаунта оставя редовете без връзка (`SET NULL`), а номинациите на акаунта се трият (`CASCADE`). Бележките и доказателствата са в случая |
+| История на архивен запис | `record_revision` | M25: без срок, само за добавяне (доказателство за всяка архивна промяна, като одита) |
 | Броячи на школа | `school_stat_day` | M21 (DEFAULT M21, въпрос 7): дните преди повече от 400 дни се трият от `retention.purge` (`purgeOldTrialData`). Няма лични данни |
 
 Задачата `retention.purge` (`src/server/services/retention.ts`) върви всеки ден в 03:17 UTC в worker-а, като `app_rw`, и е идемпотентна. От M02 трие и изтеклите редове на `auth_session`, `auth_verification` и `auth_throttle` (Better Auth трие изтекла сесия само когато токенът ѝ дойде отново), както и непотвърдените акаунти на повече от 7 дни. Променя редовете на партиди по 1000 (всяка в своя транзакция, далеч от `statement_timeout`) и прескача ред, заключен от писмо, което се изпраща в момента; следващото пускане го изтрива. Неуспех се записва в лога само със SQLSTATE. Ключът за идемпотентност в `email_delivery` остава и след изтриването на адреса, затова никога не съдържа лични данни (`@` се отказва, ADR 0003).
@@ -316,6 +331,10 @@
 Миграцията в M22 (след тази на M21):
 
 - `*_m22_billing`: таблиците `billing_customer`, `billing_checkout`, `billing_subscription`, `billing_event`, `billing_invoice` и `billing_test_subscription`, с `CHECK` за доставчика, плана, интервала, състоянията, сумите и периодите, и уникалните индекси за идемпотентност (доставчик + идентификатор на събитие, фактура, абонамент, клиент). Има и частичните уникални индекси за един жив абонамент на субект. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. `entitlement_grant.source` вече допуска `stripe` от M08. Само SQL за PostgreSQL 16+.
+
+Миграцията в M25:
+
+- `*_m25_governance`: колоната `auth_user.last_active_at` (попълнена от най-новата сесия) и таблиците `succession_nomination`, `succession_request`, `lineage_report`, `decision_appeal`, `record_proposal` и `record_revision`, с `CHECK` за състоянията, основанията и видовете и частичните уникални индекси за една жива номинация, една чакаща молба, един отворен доклад и едно чакащо предложение. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE` на първите пет и само `SELECT`, `INSERT` на `record_revision`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 

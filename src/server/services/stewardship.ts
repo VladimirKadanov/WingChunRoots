@@ -217,6 +217,7 @@ export interface RecordHistory {
 /**
  * archive.history: the change history of a shared record that is public (anyone), or of any record
  * (staff with the second factor, who also read each reason). Never who made a change.
+ * DEFAULT M25 (question 10): the history of a public shared record is public, without actor or reason.
  */
 export async function recordHistory(principal: Principal | null, raw: z.input<typeof recordSlugInput>): Promise<RecordHistory> {
   const parsed = recordSlugInput.safeParse(raw);

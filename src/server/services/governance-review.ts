@@ -7,7 +7,9 @@
 //   succession_request  verify (an administrator; DEFAULT M25, question 1): the nomination is still
 //                       accepted and, on inactivity, the owner is still inactive (checked again);
 //                       the owner's school listings and organization administration pass to the
-//                       successor; pending work of those schools and organizations (trial lesson
+//                       successor (DEFAULT M25, question 8; the owner's own organization admin rows
+//                       are revoked, pending teacher requests stay with the owner's record);
+//                       pending work of those schools and organizations (trial lesson
 //                       requests, school link requests) follows them. Nothing else changes: the
 //                       owner's record, its life status, students, relationships and history stay.
 //                       reject (reason): nothing changes. needs_info: the successor is asked.
