@@ -211,6 +211,19 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/billing', name: 'dashboard-billing-ended', status: 200, milestone: 'M22', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard/billing?plan=premium_student', name: 'dashboard-billing-none', status: 200, milestone: 'M22', signInAs: 'demo-pending' },
   { path: '/admin/billing', name: 'admin-billing', status: 200, milestone: 'M22', signInAs: 'admin' },
+  // Governance (M25, docs/adr/0028-governance.md): the digital successor page of demo-pro-sifu-8
+  // (Professional Sifu, the nomination form with its verified student demo-premium-student) and of
+  // demo-free-sifu-5 (the plan's limit, said once); "Report a lineage error" of a public profile with
+  // one public relationship as demo-pending; the change history of a shared archival record (an
+  // unclaimed demo record), with "Propose a correction" for a signed-in account. No test writes
+  // to these demo accounts or records (the M25 spec that does uses accounts and records of its own,
+  // in the exclusive run). The party case page with an appeal needs a case's id: e2e/m25-governance.spec.ts
+  // runs axe on it in both themes. Key screen: its baselines come from a CI run.
+  { path: '/dashboard/succession', name: 'dashboard-succession', status: 200, milestone: 'M25', key: true, signInAs: 'demo-pro-sifu-8' },
+  { path: '/dashboard/succession', name: 'dashboard-succession-limit', status: 200, milestone: 'M25', signInAs: 'demo-free-sifu-5' },
+  { path: '/people/demo-a-005/dispute', name: 'lineage-dispute', status: 200, milestone: 'M25', signInAs: 'demo-pending' },
+  { path: '/people/demo-a-005/record', name: 'record-history', status: 200, milestone: 'M25' },
+  { path: '/people/demo-a-005/record', name: 'record-propose', status: 200, milestone: 'M25', signInAs: 'demo-pending' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */
