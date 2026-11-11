@@ -233,6 +233,8 @@ function changeOptionsOf(sub: SubscriptionRow, now: Date, inTrial: boolean): Cha
       if (code === sub.scheduledPlanCode && interval === sub.scheduledInterval) return [];
       if (!billingPrice(code, interval)) return [];
       const when = changeTiming(sub, { planCode: code, interval }, inTrial);
+      // The Stripe adapter cannot schedule a change for the period end yet (DEFAULT M23, question 2): not offered.
+      if (when === 'period_end' && sub.provider === 'stripe') return [];
       const price = priceText(code, interval);
       const label = code === sub.planCode ? `Switch to ${INTERVAL_NAMES[interval]} billing` : `Switch to ${PLANS[code].name}`;
       const note =
