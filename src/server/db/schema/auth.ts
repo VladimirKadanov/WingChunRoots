@@ -36,6 +36,10 @@ export const authUser = pgTable(
     // (free_student or free_sifu). It verifies nothing (DEFAULT D04). Not a Better Auth field, so
     // sign-up cannot set it; only src/server/services/plans.ts changes it, audited.
     accountType: text('account_type', { enum: ACCOUNT_TYPES }).notNull().default('student'),
+    // M25 (docs/adr/0028-governance.md): when the account last signed in (a new session), kept
+    // when sessions end or are signed out. A succession request on inactivity reads it with the
+    // newest session; inactivity alone never transfers anything or marks anyone deceased.
+    lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
     ...timestamps(),
   },
   (t) => [

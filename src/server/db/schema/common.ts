@@ -87,6 +87,12 @@ export const REVIEW_CASE_KINDS = [
   'deletion_request',
   // M15: an organization's application (organization-review.ts).
   'organization_application',
+  // M25 (docs/adr/0028-governance.md): a successor's succession request, an evidence-based lineage
+  // dispute report, an appeal of a decision, and a proposed change to a shared archival record.
+  'succession_request',
+  'lineage_report',
+  'decision_appeal',
+  'record_proposal',
 ] as const;
 export const REVIEW_CASE_STATUSES = ['open', 'in_review', 'needs_info', 'resolved', 'dismissed'] as const;
 /** M10a: the statuses of a case that still waits for a decision. */
@@ -96,7 +102,7 @@ export const REVIEW_RESOLUTIONS = ['approved', 'rejected'] as const;
  * M10b: what a review_event records about a case: opened, assigned or unassigned, a question to its
  * parties (needs_info), evidence added, decided (approve, reject, dismiss) or withdrawn.
  */
-export const REVIEW_EVENT_ACTIONS = ['open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw'] as const;
+export const REVIEW_EVENT_ACTIONS = ['open', 'assign', 'unassign', 'needs_info', 'evidence', 'approve', 'reject', 'dismiss', 'withdraw', 'reopen'] as const;
 export const REPORT_SUBJECTS = ['person', 'teaching_relationship', 'school', 'person_name'] as const;
 /** M10b: the reasons of "Report profile" (plan §6.2; the milestone's In scope 4). */
 export const REPORT_REASONS = ['copyright', 'spam', 'inappropriate', 'misleading'] as const;
@@ -281,6 +287,44 @@ export const PASSPORT_NOTE_MAX = 1000;
 export const PASSPORT_TITLE_MAX = 200;
 /** DEFAULT M19 (question 4): at most this many certificates kept on one passport (removed ones apart). */
 export const PASSPORT_CERTIFICATES_MAX = 20;
+
+// --- Governance (milestone M25; docs/adr/0028-governance.md) ---------------------------------------
+/**
+ * M25: a digital successor's nomination (specification §15). The owner nominates one of their
+ * verified students (`pending`); the nominee accepts (`accepted`) or declines (`declined`); the
+ * owner can revoke a pending or accepted nomination (`revoked`). At most one live (pending or
+ * accepted) nomination per owner.
+ */
+export const SUCCESSION_NOMINATION_STATUSES = ['pending', 'accepted', 'declined', 'revoked'] as const;
+export const LIVE_NOMINATION_STATUSES = ['pending', 'accepted'] as const;
+/**
+ * M25: what a succession request rests on: a death the successor reports (with evidence), or more
+ * than SUCCESSION_INACTIVITY_DAYS without activity of the owner's account. Either way an
+ * administrator decides, with evidence; neither ever changes the owner's life status.
+ */
+export const SUCCESSION_BASES = ['reported_death', 'inactivity'] as const;
+/** M25: a succession request waits for its review (`pending`), is approved, rejected or withdrawn. */
+export const SUCCESSION_REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
+/** Specification §15 (source proposal): a request on inactivity needs more than this many days. */
+export const SUCCESSION_INACTIVITY_DAYS = 180;
+/** M25: a lineage dispute report waits (`open`), is upheld (arbitration opened) or not upheld. */
+export const LINEAGE_REPORT_STATUSES = ['open', 'upheld', 'not_upheld'] as const;
+/** M25: the grounds of a lineage dispute report. */
+export const LINEAGE_REPORT_GROUNDS = ['never_trained', 'wrong_teacher', 'wrong_dates', 'other'] as const;
+/** M25: an appeal waits (`pending`), is upheld (the decision is reopened) or rejected (it stands). */
+export const APPEAL_STATUSES = ['pending', 'upheld', 'rejected'] as const;
+/** M25: the decisions that can be appealed, once each, by their parties. */
+export const APPEALABLE_KINDS = ['relationship_dispute', 'lineage_report', 'succession_request', 'record_proposal'] as const;
+/** DEFAULT M25 (question 4): an appeal is sent within this many days of the decision. */
+export const APPEAL_WINDOW_DAYS = 30;
+/** M25: a proposed change of a shared archival record waits, is approved (applied) or rejected. */
+export const RECORD_PROPOSAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+/** M25: where a revision of an archival record came from: the archival edit or an approved proposal. */
+export const RECORD_REVISION_SOURCES = ['archival_edit', 'proposal'] as const;
+/** M25: the longest note, grounds text or reason of the governance forms. */
+export const GOVERNANCE_TEXT_MAX = 2000;
+/** DEFAULT M25 (question 5): at most this many governance requests of one kind per account in 24 hours. */
+export const GOVERNANCE_DAILY_LIMIT = 5;
 
 // --- Entitlements (plan §6.5) ----------------------------------------------------------------------
 export const PLAN_CODES = ['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] as const;
