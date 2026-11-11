@@ -172,6 +172,14 @@ export const NOTIFICATION_CATALOG = {
   'billing.payment-failed': mailed('billing', 'notice'),
   'billing.payment-recovered': mailed('billing', 'notice'),
   'billing.ended': mailed('billing', 'notice'),
+  // M23 (docs/adr/0026-federation-billing.md): a change of plan or billing period, in the Billing
+  // category (never off); a Federation trial's start, its reminders 14 and 7 days before its end and
+  // its end, to the organization's admins in the Plan category (e-mail on by default, may be off).
+  'billing.plan-changed': mailed('billing', 'notice'),
+  'billing.change-scheduled': mailed('billing', 'notice'),
+  'federation.trial-started': mailed('plan', 'notice'),
+  'federation.trial-ending': mailed('plan', 'notice'),
+  'federation.trial-ended': mailed('plan', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

@@ -30,6 +30,16 @@ export interface SubscriptionSnapshot {
   currentPeriodEnd: Date;
   endedAt: Date | null;
   /**
+   * M23: the plan the provider bills now, when it says (the test provider always; Stripe through the
+   * subscription's metadata); null keeps the plan the app holds.
+   */
+  planCode?: PlanCode | null;
+  /**
+   * M23 (DEFAULT M23, question 2): the plan and billing period that start at the period end; null for
+   * none; undefined when the provider does not say (the app keeps what it holds).
+   */
+  scheduledChange?: { planCode: PlanCode; interval: BillingInterval } | null;
+  /**
    * The order of the provider's states, in ms: the test provider's version counter, Stripe's event
    * time. An event whose version is older than the state the app holds is stale and changes nothing.
    */
@@ -88,6 +98,22 @@ export interface CheckoutRequest {
   cancelUrl: string;
   /** When the app's checkout expires (CHECKOUT_TTL_MINUTES): the provider's session expires then too. */
   expiresAt: Date;
+  /**
+   * M23: the end of the organization's Federation trial this checkout continues: nothing is charged
+   * before it, and the first period ends then (specification §10.2). Null without a trial.
+   */
+  trialEndsAt?: Date | null;
+}
+
+/** M23: a change of plan or billing period, now (with proration) or at the period end. */
+export interface PlanChange {
+  planCode: PlanCode;
+  planName: string;
+  interval: BillingInterval;
+  amountCents: number;
+  currency: string;
+  /** DEFAULT M23 (question 2): an upgrade takes effect now, with proration; a downgrade at the period end. */
+  when: 'now' | 'period_end';
 }
 
 export interface CheckoutSession {
@@ -128,10 +154,12 @@ export interface BillingProvider {
   /** Ends the subscription now (the grace of an unpaid renewal has run out). The new state. */
   cancelNow(subscriptionId: string): Promise<SubscriptionSnapshot>;
   /**
-   * Moves the subscription to another price of the same audience (Federation month ↔ year), where
-   * the plan matrix allows it (DEFAULT M22 question 4: no change is offered while Federation is planned).
+   * Moves the subscription to another price of the same audience (Federation month ↔ year): now, with
+   * proration and a new period from now, or at the end of the period (M23; DEFAULT M23, question 2).
    */
-  changePlan(subscriptionId: string, change: { planCode: PlanCode; planName: string; interval: BillingInterval; amountCents: number; currency: string }): Promise<SubscriptionSnapshot>;
+  changePlan(subscriptionId: string, change: PlanChange): Promise<SubscriptionSnapshot>;
+  /** M23: takes back a change scheduled for the period end. The new state. */
+  cancelScheduledChange(subscriptionId: string): Promise<SubscriptionSnapshot>;
   /** Verifies the signature of a webhook request body and reads the event. Throws WebhookSignatureError. */
   verifyWebhook(body: string, headers: Headers, now?: Date): VerifiedEvent;
 }

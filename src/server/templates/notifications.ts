@@ -1408,13 +1408,20 @@ const NO_CHARGE = 'This is test mode: no real charge is ever made.';
 interface BillingNotice {
   subscriptionId: string;
   planCode: (typeof PAID_PLANS)[number];
+  /** M23: the organization of a Federation subscription; its billing page is the notice's action. */
+  organizationId?: string;
 }
 
 function billingNotice(template: string, payload: unknown): BillingNotice & { data: Record<string, unknown> } {
   const data = payloadObject(template, payload);
   if (typeof data.planCode !== 'string' || !(PAID_PLANS as readonly string[]).includes(data.planCode)) throw new NotificationDataError(template, 'planCode must be a paid plan');
-  return { subscriptionId: uuidOf(template, 'subscriptionId', payload), planCode: data.planCode as BillingNotice['planCode'], data };
+  const organizationId = data.organizationId === undefined ? undefined : uuidOf(template, 'organizationId', payload);
+  return { subscriptionId: uuidOf(template, 'subscriptionId', payload), planCode: data.planCode as BillingNotice['planCode'], ...(organizationId ? { organizationId } : {}), data };
 }
+
+/** M23: the billing page a billing notice opens: the account's, or the organization's. */
+const billingAction = (organizationId?: string) =>
+  organizationId ? ({ label: 'Open the organization’s billing', href: `/dashboard/organization/${organizationId}/billing` } as const) : SEE_YOUR_BILLING;
 
 /** "billing.started" (M22): the subscription is active after a successful test checkout. */
 const billingStarted: NotificationTemplate<BillingNotice & { renewsOn: string; cancelAtPeriodEnd: boolean }> = {
@@ -1423,14 +1430,14 @@ const billingStarted: NotificationTemplate<BillingNotice & { renewsOn: string; c
     const { data, ...base } = billingNotice('billing.started', payload);
     return { ...base, renewsOn: requiredDate('billing.started', 'renewsOn', data.renewsOn), cancelAtPeriodEnd: data.cancelAtPeriodEnd === true };
   },
-  render: ({ planCode, renewsOn, cancelAtPeriodEnd }) => ({
+  render: ({ planCode, organizationId, renewsOn, cancelAtPeriodEnd }) => ({
     title: `Your plan is now ${PLANS[planCode].name}`,
     body: [
       {
         text: `${PLANS[planCode].name} is active now. ${cancelAtPeriodEnd ? `It runs until ${formatDay(renewsOn)} and does not renew.` : `It renews on ${formatDay(renewsOn)}; you can cancel at any time.`} ${NO_CHARGE}`,
       },
     ],
-    action: SEE_YOUR_BILLING,
+    action: billingAction(organizationId),
   }),
   sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', renewsOn: '2027-01-15T10:00:00.000Z', cancelAtPeriodEnd: false },
 };
@@ -1442,14 +1449,14 @@ const billingCancelScheduled: NotificationTemplate<BillingNotice & { endsOn: str
     const { data, ...base } = billingNotice('billing.cancel-scheduled', payload);
     return { ...base, endsOn: requiredDate('billing.cancel-scheduled', 'endsOn', data.endsOn) };
   },
-  render: ({ planCode, endsOn }) => ({
+  render: ({ planCode, organizationId, endsOn }) => ({
     title: `${PLANS[planCode].name} will not renew`,
     body: [
       {
         text: `You cancelled ${PLANS[planCode].name}. You keep it until ${formatDay(endsOn)}, and it does not renew after that. Nothing you added is deleted. You can resume it before then. ${NO_CHARGE}`,
       },
     ],
-    action: SEE_YOUR_BILLING,
+    action: billingAction(organizationId),
   }),
   sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', endsOn: '2027-01-15T10:00:00.000Z' },
 };
@@ -1461,10 +1468,10 @@ const billingResumed: NotificationTemplate<BillingNotice & { renewsOn: string }>
     const { data, ...base } = billingNotice('billing.resumed', payload);
     return { ...base, renewsOn: requiredDate('billing.resumed', 'renewsOn', data.renewsOn) };
   },
-  render: ({ planCode, renewsOn }) => ({
+  render: ({ planCode, organizationId, renewsOn }) => ({
     title: `${PLANS[planCode].name} renews again`,
     body: [{ text: `You resumed ${PLANS[planCode].name}. It renews on ${formatDay(renewsOn)}. ${NO_CHARGE}` }],
-    action: SEE_YOUR_BILLING,
+    action: billingAction(organizationId),
   }),
   sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'premium_student', renewsOn: '2027-01-15T10:00:00.000Z' },
 };
@@ -1476,14 +1483,14 @@ const billingPaymentFailed: NotificationTemplate<BillingNotice & { accessUntil: 
     const { data, ...base } = billingNotice('billing.payment-failed', payload);
     return { ...base, accessUntil: requiredDate('billing.payment-failed', 'accessUntil', data.accessUntil) };
   },
-  render: ({ planCode, accessUntil }) => ({
+  render: ({ planCode, organizationId, accessUntil }) => ({
     title: `The renewal of ${PLANS[planCode].name} did not go through`,
     body: [
       {
         text: `The test payment for the renewal of ${PLANS[planCode].name} failed. You keep the plan until ${formatDay(accessUntil)}. If the payment does not go through by then, the plan ends; nothing you added is deleted. ${NO_CHARGE}`,
       },
     ],
-    action: SEE_YOUR_BILLING,
+    action: billingAction(organizationId),
   }),
   sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', accessUntil: '2027-01-22T10:00:00.000Z' },
 };
@@ -1495,10 +1502,10 @@ const billingPaymentRecovered: NotificationTemplate<BillingNotice & { renewsOn: 
     const { data, ...base } = billingNotice('billing.payment-recovered', payload);
     return { ...base, renewsOn: requiredDate('billing.payment-recovered', 'renewsOn', data.renewsOn) };
   },
-  render: ({ planCode, renewsOn }) => ({
+  render: ({ planCode, organizationId, renewsOn }) => ({
     title: `${PLANS[planCode].name} is paid`,
     body: [{ text: `The renewal of ${PLANS[planCode].name} went through. It renews next on ${formatDay(renewsOn)}. ${NO_CHARGE}` }],
-    action: SEE_YOUR_BILLING,
+    action: billingAction(organizationId),
   }),
   sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', renewsOn: '2027-02-15T10:00:00.000Z' },
 };
@@ -1513,16 +1520,140 @@ const billingEnded: NotificationTemplate<BillingNotice & { endedAt: string; reas
     if (typeof data.reason !== 'string' || !(BILLING_END_REASONS as readonly string[]).includes(data.reason)) throw new NotificationDataError('billing.ended', 'reason must be unpaid or provider');
     return { ...base, endedAt: requiredDate('billing.ended', 'endedAt', data.endedAt), reason: data.reason as (typeof BILLING_END_REASONS)[number] };
   },
-  render: ({ planCode, endedAt, reason }) => ({
+  render: ({ planCode, organizationId, endedAt, reason }) => ({
     title: `${PLANS[planCode].name} ended`,
     body: [
       {
         text: `${reason === 'unpaid' ? `The renewal of ${PLANS[planCode].name} was not paid in time, so the plan ended on ${formatDay(endedAt)}.` : `${PLANS[planCode].name} ended on ${formatDay(endedAt)}.`} ${whatStays(planCode, PLANS[planCode].audience === 'sifu' ? 'free_sifu' : PLANS[planCode].audience === 'student' ? 'free_student' : planCode)} You can choose the plan again on the plans page. ${NO_CHARGE}`,
       },
     ],
-    action: SEE_YOUR_BILLING,
+    action: billingAction(organizationId),
   }),
   sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'pro_sifu', endedAt: '2027-01-22T10:00:00.000Z', reason: 'unpaid' },
+};
+
+const INTERVAL_BILLING = { month: 'monthly', year: 'yearly' } as const;
+type Interval = keyof typeof INTERVAL_BILLING;
+function intervalOf(template: string, value: unknown): Interval {
+  if (value !== 'month' && value !== 'year') throw new NotificationDataError(template, 'interval must be month or year');
+  return value;
+}
+
+/** "billing.plan-changed" (M23; DEFAULT M23, question 2): the plan or billing period changed now (an upgrade, or a scheduled change at its renewal). */
+const billingPlanChanged: NotificationTemplate<BillingNotice & { interval: Interval; renewsOn: string }> = {
+  name: 'billing.plan-changed',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.plan-changed', payload);
+    return { ...base, interval: intervalOf('billing.plan-changed', data.interval), renewsOn: requiredDate('billing.plan-changed', 'renewsOn', data.renewsOn) };
+  },
+  render: ({ planCode, organizationId, interval, renewsOn }) => ({
+    title: `${PLANS[planCode].name} is now billed ${INTERVAL_BILLING[interval]}`,
+    body: [{ text: `${PLANS[planCode].name} is billed ${INTERVAL_BILLING[interval]} from now on. It renews on ${formatDay(renewsOn)}. The payment history shows what was charged. ${NO_CHARGE}` }],
+    action: billingAction(organizationId),
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'federation', organizationId: '0190a5c0-0000-7000-8000-00000000000c', interval: 'year', renewsOn: '2027-11-15T10:00:00.000Z' },
+};
+
+/** "billing.change-scheduled" (M23; DEFAULT M23, question 2): a downgrade starts at the end of the period. */
+const billingChangeScheduled: NotificationTemplate<BillingNotice & { toPlanCode: (typeof PAID_PLANS)[number]; interval: Interval; startsOn: string }> = {
+  name: 'billing.change-scheduled',
+  parse(payload) {
+    const { data, ...base } = billingNotice('billing.change-scheduled', payload);
+    if (typeof data.toPlanCode !== 'string' || !(PAID_PLANS as readonly string[]).includes(data.toPlanCode)) throw new NotificationDataError('billing.change-scheduled', 'toPlanCode must be a paid plan');
+    return {
+      ...base,
+      toPlanCode: data.toPlanCode as (typeof PAID_PLANS)[number],
+      interval: intervalOf('billing.change-scheduled', data.interval),
+      startsOn: requiredDate('billing.change-scheduled', 'startsOn', data.startsOn),
+    };
+  },
+  render: ({ planCode, organizationId, toPlanCode, interval, startsOn }) => ({
+    title: `A change to ${PLANS[toPlanCode].name}, billed ${INTERVAL_BILLING[interval]}, is scheduled`,
+    body: [
+      {
+        text: `${PLANS[planCode].name} stays as it is until ${formatDay(startsOn)}. From then it renews as ${PLANS[toPlanCode].name}, billed ${INTERVAL_BILLING[interval]}. You can take the change back on the billing page before then. ${NO_CHARGE}`,
+      },
+    ],
+    action: billingAction(organizationId),
+  }),
+  sample: { subscriptionId: '0190a5c0-0000-7000-8000-0000000000e1', planCode: 'federation', organizationId: '0190a5c0-0000-7000-8000-00000000000c', toPlanCode: 'federation', interval: 'month', startsOn: '2027-11-15T10:00:00.000Z' },
+};
+
+// --- Federation trials (M23; specification §10.2; docs/adr/0026-federation-billing.md) -------------
+// To every admin of the organization, in the Plan category (e-mail on by default, may be switched
+// off). The date, never a countdown, and that nothing is charged or deleted (CLAUDE.md §11).
+
+interface TrialNoticeData {
+  organizationId: string;
+  trialId: string;
+  endsAt: string;
+}
+
+function federationTrialNotice(template: string, payload: unknown): TrialNoticeData & { data: Record<string, unknown> } {
+  const data = payloadObject(template, payload);
+  return { organizationId: uuidOf(template, 'organizationId', payload), trialId: uuidOf(template, 'trialId', payload), endsAt: requiredDate(template, 'endsAt', data.endsAt), data };
+}
+
+const ORGANIZATION_BILLING = (organizationId: string) => ({ label: 'Open the organization’s billing', href: `/dashboard/organization/${organizationId}/billing` }) as const;
+const TRIAL_KEEPS = 'Nothing is charged without a subscription, and the members, school links and history of the organization are kept.';
+
+/** "federation.trial-started" (M23): an administrator started a Federation trial for the organization. */
+const federationTrialStarted: NotificationTemplate<TrialNoticeData> = {
+  name: 'federation.trial-started',
+  parse(payload) {
+    const { organizationId, trialId, endsAt } = federationTrialNotice('federation.trial-started', payload);
+    return { organizationId, trialId, endsAt };
+  },
+  render: ({ organizationId, endsAt }) => ({
+    title: 'Your organization has a Federation trial',
+    body: [
+      {
+        text: `Your organization can use Federation until ${formatDay(endsAt)}, with no card. Before then you can choose monthly or yearly billing to continue; the first payment would be due when the trial ends. ${TRIAL_KEEPS}`,
+      },
+    ],
+    action: ORGANIZATION_BILLING(organizationId),
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000c', trialId: '0190a5c0-0000-7000-8000-0000000000e7', endsAt: '2027-11-11T10:00:00.000Z' },
+};
+
+/** "federation.trial-ending" (M23; specification §10.2): 14 and 7 days before the trial ends. */
+const federationTrialEnding: NotificationTemplate<TrialNoticeData & { daysBefore: 14 | 7 }> = {
+  name: 'federation.trial-ending',
+  parse(payload) {
+    const { data, ...base } = federationTrialNotice('federation.trial-ending', payload);
+    if (data.daysBefore !== 14 && data.daysBefore !== 7) throw new NotificationDataError('federation.trial-ending', 'daysBefore must be 14 or 7');
+    return { ...base, daysBefore: data.daysBefore };
+  },
+  render: ({ organizationId, endsAt }) => ({
+    title: `Your organization’s Federation trial ends on ${formatDay(endsAt)}`,
+    body: [
+      {
+        text: `The Federation trial of your organization ends on ${formatDay(endsAt)}. To continue, an owner can choose monthly or yearly billing on the billing page; the first payment would be due on that date. If you do nothing, the trial simply ends. ${TRIAL_KEEPS} ${NO_CHARGE}`,
+      },
+    ],
+    action: ORGANIZATION_BILLING(organizationId),
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000c', trialId: '0190a5c0-0000-7000-8000-0000000000e7', endsAt: '2027-11-11T10:00:00.000Z', daysBefore: 14 },
+};
+
+/** "federation.trial-ended" (M23): the trial ran out without a subscription, or an administrator ended it. */
+const federationTrialEnded: NotificationTemplate<TrialNoticeData & { reason: 'expired' | 'revoked' }> = {
+  name: 'federation.trial-ended',
+  parse(payload) {
+    const { data, ...base } = federationTrialNotice('federation.trial-ended', payload);
+    if (data.reason !== 'expired' && data.reason !== 'revoked') throw new NotificationDataError('federation.trial-ended', 'reason must be expired or revoked');
+    return { ...base, reason: data.reason };
+  },
+  render: ({ organizationId, endsAt, reason }) => ({
+    title: 'Your organization’s Federation trial has ended',
+    body: [
+      {
+        text: `${reason === 'expired' ? `The Federation trial of your organization ended on ${formatDay(endsAt)}.` : `An administrator ended the Federation trial of your organization on ${formatDay(endsAt)}.`} No card was taken and nothing was charged. The members, school links, events and history stay; managing members and schools needs Federation again. An owner can choose monthly or yearly billing on the billing page.`,
+      },
+    ],
+    action: ORGANIZATION_BILLING(organizationId),
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000c', trialId: '0190a5c0-0000-7000-8000-0000000000e7', endsAt: '2027-11-11T10:00:00.000Z', reason: 'expired' },
 };
 
 /** Every notification template, by name (= template.name). */
@@ -1581,6 +1712,12 @@ export const NOTIFICATION_TEMPLATES = {
   'billing.payment-failed': billingPaymentFailed,
   'billing.payment-recovered': billingPaymentRecovered,
   'billing.ended': billingEnded,
+  // M23.
+  'billing.plan-changed': billingPlanChanged,
+  'billing.change-scheduled': billingChangeScheduled,
+  'federation.trial-started': federationTrialStarted,
+  'federation.trial-ending': federationTrialEnding,
+  'federation.trial-ended': federationTrialEnded,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

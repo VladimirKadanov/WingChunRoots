@@ -58,7 +58,17 @@ describe('notification catalog', () => {
   it('never lets the billing notices be switched off, and e-mails every one of them (M22; DEFAULT M22, question 6)', () => {
     expect(CATEGORIES.billing.optOut).toBe(false);
     expect(CATEGORIES.billing.emailDefault).toBe(true);
-    expect(kindsOf('billing').sort()).toEqual(['billing.cancel-scheduled', 'billing.ended', 'billing.payment-failed', 'billing.payment-recovered', 'billing.resumed', 'billing.started']);
+    // M23 adds the change of plan or billing period, now and scheduled.
+    expect(kindsOf('billing').sort()).toEqual([
+      'billing.cancel-scheduled',
+      'billing.change-scheduled',
+      'billing.ended',
+      'billing.payment-failed',
+      'billing.payment-recovered',
+      'billing.plan-changed',
+      'billing.resumed',
+      'billing.started',
+    ]);
     for (const kind of kindsOf('billing')) {
       expect(catalogEntry(kind).email, kind).toBe('notice');
       expect(emailWanted(kind, false), kind).toBe(true);

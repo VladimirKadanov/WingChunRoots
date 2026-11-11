@@ -21,6 +21,14 @@
 //
 // DEFAULT D06/D08: a downgrade (the end of a paid plan) touches no relationship and deletes no
 // record; confirmed links stay confirmed and public, school pins hide (DEFAULT D08/D18).
+//
+// M23 (docs/adr/0026-federation-billing.md): an organization's owner buys Federation for an
+// approved federation, monthly or yearly (DEFAULT M23, question 1), also to continue its trial
+// (the first charge then comes at the trial's end); a subscriber changes plan or billing period
+// (an upgrade now, with proration; a downgrade at the period end: DEFAULT M23, question 2). An
+// organization's subscription drives the organization's own grant only (specification §10.3): no
+// state of it ever reads or writes a grant or a subscription of an account, so a lapsed Federation
+// leaves every member school's and student's own plan as it is (DEFAULT M23, question 6).
 
 import { and, count, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import * as z from 'zod';
@@ -34,14 +42,18 @@ import { billingProvider, testProvider } from '../billing/provider';
 import { TEST_CARDS } from '../billing/test-provider';
 import { BillingProviderError, type NormalizedEvent, type SubscriptionSnapshot } from '../billing/types';
 import { getDb } from '../db';
-import { authUser, billingCheckout, billingCustomer, billingEvent, billingInvoice, billingSubscription, entitlementGrant, organization } from '../db/schema';
-import { BILLING_GRACE_DAYS, BILLING_INTERVALS, BILLING_SUBSCRIPTION_STATUSES, BILLING_TEST_CARDS, PLAN_CODES } from '../db/schema/common';
-import { effectivePlan, type Executor } from '../entitlements/access';
+import { authUser, billingCheckout, billingCustomer, billingEvent, billingInvoice, billingSubscription, entitlementGrant, federationTrial, organization } from '../db/schema';
+import { BILLING_GRACE_DAYS, BILLING_INTERVALS, type FEDERATION_TRIAL_STATUSES, BILLING_SUBSCRIPTION_STATUSES, BILLING_TEST_CARDS, PLAN_CODES } from '../db/schema/common';
+import { effectivePlan, type Executor, organizationPlan } from '../entitlements/access';
 import {
   type AccountType,
   billingPrice,
   type BillingInterval,
+  FEDERATION_BENEFITS_NOW,
   formatAmount,
+  INTERVAL_WORDS,
+  ORGANIZATION_PURCHASABLE_PLANS,
+  type PlanDefinition,
   PLANS,
   type PlanCode,
   purchasablePlans,
@@ -54,7 +66,7 @@ import type { RequestMeta } from './context';
 import { type BillingSubject, liveSubscriptionOf } from './billing-subject';
 import { ServiceError } from './errors';
 import { notify, type NoticeProducer } from './notify';
-import { adminRoleOf } from './organizations';
+import { adminIdsOf, adminRoleOf, APPROVAL_LABELS, ORGANIZATION_KIND_LABELS, organizationRow } from './organizations';
 import { PROPOSED_PRICE_LABEL, planSummary, type PlanSummary } from './plans';
 
 export { TEST_MODE_LABEL };
@@ -98,7 +110,11 @@ export function accessUntil(sub: Pick<SubscriptionRow, 'status' | 'currentPeriod
 // --- views -------------------------------------------------------------------------------------------
 
 const STATUS_LABELS: Record<Status, string> = { incomplete: 'Not paid', active: 'Active', past_due: 'Payment failed', canceled: 'Ended' };
-const INTERVAL_WORDS: Record<BillingInterval, string> = { month: 'a month', year: 'a year' };
+const INTERVAL_NAMES: Record<BillingInterval, string> = { month: 'monthly', year: 'yearly' };
+const priceText = (code: PlanCode, interval: BillingInterval): string => {
+  const price = billingPrice(code, interval);
+  return price ? `${formatAmount(price.amountCents, price.currency)} ${INTERVAL_WORDS[interval]}` : '';
+};
 
 export interface InvoiceView {
   id: string;
@@ -130,6 +146,23 @@ export interface SubscriptionView {
   canCancel: boolean;
   canResume: boolean;
   invoices: InvoiceView[];
+  /** M23: the plan and billing period that start at the period end (DEFAULT M23, question 2). */
+  scheduledChange: { planCode: PlanCode; planName: string; interval: BillingInterval; price: string; startsOn: string } | null;
+  /** M23: the plans and billing periods this subscription may change to, and when each change takes effect. */
+  changeOptions: ChangeOption[];
+}
+
+export interface ChangeOption {
+  planCode: PlanCode;
+  planName: string;
+  interval: BillingInterval;
+  price: string;
+  /** DEFAULT M23 (question 2): `now` for an upgrade (prorated), `period_end` for a downgrade. */
+  when: 'now' | 'period_end';
+  /** "Switch to yearly billing", "Switch to monthly billing", "Switch to <plan>". */
+  label: string;
+  /** One sentence: what the change does and when; no urgency (CLAUDE.md §11). */
+  note: string;
 }
 
 function summaryOf(sub: SubscriptionRow): string {
@@ -139,7 +172,9 @@ function summaryOf(sub: SubscriptionRow): string {
     case 'active':
       return sub.cancelAtPeriodEnd
         ? `Cancelled at the end of the period. You keep ${plan} until ${formatDay(sub.currentPeriodEnd)}; nothing more is charged.`
-        : `Renews on ${formatDay(sub.currentPeriodEnd)}.`;
+        : sub.scheduledPlanCode && sub.scheduledInterval
+          ? `Renews on ${formatDay(sub.currentPeriodEnd)} as ${PLANS[sub.scheduledPlanCode].name}, billed ${INTERVAL_NAMES[sub.scheduledInterval]} at ${priceText(sub.scheduledPlanCode, sub.scheduledInterval)}.`
+          : `Renews on ${formatDay(sub.currentPeriodEnd)}.`;
     case 'past_due':
       return `The renewal payment failed. You keep ${plan} until ${formatDay(until!)} while the payment is retried.`;
     case 'canceled':
@@ -169,7 +204,47 @@ async function invoicesOf(db: Executor, subscriptionIds: string[]): Promise<Map<
   return map;
 }
 
-function viewOf(sub: SubscriptionRow, invoices: InvoiceView[], now: Date): SubscriptionView {
+/**
+ * DEFAULT M23 (question 2): a change to a higher plan, or from monthly to yearly billing of the same
+ * plan, is an upgrade and takes effect now (prorated); any other change waits for the period end.
+ * A subscription still in the free period of a Federation trial changes at its end only, so nothing
+ * is charged before the trial ends.
+ */
+export function changeTiming(from: { planCode: PlanCode; interval: BillingInterval }, to: { planCode: PlanCode; interval: BillingInterval }, inTrial = false): 'now' | 'period_end' {
+  if (inTrial) return 'period_end';
+  const a = PLANS[from.planCode];
+  const b = PLANS[to.planCode];
+  if (b.rank !== a.rank) return b.rank > a.rank ? 'now' : 'period_end';
+  return from.interval === 'month' && to.interval === 'year' ? 'now' : 'period_end';
+}
+
+/** The plans of the subscription's audience a subscriber may buy now (Federation for an organization). */
+function sellable(audience: PlanDefinition['audience']): PlanCode[] {
+  return audience === 'organization' ? [...ORGANIZATION_PURCHASABLE_PLANS] : purchasablePlans(audience);
+}
+
+/** M23: what a live, active subscription may change to (another plan of its audience or another billing period). */
+function changeOptionsOf(sub: SubscriptionRow, now: Date, inTrial: boolean): ChangeOption[] {
+  if (sub.status !== 'active' || sub.cancelAtPeriodEnd || sub.currentPeriodEnd.getTime() <= now.getTime()) return [];
+  const audience = PLANS[sub.planCode].audience;
+  return sellable(audience).flatMap((code) =>
+    BILLING_INTERVALS.flatMap((interval): ChangeOption[] => {
+      if (code === sub.planCode && interval === sub.interval) return [];
+      if (code === sub.scheduledPlanCode && interval === sub.scheduledInterval) return [];
+      if (!billingPrice(code, interval)) return [];
+      const when = changeTiming(sub, { planCode: code, interval }, inTrial);
+      const price = priceText(code, interval);
+      const label = code === sub.planCode ? `Switch to ${INTERVAL_NAMES[interval]} billing` : `Switch to ${PLANS[code].name}`;
+      const note =
+        when === 'now'
+          ? `${PLANS[code].name} at ${price} from today: a new period starts now, and the unused part of the current one is credited against the first payment.`
+          : `${PLANS[code].name} at ${price} from ${formatDay(sub.currentPeriodEnd)}, when the current period ends; nothing changes before then.`;
+      return [{ planCode: code, planName: PLANS[code].name, interval, price, when, label, note }];
+    }),
+  );
+}
+
+function viewOf(sub: SubscriptionRow, invoices: InvoiceView[], now: Date, inTrial = false): SubscriptionView {
   const price = billingPrice(sub.planCode, sub.interval);
   const until = accessUntil(sub);
   const live = isLive(sub.status) && (until === null || until.getTime() > now.getTime());
@@ -191,7 +266,25 @@ function viewOf(sub: SubscriptionRow, invoices: InvoiceView[], now: Date): Subsc
     canCancel: live && !sub.cancelAtPeriodEnd,
     canResume: live && sub.status === 'active' && sub.cancelAtPeriodEnd && sub.currentPeriodEnd.getTime() > now.getTime(),
     invoices,
+    scheduledChange:
+      live && sub.scheduledPlanCode && sub.scheduledInterval
+        ? {
+            planCode: sub.scheduledPlanCode,
+            planName: PLANS[sub.scheduledPlanCode].name,
+            interval: sub.scheduledInterval,
+            price: priceText(sub.scheduledPlanCode, sub.scheduledInterval),
+            startsOn: sub.currentPeriodEnd.toISOString(),
+          }
+        : null,
+    changeOptions: live ? changeOptionsOf(sub, now, inTrial) : [],
   };
+}
+
+/** M23: whether the subscription is still in the free first period of the Federation trial it continued. */
+async function inTrialPeriod(db: Executor, sub: SubscriptionRow): Promise<boolean> {
+  if (!sub.checkoutId || !sub.subjectOrganizationId) return false;
+  const [row] = await db.select({ trialEndsAt: billingCheckout.trialEndsAt }).from(billingCheckout).where(eq(billingCheckout.id, sub.checkoutId));
+  return row?.trialEndsAt != null && sub.currentPeriodEnd.getTime() <= row.trialEndsAt.getTime();
 }
 
 // --- the account's billing (billing.mine) --------------------------------------------------------
@@ -227,7 +320,7 @@ function offersFor(accountType: AccountType): BillingOffer[] {
     BILLING_INTERVALS.flatMap((interval) => {
       const price = billingPrice(code, interval);
       if (!price) return [];
-      return [{ planCode: code, planName: PLANS[code].name, interval, price: `${formatAmount(price.amountCents, price.currency)} ${INTERVAL_WORDS[interval]}`, priceLabel: PROPOSED_PRICE_LABEL, summary: PLANS[code].summary }];
+      return [{ planCode: code, planName: PLANS[code].name, interval, price: priceText(code, interval), priceLabel: PROPOSED_PRICE_LABEL, summary: PLANS[code].summary }];
     }),
   );
 }
@@ -259,6 +352,140 @@ export async function myBilling(principal: Principal | null, raw: unknown = {}, 
     subscription: current ? resumableBy(viewOf(current, invoices.get(current.id) ?? [], now), current, effective.accountType) : null,
     earlier: subs.filter((s) => s.id !== current?.id).slice(0, 10).map((s) => viewOf(s, invoices.get(s.id) ?? [], now)),
     offers: live ? [] : offersFor(effective.accountType),
+    checkout,
+  };
+}
+
+// --- an organization's billing (billing.organization; M23) ------------------------------------------
+
+export const organizationBillingInput = z.object({
+  organizationId: z.uuid({ error: 'No such organization.' }),
+  checkout: z.uuid().optional(),
+});
+
+export interface TrialView {
+  id: string;
+  status: (typeof FEDERATION_TRIAL_STATUSES)[number];
+  /** In words, beside a shape (never colour alone). */
+  statusLabel: string;
+  months: number;
+  startsAt: string;
+  endsAt: string;
+  endedAt: string | null;
+  /** One sentence with a date: what happens at the end; no countdown (CLAUDE.md §11). */
+  summary: string;
+}
+
+export interface OrganizationBilling {
+  provider: 'test' | 'stripe';
+  testModeLabel: typeof TEST_MODE_LABEL;
+  organization: { id: string; name: string; kind: string; kindLabel: string; status: string; approvalLabel: string };
+  you: { role: 'owner' | 'admin'; canManage: boolean };
+  /** The Federation plan in effect now and until when, from any grant (trial, subscription, test or complimentary). */
+  plan: { code: 'federation' | null; label: string; until: string | null };
+  trial: TrialView | null;
+  subscription: SubscriptionView | null;
+  earlier: SubscriptionView[];
+  /** Monthly and yearly Federation, when an owner may start a checkout now. */
+  offers: BillingOffer[];
+  /** Why no checkout is offered, when none is (not a federation, not approved, not an owner). */
+  offersNote: string | null;
+  /** What Federation gives now (CLAUDE.md §11: only benefits that exist). */
+  benefits: readonly string[];
+  checkout: MyBilling['checkout'];
+}
+
+const TRIAL_STATUS_LABELS = { active: 'Trial running', converted: 'Continued as a subscription', ended: 'Trial ended', revoked: 'Trial ended early' } as const;
+
+export function trialView(row: typeof federationTrial.$inferSelect): TrialView {
+  const summary =
+    row.status === 'active'
+      ? `The trial runs until ${formatDay(row.endsAt)} with no card and no charge. To continue after that, choose monthly or yearly billing; if you do nothing, the trial simply ends and nothing is deleted.`
+      : row.status === 'converted'
+        ? `The organization subscribed during the trial on ${formatDay(row.endedAt!)}; the first payment is due when the trial period ends.`
+        : row.status === 'ended'
+          ? `The trial ended on ${formatDay(row.endsAt)} without a subscription. Nothing was charged, and the members, school links and history are kept.`
+          : `An administrator ended the trial on ${formatDay(row.endedAt!)}. Nothing was charged, and the members, school links and history are kept.`;
+  return {
+    id: row.id,
+    status: row.status,
+    statusLabel: TRIAL_STATUS_LABELS[row.status],
+    months: row.months,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+    endedAt: row.endedAt?.toISOString() ?? null,
+    summary,
+  };
+}
+
+/**
+ * One organization's plan, trial, subscription and payment history (GET
+ * /api/v1/billing/organizations/{organizationId}; M23): for its admins (404 for anyone else); its
+ * owners also get the offers and the forms (DEFAULT M23, question 1).
+ */
+export async function organizationBilling(principal: Principal | null, raw: unknown, now: Date = new Date()): Promise<OrganizationBilling> {
+  const p = requireUser(principal);
+  const parsed = organizationBillingInput.safeParse(raw);
+  if (!parsed.success) throw new ServiceError('NOT_FOUND', 'No such organization.');
+  const db = getDb();
+  const org = await organizationRow(db, parsed.data.organizationId);
+  const role = org ? await adminRoleOf(db, org.id, p.user.id) : null;
+  if (!org || !role) throw new ServiceError('NOT_FOUND', 'No such organization.');
+  const canManage = role === 'owner';
+  const plan = await organizationPlan({ kind: 'organization', organizationId: org.id }, { db, now });
+  const [trialRow] = await db.select().from(federationTrial).where(eq(federationTrial.organizationId, org.id)).orderBy(desc(federationTrial.createdAt)).limit(1);
+  const subs = await db
+    .select()
+    .from(billingSubscription)
+    .where(eq(billingSubscription.subjectOrganizationId, org.id))
+    .orderBy(desc(billingSubscription.createdAt), desc(billingSubscription.id))
+    .limit(11);
+  const invoices = await invoicesOf(db, subs.map((s) => s.id));
+  const live = subs.find((s) => isLive(s.status)) ?? null;
+  const current = live ?? subs[0] ?? null;
+  let checkout: MyBilling['checkout'] = null;
+  if (parsed.data.checkout) {
+    const [row] = await db
+      .select()
+      .from(billingCheckout)
+      .where(and(eq(billingCheckout.id, parsed.data.checkout), eq(billingCheckout.subjectOrganizationId, org.id)));
+    if (row) checkout = { id: row.id, planName: PLANS[row.planCode].name, status: checkoutStatus(row, now) };
+  }
+  const offersNote =
+    org.kind !== 'federation'
+      ? `Federation is for federations. This organization is registered as ${ORGANIZATION_KIND_LABELS[org.kind].toLowerCase()}.`
+      : org.status !== 'active'
+        ? 'Federation can be chosen once the reviewers approve the organization.'
+        : !canManage
+          ? 'Only an owner of the organization can choose its plan.'
+          : null;
+  const offers =
+    live || offersNote
+      ? []
+      : ORGANIZATION_PURCHASABLE_PLANS.flatMap((code) =>
+          BILLING_INTERVALS.flatMap((interval) =>
+            billingPrice(code, interval)
+              ? [{ planCode: code, planName: PLANS[code].name, interval, price: priceText(code, interval), priceLabel: PROPOSED_PRICE_LABEL, summary: PLANS[code].summary } satisfies BillingOffer]
+              : [],
+          ),
+        );
+  const view = (s: SubscriptionRow, trialPeriod: boolean) => {
+    const v = viewOf(s, invoices.get(s.id) ?? [], now, trialPeriod);
+    // Another admin reads; only an owner changes (DEFAULT M23, question 1).
+    return canManage ? v : { ...v, canCancel: false, canResume: false, changeOptions: [] };
+  };
+  return {
+    provider: billingProvider().name,
+    testModeLabel: TEST_MODE_LABEL,
+    organization: { id: org.id, name: org.name, kind: org.kind, kindLabel: ORGANIZATION_KIND_LABELS[org.kind], status: org.status, approvalLabel: APPROVAL_LABELS[org.status] },
+    you: { role, canManage },
+    plan: plan.plan ? { code: 'federation', label: PLANS.federation.name, until: plan.until?.toISOString() ?? null } : { code: null, label: 'No plan', until: null },
+    trial: trialRow ? trialView(trialRow) : null,
+    subscription: current ? view(current, await inTrialPeriod(db, current)) : null,
+    earlier: subs.filter((s) => s.id !== current?.id).slice(0, 10).map((s) => view(s, false)),
+    offers,
+    offersNote: live ? null : offersNote,
+    benefits: FEDERATION_BENEFITS_NOW,
     checkout,
   };
 }
@@ -309,8 +536,11 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
   const price = billingPrice(planCode, interval);
   if (plan.price.monthlyUsd === 0) throw new ServiceError('BAD_REQUEST', `${plan.name} is free: it needs no checkout.`, { planCode: `${plan.name} is free.` });
   if (!price) throw new ServiceError('BAD_REQUEST', `${plan.name} has no ${interval === 'year' ? 'yearly' : 'monthly'} price.`, { interval: 'Choose another billing period.' });
-  // DEFAULT M22 (question 3): a planned plan (Federation, D12) is not sold before it exists (CLAUDE.md §11).
-  if (plan.availability !== 'now') throw new ServiceError('CONFLICT', `${plan.name} is planned and not available yet, so it cannot be bought.`);
+  // DEFAULT M22 (question 3): a planned plan is not sold before it exists (CLAUDE.md §11). DEFAULT
+  // M23 (question 1): Federation is sold to an organization for what it gives now (FEDERATION_BENEFITS_NOW).
+  if (plan.availability !== 'now' && !ORGANIZATION_PURCHASABLE_PLANS.includes(planCode)) {
+    throw new ServiceError('CONFLICT', `${plan.name} is planned and not available yet, so it cannot be bought.`);
+  }
   if (!p.user.emailVerified) throw new ServiceError('FORBIDDEN', 'Confirm your e-mail address first.');
   const provider = billingProvider();
 
@@ -319,12 +549,28 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
     const account = await lockAccount(tx, { id: p.user.id });
     if (!account) throw new ServiceError('UNAUTHORIZED', 'Sign in to continue.');
     let subject: Subject;
+    let trialEndsAt: Date | null = null;
     if (plan.audience === 'organization') {
       if (!organizationId) throw new ServiceError('BAD_REQUEST', `${plan.name} is bought for an organization.`, { organizationId: 'Choose the organization.' });
-      const [org] = await tx.select({ id: organization.id, status: organization.status }).from(organization).where(and(eq(organization.id, organizationId), isNull(organization.deletedAt)));
-      if (!org || (await adminRoleOf(tx, organizationId, p.user.id)) !== 'owner') throw new ServiceError('NOT_FOUND', 'No such organization.');
+      // The organization's row, locked: a checkout and an administrator's trial take it in turn.
+      const [org] = await tx
+        .select({ id: organization.id, status: organization.status, kind: organization.kind })
+        .from(organization)
+        .where(and(eq(organization.id, organizationId), isNull(organization.deletedAt)))
+        .for('update');
+      // DEFAULT M23 (question 1): an owner of the organization buys for it; another admin reads only.
+      const role = org ? await adminRoleOf(tx, organizationId, p.user.id) : null;
+      if (!org || !role) throw new ServiceError('NOT_FOUND', 'No such organization.');
+      if (role !== 'owner') throw new ServiceError('FORBIDDEN', 'Only an owner of the organization can choose its plan.');
       if (org.status !== 'active') throw new ServiceError('CONFLICT', 'The organization is not approved yet.');
+      if (org.kind !== 'federation') throw new ServiceError('CONFLICT', `${plan.name} is for federations. This organization is registered as ${ORGANIZATION_KIND_LABELS[org.kind].toLowerCase()}.`);
       subject = { userId: null, organizationId };
+      // M23: during a trial the subscription starts now and is charged first when the trial ends.
+      const [trial] = await tx
+        .select({ endsAt: federationTrial.endsAt })
+        .from(federationTrial)
+        .where(and(eq(federationTrial.organizationId, organizationId), eq(federationTrial.status, 'active')));
+      if (trial && trial.endsAt.getTime() > now.getTime()) trialEndsAt = trial.endsAt;
     } else {
       if (organizationId) throw new ServiceError('BAD_REQUEST', `${plan.name} is a plan of an account, not of an organization.`);
       if (plan.audience !== account.accountType) {
@@ -356,6 +602,7 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
         amountCents: price.amountCents,
         currency: price.currency,
         expiresAt: new Date(now.getTime() + CHECKOUT_TTL_MINUTES * 60_000),
+        trialEndsAt,
       })
       .returning();
     await writeAudit(tx, {
@@ -364,14 +611,20 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
       actorRole: p.user.role,
       subjectType: 'billing_checkout',
       subjectId: row!.id,
-      after: { planCode, interval, provider: provider.name, ...(subject.organizationId ? { organizationId: subject.organizationId } : { userId: subject.userId }) },
+      after: {
+        planCode,
+        interval,
+        provider: provider.name,
+        ...(subject.organizationId ? { organizationId: subject.organizationId } : { userId: subject.userId }),
+        ...(trialEndsAt ? { trialEndsAt: trialEndsAt.toISOString() } : {}),
+      },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
     return { row: row!, customerId: await customerIdOf(tx, provider.name, subject) };
   });
 
-  const back = `${appUrl()}/dashboard/billing`;
+  const back = `${appUrl()}${billingPageOf(checkout.row)}`;
   try {
     const session = await provider.createCheckout({
       checkoutId: checkout.row.id,
@@ -384,6 +637,7 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
       successUrl: `${back}?checkout=${checkout.row.id}#outcome`,
       cancelUrl: `${back}?checkout=${checkout.row.id}&cancelled=1#outcome`,
       expiresAt: checkout.row.expiresAt,
+      trialEndsAt: checkout.row.trialEndsAt,
     });
     if (session.sessionId) await getDb().update(billingCheckout).set({ providerSessionId: session.sessionId, updatedAt: new Date() }).where(eq(billingCheckout.id, checkout.row.id));
     return { checkoutId: checkout.row.id, url: session.url };
@@ -392,6 +646,11 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
     await getDb().update(billingCheckout).set({ status: 'expired', updatedAt: new Date() }).where(eq(billingCheckout.id, checkout.row.id));
     throw new ServiceError('CONFLICT', 'The payment provider did not answer. Nothing was charged; try again in a moment.');
   }
+}
+
+/** The billing page of a checkout's or a subscription's subject: the account's, or the organization's. */
+export function billingPageOf(row: { subjectOrganizationId: string | null }): string {
+  return row.subjectOrganizationId ? `/dashboard/organization/${row.subjectOrganizationId}/billing` : '/dashboard/billing';
 }
 
 // --- the test checkout (billing.testCheckout, billing.testPay) ---------------------------------------
@@ -413,6 +672,10 @@ export interface TestCheckoutView {
   testModeLabel: typeof TEST_MODE_LABEL;
   status: 'open' | 'completed' | 'expired';
   cards: { card: (typeof BILLING_TEST_CARDS)[number]; label: string; number: string }[];
+  /** M23: the billing page the checkout belongs to (the account's or the organization's). */
+  backHref: string;
+  /** M23: the end of the trial this checkout continues: nothing is charged before it. */
+  trialEndsAt: string | null;
 }
 
 /** The account's own checkout of the test provider; 404 for anyone else, for Stripe's and for none. */
@@ -445,6 +708,8 @@ export async function testCheckout(principal: Principal | null, raw: unknown, no
     testModeLabel: TEST_MODE_LABEL,
     status: checkoutStatus(row, now),
     cards: TEST_CARDS.map((c) => ({ ...c })),
+    backHref: billingPageOf(row),
+    trialEndsAt: row.trialEndsAt && row.trialEndsAt.getTime() > now.getTime() ? row.trialEndsAt.toISOString() : null,
   };
 }
 
@@ -473,7 +738,15 @@ export async function testPay(principal: Principal | null, raw: unknown, meta: R
   const subject = subjectOf(row);
   if (await liveSubscriptionOf(db, subject)) throw new ServiceError('CONFLICT', 'You already have a subscription. You can manage it on your billing page.');
   const result = await provider.pay(
-    { checkoutId: row.id, planCode: row.planCode, interval: row.interval, amountCents: row.amountCents, currency: row.currency, customerId: await customerIdOf(db, 'test', subject) },
+    {
+      checkoutId: row.id,
+      planCode: row.planCode,
+      interval: row.interval,
+      amountCents: row.amountCents,
+      currency: row.currency,
+      customerId: await customerIdOf(db, 'test', subject),
+      trialEndsAt: row.trialEndsAt,
+    },
     parsed.data.card,
     now,
   );
@@ -538,28 +811,45 @@ async function changeAtProvider(
     if (!(error instanceof BillingProviderError)) throw error;
     throw new ServiceError('CONFLICT', error.code === 'refused' ? 'The payment provider refused the change.' : 'The payment provider did not answer; nothing changed. Try again in a moment.');
   }
-  // The provider's answer is applied at once (its webhook event follows and is then a repeat).
-  // Stripe's answer carries no event time: it takes the stored version, so it orders before any
-  // later event of Stripe's whatever this server's clock says.
-  const ordered = provider.name === 'stripe' ? { ...snapshot, version: sub.providerVersion } : snapshot;
-  const applied = await getDb().transaction(async (tx) => {
-    const outcome = await applySnapshot(tx, provider.name, ordered, now, { at: now });
+  return applyAnswer(p, sub, provider.name, snapshot, meta, now, {
+    action,
+    before: { cancelAtPeriodEnd: sub.cancelAtPeriodEnd, status: sub.status },
+    after: { cancelAtPeriodEnd: snapshot.cancelAtPeriodEnd, status: snapshot.status },
+  });
+}
+
+/**
+ * The provider's answer to a change the subscriber asked for, applied at once (its webhook event
+ * follows and is then a repeat), and audited. Stripe's answer carries no event time: it takes the
+ * stored version, so it orders before any later event of Stripe's whatever this server's clock says.
+ */
+async function applyAnswer(
+  p: Principal,
+  sub: SubscriptionRow,
+  provider: 'test' | 'stripe',
+  snapshot: SubscriptionSnapshot,
+  meta: RequestMeta,
+  now: Date,
+  audit: { action: 'billing.cancel' | 'billing.resume' | 'billing.change_plan' | 'billing.cancel_change'; before: Record<string, unknown>; after: Record<string, unknown> },
+): Promise<SubscriptionView> {
+  const ordered = provider === 'stripe' ? { ...snapshot, version: sub.providerVersion } : snapshot;
+  return getDb().transaction(async (tx) => {
+    const outcome = await applySnapshot(tx, provider, ordered, now, { at: now });
     await writeAudit(tx, {
-      action,
+      action: audit.action,
       actorUserId: p.user.id,
       actorRole: p.user.role,
       subjectType: 'billing_subscription',
       subjectId: sub.id,
-      before: { cancelAtPeriodEnd: sub.cancelAtPeriodEnd, status: sub.status },
-      after: { cancelAtPeriodEnd: snapshot.cancelAtPeriodEnd, status: snapshot.status, outcome: outcome.outcome },
+      before: audit.before,
+      after: { ...audit.after, outcome: outcome.outcome },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
     const [fresh] = await tx.select().from(billingSubscription).where(eq(billingSubscription.id, sub.id));
     const invoices = await invoicesOf(tx, [sub.id]);
-    return viewOf(fresh!, invoices.get(sub.id) ?? [], now);
+    return viewOf(fresh!, invoices.get(sub.id) ?? [], now, await inTrialPeriod(tx, fresh!));
   });
-  return applied;
 }
 
 /** Cancels at the end of the paid period (POST /api/v1/billing/cancel): access stays until then. */
@@ -570,6 +860,102 @@ export function cancelSubscription(principal: Principal | null, raw: unknown, me
 /** Takes back a cancellation before the period ends (POST /api/v1/billing/resume). */
 export function resumeSubscription(principal: Principal | null, raw: unknown, meta: RequestMeta, now: Date = new Date()): Promise<SubscriptionView> {
   return changeAtProvider(principal, raw, meta, 'billing.resume', now);
+}
+
+// --- changing plan or billing period (billing.changePlan, billing.cancelChange; M23) -----------------
+
+export const changePlanInput = z.object({
+  subscriptionId: z.uuid({ error: NOT_FOUND }),
+  planCode: z.enum(PLAN_CODES, { error: 'Choose a plan.' }),
+  interval: z.enum(BILLING_INTERVALS, { error: 'Choose monthly or yearly billing.' }),
+});
+
+const providerRefusal = (error: BillingProviderError) =>
+  new ServiceError(
+    'CONFLICT',
+    error.code === 'unsupported'
+      ? 'The payment provider cannot make this change. Nothing changed.'
+      : error.code === 'refused'
+        ? 'The payment provider refused the change. Nothing changed.'
+        : 'The payment provider did not answer; nothing changed. Try again in a moment.',
+  );
+
+/**
+ * Changes the plan or the billing period of the principal's own subscription (POST
+ * /api/v1/billing/change-plan; M23). DEFAULT M23 (question 2): an upgrade (a higher plan of the
+ * same audience, or monthly to yearly billing) takes effect now, with a new period and the unused
+ * part of the current one credited; a downgrade is scheduled for the period end, when the renewal
+ * bills the new price; asking for the current plan and period takes back a scheduled change. Only
+ * an active subscription that renews (not cancelled, not past due), of the account's own type, or
+ * of an organization the principal owns. Audited.
+ */
+export async function changeSubscriptionPlan(principal: Principal | null, raw: unknown, meta: RequestMeta, now: Date = new Date()): Promise<SubscriptionView> {
+  const p = requireUser(principal);
+  const parsed = changePlanInput.safeParse(raw);
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path[0];
+    if (field === 'subscriptionId') throw new ServiceError('NOT_FOUND', NOT_FOUND);
+    throw new ServiceError('BAD_REQUEST', 'Choose a plan and a billing period.', { planCode: 'Choose a plan and a billing period.' });
+  }
+  const { planCode, interval } = parsed.data;
+  const db = getDb();
+  const sub = await ownSubscription(db, p, parsed.data.subscriptionId);
+  const provider = billingProvider();
+  if (sub.provider !== provider.name) throw new ServiceError('CONFLICT', 'This subscription belongs to another payment provider than the one this app uses now.');
+  if (!isLive(sub.status) || accessUntil(sub)!.getTime() <= now.getTime()) throw new ServiceError('CONFLICT', 'This subscription has ended.');
+  if (sub.status === 'past_due') throw new ServiceError('CONFLICT', 'The renewal payment failed. The plan can change once the payment goes through.');
+  if (sub.cancelAtPeriodEnd) throw new ServiceError('CONFLICT', 'This subscription is cancelled at the end of the period. Resume it first to change its plan.');
+  if (sub.subjectUserId) {
+    const [account] = await db.select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, sub.subjectUserId));
+    if (account && !ofAccountType(sub, account.accountType)) throw new ServiceError('CONFLICT', `${PLANS[sub.planCode].name} is for another account type; it ends at the end of the period.`);
+  }
+  const inTrial = await inTrialPeriod(db, sub);
+  const before = { planCode: sub.planCode, interval: sub.interval, scheduledPlanCode: sub.scheduledPlanCode, scheduledInterval: sub.scheduledInterval };
+  // The current plan and period: takes back a scheduled change, or changes nothing.
+  if (planCode === sub.planCode && interval === sub.interval) {
+    if (!sub.scheduledPlanCode) return viewOf(sub, (await invoicesOf(db, [sub.id])).get(sub.id) ?? [], now, inTrial);
+    return cancelChangeAt(p, sub, meta, now, before);
+  }
+  const option = changeOptionsOf(sub, now, inTrial).find((o) => o.planCode === planCode && o.interval === interval);
+  if (!option) {
+    if (planCode === sub.scheduledPlanCode && interval === sub.scheduledInterval) return viewOf(sub, (await invoicesOf(db, [sub.id])).get(sub.id) ?? [], now, inTrial);
+    throw new ServiceError('BAD_REQUEST', `${PLANS[planCode].name} billed ${INTERVAL_NAMES[interval]} is not a plan this subscription can change to.`, { planCode: 'Choose one of the plans shown.' });
+  }
+  const price = billingPrice(planCode, interval)!;
+  let snapshot: SubscriptionSnapshot;
+  try {
+    snapshot = await provider.changePlan(sub.providerSubscriptionId, { planCode, planName: PLANS[planCode].name, interval, amountCents: price.amountCents, currency: price.currency, when: option.when });
+  } catch (error) {
+    if (!(error instanceof BillingProviderError)) throw error;
+    throw providerRefusal(error);
+  }
+  return applyAnswer(p, sub, provider.name, snapshot, meta, now, { action: 'billing.change_plan', before, after: { planCode, interval, when: option.when } });
+}
+
+/** Takes back a change scheduled for the period end (POST /api/v1/billing/cancel-change; M23). Audited. */
+export async function cancelPlanChange(principal: Principal | null, raw: unknown, meta: RequestMeta, now: Date = new Date()): Promise<SubscriptionView> {
+  const p = requireUser(principal);
+  const parsed = subscriptionIdInput.safeParse(raw);
+  if (!parsed.success) throw new ServiceError('NOT_FOUND', NOT_FOUND);
+  const db = getDb();
+  const sub = await ownSubscription(db, p, parsed.data.subscriptionId);
+  if (billingProvider().name !== sub.provider) throw new ServiceError('CONFLICT', 'This subscription belongs to another payment provider than the one this app uses now.');
+  if (!isLive(sub.status)) throw new ServiceError('CONFLICT', 'This subscription has ended.');
+  const before = { planCode: sub.planCode, interval: sub.interval, scheduledPlanCode: sub.scheduledPlanCode, scheduledInterval: sub.scheduledInterval };
+  if (!sub.scheduledPlanCode) return viewOf(sub, (await invoicesOf(db, [sub.id])).get(sub.id) ?? [], now, await inTrialPeriod(db, sub));
+  return cancelChangeAt(p, sub, meta, now, before);
+}
+
+async function cancelChangeAt(p: Principal, sub: SubscriptionRow, meta: RequestMeta, now: Date, before: Record<string, unknown>): Promise<SubscriptionView> {
+  const provider = billingProvider();
+  let snapshot: SubscriptionSnapshot;
+  try {
+    snapshot = await provider.cancelScheduledChange(sub.providerSubscriptionId);
+  } catch (error) {
+    if (!(error instanceof BillingProviderError)) throw error;
+    throw providerRefusal(error);
+  }
+  return applyAnswer(p, sub, provider.name, snapshot, meta, now, { action: 'billing.cancel_change', before, after: { scheduledPlanCode: null, scheduledInterval: null } });
 }
 
 // --- applying provider state ------------------------------------------------------------------------
@@ -593,12 +979,17 @@ const NO_CHANGE = (outcome: ApplyOutcome, subscriptionId: string | null = null):
 /** A new provider subscription the app refuses: a live one is ended at the provider; an ended one changes nothing. */
 const REFUSED = (snap: SubscriptionSnapshot): ApplyResult => (isLive(snap.status) ? { ...NO_CHANGE('conflict'), cancelAtProvider: snap.id } : NO_CHANGE('ignored'));
 
-/** Who hears of a subscription: the account, or the owner who bought it for the organization. */
-async function recipientOf(tx: Executor, sub: SubscriptionRow): Promise<string | null> {
-  if (sub.subjectUserId) return sub.subjectUserId;
-  if (!sub.checkoutId) return null;
+/**
+ * Who hears of a subscription: the account; for an organization (M23), every current admin of it
+ * (its owners decide, its admins read the billing page), or else the owner who bought it.
+ */
+async function recipientsOf(tx: Executor, sub: SubscriptionRow): Promise<string[]> {
+  if (sub.subjectUserId) return [sub.subjectUserId];
+  const admins = await adminIdsOf(tx, sub.subjectOrganizationId!);
+  if (admins.length > 0) return admins;
+  if (!sub.checkoutId) return [];
   const [row] = await tx.select({ userId: billingCheckout.createdByUserId }).from(billingCheckout).where(eq(billingCheckout.id, sub.checkoutId));
-  return row?.userId ?? null;
+  return row ? [row.userId] : [];
 }
 
 /**
@@ -648,10 +1039,12 @@ async function syncGrant(tx: Transaction, sub: SubscriptionRow, now: Date): Prom
 
 /** The notices of a change of state (DEFAULT M22, question 6: billing category, e-mail never off). */
 async function noticesOf(tx: Transaction, before: SubscriptionRow | null, after: SubscriptionRow, boss?: NoticeProducer): Promise<void> {
-  const to = await recipientOf(tx, after);
-  if (!to) return;
-  const base = { subscriptionId: after.id, planCode: after.planCode };
-  const send = (kind: Parameters<typeof notify>[2], payload: Record<string, unknown>, key: string) => notify(tx, to, kind, { ...base, ...payload }, { key, boss });
+  const recipients = await recipientsOf(tx, after);
+  if (recipients.length === 0) return;
+  const base = { subscriptionId: after.id, planCode: after.planCode, ...(after.subjectOrganizationId ? { organizationId: after.subjectOrganizationId } : {}) };
+  const send = async (kind: Parameters<typeof notify>[2], payload: Record<string, unknown>, key: string) => {
+    for (const to of recipients) await notify(tx, to, kind, { ...base, ...payload }, { key, boss });
+  };
   const was = before?.status ?? null;
   if (!before && isLive(after.status)) {
     await send('billing.started', { renewsOn: after.currentPeriodEnd.toISOString(), cancelAtPeriodEnd: after.cancelAtPeriodEnd }, `billing.started:${after.id}`);
@@ -665,6 +1058,17 @@ async function noticesOf(tx: Transaction, before: SubscriptionRow | null, after:
   }
   if (was === 'past_due' && after.status === 'active') {
     await send('billing.payment-recovered', { renewsOn: after.currentPeriodEnd.toISOString() }, `billing.payment-recovered:${after.id}:${after.providerVersion}`);
+  }
+  // M23: a change of plan or billing period, now or scheduled for the period end.
+  if (before && isLive(after.status) && (before.planCode !== after.planCode || before.interval !== after.interval)) {
+    await send('billing.plan-changed', { interval: after.interval, renewsOn: after.currentPeriodEnd.toISOString() }, `billing.plan-changed:${after.id}:${after.providerVersion}`);
+  }
+  if (before && isLive(after.status) && after.scheduledPlanCode && after.scheduledInterval && (before.scheduledPlanCode !== after.scheduledPlanCode || before.scheduledInterval !== after.scheduledInterval)) {
+    await send(
+      'billing.change-scheduled',
+      { toPlanCode: after.scheduledPlanCode, interval: after.scheduledInterval, startsOn: after.currentPeriodEnd.toISOString() },
+      `billing.change-scheduled:${after.id}:${after.providerVersion}`,
+    );
   }
   // A cancellation at the period end is announced when it is made and, at its end, by the plan
   // notices of M18 (plan.expiring, plan.expired); any other end is said here.
@@ -750,6 +1154,8 @@ export async function applySnapshot(
         endedAt: canceled ? (snap.endedAt ?? at) : null,
         endReason: canceled ? 'provider' : null,
         providerVersion: snap.version,
+        scheduledPlanCode: snap.scheduledChange?.planCode ?? null,
+        scheduledInterval: snap.scheduledChange?.interval ?? null,
       })
       .returning();
     await tx
@@ -759,6 +1165,7 @@ export async function applySnapshot(
     const grant = await syncGrant(tx, created!, now);
     const fresh = { ...created!, grantId: grant.grantId };
     await auditState(tx, null, fresh);
+    if (fresh.subjectOrganizationId && isLive(fresh.status)) await convertTrial(tx, fresh, now);
     await noticesOf(tx, null, fresh, context.boss);
     return { outcome: 'applied', subscriptionId: created!.id, touchesSchools: grant.changed && PLANS[created!.planCode].audience === 'sifu' };
   }
@@ -773,7 +1180,18 @@ export async function applySnapshot(
 
   const canceled = snap.status === 'canceled';
   const endReason = canceled ? (existing.cancelAtPeriodEnd || snap.cancelAtPeriodEnd ? 'canceled' : existing.status === 'past_due' ? 'unpaid' : 'provider') : null;
+  // M23: the plan the provider bills now; a new plan ends the old plan's grant now and starts its own.
+  const planCode = snap.planCode && PLANS[snap.planCode].audience === PLANS[existing.planCode].audience ? snap.planCode : existing.planCode;
+  const planChanged = planCode !== existing.planCode;
+  if (planChanged && existing.grantId) await endGrantNow(tx, existing.grantId, now);
+  const scheduled =
+    snap.scheduledChange === undefined
+      ? { scheduledPlanCode: existing.scheduledPlanCode, scheduledInterval: existing.scheduledInterval }
+      : { scheduledPlanCode: snap.scheduledChange?.planCode ?? null, scheduledInterval: snap.scheduledChange?.interval ?? null };
   const next = {
+    planCode,
+    ...(canceled ? { scheduledPlanCode: null, scheduledInterval: null } : scheduled),
+    ...(planChanged ? { grantId: null } : {}),
     interval: snap.interval,
     status: snap.status,
     cancelAtPeriodEnd: snap.cancelAtPeriodEnd,
@@ -788,11 +1206,61 @@ export async function applySnapshot(
   const [updated] = await tx.update(billingSubscription).set(next).where(eq(billingSubscription.id, existing.id)).returning();
   const grant = await syncGrant(tx, updated!, now);
   const fresh = { ...updated!, grantId: grant.grantId };
-  if (existing.status !== fresh.status || existing.cancelAtPeriodEnd !== fresh.cancelAtPeriodEnd || existing.currentPeriodEnd.getTime() !== fresh.currentPeriodEnd.getTime()) {
+  if (
+    existing.status !== fresh.status ||
+    existing.cancelAtPeriodEnd !== fresh.cancelAtPeriodEnd ||
+    existing.currentPeriodEnd.getTime() !== fresh.currentPeriodEnd.getTime() ||
+    existing.planCode !== fresh.planCode ||
+    existing.interval !== fresh.interval ||
+    existing.scheduledPlanCode !== fresh.scheduledPlanCode ||
+    existing.scheduledInterval !== fresh.scheduledInterval
+  ) {
     await auditState(tx, existing, fresh);
   }
   await noticesOf(tx, existing, fresh, context.boss);
-  return { outcome: 'applied', subscriptionId: existing.id, touchesSchools: grant.changed && PLANS[existing.planCode].audience === 'sifu' };
+  return { outcome: 'applied', subscriptionId: existing.id, touchesSchools: (grant.changed || planChanged) && PLANS[existing.planCode].audience === 'sifu' };
+}
+
+/** M23: a subscription's grant of its earlier plan ends now (a change of plan); an admin's revocation stands. */
+async function endGrantNow(tx: Transaction, grantId: string, now: Date): Promise<void> {
+  const [grant] = await tx.select().from(entitlementGrant).where(eq(entitlementGrant.id, grantId)).for('update');
+  if (!grant || grant.revokedAt !== null || grant.source !== 'stripe') return;
+  const end = new Date(Math.max(now.getTime(), grant.startsAt.getTime() + 1000));
+  if (grant.endsAt && grant.endsAt.getTime() <= end.getTime()) return;
+  await tx.update(entitlementGrant).set({ endsAt: end, updatedAt: now }).where(eq(entitlementGrant.id, grantId));
+}
+
+/**
+ * M23 (specification §10.2): an organization that subscribes during its Federation trial continues
+ * it: the trial is converted, its complimentary grant ends now, and the subscription's own grant
+ * carries Federation on (its first period ends with the trial and costs nothing).
+ */
+async function convertTrial(tx: Transaction, sub: SubscriptionRow, now: Date): Promise<void> {
+  const [trial] = await tx
+    .select()
+    .from(federationTrial)
+    .where(and(eq(federationTrial.organizationId, sub.subjectOrganizationId!), eq(federationTrial.status, 'active')))
+    .for('update');
+  if (!trial) return;
+  await tx.update(federationTrial).set({ status: 'converted', endedAt: now, convertedSubscriptionId: sub.id, updatedAt: now }).where(eq(federationTrial.id, trial.id));
+  if (trial.grantId) {
+    const [grant] = await tx.select().from(entitlementGrant).where(eq(entitlementGrant.id, trial.grantId)).for('update');
+    if (grant && grant.revokedAt === null && (grant.endsAt === null || grant.endsAt.getTime() > now.getTime())) {
+      await tx
+        .update(entitlementGrant)
+        .set({ endsAt: new Date(Math.max(now.getTime(), grant.startsAt.getTime() + 1000)), updatedAt: now })
+        .where(eq(entitlementGrant.id, grant.id));
+    }
+  }
+  await writeAudit(tx, {
+    action: 'federation_trial.convert',
+    actorUserId: null,
+    actorRole: null,
+    subjectType: 'federation_trial',
+    subjectId: trial.id,
+    before: { status: 'active', endsAt: trial.endsAt.toISOString() },
+    after: { status: 'converted', subscriptionId: sub.id, organizationId: trial.organizationId },
+  });
 }
 
 async function auditState(tx: Transaction, before: SubscriptionRow | null, after: SubscriptionRow): Promise<void> {
@@ -802,6 +1270,10 @@ async function auditState(tx: Transaction, before: SubscriptionRow | null, after
     currentPeriodEnd: s.currentPeriodEnd.toISOString(),
     endReason: s.endReason,
     providerVersion: s.providerVersion,
+    planCode: s.planCode,
+    interval: s.interval,
+    scheduledPlanCode: s.scheduledPlanCode,
+    scheduledInterval: s.scheduledInterval,
   });
   await writeAudit(tx, {
     action: 'billing.subscription',
@@ -810,7 +1282,7 @@ async function auditState(tx: Transaction, before: SubscriptionRow | null, after
     subjectType: 'billing_subscription',
     subjectId: after.id,
     before: before ? state(before) : null,
-    after: { ...state(after), planCode: after.planCode, provider: after.provider, grantId: after.grantId },
+    after: { ...state(after), provider: after.provider, grantId: after.grantId },
   });
 }
 
@@ -971,7 +1443,7 @@ export async function endExpiredGrace(options: { now?: Date; boss?: NoticeProduc
       }
       const [updated] = await tx
         .update(billingSubscription)
-        .set({ status: 'canceled', endedAt: end, endReason: 'unpaid', cancelAtPeriodEnd: false, updatedAt: now })
+        .set({ status: 'canceled', endedAt: end, endReason: 'unpaid', cancelAtPeriodEnd: false, scheduledPlanCode: null, scheduledInterval: null, updatedAt: now })
         .where(eq(billingSubscription.id, id))
         .returning();
       const grant = await syncGrant(tx, updated!, now);

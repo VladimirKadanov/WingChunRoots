@@ -121,6 +121,7 @@ export function demoBilling(seed: number, accounts: { premiumStudent: string; fr
       providerSubscriptionId: providerSubscription,
       expiresAt: new Date(paidAt.getTime() + 3_600_000),
       completedAt: paidAt,
+      trialEndsAt: null,
       createdAt: new Date(paidAt.getTime() - 60_000),
       updatedAt: paidAt,
     });
@@ -139,6 +140,9 @@ export function demoBilling(seed: number, accounts: { premiumStudent: string; fr
       currentPeriodEnd: end,
       endedAt: p.ended ? end : null,
       version,
+      scheduledPlanCode: null,
+      scheduledInterval: null,
+      scheduledAmountCents: null,
       ...times,
     });
     out.entitlementGrants.push({
@@ -176,6 +180,8 @@ export function demoBilling(seed: number, accounts: { premiumStudent: string; fr
       endReason: p.ended ? 'canceled' : null,
       providerVersion: version,
       grantId,
+      scheduledPlanCode: null,
+      scheduledInterval: null,
       ...times,
     });
     out.billingInvoices.push({

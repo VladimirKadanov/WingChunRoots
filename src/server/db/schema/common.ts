@@ -327,6 +327,20 @@ export const BILLING_TEST_CARDS = ['succeeds', 'declines', 'fails_at_renewal'] a
 /** M22 (DEFAULT D08; DEFAULT M22 question 5): after a failed renewal, access stays this many days. */
 export const BILLING_GRACE_DAYS = 7;
 
+// --- Federation billing and trials (milestone M23; docs/adr/0026-federation-billing.md) -----------
+/**
+ * M23: a Federation trial of an organization (specification §10.2): `active` while it runs;
+ * `converted` when the organization subscribed during it (the paid plan carries on); `ended` when it
+ * ran out without a subscription (no charge, nothing deleted); `revoked` when an administrator ended
+ * it early.
+ */
+export const FEDERATION_TRIAL_STATUSES = ['active', 'converted', 'ended', 'revoked'] as const;
+/** M23 (specification §10.2): a trial runs six or twelve months; DEFAULT M23 (question 4): twelve. */
+export const FEDERATION_TRIAL_MONTHS = [6, 12] as const;
+export const FEDERATION_TRIAL_DEFAULT_MONTHS = 12;
+/** M23 (specification §10.2): the reminders before a trial ends, in days. */
+export const FEDERATION_TRIAL_NOTICE_DAYS = [14, 7] as const;
+
 // --- Accounts (Better Auth, M02; plan §3.2) ----------------------------------------------------------
 export const USER_ROLES = ['user', 'moderator', 'archivist', 'admin'] as const;
 /** Staff roles: only for an account with two_factor_enabled (CHECK auth_user_staff_needs_2fa). */
