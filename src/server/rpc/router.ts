@@ -291,6 +291,20 @@ import {
   subtreeInput,
 } from '../services/lineage';
 
+import {
+  answerNomination,
+  answerNominationInput,
+  nominateInput,
+  nominateSuccessor,
+  nominationIdInput,
+  requestSuccession,
+  revokeNomination,
+  successionMine,
+  successionRequestInput,
+} from '../services/succession';
+import { appealDecision, appealInput, disputeSlugInput, lineageReportInput, reportableRelationships, reportLineage } from '../services/disputes';
+import { proposeInput, proposeOptions, proposeRecordChange, recordHistory, recordSlugInput } from '../services/stewardship';
+
 export interface RpcContext {
   principal: Principal | null;
   meta: RequestMeta;
@@ -771,6 +785,81 @@ export const router = {
       .route({ method: 'POST', path: '/review/note', summary: 'Add an internal note to a case (reviewers only); audited' })
       .input(reviewNoteInput)
       .handler(({ context, input }) => addReviewNote(context.principal, input, context.meta)),
+  },
+  // M25 (docs/adr/0028-governance.md): governance. Succession, lineage dispute reports, appeals and
+  // proposed changes to the shared archival records; every decision is a case of the review queue
+  // (review.decide). Inactivity alone never transfers anything or marks anyone deceased.
+  succession: {
+    mine: signedIn
+      .route({ method: 'GET', path: '/succession', summary: 'Your succession page: as an owner, your nomination, the verified students you may nominate and requests about you; as a nominee, the nominations you received and your requests' })
+      .handler(({ context }) => successionMine(context.principal)),
+    nominate: signedIn
+      .route({
+        method: 'POST',
+        path: '/succession/nominate',
+        summary: 'Nominate one of your verified students (with Premium Student or Professional Sifu) as your digital successor (Professional Sifu, or the owner of an organization with Federation); one live nomination; audited',
+      })
+      .input(nominateInput)
+      .handler(({ context, input }) => nominateSuccessor(context.principal, input, context.meta)),
+    answer: signedIn
+      .route({ method: 'POST', path: '/succession/answer', summary: 'Accept or decline a nomination as a digital successor (the nominee only; 404 for anyone else); audited' })
+      .input(answerNominationInput)
+      .handler(({ context, input }) => answerNomination(context.principal, input, context.meta)),
+    revoke: signedIn
+      .route({ method: 'POST', path: '/succession/revoke', summary: 'Revoke your successor nomination; a pending succession request of it is closed (the owner only); audited' })
+      .input(nominationIdInput)
+      .handler(({ context, input }) => revokeNomination(context.principal, input, context.meta)),
+    request: signedIn
+      .route({
+        method: 'POST',
+        path: '/succession/request',
+        summary:
+          'As an accepted successor, ask the administrators to pass the owner’s administration to you, after a death you report or more than 180 days of inactivity, with evidence; opens a review; changes nothing by itself and never a life status; audited',
+      })
+      .input(successionRequestInput)
+      .handler(({ context, input }) => requestSuccession(context.principal, input, context.meta)),
+  },
+  disputes: {
+    relationships: signedIn
+      .route({ method: 'GET', path: '/disputes/relationships/{slug}', summary: 'The public relationships of a public profile that can be reported as a lineage dispute' })
+      .input(disputeSlugInput)
+      .handler(({ context, input }) => reportableRelationships(context.principal, input)),
+    report: signedIn
+      .route({
+        method: 'POST',
+        path: '/disputes/report',
+        summary: 'Report a public relationship as wrong, with grounds, details and evidence: a review case for the moderators; nothing changes on the report itself; one open report per relationship; audited',
+      })
+      .input(lineageReportInput)
+      .handler(({ context, input }) => reportLineage(context.principal, input, context.meta)),
+  },
+  appeals: {
+    create: signedIn
+      .route({
+        method: 'POST',
+        path: '/appeals',
+        summary: 'Appeal a decision of one of your cases (once per decision, within 30 days); another member of staff than the one who decided reviews it; audited',
+      })
+      .input(appealInput)
+      .handler(({ context, input }) => appealDecision(context.principal, input, context.meta)),
+  },
+  records: {
+    history: base
+      .route({ method: 'GET', path: '/records/{slug}/history', summary: 'The change history of a public shared archival record: when, what changed and how (staff with a verified second factor also read the reasons)' })
+      .input(recordSlugInput)
+      .handler(({ context, input }) => recordHistory(context.principal, input)),
+    proposeOptions: signedIn
+      .route({ method: 'GET', path: '/records/{slug}/propose', summary: 'The current fields of a public shared archival record, for a proposed change' })
+      .input(recordSlugInput)
+      .handler(({ context, input }) => proposeOptions(context.principal, input)),
+    propose: signedIn
+      .route({
+        method: 'POST',
+        path: '/records/propose',
+        summary: 'Propose a change to a public shared archival record with a reason (a change of the life status with evidence); an archivist decides; nothing changes until then; audited',
+      })
+      .input(proposeInput)
+      .handler(({ context, input }) => proposeRecordChange(context.principal, input, context.meta)),
   },
   // M10a: the archival edit (plan §6.6): only an archivist edits a record kept by the platform or unclaimed.
   archive: {
