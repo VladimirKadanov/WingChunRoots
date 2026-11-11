@@ -80,7 +80,7 @@ export default async function ImportPage({ params, searchParams }: Props) {
 
       <Section id="import-template" title="The file" testId="organization-import-template">
         <p className="max-w-[62ch] text-sm text-fg-muted">The first line names the columns. First_Name is required; the other columns are optional and may be left empty.</p>
-        <pre className="max-w-full overflow-x-auto rounded-sm bg-surface-2 px-4 py-3 text-sm" translate="no" data-testid="organization-import-header">
+        <pre className="max-w-full rounded-sm bg-surface-2 px-4 py-3 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]" translate="no" data-testid="organization-import-header">
           <code>{list.template}</code>
         </pre>
         <ul className="grid max-w-[62ch] list-disc gap-1 pl-5 text-sm">

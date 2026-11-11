@@ -6,12 +6,14 @@
 // only what the server sent: squares of at least the minimum count, by their corners; no school's
 // point ever reaches this file. Loaded with React.lazy when the admin asks for the map, so the
 // page loads no map code until then (scripts/check-bundle-budget.mjs, LAZY_ONLY). The table on the
-// page holds the same numbers and is the way without a pointer or WebGL; the map is hidden from
-// assistive technology (aria-hidden) and from the tab order apart from its own zoom controls.
+// page holds the same numbers and is the way without a pointer or WebGL; the map's canvas is named
+// and moves with the keyboard (as the finder's map), and its count markers are hidden from
+// assistive technology, which reads the table.
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './map-controls.css';
 
+import { useState } from 'react';
 import { AttributionControl, Layer, Map, Marker, NavigationControl, Source } from '@vis.gl/react-maplibre';
 
 import { maplibregl } from './maplibre';
@@ -42,6 +44,7 @@ function bounds(cells: readonly HeatSquare[]): [[number, number], [number, numbe
 
 export default function HeatmapMap({ cells, styles }: HeatmapMapProps) {
   const theme = usePageTheme();
+  const [loaded, setLoaded] = useState(false);
   const max = Math.max(1, ...cells.map((c) => c.count));
   const data = {
     type: 'FeatureCollection' as const,
@@ -65,7 +68,7 @@ export default function HeatmapMap({ cells, styles }: HeatmapMapProps) {
   // The brand red of the theme (src/design/generated/tokens.css: --brand-fg dark, --brand light).
   const fill = theme === 'dark' ? '#F2665F' : '#C62828';
   return (
-    <div className="relative h-80 overflow-hidden rounded-sm border border-border-strong md:h-[28rem]" data-testid="organization-heatmap-map" data-map-theme={theme}>
+    <div className="relative h-80 overflow-hidden rounded-sm border border-border-strong md:h-[28rem]" data-testid="organization-heatmap-map" data-map-theme={theme} data-map-loaded={loaded}>
       <Map
         mapLib={maplibregl}
         mapStyle={styles[theme]}
@@ -78,8 +81,8 @@ export default function HeatmapMap({ cells, styles }: HeatmapMapProps) {
         touchPitch={false}
         style={{ width: '100%', height: '100%' }}
         onLoad={(event) => {
-          event.target.getCanvas().setAttribute('aria-hidden', 'true');
-          event.target.getContainer().setAttribute('data-map-loaded', 'true');
+          event.target.getCanvas().setAttribute('aria-label', 'Map of the school squares. Use the arrow keys to move it and + or − to zoom. The table above has the same numbers.');
+          setLoaded(true);
         }}
       >
         <AttributionControl position="bottom-right" compact />

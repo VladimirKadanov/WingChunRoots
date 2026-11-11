@@ -94,8 +94,8 @@ export default async function OrganizationsDashboardPage({ searchParams }: { sea
 
           {/* M24: the account's own memberships and the separation rules (DEFAULT M24 question 9). */}
           {memberships.length > 0 ? (
-            <section aria-labelledby="memberships" id="memberships" className="grid gap-4 border-t border-border-subtle pt-6" data-testid="my-memberships">
-              <h2 id="memberships" className="font-display text-2xl">
+            <section aria-labelledby="memberships-title" id="memberships" className="grid gap-4 border-t border-border-subtle pt-6" data-testid="my-memberships">
+              <h2 id="memberships-title" className="font-display text-2xl">
                 Your memberships
               </h2>
               <ul className="grid max-w-[62ch] gap-1 text-sm text-fg-muted" data-testid="separation-rules">
