@@ -52,8 +52,9 @@ import { grantOrganizationPlan } from '../services/organization-grants';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
 import { createSchool } from '../services/schools';
 import { requestTrial } from '../services/trial-lessons';
-import { cancelSubscription, startCheckout } from '../services/billing';
-import { paidSubscription } from '../services/billing.test-support';
+import { cancelSubscription, startCheckout, testPay } from '../services/billing';
+import { applyPendingBillingEvents, paidSubscription } from '../services/billing.test-support';
+import { startFederationTrial } from '../services/federation-trials';
 import { signUnsubscribeToken } from '../services/unsubscribe';
 import { SIGN_UP_CONSENTS } from '../legal/documents';
 import { handleApiRequest } from './handler';
@@ -423,6 +424,22 @@ async function subscriptionOf(opts: { cancelled?: boolean } = {}) {
   const { subscription } = await paidSubscription(owner.principal, 'premium_student');
   if (opts.cancelled) await cancelSubscription(owner.principal, { subscriptionId: subscription.id }, meta);
   return { owner, subscriptionId: subscription.id };
+}
+
+/** M23: an approved federation (its `owner`) with a co-admin (`party`: reads, never changes); with a monthly Federation subscription when `subscribed`. */
+async function federationBillingOf(opts: { subscribed?: boolean } = {}) {
+  const o = await organizationOf({ active: true });
+  const party = await actor('org-co-admin', { noPerson: true });
+  await addOrganizationAdmin(o.owner.principal, { organizationId: o.organizationId, email: party.email }, meta);
+  let subscriptionId: string | null = null;
+  if (opts.subscribed) {
+    const checkout = await startCheckout(o.owner.principal, { planCode: 'federation', interval: 'month', organizationId: o.organizationId }, meta);
+    await testPay(o.owner.principal, { checkoutId: checkout.checkoutId, card: 'succeeds' }, meta);
+    await applyPendingBillingEvents();
+    const [row] = await getDb().execute<{ id: string }>(sql`SELECT id::text FROM billing_subscription WHERE checkout_id = ${checkout.checkoutId}::uuid`).then((r) => r.rows);
+    subscriptionId = row!.id;
+  }
+  return { ...o, party, subscriptionId };
 }
 
 async function notificationOf(userId: string): Promise<string> {
@@ -1200,6 +1217,66 @@ const ROWS: Row[] = [
     make: async () => {
       const s = await subscriptionOf();
       return { owner: s.owner, input: { subscriptionId: s.subscriptionId, step: 'period_end' } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  // M23: Federation billing. The organization's owner changes; a co-admin (`party`) reads only
+  // (403 on a change); anyone else gets 404. Trials are the administrators' (second factor).
+  {
+    path: 'billing.organization',
+    make: async () => {
+      const o = await federationBillingOf();
+      return { owner: o.owner, party: o.party, input: { organizationId: o.organizationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'billing.checkout (Federation, for an organization)',
+    make: async () => {
+      const o = await federationBillingOf();
+      return { owner: o.owner, party: o.party, input: { planCode: 'federation', interval: 'year', organizationId: o.organizationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // Only Federation has a yearly price (DEFAULT D09), so a change is an organization's.
+    path: 'billing.changePlan',
+    make: async () => {
+      const o = await federationBillingOf({ subscribed: true });
+      return { owner: o.owner, party: o.party, input: { subscriptionId: o.subscriptionId, planCode: 'federation', interval: 'year' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'FORBIDDEN', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'billing.cancelChange',
+    make: async () => {
+      const s = await subscriptionOf();
+      return { owner: s.owner, input: { subscriptionId: s.subscriptionId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'federationTrials.adminGet',
+    make: async () => {
+      const o = await federationBillingOf();
+      return { owner: o.owner, input: { organizationId: o.organizationId } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'federationTrials.start',
+    make: async () => {
+      const o = await federationBillingOf();
+      return { owner: o.owner, input: { organizationId: o.organizationId, months: 12, reason: 'M23 matrix (fictional)' } };
+    },
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'federationTrials.end',
+    make: async () => {
+      const o = await federationBillingOf();
+      const started = await startFederationTrial(world.admin.principal, { organizationId: o.organizationId, reason: 'M23 matrix (fictional)' }, meta);
+      return { owner: o.owner, input: { trialId: started.trial!.id, reason: 'M23 matrix end (fictional)' } };
     },
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
@@ -2028,6 +2105,11 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/billing/actions.ts#cancelSubscriptionAction', row: 'billing.cancel', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction', row: 'billing.resume', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/billing/test-checkout/[id]/actions.ts#testPayAction', row: 'billing.testPay', form: same, roles: ['anonymous', 'member', 'owner'] },
+  // M23: the plan change forms and the administrators' trial forms post the procedures' fields.
+  { action: 'src/app/dashboard/billing/actions.ts#changePlanAction', row: 'billing.changePlan', form: (i) => ({ ...same(i), organizationId: '' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/billing/actions.ts#cancelChangeAction', row: 'billing.cancelChange', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/admin/organizations/actions.ts#startTrialAction', row: 'federationTrials.start', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
+  { action: 'src/app/admin/organizations/actions.ts#endTrialAction', row: 'federationTrials.end', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/billing/[id]/actions.ts#moveTestClockAction', row: 'billing.testClock', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   // The editor saves the account's own person only: the form has no person to choose.
   { action: 'src/app/dashboard/profile/actions.ts#saveProfileAction', row: 'profile.update', form: () => ({ 'names.0.value': 'Demo Profile Person', primary: '0', showPublicly: 'on' }), roles: ['anonymous', 'owner'] },

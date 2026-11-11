@@ -56,6 +56,11 @@ export interface NotifyOptions {
   alsoTo?: { address: string; payload: Record<string, unknown> };
   /** The worker's own pg-boss (jobs); the services use this process's producer. */
   boss?: NoticeProducer;
+  /**
+   * M23: the key is shared by several recipients (notifyEach), so the e-mail's idempotency key
+   * carries the account too: one key per e-mail, as the mail outbox requires.
+   */
+  sharedKey?: boolean;
 }
 
 export interface NotifyResult {
@@ -170,7 +175,7 @@ export async function notify(
   const unsubscribe = CATEGORIES[entry.category].optOut ? { unsubscribe: unsubscribeLink(userId, entry.category, preference.version) } : {};
   try {
     if (entry.email === 'notice') {
-      const base = `notice:${kind}:${options.key ?? written.id}`;
+      const base = options.key && options.sharedKey ? `notice:${kind}:${options.key}:${userId}` : `notice:${kind}:${options.key ?? written.id}`;
       await queueEmail(
         tx,
         { template: 'notice', to: account.email, userId, idempotencyKey: base, data: await noticeData(tx, userId, kind, payload), ...unsubscribe },
@@ -203,10 +208,10 @@ export async function notifyEach(
   userIds: readonly string[],
   kind: NotificationKind,
   payload: Record<string, unknown>,
-  options: Omit<NotifyOptions, 'email' | 'alsoTo'> = {},
+  options: Omit<NotifyOptions, 'email' | 'alsoTo' | 'sharedKey'> = {},
 ): Promise<number> {
   let notified = 0;
-  for (const userId of new Set(userIds)) if ((await notify(tx, userId, kind, payload, options)).notified) notified++;
+  for (const userId of new Set(userIds)) if ((await notify(tx, userId, kind, payload, { ...options, sharedKey: true })).notified) notified++;
   return notified;
 }
 

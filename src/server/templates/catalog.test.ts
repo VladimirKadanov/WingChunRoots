@@ -122,6 +122,18 @@ describe('notification catalog', () => {
     }
   });
 
+  it('M23: the federation trial notices are plan notices, e-mailed by default, and link to the organization’s billing page', () => {
+    for (const kind of ['federation.trial-started', 'federation.trial-ending', 'federation.trial-ended'] as const) {
+      expect(catalogEntry(kind), kind).toMatchObject({ category: 'plan', email: 'notice' });
+      const rendered = renderNotification(kind, { ...NOTIFICATION_TEMPLATES[kind].sample, organizationId: '0190a5c0-0000-7000-8000-0000000000aa' });
+      expect(rendered.action?.href, kind).toBe('/dashboard/organization/0190a5c0-0000-7000-8000-0000000000aa/billing');
+    }
+    // An organization's billing notice links to its billing page; an account's to its own.
+    const sample = NOTIFICATION_TEMPLATES['billing.started'].sample;
+    expect(renderNotification('billing.started', { ...sample, organizationId: '0190a5c0-0000-7000-8000-0000000000aa' }).action?.href).toBe('/dashboard/organization/0190a5c0-0000-7000-8000-0000000000aa/billing');
+    expect(renderNotification('billing.started', sample).action?.href).toBe('/dashboard/billing');
+  });
+
   it('the security notices name no address, IP address or place', () => {
     for (const kind of kindsOf('security')) {
       const template = NOTIFICATION_TEMPLATES[kind];

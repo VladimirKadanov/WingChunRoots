@@ -65,7 +65,7 @@ import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { type BillingSubject, liveSubscriptionOf } from './billing-subject';
 import { ServiceError } from './errors';
-import { notify, type NoticeProducer } from './notify';
+import { notify, notifyEach, type NoticeProducer } from './notify';
 import { adminIdsOf, adminRoleOf, APPROVAL_LABELS, ORGANIZATION_KIND_LABELS, organizationRow } from './organizations';
 import { PROPOSED_PRICE_LABEL, planSummary, type PlanSummary } from './plans';
 
@@ -766,7 +766,12 @@ async function ownSubscription(db: Executor, p: Principal, id: string): Promise<
   const [row] = await db.select().from(billingSubscription).where(eq(billingSubscription.id, id));
   if (!row) throw new ServiceError('NOT_FOUND', NOT_FOUND);
   if (row.subjectUserId === p.user.id) return row;
-  if (row.subjectOrganizationId && (await adminRoleOf(db, row.subjectOrganizationId, p.user.id)) === 'owner') return row;
+  if (row.subjectOrganizationId) {
+    // DEFAULT M23 (question 1): an owner changes it; another admin reads it, so it is not hidden.
+    const role = await adminRoleOf(db, row.subjectOrganizationId, p.user.id);
+    if (role === 'owner') return row;
+    if (role) throw new ServiceError('FORBIDDEN', 'Only an owner of the organization can change its plan.');
+  }
   throw new ServiceError('NOT_FOUND', NOT_FOUND);
 }
 
@@ -1043,7 +1048,9 @@ async function noticesOf(tx: Transaction, before: SubscriptionRow | null, after:
   if (recipients.length === 0) return;
   const base = { subscriptionId: after.id, planCode: after.planCode, ...(after.subjectOrganizationId ? { organizationId: after.subjectOrganizationId } : {}) };
   const send = async (kind: Parameters<typeof notify>[2], payload: Record<string, unknown>, key: string) => {
-    for (const to of recipients) await notify(tx, to, kind, { ...base, ...payload }, { key, boss });
+    // An account's own subscription keeps M22's keys; an organization's admins share one.
+    if (!after.subjectOrganizationId) await notify(tx, recipients[0]!, kind, { ...base, ...payload }, { key, boss });
+    else await notifyEach(tx, recipients, kind, { ...base, ...payload }, { key, boss });
   };
   const was = before?.status ?? null;
   if (!before && isLive(after.status)) {
