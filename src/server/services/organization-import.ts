@@ -12,13 +12,13 @@
 // What a commit creates for a valid row, and never more (Phase 3 completion condition: "imports
 // cannot silently authenticate a person or bypass teacher approval"):
 // - a person record: living, stewardship 'unclaimed', visibility 'involved_only' (DEFAULT D03), no
-//   account. It is never matched or merged onto an existing person or account (DEFAULT M24
-//   question 5): a row whose name equals a current member's is refused as a likely duplicate, and
-//   nothing outside the organization is ever compared;
+//   account. It is never matched or merged onto an existing person or account
+//   (DEFAULT M24 question 5): a row whose name equals a current member's is refused as a likely
+//   duplicate, and nothing outside the organization is ever compared;
 // - a current membership of the organization (role member) and the organization's own fields
 //   (rank and city, organization_member_record);
 // - when Sifu_Database_ID names a teacher, an organization_teacher_claim "claimed by the
-//   organization": never a teaching_relationship (DEFAULT D12, M24 question 4). The teacher must be
+//   organization": never a teaching_relationship (DEFAULT D12; DEFAULT M24 question 4). The teacher must be
 //   a public profile or a current member of this organization.
 //
 // Authorization: every procedure checks the account itself; an organization this account does not
@@ -464,6 +464,7 @@ export async function commitImport(principal: Principal | null, raw: z.input<typ
       const membershipId = uuidv7();
       await tx.insert(organizationMembership).values({ id: membershipId, organizationId: org.id, personId, role: 'member' });
       if (data.rank || data.schoolCity) await tx.insert(organizationMemberRecord).values({ membershipId, rankLabel: data.rank, schoolCity: data.schoolCity, importId: imp.id });
+      // DEFAULT M24 question 4: the organization's claim only; the relationship waits for the teacher.
       if (data.teacherPersonId) {
         await tx.insert(organizationTeacherClaim).values({
           organizationId: org.id,

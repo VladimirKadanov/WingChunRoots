@@ -1303,3 +1303,33 @@ pnpm billing:test-clock --subscription <id> --step grace_end
 - E2E `@M22` (`e2e/m22-billing.spec.ts` в отделното пускане `exclusive`; `e2e/m22-billing-view.spec.ts` на компютър и телефон).
 
 `/dashboard/billing` на двата демо акаунта е нов ключов екран. Датите на демо абонаментите са скрити във визуалната регресия (`[data-visual-date]`). `/plans`, `/dashboard/settings` и `/admin` се променят. Новите и променените еталони се приемат само от CI (раздел 10).
+
+## 29. Инструменти на организациите (M24)
+
+Решенията и причините са в [ADR 0027](../adr/0027-organization-tools.md); отворените въпроси с решенията по подразбиране — в `docs/plan/questions/M24.md`. Всичко е за одобрена организация с план **Federation** (тестов грант от `/admin/organizations`, D08); напускането и оттеглянето на твърдение не искат план.
+
+### Масов внос
+
+- Процедурите са `organizationTools.importPreview`, `importCommit`, `importDiscard`, `imports`, `importGet` (`/api/v1/organizations/imports/…` и `/api/v1/organizations/mine/<id>/imports…`). Страниците са `/dashboard/organization/<id>/import` и `/dashboard/organization/<id>/import/<importId>`.
+- Граници (DEFAULT M24, въпрос 2): 500 реда, 256 KB, 10 прегледа на организация за 24 часа, прегледът е валиден 24 часа.
+- Валиден ред създава: личност `unclaimed`, `involved_only`, без акаунт; основно име на латиница и по желание китайско (`zh-Hant`); текущо членство; `organization_member_record` (ранг, град); при `Sifu_Database_ID` — `organization_teacher_claim`. Никога `teaching_relationship` (D12) и никога съпоставяне със съществуващ акаунт.
+- `Email` не се чете (DEFAULT M24, въпрос 3). Самият файл не се пази — само отпечатък и размер.
+- След внос, отказ или изтичане полетата на редовете (`organization_import_row.data`) се изчистват. Ежедневната задача `retention.purge` затваря изтеклите прегледи и пише в лога само броя: `retention.purge: ended N expired organization import preview(s)`.
+- Одит: `organization.import_preview`, `organization.import_commit`, `organization.import_discard`, `organization.claim_withdraw` — с броеве и идентификатори, без имена.
+
+### Анализи и топлинна карта
+
+- `organizationTools.analytics` и `organizationTools.heatmap`, страниците `/dashboard/organization/<id>/analytics` и `/dashboard/organization/<id>/heatmap`. Само за администраторите на организацията; персоналът няма особен достъп.
+- Анализите броят само публичните състояния на връзките (DEFAULT D03; DEFAULT M24, въпрос 8).
+- Топлинната карта (DEFAULT M24, въпрос 7): квадрати по 1° от `place.centroid`, без квадрат под 3 школи. Услугата не чете `school.public_point` и `school_private_location`. MapLibre се зарежда само при **Show on a map**.
+
+### Разделяне
+
+- Член напуска с `organizationTools.leave`; организацията прекратява с `organizations.endMember`. И в двата случая `separateMembership` трие `organization_member_record` и оттегля отворените твърдения с причина `separation` (DEFAULT M24, въпрос 9).
+- Известия само в таблото (DEFAULT M24, въпрос 10): `organization.member_left` до администраторите, `organization.membership_ended` до члена. Одит `organization.member_leave` и `organization.member_end`.
+
+### Демо данни и проверка
+
+Seed-ът не се променя: `demo-federation-owner` и `demo-organization-admin` администрират `demo-federation-north`, която има тестов Federation. За ръчна проба влезте като `demo-federation-owner`, отворете организацията → **Tools** → **Import members** и проверете фиктивен файл (само `Demo …` имена, D20).
+
+`scripts/verify.sh M24` пуска unit тестовете (`organization-import.test.ts`), интеграционните (`organization-tools.int.test.ts` и редовете `organizationTools.*` в матрицата за оторизация), сборката с бюджетите и E2E `@M24` (`e2e/m24-organization-tools.spec.ts` на компютър и телефон).

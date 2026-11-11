@@ -13,7 +13,7 @@
 //
 // Aggregates only (plan §6.4): counts, never a name, an id of a person or a coordinate of a school.
 // The verification counts take only the public states of a relationship (verified, in arbitration;
-// DEFAULT D03), so a member's private pending request is never counted or hinted at.
+// DEFAULT D03; DEFAULT M24 question 8), so a member’s private pending request is never counted or hinted at.
 //
 // The heatmap (DEFAULT M24 question 7): a school is placed at its city's centre (place.centroid,
 // GeoNames), never at its own point (school_private_location or school.public_point are never
