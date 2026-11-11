@@ -101,13 +101,26 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
                 <span className="font-semibold">{mine.plan.name}</span>
                 {mine.until ? <span className="text-fg-muted"> {untilPlanEnd(mine.until)}</span> : null}
               </dd>
+              {/* M22: a paid plan in test mode is managed on /dashboard/billing, not listed as a test plan. */}
+              {mine.grants.some((grant) => grant.paid) ? (
+                <>
+                  <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Paid plan</dt>
+                  <dd data-testid="settings-paid-plan" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
+                    <span className="font-semibold">{mine.grants.find((grant) => grant.paid)!.planName}</span>
+                    <span className="text-fg-muted"> (test mode, no real charge). </span>
+                    <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center">
+                      Manage billing
+                    </Link>
+                  </dd>
+                </>
+              ) : null}
               <dt className="pt-3 text-sm text-fg-muted sm:border-y sm:border-border-subtle sm:pb-3">Test plans</dt>
               <dd className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:pt-3">
-                {mine.grants.length === 0 ? (
+                {mine.grants.filter((grant) => !grant.paid).length === 0 ? (
                   <span className="text-fg-muted">None. During the pilot, an administrator can give a test plan; nothing is charged.</span>
                 ) : (
                   <ul className="grid gap-1.5">
-                    {mine.grants.map((grant) => (
+                    {mine.grants.filter((grant) => !grant.paid).map((grant) => (
                       <li key={grant.id}>
                         <span className="font-semibold">{grant.planName}</span>
                         <span className="text-fg-muted">
@@ -133,6 +146,9 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
             <p className="mt-5 flex flex-wrap gap-x-5 text-ui">
               <Link href="/plans" className="link inline-flex min-h-11 items-center">
                 Compare plans
+              </Link>
+              <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center">
+                Billing
               </Link>
               <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
                 Back to your dashboard

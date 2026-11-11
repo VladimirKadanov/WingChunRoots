@@ -35,6 +35,7 @@ import {
   type ValueMark,
 } from '../entitlements/plans';
 import { lockAccount } from './account-lock';
+import { beforeAccountTypeChange } from './billing';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 import { neighbourTags } from './profile';
@@ -199,7 +200,17 @@ export interface MyPlan {
   /** When the plan in effect ends if nothing changes; null for no end or the free plan. */
   until: string | null;
   /** The account's grants that count now or later (active or scheduled), newest first. */
-  grants: { id: string; planCode: PlanCode; planName: string; state: 'active' | 'scheduled'; startsAt: string; endsAt: string | null; inEffect: boolean }[];
+  grants: {
+    id: string;
+    planCode: PlanCode;
+    planName: string;
+    state: 'active' | 'scheduled';
+    startsAt: string;
+    endsAt: string | null;
+    inEffect: boolean;
+    /** M22: the grant of a paid subscription in test mode (managed on /dashboard/billing), not a test plan. */
+    paid: boolean;
+  }[];
   pilotRequest: PilotRequestView | null;
 }
 
@@ -230,6 +241,7 @@ export async function myPlan(principal: Principal | null, now: Date = new Date()
       startsAt: g.startsAt.toISOString(),
       endsAt: g.endsAt?.toISOString() ?? null,
       inEffect: state === 'active' && !effective.dormantGrantIds.includes(g.id),
+      paid: g.source === 'stripe',
     })),
     pilotRequest: await openPilotRequest(db, p.user.id),
   };
@@ -308,6 +320,8 @@ async function changeAccountType(tx: Executor, p: Principal, from: AccountType, 
       ),
     );
   if ((recent?.n ?? 0) >= ACCOUNT_TYPE_CHANGES_PER_WINDOW) throw new ServiceError('TOO_MANY_REQUESTS', ACCOUNT_TYPE_LIMIT_MESSAGE);
+  // M22 (DEFAULT M22, question 8): not while a paid subscription renews.
+  await beforeAccountTypeChange(tx, p.user.id, now);
   const before = await effectivePlan(subject, { db: tx });
   await tx.update(authUser).set({ accountType: next, updatedAt: now }).where(eq(authUser.id, p.user.id));
   const after = await effectivePlan(subject, { db: tx });

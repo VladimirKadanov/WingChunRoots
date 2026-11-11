@@ -163,6 +163,13 @@ const routeBans = [
     group: ['@/server/entitlements/*', '!@/server/entitlements/plans', '**/server/entitlements/*', '!**/server/entitlements/plans'],
     message: 'Routes and components read only the plan matrix (src/server/entitlements/plans.ts); services decide entitlements (plan §6.5).',
   },
+  // M22: the payment provider is reached only through src/server/services/billing.ts, which checks
+  // who may act on a subscription; the webhook route handler takes src/server/billing/webhook.ts,
+  // which verifies the provider's signature before anything is stored.
+  {
+    group: ['@/server/billing/*', '!@/server/billing/webhook', '**/server/billing/*', '!**/server/billing/webhook'],
+    message: 'Routes and components never call the payment provider: go through src/server/services/billing.ts (the webhook route uses src/server/billing/webhook.ts).',
+  },
 ];
 
 // Browser and DOM globals that src/lib/lineage-layout must not use (plan §6.1). Only

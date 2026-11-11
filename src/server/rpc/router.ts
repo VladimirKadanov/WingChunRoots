@@ -217,6 +217,24 @@ import {
   trialOptionsInput,
   trialRequestInput,
 } from '../services/trial-lessons';
+import {
+  adminBillingGet,
+  adminBillingList,
+  billingAdminListInput,
+  billingMineInput,
+  cancelSubscription,
+  checkoutIdInput,
+  checkoutInput,
+  moveTestClock,
+  myBilling,
+  resumeSubscription,
+  startCheckout,
+  subscriptionIdInput,
+  testCheckout,
+  testClockInput,
+  testPay,
+  testPayInput,
+} from '../services/billing';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import {
@@ -904,6 +922,75 @@ export const router = {
       .route({ method: 'POST', path: '/trial-lessons/close', summary: 'Close an open or answered request; the sender is not told; audited' })
       .input(trialCloseInput)
       .handler(({ context, input }) => closeTrial(context.principal, input, context.meta)),
+  },
+  // M22 (docs/adr/0025-billing.md): paid plans in test mode only; no real charge is ever made. The
+  // provider's events arrive at POST /api/billing/webhook (a route handler outside this contract:
+  // the provider calls it and signs every body). An account reaches only its own subscription.
+  billing: {
+    mine: signedIn
+      .route({
+        method: 'GET',
+        path: '/billing',
+        summary:
+          'Your plan and its subscription in test mode: the status, the renewal or end date, whether it is cancelled at the period end, the payment history, and the paid plans you may choose (proposed prices, not final); `checkout` names a checkout of yours to report on',
+      })
+      .input(billingMineInput)
+      .handler(({ context, input }) => myBilling(context.principal, input)),
+    checkout: signedIn
+      .route({
+        method: 'POST',
+        path: '/billing/checkout',
+        summary:
+          'Start a test-mode checkout for the paid plan of your account type (`planCode`, `interval` month or year where the plan has one); a confirmed e-mail address, no live subscription; returns the provider page to open; no real charge; audited',
+      })
+      .input(checkoutInput)
+      .handler(({ context, input }) => startCheckout(context.principal, input, context.meta)),
+    testCheckout: signedIn
+      .route({
+        method: 'GET',
+        path: '/billing/test-checkout/{checkoutId}',
+        summary: "One of your open checkouts on the test provider's checkout page: the plan, the proposed price and the test cards; 404 for anyone else's",
+      })
+      .input(checkoutIdInput)
+      .handler(({ context, input }) => testCheckout(context.principal, input)),
+    testPay: signedIn
+      .route({
+        method: 'POST',
+        path: '/billing/test-checkout/pay',
+        summary:
+          'Pay one of your open checkouts on the test provider with a test card (`succeeds`, `declines` or `fails_at_renewal`; never a card number); the plan starts when the signed event is applied; a declined card changes nothing; test provider only',
+      })
+      .input(testPayInput)
+      .handler(({ context, input }) => testPay(context.principal, input, context.meta)),
+    cancel: signedIn
+      .route({ method: 'POST', path: '/billing/cancel', summary: 'Cancel your subscription at the end of the paid period: the plan stays until then and does not renew; nothing is deleted; audited' })
+      .input(subscriptionIdInput)
+      .handler(({ context, input }) => cancelSubscription(context.principal, input, context.meta)),
+    resume: signedIn
+      .route({ method: 'POST', path: '/billing/resume', summary: 'Take back a cancellation at the period end while the period runs: the subscription renews again; audited' })
+      .input(subscriptionIdInput)
+      .handler(({ context, input }) => resumeSubscription(context.principal, input, context.meta)),
+    adminList: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/billing', summary: 'Subscriptions in test mode, newest first, with their status and account type (admin with a verified second factor; read-only)' })
+      .input(billingAdminListInput)
+      .handler(({ context, input }) => adminBillingList(context.principal, input)),
+    adminGet: adminWithSecondFactor
+      .route({
+        method: 'GET',
+        path: '/admin/billing/{subscriptionId}',
+        summary: 'One subscription with its provider event history (ids, types, times and outcomes; never card data) and its invoices (admin with a verified second factor; read-only)',
+      })
+      .input(subscriptionIdInput)
+      .handler(({ context, input }) => adminBillingGet(context.principal, input)),
+    testClock: adminWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/admin/billing/test-clock',
+        summary:
+          "Move the test provider's clock of one subscription to the end of its period or of its grace period, so its renewal, failed payment or end happens now (test provider only; admin with a verified second factor; audited)",
+      })
+      .input(testClockInput)
+      .handler(({ context, input }) => moveTestClock(context.principal, input, context.meta)),
   },
   // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
   // an organization's admin reaches only the organizations they administer (404 for any other).

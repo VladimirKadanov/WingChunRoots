@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
-import { CONSENT_ACTIONS, CONSENT_KINDS, EMAIL_STATUSES, idColumn, inList, NOTIFICATION_CATEGORIES, timestamps } from './common';
+import { CONSENT_ACTIONS, CONSENT_KINDS, EMAIL_STATUSES, idColumn, inList, LOCKED_NOTIFICATION_CATEGORIES, NOTIFICATION_CATEGORIES, timestamps } from './common';
 
 /** Consent given or withdrawn: kind, document version, time and who (plan §6.2). */
 export const consentRecord = pgTable(
@@ -79,8 +79,9 @@ export const notificationPreference = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.category], name: 'notification_preference_pkey' }),
     check('notification_preference_category_check', inList(t.category.name, NOTIFICATION_CATEGORIES)),
-    // Security and the legal notices of the account are never switched off (In scope 3).
-    check('notification_preference_locked_categories', sql`${t.email} OR ${t.category} NOT IN ('security', 'account')`),
+    // Security and the legal notices of the account are never switched off (In scope 3), nor (M22)
+    // the billing notices.
+    check('notification_preference_locked_categories', sql`${t.email} OR ${t.category} NOT IN (${sql.raw(LOCKED_NOTIFICATION_CATEGORIES.map((c) => `'${c}'`).join(', '))})`),
     check('notification_preference_version_positive', sql`${t.version} > 0`),
   ],
 );

@@ -34,6 +34,16 @@ export const QUEUE = {
    * owner to confirm the listing, day 105 hides its pin (src/server/jobs/school-activity.ts).
    */
   schoolsActivity: 'schools.activity',
+  /**
+   * M22 (docs/adr/0025-billing.md): apply one stored provider event (billing_event) to the
+   * subscription and its plan grant, idempotently and in the provider's order (src/server/jobs/billing.ts).
+   */
+  billingEvent: 'billing.event',
+  /**
+   * M22 (DEFAULT M22, question 5): every hour, end the subscriptions whose renewal failed and whose
+   * grace of BILLING_GRACE_DAYS has run out (src/server/jobs/billing.ts).
+   */
+  billingGrace: 'billing.grace',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -68,6 +78,11 @@ export interface EventsNotifyJob {
   change: 'published' | 'cancelled';
 }
 
+/** The payload of billing.event: the id of the stored event row, never its content (plan §6.4). */
+export interface BillingEventJob {
+  eventId: string;
+}
+
 export interface JobData {
   [QUEUE.emailSend]: EmailSendJob;
   [QUEUE.emailSendFailed]: EmailSendJob;
@@ -77,6 +92,8 @@ export interface JobData {
   [QUEUE.eventsNotify]: EventsNotifyJob;
   [QUEUE.plansExpiry]: Record<string, never>;
   [QUEUE.schoolsActivity]: Record<string, never>;
+  [QUEUE.billingEvent]: BillingEventJob;
+  [QUEUE.billingGrace]: Record<string, never>;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -118,6 +135,11 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
   [QUEUE.plansExpiry, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
   // M20: a daily pass over the listed schools; idempotent by their stages and the notice keys.
   [QUEUE.schoolsActivity, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
+  // M22: one event per job, retried while its subscription is not known yet (an invoice before its
+  // subscription); the payload is a row id. 1 + 6 attempts over about half an hour.
+  [QUEUE.billingEvent, { retryLimit: 6, retryDelay: 5, retryBackoff: true, retryDelayMax: 600, expireInSeconds: 120, deleteAfterSeconds: 7 * DAY }],
+  // M22: a daily pass over the past-due subscriptions; idempotent by their status.
+  [QUEUE.billingGrace, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */
@@ -128,6 +150,8 @@ export const SCHEDULES: ReadonlyArray<{ queue: QueueName; cron: string }> = [
   { queue: QUEUE.plansExpiry, cron: '41 6 * * *' },
   // M20: daily at 05:23 UTC, the activity check of the listed schools.
   { queue: QUEUE.schoolsActivity, cron: '23 5 * * *' },
+  // M22: hourly at :37, the end of the grace of unpaid renewals (an hour late at most).
+  { queue: QUEUE.billingGrace, cron: '37 * * * *' },
 ];
 
 /**

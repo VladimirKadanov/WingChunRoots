@@ -86,6 +86,9 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/admin/organizations': { kind: 'staff2fa', roles: ['admin'] },
   // M20: the activity check of the listed schools, for the roles that moderate listings (M11).
   '/admin/schools': { kind: 'staff2fa', roles: ['moderator', 'admin'] },
+  // M22: the test checkout page of a signed-in account; the subscriptions' history for admins only.
+  '/billing': { kind: 'user' },
+  '/admin/billing': { kind: 'staff2fa', roles: ['admin'] },
 };
 
 export const SIGN_IN_PATH = '/sign-in';

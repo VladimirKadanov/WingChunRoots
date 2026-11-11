@@ -10,7 +10,7 @@
 //   M09–M10b, which the sender fills with its own data.
 //
 // Whether an e-mail goes out (notify.ts): the kind has an e-mail channel, and its category cannot be
-// switched off (security, account) or the account's choice for the category says yes; without a
+// switched off (security, account, billing) or the account's choice for the category says yes; without a
 // choice, the kind's `emailDefault`.
 
 import { NOTIFICATION_CATEGORIES } from '../db/schema/common';
@@ -74,6 +74,13 @@ export const CATEGORIES: Readonly<Record<NotificationCategory, CategoryDefinitio
     description: 'Events your teachers publish or cancel (Premium Student).',
     optOut: true,
     emailDefault: false,
+  },
+  // M22 (DEFAULT M22, question 6): the notices of a paid subscription in test mode; never switched off.
+  billing: {
+    label: 'Billing',
+    description: 'Your subscription in test mode: its start, cancellation, renewal, a failed payment and its end.',
+    optOut: false,
+    emailDefault: true,
   },
 };
 
@@ -157,6 +164,14 @@ export const NOTIFICATION_CATALOG = {
   'school.trial-requested': mailed('schools', 'notice'),
   'school.trial-answered': mailed('schools', 'notice'),
   'school.trial-declined': mailed('schools', 'notice'),
+  // M22: a paid subscription in test mode (docs/adr/0025-billing.md; DEFAULT M22, question 6): in
+  // the Billing category, e-mailed always, as security and account notices are.
+  'billing.started': mailed('billing', 'notice'),
+  'billing.cancel-scheduled': mailed('billing', 'notice'),
+  'billing.resumed': mailed('billing', 'notice'),
+  'billing.payment-failed': mailed('billing', 'notice'),
+  'billing.payment-recovered': mailed('billing', 'notice'),
+  'billing.ended': mailed('billing', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

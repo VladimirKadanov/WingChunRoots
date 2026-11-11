@@ -6,6 +6,7 @@
 // production nothing is checked here: `next dev` keeps starting without .env, and each setting is
 // still checked where it is used.
 
+import { checkBillingSettings } from '../billing/config';
 import { checkTestFaults } from '../faults';
 import { mailSealKey } from '../mail/seal';
 import { appUrl, authSecret, ipHmacKey, trustedProxies } from './env';
@@ -18,11 +19,14 @@ type Env = Record<string, string | undefined>;
  * except on a loopback host), TRUSTED_PROXIES behind a public origin, every entry of it a valid
  * address or CIDR range, and the secrets BETTER_AUTH_SECRET, IP_HMAC_KEY and MAIL_SEAL_KEY. In
  * every environment, it also refuses WCR_TEST_FAULTS unless APP_URL is a loopback host (M04,
- * src/server/faults.ts).
+ * src/server/faults.ts), and a billing configuration that is not test mode (M22,
+ * src/server/billing/config.ts: any STRIPE_SECRET_KEY but a Stripe test key).
  */
 export function checkProductionSettings(env: Env = process.env): void {
   // M04: the test fault switch only ever runs behind a loopback APP_URL, in every environment.
   checkTestFaults(env);
+  // M22: never a live payment key, in every environment (docs/adr/0025-billing.md).
+  checkBillingSettings(env);
   if (env.NODE_ENV !== 'production') return;
   appUrl(env);
   proxyList(trustedProxies(env));

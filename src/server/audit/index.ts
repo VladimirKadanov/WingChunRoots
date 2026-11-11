@@ -117,7 +117,15 @@ export type AuditAction =
   | 'passport.certificate_upload'
   | 'passport.certificate_remove'
   | 'passport.attendance'
-  | 'passport.remove';
+  | 'passport.remove'
+  // M22: billing in test mode (docs/adr/0025-billing.md). The rows carry ids, the plan, the
+  // provider, states and dates, never a card detail, an amount a customer typed or an address.
+  | 'billing.checkout'
+  | 'billing.cancel'
+  | 'billing.resume'
+  | 'billing.subscription'
+  | 'billing.grace_end'
+  | 'billing.test_clock';
 
 export interface AuditEntry {
   action: AuditAction;

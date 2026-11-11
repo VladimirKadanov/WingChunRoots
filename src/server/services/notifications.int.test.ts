@@ -112,14 +112,15 @@ describe('notify()', () => {
     expect(await notices(a.id)).toHaveLength(4);
   });
 
-  it('never lets security or account e-mails be switched off', async () => {
+  it('never lets security, account or billing e-mails be switched off', async () => {
     const a = await account('locked');
-    for (const category of ['security', 'account'] as const) {
+    for (const category of ['security', 'account', 'billing'] as const) {
       await expect(setNotificationPreference(a.principal, { category, email: false })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     }
     await expect(getDb().insert(notificationPreference).values({ userId: a.id, category: 'security', email: false })).rejects.toThrow();
+    await expect(getDb().insert(notificationPreference).values({ userId: a.id, category: 'billing', email: false })).rejects.toThrow();
     const { categories } = await notificationPreferences(a.principal);
-    expect(categories.filter((c) => c.locked).map((c) => c.category)).toEqual(['security', 'account']);
+    expect(categories.filter((c) => c.locked).map((c) => c.category)).toEqual(['security', 'account', 'billing']);
     expect(categories.find((c) => c.category === 'events')).toMatchObject({ email: false, chosen: false });
   });
 
