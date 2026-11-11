@@ -577,7 +577,8 @@ export interface ManagedOrganization {
   administrationNote: string | null;
   application: ApplicationView | null;
   admins: { id: string; userId: string; label: string; role: OrganizationAdminRole; roleLabel: string; you: boolean }[];
-  members: { id: string; person: PersonRef; role: OrganizationMemberRole; roleLabel: string; startsOn: string | null; endsOn: string | null; current: boolean }[];
+  /** M24: `recordOnly` is a private record without an account (an import): it has no public page to link. */
+  members: { id: string; person: PersonRef; role: OrganizationMemberRole; roleLabel: string; startsOn: string | null; endsOn: string | null; current: boolean; recordOnly: boolean }[];
   schools: { id: string; schoolId: string; slug: string; name: string; city: string; countryCode: string; status: SchoolLinkStatus; statusLabel: string }[];
   countries: readonly { code: string; name: string }[];
   kinds: { value: OrganizationKind; label: string }[];
@@ -634,6 +635,11 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
     .orderBy(sql`(${organizationMembership.endsOn} IS NOT NULL)`, sql`CASE ${organizationMembership.role} WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END`, asc(organizationMembership.createdAt))
     .limit(ORGANIZATION_LIST_LIMIT);
   const refs = await peopleRefs(memberRows.map((m) => m.personId));
+  const shown = new Set(
+    memberRows.length === 0
+      ? []
+      : (await db.execute<{ id: string }>(sql`SELECT id::text AS id FROM v_public_person WHERE id = ANY (${SQL_IDS(memberRows.map((m) => m.personId))})`)).rows.map((r) => r.id),
+  );
   const today = isoDay(new Date());
   const links = await db.execute<{ id: string; school_id: string; slug: string; name: string; city: string; country_code: string; status: SchoolLinkStatus }>(sql`
     SELECT l.id, l.school_id, s.slug, s.name, pl.name AS city, pl.country_code, l.status
@@ -666,7 +672,7 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
       const person = refs.get(m.personId);
       if (!person) return [];
       const current = membershipIsCurrent(m, today);
-      return [{ id: m.id, person, role: m.role, roleLabel: MEMBER_ROLE_LABELS[m.role], startsOn: m.startsOn, endsOn: m.endsOn, current }];
+      return [{ id: m.id, person, role: m.role, roleLabel: MEMBER_ROLE_LABELS[m.role], startsOn: m.startsOn, endsOn: m.endsOn, current, recordOnly: !shown.has(m.personId) }];
     }),
     schools: links.rows.map((l) => ({ id: l.id, schoolId: l.school_id, slug: l.slug, name: l.name, city: l.city, countryCode: l.country_code, status: l.status, statusLabel: LINK_STATUS_LABELS[l.status] })),
     countries: COUNTRIES,
