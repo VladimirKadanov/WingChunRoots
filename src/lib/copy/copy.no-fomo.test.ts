@@ -275,7 +275,7 @@ describe('findFomo()', () => {
       'Not now',
       'Request pilot access',
       'Proposed price (not final)',
-      'Proposed prices — not final. Payments are not available during the pilot.',
+      'Proposed prices — not final. Payments run in test mode, no real charge.',
       'Planned — not available yet',
       'You have approved 5 of 5 students on Free Sifu.',
       'One student request waits below. It stays pending and visible.',

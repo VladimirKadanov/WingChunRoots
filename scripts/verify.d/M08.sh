@@ -232,7 +232,7 @@ check "/plans shows Federation feature by feature, every value planned (final ch
   f=src/app/plans/page.tsx
   grep -q "data-testid=\"federation-features\"" "$f" && grep -q "<FederationFeatures catalog={catalog} plan={federation} />" "$f"'
 check "/plans states the banner and marks planned features" bash -c '
-  grep -q "Proposed prices — not final. Payments are not available during the pilot." src/server/services/plans.ts &&
+  grep -q "Proposed prices — not final. Payments run in test mode, no real charge." src/server/services/plans.ts &&
   grep -q "Planned — not available yet" src/server/services/plans.ts && grep -q "plannedLabel" src/app/plans/page.tsx'
 refute "/plans is static: it reads no session, cookies or headers" \
   grep_code "next/headers|guardRoute|cookies\(|headers\(|serverClient" src/app/plans/page.tsx
