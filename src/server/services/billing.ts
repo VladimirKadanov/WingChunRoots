@@ -716,6 +716,8 @@ export async function testCheckout(principal: Principal | null, raw: unknown, no
 export interface TestPayResult {
   outcome: 'paid' | 'declined';
   checkoutId: string;
+  /** M23: the billing page to go back to: the account's, or the organization's. */
+  backHref: string;
 }
 
 /**
@@ -731,7 +733,7 @@ export async function testPay(principal: Principal | null, raw: unknown, meta: R
   const db = getDb();
   const row = await ownTestCheckout(db, p, parsed.data.checkoutId);
   const status = checkoutStatus(row, now);
-  if (status === 'completed') return { outcome: 'paid', checkoutId: row.id };
+  if (status === 'completed') return { outcome: 'paid', checkoutId: row.id, backHref: billingPageOf(row) };
   if (status === 'expired') throw new ServiceError('CONFLICT', 'This checkout has expired. Start again from your billing page; nothing was charged.');
   const provider = testProvider();
   if (!provider) throw new ServiceError('NOT_FOUND', 'No such checkout.');
@@ -754,7 +756,7 @@ export async function testPay(principal: Principal | null, raw: unknown, meta: R
   if (result.outcome === 'declined') {
     throw new ServiceError('CONFLICT', 'The test card was declined. No charge was made; choose another test card to try again.', { card: 'The test card was declined.' });
   }
-  return { outcome: 'paid', checkoutId: row.id };
+  return { outcome: 'paid', checkoutId: row.id, backHref: billingPageOf(row) };
 }
 
 // --- cancel and resume (billing.cancel, billing.resume) --------------------------------------------
