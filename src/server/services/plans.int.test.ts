@@ -142,7 +142,8 @@ describe('plans.catalog and plans.mine', () => {
     // M17 (owner's choice 2026-11-04, docs/adr/0020-events.md): and the event calendar.
     // M19 (owner's choice 2026-11-07, docs/adr/0022-passport.md): and the training passport.
     // M21 (docs/adr/0024-trial-lessons.md): and the school schedule and weekly statistics.
-    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'school_business', 'passport', 'events']);
+    // M25 (docs/adr/0028-governance.md): and the digital successor.
+    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'school_business', 'passport', 'successor', 'events']);
   });
 
   it('plans.mine needs a session; a new account is a Student on Free Student', async () => {
