@@ -15,8 +15,7 @@
 // transaction. The trial is the organization's own grant: it never gives or takes a plan of an
 // account, an admin's included (specification §10.3).
 
-import { and, eq, inArray, lte } from 'drizzle-orm';
-import type { PgBoss } from 'pg-boss';
+import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -278,7 +277,7 @@ export interface TrialRunResult {
  * deleted, and the admins hear of it. Idempotent: the notices carry keys, the end is under the
  * row's lock. Logs carry counts only (plan §6.4).
  */
-export async function runFederationTrials(db: Database, now: Date = new Date(), boss?: PgBoss): Promise<TrialRunResult> {
+export async function runFederationTrials(db: Database, now: Date = new Date(), boss?: NoticeProducer): Promise<TrialRunResult> {
   const [first] = FEDERATION_TRIAL_NOTICE_DAYS;
   const horizon = new Date(now.getTime() + first * DAY_MS);
   const active = await db
@@ -286,7 +285,36 @@ export async function runFederationTrials(db: Database, now: Date = new Date(), 
     .from(federationTrial)
     .where(and(eq(federationTrial.status, 'active'), lte(federationTrial.endsAt, horizon)));
   const result: TrialRunResult = { reminders: 0, ended: 0 };
+  // A trial whose grant an admin revoked directly (M15 revoke) is over too: it follows its grant,
+  // so the page never shows an active trial without the plan.
+  const orphaned = await db
+    .select({ id: federationTrial.id, revokedAt: entitlementGrant.revokedAt })
+    .from(federationTrial)
+    .innerJoin(entitlementGrant, eq(entitlementGrant.id, federationTrial.grantId))
+    .where(and(eq(federationTrial.status, 'active'), isNotNull(entitlementGrant.revokedAt)));
+  for (const { id } of orphaned) {
+    const ended = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(federationTrial).where(eq(federationTrial.id, id)).for('update');
+      if (!row || row.status !== 'active') return false;
+      const [grant] = row.grantId ? await tx.select().from(entitlementGrant).where(eq(entitlementGrant.id, row.grantId)) : [];
+      if (!grant?.revokedAt) return false;
+      await tx.update(federationTrial).set({ status: 'revoked', endedAt: grant.revokedAt, endedByUserId: grant.revokedByUserId, updatedAt: now }).where(eq(federationTrial.id, row.id));
+      await writeAudit(tx, {
+        action: 'federation_trial.end',
+        actorUserId: null,
+        actorRole: null,
+        subjectType: 'federation_trial',
+        subjectId: row.id,
+        before: { status: 'active' },
+        after: { status: 'revoked', endedAt: grant.revokedAt.toISOString(), organizationId: row.organizationId, cause: 'grant_revoked' },
+      });
+      await tellAdmins(tx, row, 'federation.trial-ended', { reason: 'revoked' }, `federation.trial-ended:${row.id}`, boss);
+      return true;
+    });
+    if (ended) result.ended += 1;
+  }
   for (const trial of active) {
+    if (orphaned.some((o) => o.id === trial.id)) continue;
     if (trial.endsAt.getTime() <= now.getTime()) {
       const ended = await db.transaction(async (tx) => {
         const [row] = await tx.select().from(federationTrial).where(eq(federationTrial.id, trial.id)).for('update');

@@ -4,14 +4,17 @@
 // at the end of the period, and resume. Each posts to a thin Server Action and works without
 // JavaScript (src/server/forms/flash.ts). Plain words and a date; no countdown, no urgency
 // (CLAUDE.md §11).
+//
+// M23: the same forms on an organization's billing page (`organizationId`), and the forms that
+// change the plan or billing period or take back a scheduled change.
 
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useState } from 'react';
 
 import { FormMessage, SubmitButton, useFocusOnError } from '@/components/account/fields';
 import { IDLE, type FormState } from '@/lib/form-state';
-import { cancelSubscriptionAction, resumeSubscriptionAction, startCheckoutAction } from './actions';
-import { CANCEL_FORM, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
+import { cancelChangeAction, cancelSubscriptionAction, changePlanAction, resumeSubscriptionAction, startCheckoutAction } from './actions';
+import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
 
 export interface OfferView {
   planCode: string;
@@ -23,10 +26,25 @@ export interface OfferView {
 }
 
 /** One paid plan this account may choose, with its proposed price and the test-mode label. */
-export function CheckoutForm({ offer, testModeLabel, chosen, initial }: { offer: OfferView; testModeLabel: string; chosen: boolean; initial?: FormState | null }) {
+export function CheckoutForm({
+  offer,
+  testModeLabel,
+  chosen,
+  initial,
+  organizationId,
+  note,
+}: {
+  offer: OfferView;
+  testModeLabel: string;
+  chosen: boolean;
+  initial?: FormState | null;
+  organizationId?: string;
+  note?: string;
+}) {
   const [state, action, pending] = useActionState(startCheckoutAction, initial ?? IDLE);
-  // One offer per account type (its paid plan, monthly), so one fixed id for the outcome without JavaScript.
-  const formId = CHECKOUT_FORM;
+  // One offer per account type (its paid plan, monthly), so one fixed id for the outcome without
+  // JavaScript; an organization's two offers (M23: monthly and yearly) each get their own.
+  const formId = organizationId ? `${CHECKOUT_FORM}-${offer.interval}` : CHECKOUT_FORM;
   useFocusOnError(formId, state);
   return (
     <form
@@ -34,38 +52,57 @@ export function CheckoutForm({ offer, testModeLabel, chosen, initial }: { offer:
       action={action}
       noValidate
       aria-busy={pending || undefined}
-      data-testid={`offer-${offer.planCode}`}
+      data-testid={organizationId ? `offer-${offer.planCode}-${offer.interval}` : `offer-${offer.planCode}`}
       className={`grid gap-3 rounded-sm border p-4 ${chosen ? 'border-2 border-fg' : 'border-border-strong'}`}
     >
       <FormMessage form={formId} state={state} single />
       <input type="hidden" name="planCode" value={offer.planCode} />
       <input type="hidden" name="interval" value={offer.interval} />
-      <h3 className="font-display text-2xl">{offer.planName}</h3>
+      {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
+      <h3 className="font-display text-2xl">
+        {offer.planName}
+        {organizationId ? <span className="text-fg-muted">, {offer.interval === 'year' ? 'yearly' : 'monthly'}</span> : null}
+      </h3>
       <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className="font-display text-xl tabular">{offer.price}</span>
         <span className="text-sm text-fg-muted">{offer.priceLabel}</span>
       </p>
       <p className="max-w-[52ch] text-ui text-fg-muted">{offer.summary}</p>
+      {note ? <p className="max-w-[52ch] text-ui">{note}</p> : null}
       <p className="text-sm font-semibold">{testModeLabel}. You can cancel at any time; the plan then runs to the end of the period.</p>
       <div>
         <SubmitButton pending={pending} pendingLabel="Opening the checkout…">
-          Choose {offer.planName}
+          {organizationId ? `Choose ${offer.interval === 'year' ? 'yearly' : 'monthly'} billing` : `Choose ${offer.planName}`}
         </SubmitButton>
       </div>
     </form>
   );
 }
 
-export function CancelForm({ subscriptionId, planName, until, initial }: { subscriptionId: string; planName: string; until: string; initial?: FormState | null }) {
+export function CancelForm({
+  subscriptionId,
+  planName,
+  until,
+  initial,
+  organizationId,
+}: {
+  subscriptionId: string;
+  planName: string;
+  until: string;
+  initial?: FormState | null;
+  organizationId?: string;
+}) {
   const [state, action, pending] = useActionState(cancelSubscriptionAction, initial ?? IDLE);
   useFocusOnError(CANCEL_FORM, state);
   return (
     <form id={CANCEL_FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="cancel-form">
       <FormMessage form={CANCEL_FORM} state={state} single />
       <input type="hidden" name="subscriptionId" value={subscriptionId} />
+      {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
       <p className="max-w-[60ch] text-ui text-fg-muted">
-        Cancelling stops the renewal. You keep {planName} until {until}; after that your account has its free plan, and every confirmed link,
-        school and photo stays.
+        {organizationId
+          ? `Cancelling stops the renewal. The organization keeps ${planName} until ${until}; after that member and school administration closes, and its members, school links, events and history stay. Member schools and students keep their own plans.`
+          : `Cancelling stops the renewal. You keep ${planName} until ${until}; after that your account has its free plan, and every confirmed link, school and photo stays.`}
       </p>
       <div>
         <SubmitButton pending={pending} pendingLabel="Cancelling…" variant="secondary">
@@ -76,16 +113,70 @@ export function CancelForm({ subscriptionId, planName, until, initial }: { subsc
   );
 }
 
-export function ResumeForm({ subscriptionId, initial }: { subscriptionId: string; initial?: FormState | null }) {
+export function ResumeForm({ subscriptionId, initial, organizationId }: { subscriptionId: string; initial?: FormState | null; organizationId?: string }) {
   const [state, action, pending] = useActionState(resumeSubscriptionAction, initial ?? IDLE);
   useFocusOnError(RESUME_FORM, state);
   return (
     <form id={RESUME_FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="resume-form">
       <FormMessage form={RESUME_FORM} state={state} single />
       <input type="hidden" name="subscriptionId" value={subscriptionId} />
+      {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
       <div>
         <SubmitButton pending={pending} pendingLabel="Resuming…">
           Resume the subscription
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+export interface ChangeOptionView {
+  planCode: string;
+  planName: string;
+  interval: 'month' | 'year';
+  price: string;
+  when: 'now' | 'period_end';
+  label: string;
+  note: string;
+}
+
+/**
+ * M23 (DEFAULT M23, question 2): one change of plan or billing period. An upgrade takes effect now,
+ * a downgrade at the period end; the note says which, with a date.
+ */
+export function ChangePlanForm({ subscriptionId, option, initial, organizationId }: { subscriptionId: string; option: ChangeOptionView; initial?: FormState | null; organizationId?: string }) {
+  const [state, action, pending] = useActionState(changePlanAction, initial ?? IDLE);
+  const formId = changePlanFormId(option.planCode, option.interval);
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-2" data-testid={`change-plan-${option.interval}`} data-when={option.when}>
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="subscriptionId" value={subscriptionId} />
+      <input type="hidden" name="planCode" value={option.planCode} />
+      <input type="hidden" name="interval" value={option.interval} />
+      {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
+      <p className="max-w-[60ch] text-ui text-fg-muted">{option.note}</p>
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Changing…" variant="secondary">
+          {option.label}
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+/** M23: takes back a change scheduled for the period end. */
+export function CancelChangeForm({ subscriptionId, initial, organizationId }: { subscriptionId: string; initial?: FormState | null; organizationId?: string }) {
+  const [state, action, pending] = useActionState(cancelChangeAction, initial ?? IDLE);
+  useFocusOnError(CANCEL_CHANGE_FORM, state);
+  return (
+    <form id={CANCEL_CHANGE_FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-2" data-testid="cancel-change-form">
+      <FormMessage form={CANCEL_CHANGE_FORM} state={state} single />
+      <input type="hidden" name="subscriptionId" value={subscriptionId} />
+      {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Keeping…" variant="secondary">
+          Keep the current plan and billing
         </SubmitButton>
       </div>
     </form>
