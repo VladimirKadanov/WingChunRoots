@@ -531,3 +531,13 @@ export async function beforeSessionCreate(
     },
   };
 }
+
+/**
+ * M25 (docs/adr/0028-governance.md): a new session (a sign-in) records the account's activity in
+ * auth_user.last_active_at, which outlives the session (a sign-out deletes it). A succession request
+ * on inactivity reads it; inactivity alone never transfers anything or marks anyone deceased.
+ */
+export async function afterSessionCreate(session: { userId?: unknown } & Record<string, unknown>): Promise<void> {
+  if (typeof session.userId !== 'string') return;
+  await getDb().update(authUser).set({ lastActiveAt: new Date() }).where(eq(authUser.id, session.userId));
+}

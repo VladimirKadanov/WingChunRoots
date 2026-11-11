@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-10.1';
+export const PLAN_MATRIX_VERSION = '2026-11-11.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -389,9 +389,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     key: 'successor',
     source: 'Digital successor',
     label: 'Digital successor',
-    availability: 'planned',
-    phase: 3,
-    enforced: false,
+    // M25 (Phase 3, docs/adr/0028-governance.md): nominating a successor needs Professional Sifu or
+    // Federation (an owner of an organization holding it); enforced by succession.nominate.
+    availability: 'now',
+    phase: null,
+    enforced: true,
     values: {
       free_student: no(),
       premium_student: no(),
@@ -609,9 +611,11 @@ export interface Benefit {
 
 /**
  * Features that joined the pilot after M08 (the photo allowance, M16; events, M17; the passport, M19; school statistics, M21): an upgrade prompt lists
- * their benefits after the ones the pilot had before, which keep the matrix's order.
+ * their benefits after the ones the pilot had before, which keep the matrix's order. M25: the
+ * digital successor comes last of all.
  */
 const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events', 'passport', 'school_business'];
+const JOINED_PHASE_3: readonly FeatureKey[] = ['successor'];
 
 /**
  * The real benefits of moving from one plan to another (plan §5.6): only features with
@@ -621,7 +625,7 @@ const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events', 'passport
  * otherwise the matrix's order, with the features that joined the pilot later after the others.
  */
 export function upgradeBenefits(from: PlanCode, to: PlanCode, lead?: FeatureKey): Benefit[] {
-  const rank = (key: FeatureKey) => (key === lead ? 0 : JOINED_PILOT_LATER.includes(key) ? 2 : 1);
+  const rank = (key: FeatureKey) => (key === lead ? 0 : JOINED_PHASE_3.includes(key) ? 3 : JOINED_PILOT_LATER.includes(key) ? 2 : 1);
   return FEATURES.filter((f) => f.availability === 'now' && improves(f, from, to))
     .map((f, index) => ({ f, index }))
     .sort((a, b) => rank(a.f.key) - rank(b.f.key) || a.index - b.index)
