@@ -87,7 +87,7 @@ export async function organizationAnalytics(principal: Principal | null, raw: z.
   const input = parseOrg(raw);
   const db = getDb();
   return db.transaction(async (tx) => {
-    const { org } = await managed(tx, p, input.organizationId);
+    const { org } = await managed(tx, p, input.organizationId, false);
     await requireAdministration(tx, org);
     // isoDay is YYYY-MM-DD (checked), so it is safe in the raw fragment.
     const today = isoDay(new Date());
@@ -95,7 +95,7 @@ export async function organizationAnalytics(principal: Principal | null, raw: z.
     const id = org.id;
     const members = await tx.execute<{ current: number; public_profiles: number; with_account: number; records_only: number; ended: number }>(sql`
       SELECT count(*) FILTER (WHERE ${CURRENT('m', today)})::int AS current,
-             count(*) FILTER (WHERE ${CURRENT('m', today)} AND p.visibility = 'public')::int AS public_profiles,
+             count(*) FILTER (WHERE ${CURRENT('m', today)} AND EXISTS (SELECT 1 FROM v_public_person v WHERE v.id = p.id))::int AS public_profiles,
              count(*) FILTER (WHERE ${CURRENT('m', today)} AND p.claimed_by_user_id IS NOT NULL)::int AS with_account,
              count(*) FILTER (WHERE ${CURRENT('m', today)} AND p.claimed_by_user_id IS NULL)::int AS records_only,
              count(*) FILTER (WHERE NOT (${CURRENT('m', today)}) AND m.ends_on IS NOT NULL)::int AS ended
@@ -178,7 +178,7 @@ export async function organizationHeatmap(principal: Principal | null, raw: z.in
   const input = parseOrg(raw);
   const db = getDb();
   return db.transaction(async (tx) => {
-    const { org } = await managed(tx, p, input.organizationId);
+    const { org } = await managed(tx, p, input.organizationId, false);
     await requireAdministration(tx, org);
     // The city's centre only (place.centroid); the school's own point is never read.
     const rows = await tx.execute<{ south: number; west: number; country_code: string; n: number }>(sql`

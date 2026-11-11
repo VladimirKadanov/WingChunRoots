@@ -94,7 +94,7 @@ export default async function ImportPage({ params, searchParams }: Props) {
 
       <Section id="import-upload" title="Check a file">
         {org.can.administration ? (
-          <ImportUploadForm organizationId={org.id} maxKb={256} maxRows={500} initial={uploadResult} />
+          <ImportUploadForm organizationId={org.id} maxKb={list.limits.maxKb} maxRows={list.limits.maxRows} initial={uploadResult} />
         ) : (
           <p className="max-w-[60ch] rounded-sm bg-surface-2 px-4 py-4 text-ui" data-testid="organization-import-closed">
             {org.administrationNote ?? 'Imports are open to an approved organization with the Federation plan.'}

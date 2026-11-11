@@ -54,6 +54,7 @@ import {
   type ImportRowData,
   type ImportRowError,
   ORGANIZATION_IMPORT_MAX_BYTES,
+  ORGANIZATION_IMPORT_MAX_ROWS,
   ORGANIZATION_IMPORT_PREVIEW_HOURS,
   type ORGANIZATION_IMPORT_ROW_STATUSES,
   type ORGANIZATION_IMPORT_STATUSES,
@@ -66,6 +67,7 @@ import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ServiceError } from './errors';
 import { checkRow, ImportFileError, nameKey, parseImportFile, TEMPLATE_HEADER } from './organization-import-csv';
+import { shownPeople } from './organization-separation-core';
 import { managed, requireAdministration } from './organizations';
 import { slugFromName } from './names';
 
@@ -187,7 +189,8 @@ function summaryOf(row: ImportRowRecord): ImportSummary {
 async function viewOf(db: Executor, imp: ImportRowRecord): Promise<ImportView> {
   const rows = await db.select().from(organizationImportRow).where(eq(organizationImportRow.importId, imp.id)).orderBy(asc(organizationImportRow.rowNumber));
   const ids = [...new Set(rows.flatMap((r) => [r.data?.teacherPersonId, r.personId].filter((v): v is string => typeof v === 'string')))];
-  const refs = await peopleRefs(ids);
+  const shown = await shownPeople(db, ids, imp.organizationId);
+  const refs = await peopleRefs(ids.filter((id) => shown.has(id)));
   const open = imp.status === 'previewed' && imp.expiresAt.getTime() > Date.now();
   return {
     ...summaryOf(imp),
@@ -367,7 +370,7 @@ export async function previewImport(principal: Principal | null, raw: z.input<ty
 
 // --- organizationTools.imports / importGet ---------------------------------------------------------
 
-export async function listImports(principal: Principal | null, raw: z.input<typeof importListInput>): Promise<{ imports: ImportSummary[]; template: string; note: string }> {
+export async function listImports(principal: Principal | null, raw: z.input<typeof importListInput>): Promise<{ imports: ImportSummary[]; template: string; note: string; limits: { maxRows: number; maxKb: number } }> {
   const p = requireUser(principal);
   const input = parseInput(importListInput, raw);
   const db = getDb();
@@ -375,7 +378,7 @@ export async function listImports(principal: Principal | null, raw: z.input<type
     const { org } = await managed(tx, p, input.organizationId);
     await expireOpen(tx, org.id);
     const rows = await tx.select().from(organizationImport).where(eq(organizationImport.organizationId, org.id)).orderBy(desc(organizationImport.createdAt), desc(organizationImport.id)).limit(50);
-    return { imports: rows.map(summaryOf), template: TEMPLATE_HEADER, note: IMPORT_NOTE };
+    return { imports: rows.map(summaryOf), template: TEMPLATE_HEADER, note: IMPORT_NOTE, limits: { maxRows: ORGANIZATION_IMPORT_MAX_ROWS, maxKb: ORGANIZATION_IMPORT_MAX_BYTES / 1024 } };
   });
 }
 

@@ -37,7 +37,7 @@ import type { ORGANIZATION_CLAIM_STATUSES } from '../db/schema/organization-tool
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { ServiceError } from './errors';
-import { separateMembership } from './organization-separation-core';
+import { separateMembership, shownPeople } from './organization-separation-core';
 import { managed, MEMBER_ROLE_LABELS, membershipHasEnded, membershipIsCurrent, ORGANIZATION_KIND_LABELS, organizationRow, tellAdmins } from './organizations';
 import { ORGANIZATIONS_TAG, invalidatePublic } from '../cache';
 
@@ -51,7 +51,7 @@ export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
 /** The separation rules in words, for the dashboard pages and the API (DEFAULT M24 question 9). */
 export const SEPARATION_RULES = {
   decides: 'Either side decides alone: a member can leave, and an organization can end a membership or a school link, without the other’s approval.',
-  goes: 'The affiliation ends, and the organization’s rank and city for the member and its teacher claims about the person are removed.',
+  goes: 'The affiliation ends, and the organization’s rank and city for the member and its teacher claims about the person, as a student or as a teacher, are withdrawn.',
   stays: 'The membership stays in the organization’s history. The person’s profile, teachers, students and verified relationships, the school and its pin, and every plan of their own stay as they are.',
   told: 'The other side is told in their dashboard.',
 } as const;
@@ -114,7 +114,10 @@ export async function myMemberships(principal: Principal | null): Promise<{ memb
     .select({ id: organizationTeacherClaim.id, organizationId: organizationTeacherClaim.organizationId, teacherId: organizationTeacherClaim.teacherPersonId, startYear: organizationTeacherClaim.startYear, status: organizationTeacherClaim.status })
     .from(organizationTeacherClaim)
     .where(and(eq(organizationTeacherClaim.studentPersonId, own.id), eq(organizationTeacherClaim.status, 'claimed_by_organization')));
-  const refs = await peopleRefs([...new Set(claims.map((c) => c.teacherId))]);
+  // A member sees a claimed teacher by name only when the teacher is a public profile.
+  const teacherIds = [...new Set(claims.map((c) => c.teacherId))];
+  const shown = await shownPeople(db, teacherIds, null);
+  const refs = await peopleRefs(teacherIds.filter((id) => shown.has(id)));
   const today = isoDay(new Date());
   return {
     rules: SEPARATION_RULES,
@@ -200,7 +203,7 @@ export async function organizationClaims(principal: Principal | null, raw: z.inp
   const input = parseIds(claimsInput, raw);
   const db = getDb();
   const rows = await db.transaction(async (tx) => {
-    const { org } = await managed(tx, p, input.organizationId);
+    const { org } = await managed(tx, p, input.organizationId, false);
     return tx
       .select()
       .from(organizationTeacherClaim)
@@ -208,7 +211,9 @@ export async function organizationClaims(principal: Principal | null, raw: z.inp
       .orderBy(asc(organizationTeacherClaim.status), desc(organizationTeacherClaim.createdAt), desc(organizationTeacherClaim.id))
       .limit(500);
   });
-  const refs = await peopleRefs([...new Set(rows.flatMap((r) => [r.studentPersonId, r.teacherPersonId]))]);
+  const ids = [...new Set(rows.flatMap((r) => [r.studentPersonId, r.teacherPersonId]))];
+  const shown = await shownPeople(db, ids, input.organizationId);
+  const refs = await peopleRefs(ids.filter((id) => shown.has(id)));
   return {
     note: 'A claim is what your organization stated in an import. It is not a teaching relationship and is never shown publicly; only the teacher’s own approval verifies a relationship.',
     claims: rows.map((r) => ({

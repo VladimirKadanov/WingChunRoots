@@ -1325,7 +1325,7 @@ pnpm billing:test-clock --subscription <id> --step grace_end
 
 ### Разделяне
 
-- Член напуска с `organizationTools.leave`; организацията прекратява с `organizations.endMember`. И в двата случая `separateMembership` трие `organization_member_record` и оттегля отворените твърдения с причина `separation` (DEFAULT M24, въпрос 9).
+- Член напуска с `organizationTools.leave`; организацията прекратява с `organizations.endMember`. И в двата случая `separateMembership` трие `organization_member_record` и оттегля отворените твърдения за човека като ученик или като учител, с причина `separation` (DEFAULT M24, въпрос 9).
 - Известия само в таблото (DEFAULT M24, въпрос 10): `organization.member_left` до администраторите, `organization.membership_ended` до члена. Одит `organization.member_leave` и `organization.member_end`.
 
 ### Демо данни и проверка

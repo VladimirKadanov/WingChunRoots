@@ -315,4 +315,39 @@ describe('separation (In scope 4)', () => {
     // The organization and the school stay apart from the person (nothing else was touched).
     expect((await getDb().select().from(organization).where(eq(organization.id, org.organizationId)))[0]!.status).toBe('active');
   });
+  it('a member who leaves takes the claims naming them as the teacher too; a teacher gone private is shown without a name', async () => {
+    const org = await federation();
+    const teacher = await member('m24-claimed-teacher', { sifu: true });
+    const publicTeacher = await member('m24-public-teacher', { sifu: true });
+    const added = await addOrganizationMember(org.owner, { organizationId: org.organizationId, personSlug: teacher.slug, role: 'member' }, meta);
+    // A private member: the organization finds the teacher as its own member only.
+    await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, teacher.personId));
+    const preview = await previewImport(
+      org.owner,
+      { organizationId: org.organizationId, contentBase64: b64(`${HEADER}\nDemo,Taught Record,,,,,${teacher.slug},\nDemo,Other Record,,,,,${publicTeacher.slug},\n`) },
+      meta,
+    );
+    await commitImport(org.owner, { organizationId: org.organizationId, importId: preview.id }, meta);
+    const open = await organizationClaims(org.owner, { organizationId: org.organizationId });
+    expect(open.claims.map((c) => [c.status, c.teacher?.slug])).toEqual(
+      expect.arrayContaining([
+        ['claimed_by_organization', teacher.slug],
+        ['claimed_by_organization', publicTeacher.slug],
+      ]),
+    );
+    // The public teacher hides the profile: the claim stays, without the teacher's name.
+    await getDb().update(person).set({ visibility: 'involved_only' }).where(eq(person.id, publicTeacher.personId));
+    // The member teacher leaves: the claim naming them as the teacher is withdrawn.
+    await leaveOrganization(teacher.principal, { membershipId: added.membershipId }, meta);
+    const after = await organizationClaims(org.owner, { organizationId: org.organizationId });
+    const byStatus = after.claims.map((c) => [c.status, c.withdrawnBecause, c.teacher?.slug ?? null]);
+    expect(byStatus).toEqual(
+      expect.arrayContaining([
+        ['withdrawn', 'separation', null],
+        ['claimed_by_organization', null, null],
+      ]),
+    );
+    expect(JSON.stringify(after)).not.toContain(publicTeacher.slug);
+    expect(JSON.stringify(after)).not.toContain(teacher.slug);
+  });
 });

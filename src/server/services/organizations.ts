@@ -337,8 +337,9 @@ export async function adminIdsOf(db: Executor, organizationId: string): Promise<
  * takes it before any other row), with the account's role; 404 for an organization it does not
  * administer, whatever exists (one organization's admin never learns about another's).
  */
-export async function managed(tx: Executor, p: Principal, organizationId: string): Promise<{ org: OrgRow & { version: string }; role: OrganizationAdminRole }> {
-  const org = await organizationRow(tx, organizationId, true);
+/** The organization this account administers (404 for any other); its row locked unless `lock` is false (a read). */
+export async function managed(tx: Executor, p: Principal, organizationId: string, lock = true): Promise<{ org: OrgRow & { version: string }; role: OrganizationAdminRole }> {
+  const org = await organizationRow(tx, organizationId, lock);
   if (!org) throw notFound();
   const role = await adminRoleOf(tx, org.id, p.user.id);
   if (!role) throw notFound();
@@ -989,9 +990,10 @@ export async function endOrganizationMember(principal: Principal | null, raw: z.
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    // M24 (DEFAULT M24 question 10): the person's own account, when the record has one, is told.
+    // M24 (DEFAULT M24 question 10): the person's own account, when the record has one, is told
+    // (not when that account ended its own membership).
     const account = await accountOfPerson(tx, row.personId);
-    if (account) await notify(tx, account, 'organization.membership_ended', { organizationId: org.id });
+    if (account && account !== p.user.id) await notify(tx, account, 'organization.membership_ended', { organizationId: org.id });
     return { membershipId: row.id };
   });
   invalidatePublic([ORGANIZATIONS_TAG], 'procedure');

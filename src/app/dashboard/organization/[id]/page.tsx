@@ -286,7 +286,7 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
                   People with a public profile who belong to the organization, and the private records of your imports. Listing someone is not a verification and changes nobody’s teachers or students.
                 </p>
                 <p className="max-w-[60ch] text-sm text-fg-muted" data-testid="organization-separation-rules">
-                  Ending a membership needs nobody’s approval. It stays in the history; your organization’s rank, city and teacher claims for the person are removed, and the person’s account is told. Their profile, teachers and students do not change.
+                  Ending a membership needs nobody’s approval. It stays in the history; your organization’s rank and city for the person are removed, its teacher claims about the person are withdrawn, and the person’s account is told. Their profile, teachers and students do not change.
                 </p>
                 {memberRows.length > 0 ? (
                   <ul className="grid gap-3">
