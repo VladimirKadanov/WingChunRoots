@@ -113,4 +113,12 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/students/actions.ts#withdrawEntryAction': { rpc: ['passport.withdrawEntry'] },
   'src/app/dashboard/students/actions.ts#markAttendanceAction': { rpc: ['passport.markAttendance'] },
   'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction': { rpc: ['passport.remove'] },
+  // M25: succession, lineage dispute reports, appeals and archival record proposals.
+  'src/app/dashboard/succession/actions.ts#nominateSuccessorAction': { rpc: ['succession.nominate'] },
+  'src/app/dashboard/succession/actions.ts#answerNominationAction': { rpc: ['succession.answer'] },
+  'src/app/dashboard/succession/actions.ts#revokeNominationAction': { rpc: ['succession.revoke'] },
+  'src/app/dashboard/succession/actions.ts#requestSuccessionAction': { rpc: ['succession.request'] },
+  'src/app/people/[slug]/dispute/actions.ts#reportLineageAction': { rpc: ['disputes.report'] },
+  'src/app/dashboard/cases/[id]/actions.ts#appealDecisionAction': { rpc: ['appeals.create'] },
+  'src/app/people/[slug]/record/actions.ts#proposeRecordAction': { rpc: ['records.propose'] },
 };

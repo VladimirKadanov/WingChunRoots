@@ -48,4 +48,23 @@ export const REVIEW_LOAD_ERRORS = {
     message: "We couldn't load the report form. Nothing was sent.",
     back: { href: '/', label: 'Back to the home page' },
   },
+  // M25: succession, lineage dispute reports and archival record proposals.
+  succession: {
+    eyebrow: 'Dashboard',
+    title: 'Digital successor',
+    message: "We couldn't load your succession settings. Nothing was changed.",
+    back: { href: '/dashboard', label: 'Back to the dashboard' },
+  },
+  dispute: {
+    eyebrow: 'Profile',
+    title: 'Report a lineage error',
+    message: "We couldn't load the report form. Nothing was sent.",
+    back: { href: '/', label: 'Back to the home page' },
+  },
+  record: {
+    eyebrow: 'Profile',
+    title: 'Record history',
+    message: "We couldn't load this record's history. Nothing was changed.",
+    back: { href: '/', label: 'Back to the home page' },
+  },
 } as const;

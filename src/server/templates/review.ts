@@ -53,3 +53,11 @@ export const CLAIM_STATUS_LABELS: Record<ReviewCaseStatus, string> = {
 
 /** What the claimant reads when the reviewers did not confirm the training. */
 export const CLAIM_REFUSED_TEXT = 'The reviewers could not confirm this training from the evidence sent.';
+
+/** M25: what a lineage dispute report says is wrong with a relationship (specification §16.1). */
+export const LINEAGE_REPORT_GROUND_LABELS = {
+  never_trained: 'The student never trained with this teacher',
+  wrong_teacher: 'The training was with another teacher',
+  wrong_dates: 'The training dates are wrong',
+  other: 'Something else about this relationship is wrong',
+} as const;

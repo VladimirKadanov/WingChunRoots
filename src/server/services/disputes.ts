@@ -29,7 +29,7 @@ import { uuidv7 } from '../db/ids';
 import { decisionAppeal, lineage, lineageReport, person, reviewCase, reviewEvent, reviewNote, teachingRelationship } from '../db/schema';
 import { APPEAL_WINDOW_DAYS, APPEALABLE_KINDS, GOVERNANCE_DAILY_LIMIT, GOVERNANCE_TEXT_MAX, LINEAGE_REPORT_GROUNDS } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
-import { REVIEW_KIND_LABELS } from '../templates/review';
+import { LINEAGE_REPORT_GROUND_LABELS, REVIEW_KIND_LABELS } from '../templates/review';
 import type { RequestMeta } from './context';
 import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
@@ -40,12 +40,6 @@ import { type CaseRow, caseById, caseNotFound, caseReplayOf, isCaseKeyConflict, 
 export type LineageReportGrounds = (typeof LINEAGE_REPORT_GROUNDS)[number];
 export type AppealableKind = (typeof APPEALABLE_KINDS)[number];
 
-export const LINEAGE_REPORT_GROUND_LABELS: Record<LineageReportGrounds, string> = {
-  never_trained: 'The student never trained with this teacher',
-  wrong_teacher: 'The training was with another teacher',
-  wrong_dates: 'The training dates are wrong',
-  other: 'Something else about this relationship is wrong',
-};
 
 const text = (empty: string) =>
   z
