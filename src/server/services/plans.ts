@@ -44,7 +44,7 @@ import { notifyEach } from './notify';
 /** The label every price carries (plan §5.6, DEFAULT D09). */
 export const PROPOSED_PRICE_LABEL = 'Proposed price (not final)';
 /** The banner of /plans, word for word (milestone M08, In scope 5). */
-export const PLANS_BANNER = 'Proposed prices — not final. Payments are not available during the pilot.';
+export const PLANS_BANNER = 'Proposed prices — not final. Payments run in test mode, no real charge.';
 /** How /plans marks a feature with availability 'planned'. */
 export const PLANNED_LABEL = 'Planned — not available yet';
 

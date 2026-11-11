@@ -30,7 +30,7 @@ test.beforeEach(async ({ context }) => {
 
 const PROPOSED_PRICE = 'Proposed price (not final)';
 const PLANNED = 'Planned — not available yet';
-const BANNER = 'Proposed prices — not final. Payments are not available during the pilot.';
+const BANNER = 'Proposed prices — not final. Payments run in test mode, no real charge.';
 
 /** A field by its label, among the visible ones (Next.js keeps earlier routes in the page, hidden). */
 const field = (scope: Page | Locator, label: string | RegExp, exact = false) => scope.getByLabel(label, { exact }).filter({ visible: true });
