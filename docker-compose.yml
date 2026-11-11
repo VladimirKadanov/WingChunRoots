@@ -52,6 +52,12 @@ x-app-env: &app-env
   S3_BUCKET_EVIDENCE: ${S3_BUCKET_EVIDENCE:-wcr-evidence}
   S3_BUCKET_MEDIA: ${S3_BUCKET_MEDIA:-wcr-media}
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  # M22: billing in test mode only (docs/adr/0025-billing.md). Empty: the test provider, its key
+  # derived from MAIL_SEAL_KEY; a Stripe key is accepted only when it is a test key.
+  BILLING_PROVIDER: ${BILLING_PROVIDER:-}
+  BILLING_TEST_WEBHOOK_SECRET: ${BILLING_TEST_WEBHOOK_SECRET:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
 
 services:
   postgres:

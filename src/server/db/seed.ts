@@ -16,7 +16,8 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import type { Client } from 'pg';
 
-import { FIXTURE_SEED, generateFixtures, type Fixtures } from '../../fixtures/generate';
+import { demoBilling, seedDay } from '../../fixtures/billing';
+import { DEMO_PREMIUM_STUDENT, FIXTURE_SEED, generateFixtures, type Fixtures } from '../../fixtures/generate';
 import { encryptTotpSecret, generateBackupCodes, hashAccountPassword } from '../auth/credentials';
 import { readExtract } from '../geo/extract-file';
 import { loadPlaces } from '../geo/places';
@@ -346,6 +347,16 @@ async function load(
   await insert(schoolScheduleSlot, f.schoolScheduleSlots);
   await insert(trialInquiry, f.trialInquiries);
   await insert(schoolStatDay, f.schoolStatDays);
+  // M22: the demo subscriptions in test mode, dated around the day of the seed (fixtures/billing.ts).
+  const billing = demoBilling(f.seed, { premiumStudent: f.accounts[DEMO_PREMIUM_STUDENT], freeSifu: f.accounts['demo-free-sifu-5'] }, seedDay(new Date()));
+  await insert(billingCustomer, billing.billingCustomers);
+  await insert(billingCheckout, billing.billingCheckouts);
+  await insert(billingTestSubscription, billing.billingTestSubscriptions);
+  await db.insert(entitlementGrant).values(billing.entitlementGrants);
+  counts.entitlement_grant = (counts.entitlement_grant ?? 0) + billing.entitlementGrants.length;
+  await insert(billingSubscription, billing.billingSubscriptions);
+  await insert(billingInvoice, billing.billingInvoices);
+  await insert(billingEvent, billing.billingEvents);
   return counts;
 }
 

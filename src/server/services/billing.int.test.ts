@@ -433,6 +433,28 @@ describe('the lifecycle', () => {
   });
 });
 
+describe('the demo data (D20)', () => {
+  it('demo-premium-student renews, demo-free-sifu-5 had a cancelled Pro Sifu subscription that ended, and both keep their plans', async () => {
+    const byEmail = async (email: string) => {
+      const [u] = await getDb().select({ id: authUser.id, email: authUser.email }).from(authUser).where(eq(authUser.email, email));
+      return { user: { id: u!.id, email: u!.email, emailVerified: true, role: 'user' as const, twoFactorEnabled: false }, session: { id: 'demo-session', expiresAt: new Date(Date.now() + 3_600_000), twoFactorVerifiedAt: null }, via: 'cookie' as const };
+    };
+    const premium = await myBilling(await byEmail('demo-premium-student@example.test'));
+    expect(premium.plan.code).toBe('premium_student');
+    expect(premium.subscription).toMatchObject({ status: 'active', cancelAtPeriodEnd: false, planCode: 'premium_student', canCancel: true });
+    expect(premium.subscription!.invoices).toHaveLength(1);
+    expect(new Date(premium.subscription!.currentPeriodEnd).getTime()).toBeGreaterThan(Date.now() + 7 * DAY);
+
+    const sifu = await myBilling(await byEmail('demo-free-sifu-5@example.test'));
+    expect(sifu.plan.code).toBe('free_sifu');
+    expect(sifu.subscription).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true, planCode: 'pro_sifu', canResume: false });
+    expect(sifu.offers.map((o) => o.planCode)).toEqual(['pro_sifu']);
+    // demo-pro-sifu-8 keeps its test plan only (the M08 downgrade test revokes it).
+    const pro = await myBilling(await byEmail('demo-pro-sifu-8@example.test'));
+    expect(pro.subscription).toBeNull();
+  });
+});
+
 describe('staff', () => {
   it('admins read the subscriptions and their events, read-only; other roles cannot', async () => {
     const student = await member('m22-admin-view');
