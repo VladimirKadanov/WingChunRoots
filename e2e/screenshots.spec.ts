@@ -559,6 +559,32 @@ const STATES: readonly ScreenState[] = [
       },
     }),
   ),
+  {
+    // M22: the test provider's checkout of a new student choosing Premium Student (nothing paid).
+    name: 'billing-test-checkout',
+    milestone: 'M22',
+    async reach(page) {
+      await freshAccount(page, { name: 'Demo Checkout Student' });
+      const started = await apiPost(page, '/billing/checkout', { planCode: 'premium_student', interval: 'month' });
+      expect(started.status(), await started.text()).toBe(200);
+      await page.goto(((await started.json()) as { url: string }).url);
+      await expect(page.getByTestId('test-pay-form').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M22: the administrator's page of demo-premium-student's subscription: its state, the test
+    // clock and its provider events (nothing is moved).
+    name: 'admin-billing-subscription',
+    milestone: 'M22',
+    async reach(page) {
+      const rows = await getDb().execute<{ id: string }>(sql`
+        SELECT s.id::text AS id FROM billing_subscription s JOIN auth_user u ON u.id = s.subject_user_id WHERE u.email = 'demo-premium-student@example.test'`);
+      expect(rows.rows).toHaveLength(1);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/billing/${rows.rows[0]!.id}`);
+      await expect(page.getByTestId('admin-billing-events').filter({ visible: true })).toBeVisible();
+    },
+  },
 ];
 
 /**

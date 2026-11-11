@@ -100,6 +100,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/m19-passport.spec.ts',
         '**/m20-school-activity.spec.ts',
         '**/m21-trial-lessons.spec.ts',
+        '**/m22-billing.spec.ts',
       ]);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);
