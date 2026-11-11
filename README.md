@@ -85,6 +85,7 @@ Paid plans can be tried **in test mode only**; no real charge is ever made ([ADR
   2. Point an endpoint at `<APP_URL>/api/billing/webhook`, for example `stripe listen --forward-to http://localhost:3000/api/billing/webhook`, which prints the `whsec_…` to use.
 
   A live key (`sk_live_…`), a restricted key or any other value stops the app and the worker at start.
+- **Federation (M23).** The owner of an approved federation subscribes for the organization, monthly or yearly, on `/dashboard/organization/<id>/billing`, and switches between the two (yearly at once with the unused month credited, monthly at the period end). An administrator can give an approved federation a 6- or 12-month trial without a card on `/admin/organizations/<id>`; if nobody subscribes, it simply ends with no charge and nothing deleted. A federation's plan never changes the plans of its member schools and students ([ADR 0026](docs/adr/0026-federation-billing.md)).
 
 Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 terminal). Line endings are always LF (`.gitattributes`), so Windows Git settings cannot introduce CRLF changes. The services listen only on `127.0.0.1`: Mailpit is at <http://localhost:8025>, the S3 endpoint at <http://localhost:8333>.
 

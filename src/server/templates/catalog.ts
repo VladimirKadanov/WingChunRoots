@@ -174,7 +174,8 @@ export const NOTIFICATION_CATALOG = {
   'billing.ended': mailed('billing', 'notice'),
   // M23 (docs/adr/0026-federation-billing.md): a change of plan or billing period, in the Billing
   // category (never off); a Federation trial's start, its reminders 14 and 7 days before its end and
-  // its end, to the organization's admins in the Plan category (e-mail on by default, may be off).
+  // its end, to the organization's admins in the Plan category (e-mail on by default, may be off;
+  // DEFAULT M23, question 5).
   'billing.plan-changed': mailed('billing', 'notice'),
   'billing.change-scheduled': mailed('billing', 'notice'),
   'federation.trial-started': mailed('plan', 'notice'),

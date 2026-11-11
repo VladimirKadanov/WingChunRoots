@@ -120,6 +120,17 @@
 | `billing_invoice` | Фактурите на доставчика, т.е. историята на плащанията. Колони: `subscription_id` (`CASCADE`), `provider_invoice_id` (уникален за доставчика), `status` (`paid`, `failed`), `amount_cents`, `currency`, `period_start`, `period_end`, `issued_at` |
 | `billing_test_subscription` | Страната на тестовия доставчик (`src/server/billing/test-provider.ts`): идентификаторът при доставчика, клиентът, `checkout_ref` (уникален), планът, сумата, тестовата карта (`succeeds`, `declines`, `fails_at_renewal`; никога номер), състоянието, периодът и версията. Таблиците на приложението никога не я четат |
 
+### Абонамент Federation и пробен период на федерация (M23)
+
+[ADR 0026](adr/0026-federation-billing.md). Правата са като при M22: само `app_rw`, `REVOKE ALL` за `app_public_ro`, нищо в публичен DTO или кеш.
+
+| Таблица или колона | Предназначение и важни колони |
+|---|---|
+| `federation_trial` | Пробният период на федерация, без карта (спецификация §10.2). Колони: `organization_id` (`CASCADE`; уникален индекс `federation_trial_organization_key` — **един пробен период на организация**), `months` (`CHECK` 6 или 12; по подразбиране 12, DEFAULT M23, въпрос 4), `starts_at` и `ends_at` (`CHECK` краят е след началото), `status` (`active`, `converted`, `ended`, `revoked`; `CHECK`: `ended_at` е празно точно при `active`), `grant_id` (правото `complimentary`, `SET NULL`), `started_by_user_id`, `reason` (1–500 знака, в одита), `ended_by_user_id`, `converted_subscription_id` (абонаментът, в който е продължил; `SET NULL`). Частичният индекс `federation_trial_active_idx` (`ends_at` при `active`) служи на дневната задача |
+| `billing_checkout.trial_ends_at` | Краят на пробния период, когато checkout-ът е започнат по време на него: първият период на абонамента свършва тогава, а първата фактура е 0 (DEFAULT M23, въпрос 3) |
+| `billing_subscription.scheduled_plan_code`, `scheduled_interval` | Смяна, планирана за края на периода (DEFAULT M23, въпрос 2). `CHECK` `billing_subscription_scheduled_change`: двете са попълнени заедно или са празни; плановете и интервалите са от списъците |
+| `billing_test_subscription.scheduled_plan_code`, `scheduled_interval`, `scheduled_amount_cents` | Същата смяна на страната на тестовия доставчик, с новата сума; подновяването я прилага. `CHECK`: трите заедно |
+
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
@@ -316,6 +327,10 @@
 Миграцията в M22 (след тази на M21):
 
 - `*_m22_billing`: таблиците `billing_customer`, `billing_checkout`, `billing_subscription`, `billing_event`, `billing_invoice` и `billing_test_subscription`, с `CHECK` за доставчика, плана, интервала, състоянията, сумите и периодите, и уникалните индекси за идемпотентност (доставчик + идентификатор на събитие, фактура, абонамент, клиент). Има и частичните уникални индекси за един жив абонамент на субект. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. `entitlement_grant.source` вече допуска `stripe` от M08. Само SQL за PostgreSQL 16+.
+
+Миграцията в M23 (след тази на M22):
+
+- `*_m23_federation_billing`: таблицата `federation_trial` с `CHECK` и индексите си; колоните `trial_ends_at` в `billing_checkout`, `scheduled_plan_code` и `scheduled_interval` в `billing_subscription`, и същите със `scheduled_amount_cents` в `billing_test_subscription`, с техните `CHECK`. Накрая, на ръка, правата върху `federation_trial`: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 

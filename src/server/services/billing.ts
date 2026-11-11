@@ -1240,8 +1240,8 @@ async function endGrantNow(tx: Transaction, grantId: string, now: Date): Promise
 }
 
 /**
- * M23 (specification §10.2): an organization that subscribes during its Federation trial continues
- * it: the trial is converted, its complimentary grant ends now, and the subscription's own grant
+ * M23 (specification §10.2; DEFAULT M23, question 3): an organization that subscribes during its
+ * Federation trial continues it: the trial is converted, its complimentary grant ends now, and the subscription's own grant
  * carries Federation on (its first period ends with the trial and costs nothing).
  */
 async function convertTrial(tx: Transaction, sub: SubscriptionRow, now: Date): Promise<void> {
