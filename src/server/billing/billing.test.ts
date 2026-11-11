@@ -192,6 +192,7 @@ describe('the Stripe adapter', () => {
       customerId: null,
       successUrl: 'http://localhost:3000/dashboard/billing?checkout=0190a5c0-0000-7000-8000-00000000c0de#outcome',
       cancelUrl: 'http://localhost:3000/dashboard/billing?checkout=0190a5c0-0000-7000-8000-00000000c0de&cancelled=1#outcome',
+      expiresAt: new Date(Date.now() + 60 * 60_000),
     };
     expect(await stripe.createCheckout(request)).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test_Demo0001', sessionId: 'cs_test_Demo0001' });
     const [call] = calls;
@@ -204,6 +205,7 @@ describe('the Stripe adapter', () => {
     expect(form.get('client_reference_id')).toBe(request.checkoutId);
     expect(form.get('subscription_data[metadata][checkout_ref]')).toBe(request.checkoutId);
     expect(form.get('line_items[0][price_data][unit_amount]')).toBe('1900');
+    expect(form.get('expires_at')).toBe(String(Math.floor(request.expiresAt.getTime() / 1000)));
     // Another address than Stripe's hosted checkout is never followed.
     answer = { id: 'cs_test_Demo0002', url: 'https://example.test/pay', livemode: false };
     await expect(stripe.createCheckout(request)).rejects.toMatchObject({ code: 'unavailable' });

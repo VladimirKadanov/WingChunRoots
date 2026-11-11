@@ -50,7 +50,8 @@ import {
 import type { Transaction } from '../jobs/outbox';
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
-import { pgErrorOf, ServiceError } from './errors';
+import { type BillingSubject, liveSubscriptionOf } from './billing-subject';
+import { ServiceError } from './errors';
 import { notify, type NoticeProducer } from './notify';
 import { adminRoleOf } from './organizations';
 import { PROPOSED_PRICE_LABEL, planSummary, type PlanSummary } from './plans';
@@ -65,7 +66,7 @@ type SubscriptionRow = typeof billingSubscription.$inferSelect;
 type CheckoutRow = typeof billingCheckout.$inferSelect;
 export type SubscriptionStatus = (typeof BILLING_SUBSCRIPTION_STATUSES)[number];
 type Status = SubscriptionStatus;
-type Subject = { userId: string; organizationId: null } | { userId: null; organizationId: string };
+type Subject = BillingSubject;
 
 const NOT_FOUND = 'No such subscription.';
 const subjectOf = (row: { subjectUserId: string | null; subjectOrganizationId: string | null }): Subject =>
@@ -277,19 +278,6 @@ export interface CheckoutStarted {
 }
 
 /** The live subscription of a subject, under the caller's transaction. */
-async function liveSubscriptionOf(tx: Executor, subject: Subject): Promise<SubscriptionRow | null> {
-  const [row] = await tx
-    .select()
-    .from(billingSubscription)
-    .where(
-      and(
-        subject.userId ? eq(billingSubscription.subjectUserId, subject.userId) : eq(billingSubscription.subjectOrganizationId, subject.organizationId!),
-        inArray(billingSubscription.status, ['active', 'past_due']),
-      ),
-    );
-  return row ?? null;
-}
-
 async function customerIdOf(tx: Executor, provider: 'test' | 'stripe', subject: Subject): Promise<string | null> {
   const [row] = await tx
     .select({ id: billingCustomer.providerCustomerId })
@@ -394,6 +382,7 @@ export async function startCheckout(principal: Principal | null, raw: unknown, m
       customerId: checkout.customerId,
       successUrl: `${back}?checkout=${checkout.row.id}#outcome`,
       cancelUrl: `${back}?checkout=${checkout.row.id}&cancelled=1#outcome`,
+      expiresAt: checkout.row.expiresAt,
     });
     if (session.sessionId) await getDb().update(billingCheckout).set({ providerSessionId: session.sessionId, updatedAt: new Date() }).where(eq(billingCheckout.id, checkout.row.id));
     return { checkoutId: checkout.row.id, url: session.url };
@@ -613,6 +602,7 @@ async function syncGrant(tx: Transaction, sub: SubscriptionRow, now: Date): Prom
       subjectUserId: sub.subjectUserId,
       subjectOrganizationId: sub.subjectOrganizationId,
       planCode: sub.planCode,
+      // DEFAULT M22 (question 10): the paid source of both providers, as the technical plan foresees ('stripe').
       source: 'stripe',
       startsAt,
       endsAt: new Date(Math.max(until.getTime(), startsAt.getTime() + 1000)),
@@ -1143,33 +1133,4 @@ export async function runTestClock(
     ipHmac: who.meta.ipHmac,
   });
   return { subscriptionId: sub.id, step: input.step };
-}
-
-// --- the account type and the subscription (M08's switch) ------------------------------------------
-
-/**
- * DEFAULT M22 (question 8): an account with a subscription that renews cannot switch to the other
- * account type, whose plan would leave the paid one dormant and still charged: it cancels first
- * (its plan stays until the period end, and the switch is then allowed). An open checkout of the
- * old type can no longer be paid. Under the account's lock (services/plans.ts, changeAccountType).
- */
-export async function beforeAccountTypeChange(tx: Executor, userId: string, now: Date): Promise<void> {
-  const live = await liveSubscriptionOf(tx, { userId, organizationId: null });
-  if (live && !live.cancelAtPeriodEnd) {
-    throw new ServiceError(
-      'CONFLICT',
-      `You pay for ${PLANS[live.planCode].name}. Cancel it on your billing page first; you keep it until the period ends, and then you can change your account type.`,
-      { accountType: 'Cancel your subscription first.' },
-    );
-  }
-  await tx
-    .update(billingCheckout)
-    .set({ status: 'expired', updatedAt: now })
-    .where(and(eq(billingCheckout.status, 'open'), eq(billingCheckout.subjectUserId, userId)));
-}
-
-/** Keeps pgErrorOf in use for the unique live-subscription index (a concurrent second checkout). */
-export function isLiveSubscriptionConflict(error: unknown): boolean {
-  const pg = pgErrorOf(error);
-  return pg?.code === '23505' && (pg.constraint === 'billing_subscription_one_live_user_key' || pg.constraint === 'billing_subscription_one_live_organization_key');
 }

@@ -35,7 +35,7 @@ import {
   type ValueMark,
 } from '../entitlements/plans';
 import { lockAccount } from './account-lock';
-import { beforeAccountTypeChange } from './billing';
+import { beforeAccountTypeChange } from './billing-subject';
 import type { RequestMeta } from './context';
 import { pgErrorOf, ServiceError } from './errors';
 import { neighbourTags } from './profile';

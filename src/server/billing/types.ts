@@ -86,6 +86,8 @@ export interface CheckoutRequest {
   customerId: string | null;
   successUrl: string;
   cancelUrl: string;
+  /** When the app's checkout expires (CHECKOUT_TTL_MINUTES): the provider's session expires then too. */
+  expiresAt: Date;
 }
 
 export interface CheckoutSession {

@@ -278,6 +278,8 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
           customer: request.customerId ?? undefined,
           line_items: [{ quantity: 1, price_data: priceData(request.planName, request.interval, request.amountCents, request.currency) }],
           metadata: { checkout_ref: request.checkoutId },
+          // The session cannot be paid after the app's checkout expired (DEFAULT M22, question 7).
+          expires_at: Math.floor(request.expiresAt.getTime() / 1000),
           subscription_data: { metadata: { checkout_ref: request.checkoutId } },
         },
         `wcr-checkout-${request.checkoutId}`,

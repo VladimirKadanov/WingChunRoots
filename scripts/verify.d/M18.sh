@@ -103,7 +103,12 @@ check "the existing senders go through notify()" bash -c "
 
 # 4. The catalog (In scope 1, 3, 9; DEFAULT M18 questions 1, 2, 4) ------------------------------------
 check "the catalog has an entry for every notification template (satisfies Record)" grep -q 'satisfies Record<NotificationTemplateName, CatalogEntry>' "$CATALOG"
-check "the eight categories" grep -qF "export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events'] as const;" src/server/db/schema/common.ts
+if [ -f scripts/verify.d/M22.sh ]; then
+  # M22 (docs/adr/0025-billing.md) adds exactly one category, billing, after the eight of M18.
+  check "the eight categories, and billing from M22" grep -qF "export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing'] as const;" src/server/db/schema/common.ts
+else
+  check "the eight categories" grep -qF "export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events'] as const;" src/server/db/schema/common.ts
+fi
 check "security and account cannot be switched off; events is off by default" bash -c "
   awk '/^  security: \\{/{s=1} s && /optOut: false/{a=1} /^  account: \\{/{t=1} t && /optOut: false/{b=1} /^  events: \\{/{e=1} e && /emailDefault: false/{c=1} END{exit !(a && b && c)}' $CATALOG"
 check "the limit notice is dashboard-only; the new kinds are e-mailed with the notice e-mail" bash -c "

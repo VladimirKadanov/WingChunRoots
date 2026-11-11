@@ -75,6 +75,17 @@ Sign-up, e-mail confirmation, sign-in, password reset and TOTP two-factor authen
 - **Demo accounts** (`pnpm db:seed`, never with `NODE_ENV=production`): `<slug>@example.test` for `demo-pending`, `demo-root-a`, `demo-hub-a`, `demo-free-sifu-5`, `demo-pro-sifu-8` and `demo-two-lineages`, and `demo-admin`, `demo-archivist` and `demo-moderator` with TOTP. The password is `E2E_PASSWORD` and the staff TOTP secret `E2E_TOTP_SECRET` from `.env`: throwaway values that `scripts/init-env.sh` generates for this machine only. E2E tests sign in with `signInAs(page, slugOrRole)` from `e2e/helpers/auth.ts`.
 - **Staff** (`admin`, `moderator`, `archivist`) must have TOTP on, and a staff page opens only in a session that passed the second factor.
 
+#### Payments in test mode (M22)
+
+Paid plans can be tried **in test mode only**; no real charge is ever made ([ADR 0025](docs/adr/0025-billing.md)).
+
+- **Default: the test provider.** Leave `BILLING_PROVIDER` unset. "Choose this plan" on `/plans` leads to `/dashboard/billing`, and from there to a test checkout page inside the app with three test cards: one that succeeds, one that is declined, and one that fails at the first renewal. The worker applies the provider's events. An administrator moves the test clock on `/admin/billing/<id>`, or runs `pnpm billing:test-clock`. Nothing needs an account, a key or the network.
+- **Stripe in test mode (optional).**
+  1. Set `BILLING_PROVIDER=stripe`, `STRIPE_SECRET_KEY` to a Stripe test secret key (`sk_test_…`) and `STRIPE_WEBHOOK_SECRET` to the signing secret of a test webhook endpoint (`whsec_…`) in `.env`. Never commit them.
+  2. Point an endpoint at `<APP_URL>/api/billing/webhook`, for example `stripe listen --forward-to http://localhost:3000/api/billing/webhook`, which prints the `whsec_…` to use.
+
+  A live key (`sk_live_…`), a restricted key or any other value stops the app and the worker at start.
+
 Tips: open the project with VS Code's *WSL* extension (`code .` from the WSL2 terminal). Line endings are always LF (`.gitattributes`), so Windows Git settings cannot introduce CRLF changes. The services listen only on `127.0.0.1`: Mailpit is at <http://localhost:8025>, the S3 endpoint at <http://localhost:8333>.
 
 ### Windows without WSL2 (Git Bash)
@@ -128,6 +139,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `pnpm db:reset` | Drop every application object; only a local database or `TEST_DATABASE_URL`, never with `NODE_ENV=production` |
 | `pnpm db:check` | `drizzle-kit check`, no schema change without a migration, and all migrations applied to a new empty database |
 | `pnpm admin:create --email <address>` | Local only: makes an existing account with a confirmed address and TOTP on an admin, ends its sessions and writes `role.change` to the audit log; prints no secrets |
+| `pnpm billing:test-clock (--email <address> \| --subscription <id>) [--step period_end\|grace_end]` | M22, local only, test provider only: moves a test subscription to the end of its period (a renewal, paid or failed, or the end of a cancelled one) or of its grace period; the worker applies the events. No real charge ever ([ADR 0025](docs/adr/0025-billing.md)) |
 | `pnpm db:generate` | A new migration from a change in `src/server/db/schema/` |
 | `pnpm fixtures:generate` | Rewrite `fixtures/lineage-600.json` from the fixture generator |
 | `pnpm build` / `pnpm start` | Production build and server |
@@ -156,6 +168,7 @@ Browsers are never installed in a cloud session; mobile WebKit runs only in CI.
 | `src/worker.ts`, `src/server/jobs` | The worker process, queues, the outbox helper and the pg-boss schema step |
 | `src/server/mail`, `src/server/templates` | The `Mailer` with its SMTP and file transports; e-mail templates (React Email) and notification texts, English only |
 | `src/server/services` | Business logic (from M01b: the retention job) |
+| `src/server/billing` | M22: payments in test mode: the test provider (the default and the only one CI uses), the Stripe test-mode adapter (REST and the signature check by hand, no SDK; `sk_test_` keys only), the webhook handler of `POST /api/billing/webhook` and the settings check |
 | `src/fixtures`, `fixtures/` | Deterministic fictional demo data and its export `lineage-600.json` |
 | `drizzle/` | Migrations (drizzle-kit 1.0 format) |
 | `e2e/` | Playwright tests (`@smoke`, `@M00` … tags), the project matrix and helpers (`e2e/helpers/mailbox.ts` reads Mailpit or `.mail/`) |
