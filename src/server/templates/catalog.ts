@@ -184,6 +184,7 @@ export const NOTIFICATION_CATALOG = {
   'dispute.decided': mailed('review', 'notice'),
   'appeal.decided': mailed('review', 'notice'),
   'proposal.decided': mailed('review', 'notice'),
+  'case.question': mailed('review', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

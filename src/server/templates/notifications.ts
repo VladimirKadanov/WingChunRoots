@@ -1674,6 +1674,22 @@ const proposalDecided: NotificationTemplate<{ caseId: string; decision: 'approve
   sample: { caseId: '0190a5c0-0000-7000-8000-0000000000e6', decision: 'approved' },
 };
 
+/**
+ * "case.question" (M25): to the member who opened a governance case (a succession request, a
+ * lineage report, an appeal or a proposed record change) when a member of staff asks them for more.
+ * No question in the notice: it is on the case page.
+ */
+const caseQuestion: NotificationTemplate<{ caseId: string }> = {
+  name: 'case.question',
+  parse: (payload) => ({ caseId: caseIdOf('case.question', payload) }),
+  render: ({ caseId }) => ({
+    title: 'A question about your case',
+    body: [{ text: 'A member of staff asked you for more information about your case. Their question is on the case page; you can answer there.' }],
+    action: { label: 'Open the case', href: `/dashboard/cases/${caseId}` },
+  }),
+  sample: { caseId: '0190a5c0-0000-7000-8000-0000000000e7' },
+};
+
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
   'account.deletion-requested': accountDeletionRequested,
@@ -1738,6 +1754,7 @@ export const NOTIFICATION_TEMPLATES = {
   'dispute.decided': disputeDecided,
   'appeal.decided': appealDecided,
   'proposal.decided': proposalDecided,
+  'case.question': caseQuestion,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

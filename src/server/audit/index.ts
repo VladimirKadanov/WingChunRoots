@@ -133,6 +133,7 @@ export type AuditAction =
   | 'succession.revoke'
   | 'succession.request'
   | 'succession.transfer'
+  | 'succession.decide'
   | 'dispute.report'
   | 'dispute.decide'
   | 'appeal.create'

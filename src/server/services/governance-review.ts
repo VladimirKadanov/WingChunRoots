@@ -28,7 +28,7 @@
 //
 // Logs and audit rows carry ids and codes; a reviewer's words stay in the case (plan §6.4).
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 
 import { writeAudit } from '../audit';
 import { hasStaff2FA } from '../auth/guards';
@@ -47,13 +47,32 @@ import { publicTags, recordEvent, rowById } from './relationships';
 import { askParties, type KindDecisionInput, type KindDecisionOutcome, resolveCase, tellDisputeParties } from './review-kinds';
 import { type CaseRow, caseById, DECIDERS, ownSide, recordCaseEvent } from './review-core';
 import { changedFields, recordRevisionRow, recordState, writeRecordFields } from './stewardship';
-import { stillInactive } from './succession';
+import { mayStillSucceed, stillInactive } from './succession';
 
 const NONE: KindDecisionOutcome = { tags: [] };
 
 const needReason = (input: KindDecisionInput, message: string) => {
   if (!input.reason) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { reason: message });
 };
+
+/** needs_info: the question goes to the account that opened the case, which is told of it. */
+async function askOpener(tx: Transaction, p: Principal, c: CaseRow, input: KindDecisionInput, meta: RequestMeta): Promise<KindDecisionOutcome> {
+  await askParties(tx, p, c, input, meta);
+  if (c.openedByUserId) await notify(tx, c.openedByUserId, 'case.question', { caseId: c.id }, { key: `case-question:${c.id}:${input.idempotencyKey.slice(0, 60)}` });
+  return NONE;
+}
+
+/**
+ * Whether the reviewer is a party of a governance case: the generic parties (review-core.ts
+ * ownSide) and, for a lineage report, the two people of the reported relationship, whose case it is
+ * about although they are not told of it (DEFAULT M25, question 11).
+ */
+async function governanceSide(tx: Transaction, p: Principal, c: CaseRow): Promise<boolean> {
+  if (await ownSide(tx, p, c)) return true;
+  if (c.kind !== 'lineage_report') return false;
+  const [r] = await tx.select({ relationshipId: lineageReport.relationshipId }).from(lineageReport).where(eq(lineageReport.reviewCaseId, c.id));
+  return r?.relationshipId ? ownSide(tx, p, { kind: 'relationship_dispute', relationshipId: r.relationshipId, openedByUserId: null, personId: null }) : false;
+}
 
 /** A key derived from the decision's own key, for a second history row the decision writes. */
 const derivedKey = (key: string, suffix: string) => `${key.slice(0, 60)}-${suffix}`;
@@ -63,21 +82,32 @@ const derivedKey = (key: string, suffix: string) => `${key.slice(0, 60)}-${suffi
 async function decideSuccession(tx: Transaction, p: Principal, c: CaseRow, input: KindDecisionInput, meta: RequestMeta): Promise<KindDecisionOutcome> {
   const [r] = await tx.select().from(successionRequest).where(eq(successionRequest.reviewCaseId, c.id)).for('update');
   if (!r || r.status !== 'pending') throw new ServiceError('CONFLICT', 'This succession request is no longer pending.');
-  if (input.decision === 'needs_info') {
-    await askParties(tx, p, c, input, meta);
-    return NONE;
-  }
+  if (input.decision === 'needs_info') return askOpener(tx, p, c, input, meta);
   needReason(input, 'Write the reason the successor and the owner read.');
   const [n] = await tx.select().from(successionNomination).where(eq(successionNomination.id, r.nominationId)).for('update');
   const now = new Date();
   if (input.decision === 'reject') {
     await tx.update(successionRequest).set({ status: 'rejected', decidedAt: now, updatedAt: now }).where(eq(successionRequest.id, r.id));
     await resolveCase(tx, p, c, input, 'rejected', meta);
+    await writeAudit(tx, {
+      action: 'succession.decide',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'succession_request',
+      subjectId: r.id,
+      after: { outcome: 'rejected', basis: r.basis, caseId: c.id },
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
     if (r.requesterUserId) await notify(tx, r.requesterUserId, 'succession.decided', { caseId: c.id, decision: 'rejected', role: 'successor' }, { key: `succession-decided:${c.id}:${now.getTime()}` });
     if (r.ownerUserId) await notify(tx, r.ownerUserId, 'succession.decided', { caseId: c.id, decision: 'rejected', role: 'owner' }, { key: `succession-decided-owner:${c.id}:${now.getTime()}` });
     return NONE;
   }
   if (!n || n.status !== 'accepted' || !r.ownerUserId || !r.requesterUserId) throw new ServiceError('CONFLICT', 'The nomination is no longer in force: refuse this request.');
+  // The successor must still hold a plan that may succeed, and not be banned (DEFAULT M25, question 2).
+  if (!(await mayStillSucceed(tx, r.requesterUserId))) {
+    throw new ServiceError('CONFLICT', 'The successor no longer holds Premium Student or Professional Sifu, or the account is suspended: refuse this request with a reason.');
+  }
   // Inactivity is checked again: an owner who came back stops the transfer.
   if (r.basis === 'inactivity' && !(await stillInactive(tx, r.ownerUserId))) {
     throw new ServiceError('CONFLICT', 'The owner’s account has been active again since the request: an inactivity request cannot be approved. Refuse it with a reason.');
@@ -129,10 +159,8 @@ async function decideSuccession(tx: Transaction, p: Principal, c: CaseRow, input
 async function decideLineageReport(tx: Transaction, p: Principal, c: CaseRow, input: KindDecisionInput, meta: RequestMeta): Promise<KindDecisionOutcome> {
   const [r] = await tx.select().from(lineageReport).where(eq(lineageReport.reviewCaseId, c.id)).for('update');
   if (!r || r.status !== 'open') throw new ServiceError('CONFLICT', 'This report has been decided.');
-  if (input.decision === 'needs_info') {
-    await askParties(tx, p, c, input, meta);
-    return NONE;
-  }
+  if (await governanceSide(tx, p, c)) throw new ServiceError('FORBIDDEN', 'This relationship is yours: another moderator or an administrator decides the report.');
+  if (input.decision === 'needs_info') return askOpener(tx, p, c, input, meta);
   needReason(input, 'Write the reason the reporter reads.');
   const now = new Date();
   if (input.decision === 'reject') {
@@ -155,9 +183,6 @@ async function decideLineageReport(tx: Transaction, p: Principal, c: CaseRow, in
   // Uphold: the relationship goes in arbitration, as review.arbitrate does it.
   const row = r.relationshipId ? await rowById(tx, r.relationshipId, true) : null;
   if (!row) throw new ServiceError('CONFLICT', 'The relationship is gone: this report can only be not upheld.');
-  if (await ownSide(tx, p, { kind: 'relationship_dispute', relationshipId: row.id, openedByUserId: null, personId: null })) {
-    throw new ServiceError('FORBIDDEN', 'This relationship is yours: another moderator or an administrator decides the report.');
-  }
   let disputeCaseId: string | null = null;
   if (row.status === 'verified') disputeCaseId = await openArbitration(tx, p, row, input.reason!, derivedKey(input.idempotencyKey, 'arb'), meta);
   else if (row.status !== 'in_arbitration') throw new ServiceError('CONFLICT', 'The relationship is no longer verified: this report can only be not upheld.');
@@ -189,10 +214,11 @@ async function decideAppeal(tx: Transaction, p: Principal, c: CaseRow, input: Ki
   if (!a || a.status !== 'pending') throw new ServiceError('CONFLICT', 'This appeal has been decided.');
   if (a.originalDeciderUserId === p.user.id) throw new ServiceError('FORBIDDEN', 'You decided the appealed case: another member of staff decides its appeal.');
   if (!hasStaff2FA(p, appealDeciders(a.appealedKind))) throw new ServiceError('FORBIDDEN', 'The deciders of the appealed kind decide its appeal.');
-  if (input.decision === 'needs_info') {
-    await askParties(tx, p, c, input, meta);
-    return NONE;
-  }
+  // Nobody decides an appeal of a case in which they are a party (the other side of a dispute, the
+  // owner of a succession request, the people of a reported relationship).
+  const appealedCase = await caseById(tx, a.appealedCaseId, false);
+  if (appealedCase && (await governanceSide(tx, p, appealedCase))) throw new ServiceError('FORBIDDEN', 'You are a party of the appealed case: another member of staff decides its appeal.');
+  if (input.decision === 'needs_info') return askOpener(tx, p, c, input, meta);
   needReason(input, 'Write the reason the party who appealed reads.');
   const now = new Date();
   const appellant = (await tx.select({ id: reviewCase.openedByUserId }).from(reviewCase).where(eq(reviewCase.id, c.id)))[0]?.id ?? null;
@@ -217,14 +243,28 @@ async function decideAppeal(tx: Transaction, p: Principal, c: CaseRow, input: Ki
     await enqueue(tx, QUEUE.lineageRecompute, { lineageIds: [row.lineageId] });
     tags = await publicTags(tx, row);
   } else if (a.appealedKind === 'lineage_report') {
-    await tx.update(lineageReport).set({ status: 'open', updatedAt: now }).where(eq(lineageReport.reviewCaseId, appealed.id));
+    const [r] = await tx.select({ id: lineageReport.id, relationshipId: lineageReport.relationshipId, reporterUserId: lineageReport.reporterUserId }).from(lineageReport).where(eq(lineageReport.reviewCaseId, appealed.id)).for('update');
+    if (!r) throw new ServiceError('CONFLICT', 'The report is gone: this appeal can only be rejected.');
+    if (r.relationshipId && r.reporterUserId) {
+      const [open] = await tx.select({ id: lineageReport.id }).from(lineageReport).where(and(eq(lineageReport.relationshipId, r.relationshipId), eq(lineageReport.reporterUserId, r.reporterUserId), eq(lineageReport.status, 'open'), ne(lineageReport.id, r.id)));
+      if (open) throw new ServiceError('CONFLICT', 'The same member has a newer open report of this relationship: decide that one, and reject this appeal.');
+    }
+    await tx.update(lineageReport).set({ status: 'open', updatedAt: now }).where(eq(lineageReport.id, r.id));
   } else if (a.appealedKind === 'succession_request') {
     const [r] = await tx.select({ id: successionRequest.id, nominationId: successionRequest.nominationId }).from(successionRequest).where(eq(successionRequest.reviewCaseId, appealed.id)).for('update');
     const [n] = r ? await tx.select({ status: successionNomination.status }).from(successionNomination).where(eq(successionNomination.id, r.nominationId)) : [];
     if (!r || n?.status !== 'accepted') throw new ServiceError('CONFLICT', 'The nomination is no longer in force: this appeal can only be rejected.');
+    const [pending] = await tx.select({ id: successionRequest.id }).from(successionRequest).where(and(eq(successionRequest.nominationId, r.nominationId), eq(successionRequest.status, 'pending')));
+    if (pending) throw new ServiceError('CONFLICT', 'A newer succession request on this nomination is pending: decide that one, and reject this appeal.');
     await tx.update(successionRequest).set({ status: 'pending', decidedAt: null, updatedAt: now }).where(eq(successionRequest.id, r.id));
   } else {
-    await tx.update(recordProposal).set({ status: 'pending', updatedAt: now }).where(eq(recordProposal.reviewCaseId, appealed.id));
+    const [proposal] = await tx.select({ id: recordProposal.id, personId: recordProposal.personId, proposerUserId: recordProposal.proposerUserId }).from(recordProposal).where(eq(recordProposal.reviewCaseId, appealed.id)).for('update');
+    if (!proposal) throw new ServiceError('CONFLICT', 'The proposal is gone: this appeal can only be rejected.');
+    if (proposal.proposerUserId) {
+      const [pending] = await tx.select({ id: recordProposal.id }).from(recordProposal).where(and(eq(recordProposal.personId, proposal.personId), eq(recordProposal.proposerUserId, proposal.proposerUserId), eq(recordProposal.status, 'pending'), ne(recordProposal.id, proposal.id)));
+      if (pending) throw new ServiceError('CONFLICT', 'The same member has a newer pending proposal for this record: decide that one, and reject this appeal.');
+    }
+    await tx.update(recordProposal).set({ status: 'pending', updatedAt: now }).where(eq(recordProposal.id, proposal.id));
   }
   // The reopened case waits for a decider other than the first one (review.ts decideOtherKind).
   const reopenedStatus = a.appealedKind === 'relationship_dispute' ? 'needs_info' : 'open';
@@ -260,10 +300,7 @@ async function decideAppeal(tx: Transaction, p: Principal, c: CaseRow, input: Ki
 async function decideProposal(tx: Transaction, p: Principal, c: CaseRow, input: KindDecisionInput, meta: RequestMeta): Promise<KindDecisionOutcome> {
   const [proposal] = await tx.select().from(recordProposal).where(eq(recordProposal.reviewCaseId, c.id)).for('update');
   if (!proposal || proposal.status !== 'pending') throw new ServiceError('CONFLICT', 'This proposal has been decided.');
-  if (input.decision === 'needs_info') {
-    await askParties(tx, p, c, input, meta);
-    return NONE;
-  }
+  if (input.decision === 'needs_info') return askOpener(tx, p, c, input, meta);
   needReason(input, 'Write the reason the proposer reads; it is kept in the record’s change history.');
   const now = new Date();
   if (input.decision === 'reject') {

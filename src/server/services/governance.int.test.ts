@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startAuthTestDatabase, stopAuthTestDatabase } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { auditLog, authUser, lineageReport, organization, organizationAdmin, person, personName, recordRevision, reviewCase, school, successionNomination, successionRequest, teachingRelationship } from '../db/schema';
+import { auditLog, authUser, lineageReport, notification, organization, organizationAdmin, person, personName, recordRevision, reviewCase, school, successionNomination, successionRequest, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { getPartyCase } from './cases';
 import { appealDecision, reportLineage } from './disputes';
@@ -234,6 +234,37 @@ describe('succession: requests and the transfer', () => {
     expect((audits[0]!.after as { lifeStatusChanged: boolean }).lifeStatusChanged).toBe(false);
   });
 
+  it('an approved nomination takes no further request; a successor who lost the plan or was banned is not approved', async () => {
+    const s = await succession();
+    const first = await requestSuccession(s.heir.principal, { nominationId: s.nominationId, basis: 'reported_death', note: 'A fictional report.', evidenceIds: [(await upload(s.heir)).id], idempotencyKey: key() }, meta);
+    await getDb().update(authUser).set({ banned: true }).where(eq(authUser.id, s.heir.account.id));
+    expect(await code(decide(admin, first.request.caseId, 'verify'))).toBe('CONFLICT');
+    await getDb().update(authUser).set({ banned: false }).where(eq(authUser.id, s.heir.account.id));
+    await decideReviewCase(admin.principal, { caseId: first.request.caseId, decision: 'verify', reason: 'The fictional evidence was checked.', idempotencyKey: key() }, meta);
+    expect(await code(requestSuccession(s.heir.principal, { nominationId: s.nominationId, basis: 'reported_death', note: 'Again.', evidenceIds: [(await upload(s.heir)).id], idempotencyKey: key() }, meta))).toBe('CONFLICT');
+    const mine = await successionMine(s.heir.principal);
+    expect(mine.received.find((n) => n.id === s.nominationId)?.mayRequest).toBe(false);
+  });
+
+  it('a refused request is in the audit log too', async () => {
+    const s = await succession();
+    const { request } = await requestSuccession(s.heir.principal, { nominationId: s.nominationId, basis: 'reported_death', note: 'A fictional report.', evidenceIds: [(await upload(s.heir)).id], idempotencyKey: key() }, meta);
+    await decide(admin, request.caseId, 'reject', 'The fictional evidence is not enough.');
+    const audits = await getDb().select({ after: auditLog.after }).from(auditLog).where(and(eq(auditLog.action, 'succession.decide'), eq(auditLog.subjectId, request.id)));
+    expect(audits).toHaveLength(1);
+  });
+
+  it('a sign-out keeps the last refresh of the session as activity', async () => {
+    const s = await succession();
+    await idle(s.owner, 200);
+    await getDb().execute(sql`UPDATE auth_session SET updated_at = now() - interval '1 day' WHERE user_id = ${s.owner.account.id}::uuid`);
+    const { afterSessionDelete } = await import('../auth/hooks');
+    const [sess] = await getDb().execute<{ updated_at: string }>(sql`SELECT updated_at FROM auth_session WHERE user_id = ${s.owner.account.id}::uuid ORDER BY updated_at DESC LIMIT 1`).then((r) => r.rows);
+    await afterSessionDelete({ userId: s.owner.account.id, updatedAt: new Date(sess?.updated_at ?? Date.now() - 86_400_000) });
+    await getDb().execute(sql`DELETE FROM auth_session WHERE user_id = ${s.owner.account.id}::uuid`);
+    expect(await code(requestSuccession(s.heir.principal, { nominationId: s.nominationId, basis: 'inactivity', note: 'A fictional request.', evidenceIds: [(await upload(s.heir)).id], idempotencyKey: key() }, meta))).toBe('CONFLICT');
+  });
+
   it('an owner who comes back before the decision stops an inactivity transfer', async () => {
     const s = await succession();
     await idle(s.owner, 200);
@@ -293,6 +324,30 @@ describe('lineage dispute reports', () => {
     const [now] = await getDb().select({ status: teachingRelationship.status }).from(teachingRelationship).where(eq(teachingRelationship.id, relationshipId));
     expect(now!.status).toBe('in_arbitration');
   });
+
+  it('a moderator who is one of the reported people decides nothing about the report, not even "not upheld"', async () => {
+    const teacher = await member('gov-party-teacher', { sifu: true, role: 'moderator' });
+    const student = await member('gov-party-student');
+    const relationshipId = await verified(teacher, student);
+    const reporter = await member('gov-party-reporter');
+    const { caseId } = await reportLineage(reporter.principal, { relationshipId, grounds: 'never_trained', details: 'A fictional report.', evidenceIds: [(await upload(reporter)).id], idempotencyKey: key() }, meta);
+    expect(await code(decide(teacher, caseId, 'reject'))).toBe('FORBIDDEN');
+    const [report] = await getDb().select({ status: lineageReport.status }).from(lineageReport).where(eq(lineageReport.reviewCaseId, caseId));
+    expect(report!.status).toBe('open');
+  });
+
+  it('a question to the reporter reaches them as a notice', async () => {
+    const teacher = await member('gov-ask-teacher', { sifu: true });
+    const student = await member('gov-ask-student');
+    const relationshipId = await verified(teacher, student);
+    const reporter = await member('gov-ask-reporter');
+    const { caseId } = await reportLineage(reporter.principal, { relationshipId, grounds: 'never_trained', details: 'A fictional report.', evidenceIds: [(await upload(reporter)).id], idempotencyKey: key() }, meta);
+    await assignReviewCase(moderator.principal, { caseId, assigneeId: moderator.principal.user.id, idempotencyKey: key() }, meta);
+    await decideReviewCase(moderator.principal, { caseId, decision: 'needs_info', reason: 'Which fictional year is meant?', idempotencyKey: key() }, meta);
+    const notices = await getDb().select({ payload: notification.payload }).from(notification).where(and(eq(notification.userId, reporter.account.id), eq(notification.template, 'case.question')));
+    expect(notices).toHaveLength(1);
+    expect((notices[0]!.payload as { caseId: string }).caseId).toBe(caseId);
+  });
 });
 
 describe('appeals', () => {
@@ -325,6 +380,24 @@ describe('appeals', () => {
     expect(again.appeal?.canAppeal).toBe(false);
     expect(again.appeal?.appeal?.caseId).toBe(appeal.caseId);
     expect(await code(appealDecision(reporter.principal, { caseId, grounds: 'A third fictional appeal.', idempotencyKey: key() }, meta))).toBe('CONFLICT');
+  });
+  it('the owner of a succession request never decides its appeal; an appeal cannot reopen a request beside a newer pending one', async () => {
+    const owner = await member('gov-appeal-owner', { sifu: true, role: 'admin' });
+    const heir = await member('gov-appeal-heir');
+    await grant(owner, 'pro_sifu');
+    await grant(heir, 'premium_student');
+    await verified(owner, heir);
+    const { nomination } = await nominateSuccessor(owner.principal, { successorPersonId: heir.personId }, meta);
+    await answerNomination(heir.principal, { nominationId: nomination.id, answer: 'accept' }, meta);
+    const { request } = await requestSuccession(heir.principal, { nominationId: nomination.id, basis: 'reported_death', note: 'A fictional report.', evidenceIds: [(await upload(heir)).id], idempotencyKey: key() }, meta);
+    await decide(admin, request.caseId, 'reject', 'The fictional evidence is not enough.');
+    const appeal = await appealDecision(heir.principal, { caseId: request.caseId, grounds: 'A fictional appeal.', idempotencyKey: key() }, meta);
+    // The owner is an administrator, but a party of the appealed case.
+    expect(await code(decide(owner, appeal.caseId, 'reject'))).toBe('FORBIDDEN');
+    // A newer request on the same nomination is pending: the old one cannot be reopened beside it.
+    await requestSuccession(heir.principal, { nominationId: nomination.id, basis: 'reported_death', note: 'A second fictional report.', evidenceIds: [(await upload(heir)).id], idempotencyKey: key() }, meta);
+    expect(await code(decide(admin2, appeal.caseId, 'verify', 'Another look.'))).toBe('CONFLICT');
+    await decide(admin2, appeal.caseId, 'reject', 'The newer request is decided instead.');
   });
 });
 

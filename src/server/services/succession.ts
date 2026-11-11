@@ -121,6 +121,15 @@ async function holdsSuccessorPlan(db: Executor, userId: string): Promise<boolean
   return (SUCCESSOR_PLANS as readonly string[]).includes(plan);
 }
 
+/**
+ * Whether a successor may still take over at approval (governance-review.ts): their account is not
+ * banned and still holds Premium Student or Professional Sifu (DEFAULT M25, question 2).
+ */
+export async function mayStillSucceed(db: Executor, userId: string): Promise<boolean> {
+  const [u] = await db.select({ banned: authUser.banned }).from(authUser).where(eq(authUser.id, userId));
+  return !!u && !u.banned && (await holdsSuccessorPlan(db, userId));
+}
+
 // --- succession.mine --------------------------------------------------------------------------------
 
 export interface NominationView {
@@ -235,7 +244,8 @@ export async function successionMine(principal: Principal | null): Promise<Succe
   }
   const receivedViews = [];
   for (const n of received) {
-    const open = n.status === 'accepted' && !mine.some((r) => r.nominationId === n.id && r.status === 'pending');
+    // A nomination whose request was approved has done its work: no further request on it.
+    const open = n.status === 'accepted' && !mine.some((r) => r.nominationId === n.id && (r.status === 'pending' || r.status === 'approved'));
     // Only whether the inactivity basis is open, never the owner's last activity itself.
     const inactivityOpen = open && (await inactiveDaysOf(db, n.ownerUserId)) > SUCCESSION_INACTIVITY_DAYS;
     receivedViews.push({ ...view(n), mayRequest: open, inactivityOpen });
@@ -426,6 +436,8 @@ export async function requestSuccession(principal: Principal | null, raw: z.inpu
       if (n.status !== 'accepted') throw new ServiceError('CONFLICT', n.status === 'pending' ? 'Accept the nomination first.' : 'This nomination is no longer in force.');
       const [pending] = await tx.select({ id: successionRequest.id }).from(successionRequest).where(and(eq(successionRequest.nominationId, n.id), eq(successionRequest.status, 'pending')));
       if (pending) throw new ServiceError('CONFLICT', 'Your succession request waits for an administrator already.');
+      const [approved] = await tx.select({ id: successionRequest.id }).from(successionRequest).where(and(eq(successionRequest.nominationId, n.id), eq(successionRequest.status, 'approved')));
+      if (approved) throw new ServiceError('CONFLICT', 'Your succession request on this nomination was approved already.');
       // DEFAULT M25 (question 5): a few requests a day, counted under the account's case lock.
       const [{ n: today } = { n: 0 }] = await tx
         .select({ n: count() })
