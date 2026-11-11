@@ -90,6 +90,12 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/schools/[slug]/trial/actions.ts#requestTrialAction': { rpc: ['trial.request'] },
   'src/app/dashboard/schools/actions.ts#decideTrialAction': { rpc: ['trial.answer', 'trial.decline', 'trial.close'] },
   'src/app/dashboard/schools/actions.ts#updateScheduleAction': { rpc: ['schools.updateSchedule'] },
+  // M22: paid plans in test mode (the provider's events arrive at POST /api/billing/webhook).
+  'src/app/dashboard/billing/actions.ts#startCheckoutAction': { rpc: ['billing.checkout'] },
+  'src/app/dashboard/billing/actions.ts#cancelSubscriptionAction': { rpc: ['billing.cancel'] },
+  'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction': { rpc: ['billing.resume'] },
+  'src/app/billing/test-checkout/[id]/actions.ts#testPayAction': { rpc: ['billing.testPay'] },
+  'src/app/admin/billing/[id]/actions.ts#moveTestClockAction': { rpc: ['billing.testClock'] },
   'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction': { rpc: ['organizations.grant'] },
   'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction': { rpc: ['organizations.revokeGrant'] },
   // M17: events (the poster is uploaded and removed from the browser through /api/rpc).

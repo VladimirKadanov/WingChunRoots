@@ -282,7 +282,8 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
         },
         `wcr-checkout-${request.checkoutId}`,
       );
-      const url = typeof json.url === 'string' && json.url.startsWith('https://') ? json.url : null;
+      // Only Stripe's own hosted checkout: the browser is sent to this address.
+      const url = typeof json.url === 'string' && /^https:\/\/checkout\.stripe\.com\//.test(json.url) ? json.url : null;
       const id = typeof json.id === 'string' ? json.id : null;
       if (!url || !id) throw new BillingProviderError('unavailable', 'Stripe answered without a checkout page.');
       return { url, sessionId: id };

@@ -63,7 +63,8 @@ export const CHECKOUT_TTL_MINUTES = 60;
 
 type SubscriptionRow = typeof billingSubscription.$inferSelect;
 type CheckoutRow = typeof billingCheckout.$inferSelect;
-type Status = (typeof BILLING_SUBSCRIPTION_STATUSES)[number];
+export type SubscriptionStatus = (typeof BILLING_SUBSCRIPTION_STATUSES)[number];
+type Status = SubscriptionStatus;
 type Subject = { userId: string; organizationId: null } | { userId: null; organizationId: string };
 
 const NOT_FOUND = 'No such subscription.';
@@ -958,6 +959,7 @@ export interface AdminSubscriptionRow {
   planName: string;
   status: Status;
   statusLabel: string;
+  cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string;
   accessUntil: string | null;
   events: number;
@@ -1035,6 +1037,7 @@ export async function adminBillingList(principal: Principal | null, raw: unknown
         planName: view.planName,
         status: sub.status,
         statusLabel: view.statusLabel,
+        cancelAtPeriodEnd: view.cancelAtPeriodEnd,
         currentPeriodEnd: view.currentPeriodEnd,
         accessUntil: view.accessUntil,
         events: Number(n ?? 0),
