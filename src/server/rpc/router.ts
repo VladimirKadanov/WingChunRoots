@@ -200,6 +200,23 @@ import {
   updateSchool,
 } from '../services/schools';
 import { adminSchools, adminSchoolsInput } from '../services/school-activity';
+import { scheduleGetInput, scheduleUpdateInput, schoolSchedule, updateSchoolSchedule } from '../services/school-schedule';
+import { schoolStats, schoolStatsInput, schoolTrackInput, trackSchoolEvent } from '../services/school-stats';
+import {
+  answerTrial,
+  closeTrial,
+  declineTrial,
+  myTrialInquiries,
+  requestTrial,
+  trialAnswerInput,
+  trialCloseInput,
+  trialDeclineInput,
+  trialInbox,
+  trialInboxInput,
+  trialOptions,
+  trialOptionsInput,
+  trialRequestInput,
+} from '../services/trial-lessons';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import {
@@ -810,6 +827,83 @@ export const router = {
       })
       .input(adminSchoolsInput.optional())
       .handler(({ context, input }) => adminSchools(context.principal, input ?? {})),
+    // M21 (docs/adr/0024-trial-lessons.md): the schedule and fees, plain listing content (no plan gate).
+    schedule: signedIn
+      .route({ method: 'GET', path: '/schools/mine/{id}/schedule', summary: "The weekly schedule (in the school's zone) and the fees of one of your schools, for its editor; 404 for any other school" })
+      .input(scheduleGetInput)
+      .handler(({ context, input }) => schoolSchedule(context.principal, input)),
+    updateSchedule: signedIn
+      .route({
+        method: 'POST',
+        path: '/schools/schedule/update',
+        summary:
+          "Replace the weekly schedule of your school (at most 30 classes: weekday 1-7, start and end as HH:MM in the school's zone, a short label) and its fees (a short text, whether the first trial lesson is free); activity of the listing (D17); audited",
+      })
+      .input(scheduleUpdateInput)
+      .handler(({ context, input }) => updateSchoolSchedule(context.principal, input, context.meta)),
+    // M21: the school stats (counts per day only), a Professional Sifu entitlement.
+    stats: signedIn
+      .route({
+        method: 'GET',
+        path: '/schools/mine/{id}/stats',
+        summary:
+          'The last 12 weeks of one of your schools by ISO week: public page views, map pin or card opens, contact or website clicks and trial lesson requests, ending with the week of `weekOf` (YYYY-MM-DD; this week when left out) (Professional Sifu; otherwise no numbers and the upgrade offer); 404 for any other school',
+      })
+      .input(schoolStatsInput)
+      .handler(({ context, input }) => schoolStats(context.principal, input)),
+    track: base
+      .route({
+        method: 'POST',
+        path: '/schools/track',
+        summary:
+          "Count one event of a public school (page_view, pin_open, contact_click) in today's counter; nothing about the visitor is kept; the listing account, staff and bot-like user agents are not counted",
+      })
+      .input(schoolTrackInput)
+      .handler(({ context, input }) => trackSchoolEvent(context.principal, input, context.meta)),
+  },
+  // M21 (docs/adr/0024-trial-lessons.md): trial lesson requests. Only the sender, the school's
+  // listing account and the admins of its linked organizations read one; never a public answer.
+  trial: {
+    options: base
+      .route({
+        method: 'GET',
+        path: '/trial-lessons/options/{slug}',
+        summary: "What the trial lesson form of a public school offers: whether you may send a request now (and why not), and the name and contact the school would see; 404 when the school is not public",
+      })
+      .input(trialOptionsInput)
+      .handler(({ context, input }) => trialOptions(context.principal, input)),
+    request: signedIn
+      .route({
+        method: 'POST',
+        path: '/trial-lessons/request',
+        summary:
+          'Ask a public school for a trial lesson: preferred days or times and a message (both optional), and the contact the school may use (your e-mail, or a phone you give); one open request per school, at most 5 a day, never your own school; the school is told; audited',
+      })
+      .input(trialRequestInput)
+      .handler(({ context, input }) => requestTrial(context.principal, input, context.meta)),
+    mine: signedIn
+      .route({ method: 'GET', path: '/trial-lessons/mine', summary: 'Your own trial lesson requests, the newest first, with their state and the school’s reply' })
+      .handler(({ context }) => myTrialInquiries(context.principal)),
+    inbox: signedIn
+      .route({
+        method: 'GET',
+        path: '/schools/mine/{schoolId}/trial-lessons',
+        summary: "The trial lesson requests of a school you listed, or of a school linked to an organization you administer, with each sender's name and chosen contact; optionally one `status`; 404 for anyone else",
+      })
+      .input(trialInboxInput)
+      .handler(({ context, input }) => trialInbox(context.principal, input)),
+    answer: signedIn
+      .route({ method: 'POST', path: '/trial-lessons/answer', summary: 'Mark an open request answered, with an optional short reply the sender is told; audited' })
+      .input(trialAnswerInput)
+      .handler(({ context, input }) => answerTrial(context.principal, input, context.meta)),
+    decline: signedIn
+      .route({ method: 'POST', path: '/trial-lessons/decline', summary: 'Decline an open request, with an optional reason the sender is told; audited' })
+      .input(trialDeclineInput)
+      .handler(({ context, input }) => declineTrial(context.principal, input, context.meta)),
+    close: signedIn
+      .route({ method: 'POST', path: '/trial-lessons/close', summary: 'Close an open or answered request; the sender is not told; audited' })
+      .input(trialCloseInput)
+      .handler(({ context, input }) => closeTrial(context.principal, input, context.meta)),
   },
   // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
   // an organization's admin reaches only the organizations they administer (404 for any other).

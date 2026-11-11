@@ -180,6 +180,38 @@ export const SCHOOL_HIDDEN_DAYS = 105;
  */
 export const SCHOOL_CONFIRM_GRACE_DAYS = SCHOOL_HIDDEN_DAYS - SCHOOL_AWAITING_DAYS - 1;
 
+// --- M21: schedule, fees, trial lessons and school stats (docs/adr/0024-trial-lessons.md) ---------
+/** DEFAULT M21 (question 1): at most this many rows in a school's weekly schedule. */
+export const SCHOOL_SCHEDULE_MAX = 30;
+/** A schedule row's short label ("Beginners"). */
+export const SCHOOL_SCHEDULE_LABEL_MAX = 60;
+/** DEFAULT M21 (question 1): the fees are one short free text. */
+export const SCHOOL_FEES_MAX = 500;
+/** ISO weekdays: 1 is Monday, 7 is Sunday. */
+export const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+/**
+ * A trial lesson inquiry: `open` until the school answers it (`answered`, with an optional reply
+ * the sender is told), declines it (`declined`, with an optional reason) or closes it (`closed`).
+ * Every state but `open` counts as closed for the retention (TRIAL_INQUIRY_RETENTION_DAYS).
+ */
+export const TRIAL_INQUIRY_STATUSES = ['open', 'answered', 'declined', 'closed'] as const;
+/** How the sender wants to be reached: the e-mail of their account, or a phone typed into the form. */
+export const TRIAL_CONTACT_METHODS = ['email', 'phone'] as const;
+export const TRIAL_MESSAGE_MAX = 1000;
+export const TRIAL_PREFERRED_MAX = 200;
+/** The school's short reply, or its reason to decline. */
+export const TRIAL_REPLY_MAX = 500;
+/** DEFAULT M21 (question 3): at most this many inquiries per sender in 24 hours. */
+export const TRIAL_DAILY_LIMIT = 5;
+/** DEFAULT M21 (question 5): an inquiry is deleted this many days after it closed. */
+export const TRIAL_INQUIRY_RETENTION_DAYS = 365;
+/** The daily counters of a school's stats (counts only: no IP, account, cookie or fingerprint). */
+export const SCHOOL_STAT_EVENTS = ['page_view', 'pin_open', 'contact_click', 'trial_inquiry'] as const;
+/** DEFAULT M21 (question 7): daily counters older than this many days are deleted. */
+export const SCHOOL_STATS_RETENTION_DAYS = 400;
+/** The owner sees this many weeks of stats. */
+export const SCHOOL_STATS_WEEKS = 12;
+
 // --- Organizations (M01 skeleton; M15 application, review and administration; DEFAULT D12) -------------
 export const ORGANIZATION_KINDS = ['federation', 'association', 'school_group'] as const;
 /**

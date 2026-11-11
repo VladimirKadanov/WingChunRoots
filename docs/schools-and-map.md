@@ -17,6 +17,7 @@
 | DEFAULT D08/D18 | Пинът се показва, докато акаунтът, обявил школата, има Professional Sifu; отнемането скрива пина (и публичната страница) и запазва школата | `v_public_school` в миграцията на M11, `src/server/services/schools.ts` |
 | DEFAULT D17 | `last_activity_at` се мести само при редакция или „This listing is current“ (до M20 „Confirm it is current“), никога при вход. От M20: ден 90 → `awaiting_confirmation`, ден 105 → `hidden` (ADR 0023) | `src/server/services/schools.ts`, `src/server/services/school-activity.ts` |
 | DEFAULT D18 (M20) | Потвърждение или редакция връщат пина само ако обявата е активна, одобрена и акаунтът има Professional Sifu | `src/server/services/schools.ts`, `v_public_school` |
+| DEFAULT M21 (въпроси 1–7) | Графикът и таксите на всяка обявена школа без план; заявки за пробна тренировка от влезли пълнолетни акаунти; статистика само с бройки за Professional Sifu (ADR 0024) | `src/server/services/school-schedule.ts`, `trial-lessons.ts`, `school-stats.ts` |
 | DEFAULT D12 | Пинове чрез федерация няма до Фаза 3; брои се само акаунтът, обявил школата | `src/server/services/schools.ts`, миграцията на M11, ADR 0014 §3 |
 | DEFAULT (M11 In scope 1) | Извлечение от GeoNames за BG, GR, DE, GB, US, HK | `src/server/geo/geonames.ts` |
 | DEFAULT (без D номер) | Стиловете на OpenFreeMap: Positron (светла тема) и Dark (тъмна) | `src/server/geo/map-styles.ts` |
@@ -104,6 +105,11 @@ E2E тестът `@M11 demo-school-city-only: …` търси точната т�
 | `schools.mine`, `schools.edit`, `schools.options` | `GET /schools/mine`, `/schools/mine/{id}`, `/schools/mine/new` | собственикът |
 | `schools.create`, `update`, `submit`, `confirm` | `POST /schools/…` | собственикът (Сифу с профил) |
 | `review.decide` (за `school_listing`) | `POST /review/decide` | модератор или администратор с потвърден втори фактор |
+| `schools.schedule`, `schools.updateSchedule` (M21) | `GET /schools/mine/{id}/schedule`, `POST /schools/schedule/update` | собственикът |
+| `schools.stats` (M21) | `GET /schools/mine/{id}/stats` | собственикът; числа само с Professional Sifu |
+| `schools.track` (M21) | `POST /schools/track` (и beacon-ът `POST /api/school-stats`) | всеки; не брои собственика, персонала и ботовете |
+| `trial.options`, `trial.request`, `trial.mine` (M21) | `GET /trial-lessons/options/{slug}`, `POST /trial-lessons/request`, `GET /trial-lessons/mine` | всеки (options), влязъл пълнолетен акаунт с профил (request), подателят (mine) |
+| `trial.inbox`, `trial.answer`, `trial.decline`, `trial.close` (M21) | `GET /schools/mine/{schoolId}/trial-lessons`, `POST /trial-lessons/answer`, `/decline`, `/close` | собственикът и администраторите на свързаните организации |
 
 ## Тестове
 
@@ -115,3 +121,24 @@ E2E тестът `@M11 demo-school-city-only: …` търси точната т�
 ## Проверка за активност (M20)
 
 Подробно в [ADR 0023](adr/0023-school-activity.md). Обявена школа на акаунт има записан етап `school.activity_stage`. Дневната задача `schools.activity` (05:23 UTC) я мести в `awaiting_confirmation` на ден 90 без редакция или потвърждение и праща `school.activity-awaiting` на собственика и на администраторите на организациите с приета връзка. На ден 105, и не по-рано от 14 дни след молбата, я мести в `hidden` и праща `school.activity-hidden`. `v_public_school` не връща скрита школа, затова картата, списъкът, търсенето, страницата, sitemap, Open Graph, JSON-LD и страниците на организации и събития я губят без собствен филтър. След скриване задачата изчиства кеша `schools`. „This listing is current“, истинска редакция или изпращане за преглед връщат `current`. Персоналът вижда етапите на `/admin/schools`. Тестове: `src/server/services/school-activity.int.test.ts`, `src/server/services/school-activity.test.ts`, `e2e/m20-school-activity.spec.ts`, `e2e/m20-school-activity-view.spec.ts`.
+
+## График, такси, пробни тренировки и статистика (M21)
+
+Подробно в [ADR 0024](adr/0024-trial-lessons.md).
+
+**График и такси.** Обявената школа има седмичен график (до 30 реда: ден, начало и край в зоната на града, кратко име) и такси (свободен текст до 500 знака и „първата пробна тренировка е безплатна“). Собственикът ги редактира на `/dashboard/schools/<id>/schedule`, а публичната страница ги показва, докато школата е във `v_public_school`. Не е нужен план. Редакцията е активност (D17) и не отваря прегледа.
+
+**Пробна тренировка.** Публичната страница и картите в списъка имат „Request a trial lesson“. Без вход страницата праща към вход и обратно към формата (`/schools/<slug>/trial`).
+- Ограничения:
+  - една отворена заявка на подател и школа;
+  - 5 на ден;
+  - никога към своята школа.
+- Известия:
+  - собственикът и администраторите на свързаните организации получават `school.trial-requested`;
+  - подателят получава `school.trial-answered` или `school.trial-declined`.
+- Собственикът отговаря, отказва или затваря на `/dashboard/schools/<id>/inquiries`, а подателят вижда заявките си на `/dashboard/trial-lessons`.
+- Контактите на подателя не излизат в публичен отговор.
+
+**Статистика.** Броячи на ден за школа: прегледи, отваряния на пин или карта, кликове върху контакт и заявки. Броят се само бройки, без собственика, персонала и ботовете. Собственикът с Professional Sifu вижда 12 седмици на `/dashboard/schools/<id>/stats`, а Free Sifu вижда UpgradePrompt.
+
+**Тестове:** `src/server/services/trial-lessons.int.test.ts`, редовете в `src/server/rpc/authz-matrix.int.test.ts`, `e2e/m21-trial-lessons.spec.ts` (в `exclusive`) и `e2e/m21-trial-lessons-view.spec.ts`. Проверката на етапа е `scripts/verify.d/M21.sh`.

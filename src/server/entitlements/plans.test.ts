@@ -102,20 +102,22 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     // Plan §6.5: video, events, listings, the digital successor, posters and almanacs. M16 (owner
     // decision 2026-11-03): the gallery is part of the pilot, so photos are available now. M17
     // (owner's choice 2026-11-04): the event calendar too. M19 (owner's pick 2026-11-07): the training passport.
-    for (const key of ['videos', 'marketplace', 'successor', 'poster', 'almanac', 'school_business'] as const) {
+    // M21 (Phase 2, trial lessons and basic school analytics): the school schedule and statistics.
+    for (const key of ['videos', 'marketplace', 'successor', 'poster', 'almanac'] as const) {
       expect(FEATURES.find((f) => f.key === key)!.availability, key).toBe('planned');
     }
     expect(FEATURES.find((f) => f.key === 'photos')).toMatchObject({ availability: 'now', phase: null, enforced: true });
     expect(FEATURES.find((f) => f.key === 'events')).toMatchObject({ availability: 'now', phase: null, enforced: true });
     expect(FEATURES.find((f) => f.key === 'passport')).toMatchObject({ availability: 'now', phase: null, enforced: true });
+    expect(FEATURES.find((f) => f.key === 'school_business')).toMatchObject({ availability: 'now', phase: null, enforced: true });
     for (const f of FEATURES) {
       if (f.availability === 'now') expect(f.phase, f.key).toBeNull();
       else expect(f.phase, f.key).toBeGreaterThanOrEqual(2);
     }
   });
 
-  it('enforces exactly the rules of Phase 1: the photo allowance (D07, M16), approved students (D06), the school pin, the events a month (M17) and the passport (M19)', () => {
-    expect(FEATURES.filter((f) => f.enforced).map((f) => f.key)).toEqual(['photos', 'approve_students', 'school_map', 'passport', 'events']);
+  it('enforces exactly the rules of Phase 1: the photo allowance (D07, M16), approved students (D06), the school pin, the school statistics (M21), the events a month (M17) and the passport (M19)', () => {
+    expect(FEATURES.filter((f) => f.enforced).map((f) => f.key)).toEqual(['photos', 'approve_students', 'school_map', 'school_business', 'passport', 'events']);
     for (const f of FEATURES.filter((x) => x.enforced)) expect(f.availability).toBe('now');
   });
 
@@ -166,7 +168,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-07.1', digest: 'd228ff5bc9f4267911e1ac6d2c50f91ea8969c6c3de22f21d5a06965aa342b66' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-10.1', digest: 'ba647f1d77d2628c4a25f475e15e6b45ce9fba02f53ecfdcea0e1825e4e55461' });
   });
 });
 
@@ -198,7 +200,7 @@ describe('features of the pilot that are not built yet (review round 1, requirem
   });
 
   it('every benefit of an upgrade carries its opening note', () => {
-    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, null, null, null, null]);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, null, null, null, null, null]);
   });
 
   it('Premium Student gives the photo allowance (M16) and the full passport (M19) of the pilot over Free Student, and only those', () => {
@@ -211,21 +213,24 @@ describe('features of the pilot that are not built yet (review round 1, requirem
 });
 
 describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
-  it('Free Sifu to Professional Sifu: more photos (M16), events (M17), the full passport (M19), no student limit and a school pin, nothing planned', () => {
+  it('Free Sifu to Professional Sifu: more photos (M16), events (M17), the full passport (M19), school statistics (M21), no student limit and a school pin, nothing planned', () => {
     const benefits = upgradeBenefits('free_sifu', 'pro_sifu');
-    // The benefits the pilot had before M16 first, in the matrix's order; the photos, events and passport after them.
-    expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos', 'passport', 'events']);
+    // The benefits the pilot had before M16 first, in the matrix's order; the photos, school statistics, events and passport after them.
+    expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos', 'school_business', 'passport', 'events']);
     expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: null });
     expect(benefits[2]).toMatchObject({ from: '2 photos', to: '100 photos', opens: null });
-    expect(benefits[3]).toMatchObject({ from: 'Basic, and you record for your students', to: 'Full timeline, and you record for your students', opens: null });
-    expect(benefits[4]).toMatchObject({ from: 'No publishing', to: 'Up to 3 events a month', opens: null });
+    expect(benefits[3]).toMatchObject({ from: 'Schedule and fees, no statistics', to: 'Schedule, fees and weekly statistics', opens: null });
+    expect(benefits[4]).toMatchObject({ from: 'Basic, and you record for your students', to: 'Full timeline, and you record for your students', opens: null });
+    expect(benefits[5]).toMatchObject({ from: 'No publishing', to: 'Up to 3 events a month', opens: null });
   });
 
   it('leads with the benefit of the limit that was hit, the rest in the same order', () => {
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'approve_students').map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos', 'passport', 'events']);
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_map').map((b) => b.feature)).toEqual(['school_map', 'approve_students', 'photos', 'passport', 'events']);
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'photos').map((b) => b.feature)).toEqual(['photos', 'approve_students', 'school_map', 'passport', 'events']);
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'events').map((b) => b.feature)).toEqual(['events', 'approve_students', 'school_map', 'photos', 'passport']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'approve_students').map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'photos', 'school_business', 'passport', 'events']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_map').map((b) => b.feature)).toEqual(['school_map', 'approve_students', 'photos', 'school_business', 'passport', 'events']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'photos').map((b) => b.feature)).toEqual(['photos', 'approve_students', 'school_map', 'school_business', 'passport', 'events']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'events').map((b) => b.feature)).toEqual(['events', 'approve_students', 'school_map', 'photos', 'school_business', 'passport']);
+    // M21: at the statistics' real limit (a Free Sifu's school), its benefit comes first.
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_business').map((b) => b.feature)).toEqual(['school_business', 'approve_students', 'school_map', 'photos', 'passport', 'events']);
     expect(upgradeBenefits('free_student', 'premium_student', 'photos').map((b) => b.feature)).toEqual(['photos', 'passport']);
     // M19: at the passport's real limit (entries kept but hidden), its benefit comes first.
     expect(upgradeBenefits('free_student', 'premium_student', 'passport').map((b) => b.feature)).toEqual(['passport', 'photos']);

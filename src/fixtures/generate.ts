@@ -48,8 +48,11 @@ import type {
   school,
   schoolInstructor,
   schoolPrivateLocation,
+  schoolScheduleSlot,
+  schoolStatDay,
   teachingRelationship,
   trainingPeriod,
+  trialInquiry,
 } from '../server/db/schema';
 import {
   ACTIVE_RELATIONSHIP_STATUSES,
@@ -166,6 +169,9 @@ export type PlaceRow = Row<typeof place>;
 export type SchoolRow = Row<typeof school>;
 export type SchoolPrivateLocationRow = Row<typeof schoolPrivateLocation>;
 export type SchoolInstructorRow = Row<typeof schoolInstructor>;
+export type SchoolScheduleSlotRow = Row<typeof schoolScheduleSlot>;
+export type TrialInquiryRow = Row<typeof trialInquiry>;
+export type SchoolStatDayRow = Row<typeof schoolStatDay>;
 export type OrganizationRow = Row<typeof organization>;
 export type OrganizationMembershipRow = Row<typeof organizationMembership>;
 export type OrganizationAdminRow = Row<typeof organizationAdmin>;
@@ -233,6 +239,10 @@ export interface Fixtures {
   passportSkills: PassportSkillRow[];
   passportCertificates: PassportCertificateShell[];
   eventAttendances: EventAttendanceRow[];
+  /** M21: the schedule of demo-school-sofia, two trial lesson requests and a few weeks of its counters (demoTrialLessons below). */
+  schoolScheduleSlots: SchoolScheduleSlotRow[];
+  trialInquiries: TrialInquiryRow[];
+  schoolStatDays: SchoolStatDayRow[];
 }
 
 type LineageKey = 'a' | 'b' | 'c';
@@ -902,6 +912,9 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
       createdAt: at,
       updatedAt: at,
       deletedAt: null,
+      // M21: no fees or schedule unless demoTrialLessons adds them.
+      feesText: null,
+      firstTrialFree: false,
     });
     schoolPrivateLocations.push({ schoolId: id, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: at, updatedAt: at });
     spec.instructors.forEach((p, i) =>
@@ -1011,6 +1024,15 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     instructor: proSifu.row.id,
     city: (name) => placeOf(name),
   });
+  // M21: the schedule, fees, trial requests and counters of demo-school-sofia (demo-pro-sifu-8's).
+  const sofia = schools.find((sc) => sc.slug === 'demo-school-sofia')!;
+  const primaryName = (p: P) => b.names.find((n) => n.personId === p.row.id && n.isPrimary)!.value;
+  const trial = demoTrialLessons(seed, {
+    school: sofia,
+    open: { userId: accountData.accounts['demo-root-a'], name: primaryName(b.bySlug.get('demo-root-a')!), email: demoAccountEmail('demo-root-a') },
+    answered: { userId: accountData.accounts[DEMO_PREMIUM_STUDENT], name: primaryName(proStudents[0]!) },
+    owner: accountData.accounts['demo-pro-sifu-8'],
+  });
   const passports = demoPassport(seed, {
     premium: proStudents[0]!.row.id,
     premiumTeacher: proSifu.row.id,
@@ -1048,7 +1070,118 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     notifications: [...events.notifications, ...notices.notifications, ...activity.notifications],
     notificationPreferences: notices.notificationPreferences,
     ...passports,
+    ...trial,
   };
+}
+
+// --- M21: schedule, fees, trial lessons and school stats (docs/adr/0024-trial-lessons.md) -----------
+
+/** Fixed time of the M21 demo data: 2026-11-09T00:00:00Z. */
+const TRIAL_AT = new Date(Date.UTC(2026, 10, 9));
+/** M21: the days of demo counters of demo-school-sofia, ending on 8 November 2026 (six weeks). */
+export const DEMO_STAT_DAYS = 42;
+export const DEMO_STATS_LAST_DAY = '2026-11-08';
+
+interface DemoTrialRefs {
+  /** demo-school-sofia (its fees are set on this row). */
+  school: SchoolRow;
+  /** The sender of the open request (demo-root-a). */
+  open: { userId: string; name: string; email: string };
+  /** The sender of the answered request (demo-premium-student). */
+  answered: { userId: string; name: string };
+  /** demo-pro-sifu-8, who answered it. */
+  owner: string;
+}
+
+/**
+ * M21 (D20): demo-school-sofia's weekly schedule (four classes, Europe/Sofia), its fees ("first
+ * trial lesson free"), two trial lesson requests (one open from demo-root-a, one answered for
+ * demo-premium-student) and six weeks of daily counters ending on 8 November 2026. Fixed dates and
+ * made-up numbers; ids from a stream of their own (seed ^ 0x0e7e_0021), so no other fixture id moves.
+ * No notices: the other demo screens stay as they were.
+ */
+function demoTrialLessons(seed: number, r: DemoTrialRefs): Pick<Fixtures, 'schoolScheduleSlots' | 'trialInquiries' | 'schoolStatDays'> {
+  const idRng = createRandom((seed ^ 0x0e7e_0021) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(TRIAL_AT.getTime() + seq++, 0, idRng.bytes(8));
+  const at = (iso: string) => new Date(iso);
+  r.school.feesText = `${FICTIONAL_MARK}: 40 a month for adults, 30 for students; ten-class card 60. Ask about family rates.`;
+  r.school.firstTrialFree = true;
+  const created = at('2026-11-01T09:00:00Z');
+  const slots: [number, string, string, string | null][] = [
+    [1, '18:30:00', '20:00:00', 'Beginners'],
+    [3, '18:30:00', '20:00:00', 'Beginners'],
+    [3, '20:00:00', '21:30:00', 'Advanced'],
+    [6, '10:00:00', '12:00:00', 'Open practice'],
+  ];
+  const schoolScheduleSlots: SchoolScheduleSlotRow[] = slots.map(([weekday, startsAt, endsAt, label], position) => ({
+    id: id(),
+    schoolId: r.school.id,
+    weekday,
+    startsAt,
+    endsAt,
+    label,
+    position,
+    createdAt: created,
+    updatedAt: created,
+  }));
+  const openAt = at('2026-11-06T17:20:00Z');
+  const answeredAt = at('2026-11-03T08:15:00Z');
+  const repliedAt = at('2026-11-04T12:00:00Z');
+  const trialInquiries: TrialInquiryRow[] = [
+    {
+      id: id(),
+      schoolId: r.school.id,
+      senderUserId: r.answered.userId,
+      senderName: r.answered.name,
+      contactMethod: 'phone',
+      contactValue: '+000 000 0000',
+      preferredTimes: 'Monday evenings',
+      message: `${FICTIONAL_MARK}: I trained a little years ago and would like to start again.`,
+      status: 'answered',
+      reply: `${FICTIONAL_MARK}: come on Monday at 18:30 for the beginners' class; wear loose clothes.`,
+      handledByUserId: r.owner,
+      closedAt: repliedAt,
+      createdAt: answeredAt,
+      updatedAt: repliedAt,
+    },
+    {
+      id: id(),
+      schoolId: r.school.id,
+      senderUserId: r.open.userId,
+      senderName: r.open.name,
+      contactMethod: 'email',
+      contactValue: r.open.email,
+      preferredTimes: 'Weekday evenings or Saturday morning',
+      message: `${FICTIONAL_MARK}: I am new to Wing Chun. Is the Saturday practice open to beginners?`,
+      status: 'open',
+      reply: null,
+      handledByUserId: null,
+      closedAt: null,
+      createdAt: openAt,
+      updatedAt: openAt,
+    },
+  ];
+  // Made-up daily counts (a weekly rhythm, no randomness), the two requests on their days.
+  const last = Date.UTC(2026, 10, 8);
+  const schoolStatDays: SchoolStatDayRow[] = [];
+  for (let i = DEMO_STAT_DAYS - 1; i >= 0; i--) {
+    const day = new Date(last - i * 86_400_000).toISOString().slice(0, 10);
+    const n = DEMO_STAT_DAYS - 1 - i;
+    const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+    const weekend = weekday === 0 || weekday === 6;
+    schoolStatDays.push({
+      schoolId: r.school.id,
+      day,
+      pageViews: 4 + ((n * 7) % 9) + (weekend ? 3 : 0) + Math.floor(n / 7),
+      pinOpens: 2 + ((n * 5) % 6),
+      contactClicks: (n * 3) % 4,
+      trialInquiries: day === '2026-11-03' || day === '2026-11-06' ? 1 : 0,
+      createdAt: new Date(`${day}T23:59:00Z`),
+      updatedAt: new Date(`${day}T23:59:00Z`),
+    });
+  }
+  return { schoolScheduleSlots, trialInquiries, schoolStatDays };
 }
 
 // --- M20: school activity checks (docs/adr/0023-school-activity.md) --------------------------------
@@ -1139,6 +1272,8 @@ function demoSchoolActivity(seed: number, r: DemoSchoolActivityRefs): Pick<Fixtu
       createdAt: spec.created,
       updatedAt: spec.last,
       deletedAt: null,
+      feesText: null,
+      firstTrialFree: false,
     });
     schoolPrivateLocations.push({ schoolId, exactPoint: exact, addressLine: 'Fictional demo address', createdAt: spec.created, updatedAt: spec.last });
     schoolInstructors.push({ schoolId, personId: r.instructor, role: 'head_instructor', createdAt: spec.created, updatedAt: spec.created });

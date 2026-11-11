@@ -1309,6 +1309,78 @@ const schoolActivityHidden: NotificationTemplate<SchoolActivityNotice> = {
   sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000c2', name: 'Demo Wing Chun Hall', lastActivityAt: '2026-07-01T09:00:00.000Z', onMap: true },
 };
 
+// --- Trial lessons (M21; docs/adr/0024-trial-lessons.md) ------------------------------------------
+
+/** What a trial lesson notice carries: the school by id, slug and name, the inquiry by id. No sender, no contact. */
+interface TrialNotice {
+  schoolId: string;
+  inquiryId: string;
+  /** The school's name as listed (any script; quoted in the text). */
+  name: string;
+}
+
+function trialNotice(template: string, payload: unknown): TrialNotice {
+  const data = payloadObject(template, payload);
+  if (typeof data.name !== 'string' || data.name.trim() === '' || data.name.length > 200) throw new NotificationDataError(template, 'name must be a short text');
+  return { schoolId: uuidOf(template, 'schoolId', payload), inquiryId: uuidOf(template, 'inquiryId', payload), name: data.name.trim() };
+}
+
+/** The school's short reply or reason: at most 500 characters, or null. */
+function trialText(template: string, value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || value.trim() === '' || value.length > 500) throw new NotificationDataError(template, 'the reply must be a short text');
+  return value.trim();
+}
+
+const TRIAL_INBOX = (schoolId: string) => `/dashboard/schools/${schoolId}/inquiries`;
+const OWN_TRIAL_REQUESTS = '/dashboard/trial-lessons';
+
+/**
+ * "school.trial-requested" (M21): to the school's listing account and to the admins of the
+ * organizations the school accepted a link from, when a signed-in adult asks for a trial lesson.
+ * The sender's name and contact are only in the inbox, never in the notice or its e-mail.
+ */
+const schoolTrialRequested: NotificationTemplate<TrialNotice> = {
+  name: 'school.trial-requested',
+  parse: (payload) => trialNotice('school.trial-requested', payload),
+  render: ({ schoolId, name }) => ({
+    title: 'A trial lesson request',
+    body: [{ text: `Someone asked for a trial lesson at “${name}”. Their name, the contact they chose and their message are in the school’s requests.` }],
+    action: { label: 'Open the requests', href: TRIAL_INBOX(schoolId) },
+  }),
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', inquiryId: '0190a5c0-0000-7000-8000-0000000000d2', name: 'Demo Wing Chun Hall' },
+};
+
+/** "school.trial-answered" (M21): to the sender, when the school marks the request answered, with its reply. */
+const schoolTrialAnswered: NotificationTemplate<TrialNotice & { reply: string | null }> = {
+  name: 'school.trial-answered',
+  parse(payload) {
+    const data = payloadObject('school.trial-answered', payload);
+    return { ...trialNotice('school.trial-answered', payload), reply: trialText('school.trial-answered', data.reply) };
+  },
+  render: ({ name, reply }) => ({
+    title: 'Your trial lesson request was answered',
+    body: [{ text: reply ? `“${name}” answered your request for a trial lesson: “${reply}”` : `“${name}” marked your request for a trial lesson as answered. They reach you with the contact you chose.` }],
+    action: { label: 'See your requests', href: OWN_TRIAL_REQUESTS },
+  }),
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', inquiryId: '0190a5c0-0000-7000-8000-0000000000d2', name: 'Demo Wing Chun Hall', reply: 'Come on Tuesday at 18:30.' },
+};
+
+/** "school.trial-declined" (M21): to the sender, when the school declines the request, with its reason if it gave one. */
+const schoolTrialDeclined: NotificationTemplate<TrialNotice & { reason: string | null }> = {
+  name: 'school.trial-declined',
+  parse(payload) {
+    const data = payloadObject('school.trial-declined', payload);
+    return { ...trialNotice('school.trial-declined', payload), reason: trialText('school.trial-declined', data.reason) };
+  },
+  render: ({ name, reason }) => ({
+    title: 'Your trial lesson request was declined',
+    body: [{ text: reason ? `“${name}” cannot offer you a trial lesson now. Their reason: “${reason}”` : `“${name}” cannot offer you a trial lesson now. The school finder shows other schools.` }],
+    action: { label: 'See your requests', href: OWN_TRIAL_REQUESTS },
+  }),
+  sample: { schoolId: '0190a5c0-0000-7000-8000-0000000000d1', inquiryId: '0190a5c0-0000-7000-8000-0000000000d2', name: 'Demo Wing Chun Hall', reason: null },
+};
+
 /** Every notification template, by name (= template.name). */
 export const NOTIFICATION_TEMPLATES = {
   'mail-check.sent': mailCheckSent,
@@ -1354,6 +1426,10 @@ export const NOTIFICATION_TEMPLATES = {
   // M20.
   'school.activity-awaiting': schoolActivityAwaiting,
   'school.activity-hidden': schoolActivityHidden,
+  // M21.
+  'school.trial-requested': schoolTrialRequested,
+  'school.trial-answered': schoolTrialAnswered,
+  'school.trial-declined': schoolTrialDeclined,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

@@ -51,6 +51,7 @@ import { type Account, createUser, key, meta, newLineage, ongoingFrom, principal
 import { grantOrganizationPlan } from '../services/organization-grants';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
 import { createSchool } from '../services/schools';
+import { requestTrial } from '../services/trial-lessons';
 import { signUnsubscribeToken } from '../services/unsubscribe';
 import { SIGN_UP_CONSENTS } from '../legal/documents';
 import { handleApiRequest } from './handler';
@@ -270,6 +271,14 @@ async function draftSchool(opts: { pro?: boolean; status?: 'active' } = {}) {
   const saved = await createSchool(owner.principal, { name: 'Demo Matrix Hall', placeId: city.rows[0]!.id, locationPrivacy: 'city_only', idempotencyKey: key() }, meta);
   if (opts.status) await getDb().execute(sql`UPDATE school SET status = ${opts.status} WHERE id = ${saved.id}::uuid`);
   return { owner, schoolId: saved.id, slug: saved.slug, placeId: city.rows[0]!.id };
+}
+
+/** M21: a trial lesson request from a new student (the `party`) to a listed school of a Professional Sifu (the `owner`). */
+async function trialInquiryOf() {
+  const s = await draftSchool({ pro: true, status: 'active' });
+  const sender = await actor('trial-sender');
+  const sent = await requestTrial(sender.principal, { schoolId: s.schoolId, contactMethod: 'email', message: 'A fictional request.' }, meta);
+  return { school: s, sender, inquiryId: sent.id };
 }
 
 /** M14: a generated flat-colour image (fictional) as an upload. */
@@ -1018,7 +1027,108 @@ const ROWS: Row[] = [
     expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
   // M20: the activity check of the listed schools, for the roles that moderate listings.
+  // M21 (docs/adr/0024-trial-lessons.md): the schedule and fees, the statistics and their beacon.
+  {
+    path: 'schools.schedule',
+    make: async () => {
+      const s = await draftSchool();
+      return { owner: s.owner, input: { id: s.schoolId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'schools.updateSchedule',
+    make: async () => {
+      const s = await draftSchool();
+      return { owner: s.owner, input: { id: s.schoolId, slots: [{ weekday: 2, startsAt: '18:30', endsAt: '20:00', label: 'Demo class' }], fees: 'A fictional fee.', firstTrialFree: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'schools.stats',
+    make: async () => {
+      const s = await draftSchool({ pro: true, status: 'active' });
+      return { owner: s.owner, input: { id: s.schoolId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // Anyone may report an event of a public school; the answer says only whether it counted.
+    path: 'schools.track',
+    make: async () => {
+      const s = await draftSchool({ pro: true, status: 'active' });
+      return { owner: s.owner, input: { schoolId: s.schoolId, event: 'page_view' } };
+    },
+    expect: { ...everyone, owner: 'ok' },
+  },
   { path: 'schools.adminList', make: () => ({ input: { stage: 'hidden' } }), expect: staffOnly({ moderator: 'ok', admin: 'ok' }) },
+  // M21: trial lesson requests. `owner` is the school's listing account, `party` the sender.
+  {
+    path: 'trial.options',
+    make: async () => {
+      const s = await draftSchool({ pro: true, status: 'active' });
+      return { owner: s.owner, input: { slug: s.slug } };
+    },
+    expect: { ...everyone, owner: 'ok' },
+  },
+  {
+    path: 'trial.options (a draft)',
+    make: async () => {
+      const s = await draftSchool();
+      return { owner: s.owner, input: { slug: s.slug } };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'NOT_FOUND', moderator: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  {
+    path: 'trial.request',
+    make: async () => {
+      const s = await draftSchool({ pro: true, status: 'active' });
+      return { owner: s.owner, input: { schoolId: s.schoolId, contactMethod: 'email', preferredTimes: 'Weekday evenings', message: 'A fictional request.' } };
+    },
+    // Never at one's own school; staff accounts have no profile, whose name the school would see.
+    expect: { ...signedInOnly, member: 'ok', owner: 'CONFLICT', moderator: 'CONFLICT', archivist: 'CONFLICT', admin: 'CONFLICT', adminNo2fa: 'CONFLICT' },
+  },
+  {
+    path: 'trial.request (a draft)',
+    make: async () => {
+      const s = await draftSchool();
+      return { owner: s.owner, input: { schoolId: s.schoolId, contactMethod: 'email' } };
+    },
+    expect: { ...signedInOnly, member: 'NOT_FOUND', owner: 'NOT_FOUND' },
+  },
+  { path: 'trial.mine', make: noInput, expect: own() },
+  {
+    path: 'trial.inbox',
+    make: async () => {
+      const t = await trialInquiryOf();
+      return { owner: t.school.owner, party: t.sender, input: { schoolId: t.school.schoolId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'trial.answer',
+    make: async () => {
+      const t = await trialInquiryOf();
+      return { owner: t.school.owner, party: t.sender, input: { inquiryId: t.inquiryId, reply: 'A fictional reply.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'trial.decline',
+    make: async () => {
+      const t = await trialInquiryOf();
+      return { owner: t.school.owner, party: t.sender, input: { inquiryId: t.inquiryId, reason: 'A fictional reason.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'trial.close',
+    make: async () => {
+      const t = await trialInquiryOf();
+      return { owner: t.school.owner, party: t.sender, input: { inquiryId: t.inquiryId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
@@ -1795,6 +1905,17 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/organization/actions.ts#endOrganizationMemberAction', row: 'organizations.endMember', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#requestOrganizationSchoolAction', row: 'organizations.requestSchool', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction', row: 'organizations.endSchoolLink', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  // M21: the trial lesson request form, the inbox's answers and the schedule form.
+  { action: 'src/app/schools/[slug]/trial/actions.ts#requestTrialAction', row: 'trial.request', form: (i) => ({ ...same(i), slug: 'demo-matrix' }), roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/schools/actions.ts#decideTrialAction', row: 'trial.answer', form: (i) => ({ ...same(i), decision: 'answer', schoolId: '00000000-0000-4000-8000-000000000000' }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/schools/actions.ts#decideTrialAction', row: 'trial.decline', form: (i) => ({ inquiryId: String(i.inquiryId), reply: String(i.reason), decision: 'decline' }), roles: ['anonymous', 'party', 'owner'] },
+  { action: 'src/app/dashboard/schools/actions.ts#decideTrialAction', row: 'trial.close', form: (i) => ({ ...same(i), decision: 'close' }), roles: ['anonymous', 'party', 'owner'] },
+  {
+    action: 'src/app/dashboard/schools/actions.ts#updateScheduleAction',
+    row: 'schools.updateSchedule',
+    form: (i) => ({ id: String(i.id), rows: '1', 'slot.0.weekday': '2', 'slot.0.startsAt': '18:30', 'slot.0.endsAt': '20:00', 'slot.0.label': 'Demo class', fees: String(i.fees), firstTrialFree: 'on' }),
+    roles: ['anonymous', 'member', 'owner'],
+  },
   { action: 'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction', row: 'organizations.answerSchoolLink', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction', row: 'organizations.grant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction', row: 'organizations.revokeGrant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },

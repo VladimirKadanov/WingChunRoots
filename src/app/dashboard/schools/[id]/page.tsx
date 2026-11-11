@@ -8,7 +8,9 @@
 // (DEFAULT D18). Below, the
 // school's details with "Edit the details" (./edit: the school form, schools.update): a page of its
 // own, so neither page's first JavaScript carries both the form and the upgrade prompt (the route
-// budget, ADR 0014). Only the account that listed the school reaches it (404 otherwise). Reads the
+// budget, ADR 0014). M21: the schedule and fees (./schedule), the trial lesson requests
+// (./inquiries) and the weekly statistics (./stats, Professional Sifu), each on a page of its own.
+// Only the account that listed the school reaches it (404 otherwise). Reads the
 // session, so it renders per request.
 
 import type { Metadata } from 'next';
@@ -70,6 +72,11 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
   if (missing || (editor && !editor.school)) return <SchoolNotFound />;
   if (!editor) return <LoadError {...SCHOOL_LOAD_ERROR} retryHref={page} />;
   const school = editor.school!;
+  // M21: the schedule's summary and the open trial lesson requests; a failed read leaves the line out.
+  const [schedule, inbox] = await Promise.all([
+    client.schools.schedule({ id: school.id }).catch(() => null),
+    client.trial.inbox({ schoolId: school.id, status: 'open' }).catch(() => null),
+  ]);
   const listingOutcome = await readFormResult(SCHOOL_ACTION_FORM, query.outcome);
   const one = (key: string) => (typeof query[key] === 'string' ? query[key] : null);
   const review = editor.review;
@@ -105,6 +112,10 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
         </OutcomeNote>
       ) : one('sent') ? (
         <OutcomeNote testId="school-sent">Sent for review. A moderator checks the listing; you get a notification when it is decided.</OutcomeNote>
+      ) : one('schedule') ? (
+        <OutcomeNote testId="school-schedule-saved">
+          {school.status === 'active' ? 'The schedule and fees are saved and shown on the public page.' : 'The schedule and fees are saved; the public page shows them once the school is listed.'}
+        </OutcomeNote>
       ) : one('confirmed') ? (
         <OutcomeNote testId="school-confirmed">
           {school.pin === 'shown'
@@ -221,6 +232,55 @@ export default async function SchoolEditorPage({ params, searchParams }: Props) 
         <p>
           <Link href={`${page}/edit`} className={buttonVariants({ variant: 'secondary' })} data-testid="edit-school">
             Edit the details
+          </Link>
+        </p>
+      </section>
+
+      {/* M21: the schedule and fees, the trial lesson requests and the statistics, each a page of its own. */}
+      <section aria-labelledby="schedule-heading" className="grid gap-3" data-testid="school-schedule-section">
+        <h2 id="schedule-heading" className="font-display text-xl">
+          Schedule and fees
+        </h2>
+        <p className="max-w-[60ch] text-sm text-fg-muted" data-testid="school-schedule-summary">
+          {schedule
+            ? `${schedule.slots.length === 0 ? 'No classes listed' : schedule.slots.length === 1 ? '1 weekly class' : `${schedule.slots.length} weekly classes`}${schedule.fees ? ', fees described' : ', no fees described'}${schedule.firstTrialFree ? ', the first trial lesson is free' : ''}. Shown on the public page; no plan is needed.`
+            : 'Your weekly classes and fees, shown on the public page; no plan is needed.'}
+        </p>
+        <p>
+          <Link href={`${page}/schedule`} className={buttonVariants({ variant: 'secondary' })} data-testid="school-schedule-link">
+            Edit the schedule and fees
+          </Link>
+        </p>
+      </section>
+
+      <section aria-labelledby="trials-heading" className="grid gap-3" data-testid="school-trials-section">
+        <h2 id="trials-heading" className="font-display text-xl">
+          Trial lesson requests
+        </h2>
+        <p className="max-w-[60ch] text-sm text-fg-muted">
+          {inbox
+            ? inbox.counts.open === 0
+              ? 'No request waits for an answer.'
+              : inbox.counts.open === 1
+                ? '1 request waits for an answer.'
+                : `${inbox.counts.open} requests wait for an answer.`
+            : 'People who ask for a trial lesson while the school is listed.'}
+        </p>
+        <p>
+          <Link href={`${page}/inquiries`} className={buttonVariants({ variant: 'secondary' })} data-testid="school-trials-link">
+            Trial lesson requests
+          </Link>
+        </p>
+      </section>
+
+      <section aria-labelledby="stats-heading" className="grid gap-3" data-testid="school-stats-section">
+        <h2 id="stats-heading" className="font-display text-xl">
+          Statistics
+        </h2>
+        <p className="max-w-[60ch] text-sm text-fg-muted">Weekly counts of page views, map opens, contact clicks and trial requests (Professional Sifu).</p>
+        <p>
+          <Link href={`${page}/stats`} className={buttonVariants({ variant: 'secondary' })} data-testid="school-stats-link">
+            Statistics
           </Link>
         </p>
       </section>

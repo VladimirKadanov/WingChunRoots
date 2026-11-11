@@ -5,6 +5,7 @@
 import { expect, test, type Browser } from '@playwright/test';
 
 import { BASE_URL, closeHelpers, giveOwnAddress, signInAs, type SignInTarget } from './helpers/auth';
+import { formatDay } from '../src/lib/dates';
 import { deferredJob, deleteJob, NEWEST_ARCHIVE, writeDemoArchives } from './helpers/ops';
 import { signInSeededAdmin } from './helpers/plans';
 
@@ -109,8 +110,8 @@ test('@M12 /admin/system shows queue depth and the last backup time to verified 
       const purge = admin.page.getByTestId('queue-list').locator('li[data-queue="retention.purge"]');
       expect(Number(await purge.locator('[data-count="waiting"]').innerText())).toBeGreaterThanOrEqual(1);
       await expect(admin.page.getByTestId('last-backup-time').locator('time')).toHaveAttribute('datetime', NEWEST_ARCHIVE);
-      await expect(admin.page.getByTestId('last-backup-time')).toHaveText('1 November 2026, 02:00 UTC');
-      await expect(admin.page.getByTestId('last-backup')).toHaveText('1 November 2026');
+      await expect(admin.page.getByTestId('last-backup-time')).toHaveText(`${formatDay(NEWEST_ARCHIVE)}, 02:00 UTC`);
+      await expect(admin.page.getByTestId('last-backup')).toHaveText(formatDay(NEWEST_ARCHIVE));
       await expect(admin.page.getByTestId('backup-verdict')).toHaveText('OK');
       await expect(admin.page.getByTestId('queue-verdict')).toHaveAttribute('data-state', /^(ok|attention)$/);
       // Nothing that names a person.

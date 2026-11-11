@@ -86,6 +86,10 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/organization/actions.ts#endOrganizationSchoolAction': { rpc: ['organizations.endSchoolLink'] },
   'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction': { rpc: ['organizations.answerSchoolLink'] },
   'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction': { rpc: ['organizations.endSchoolLink'] },
+  // M21: trial lesson requests and the schedule and fees.
+  'src/app/schools/[slug]/trial/actions.ts#requestTrialAction': { rpc: ['trial.request'] },
+  'src/app/dashboard/schools/actions.ts#decideTrialAction': { rpc: ['trial.answer', 'trial.decline', 'trial.close'] },
+  'src/app/dashboard/schools/actions.ts#updateScheduleAction': { rpc: ['schools.updateSchedule'] },
   'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction': { rpc: ['organizations.grant'] },
   'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction': { rpc: ['organizations.revokeGrant'] },
   // M17: events (the poster is uploaded and removed from the browser through /api/rpc).

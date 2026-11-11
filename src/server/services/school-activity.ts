@@ -138,7 +138,7 @@ interface MovedRow extends Record<string, unknown> {
 const asDate = (v: Date | string) => (v instanceof Date ? v : new Date(v));
 
 /** The admins of the active organizations that hold an accepted link to the school (not its owner). */
-async function organizationAdminsOf(db: Executor, schoolId: string, ownerId: string): Promise<{ userId: string; organizationId: string }[]> {
+export async function organizationAdminsOf(db: Executor, schoolId: string, ownerId: string): Promise<{ userId: string; organizationId: string }[]> {
   const result = await db.execute<{ user_id: string; organization_id: string }>(sql`
     SELECT DISTINCT a.user_id, o.id AS organization_id
       FROM organization_school l

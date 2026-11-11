@@ -74,6 +74,15 @@ export const schoolPageInstructorSchema = schoolInstructorRefSchema.extend({
   photo: photoSchema.nullable().optional(),
 });
 
+export const schoolScheduleSlotSchema = z.object({
+  /** ISO weekday: 1 is Monday. */
+  weekday: z.number().int().min(1).max(7),
+  weekdayLabel: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  label: z.string().nullable(),
+});
+
 export const schoolPageSchema = z.object({
   id: z.uuid(),
   slug: z.string(),
@@ -96,6 +105,15 @@ export const schoolPageSchema = z.object({
    */
   logo: schoolLogoSchema.nullable(),
   photos: z.array(galleryPhotoSchema),
+  /**
+   * M21 (docs/adr/0024-trial-lessons.md): the weekly schedule, by day and time, as wall-clock times
+   * ("HH:MM") in `timezone`, the zone of the school's city; the fees as the school wrote them, and
+   * whether the first trial lesson is free. Plain listing content (no plan gate).
+   */
+  schedule: z.array(schoolScheduleSlotSchema),
+  timezone: z.string(),
+  fees: z.string().nullable(),
+  firstTrialFree: z.boolean(),
 });
 export type SchoolPageDto = z.infer<typeof schoolPageSchema>;
 

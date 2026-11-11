@@ -15,9 +15,17 @@ import { loadTestEnv } from './auth';
 /** BACKUP_DIR of the E2E server (playwright.config.ts serverEnv). */
 export const E2E_BACKUP_DIR = 'test-results/backups';
 
-/** The fixed times of the two fictional archives; every run and project writes the same names. */
-export const OLDER_ARCHIVE = '2026-10-31T02:00:00.000Z';
-export const NEWEST_ARCHIVE = '2026-11-01T02:00:00.000Z';
+/**
+ * The times of the two fictional archives: 02:00 UTC yesterday and the day before. They follow the
+ * clock, so the newest archive stays younger than the page's eight-day staleness limit on any day
+ * the suite runs (fixed dates turned the backup verdict to "Needs attention" eight days later).
+ * Every project of a run writes the same names unless the run crosses midnight UTC.
+ */
+const DAY_MS = 24 * 60 * 60 * 1000;
+const yesterdayAtTwo = new Date(Date.now() - DAY_MS);
+yesterdayAtTwo.setUTCHours(2, 0, 0, 0);
+export const NEWEST_ARCHIVE = yesterdayAtTwo.toISOString();
+export const OLDER_ARCHIVE = new Date(yesterdayAtTwo.getTime() - DAY_MS).toISOString();
 
 const stamp = (iso: string) => iso.replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 

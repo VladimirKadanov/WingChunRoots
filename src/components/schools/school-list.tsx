@@ -92,6 +92,13 @@ export function SchoolList({ schools, selectedId = null, onShow, className }: Sc
                 ))}
               </p>
             ) : null}
+            {/* M21: every school of the finder is public (v_public_school), so it takes trial lesson
+                requests; the form asks a visitor without a session to sign in and comes back. */}
+            <p className="flex flex-wrap gap-x-5">
+              <Link href={`/schools/${school.slug}/trial`} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-trial-link">
+                Request a trial lesson<span className="sr-only">: {school.name}</span>
+              </Link>
+            </p>
             {onShow ? (
               <p>
                 <button

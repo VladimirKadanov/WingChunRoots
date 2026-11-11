@@ -4,14 +4,20 @@
 import { requestIdFrom } from '../audit';
 import { clientIp, ipHmac } from '../auth/ip';
 import { type TestFault, testFaultOf } from '../faults';
+import { isLikelyBot } from '../../lib/bots';
 
 export interface RequestMeta {
   requestId: string;
   ipHmac: string | null;
   /** M04: the test fault this request asks for (src/server/faults.ts); null unless the switch is on. */
   testFault?: TestFault | null;
+  /**
+   * M21: whether the user agent looks like a bot (isLikelyBot, src/server/services/school-stats.ts),
+   * so the school stats leave it out. A yes or no only: the user agent itself is never kept.
+   */
+  likelyBot?: boolean;
 }
 
 export function requestMeta(headers: Headers): RequestMeta {
-  return { requestId: requestIdFrom(headers), ipHmac: ipHmac(clientIp(headers)), testFault: testFaultOf(headers) };
+  return { requestId: requestIdFrom(headers), ipHmac: ipHmac(clientIp(headers)), testFault: testFaultOf(headers), likelyBot: isLikelyBot(headers.get('user-agent')) };
 }

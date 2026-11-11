@@ -4,7 +4,8 @@
 // D08/D18). M20: a listed school awaiting confirmation (day 90) or hidden from the map by the
 // activity check (day 105) says so with a mark, words and the date (DEFAULT D17); its page has the
 // confirmation. "List a school" opens the form. A Student account, or an account without a profile,
-// is told what comes first. Reads the session, so it renders per request.
+// is told what comes first. M21: a school with open trial lesson requests links to its inbox.
+// Reads the session, so it renders per request.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -113,6 +114,13 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
                   <p className="text-sm" data-testid="own-school-pin">
                     {PIN_TEXT[s.pin]}
                   </p>
+                  {s.openTrialRequests > 0 ? (
+                    <p className="text-sm">
+                      <Link href={`${PAGE}/${s.id}/inquiries`} className="link inline-flex min-h-11 items-center font-semibold" data-testid="own-school-trials">
+                        {s.openTrialRequests === 1 ? '1 trial lesson request waits for an answer' : `${s.openTrialRequests} trial lesson requests wait for an answer`}
+                      </Link>
+                    </p>
+                  ) : null}
                   {s.status === 'active' && s.activity.stage !== 'current' ? (
                     <p className="text-sm font-semibold">
                       <ActivityState stage={s.activity.stage} testId="own-school-activity">

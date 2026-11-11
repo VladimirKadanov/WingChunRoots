@@ -62,7 +62,12 @@ export const CATEGORIES: Readonly<Record<NotificationCategory, CategoryDefinitio
     optOut: true,
     emailDefault: true,
   },
-  schools: { label: 'Schools', description: 'The review of the schools you listed, and the requests to confirm that a listing is current.', optOut: true, emailDefault: true },
+  schools: {
+    label: 'Schools',
+    description: 'The review of the schools you listed, the requests to confirm that a listing is current, and trial lesson requests and their answers.',
+    optOut: true,
+    emailDefault: true,
+  },
   organizations: { label: 'Organizations', description: 'The review of your organization and its schools.', optOut: true, emailDefault: true },
   events: {
     label: 'Events',
@@ -146,6 +151,12 @@ export const NOTIFICATION_CATALOG = {
   // e-mailed by default in the Schools category, which the account may switch off.
   'school.activity-awaiting': mailed('schools', 'notice'),
   'school.activity-hidden': mailed('schools', 'notice'),
+  // M21: trial lesson requests (docs/adr/0024-trial-lessons.md; DEFAULT M21, question 4): to the
+  // school (a new request) and to the sender (the answer or the decline), in the Schools category,
+  // whose e-mail is on by default and may be switched off.
+  'school.trial-requested': mailed('schools', 'notice'),
+  'school.trial-answered': mailed('schools', 'notice'),
+  'school.trial-declined': mailed('schools', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

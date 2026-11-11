@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-07.1';
+export const PLAN_MATRIX_VERSION = '2026-11-10.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -172,7 +172,8 @@ export interface FeatureDefinition {
   /**
    * Enforced on the server in Phase 1 (plan §6.5): the five approved students of Free Sifu (D06),
    * the public school pin of Professional Sifu (from M11), (from M16) the photo allowance (D07) and
-   * (from M17) the events a Sifu publishes a month and (from M19) what of the passport the profile shows.
+   * (from M17) the events a Sifu publishes a month, (from M19) what of the passport the profile shows
+   * and (from M21) the weekly statistics of a school.
    */
   enforced: boolean;
   /**
@@ -341,15 +342,22 @@ export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: 'school_business',
     source: 'School schedule and business profile',
-    label: 'School schedule and business profile',
-    availability: 'planned',
-    phase: 2,
-    enforced: false,
+    label: 'School schedule and statistics',
+    // M21 (Phase 2 "Trial lesson inquiry flow and basic school analytics", docs/adr/0024-trial-lessons.md):
+    // part of the pilot. DEFAULT M21 (question 6): the schedule, the fees and the trial lesson
+    // request are plain listing content of every listed school, with no plan gate; what the row
+    // gates is the business side, the weekly statistics of a school (visits of its page, map
+    // opens, contact clicks and trial requests), on the server (src/server/services/school-stats.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'Weekly school statistics with {plan}',
+    note: 'Every listed school shows its schedule and fees and takes trial lesson requests. Professional Sifu adds weekly statistics of page visits, map opens, contact clicks and trial requests.',
     values: {
       free_student: no(),
       premium_student: no(),
-      free_sifu: no(),
-      pro_sifu: yes(),
+      free_sifu: { source: 'No', label: 'Schedule and fees, no statistics', included: false },
+      pro_sifu: { source: 'Yes', label: 'Schedule, fees and weekly statistics', included: true },
       federation: yes(),
     },
   },
@@ -568,10 +576,10 @@ export interface Benefit {
 }
 
 /**
- * Features that joined the pilot after M08 (the photo allowance, M16; events, M17; the passport, M19): an upgrade prompt lists
+ * Features that joined the pilot after M08 (the photo allowance, M16; events, M17; the passport, M19; school statistics, M21): an upgrade prompt lists
  * their benefits after the ones the pilot had before, which keep the matrix's order.
  */
-const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events', 'passport'];
+const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events', 'passport', 'school_business'];
 
 /**
  * The real benefits of moving from one plan to another (plan §5.6): only features with
