@@ -249,11 +249,17 @@ export async function appealStateOf(db: Executor, c: CaseRow, userId: string): P
   if (!(APPEALABLE_KINDS as readonly string[]).includes(c.kind) || c.status !== 'resolved') return null;
   const decision = await decisionEventOf(db, c.id);
   if (!decision) return null;
-  const [appeal] = await db.select({ caseId: decisionAppeal.reviewCaseId, status: decisionAppeal.status }).from(decisionAppeal).where(eq(decisionAppeal.decisionEventId, decision.id));
+  // One appeal per decision, and a decision made after an appeal is final: the case's newest appeal.
+  const [appeal] = await db
+    .select({ caseId: decisionAppeal.reviewCaseId, status: decisionAppeal.status })
+    .from(decisionAppeal)
+    .where(eq(decisionAppeal.appealedCaseId, c.id))
+    .orderBy(desc(decisionAppeal.createdAt))
+    .limit(1);
   const party = await appealRole(db, c, userId);
   const expired = Date.now() - decision.createdAt.getTime() > APPEAL_WINDOW_DAYS * 86_400_000;
   const base = { appeal: appeal ? { caseId: appeal.caseId, status: appeal.status } : null, windowDays: APPEAL_WINDOW_DAYS };
-  if (appeal) return { ...base, canAppeal: false, note: 'This decision was appealed: one appeal per decision.' };
+  if (appeal) return { ...base, canAppeal: false, note: appeal.status === 'pending' ? 'This decision was appealed: one appeal per decision.' : 'This case was appealed once already: the decision after an appeal is final.' };
   if (!party) return { ...base, canAppeal: false, note: c.kind === 'relationship_dispute' ? null : 'An approved request or an upheld report has nothing to appeal.' };
   if (expired) return { ...base, canAppeal: false, note: `An appeal is sent within ${APPEAL_WINDOW_DAYS} days of the decision.` };
   return { ...base, canAppeal: true, note: null };
