@@ -1,12 +1,15 @@
 // The live subscription of an account or an organization, and what it means for M08's switch of the
-// account type (milestone M22; docs/adr/0025-billing.md). Apart from services/billing.ts so that
-// services/plans.ts can call it without importing the billing service, which imports plans.ts and
-// organizations.ts (a cycle that leaves module constants uninitialized under CommonJS loaders).
+// account type and for the deletion of an account (milestone M22; docs/adr/0025-billing.md). Apart
+// from services/billing.ts so that services/plans.ts and services/privacy.ts can call it without
+// importing the billing service, which imports plans.ts and organizations.ts (a cycle that leaves
+// module constants uninitialized under CommonJS loaders).
 
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { billingCheckout, billingSubscription } from '../db/schema';
 import { BILLING_LIVE_STATUSES } from '../db/schema/common';
+import { billingProvider } from '../billing/provider';
+import { BillingProviderError } from '../billing/types';
 import type { Executor } from '../entitlements/access';
 import { PLANS } from '../entitlements/plans';
 import { ServiceError } from './errors';
@@ -46,4 +49,25 @@ export async function beforeAccountTypeChange(tx: Executor, userId: string, now:
     .update(billingCheckout)
     .set({ status: 'expired', updatedAt: now })
     .where(and(eq(billingCheckout.status, 'open'), eq(billingCheckout.subjectUserId, userId)));
+}
+
+/**
+ * Before an account is deleted (services/privacy.ts): its live subscriptions end at the provider at
+ * once, so nothing renews or is charged for an account that no longer exists (the billing rows go
+ * with the account). If the provider does not answer, or the subscription is of another provider
+ * than this app's, nothing is deleted and the administrator tries again.
+ */
+export async function endSubscriptionsBeforeDeletion(tx: Executor, userId: string): Promise<number> {
+  const live = await liveSubscriptionOf(tx, { userId, organizationId: null });
+  if (!live) return 0;
+  const provider = billingProvider();
+  const refuse = () =>
+    new ServiceError('CONFLICT', `The account pays for ${PLANS[live.planCode].name} and the payment provider could not end it; nothing was deleted. Try again in a moment.`);
+  if (provider.name !== live.provider) throw refuse();
+  try {
+    await provider.cancelNow(live.providerSubscriptionId);
+  } catch (error) {
+    if (!(error instanceof BillingProviderError) || error.code !== 'not_found') throw refuse();
+  }
+  return 1;
 }

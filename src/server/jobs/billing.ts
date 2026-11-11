@@ -27,7 +27,9 @@ export function billingEventHandler(_db: Database, log: (line: string) => void, 
       try {
         const result = await applyStoredEvent(job.data.eventId, { final: last, boss });
         log(`${QUEUE.billingEvent}: job ${job.id}: event ${job.data.eventId}: ${result.outcome}`);
-        if (result.touchesSchools) await revalidate([SCHOOLS_TAG]);
+        // A retry may follow a revalidation that failed after the event was applied: it drops the
+        // cache again, as the first attempt meant to.
+        if (result.touchesSchools || job.retryCount > 0) await revalidate([SCHOOLS_TAG]);
       } catch (error) {
         const code = error instanceof BillingEventNotReady ? 'subscription not known yet' : failureCode(error);
         log(`${QUEUE.billingEvent}: job ${job.id}: attempt ${job.retryCount + 1} of ${job.retryLimit + 1} failed (${code})${last ? '; no attempts left' : '; will retry'}`);
@@ -45,7 +47,7 @@ export function billingGraceHandler(_db: Database, log: (line: string) => void, 
     try {
       const result = await endExpiredGrace({ boss });
       log(`${QUEUE.billingGrace}: job ${job.id}: ${result.ended} subscription(s) ended after the grace period`);
-      if (result.touchesSchools) await revalidate([SCHOOLS_TAG]);
+      if (result.touchesSchools || job.retryCount > 0) await revalidate([SCHOOLS_TAG]);
     } catch (error) {
       const code = failureCode(error);
       const last = job.retryCount >= job.retryLimit;

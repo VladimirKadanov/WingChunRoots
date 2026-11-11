@@ -23,6 +23,7 @@ import { authUser, consentRecord, event, person, personBio, personName, personPh
 import type { Transaction } from '../jobs/outbox';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
+import { endSubscriptionsBeforeDeletion } from './billing-subject';
 import { withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
@@ -437,6 +438,8 @@ export async function carryOutDeletionFromCommandLine(caseId: string): Promise<D
         after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, photosRemoved: photos.length, consentsRemoved, schoolsArchived, eventsRemoved },
         reason: 'pnpm account:delete (local environment)',
       });
+      // M22: a paid subscription in test mode ends at the provider first (its rows go with the account).
+      await endSubscriptionsBeforeDeletion(tx, userId);
       await tx.delete(authUser).where(eq(authUser.id, userId));
       return { personId: own?.id ?? null, visibility };
     });

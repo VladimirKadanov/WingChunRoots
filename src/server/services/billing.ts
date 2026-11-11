@@ -48,6 +48,7 @@ import {
   TEST_MODE_LABEL,
 } from '../entitlements/plans';
 import type { Transaction } from '../jobs/outbox';
+import { logger } from '../log';
 import { lockAccount } from './account-lock';
 import type { RequestMeta } from './context';
 import { type BillingSubject, liveSubscriptionOf } from './billing-subject';
@@ -248,14 +249,14 @@ export async function myBilling(principal: Principal | null, raw: unknown = {}, 
       .select()
       .from(billingCheckout)
       .where(and(eq(billingCheckout.id, parsed.data.checkout), eq(billingCheckout.createdByUserId, p.user.id)));
-    if (row) checkout = { id: row.id, planName: PLANS[row.planCode].name, status: row.status === 'open' && row.expiresAt.getTime() <= now.getTime() ? 'expired' : row.status };
+    if (row) checkout = { id: row.id, planName: PLANS[row.planCode].name, status: checkoutStatus(row, now) };
   }
   return {
     provider: billingProvider().name,
     testModeLabel: TEST_MODE_LABEL,
     accountType: effective.accountType,
     plan: planSummary(effective.plan),
-    subscription: current ? viewOf(current, invoices.get(current.id) ?? [], now) : null,
+    subscription: current ? resumableBy(viewOf(current, invoices.get(current.id) ?? [], now), current, effective.accountType) : null,
     earlier: subs.filter((s) => s.id !== current?.id).slice(0, 10).map((s) => viewOf(s, invoices.get(s.id) ?? [], now)),
     offers: live ? [] : offersFor(effective.accountType),
     checkout,
@@ -277,7 +278,7 @@ export interface CheckoutStarted {
   url: string;
 }
 
-/** The live subscription of a subject, under the caller's transaction. */
+/** The subject's customer id at the provider, when it has one already. */
 async function customerIdOf(tx: Executor, provider: 'test' | 'stripe', subject: Subject): Promise<string | null> {
   const [row] = await tx
     .select({ id: billingCustomer.providerCustomerId })
@@ -496,6 +497,11 @@ async function ownSubscription(db: Executor, p: Principal, id: string): Promise<
   throw new ServiceError('NOT_FOUND', NOT_FOUND);
 }
 
+/** A paid plan of the other account type is not resumed (DEFAULT M22, question 8): it would renew unused. */
+const ofAccountType = (sub: SubscriptionRow, accountType: AccountType) => sub.subjectUserId === null || PLANS[sub.planCode].audience === accountType;
+const resumableBy = (view: SubscriptionView, sub: SubscriptionRow, accountType: AccountType): SubscriptionView =>
+  view.canResume && !ofAccountType(sub, accountType) ? { ...view, canResume: false } : view;
+
 async function changeAtProvider(
   principal: Principal | null,
   raw: unknown,
@@ -515,6 +521,12 @@ async function changeAtProvider(
     if (sub.cancelAtPeriodEnd && isLive(sub.status)) return view;
     throw new ServiceError('CONFLICT', 'This subscription has ended.');
   }
+  if (action === 'billing.resume' && view.canResume && sub.subjectUserId) {
+    const [account] = await db.select({ accountType: authUser.accountType }).from(authUser).where(eq(authUser.id, sub.subjectUserId));
+    if (account && !ofAccountType(sub, account.accountType)) {
+      throw new ServiceError('CONFLICT', `${PLANS[sub.planCode].name} is for ${PLANS[sub.planCode].audience === 'sifu' ? 'Sifu' : 'Student'} accounts, and your account type has changed, so it cannot be resumed. It ends at the end of the period.`);
+    }
+  }
   if (action === 'billing.resume' && !view.canResume) {
     if (!sub.cancelAtPeriodEnd && isLive(sub.status)) return view;
     throw new ServiceError('CONFLICT', sub.status === 'past_due' ? 'A subscription whose renewal failed cannot be resumed.' : 'This subscription has ended.');
@@ -527,8 +539,11 @@ async function changeAtProvider(
     throw new ServiceError('CONFLICT', error.code === 'refused' ? 'The payment provider refused the change.' : 'The payment provider did not answer; nothing changed. Try again in a moment.');
   }
   // The provider's answer is applied at once (its webhook event follows and is then a repeat).
+  // Stripe's answer carries no event time: it takes the stored version, so it orders before any
+  // later event of Stripe's whatever this server's clock says.
+  const ordered = provider.name === 'stripe' ? { ...snapshot, version: sub.providerVersion } : snapshot;
   const applied = await getDb().transaction(async (tx) => {
-    const outcome = await applySnapshot(tx, provider.name, snapshot, now, { at: now });
+    const outcome = await applySnapshot(tx, provider.name, ordered, now, { at: now });
     await writeAudit(tx, {
       action,
       actorUserId: p.user.id,
@@ -566,9 +581,17 @@ export interface ApplyResult {
   subscriptionId: string | null;
   /** The plan's audience whose public answers change (a Sifu's school pins: DEFAULT D08/D18). */
   touchesSchools: boolean;
+  /**
+   * A live provider subscription that may not become a plan here (its checkout was replaced or
+   * expired by a change of the account type, or the subject already has a live subscription): the
+   * provider ends it at once, so it is never charged again (DEFAULT M22, question 7).
+   */
+  cancelAtProvider?: string;
 }
 
 const NO_CHANGE = (outcome: ApplyOutcome, subscriptionId: string | null = null): ApplyResult => ({ outcome, subscriptionId, touchesSchools: false });
+/** A new provider subscription the app refuses: a live one is ended at the provider; an ended one changes nothing. */
+const REFUSED = (snap: SubscriptionSnapshot): ApplyResult => (isLive(snap.status) ? { ...NO_CHANGE('conflict'), cancelAtProvider: snap.id } : NO_CHANGE('ignored'));
 
 /** Who hears of a subscription: the account, or the owner who bought it for the organization. */
 async function recipientOf(tx: Executor, sub: SubscriptionRow): Promise<string | null> {
@@ -634,7 +657,7 @@ async function noticesOf(tx: Transaction, before: SubscriptionRow | null, after:
     await send('billing.started', { renewsOn: after.currentPeriodEnd.toISOString(), cancelAtPeriodEnd: after.cancelAtPeriodEnd }, `billing.started:${after.id}`);
   }
   if (before && isLive(after.status)) {
-    if (!before.cancelAtPeriodEnd && after.cancelAtPeriodEnd) await send('billing.cancel-scheduled', { endsOn: after.currentPeriodEnd.toISOString() }, `billing.cancel-scheduled:${after.id}:${after.providerVersion}`);
+    if (!before.cancelAtPeriodEnd && after.cancelAtPeriodEnd) await send('billing.cancel-scheduled', { endsOn: (accessUntil(after) ?? after.currentPeriodEnd).toISOString() }, `billing.cancel-scheduled:${after.id}:${after.providerVersion}`);
     if (before.cancelAtPeriodEnd && !after.cancelAtPeriodEnd) await send('billing.resumed', { renewsOn: after.currentPeriodEnd.toISOString() }, `billing.resumed:${after.id}:${after.providerVersion}`);
   }
   if (was !== 'past_due' && after.status === 'past_due') {
@@ -682,7 +705,12 @@ export async function applySnapshot(
     const subject = subjectOf(checkout);
     if (customer && !sameSubject(subjectOf(customer), subject)) return NO_CHANGE('mismatch');
     if (checkout.providerSubscriptionId && checkout.providerSubscriptionId !== snap.id) return NO_CHANGE('mismatch');
+    // A checkout that was replaced, or expired by a change of the account type, never becomes a plan.
+    if (checkout.status === 'expired') return REFUSED(snap);
     if (subject.userId) await lockAccount(tx, { id: subject.userId });
+    // The checkout's state as of the account lock (a change of the account type takes it too).
+    const [current] = await tx.select({ status: billingCheckout.status }).from(billingCheckout).where(eq(billingCheckout.id, checkout.id));
+    if (current?.status === 'expired') return REFUSED(snap);
     let customerRow = customer;
     if (!customerRow) {
       const [other] = await tx
@@ -701,7 +729,7 @@ export async function applySnapshot(
         .values({ provider, providerCustomerId: snap.customerId, subjectUserId: subject.userId, subjectOrganizationId: subject.organizationId })
         .returning();
     }
-    if (isLive(snap.status) && (await liveSubscriptionOf(tx, subject))) return NO_CHANGE('conflict');
+    if (await liveSubscriptionOf(tx, subject)) return REFUSED(snap);
     const canceled = snap.status === 'canceled';
     const [created] = await tx
       .insert(billingSubscription)
@@ -868,16 +896,36 @@ export async function applyStoredEvent(eventId: string, options: { final?: boole
       if (!checkout) result = NO_CHANGE('unknown');
       else if (checkout.providerSubscriptionId && event.subscriptionId && checkout.providerSubscriptionId !== event.subscriptionId) result = NO_CHANGE('mismatch');
       else {
+        // A replaced checkout stays expired: its subscription is refused when its events arrive.
+        const expired = checkout.status === 'expired';
         await tx
           .update(billingCheckout)
-          .set({ status: 'completed', completedAt: checkout.completedAt ?? now, providerSubscriptionId: event.subscriptionId ?? checkout.providerSubscriptionId, updatedAt: now })
+          .set({
+            status: expired ? 'expired' : 'completed',
+            completedAt: expired ? null : (checkout.completedAt ?? now),
+            providerSubscriptionId: event.subscriptionId ?? checkout.providerSubscriptionId,
+            updatedAt: now,
+          })
           .where(eq(billingCheckout.id, checkout.id));
-        result = NO_CHANGE('applied');
+        result = NO_CHANGE(expired ? 'conflict' : 'applied');
       }
     } else {
       result = NO_CHANGE('ignored');
     }
     if (result.outcome === 'unknown' && options.final === false) throw new BillingEventNotReady();
+    if (result.cancelAtProvider) {
+      // Ended at the provider before the event counts as processed: a failure retries the job; the
+      // last attempt records the event (the administrator sees it among the unmatched ones).
+      const provider = billingProvider();
+      try {
+        if (provider.name !== row.provider) throw new BillingProviderError('unsupported', 'The event is of another provider than the one this app uses now.');
+        await provider.cancelNow(result.cancelAtProvider);
+      } catch (error) {
+        if (!(error instanceof BillingProviderError)) throw error;
+        if (error.code !== 'not_found' && options.final === false) throw error;
+        if (error.code !== 'not_found') logger().error(`[billing] event ${row.providerEventId}: the refused subscription could not be ended at the provider (${error.code})`);
+      }
+    }
     await tx
       .update(billingEvent)
       .set({ outcome: result.outcome, processedAt: now, subscriptionId: result.subscriptionId, updatedAt: now })
@@ -908,6 +956,19 @@ export async function endExpiredGrace(options: { now?: Date; boss?: NoticeProduc
       if (!sub || sub.status !== 'past_due') return null;
       const end = accessUntil(sub)!;
       if (end.getTime() > now.getTime()) return null;
+      // The provider ends it first, so nothing is charged later. If it does not answer, nothing
+      // changes here and the next hourly run asks again (access ended at accessUntil anyway).
+      const provider = billingProvider();
+      if (provider.name === sub.provider) {
+        try {
+          await provider.cancelNow(sub.providerSubscriptionId);
+        } catch (error) {
+          if (!(error instanceof BillingProviderError) || error.code === 'unavailable') {
+            logger().warn(`[billing] grace end of subscription ${sub.id}: the provider did not answer; the next run tries again`);
+            return null;
+          }
+        }
+      }
       const [updated] = await tx
         .update(billingSubscription)
         .set({ status: 'canceled', endedAt: end, endReason: 'unpaid', cancelAtPeriodEnd: false, updatedAt: now })
@@ -918,17 +979,11 @@ export async function endExpiredGrace(options: { now?: Date; boss?: NoticeProduc
       await auditState(tx, sub, fresh);
       await writeAudit(tx, { action: 'billing.grace_end', actorUserId: null, actorRole: null, subjectType: 'billing_subscription', subjectId: id, after: { endedAt: end.toISOString() } });
       await noticesOf(tx, sub, fresh, options.boss);
-      return { providerId: sub.providerSubscriptionId, provider: sub.provider, sifu: PLANS[sub.planCode].audience === 'sifu' };
+      return { sifu: PLANS[sub.planCode].audience === 'sifu' };
     });
     if (!done) continue;
     ended += 1;
     touchesSchools ||= done.sifu;
-    try {
-      const provider = billingProvider();
-      if (provider.name === done.provider) await provider.cancelNow(done.providerId);
-    } catch {
-      // The provider is told again by the next run's staff check; the app's own state has ended.
-    }
   }
   return { ended, touchesSchools };
 }

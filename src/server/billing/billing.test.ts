@@ -235,11 +235,16 @@ describe('redaction', () => {
             payment_method_details: { card: { last4: '4242', brand: 'visa', fingerprint: 'abc' } },
             description: 'Paid by demo-other@example.test',
             metadata: { checkout_ref: '0190a5c0-0000-7000-8000-00000000c0de' },
+            hosted_invoice_url: 'https://invoice.stripe.test/i/demo-link',
+            invoice_pdf: 'https://pay.stripe.test/invoice/demo-pdf',
+            collected_information: { individual_name: 'Demo Collected', business_name: 'Demo Business' },
           },
         },
       }),
     );
-    for (const gone of ['demo@example.test', 'Demo Person', '1 Demo Street', '4242', 'visa', 'abc', 'demo-other@example.test']) expect(out).not.toContain(gone);
+    for (const gone of ['demo@example.test', 'Demo Person', '1 Demo Street', '4242', 'visa', 'abc', 'demo-other@example.test', 'demo-link', 'demo-pdf', 'Demo Collected', 'Demo Business']) {
+      expect(out).not.toContain(gone);
+    }
     expect(out).toContain('pi_demo');
     expect(out).toContain('0190a5c0-0000-7000-8000-00000000c0de');
   });

@@ -51,6 +51,7 @@ import {
 } from './billing';
 import { applyPendingBillingEvents, paidSubscription } from './billing.test-support';
 import { setAccountType } from './plans';
+import { carryOutDeletionFromCommandLine, requestAccountDeletion } from './privacy';
 import { member, meta, newLineage, staff } from './relationships.test-support';
 
 vi.mock('next/cache', () => ({
@@ -430,6 +431,44 @@ describe('the lifecycle', () => {
     await expect(setAccountType(sifu.principal, { accountType: 'student' }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
     await cancelSubscription(sifu.principal, { subscriptionId: subscription.id }, meta);
     expect((await setAccountType(sifu.principal, { accountType: 'student' }, meta)).changed).toBe(true);
+    // The Professional Sifu of a Student account is not resumed: it would renew unused.
+    const view = await myBilling(sifu.principal);
+    expect(view.subscription).toMatchObject({ id: subscription.id, cancelAtPeriodEnd: true, canResume: false });
+    await expect(resumeSubscription(sifu.principal, { subscriptionId: subscription.id }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect((await subscriptionRow(subscription.id)).cancelAtPeriodEnd).toBe(true);
+  });
+
+  it('a paid checkout that was replaced or expired before its events were applied never becomes a plan, and the provider ends it', async () => {
+    const sifu = await member('m22-replaced', { sifu: true });
+    const checkout = await startCheckout(sifu.principal, { planCode: 'pro_sifu' }, meta);
+    await testPay(sifu.principal, { checkoutId: checkout.checkoutId, card: 'succeeds' }, meta);
+    // The account changes its type before the worker applies the events: the checkout expires.
+    expect((await setAccountType(sifu.principal, { accountType: 'student' }, meta)).changed).toBe(true);
+    const outcomes = await applyPendingBillingEvents();
+    expect(outcomes).toContain('conflict');
+    expect(await getDb().select().from(billingSubscription).where(eq(billingSubscription.subjectUserId, sifu.account.id))).toHaveLength(0);
+    expect(await planOf(sifu.account.id)).toBe('free_student');
+    const [providerSide] = await getDb().select().from(billingTestSubscription).where(eq(billingTestSubscription.checkoutRef, checkout.checkoutId));
+    expect(providerSide).toMatchObject({ status: 'canceled' });
+    // Its "deleted" event changes nothing either.
+    expect(await applyPendingBillingEvents()).not.toContain('applied');
+    expect(await getDb().select().from(billingSubscription).where(eq(billingSubscription.subjectUserId, sifu.account.id))).toHaveLength(0);
+    const [row] = await getDb().select({ status: billingCheckout.status }).from(billingCheckout).where(eq(billingCheckout.id, checkout.checkoutId));
+    expect(row!.status).toBe('expired');
+  });
+});
+
+describe('account deletion', () => {
+  it('ends a paid subscription at the provider before the account and its billing rows go', async () => {
+    const student = await member('m22-delete');
+    const { checkoutId, subscription } = await paidSubscription(student.principal, 'premium_student');
+    const { request } = await requestAccountDeletion(student.principal, { confirm: true }, meta);
+    await carryOutDeletionFromCommandLine(request.id);
+    const [providerSide] = await getDb().select().from(billingTestSubscription).where(eq(billingTestSubscription.checkoutRef, checkoutId));
+    expect(providerSide).toMatchObject({ status: 'canceled' });
+    expect(await getDb().select().from(billingSubscription).where(eq(billingSubscription.id, subscription.id))).toHaveLength(0);
+    // The provider's "deleted" event finds nothing to change.
+    expect(await applyPendingBillingEvents()).not.toContain('applied');
   });
 });
 

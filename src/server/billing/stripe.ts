@@ -252,10 +252,10 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
     return json;
   }
 
-  const snapshot = (json: Record<string, unknown>) => {
-    const t = now();
-    return subscriptionFromStripe(json, t.getTime(), t);
-  };
+  // An API answer has no event time of Stripe's: version 0, and the service applies it at the stored
+  // version (services/billing.ts, changeAtProvider), so this server's clock never orders Stripe's
+  // events. The webhook event of the same change follows with its own time.
+  const snapshot = (json: Record<string, unknown>) => subscriptionFromStripe(json, 0, now());
 
   const priceData = (planName: string, interval: BillingInterval, amountCents: number, currency: string) => ({
     currency,

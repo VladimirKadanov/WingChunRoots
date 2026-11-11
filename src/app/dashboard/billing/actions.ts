@@ -61,7 +61,7 @@ async function change(form: FormData, what: 'cancel' | 'resume'): Promise<FormSt
       status: 'done',
       message:
         what === 'cancel'
-          ? `${sub.planName} is cancelled at the end of the period. You keep it until ${formatDay(sub.currentPeriodEnd)}, and nothing you added is deleted.`
+          ? `${sub.planName} is cancelled at the end of the period. You keep it until ${formatDay(sub.accessUntil ?? sub.currentPeriodEnd)}, and nothing you added is deleted.`
           : `${sub.planName} renews again on ${formatDay(sub.currentPeriodEnd)}.`,
     };
   } catch (error) {

@@ -1,7 +1,7 @@
 // The stored copy of a provider event (milestone M22; docs/adr/0025-billing.md; plan §6.4): the
 // verified raw event with everything personal or card-related removed before it reaches the
 // database. A deny list of keys (card data, billing details, names, e-mail and postal addresses,
-// phones, tax ids, free text a customer typed) at every depth, and any string value that looks like
+// phones, tax ids, free text a customer typed, links to invoices and receipts) at every depth, and any string value that looks like
 // an e-mail address. The app reads only the normalized event; this copy is for staff reading the
 // history.
 
@@ -37,6 +37,16 @@ const REMOVED_KEYS = new Set([
   'us_bank_account',
   'sepa_debit',
   'fingerprint',
+  // Links that show the payer's invoice or receipt (name, e-mail, address) to anyone who has them,
+  // and what a checkout collected about the payer.
+  'hosted_invoice_url',
+  'invoice_pdf',
+  'receipt_url',
+  'collected_information',
+  'individual_name',
+  'business_name',
+  'account_name',
+  'account_holder_name',
 ]);
 
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
