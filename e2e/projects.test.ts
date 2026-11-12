@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PILOT_SPEC, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, buildProjects, runPaths } from './projects';
+import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PILOT_SPEC, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, VITALS_TAG, buildProjects, runPaths } from './projects';
 
 describe('buildProjects', () => {
   it('runs desktop and mobile Chromium outside CI, without WebKit', () => {
@@ -161,6 +161,58 @@ describe('buildProjects: pilot (M13)', () => {
       for (const key of ['serverLog', 'outputDir', 'htmlReport'] as const) expect(pilot[key]).not.toBe(other[key]);
       expect(other.outputDir.startsWith(pilot.outputDir)).toBe(false);
       expect(pilot.outputDir.startsWith(other.outputDir)).toBe(false);
+    }
+  });
+});
+
+describe('buildProjects: vitals (the INP budget tests)', () => {
+  const grepTitle = (title: string, tags: string[] = []) => [title, ...tags].join(' ');
+  const inp = grepTitle('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', [VITALS_TAG]);
+  const other = grepTitle('@M05 no axe violations on /explore in dark and light themes');
+  const matches = (pattern: RegExp | RegExp[] | undefined, title: string) =>
+    (Array.isArray(pattern) ? pattern : pattern ? [pattern] : []).some((re) => new RegExp(re.source, re.flags).test(title));
+
+  it('runs only the @vitals tests, on the three devices, one test at a time', () => {
+    const executablePath = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+    expect(buildProjects({ ci: false, vitals: true }).map((p) => p.name)).toEqual(['desktop-chromium', 'mobile-chromium']);
+    // Neither the visual nor the screenshots project: nothing runs beside the measurements.
+    const projects = buildProjects({ ci: true, visual: true, screenshots: true, vitals: true, chromiumExecutable: executablePath });
+    expect(projects.map((p) => p.name)).toEqual(['desktop-chromium', 'mobile-chromium', 'mobile-webkit']);
+    for (const project of projects) {
+      expect(matches(project.grep, inp), `${project.name}: the INP test`).toBe(true);
+      expect(matches(project.grep, other), `${project.name}: another test`).toBe(false);
+      expect(project.grepInvert).toBeUndefined();
+      expect(project.fullyParallel).toBe(false);
+      expect(project.workers).toBe(1);
+      expect(project.dependencies).toBeUndefined();
+      // The same specs as the ordinary run: never the exclusive, pilot, visual or screenshot ones.
+      expect(project.testIgnore).toEqual([VISUAL_SPEC, SCREENSHOTS_SPEC, EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS, PILOT_SPEC]);
+    }
+    const byName = Object.fromEntries(projects.map((p) => [p.name, p]));
+    // The devices of the ordinary run: WebKit stays an iPhone, the INP tests keep their phone.
+    expect(byName['desktop-chromium']?.use?.viewport).toEqual({ width: 1440, height: 900 });
+    expect(byName['mobile-chromium']?.use?.isMobile).toBe(true);
+    expect(byName['mobile-webkit']?.use?.defaultBrowserType).toBe('webkit');
+    expect(byName['mobile-webkit']?.use?.isMobile).toBe(true);
+    expect(byName['mobile-chromium']?.use?.launchOptions?.executablePath).toBe(executablePath);
+  });
+
+  it('leaves the @vitals tests out of the ordinary run, and only them', () => {
+    for (const options of [{ ci: false }, { ci: true }]) {
+      for (const project of buildProjects(options)) {
+        expect(matches(project.grepInvert, inp), `${project.name}: the INP test`).toBe(true);
+        expect(matches(project.grepInvert, other), `${project.name}: another test`).toBe(false);
+        expect(project.grep).toBeUndefined();
+      }
+    }
+  });
+
+  it('keeps its server log, artifacts and report apart from the other runs', () => {
+    const vitals = runPaths('vitals');
+    for (const other of [runPaths(false), runPaths(true), runPaths('pilot')]) {
+      for (const key of ['serverLog', 'outputDir', 'htmlReport'] as const) expect(vitals[key]).not.toBe(other[key]);
+      expect(other.outputDir.startsWith(vitals.outputDir)).toBe(false);
+      expect(vitals.outputDir.startsWith(other.outputDir)).toBe(false);
     }
   });
 });

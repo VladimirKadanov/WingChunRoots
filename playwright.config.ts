@@ -31,7 +31,11 @@ const exclusive = process.env.PW_EXCLUSIVE === '1';
 // M13: the pilot path (e2e/pilot.spec.ts) on the three devices, in a run of its own after the
 // exclusive one (PW_PILOT=1; scripts/verify.sh runs all three).
 const pilot = !exclusive && process.env.PW_PILOT === '1';
-const paths = runPaths(pilot ? 'pilot' : exclusive);
+// The INP budget tests (tagged @vitals, e2e/projects.ts VITALS_TAG) on the three devices, in a run of
+// their own right after the ordinary one, one test at a time (PW_VITALS=1; scripts/verify.sh runs it):
+// nothing else loads the machine while they measure.
+const vitals = !exclusive && !pilot && process.env.PW_VITALS === '1';
+const paths = vitals ? runPaths('vitals') : runPaths(pilot ? 'pilot' : exclusive);
 // Fewer parallel workers on a slower machine (PW_WORKERS=2): unset keeps Playwright's default.
 const workers = process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : undefined;
 if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) {
@@ -46,7 +50,8 @@ export default defineConfig({
   // Artifacts live below test-results/ so the server log (test-results/server.log) survives.
   outputDir: paths.outputDir,
   fullyParallel: true,
-  workers,
+  // The vitals run is one test at a time whatever PW_WORKERS says: its projects do not run side by side either.
+  workers: vitals ? 1 : workers,
   forbidOnly: ci,
   retries: 0,
   reporter: ci
@@ -72,6 +77,7 @@ export default defineConfig({
     screenshots: process.env.PW_SCREENSHOTS === '1',
     exclusive,
     pilot,
+    vitals,
   }),
   webServer: external
     ? []
@@ -79,7 +85,7 @@ export default defineConfig({
         {
           name: 'web',
           // `pnpm build:e2e` runs first (scripts/verify.sh, CI). Redirection that both sh and cmd.exe understand.
-          // The log is test-results/server.log (server-exclusive.log in the exclusive run, server-pilot.log in the pilot run).
+          // The log is test-results/server.log (server-exclusive.log in the exclusive run, server-pilot.log in the pilot run, server-vitals.log in the vitals run).
           command: `pnpm start --hostname 127.0.0.1 --port ${port} > ${paths.serverLog} 2>&1`,
           url: `${baseURL}/`,
           env: serverEnv,

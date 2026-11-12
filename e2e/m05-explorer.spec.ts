@@ -432,7 +432,7 @@ async function tappable(page: Page, id: string): Promise<boolean> {
   }, id);
 }
 
-test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
+test('@M05 selecting a node responds with INP under 200 ms at 4x CPU throttling', { tag: '@vitals' }, async ({ page, browserName }) => {
   // Plan §5.8 (c): INP with the web-vitals library where it is installed (onINP, see
   // installInpProbes), otherwise from the Event Timing API it reads; the frame measure in a
   // browser without Event Timing (WebKit). Each selection opens the panel.
