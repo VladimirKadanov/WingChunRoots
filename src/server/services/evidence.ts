@@ -268,7 +268,17 @@ interface OpenCase {
 }
 
 /** The kinds whose claimant (the account that opened the case) adds files to it. */
-const CLAIMANT_KINDS: readonly string[] = ['historical_claim', 'person_claim', 'instructor_verification', 'organization_application'];
+const CLAIMANT_KINDS: readonly string[] = [
+  'historical_claim',
+  'person_claim',
+  'instructor_verification',
+  'organization_application',
+  // M25: the governance cases an account opens (docs/adr/0028-governance.md).
+  'succession_request',
+  'lineage_report',
+  'decision_appeal',
+  'record_proposal',
+];
 
 /**
  * An open case the uploader may add files to, or 404 (the same answer as for no such case): their

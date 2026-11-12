@@ -462,12 +462,32 @@ export default async function PersonPage({ params, searchParams }: Props) {
       {/* M10b: "Report profile" for a public profile that is not the viewer's own (one report per
           account and profile; the page asks to sign in first). */}
       {profile.visibility === 'public' && !profile.isOwn && !profile.limited ? (
-        <p className="border-t border-border-subtle pt-6 text-sm text-fg-muted">
-          Something wrong on this profile?{' '}
-          <Link href={`${here}/report`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-profile">
-            Report profile
-          </Link>
-        </p>
+        <div className="grid gap-1 border-t border-border-subtle pt-6 text-sm text-fg-muted">
+          <p>
+            Something wrong on this profile?{' '}
+            <Link href={`${here}/report`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-profile">
+              Report profile
+            </Link>
+          </p>
+          {/* M25: an evidence-based report that a teaching relationship is wrong (it changes nothing by itself). */}
+          {profile.counts.teachers + profile.counts.students > 0 ? (
+            <p>
+              A teaching relationship here is wrong?{' '}
+              <Link href={`${here}/dispute`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-lineage">
+                Report a lineage error
+              </Link>
+            </p>
+          ) : null}
+          {/* M25: a shared archival record (kept by the archive or unclaimed) is corrected by proposal only. */}
+          {profile.claimState === 'platform' || profile.claimState === 'unclaimed' ? (
+            <p>
+              A shared archival record.{' '}
+              <Link href={`${here}/record`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="record-history-link">
+                Record history and corrections
+              </Link>
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </PersonLayout>
   );

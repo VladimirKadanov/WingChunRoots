@@ -28,7 +28,7 @@ import { onEmailVerified, onExistingUserSignUp, onPasswordReset, refuseStaleConf
 import { BACKUP_CODE_COUNT, newBackupCodes } from './credentials';
 import { invitationFromCallback, RESET_PASSWORD_EXPIRES_IN_S, sendPasswordResetEmail, sendVerificationEmail, VERIFY_EMAIL_EXPIRES_IN_S } from './emails';
 import { appUrl, authSecret, trustedProxies } from './env';
-import { afterHook, afterUserCreate, afterUserUpdate, beforeHook, beforeSessionCreate } from './hooks';
+import { afterHook, afterUserCreate, afterUserUpdate, beforeHook, beforeSessionCreate, afterSessionCreate, afterSessionDelete } from './hooks';
 import { proxyList } from './ip';
 import { logAuth, logAuthApiError } from './logger';
 
@@ -138,7 +138,7 @@ export function createAuth() {
     hooks: { before: beforeHook, after: afterHook },
     databaseHooks: {
       user: { create: { after: afterUserCreate }, update: { after: afterUserUpdate } },
-      session: { create: { before: beforeSessionCreate } },
+      session: { create: { before: beforeSessionCreate, after: afterSessionCreate }, delete: { after: afterSessionDelete } },
     },
     plugins: [
       twoFactor({

@@ -77,6 +77,10 @@ import { decideOrganizationApplication, isDecidableApplication, lockApplication,
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import { decideKind } from './review-kinds';
+import { proposalFacts, recordRevisionRow } from './stewardship';
+import { appealFacts, appealOfCase, decidedBeforeAppeal, lineageReportFacts } from './disputes';
+import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
+import { successionFacts } from './succession';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import { notify } from './notify';
 import {
@@ -356,6 +360,83 @@ export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, 
       done: 'Your question was sent to the applicant. The case waits for their answer.',
     },
   },
+  // M25: governance (governance-review.ts).
+  succession_request: {
+    verify: {
+      label: 'Approve the succession',
+      pending: 'Approving…',
+      reason: 'Reason',
+      hint: 'Required. The successor and the owner read it. The owner’s school listings and organization administration pass to the successor; the owner’s record, life status and relationships do not change.',
+      optional: false,
+      done: 'The succession is approved. The administration passed to the successor; the owner’s record is unchanged, and both were told.',
+    },
+    reject: {
+      label: 'Refuse the succession',
+      pending: 'Refusing…',
+      reason: 'Reason',
+      hint: 'Required. The successor and the owner read it. Nothing changes.',
+      optional: false,
+      done: 'The succession request is refused. Nothing changed; both were told.',
+    },
+    needs_info: { ...ASK, reason: 'Question for the successor', hint: 'Required. The successor reads it on their case page and can add evidence.', done: 'Your question was sent to the successor.' },
+  },
+  lineage_report: {
+    verify: {
+      label: 'Uphold: open arbitration',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. The reporter reads it, and both people of the relationship read it with the arbitration. They are not told who reported.',
+      optional: false,
+      done: 'The report is upheld: the relationship is in arbitration, and both people are asked for evidence.',
+    },
+    reject: {
+      label: 'Not upheld',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. The reporter reads it. The relationship stays as it is, and the report counts against no one.',
+      optional: false,
+      done: 'The report is not upheld. Nothing changed, and the reporter was told your reason.',
+    },
+    needs_info: { ...ASK, reason: 'Question for the reporter', hint: 'Required. The reporter reads it on their case page and can add evidence.', done: 'Your question was sent to the reporter.' },
+  },
+  decision_appeal: {
+    verify: {
+      label: 'Uphold: reopen the decision',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. The appellant reads it. The appealed case is reopened for a new decision by someone other than its first decider.',
+      optional: false,
+      done: 'The appeal is upheld: the appealed case is open again for a new decision.',
+    },
+    reject: {
+      label: 'Reject the appeal',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. The appellant reads it. The decision stands.',
+      optional: false,
+      done: 'The appeal is rejected. The decision stands, and the appellant was told your reason.',
+    },
+    needs_info: { ...ASK, reason: 'Question for the appellant', hint: 'Required. The appellant reads it on their case page.', done: 'Your question was sent to the appellant.' },
+  },
+  record_proposal: {
+    verify: {
+      label: 'Apply the change',
+      pending: 'Applying…',
+      reason: 'Reason',
+      hint: 'Required. Kept in the record’s change history; the proposer reads it.',
+      optional: false,
+      done: 'The change is applied to the shared record and is in its change history.',
+    },
+    reject: {
+      label: 'Do not apply',
+      pending: 'Saving…',
+      reason: 'Reason',
+      hint: 'Required. The proposer reads it. The record stays as it is.',
+      optional: false,
+      done: 'The proposal is not applied. The proposer was told your reason.',
+    },
+    needs_info: { ...ASK, reason: 'Question for the proposer', hint: 'Required. The proposer reads it on their case page and can add evidence.', done: 'Your question was sent to the proposer.' },
+  },
 };
 
 export interface ReviewListRow {
@@ -539,6 +620,10 @@ const DECIDER_TEXT: Partial<Record<ReviewCaseKind, string>> = {
   profile_report: 'A moderator or an administrator upholds or dismisses a report. You can add notes.',
   school_listing: 'A moderator or an administrator approves or returns a school listing. You can ask the Sifu for more information and add notes.',
   organization_application: 'An archivist or an administrator approves or declines an organization’s application. You can ask the applicant for more information and add notes.',
+  succession_request: 'An administrator approves or refuses a succession request. You can add notes.',
+  lineage_report: 'A moderator or an administrator upholds a lineage dispute report or does not. You can add notes.',
+  decision_appeal: 'The deciders of the appealed kind, other than its first decider, decide an appeal. You can add notes.',
+  record_proposal: 'An archivist applies a proposed change to a shared record or does not. You can ask the proposer for more information and add notes.',
 };
 
 /** What this reviewer may do on a case, and why not. `subjectStatus`: the relationship's, or the listed school's (M11). */
@@ -643,8 +728,14 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
   }
   const schoolView = c.kind === 'school_listing' && c.schoolId ? await schoolCaseView(db, c.schoolId) : null;
   const organizationView = c.kind === 'organization_application' && c.organizationId ? await organizationCaseView(db, c.organizationId) : null;
-  const { can, decideNote } = abilities(p, c, relationship?.status ?? schoolView?.status ?? organizationView?.status ?? null, own);
-  const facts = await subjectOf(db, c);
+  const abilitiesNow = abilities(p, c, relationship?.status ?? schoolView?.status ?? organizationView?.status ?? null, own);
+  // M25: the first decider never decides an appeal of their decision, nor the case it reopened.
+  const firstDecider =
+    c.kind === 'decision_appeal' ? (await appealOfCase(db, c.id))?.originalDeciderUserId === p.user.id : await decidedBeforeAppeal(db, c.id, p.user.id);
+  const { can, decideNote } = firstDecider
+    ? { can: { ...abilitiesNow.can, verify: false, reject: false, needsInfo: false }, decideNote: 'You decided this case before its appeal: another member of staff decides it now.' }
+    : abilitiesNow;
+  const facts = await subjectOf(db, c, p.user.id);
   const subject = facts && outsideParty ? { ...facts, facts: [] } : facts;
   const reviewers = can.assignOthers
     ? (
@@ -697,7 +788,24 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
  * case card. Never an e-mail address: a claim says only whether the invitation went to the address
  * the claimant signed up with.
  */
-async function subjectOf(db: Executor, c: CaseRow): Promise<ReviewCaseView['subject']> {
+async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<ReviewCaseView['subject']> {
+  // M25: the governance kinds (succession.ts, disputes.ts, stewardship.ts).
+  if (c.kind === 'succession_request') {
+    const facts = await successionFacts(db, c.id);
+    return facts ? { label: 'The owner whose administration is asked for', person: c.personId ? ((await peopleRefs([c.personId])).get(c.personId) ?? null) : null, facts } : null;
+  }
+  if (c.kind === 'lineage_report') {
+    const facts = await lineageReportFacts(db, c.id);
+    return facts ? { label: 'The reported relationship', person: null, facts: facts.facts } : null;
+  }
+  if (c.kind === 'decision_appeal') {
+    const facts = await appealFacts(db, c.id, viewerId);
+    return facts ? { label: 'The appealed decision', person: null, facts } : null;
+  }
+  if (c.kind === 'record_proposal') {
+    const facts = await proposalFacts(db, c.id);
+    return facts ? { label: 'The shared record', person: c.personId ? ((await peopleRefs([c.personId])).get(c.personId) ?? null) : null, facts } : null;
+  }
   if (!c.personId || (c.kind !== 'person_claim' && c.kind !== 'instructor_verification' && c.kind !== 'profile_report')) return null;
   const ref = (await peopleRefs([c.personId])).get(c.personId) ?? null;
   const [record] = await db
@@ -1094,7 +1202,9 @@ async function decideOtherKind(
   if (input.decision === 'needs_info' && kind === 'profile_report') throw new ServiceError('CONFLICT', 'A report is upheld or dismissed.');
   if (c.assignedToUserId !== p.user.id && !admin) throw new ServiceError('FORBIDDEN', 'Assign the case to yourself before you decide it.');
   if (!isOpen(c.status)) throw new ServiceError('CONFLICT', 'This case has been decided or closed.');
-  const outcome = await decideKind(tx, p, c, row, input, meta);
+  // M25: after an upheld appeal, the first decider does not decide the case again.
+  if (await decidedBeforeAppeal(tx, c.id, p.user.id)) throw new ServiceError('FORBIDDEN', 'You decided this case before its appeal: another member of staff decides it now.');
+  const outcome = GOVERNANCE_KINDS.has(c.kind) ? await decideGovernanceKind(tx, p, c, input, meta) : await decideKind(tx, p, c, row, input, meta);
   return { replayed: false, tags: outcome.tags };
 }
 
@@ -1363,6 +1473,20 @@ export async function updateArchiveRecord(principal: Principal | null, raw: Arch
       else if (input.bio) await tx.insert(personBio).values({ personId: record.id, lang: 'en', body: input.bio });
     }
     await tx.update(person).set({ updatedAt: now }).where(eq(person.id, record.id));
+    // M25: the record's change history (record_revision), for every edit that changed a field.
+    const changedNames = [nameChanged && 'primaryName', originalChanged && 'originalName', lifeChanged && 'lifeStatus', bioChanged && 'bio'].filter((f): f is string => typeof f === 'string');
+    if (changedNames.length > 0) {
+      await recordRevisionRow(tx, {
+        personId: record.id,
+        source: 'archival_edit',
+        actorUserId: p.user.id,
+        reviewCaseId: null,
+        changed: changedNames,
+        before: { primaryName: primary?.value ?? '', originalName: original?.value ?? null, originalLang: original?.lang ?? null, lifeStatus: record.lifeStatus, bio: bio?.body ?? null },
+        after: { primaryName: input.primaryName, originalName: input.originalName, originalLang: input.originalName && script ? script.lang : null, lifeStatus: input.lifeStatus, bio: input.bio },
+        reason: input.reason,
+      });
+    }
     // Which fields changed, and on what basis: never a name or the biography (plan §6.4).
     await writeAudit(tx, {
       action: 'person.update',

@@ -3,10 +3,12 @@
 // they keep the section's own heading, so the outline of the page does not change when a read
 // fails, and their Retry is a link that loads the page again, which works without JavaScript.
 
-import { AlertIcon } from '@/components/icons';
 import { LinkStroke } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
+import { ErrorPanel } from './error-panel';
+
+export { ErrorPanel };
 
 /** "No teachers on the record yet": a dotted stroke and a sentence. */
 export function EmptyState({ children }: { children: React.ReactNode }) {
@@ -59,30 +61,6 @@ export function Section({
       </h2>
       {children}
     </section>
-  );
-}
-
-/** The frame of an error state: a danger rule, an alert icon and a title, never colour alone. */
-export function ErrorPanel({
-  title,
-  children,
-  className,
-  ref,
-  ...props
-}: { title: string; children: React.ReactNode; className?: string; ref?: React.Ref<HTMLDivElement> } & React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      ref={ref}
-      role="alert"
-      className={cx('grid justify-items-start gap-3 rounded-sm border-l-4 border-danger bg-surface-2 px-4 py-4 outline-none', className)}
-      {...props}
-    >
-      <p className="flex items-start gap-2 text-ui font-semibold">
-        <AlertIcon size={18} className="mt-0.5 shrink-0 text-danger" />
-        <span>{title}</span>
-      </p>
-      {children}
-    </div>
   );
 }
 

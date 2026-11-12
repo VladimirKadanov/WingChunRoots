@@ -128,8 +128,10 @@ check "a schedule edit is listing activity and drops the public cache of the sch
 check "the public page DTO carries the schedule, the zone and the fees" bash -c "f=src/server/dto/schools.ts; grep -q 'schedule: z.array(schoolScheduleSlotSchema)' \$f && grep -q 'firstTrialFree: z.boolean()' \$f"
 
 # 6. The statistics and their gate (In scope 3; plan §5.6; CLAUDE.md §11) --------------------------------
-check "the statistics need school_business, now available; PLAN_MATRIX_VERSION 2026-11-10.1" bash -c "
-  f=src/server/entitlements/plans.ts; grep -q \"PLAN_MATRIX_VERSION = '2026-11-10.1'\" \$f && grep -q \"requireEntitlement(.*'school_business'\" $STATS &&
+# A later milestone may bump the matrix version (M25: 2026-11-11.1); it is never older than M21's.
+check "the statistics need school_business, now available; PLAN_MATRIX_VERSION 2026-11-10.1 or later" bash -c "
+  f=src/server/entitlements/plans.ts; v=\$(sed -n \"s/.*PLAN_MATRIX_VERSION = '\\([0-9.-]*\\)'.*/\\1/p\" \$f) &&
+  [ -n \"\$v\" ] && [ \"\$(printf '%s\\n' 2026-11-10.1 \"\$v\" | sort -V | head -1)\" = 2026-11-10.1 ] && grep -q \"requireEntitlement(.*'school_business'\" $STATS &&
   awk '/key: .school_business./{f=1} f && /availability: .now./{found=1} f && /^  \\},/{exit} END{exit !found}' \$f"
 check "counting is an INSERT … ON CONFLICT DO UPDATE on the day" bash -c "grep -q 'onConflictDoUpdate\\|ON CONFLICT' $STATS"
 check "the stats page: a hidden chart, a table in a focusable region, paging, the upgrade prompt" bash -c "

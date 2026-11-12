@@ -643,6 +643,27 @@ const STATES: readonly ScreenState[] = [
       expect(preview.status(), await preview.text()).toBe(200);
       await page.goto(`/dashboard/organization/${organizationId}/import/${((await preview.json()) as { id: string }).id}`);
       await expect(page.getByTestId('organization-import-detail').filter({ visible: true })).toBeVisible();
+      },
+    },
+  {
+    // M25: a nomination as digital successor, waiting for the nominee's answer: a new student and a
+    // fictional owner made for this screen (their nomination written straight to the database, so no
+    // demo account changes), with "Accept" and "Decline".
+    name: 'succession-received',
+    milestone: 'M25',
+    async reach(page) {
+      const heir = await freshAccount(page, { name: 'Demo Named Successor' });
+      const ownerId = randomUUID();
+      const ownerPerson = randomUUID();
+      await getDb().execute(sql`INSERT INTO auth_user (id, email, email_verified) VALUES (${ownerId}::uuid, ${uniqueEmail('screenshot-owner')}, true)`);
+      await getDb().execute(sql`INSERT INTO person (id, slug, kind, stewardship, claimed_by_user_id, visibility)
+        VALUES (${ownerPerson}::uuid, ${`demo-e2e-owner-${letters(8)}`}, 'living', 'self', ${ownerId}::uuid, 'involved_only')`);
+      await getDb().execute(sql`INSERT INTO person_name (person_id, value, script, lang, is_primary) VALUES (${ownerPerson}::uuid, 'Demo Nominating Sifu', 'Latn', 'en', true)`);
+      await getDb().execute(sql`INSERT INTO succession_nomination (id, owner_user_id, owner_person_id, successor_user_id, successor_person_id, status)
+        SELECT ${randomUUID()}::uuid, ${ownerId}::uuid, ${ownerPerson}::uuid, u.id, p.id, 'pending'
+          FROM auth_user u JOIN person p ON p.claimed_by_user_id = u.id WHERE u.email = ${heir.email}`);
+      await page.goto('/dashboard/succession');
+      await expect(page.getByTestId('answer-form').filter({ visible: true })).toBeVisible();
     },
   },
 ];

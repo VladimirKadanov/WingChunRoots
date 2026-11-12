@@ -8,6 +8,7 @@ export * from './entitlements';
 export * from './events';
 export * from './evidence';
 export * from './geography';
+export * from './governance';
 export * from './lineage';
 export * from './organization-tools';
 export * from './organizations';

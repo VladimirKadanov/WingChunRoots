@@ -1011,7 +1011,10 @@ test.describe('at 390x844', () => {
       await a.getByLabel('Find by e-mail').focus();
       for (let i = 0; i < 25; i += 1) {
         await a.keyboard.press('Tab');
-        const focused = await a.evaluate(() => {
+        // Read after two frames: on WebKit the browser may leave the control under the tab bar,
+        // and FocusInView scrolls it clear on the next animation frame (what a user sees).
+        const focused = await a.evaluate(async () => {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
           const el = document.activeElement as HTMLElement | null;
           if (!el || el === document.body) return null;
           const box = el.getBoundingClientRect();

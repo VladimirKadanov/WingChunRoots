@@ -140,7 +140,21 @@ export type AuditAction =
   | 'federation_trial.start'
   | 'federation_trial.end'
   | 'federation_trial.expire'
-  | 'federation_trial.convert';
+  | 'federation_trial.convert'
+  // M25: governance (docs/adr/0028-governance.md). The rows carry ids, states, the basis and the
+  // number of days without activity, never a name, a reason of a party or a file name.
+  | 'succession.nominate'
+  | 'succession.answer'
+  | 'succession.revoke'
+  | 'succession.request'
+  | 'succession.transfer'
+  | 'succession.decide'
+  | 'dispute.report'
+  | 'dispute.decide'
+  | 'appeal.create'
+  | 'appeal.decide'
+  | 'record.propose'
+  | 'record.decide';
 
 export interface AuditEntry {
   action: AuditAction;

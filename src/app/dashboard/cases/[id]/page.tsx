@@ -26,7 +26,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { REPLY_FORM } from './form-ids';
+import { APPEAL_FORM, REPLY_FORM } from './form-ids';
+import { AppealForm } from './appeal-form';
 import { ReplyForm } from './reply-form';
 
 export const instant = false;
@@ -69,7 +70,22 @@ const DECISION_WORDS: Record<string, Record<'approved' | 'rejected', string>> = 
   person_claim: { approved: 'Approved: the profile is yours.', rejected: 'Not approved: the reviewers could not confirm that the profile is yours.' },
   instructor_verification: { approved: 'Verified: you are a verified instructor.', rejected: 'Not verified from the evidence sent.' },
   relationship_dispute: { approved: 'The link stands: it is verified again.', rejected: 'The link is revoked: it left the public lineage.' },
+  // M25: succession, lineage dispute reports, appeals and archival record proposals.
+  succession_request: {
+    approved: 'Approved: the administration of the schools and organizations moved to you. The teaching history is unchanged.',
+    rejected: 'Not approved: nothing was transferred.',
+  },
+  lineage_report: {
+    approved: 'Upheld: the relationship is under review by the moderators.',
+    rejected: 'Not upheld: the relationship stays as it is. A report that is not upheld counts against no one.',
+  },
+  decision_appeal: { approved: 'Upheld: the decision is looked at again.', rejected: 'Not upheld: the decision stands.' },
+  record_proposal: { approved: 'Approved: the record was corrected as you proposed.', rejected: 'Not approved: the record stays as it is.' },
 };
+
+const APPEAL_STATUS_WORDS = { pending: 'Waiting for a decision', upheld: 'Upheld', rejected: 'Not upheld' } as const;
+
+const MODERATED_KINDS = new Set(['relationship_dispute', 'lineage_report']);
 
 export default async function PartyCasePage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { id } = await params;
@@ -91,7 +107,8 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
   const c = read;
   const initial = await readFormResult(REPLY_FORM, query.outcome);
   const rel = c.relationship;
-  const reviewers = c.kind === 'relationship_dispute' ? 'The moderators' : 'The reviewers';
+  const reviewers = MODERATED_KINDS.has(c.kind) ? 'The moderators' : 'The reviewers';
+  const appealInitial = await readFormResult(APPEAL_FORM, query.outcome);
 
   return (
     <Frame>
@@ -107,6 +124,9 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
           <OutcomeNote testId="claim-sent">Your claim was sent. A reviewer checks it; you get a notification and an e-mail when they decide.</OutcomeNote>
         ) : null}
         {query.replied === '1' ? <OutcomeNote testId="reply-sent">Your answer was sent to the reviewers.</OutcomeNote> : null}
+        {query.appealed === '1' && c.appeal?.appeal ? (
+          <OutcomeNote testId="appeal-sent">Your appeal was sent. Another member of staff than the one who decided looks at it.</OutcomeNote>
+        ) : null}
 
         {c.record ? (
           <section aria-labelledby="case-record" className="grid gap-2">
@@ -160,6 +180,37 @@ export default async function PartyCasePage({ params, searchParams }: { params: 
               <p className="text-sm whitespace-pre-line">
                 <span className="font-semibold">{reviewers}: </span>
                 {c.decision.reason}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {c.appeal ? (
+          // M25: one appeal per decision, by a party, within the window; another member of staff decides it.
+          <section aria-labelledby="case-appeal" className="grid gap-3" data-testid="party-case-appeal">
+            <h2 id="case-appeal" className="font-display text-2xl">
+              Appeal
+            </h2>
+            {c.appeal.appeal ? (
+              <p className="text-ui" data-testid="appeal-status" data-status={c.appeal.appeal.status}>
+                <span className="text-fg-muted">Appeal: </span>
+                <span className="font-semibold">{APPEAL_STATUS_WORDS[c.appeal.appeal.status]}</span>{' '}
+                <Link href={`/dashboard/cases/${c.appeal.appeal.caseId}`} className="link inline-flex min-h-11 items-center">
+                  Open the appeal
+                </Link>
+              </p>
+            ) : null}
+            {c.appeal.canAppeal ? (
+              <>
+                <p className="max-w-[60ch] text-sm text-fg-muted">
+                  If you think this decision is wrong, you can appeal it once, within {c.appeal.windowDays} days of the decision. Another member of
+                  staff than the one who decided looks at it.
+                </p>
+                <AppealForm caseId={c.id} idempotencyKey={randomUUID()} initial={appealInitial} />
+              </>
+            ) : c.appeal.note && !c.appeal.appeal ? (
+              <p className="max-w-[60ch] text-sm text-fg-muted" data-testid="appeal-note">
+                {c.appeal.note}
               </p>
             ) : null}
           </section>

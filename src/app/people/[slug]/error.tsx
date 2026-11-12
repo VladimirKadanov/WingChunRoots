@@ -8,7 +8,7 @@
 import Link from 'next/link';
 
 import { ArrowLeftIcon } from '@/components/icons';
-import { ErrorPanel } from '@/components/lineage/states';
+import { ErrorPanel } from '@/components/lineage/error-panel';
 import { buttonVariants } from '@/components/ui/button-variants';
 
 export default function PersonPageError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {

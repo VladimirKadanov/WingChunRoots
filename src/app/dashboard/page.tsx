@@ -383,6 +383,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                 Your cases
               </Link>
             )}
+            {/* M25: the digital successor (nominations given and received, succession requests). */}
+            {staffOnly ? null : (
+              <Link href="/dashboard/succession" className="link inline-flex min-h-11 items-center" data-testid="dashboard-succession">
+                Digital successor
+              </Link>
+            )}
             <Link href="/account" className="link inline-flex min-h-11 items-center">
               Account and security
             </Link>

@@ -1083,6 +1083,7 @@ M00 копира този подраздел дословно в `docs/plan/RULE
 | M22 | [`docs/plan/M22-billing.md`](plan/M22-billing.md) — Плащания в тестов режим: абонаменти, webhook, понижаване (Фаза 2) | `m22-billing` | — | D06, D08, D09, D20 |
 | M23 | [`docs/plan/M23-federation-billing.md`](plan/M23-federation-billing.md) — Абонамент Federation в тестов режим, смяна между платени планове, пробен период на федерация, независимост надолу (Фаза 2/3) | `m23-federation-billing` | — | D09, D12, D20 |
 | M24 | [`docs/plan/M24-organization-tools.md`](plan/M24-organization-tools.md) — Инструменти на организациите: масов внос, анализи, топлинна карта, разделяне (Фаза 3) | `m24-organization-tools` | — | D03, D08, D12, D20 |
+| M25 | [`docs/plan/M25-governance.md`](plan/M25-governance.md) — Управление: дигитален наследник, спорове и обжалване, исторически записи (Фаза 3) | `m25-governance` | — | D19, D20 |
 | Отложен | [`docs/plan/deferred-hosting.md`](plan/deferred-hosting.md) — Хостинг и разгръщане (след решение на собственика) | — | — | D24 |
 
 ---

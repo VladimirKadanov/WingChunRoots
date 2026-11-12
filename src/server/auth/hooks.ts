@@ -531,3 +531,28 @@ export async function beforeSessionCreate(
     },
   };
 }
+
+/**
+ * M25 (docs/adr/0028-governance.md): a new session (a sign-in) records the account's activity in
+ * auth_user.last_active_at, which outlives the session (a sign-out deletes it). A succession request
+ * on inactivity reads it; inactivity alone never transfers anything or marks anyone deceased.
+ */
+export async function afterSessionCreate(session: { userId?: unknown } & Record<string, unknown>): Promise<void> {
+  if (typeof session.userId !== 'string') return;
+  await getDb().update(authUser).set({ lastActiveAt: new Date() }).where(eq(authUser.id, session.userId));
+}
+
+/**
+ * M25 (code review): a sign-out or an expired-session sweep deletes the session, and with it its
+ * last refresh. The account keeps the later of its last sign-in and that refresh, so an owner who
+ * stayed active in one long session never looks inactive after signing out (DEFAULT M25,
+ * question 9).
+ */
+export async function afterSessionDelete(session: { userId?: unknown; updatedAt?: unknown } & Record<string, unknown>): Promise<void> {
+  if (typeof session.userId !== 'string' || !(session.updatedAt instanceof Date)) return;
+  const refreshed = session.updatedAt.toISOString();
+  await getDb()
+    .update(authUser)
+    .set({ lastActiveAt: sql`GREATEST(COALESCE(${authUser.lastActiveAt}, ${refreshed}::timestamptz), ${refreshed}::timestamptz)` })
+    .where(eq(authUser.id, session.userId));
+}

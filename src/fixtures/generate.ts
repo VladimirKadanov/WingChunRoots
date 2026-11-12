@@ -1334,6 +1334,8 @@ function demoAccounts(
       twoFactorEnabled: staff,
       timezone: null,
       accountType: DEMO_SIFU_ACCOUNT_SLUGS.includes(slug) ? 'sifu' : 'student',
+      // M25: active on the day the account was made (a fixed date, for the content hash).
+      lastActiveAt: at,
       createdAt: at,
       updatedAt: at,
     });

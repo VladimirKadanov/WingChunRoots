@@ -26,6 +26,11 @@ export const REVIEW_KIND_LABELS: Record<ReviewCaseKind, string> = {
   school_listing: 'School listing',
   deletion_request: 'Account deletion',
   organization_application: 'Organization application',
+  // M25: governance (docs/adr/0028-governance.md).
+  succession_request: 'Succession request',
+  lineage_report: 'Lineage dispute report',
+  decision_appeal: 'Appeal',
+  record_proposal: 'Archival record proposal',
 };
 
 /** The status of a case as the reviewers read it. */
@@ -48,3 +53,11 @@ export const CLAIM_STATUS_LABELS: Record<ReviewCaseStatus, string> = {
 
 /** What the claimant reads when the reviewers did not confirm the training. */
 export const CLAIM_REFUSED_TEXT = 'The reviewers could not confirm this training from the evidence sent.';
+
+/** M25: what a lineage dispute report says is wrong with a relationship (specification §16.1). */
+export const LINEAGE_REPORT_GROUND_LABELS = {
+  never_trained: 'The student never trained with this teacher',
+  wrong_teacher: 'The training was with another teacher',
+  wrong_dates: 'The training dates are wrong',
+  other: 'Something else about this relationship is wrong',
+} as const;
