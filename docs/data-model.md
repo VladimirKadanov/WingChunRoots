@@ -120,6 +120,17 @@
 | `billing_invoice` | Фактурите на доставчика, т.е. историята на плащанията. Колони: `subscription_id` (`CASCADE`), `provider_invoice_id` (уникален за доставчика), `status` (`paid`, `failed`), `amount_cents`, `currency`, `period_start`, `period_end`, `issued_at` |
 | `billing_test_subscription` | Страната на тестовия доставчик (`src/server/billing/test-provider.ts`): идентификаторът при доставчика, клиентът, `checkout_ref` (уникален), планът, сумата, тестовата карта (`succeeds`, `declines`, `fails_at_renewal`; никога номер), състоянието, периодът и версията. Таблиците на приложението никога не я четат |
 
+### Инструменти на организациите (M24)
+
+[ADR 0027](adr/0027-organization-tools.md). Само `app_rw` има права: `SELECT`, `INSERT`, `UPDATE`, `DELETE`. `REVOKE ALL` ги затваря за `app_public_ro`. Нито едно поле не влиза в публичен DTO или кеш; всичко се чете само от администраторите на организацията (404 за всеки друг).
+
+| Таблица | Предназначение и важни колони |
+|---|---|
+| `organization_import` | Един проверен файл: `organization_id` (`CASCADE`), `created_by_user_id`, `status` (`previewed`, `committed`, `discarded`, `expired`), `row_count`, `valid_count`, `error_count`, `imported_count`, `file_sha256` и `file_bytes` (отпечатък и размер, не съдържание), `expires_at` (24 часа, DEFAULT M24, въпрос 2), `ended_at`, `ended_by_user_id`. Самият файл не се пази |
+| `organization_import_row` | Един ред на файла: `import_id` (`CASCADE`), `row_number` (уникален във вноса), `status` (`valid`, `error`, `imported`, `skipped`), `data` (разчетените полета: име, китайско име, година, ранг, учител, град; **изчиства се** при внос, отказ или изтичане), `errors` (колона и съобщение), `person_id` (създадената личност, `SET NULL`). Имейл никога не се пази (DEFAULT M24, въпрос 3) |
+| `organization_member_record` | Собствените полета на организацията за член: `membership_id` (уникален, `CASCADE`), `rank_label`, `school_city`, `import_id` (`SET NULL`). Никога публични; трият се при разделяне (DEFAULT M24, въпрос 9) |
+| `organization_teacher_claim` | Твърдение на организацията „този член е учил при този учител“: `organization_id`, `student_person_id`, `teacher_person_id` (всички `CASCADE`), `start_year`, `status` (`claimed_by_organization`, `withdrawn`), `withdrawn_at`, `withdrawn_by_user_id`, `withdraw_reason` (`organization`, `separation`), `import_id`, `created_by_user_id`. Най-много едно отворено твърдение за тройката (`organization_teacher_claim_open_key`). **Не е `teaching_relationship`** и не влиза в родословието (DEFAULT D12, DEFAULT M24, въпрос 4) |
+
 ### Абонамент Federation и пробен период на федерация (M23)
 
 [ADR 0026](adr/0026-federation-billing.md). Правата са като при M22: само `app_rw`, `REVOKE ALL` за `app_public_ro`, нищо в публичен DTO или кеш.
@@ -249,6 +260,8 @@
 | Изборът за имейл | `notification_preference` | Докато акаунтът съществува (`CASCADE`) |
 | Заявка за пробна тренировка: име, контакт, съобщение | `trial_inquiry` | M21 (DEFAULT M21, въпрос 5): 365 дни след затварянето ѝ (отговорена, отказана или затворена); отворена заявка се пази, докато школата я обработи. Изтриване на акаунта или школата я изтрива (`CASCADE`). Изпълнява го `retention.purge` (`purgeOldTrialData`) |
 | Абонамент, checkout, фактури и събития на доставчика | `billing_*` | M22: докато акаунтът (или организацията) съществува. Изтриването на акаунта първо прекратява живия абонамент при доставчика (иначе нищо не се трие), после трие клиента, checkout-ите, абонаментите и фактурите (`CASCADE`). Събитията остават без връзка (`SET NULL`), защото почистеното им копие не съдържа лични данни. Данни за карта никога не се пазят. Изтичането на абонамент не трие нищо (D08) |
+| Внос на организация: разчетените полета на редовете | `organization_import_row.data` | M24 (DEFAULT M24, въпрос 2): до внасянето, отказа или изтичането на прегледа (24 часа); тогава се изчистват. Изтеклите прегледи затваря и `retention.purge` (`expireOrganizationImports`). Остават номерът на реда, резултатът и грешките |
+| Ранг и град на член по записа на организацията | `organization_member_record` | M24: докато членството е текущо; трият се при разделяне (DEFAULT M24, въпрос 9) |
 | Броячи на школа | `school_stat_day` | M21 (DEFAULT M21, въпрос 7): дните преди повече от 400 дни се трият от `retention.purge` (`purgeOldTrialData`). Няма лични данни |
 
 Задачата `retention.purge` (`src/server/services/retention.ts`) върви всеки ден в 03:17 UTC в worker-а, като `app_rw`, и е идемпотентна. От M02 трие и изтеклите редове на `auth_session`, `auth_verification` и `auth_throttle` (Better Auth трие изтекла сесия само когато токенът ѝ дойде отново), както и непотвърдените акаунти на повече от 7 дни. Променя редовете на партиди по 1000 (всяка в своя транзакция, далеч от `statement_timeout`) и прескача ред, заключен от писмо, което се изпраща в момента; следващото пускане го изтрива. Неуспех се записва в лога само със SQLSTATE. Ключът за идемпотентност в `email_delivery` остава и след изтриването на адреса, затова никога не съдържа лични данни (`@` се отказва, ADR 0003).
@@ -328,7 +341,11 @@
 
 - `*_m22_billing`: таблиците `billing_customer`, `billing_checkout`, `billing_subscription`, `billing_event`, `billing_invoice` и `billing_test_subscription`, с `CHECK` за доставчика, плана, интервала, състоянията, сумите и периодите, и уникалните индекси за идемпотентност (доставчик + идентификатор на събитие, фактура, абонамент, клиент). Има и частичните уникални индекси за един жив абонамент на субект. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. `entitlement_grant.source` вече допуска `stripe` от M08. Само SQL за PostgreSQL 16+.
 
-Миграцията в M23 (след тази на M22):
+Миграцията в M24 (след тази на M22):
+
+- `*_m24_organization_tools`: таблиците `organization_import`, `organization_import_row`, `organization_member_record` и `organization_teacher_claim`, с `CHECK` за състоянията, броевете, времената на края и оттеглянето, и частичния уникален индекс за едно отворено твърдение. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
+
+Миграцията в M23 (след тази на M24):
 
 - `*_m23_federation_billing`: таблицата `federation_trial` с `CHECK` и индексите си; колоните `trial_ends_at` в `billing_checkout`, `scheduled_plan_code` и `scheduled_interval` в `billing_subscription`, и същите със `scheduled_amount_cents` в `billing_test_subscription`, с техните `CHECK`. Накрая, на ръка, правата върху `federation_trial`: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 

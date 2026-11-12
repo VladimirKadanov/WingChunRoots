@@ -103,6 +103,12 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/organizations/actions.ts#endTrialAction': { rpc: ['federationTrials.end'] },
   'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction': { rpc: ['organizations.grant'] },
   'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction': { rpc: ['organizations.revokeGrant'] },
+  // M24: organization tools (the import, teacher claims and leaving a membership).
+  'src/app/dashboard/organization/tools-actions.ts#previewImportAction': { rpc: ['organizationTools.importPreview'] },
+  'src/app/dashboard/organization/tools-actions.ts#commitImportAction': { rpc: ['organizationTools.importCommit'] },
+  'src/app/dashboard/organization/tools-actions.ts#discardImportAction': { rpc: ['organizationTools.importDiscard'] },
+  'src/app/dashboard/organization/tools-actions.ts#withdrawClaimAction': { rpc: ['organizationTools.withdrawClaim'] },
+  'src/app/dashboard/organization/tools-actions.ts#leaveOrganizationAction': { rpc: ['organizationTools.leave'] },
   // M17: events (the poster is uploaded and removed from the browser through /api/rpc).
   'src/app/dashboard/events/actions.ts#createEventAction': { rpc: ['events.create'] },
   'src/app/dashboard/events/actions.ts#updateEventAction': { rpc: ['events.update'] },

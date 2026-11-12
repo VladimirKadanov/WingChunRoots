@@ -21,6 +21,25 @@ export const ORGANIZATION_LOAD_ERRORS = {
     message: "We couldn't load this organization. Nothing was changed.",
     back: { href: '/dashboard/organization', label: 'Back to your organizations' },
   },
+  // M24: the organization tools.
+  import: {
+    eyebrow: 'Organization',
+    title: 'Import members',
+    message: "We couldn't load the imports. Nothing was changed.",
+    back: { href: '/dashboard/organization', label: 'Back to your organizations' },
+  },
+  analytics: {
+    eyebrow: 'Organization',
+    title: 'Analytics',
+    message: "We couldn't load the numbers. Nothing was changed.",
+    back: { href: '/dashboard/organization', label: 'Back to your organizations' },
+  },
+  heatmap: {
+    eyebrow: 'Organization',
+    title: 'School heatmap',
+    message: "We couldn't load the heatmap. Nothing was changed.",
+    back: { href: '/dashboard/organization', label: 'Back to your organizations' },
+  },
   admin: {
     eyebrow: 'Administration',
     title: 'Organizations',

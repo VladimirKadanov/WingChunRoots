@@ -863,6 +863,38 @@ const organizationSchoolAnswered: NotificationTemplate<{ organizationId: string;
   sample: { organizationId: '0190a5c0-0000-7000-8000-00000000000f', decision: 'accepted' },
 };
 
+/** "organization.member_left" (M24): to the admins of an organization, when a member ends their own membership. */
+const organizationMemberLeft: NotificationTemplate<{ organizationId: string }> = {
+  name: 'organization.member_left',
+  parse: (payload) => ({ organizationId: uuidOf('organization.member_left', 'organizationId', payload) }),
+  render: ({ organizationId }) => ({
+    title: 'A member left the organization',
+    body: [
+      {
+        text: 'A member ended their membership of your organization. It stays in the organization’s history; the organization’s rank and city for them and its teacher claims about them were removed. Their teachers and students did not change.',
+      },
+    ],
+    action: { label: 'Open the organization', href: ORGANIZATION_PAGE(organizationId) },
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-000000000024' },
+};
+
+/** "organization.membership_ended" (M24): to the account of a person whose membership an organization ended. */
+const organizationMembershipEnded: NotificationTemplate<{ organizationId: string }> = {
+  name: 'organization.membership_ended',
+  parse: (payload) => ({ organizationId: uuidOf('organization.membership_ended', 'organizationId', payload) }),
+  render: () => ({
+    title: 'An organization ended your membership',
+    body: [
+      {
+        text: 'An organization ended your membership. It stays in the organization’s history. Your teachers, your students and your profile did not change, and the organization’s rank and claims about you were removed.',
+      },
+    ],
+    action: { label: 'See your memberships', href: '/dashboard/organization#memberships' },
+  }),
+  sample: { organizationId: '0190a5c0-0000-7000-8000-000000000025' },
+};
+
 // --- Events (M17) --------------------------------------------------------------------------------
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
@@ -1682,6 +1714,9 @@ export const NOTIFICATION_TEMPLATES = {
   'organization.admin_added': organizationAdminAdded,
   'organization.school_requested': organizationSchoolRequested,
   'organization.school_answered': organizationSchoolAnswered,
+  // M24.
+  'organization.member_left': organizationMemberLeft,
+  'organization.membership_ended': organizationMembershipEnded,
   // M17.
   'event.published': eventPublished,
   'event.cancelled': eventCancelled,

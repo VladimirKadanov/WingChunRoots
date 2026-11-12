@@ -1082,6 +1082,7 @@ M00 копира този подраздел дословно в `docs/plan/RULE
 | M21 | [`docs/plan/M21-trial-lessons.md`](plan/M21-trial-lessons.md) — Пробни тренировки, график и такси, основна статистика на школите (Фаза 2, §2.4; §1) | `m21-trial-lessons` | — | D08, D17, D18, D20 |
 | M22 | [`docs/plan/M22-billing.md`](plan/M22-billing.md) — Плащания в тестов режим: абонаменти, webhook, понижаване (Фаза 2) | `m22-billing` | — | D06, D08, D09, D20 |
 | M23 | [`docs/plan/M23-federation-billing.md`](plan/M23-federation-billing.md) — Абонамент Federation в тестов режим, смяна между платени планове, пробен период на федерация, независимост надолу (Фаза 2/3) | `m23-federation-billing` | — | D09, D12, D20 |
+| M24 | [`docs/plan/M24-organization-tools.md`](plan/M24-organization-tools.md) — Инструменти на организациите: масов внос, анализи, топлинна карта, разделяне (Фаза 3) | `m24-organization-tools` | — | D03, D08, D12, D20 |
 | Отложен | [`docs/plan/deferred-hosting.md`](plan/deferred-hosting.md) — Хостинг и разгръщане (след решение на собственика) | — | — | D24 |
 
 ---

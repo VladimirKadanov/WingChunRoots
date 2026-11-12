@@ -32,6 +32,8 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: deleted 0 old notification(s)',
       // M21: closed trial lesson requests after a year, school counters after 400 days.
       'retention.purge: deleted 0 closed trial lesson request(s), 0 old school counter(s)',
+      // M24: organization import previews past their 24 hours.
+      'retention.purge: ended 0 expired organization import preview(s)',
     ]);
   });
 

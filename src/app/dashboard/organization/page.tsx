@@ -13,9 +13,14 @@ import { ORGANIZATION_LOAD_ERRORS } from '@/components/account/organization-load
 import { PageRedirect } from '@/components/account/page-redirect';
 import { OutcomeNote } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
+import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { leaveForm } from './tools-form-ids';
+import { ToolButton } from './tools-forms';
+import { PersonName } from '@/components/relationships/parts';
 
 export const instant = false;
 
@@ -33,8 +38,10 @@ export default async function OrganizationsDashboardPage({ searchParams }: { sea
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
-  const view = await pageRead(serverClient(await headers(), guard.principal).organizations.mine());
-  if (!view) return <LoadError {...ORGANIZATION_LOAD_ERRORS.mine} retryHref={PAGE} />;
+  const client = serverClient(await headers(), guard.principal);
+  const [view, own] = await Promise.all([pageRead(client.organizations.mine()), pageRead(client.organizationTools.memberships())]);
+  if (!view || !own) return <LoadError {...ORGANIZATION_LOAD_ERRORS.mine} retryHref={PAGE} />;
+  const memberships = await Promise.all(own.memberships.map(async (m) => ({ ...m, initial: await readFormResult(leaveForm(m.id), query.outcome) })));
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -52,6 +59,9 @@ export default async function OrganizationsDashboardPage({ searchParams }: { sea
 
         <div className="mt-8 grid gap-8">
           {query.done === 'left' ? <OutcomeNote testId="organization-left">You are no longer an admin of that organization.</OutcomeNote> : null}
+          {query.done === 'membership-left' ? (
+            <OutcomeNote testId="organization-membership-left">You left the organization. Your profile, teachers and students did not change; its admins were told.</OutcomeNote>
+          ) : null}
 
           {view.organizations.length > 0 ? (
             <ul className="grid gap-4" data-testid="my-organizations">
@@ -81,6 +91,64 @@ export default async function OrganizationsDashboardPage({ searchParams }: { sea
               You do not administer an organization.
             </p>
           )}
+
+          {/* M24: the account's own memberships and the separation rules (DEFAULT M24 question 9). */}
+          {memberships.length > 0 ? (
+            <section aria-labelledby="memberships-title" id="memberships" className="grid gap-4 border-t border-border-subtle pt-6" data-testid="my-memberships">
+              <h2 id="memberships-title" className="font-display text-2xl">
+                Your memberships
+              </h2>
+              <ul className="grid max-w-[62ch] gap-1 text-sm text-fg-muted" data-testid="separation-rules">
+                <li>{own.rules.decides}</li>
+                <li>{own.rules.goes}</li>
+                <li>{own.rules.stays}</li>
+                <li>{own.rules.told}</li>
+              </ul>
+              <ul className="grid gap-4">
+                {memberships.map((m) => (
+                  <li key={m.id} className="grid gap-1 border-b border-border-subtle pb-4" data-testid="my-membership" data-current={m.current}>
+                    {m.organization.public ? (
+                      <Link href={`/organizations/${m.organization.slug}`} className="link inline-flex min-h-11 items-center font-display text-xl [overflow-wrap:anywhere]">
+                        {m.organization.name}
+                      </Link>
+                    ) : (
+                      <span className="font-display text-xl [overflow-wrap:anywhere]">{m.organization.name}</span>
+                    )}
+                    <p className="text-sm text-fg-muted">
+                      {m.organization.kindLabel} · {m.roleLabel}
+                      {m.startsOn ? ` · since ${formatDay(m.startsOn)}` : ''}
+                      {m.endsOn ? ` · ended ${formatDay(m.endsOn)}` : ''}
+                    </p>
+                    {m.recorded ? (
+                      <p className="text-sm">
+                        <span className="text-fg-muted">The organization records: </span>
+                        {[m.recorded.rank, m.recorded.city].filter(Boolean).join(' · ')}
+                      </p>
+                    ) : null}
+                    {m.claims.map((c) => (
+                      <p key={c.id} className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
+                        <span className="text-fg-muted">{c.statusLabel}:</span>
+                        {c.teacher ? <PersonName person={c.teacher} className="text-sm" /> : <span>a removed profile</span>}
+                        {c.startYear ? <span className="text-fg-muted">since {c.startYear}</span> : null}
+                      </p>
+                    ))}
+                    {m.current ? (
+                      <ToolButton
+                        kind="leave"
+                        formId={leaveForm(m.id)}
+                        hidden={{ membershipId: m.id }}
+                        label="Leave this organization"
+                        pendingLabel="Leaving…"
+                        initial={m.initial}
+                        testId="my-membership-leave"
+                        context={m.organization.name}
+                      />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {view.canApply ? (
             <p>

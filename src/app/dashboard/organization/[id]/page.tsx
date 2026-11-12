@@ -45,7 +45,7 @@ const DONE: Record<string, string> = {
   'admin-added': 'The admin was added and told.',
   'admin-removed': 'The admin was removed.',
   'member-added': 'The member is listed. Nothing changed in anyone’s teachers or students.',
-  'member-ended': 'The membership ended today. It stays in the organization’s history.',
+  'member-ended': 'The membership ended today. It stays in the organization’s history; your organization’s rank, city and claims for the person were removed.',
   'school-requested': 'The school was asked. Its account accepts or refuses the link.',
   'school-ended': 'The school link ended. The school and its pin did not change.',
 };
@@ -264,17 +264,42 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
                 </p>
               ) : null}
 
+              {/* M24: the organization tools; each page says what it needs when the plan is missing. */}
+              <Section id="organization-tools" title="Tools" testId="organization-tools">
+                <ul className="grid gap-1 sm:grid-cols-3">
+                  <li>
+                    <Link href={`/dashboard/organization/${org.id}/import`} className="link inline-flex min-h-11 items-center font-semibold" data-testid="organization-tools-import">
+                      Import members
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href={`/dashboard/organization/${org.id}/analytics`} className="link inline-flex min-h-11 items-center font-semibold" data-testid="organization-tools-analytics">
+                      Analytics
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href={`/dashboard/organization/${org.id}/heatmap`} className="link inline-flex min-h-11 items-center font-semibold" data-testid="organization-tools-heatmap">
+                      School heatmap
+                    </Link>
+                  </li>
+                </ul>
+              </Section>
+
               <Section id="organization-members" title="Members" testId="organization-members">
                 <p className="max-w-[60ch] text-sm text-fg-muted">
-                  People with a public profile who belong to the organization. Listing someone is not a verification and changes nobody’s teachers or students.
+                  People with a public profile who belong to the organization, and the private records of your imports. Listing someone is not a verification and changes nobody’s teachers or students.
+                </p>
+                <p className="max-w-[60ch] text-sm text-fg-muted" data-testid="organization-separation-rules">
+                  Ending a membership needs nobody’s approval. It stays in the history; your organization’s rank and city for the person are removed, its teacher claims about the person are withdrawn, and the person’s account is told. Their profile, teachers and students do not change.
                 </p>
                 {memberRows.length > 0 ? (
                   <ul className="grid gap-3">
                     {memberRows.map((m) => (
                       <li key={m.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border-subtle pb-3" data-testid="organization-member" data-current={m.current}>
                         <span className="grid gap-0.5">
-                          <PersonName person={m.person} link className="text-base" />
+                          <PersonName person={m.person} link={!m.recordOnly} className="text-base" />
                           <span className="text-sm text-fg-muted">
+                            {m.recordOnly ? 'Private record · ' : ''}
                             {m.roleLabel}
                             {m.startsOn ? ` · since ${formatDay(m.startsOn)}` : ''}
                             {m.endsOn ? ` · ended ${formatDay(m.endsOn)}` : ''}
