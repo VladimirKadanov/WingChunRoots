@@ -100,9 +100,17 @@ export function CancelForm({
       <input type="hidden" name="subscriptionId" value={subscriptionId} />
       {organizationId ? <input type="hidden" name="organizationId" value={organizationId} /> : null}
       <p className="max-w-[60ch] text-ui text-fg-muted">
-        {organizationId
-          ? `Cancelling stops the renewal. The organization keeps ${planName} until ${until}; after that member and school administration closes, and its members, school links, events and history stay. Member schools and students keep their own plans.`
-          : `Cancelling stops the renewal. You keep ${planName} until ${until}; after that your account has its free plan, and every confirmed link, school and photo stays.`}
+        {organizationId ? (
+          <>
+            Cancelling stops the renewal. The organization keeps {planName} until <span data-visual-date="">{until}</span>; after that member and
+            school administration closes, and its members, school links, events and history stay. Member schools and students keep their own plans.
+          </>
+        ) : (
+          <>
+            Cancelling stops the renewal. You keep {planName} until <span data-visual-date="">{until}</span>; after that your account has its free
+            plan, and every confirmed link, school and photo stays.
+          </>
+        )}
       </p>
       <div>
         <SubmitButton pending={pending} pendingLabel="Cancelling…" variant="secondary">
