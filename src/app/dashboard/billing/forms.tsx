@@ -64,7 +64,7 @@ export function CancelForm({ subscriptionId, planName, until, initial }: { subsc
       <FormMessage form={CANCEL_FORM} state={state} single />
       <input type="hidden" name="subscriptionId" value={subscriptionId} />
       <p className="max-w-[60ch] text-ui text-fg-muted">
-        Cancelling stops the renewal. You keep {planName} until {until}; after that your account has its free plan, and every confirmed link,
+        Cancelling stops the renewal. You keep {planName} until <span data-visual-date="">{until}</span>; after that your account has its free plan, and every confirmed link,
         school and photo stays.
       </p>
       <div>
