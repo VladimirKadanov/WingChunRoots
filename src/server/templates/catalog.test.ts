@@ -58,7 +58,17 @@ describe('notification catalog', () => {
   it('never lets the billing notices be switched off, and e-mails every one of them (M22; DEFAULT M22, question 6)', () => {
     expect(CATEGORIES.billing.optOut).toBe(false);
     expect(CATEGORIES.billing.emailDefault).toBe(true);
-    expect(kindsOf('billing').sort()).toEqual(['billing.cancel-scheduled', 'billing.ended', 'billing.payment-failed', 'billing.payment-recovered', 'billing.resumed', 'billing.started']);
+    // M23 adds the change of plan or billing period, now and scheduled.
+    expect(kindsOf('billing').sort()).toEqual([
+      'billing.cancel-scheduled',
+      'billing.change-scheduled',
+      'billing.ended',
+      'billing.payment-failed',
+      'billing.payment-recovered',
+      'billing.plan-changed',
+      'billing.resumed',
+      'billing.started',
+    ]);
     for (const kind of kindsOf('billing')) {
       expect(catalogEntry(kind).email, kind).toBe('notice');
       expect(emailWanted(kind, false), kind).toBe(true);
@@ -110,6 +120,18 @@ describe('notification catalog', () => {
       const text = [rendered.title, ...rendered.body.map((s) => ('text' in s ? s.text : 'Name')), rendered.action?.label ?? ''].join(' ');
       expect(findFomo(text), kind).toEqual([]);
     }
+  });
+
+  it('M23: the federation trial notices are plan notices, e-mailed by default, and link to the organization’s billing page', () => {
+    for (const kind of ['federation.trial-started', 'federation.trial-ending', 'federation.trial-ended'] as const) {
+      expect(catalogEntry(kind), kind).toMatchObject({ category: 'plan', email: 'notice' });
+      const rendered = renderNotification(kind, { ...NOTIFICATION_TEMPLATES[kind].sample, organizationId: '0190a5c0-0000-7000-8000-0000000000aa' });
+      expect(rendered.action?.href, kind).toBe('/dashboard/organization/0190a5c0-0000-7000-8000-0000000000aa/billing');
+    }
+    // An organization's billing notice links to its billing page; an account's to its own.
+    const sample = NOTIFICATION_TEMPLATES['billing.started'].sample;
+    expect(renderNotification('billing.started', { ...sample, organizationId: '0190a5c0-0000-7000-8000-0000000000aa' }).action?.href).toBe('/dashboard/organization/0190a5c0-0000-7000-8000-0000000000aa/billing');
+    expect(renderNotification('billing.started', sample).action?.href).toBe('/dashboard/billing');
   });
 
   it('the security notices name no address, IP address or place', () => {

@@ -585,6 +585,22 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByTestId('admin-billing-events').filter({ visible: true })).toBeVisible();
     },
   },
+  ...(['owner', 'admin'] as const).map(
+    (who): ScreenState => ({
+      // M23: the billing page of demo-federation-north (its Federation test plan), as its owner sees
+      // it (what Federation gives now and the monthly and yearly offers) and as an admin who is not
+      // an owner reads it (no form). Nothing is bought.
+      name: `organization-billing-${who}`,
+      milestone: 'M23',
+      async reach(page) {
+        const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM organization WHERE slug = 'demo-federation-north'`);
+        expect(rows.rows).toHaveLength(1);
+        await signInAs(page, who === 'owner' ? 'demo-federation-owner' : 'demo-organization-admin');
+        await page.goto(`/dashboard/organization/${rows.rows[0]!.id}/billing`);
+        await expect(page.getByTestId('organization-billing-plan').filter({ visible: true })).toHaveAttribute('data-plan', 'federation');
+      },
+    }),
+  ),
   ...(['import', 'analytics', 'heatmap'] as const).map(
     (tool): ScreenState => ({
       // M24: the organization tools of demo-federation-north as demo-federation-owner sees them
@@ -600,6 +616,19 @@ const STATES: readonly ScreenState[] = [
       },
     }),
   ),
+  {
+    // M23: the administrator's page of demo-federation-north with its trial section (no trial can
+    // start: it holds Federation already). Nothing is started.
+    name: 'admin-organization-trial',
+    milestone: 'M23',
+    async reach(page) {
+      const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM organization WHERE slug = 'demo-federation-north'`);
+      expect(rows.rows).toHaveLength(1);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/organizations/${rows.rows[0]!.id}`);
+      await expect(page.getByTestId('admin-organization-trial').filter({ visible: true })).toBeVisible();
+    },
+  },
   {
     // M24: the preview of a fictional file of two rows, one with a problem (nothing is imported).
     name: 'organization-import-preview',

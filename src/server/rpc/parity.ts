@@ -96,6 +96,11 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/billing/actions.ts#resumeSubscriptionAction': { rpc: ['billing.resume'] },
   'src/app/billing/test-checkout/[id]/actions.ts#testPayAction': { rpc: ['billing.testPay'] },
   'src/app/admin/billing/[id]/actions.ts#moveTestClockAction': { rpc: ['billing.testClock'] },
+  // M23: a change of plan or billing period (also on an organization's billing page), and Federation trials.
+  'src/app/dashboard/billing/actions.ts#changePlanAction': { rpc: ['billing.changePlan'] },
+  'src/app/dashboard/billing/actions.ts#cancelChangeAction': { rpc: ['billing.cancelChange'] },
+  'src/app/admin/organizations/actions.ts#startTrialAction': { rpc: ['federationTrials.start'] },
+  'src/app/admin/organizations/actions.ts#endTrialAction': { rpc: ['federationTrials.end'] },
   'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction': { rpc: ['organizations.grant'] },
   'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction': { rpc: ['organizations.revokeGrant'] },
   // M24: organization tools (the import, teacher claims and leaving a membership).

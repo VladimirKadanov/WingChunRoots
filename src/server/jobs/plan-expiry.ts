@@ -19,6 +19,9 @@
 //   was cancelled at the period end (the notice says "your plan", not "your pilot plan"); a renewing
 //   or unpaid subscription is not, since its notices are the billing ones (billing.payment-failed,
 //   billing.ended).
+// - M23 (docs/adr/0026-federation-billing.md): the same daily run sends the reminders of the
+//   Federation trials (14 and 7 days before their end) and ends the trials that ran out without a
+//   subscription (src/server/services/federation-trials.ts, runFederationTrials).
 
 import { and, gt, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import type { JobWithMetadata, PgBoss } from 'pg-boss';
@@ -26,6 +29,7 @@ import type { JobWithMetadata, PgBoss } from 'pg-boss';
 import type { Database } from '../db';
 import { authUser, billingSubscription, entitlementGrant } from '../db/schema';
 import { resolveEffectivePlan } from '../entitlements/effective';
+import { runFederationTrials } from '../services/federation-trials';
 import { notify } from '../services/notify';
 import { QUEUE } from './queues';
 
@@ -130,8 +134,11 @@ export function planExpiryHandler(db: Database, log: (line: string) => void, bos
   return async (jobs: JobWithMetadata<Record<string, never>>[]): Promise<void> => {
     for (const job of jobs) {
       try {
-        const result = await sendPlanEndNotices(db, new Date(), boss);
+        const now = new Date();
+        const result = await sendPlanEndNotices(db, now, boss);
         log(`${QUEUE.plansExpiry}: job ${job.id}: ${result.expiring} ending soon, ${result.expired} ended`);
+        const trials = await runFederationTrials(db, now, boss);
+        log(`${QUEUE.plansExpiry}: job ${job.id}: federation trials: ${trials.reminders} reminded, ${trials.ended} ended`);
       } catch (error) {
         const code = (error as { code?: unknown } | null)?.code;
         const reason = typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code) ? `database error ${code}` : error instanceof Error ? error.name : 'unknown error';

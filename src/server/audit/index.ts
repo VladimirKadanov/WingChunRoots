@@ -132,7 +132,15 @@ export type AuditAction =
   | 'billing.resume'
   | 'billing.subscription'
   | 'billing.grace_end'
-  | 'billing.test_clock';
+  | 'billing.test_clock'
+  // M23: Federation billing and trials (docs/adr/0026-federation-billing.md). The rows carry ids,
+  // plans, billing periods, dates and states; a trial keeps the administrator's reason.
+  | 'billing.change_plan'
+  | 'billing.cancel_change'
+  | 'federation_trial.start'
+  | 'federation_trial.end'
+  | 'federation_trial.expire'
+  | 'federation_trial.convert';
 
 export interface AuditEntry {
   action: AuditAction;

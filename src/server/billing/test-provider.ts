@@ -16,6 +16,11 @@
 //   of the grace" (the last retry of a past-due renewal fails and the subscription ends). It moves
 //   the subscription's own period back so that the moment is now, so the app's real clock decides
 //   access as it would after the time had passed.
+// - M23 (docs/adr/0026-federation-billing.md): a checkout that continues a Federation trial charges
+//   nothing until the trial ends (a first invoice of 0, the first period ending with the trial); a
+//   change of plan or billing period applies now, with proration and a new period from now, or at
+//   the end of the period, when the test clock's renewal bills the new price (DEFAULT M23,
+//   question 2).
 
 import { randomBytes } from 'node:crypto';
 
@@ -29,6 +34,7 @@ import { logger } from '../log';
 import { testWebhookSecret } from './config';
 import { redactEvent } from './redact';
 import { signPayload, verifySignature } from './signature';
+import type { PLAN_CODES } from '../db/schema/common';
 import {
   type BillingInterval,
   type BillingProvider,
@@ -65,6 +71,8 @@ export interface TestPayRequest {
   amountCents: number;
   currency: string;
   customerId: string | null;
+  /** M23: the end of the organization's trial: no charge before it (null or absent: none). */
+  trialEndsAt?: Date | null;
 }
 
 export type TestPayOutcome = { outcome: 'paid'; subscriptionId: string } | { outcome: 'declined' } | { outcome: 'already_paid'; subscriptionId: string };
@@ -105,9 +113,14 @@ function snapshotOf(row: Row): SubscriptionSnapshot {
     currentPeriodStart: row.currentPeriodStart,
     currentPeriodEnd: row.currentPeriodEnd,
     endedAt: row.endedAt,
+    planCode: row.planCode,
+    scheduledChange: row.scheduledPlanCode && row.scheduledInterval ? { planCode: row.scheduledPlanCode, interval: row.scheduledInterval } : null,
     version: row.version,
   };
 }
+
+type PlanCode = (typeof PLAN_CODES)[number];
+const PLAN_CODE_SET = new Set<string>(['free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation'] satisfies PlanCode[]);
 
 // --- the wire format of the test provider's events ---------------------------------------------------
 
@@ -122,6 +135,10 @@ interface WireSubscription {
   current_period_end: string;
   ended_at: string | null;
   version: number;
+  /** M23: the plan billed now, and the change scheduled for the period end (absent in M22's events). */
+  plan_code?: string;
+  scheduled_plan_code?: string | null;
+  scheduled_interval?: string | null;
 }
 
 interface WireInvoice {
@@ -155,6 +172,9 @@ const wireSubscription = (s: SubscriptionSnapshot): WireSubscription => ({
   current_period_end: s.currentPeriodEnd.toISOString(),
   ended_at: iso(s.endedAt),
   version: s.version,
+  ...(s.planCode ? { plan_code: s.planCode } : {}),
+  scheduled_plan_code: s.scheduledChange?.planCode ?? null,
+  scheduled_interval: s.scheduledChange?.interval ?? null,
 });
 
 const STATUSES = new Set<SubscriptionStatus>(['incomplete', 'active', 'past_due', 'canceled']);
@@ -174,6 +194,13 @@ function readSubscription(value: unknown): SubscriptionSnapshot {
     throw new WebhookSignatureError('The billing event could not be read.');
   }
   if (typeof s.version !== 'number' || !Number.isSafeInteger(s.version) || s.version < 1) throw new WebhookSignatureError('The billing event could not be read.');
+  if (s.plan_code !== undefined && !PLAN_CODE_SET.has(s.plan_code)) throw new WebhookSignatureError('The billing event could not be read.');
+  const scheduled =
+    s.scheduled_plan_code === undefined && s.scheduled_interval === undefined
+      ? undefined
+      : s.scheduled_plan_code && PLAN_CODE_SET.has(s.scheduled_plan_code) && (s.scheduled_interval === 'month' || s.scheduled_interval === 'year')
+        ? { planCode: s.scheduled_plan_code as PlanCode, interval: s.scheduled_interval as BillingInterval }
+        : null;
   return {
     id: s.id,
     customerId: s.customer,
@@ -184,8 +211,21 @@ function readSubscription(value: unknown): SubscriptionSnapshot {
     currentPeriodStart: dateOf(s.current_period_start),
     currentPeriodEnd: dateOf(s.current_period_end),
     endedAt: s.ended_at ? dateOf(s.ended_at) : null,
+    ...(s.plan_code !== undefined ? { planCode: s.plan_code as PlanCode } : {}),
+    ...(scheduled !== undefined ? { scheduledChange: scheduled } : {}),
     version: s.version,
   };
+}
+
+/**
+ * M23 (DEFAULT M23, question 2): what an upgrade now charges: the new price less the unused part
+ * of the current period at the old price (never below 0), as Stripe's proration does.
+ */
+export function prorate(row: { amountCents: number; currentPeriodStart: Date; currentPeriodEnd: Date }, newAmountCents: number, now: Date): number {
+  const length = row.currentPeriodEnd.getTime() - row.currentPeriodStart.getTime();
+  const left = Math.min(Math.max(row.currentPeriodEnd.getTime() - now.getTime(), 0), length);
+  const credit = length > 0 ? Math.round((row.amountCents * left) / length) : 0;
+  return Math.max(0, newAmountCents - credit);
 }
 
 function readInvoice(value: unknown): InvoiceSnapshot {
@@ -315,7 +355,9 @@ export function createTestProvider(options: TestProviderOptions = {}): TestBilli
       const created = await getDb().transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`billing-test-pay:${request.checkoutId}`}, 0))`);
         const [paid] = await tx.select().from(billingTestSubscription).where(eq(billingTestSubscription.checkoutRef, request.checkoutId));
-        if (paid) return { row: paid, fresh: false };
+        if (paid) return { row: paid, fresh: false, trial: false };
+        // M23: during a trial the first period ends with the trial, and nothing is charged for it.
+        const trialEnd = request.trialEndsAt && request.trialEndsAt.getTime() > now.getTime() ? request.trialEndsAt : null;
         const [row] = await tx
           .insert(billingTestSubscription)
           .values({
@@ -329,17 +371,18 @@ export function createTestProvider(options: TestProviderOptions = {}): TestBilli
             card,
             status: 'active',
             currentPeriodStart: now,
-            currentPeriodEnd: addInterval(now, request.interval),
+            currentPeriodEnd: trialEnd ?? addInterval(now, request.interval),
             version: 1,
             createdAt: now,
             updatedAt: now,
           })
           .returning();
-        return { row: row!, fresh: true };
+        return { row: row!, fresh: true, trial: trialEnd !== null };
       });
       if (!created.fresh) return { outcome: 'already_paid', subscriptionId: created.row.id };
       const snap = snapshotOf(created.row);
-      await emit('invoice.paid', snap, now, invoiceOf(created.row, 'paid', now, { start: created.row.currentPeriodStart, end: created.row.currentPeriodEnd }));
+      const first = invoiceOf(created.row, 'paid', now, { start: created.row.currentPeriodStart, end: created.row.currentPeriodEnd });
+      await emit('invoice.paid', snap, now, created.trial ? { ...first, amount: 0 } : first);
       await emit('subscription.created', snap, now);
       return { outcome: 'paid', subscriptionId: created.row.id };
     },
@@ -347,7 +390,8 @@ export function createTestProvider(options: TestProviderOptions = {}): TestBilli
     async cancelAtPeriodEnd(subscriptionId) {
       const row = await change(subscriptionId, (r) => {
         if (!live(r)) throw new BillingProviderError('refused', 'This subscription has ended.');
-        return r.cancelAtPeriodEnd ? null : { cancelAtPeriodEnd: true };
+        // M23: a change scheduled for the period end is dropped: nothing renews.
+        return r.cancelAtPeriodEnd ? null : { cancelAtPeriodEnd: true, scheduledPlanCode: null, scheduledInterval: null, scheduledAmountCents: null };
       });
       await emit('subscription.updated', snapshotOf(row), new Date());
       return snapshotOf(row);
@@ -370,9 +414,42 @@ export function createTestProvider(options: TestProviderOptions = {}): TestBilli
     },
 
     async changePlan(subscriptionId, next) {
+      const now = new Date();
+      let invoice: WireInvoice | undefined;
       const row = await change(subscriptionId, (r) => {
         if (!live(r)) throw new BillingProviderError('refused', 'This subscription has ended.');
-        return { planCode: next.planCode, interval: next.interval, amountCents: next.amountCents, currency: next.currency };
+        if (r.status !== 'active') throw new BillingProviderError('refused', 'A subscription whose renewal failed cannot change its plan.');
+        if (next.when === 'period_end') {
+          // DEFAULT M23 (question 2): a downgrade waits for the period end; nothing is charged now.
+          if (r.scheduledPlanCode === next.planCode && r.scheduledInterval === next.interval) return null;
+          if (r.planCode === next.planCode && r.interval === next.interval) return { scheduledPlanCode: null, scheduledInterval: null, scheduledAmountCents: null };
+          return { scheduledPlanCode: next.planCode, scheduledInterval: next.interval, scheduledAmountCents: next.amountCents };
+        }
+        // An upgrade now: a new period from now, charged with the unused part of the old one credited.
+        const period = { start: now, end: addInterval(now, next.interval) };
+        invoice = { ...invoiceOf(r, 'paid', now, period), amount: prorate(r, next.amountCents, now), currency: next.currency };
+        return {
+          planCode: next.planCode,
+          interval: next.interval,
+          amountCents: next.amountCents,
+          currency: next.currency,
+          currentPeriodStart: period.start,
+          currentPeriodEnd: period.end,
+          scheduledPlanCode: null,
+          scheduledInterval: null,
+          scheduledAmountCents: null,
+        };
+      });
+      const snap = snapshotOf(row);
+      if (invoice) await emit('invoice.paid', snap, now, invoice);
+      await emit('subscription.updated', snap, now);
+      return snap;
+    },
+
+    async cancelScheduledChange(subscriptionId) {
+      const row = await change(subscriptionId, (r) => {
+        if (!live(r)) throw new BillingProviderError('refused', 'This subscription has ended.');
+        return r.scheduledPlanCode ? { scheduledPlanCode: null, scheduledInterval: null, scheduledAmountCents: null } : null;
       });
       await emit('subscription.updated', snapshotOf(row), new Date());
       return snapshotOf(row);
@@ -400,10 +477,18 @@ export function createTestProvider(options: TestProviderOptions = {}): TestBilli
           events.push({ type: 'subscription.updated' });
           return { status: 'past_due', currentPeriodStart: ended.start, currentPeriodEnd: ended.end };
         }
-        const next = { start: now, end: addInterval(now, r.interval) };
-        events.push({ type: 'invoice.paid', invoice: invoiceOf(r, 'paid', now, next) });
+        // M23: a change scheduled for the period end starts with this renewal, at its own price.
+        const scheduled = r.scheduledPlanCode && r.scheduledInterval ? { planCode: r.scheduledPlanCode, interval: r.scheduledInterval, amountCents: r.scheduledAmountCents } : null;
+        const interval = scheduled?.interval ?? r.interval;
+        const next = { start: now, end: addInterval(now, interval) };
+        const billed = scheduled ? { ...r, planCode: scheduled.planCode, interval, amountCents: scheduled.amountCents ?? r.amountCents } : r;
+        events.push({ type: 'invoice.paid', invoice: invoiceOf(billed, 'paid', now, next) });
         events.push({ type: 'subscription.updated' });
-        return { currentPeriodStart: next.start, currentPeriodEnd: next.end };
+        return {
+          currentPeriodStart: next.start,
+          currentPeriodEnd: next.end,
+          ...(scheduled ? { planCode: scheduled.planCode, interval, amountCents: billed.amountCents, scheduledPlanCode: null, scheduledInterval: null, scheduledAmountCents: null } : {}),
+        };
       });
       const snap = snapshotOf(row);
       for (const e of events) await emit(e.type, snap, now, e.invoice);

@@ -12,6 +12,8 @@
 
 import * as z from 'zod';
 
+import type { PLAN_CODES } from '../db/schema/common';
+
 import { stripeSecretKey, stripeWebhookSecret } from './config';
 import { redactEvent } from './redact';
 import { verifySignature } from './signature';
@@ -30,6 +32,8 @@ import {
 } from './types';
 
 const API = 'https://api.stripe.com/v1';
+type PlanCode = (typeof PLAN_CODES)[number];
+const STRIPE_PLAN_CODES = new Set<string>(['premium_student', 'pro_sifu', 'federation'] satisfies PlanCode[]);
 const TIMEOUT_MS = 10_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -110,6 +114,8 @@ export function subscriptionFromStripe(raw: unknown, version: number, eventAt: D
   const customerId = idOf(s.customer);
   if (!customerId) throw new Error('stripe: a subscription without a customer');
   const ref = s.metadata?.checkout_ref ?? null;
+  // M23: the plan the app wrote in the subscription's metadata at checkout and at a change of plan.
+  const plan = s.metadata?.plan_code ?? null;
   const status = stripeStatus(s.status);
   const endedSeconds = s.ended_at ?? (status === 'canceled' ? (s.canceled_at ?? null) : null);
   return {
@@ -122,6 +128,9 @@ export function subscriptionFromStripe(raw: unknown, version: number, eventAt: D
     currentPeriodStart: at(start),
     currentPeriodEnd: at(end),
     endedAt: status === 'canceled' ? (endedSeconds !== null ? at(endedSeconds) : eventAt) : null,
+    // Only when the metadata names it; a change at the period end is never scheduled at Stripe by
+    // this adapter (changePlan below), so the snapshot leaves scheduledChange out.
+    ...(plan && STRIPE_PLAN_CODES.has(plan) ? { planCode: plan as PlanCode } : {}),
     version,
   };
 }
@@ -280,7 +289,11 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
           metadata: { checkout_ref: request.checkoutId },
           // The session cannot be paid after the app's checkout expired (DEFAULT M22, question 7).
           expires_at: Math.floor(request.expiresAt.getTime() / 1000),
-          subscription_data: { metadata: { checkout_ref: request.checkoutId } },
+          // M23: a checkout that continues a Federation trial is charged first when the trial ends.
+          subscription_data: {
+            metadata: { checkout_ref: request.checkoutId, plan_code: request.planCode },
+            ...(request.trialEndsAt ? { trial_end: Math.floor(request.trialEndsAt.getTime() / 1000) } : {}),
+          },
         },
         `wcr-checkout-${request.checkoutId}`,
       );
@@ -305,12 +318,23 @@ export function createStripeProvider(options: StripeOptions = {}): BillingProvid
       const item = items[0];
       const product = idOf(item?.price?.product);
       if (!item?.id || !product) throw new BillingProviderError('unsupported', 'The Stripe subscription has no item to change.');
+      // DEFAULT M23 (question 2): a change at the period end would need a Stripe subscription
+      // schedule, which this adapter does not create; the test provider schedules it.
+      if (change.when !== 'now') throw new BillingProviderError('unsupported', 'A change at the period end is not available with Stripe test mode yet.');
+      const metadata = (current.metadata as Record<string, string> | undefined) ?? {};
       return snapshot(
         await call('POST', `/subscriptions/${encodeURIComponent(subscriptionId)}`, {
           items: [{ id: item.id, price_data: { currency: change.currency, unit_amount: change.amountCents, recurring: { interval: change.interval }, product } }],
-          proration_behavior: 'create_prorations',
+          // An upgrade now: a new period from now, the unused part of the old one credited and invoiced at once.
+          proration_behavior: 'always_invoice',
+          billing_cycle_anchor: 'now',
+          metadata: { ...metadata, plan_code: change.planCode },
         }),
       );
+    },
+    async cancelScheduledChange(subscriptionId) {
+      // Nothing is ever scheduled at Stripe by this adapter: the current state.
+      return snapshot(await call('GET', `/subscriptions/${encodeURIComponent(subscriptionId)}`));
     },
     verifyWebhook(body: string, headers: Headers, at = new Date()): VerifiedEvent {
       verifySignature(body, headers.get('stripe-signature'), stripeWebhookSecret(env), at);

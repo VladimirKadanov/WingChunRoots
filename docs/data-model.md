@@ -131,6 +131,17 @@
 | `organization_member_record` | Собствените полета на организацията за член: `membership_id` (уникален, `CASCADE`), `rank_label`, `school_city`, `import_id` (`SET NULL`). Никога публични; трият се при разделяне (DEFAULT M24, въпрос 9) |
 | `organization_teacher_claim` | Твърдение на организацията „този член е учил при този учител“: `organization_id`, `student_person_id`, `teacher_person_id` (всички `CASCADE`), `start_year`, `status` (`claimed_by_organization`, `withdrawn`), `withdrawn_at`, `withdrawn_by_user_id`, `withdraw_reason` (`organization`, `separation`), `import_id`, `created_by_user_id`. Най-много едно отворено твърдение за тройката (`organization_teacher_claim_open_key`). **Не е `teaching_relationship`** и не влиза в родословието (DEFAULT D12, DEFAULT M24, въпрос 4) |
 
+### Абонамент Federation и пробен период на федерация (M23)
+
+[ADR 0026](adr/0026-federation-billing.md). Правата са като при M22: само `app_rw`, `REVOKE ALL` за `app_public_ro`, нищо в публичен DTO или кеш.
+
+| Таблица или колона | Предназначение и важни колони |
+|---|---|
+| `federation_trial` | Пробният период на федерация, без карта (спецификация §10.2). Колони: `organization_id` (`CASCADE`; уникален индекс `federation_trial_organization_key` — **един пробен период на организация**), `months` (`CHECK` 6 или 12; по подразбиране 12, DEFAULT M23, въпрос 4), `starts_at` и `ends_at` (`CHECK` краят е след началото), `status` (`active`, `converted`, `ended`, `revoked`; `CHECK`: `ended_at` е празно точно при `active`), `grant_id` (правото `complimentary`, `SET NULL`), `started_by_user_id`, `reason` (1–500 знака, в одита), `ended_by_user_id`, `converted_subscription_id` (абонаментът, в който е продължил; `SET NULL`). Частичният индекс `federation_trial_active_idx` (`ends_at` при `active`) служи на дневната задача |
+| `billing_checkout.trial_ends_at` | Краят на пробния период, когато checkout-ът е започнат по време на него: първият период на абонамента свършва тогава, а първата фактура е 0 (DEFAULT M23, въпрос 3) |
+| `billing_subscription.scheduled_plan_code`, `scheduled_interval` | Смяна, планирана за края на периода (DEFAULT M23, въпрос 2). `CHECK` `billing_subscription_scheduled_change`: двете са попълнени заедно или са празни; плановете и интервалите са от списъците |
+| `billing_test_subscription.scheduled_plan_code`, `scheduled_interval`, `scheduled_amount_cents` | Същата смяна на страната на тестовия доставчик, с новата сума; подновяването я прилага. `CHECK`: трите заедно |
+
 ### Съгласия, известия и одит
 
 | Таблица | Предназначение и важни колони |
@@ -333,6 +344,10 @@
 Миграцията в M24 (след тази на M22):
 
 - `*_m24_organization_tools`: таблиците `organization_import`, `organization_import_row`, `organization_member_record` и `organization_teacher_claim`, с `CHECK` за състоянията, броевете, времената на края и оттеглянето, и частичния уникален индекс за едно отворено твърдение. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
+
+Миграцията в M23 (след тази на M24: при сливането с `main` е генерирана наново върху миграцията на M24, със същия SQL):
+
+- `*_m23_federation_billing`: таблицата `federation_trial` с `CHECK` и индексите си; колоните `trial_ends_at` в `billing_checkout`, `scheduled_plan_code` и `scheduled_interval` в `billing_subscription`, и същите със `scheduled_amount_cents` в `billing_test_subscription`, с техните `CHECK`. Накрая, на ръка, правата върху `federation_trial`: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 
 Поправка към коментара на миграция 1: там пише, че в облачната сесия, CI и локалните тестове миграцията сама създава PostGIS като суперпотребител. Това не е вярно: миграциите винаги вървят като `migrator` (`SET ROLE`), а PostGIS създава `scripts/db-bootstrap.sql` преди всяка миграция; `CREATE EXTENSION IF NOT EXISTS postgis` в миграцията само го потвърждава. Приложена миграция не се редактира, затова поправката е тук и в коментара на миграция 6.
 

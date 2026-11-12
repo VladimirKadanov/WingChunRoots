@@ -222,7 +222,12 @@ import {
   adminBillingList,
   billingAdminListInput,
   billingMineInput,
+  cancelPlanChange,
   cancelSubscription,
+  changePlanInput,
+  changeSubscriptionPlan,
+  organizationBilling,
+  organizationBillingInput,
   checkoutIdInput,
   checkoutInput,
   moveTestClock,
@@ -235,6 +240,7 @@ import {
   testPay,
   testPayInput,
 } from '../services/billing';
+import { adminFederationTrial, adminTrialInput, endFederationTrial, endTrialInput, startFederationTrial, startTrialInput } from '../services/federation-trials';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
@@ -973,6 +979,30 @@ export const router = {
       .route({ method: 'POST', path: '/billing/resume', summary: 'Take back a cancellation at the period end while the period runs: the subscription renews again; audited' })
       .input(subscriptionIdInput)
       .handler(({ context, input }) => resumeSubscription(context.principal, input, context.meta)),
+    // M23 (docs/adr/0026-federation-billing.md): an organization's billing, a change of plan or
+    // billing period, and taking back a scheduled change.
+    organization: signedIn
+      .route({
+        method: 'GET',
+        path: '/billing/organizations/{organizationId}',
+        summary:
+          "An organization's Federation plan in test mode, for its admins: its trial, its subscription, the payment history and, for an owner, monthly or yearly Federation to choose (proposed prices, not final); 404 for anyone else",
+      })
+      .input(organizationBillingInput)
+      .handler(({ context, input }) => organizationBilling(context.principal, input)),
+    changePlan: signedIn
+      .route({
+        method: 'POST',
+        path: '/billing/change-plan',
+        summary:
+          'Change the plan or billing period of your subscription (or of an organization you own): an upgrade (monthly to yearly, or a higher plan) takes effect now with proration; a downgrade at the end of the period; asking for the current plan takes back a scheduled change; no real charge; audited',
+      })
+      .input(changePlanInput)
+      .handler(({ context, input }) => changeSubscriptionPlan(context.principal, input, context.meta)),
+    cancelChange: signedIn
+      .route({ method: 'POST', path: '/billing/cancel-change', summary: 'Take back a change of plan or billing period scheduled for the end of the period; audited' })
+      .input(subscriptionIdInput)
+      .handler(({ context, input }) => cancelPlanChange(context.principal, input, context.meta)),
     adminList: adminWithSecondFactor
       .route({ method: 'GET', path: '/admin/billing', summary: 'Subscriptions in test mode, newest first, with their status and account type (admin with a verified second factor; read-only)' })
       .input(billingAdminListInput)
@@ -994,6 +1024,27 @@ export const router = {
       })
       .input(testClockInput)
       .handler(({ context, input }) => moveTestClock(context.principal, input, context.meta)),
+  },
+  // M23 (docs/adr/0026-federation-billing.md; specification §10.2): Federation trials without a card,
+  // set up by an administrator with a verified second factor.
+  federationTrials: {
+    adminGet: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/organizations/{organizationId}/trial', summary: "An organization's Federation trial and whether one can be started (administrator with a verified second factor)" })
+      .input(adminTrialInput)
+      .handler(({ context, input }) => adminFederationTrial(context.principal, input)),
+    start: adminWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/admin/organizations/trial/start',
+        summary:
+          'Start a Federation trial without a card for an approved federation that has no Federation and had no trial: 6 or 12 months (12 unless chosen), with a reason; its admins are told; audited',
+      })
+      .input(startTrialInput)
+      .handler(({ context, input }) => startFederationTrial(context.principal, input, context.meta)),
+    end: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/organizations/trial/end', summary: 'End a running Federation trial now, with a reason: its grant is revoked, nothing is deleted; audited' })
+      .input(endTrialInput)
+      .handler(({ context, input }) => endFederationTrial(context.principal, input, context.meta)),
   },
   // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
   // an organization's admin reaches only the organizations they administer (404 for any other).

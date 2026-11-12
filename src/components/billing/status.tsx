@@ -67,3 +67,18 @@ export function TestModeBanner({ label, children }: { label: string; children?: 
     </div>
   );
 }
+
+/**
+ * M23: the state of a Federation trial, as a mark and words: running (a ring with a short bar: it
+ * runs, then stops unless continued), continued as a subscription (the filled disc of an active
+ * subscription), ended or ended early (the dashed ring of an ended subscription).
+ */
+export function TrialStatusTag({ status, label }: { status: 'active' | 'converted' | 'ended' | 'revoked'; label: string }) {
+  const shape: Shape = status === 'active' ? 'ending' : status === 'converted' ? 'active' : 'ended';
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-sm border border-border-strong px-2 py-0.5 text-sm" data-testid="trial-status" data-status={status}>
+      <Mark shape={shape} />
+      {label}
+    </span>
+  );
+}

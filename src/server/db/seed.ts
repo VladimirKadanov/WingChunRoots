@@ -86,6 +86,7 @@ import {
   schoolStatDay,
   teachingRelationship,
   trainingPeriod,
+  federationTrial,
   trialInquiry,
 } from './schema';
 
@@ -112,6 +113,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   eventAttendance,
   eventInstructor,
   evidenceFile,
+  // M23: Federation trials (none in the demo data).
+  federationTrial,
   evidenceLink,
   invitation,
   lineage,

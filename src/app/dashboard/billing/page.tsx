@@ -4,7 +4,8 @@
 // invoices, and the paid plan of the account's type to choose. Every screen says "Test mode, no real
 // charge". ?checkout=<id> reports on a checkout the account just left (the provider's event is
 // applied by the worker within seconds; the page reads itself again meanwhile). Reads the session,
-// so it renders per request.
+// so it renders per request. M23: a change of plan or billing period scheduled for the period end,
+// and the changes the subscription may make (none while each account type has one monthly plan).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -23,7 +24,8 @@ import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { CancelForm, CheckoutForm, ConfirmingRefresh, ResumeForm } from './forms';
-import { CANCEL_FORM, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
+import { SubscriptionChanges } from './changes';
+import { CANCEL_CHANGE_FORM, CANCEL_FORM, changePlanFormId, CHECKOUT_FORM, RESUME_FORM } from './form-ids';
 
 export const instant = false;
 
@@ -62,6 +64,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
     readFormResult(RESUME_FORM, outcome),
   ]);
   const sub = mine.subscription;
+  const changeResults = Object.fromEntries(
+    await Promise.all((sub?.changeOptions ?? []).map(async (o) => [`${o.planCode}-${o.interval}`, await readFormResult(changePlanFormId(o.planCode, o.interval), outcome)] as const)),
+  );
+  const cancelChangeState = await readFormResult(CANCEL_CHANGE_FORM, outcome);
   const live = sub !== null && (sub.status === 'active' || sub.status === 'past_due');
   const wanted = one(query.plan) as PlanCode;
   const wantedPlan = Object.hasOwn(PLANS, wanted) ? PLANS[wanted] : null;
@@ -142,6 +148,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
                   <CancelForm subscriptionId={sub.id} planName={sub.planName} until={formatDay(sub.accessUntil ?? sub.currentPeriodEnd)} initial={cancelState} />
                 ) : null}
                 {sub.canResume ? <ResumeForm subscriptionId={sub.id} initial={resumeState} /> : null}
+                <SubscriptionChanges sub={sub} results={changeResults} cancelChangeResult={cancelChangeState} />
                 {sub.status === 'past_due' ? (
                   <p className="max-w-[60ch] text-sm text-fg-muted">
                     The test provider retries the payment. If it does not go through by the date above, the plan ends and your account has its

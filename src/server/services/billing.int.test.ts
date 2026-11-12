@@ -162,8 +162,9 @@ describe('checkout', () => {
     const student = await member('m22-refused');
     await expect(startCheckout(student.principal, { planCode: 'free_student' }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(startCheckout(student.principal, { planCode: 'pro_sifu' }, meta)).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    // DEFAULT M22 (question 3): Federation is planned (D12), so it is not sold.
-    await expect(startCheckout(student.principal, { planCode: 'federation', organizationId: '00000000-0000-4000-8000-000000000000' }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
+    // DEFAULT M22 (question 3) until M23: Federation was not sold. M23 (DEFAULT M23, question 1) sells it
+    // to an owner of an approved federation only: an account that administers no such organization gets 404.
+    await expect(startCheckout(student.principal, { planCode: 'federation', organizationId: '00000000-0000-4000-8000-000000000000' }, meta)).rejects.toMatchObject({ code: 'NOT_FOUND' });
     const unconfirmed = { ...student.principal, user: { ...student.principal.user, emailVerified: false } };
     await expect(startCheckout(unconfirmed, { planCode: 'premium_student' }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
 

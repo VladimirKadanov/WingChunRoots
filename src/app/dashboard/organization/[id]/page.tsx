@@ -141,7 +141,11 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
           <dt className="text-fg-muted">Plan</dt>
           <dd className="font-semibold" data-testid="organization-plan" data-plan={org.plan.code ?? 'none'}>
             {org.plan.label}
-            {org.plan.until ? <span className="font-normal text-fg-muted"> · until {formatDay(org.plan.until)}</span> : null}
+            {org.plan.until ? <span className="font-normal text-fg-muted"> · until {formatDay(org.plan.until)}</span> : null}{' '}
+            {/* M23: the organization's trial, subscription and payments (docs/adr/0026-federation-billing.md). */}
+            <Link href={`/dashboard/organization/${org.id}/billing`} className="link inline-flex min-h-11 items-center font-normal" data-testid="organization-billing-link">
+              Billing
+            </Link>
           </dd>
         </dl>
         <p className="mt-3 max-w-[60ch] text-sm text-fg-muted">

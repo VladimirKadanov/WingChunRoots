@@ -9,8 +9,8 @@ import { useActionState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { type FormState, IDLE } from '@/lib/form-state';
-import { grantOrganizationPlanAction, revokeOrganizationPlanAction } from './actions';
-import { GRANT_FORM, revokeForm } from './form-ids';
+import { endTrialAction, grantOrganizationPlanAction, revokeOrganizationPlanAction, startTrialAction } from './actions';
+import { GRANT_FORM, revokeForm, TRIAL_END_FORM, TRIAL_START_FORM } from './form-ids';
 
 const LABELS = { source: 'Kind', reason: 'Reason', startsOn: 'Starts', endsOn: 'Ends' };
 
@@ -54,6 +54,52 @@ export function RevokeForm({ organizationId, grantId, initial }: { organizationI
       <div>
         <SubmitButton pending={pending} pendingLabel="Revoking…" variant="danger">
           Revoke
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+const TRIAL_LABELS = { months: 'Length', reason: 'Reason' };
+
+/** M23: start a Federation trial without a card (specification §10.2). */
+export function TrialStartForm({ organizationId, months, defaultMonths, initial }: { organizationId: string; months: readonly number[]; defaultMonths: number; initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(startTrialAction, initial ?? IDLE);
+  useFocusOnError(TRIAL_START_FORM, state);
+  return (
+    <form id={TRIAL_START_FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5" data-testid="organization-trial-form">
+      <FormMessage form={TRIAL_START_FORM} state={state} labels={TRIAL_LABELS} />
+      <input type="hidden" name="organizationId" value={organizationId} />
+      <SelectField form={TRIAL_START_FORM} name="months" label={TRIAL_LABELS.months} state={state} autoComplete="off" defaultValue={state.values?.months ?? String(defaultMonths)} className="max-w-[20rem]">
+        {months.map((m) => (
+          <option key={m} value={String(m)}>
+            {m} months
+          </option>
+        ))}
+      </SelectField>
+      <TextField form={TRIAL_START_FORM} name="reason" label={TRIAL_LABELS.reason} state={state} autoComplete="off" maxLength={500} hint="Kept in the audit log." className="max-w-[40rem]" />
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Starting…">
+          Start the trial
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+/** M23: end a running trial now; the grant is revoked, nothing is deleted. */
+export function TrialEndForm({ organizationId, trialId, initial }: { organizationId: string; trialId: string; initial?: FormState | null }) {
+  const [state, action, pending] = useActionState(endTrialAction, initial ?? IDLE);
+  useFocusOnError(TRIAL_END_FORM, state);
+  return (
+    <form id={TRIAL_END_FORM} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="organization-trial-end-form">
+      <FormMessage form={TRIAL_END_FORM} state={state} single />
+      <input type="hidden" name="organizationId" value={organizationId} />
+      <input type="hidden" name="trialId" value={trialId} />
+      <TextField form={TRIAL_END_FORM} name="reason" label="Reason to end the trial" state={state} autoComplete="off" maxLength={500} hint="Members, school links and the public page stay; nothing is charged." className="max-w-[40rem]" />
+      <div>
+        <SubmitButton pending={pending} pendingLabel="Ending…" variant="danger">
+          End the trial now
         </SubmitButton>
       </div>
     </form>
