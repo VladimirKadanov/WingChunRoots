@@ -36,6 +36,16 @@ export interface ProjectOptions {
    * last, where no other spec or screenshot can see what it changed.
    */
   pilot?: boolean;
+  /**
+   * Builds only the vitals projects: the INP budget tests (tagged VITALS_TAG) on desktop-chromium,
+   * mobile-chromium and, in CI, mobile-webkit, in a run of their own right after the ordinary one
+   * (PW_VITALS=1; scripts/verify.sh runs it), one test at a time. An INP reading is the time the
+   * page's main thread takes to answer a tap; with other Playwright workers loading the same
+   * runner (their browsers, the web server they drive), it also measures their load, and the
+   * budget then fails now and then on readings of 208–360 ms that a re-run does not repeat. The
+   * tests, their budget and the 4x CPU throttling stay as they are; only the neighbours go.
+   */
+  vitals?: boolean;
 }
 
 /** Spec files that only their own project runs. */
@@ -63,15 +73,22 @@ export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.
 export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
 /** The pilot path of plan §2.2 (M13): only the pilot run (PW_PILOT=1) runs it. */
 export const PILOT_SPEC = '**/pilot.spec.ts';
+/**
+ * The tag of the INP budget tests (`test(title, { tag: VITALS_TAG }, …)`): only the vitals run
+ * (PW_VITALS=1) runs them, alone on the machine; the ordinary projects leave them out.
+ */
+export const VITALS_TAG = '@vitals';
+const VITALS_GREP = new RegExp(`${VITALS_TAG}\\b`);
 
 /**
- * Where a run's web server writes its log, and where its artifacts go: the exclusive run (`true`)
- * and the pilot run (`'pilot'`, M13) keep their own, so neither empties or overwrites those of a
+ * Where a run's web server writes its log, and where its artifacts go: the exclusive run (`true`),
+ * the pilot run (`'pilot'`, M13) and the vitals run (`'vitals'`) keep their own, so neither empties or overwrites those of a
  * run before it (the visual screenshots that scripts/visual-baselines.sh prints, the server log in
  * the CI artifact).
  */
-export function runPaths(run: boolean | 'pilot') {
+export function runPaths(run: boolean | 'pilot' | 'vitals') {
   if (run === 'pilot') return { serverLog: 'test-results/server-pilot.log', outputDir: './test-results/pilot', htmlReport: 'test-results/pilot-report' };
+  if (run === 'vitals') return { serverLog: 'test-results/server-vitals.log', outputDir: './test-results/vitals', htmlReport: 'test-results/vitals-report' };
   return run
     ? { serverLog: 'test-results/server-exclusive.log', outputDir: './test-results/exclusive', htmlReport: 'test-results/exclusive-report' }
     : { serverLog: 'test-results/server.log', outputDir: './test-results/artifacts', htmlReport: 'playwright-report' };
@@ -82,9 +99,10 @@ export function runPaths(run: boolean | 'pilot') {
  * (Pixel class) everywhere, mobile-webkit (iPhone) only in CI, on request the Chromium-only
  * `visual` and `screenshots` projects, which set their own viewports. With `exclusive`, only the
  * `exclusive` project (Chromium, 1440x900, one test at a time; EXCLUSIVE_SPECS). With `pilot`, only
- * the three device projects, running PILOT_SPEC alone (M13).
+ * the three device projects, running PILOT_SPEC alone (M13). With `vitals`, only the three device
+ * projects, running the VITALS_TAG tests alone, one at a time.
  */
-export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false, exclusive = false, pilot = false }: ProjectOptions): Project[] {
+export function buildProjects({ ci, chromiumExecutable, visual = false, screenshots = false, exclusive = false, pilot = false, vitals = false }: ProjectOptions): Project[] {
   const chromiumLaunch = chromiumExecutable
     ? { launchOptions: { executablePath: chromiumExecutable } }
     : {};
@@ -104,8 +122,12 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
       },
     ];
   }
-  // The pilot run: the same three devices as the ordinary run, with the pilot spec alone.
-  const select = pilot ? { testMatch: PILOT_SPEC } : { testIgnore: [VISUAL_SPEC, SCREENSHOTS_SPEC, ...EXCLUSIVE_SPECS, PILOT_SPEC] };
+  // The pilot run: the same three devices as the ordinary run, with the pilot spec alone. The vitals
+  // run: the same devices and specs as the ordinary run, with only the INP budget tests, which the
+  // ordinary run leaves out; one at a time (the run's `workers` is 1 as well, playwright.config.ts).
+  const ordinary = { testIgnore: [VISUAL_SPEC, SCREENSHOTS_SPEC, ...EXCLUSIVE_SPECS, PILOT_SPEC] };
+  const alone = vitals ? { ...ordinary, grep: VITALS_GREP, fullyParallel: false, workers: 1 } : { ...ordinary, grepInvert: VITALS_GREP };
+  const select = pilot ? { testMatch: PILOT_SPEC } : alone;
 
   const projects: Project[] = [
     {
@@ -127,7 +149,7 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
   if (ci) {
     projects.push({ name: 'mobile-webkit', ...select, use: { ...devices['iPhone 15'] } });
   }
-  if (pilot) return projects;
+  if (pilot || vitals) return projects;
 
   if (visual) {
     projects.push({
