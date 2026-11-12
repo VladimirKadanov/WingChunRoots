@@ -4,7 +4,9 @@
  * e2e/m05-explorer.spec.ts and a key press in the graph by e2e/m06-explorer-a11y.spec.ts; this spec
  * adds the opening of the search palette, from the home page's search field and from the app
  * shell's, with the same probes (web-vitals' onINP, else Event Timing, else a frame measure).
- * Read-only: it runs in the ordinary projects. docs/perf/web-vitals.md records the values.
+ * Read-only. Like the other INP budget tests it is tagged @vitals, so it runs in the vitals run
+ * (PW_VITALS=1, e2e/projects.ts VITALS_TAG), one test at a time with nothing else on the machine.
+ * docs/perf/web-vitals.md records the values.
  */
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -35,7 +37,7 @@ function report(where: string, result: InpResult) {
   });
 }
 
-test('@M13 opening the search palette responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
+test('@M13 opening the search palette responds with INP under 200 ms at 4x CPU throttling', { tag: '@vitals' }, async ({ page, browserName }) => {
   await installInpProbes(page);
   await page.goto('/');
   // Both fields are server-drawn buttons; they open the palette once their islands have hydrated.

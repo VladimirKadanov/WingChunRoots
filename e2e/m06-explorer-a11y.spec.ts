@@ -325,7 +325,7 @@ test.describe('keyboard (A)', () => {
     await expect.poll(() => announcement(page), 'the announcement names the teacher').toContain(`${chosen}.`);
   });
 
-  test('@M06 ArrowDown responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
+  test('@M06 ArrowDown responds with INP under 200 ms at 4x CPU throttling', { tag: '@vitals' }, async ({ page, browserName }) => {
     // Plan §5.8 (c), as the M05 selection INP: web-vitals' onINP where it is installed, else the Event
     // Timing entries, else (WebKit) the key-press frame measure. A large view (plan §4.8: a key move
     // must not cost more as the view grows): the Lineage view of Demo Lineage A, down from its root.
@@ -507,7 +507,7 @@ test.describe('selection (B)', () => {
     expect(await cardsUnderOverlays(page), 'every person whole on the canvas, clear of the legend and the buttons').toEqual([]);
   });
 
-  test('@M06 on a phone a selection that opens the bottom sheet responds with INP under 200 ms at 4x CPU throttling', async ({ page, browserName }) => {
+  test('@M06 on a phone a selection that opens the bottom sheet responds with INP under 200 ms at 4x CPU throttling', { tag: '@vitals' }, async ({ page, browserName }) => {
     // Plan §5.8 (c), as the M05 selection INP (installInpProbes, selectionInp): the person of
     // demo-two-lineages, then their two teachers, above the person and the sheet. The first
     // selection opens the sheet (the Drawer's first opening on the page), the others change it.
