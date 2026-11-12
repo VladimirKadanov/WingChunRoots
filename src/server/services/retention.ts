@@ -304,3 +304,28 @@ export async function purgeOldTrialData(
   );
   return { inquiries, counters };
 }
+
+/**
+ * M24 (DEFAULT M24 question 2; docs/adr/0027-organization-tools.md): ends the organization import
+ * previews past their expiry and clears the parsed fields of their rows (names, ranks, cities), so
+ * no preview keeps them longer than ORGANIZATION_IMPORT_PREVIEW_HOURS. The services expire an
+ * organization's own previews whenever it reads them; this catches the ones nobody opens again.
+ * Idempotent; returns how many imports ended.
+ */
+export async function expireOrganizationImports(db: Database, { batchSize = RETENTION_BATCH_SIZE }: { batchSize?: number } = {}): Promise<{ imports: number }> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('batchSize must be a positive integer');
+  let imports = 0;
+  for (;;) {
+    const result = await db.execute<{ n: number }>(sql`
+      WITH ended AS (
+        UPDATE organization_import SET status = 'expired', ended_at = now(), updated_at = now()
+         WHERE id IN (SELECT id FROM organization_import WHERE status = 'previewed' AND expires_at <= now() LIMIT ${batchSize} FOR UPDATE SKIP LOCKED)
+        RETURNING id),
+      cleared AS (
+        UPDATE organization_import_row SET data = NULL, updated_at = now() WHERE import_id IN (SELECT id FROM ended) RETURNING 1)
+      SELECT (SELECT count(*) FROM ended)::int AS n`);
+    const n = result.rows[0]?.n ?? 0;
+    imports += n;
+    if (n < batchSize) return { imports };
+  }
+}

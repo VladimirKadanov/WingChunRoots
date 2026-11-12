@@ -32,6 +32,7 @@
 | M20 | [M20 — Проверка за активност на школите](M20-school-activity.md) | M19 | в изпълнение (клон `m20-school-activity`; въпроси в [questions/M20.md](questions/M20.md)) |
 | M21 | [M21 — Пробни тренировки и основна статистика на школите](M21-trial-lessons.md) | M20 | в изпълнение (клон `m21-trial-lessons`; въпроси в [questions/M21.md](questions/M21.md)) |
 | M22 | [M22 — Плащания в тестов режим](M22-billing.md) | M21 | в изпълнение (клон `m22-billing`; въпроси в [questions/M22.md](questions/M22.md)) |
+| M24 | [M24 — Инструменти на организациите](M24-organization-tools.md) | M22 | в изпълнение (клон `m24-organization-tools`; въпроси в [questions/M24.md](questions/M24.md)) |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |
 
 След пилота работа извън етапите се записва в ADR и тук:

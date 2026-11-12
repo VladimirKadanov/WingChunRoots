@@ -49,6 +49,8 @@ import { approveRelationship, rejectRelationship, requestTeacher } from '../serv
 import { assignReviewCase } from '../services/review';
 import { type Account, createUser, key, meta, newLineage, ongoingFrom, principalOf } from '../services/relationships.test-support';
 import { grantOrganizationPlan } from '../services/organization-grants';
+import { commitImport, previewImport } from '../services/organization-import';
+import { organizationClaims } from '../services/organization-separation';
 import { addOrganizationAdmin, addOrganizationMember, applyOrganization, requestOrganizationSchool } from '../services/organizations';
 import { createSchool } from '../services/schools';
 import { requestTrial } from '../services/trial-lessons';
@@ -357,6 +359,24 @@ async function schoolLink() {
   const s = await draftSchool({ pro: true, status: 'active' });
   const link = await requestOrganizationSchool(org.owner.principal, { organizationId: org.organizationId, schoolSlug: s.slug }, meta);
   return { org, school: s, linkId: link.linkId };
+}
+
+/** M24: a previewed import of a Federation organization (fictional rows); `teacherSlug` adds a teacher claim. */
+async function organizationImport(opts: { teacherSlug?: string } = {}) {
+  const o = await organizationOf({ federation: true });
+  const tag = randomBytes(3).toString('hex').replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)]!);
+  const csv = `First_Name,Last_Name,Sifu_Database_ID\nDemo,Matrix ${tag},${opts.teacherSlug ? `/people/${opts.teacherSlug}` : ''}\n`;
+  const preview = await previewImport(o.owner.principal, { organizationId: o.organizationId, contentBase64: Buffer.from(csv).toString('base64') }, meta);
+  return { org: o, importId: preview.id };
+}
+
+/** M24: an open teacher claim of a Federation organization, from a committed import. */
+async function organizationClaim() {
+  const teacher = await actor('claimed-teacher', { sifu: true });
+  const imp = await organizationImport({ teacherSlug: teacher.slug! });
+  await commitImport(imp.org.owner.principal, { organizationId: imp.org.organizationId, importId: imp.importId }, meta);
+  const claims = await organizationClaims(imp.org.owner.principal, { organizationId: imp.org.organizationId });
+  return { org: imp.org, claimId: claims.claims[0]!.id };
 }
 
 /** M17: a Professional Sifu's published event in a city (a year ahead, so it is upcoming); with a poster when `poster`. */
@@ -1345,6 +1365,83 @@ const ROWS: Row[] = [
     },
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
+  // M24: organization tools. `party` is the owner of another organization (404, the same answer
+  // as for none); every member and staff account is 404 too. Leaving is the member's own.
+  ...(['imports', 'claims', 'analytics', 'heatmap'] as const).map(
+    (name): Row => ({
+      path: `organizationTools.${name}`,
+      make: async () => {
+        const o = await organizationOf({ federation: true });
+        return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId } };
+      },
+      expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+    }),
+  ),
+  {
+    // DEFAULT D08: analytics and the heatmap are Federation features.
+    path: 'organizationTools.analytics (no Federation plan)',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, input: { organizationId: o.organizationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ENTITLEMENT_REQUIRED', member: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizationTools.importPreview',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      return { owner: o.owner, party: await otherOrganizationAdmin(), input: { organizationId: o.organizationId, contentBase64: Buffer.from('First_Name,Last_Name\nDemo,Matrix Preview\n').toString('base64') } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    // DEFAULT D08: the upload needs the Federation plan.
+    path: 'organizationTools.importPreview (no Federation plan)',
+    make: async () => {
+      const o = await organizationOf({ active: true });
+      return { owner: o.owner, input: { organizationId: o.organizationId, contentBase64: Buffer.from('First_Name\nDemo\n').toString('base64') } };
+    },
+    expect: { ...signedInOnly, owner: 'ENTITLEMENT_REQUIRED', member: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  ...(['importGet', 'importCommit', 'importDiscard'] as const).map(
+    (name): Row => ({
+      path: `organizationTools.${name}`,
+      make: async () => {
+        const imp = await organizationImport();
+        return { owner: imp.org.owner, party: await otherOrganizationAdmin(), input: { organizationId: imp.org.organizationId, importId: imp.importId } };
+      },
+      expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+    }),
+  ),
+  {
+    path: 'organizationTools.importGet (an import of another organization, under its own id)',
+    make: async () => {
+      const imp = await organizationImport();
+      const other = await organizationOf({ federation: true });
+      return { owner: other.owner, input: { organizationId: other.organizationId, importId: imp.importId } };
+    },
+    expect: { ...signedInOnly, owner: 'NOT_FOUND', member: 'NOT_FOUND', admin: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizationTools.withdrawClaim',
+    make: async () => {
+      const c = await organizationClaim();
+      return { owner: c.org.owner, party: await otherOrganizationAdmin(), input: { organizationId: c.org.organizationId, claimId: c.claimId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'organizationTools.memberships', make: noInput, expect: own() },
+  {
+    // The member's own account leaves; the organization's owner ends it with organizations.endMember.
+    path: 'organizationTools.leave',
+    make: async () => {
+      const o = await organizationOf({ federation: true });
+      const member = await actor('org-leaving');
+      const m = await addOrganizationMember(o.owner.principal, { organizationId: o.organizationId, personSlug: member.slug! }, meta);
+      return { owner: member, party: o.owner, input: { membershipId: m.membershipId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   // M17: events. The public reads give public DTOs to everyone; a removed event is 404 for everyone.
   // Changes are the organizer's only (404 for any other account, the same answer as for none);
   // staff with a verified second factor remove an event with a reason.
@@ -1993,6 +2090,11 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/schools/actions.ts#answerOrganizationLinkAction', row: 'organizations.answerSchoolLink', form: (i) => ({ ...same(i), answer: 'accept' }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/admin/organizations/actions.ts#grantOrganizationPlanAction', row: 'organizations.grant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/organizations/actions.ts#revokeOrganizationPlanAction', row: 'organizations.revokeGrant', form: same, roles: ['anonymous', 'member', 'owner', 'adminNo2fa', 'admin'] },
+  // M24: the organization tools' buttons post the procedures' fields; `party` is another organization's owner.
+  { action: 'src/app/dashboard/organization/tools-actions.ts#commitImportAction', row: 'organizationTools.importCommit', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/tools-actions.ts#discardImportAction', row: 'organizationTools.importDiscard', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/tools-actions.ts#withdrawClaimAction', row: 'organizationTools.withdrawClaim', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/organization/tools-actions.ts#leaveOrganizationAction', row: 'organizationTools.leave', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   // M17: events. The forms post the procedures' fields (a city, not online); `party` is not used.
   { action: 'src/app/dashboard/events/actions.ts#createEventAction', row: 'events.create', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/events/actions.ts#updateEventAction', row: 'events.update', form: (i) => ({ ...same(i), where: 'city' }), roles: ['anonymous', 'member', 'owner'] },
@@ -2039,6 +2141,7 @@ const ACTIONS_ELSEWHERE: Record<string, string> = {
   'src/app/dashboard/teachers/invite/actions.ts#inviteTeacherAction': 'relationships.invite takes no object of another account (a new record); in the matrix over HTTP',
   'src/app/dashboard/instructor/actions.ts#requestInstructorAction': 'its form carries uploaded files; instructor.request is in the matrix and M10b E2E posts the form',
   'src/app/dashboard/organization/actions.ts#applyOrganizationAction': 'its form carries uploaded files; organizations.apply is in the matrix and M15 E2E posts the form',
+  'src/app/dashboard/organization/tools-actions.ts#previewImportAction': 'its form carries an uploaded file; organizationTools.importPreview is in the matrix and M24 E2E posts the form',
   'src/app/dashboard/schools/actions.ts#endOrganizationLinkAction':
     'the school side of organizations.endSchoolLink, whose row runs the organization side; the school side is in organizations.int.test.ts and M15 E2E',
 };
