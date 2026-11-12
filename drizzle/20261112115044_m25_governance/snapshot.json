@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "e34598a7-a6ef-4130-95ea-f48f106ca0f6",
+  "id": "613a3d48-e46c-4190-bad1-4586d1b5aef2",
   "prevIds": [
-    "d0be8a89-62f0-450d-bfc0-2e9dfbe8c23f"
+    "54775dd6-482a-4de6-9cf5-f697cd7ad862"
   ],
   "ddl": [
     {
@@ -75,6 +75,12 @@
     {
       "isRlsEnabled": false,
       "name": "billing_test_subscription",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "federation_trial",
       "entityType": "tables",
       "schema": "public"
     },
@@ -201,6 +207,30 @@
     {
       "isRlsEnabled": false,
       "name": "training_period",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "organization_import",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "organization_import_row",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "organization_member_record",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "organization_teacher_claim",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1291,6 +1321,19 @@
     {
       "type": "timestamp with time zone",
       "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "trial_ends_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "billing_checkout"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
       "default": "now()",
@@ -1978,6 +2021,32 @@
       "table": "billing_subscription"
     },
     {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "scheduled_plan_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "billing_subscription"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "scheduled_interval",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "billing_subscription"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -2186,6 +2255,45 @@
       "table": "billing_test_subscription"
     },
     {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "scheduled_plan_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "billing_test_subscription"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "scheduled_interval",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "billing_test_subscription"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "scheduled_amount_cents",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "billing_test_subscription"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -2210,6 +2318,188 @@
       "entityType": "columns",
       "schema": "public",
       "table": "billing_test_subscription"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "months",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "starts_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ends_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'active'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "grant_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "started_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ended_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ended_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "converted_subscription_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "federation_trial"
     },
     {
       "type": "uuid",
@@ -5239,6 +5529,578 @@
       "entityType": "columns",
       "schema": "public",
       "table": "training_period"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "created_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'previewed'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "file_sha256",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "file_bytes",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "row_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "valid_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "error_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "imported_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ended_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ended_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "import_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "row_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "data",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'[]'",
+      "generated": null,
+      "identity": null,
+      "name": "errors",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "person_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "membership_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "rank_label",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "school_city",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "import_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "organization_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "student_person_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "teacher_person_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "start_year",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'claimed_by_organization'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "import_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "created_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "withdrawn_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "withdrawn_by_user_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "withdraw_reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "organization_teacher_claim"
     },
     {
       "type": "uuid",
@@ -10810,6 +11672,132 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "organization_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "federation_trial_organization_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "ends_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"status\" = 'active'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "federation_trial_active_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "grant_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "federation_trial_grant_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "started_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "federation_trial_started_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "ended_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "federation_trial_ended_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "converted_subscription_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "federation_trial_converted_subscription_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "subject_user_id",
           "isExpression": false,
           "asc": true,
@@ -12744,6 +13732,328 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "training_period"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_import_organization_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "created_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_import_created_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "ended_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_import_ended_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "expires_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"status\" = 'previewed'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_import_open_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "import_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "row_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_import_row_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "person_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_import_row_person_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "membership_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_member_record_membership_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "import_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_member_record_import_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "organization_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "student_person_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "teacher_person_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"status\" = 'claimed_by_organization'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_teacher_claim_open_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "student_person_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_teacher_claim_student_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "teacher_person_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_teacher_claim_teacher_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "import_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_teacher_claim_import_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "created_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_teacher_claim_created_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "withdrawn_by_user_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "organization_teacher_claim_withdrawn_by_user_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "organization_teacher_claim"
     },
     {
       "nameExplicit": true,
@@ -15518,6 +16828,91 @@
     {
       "nameExplicit": false,
       "columns": [
+        "organization_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "federation_trial_organization_id_organization_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "grant_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "entitlement_grant",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "federation_trial_grant_id_entitlement_grant_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "started_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "federation_trial_started_by_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "ended_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "federation_trial_ended_by_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "converted_subscription_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "billing_subscription",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "federation_trial_7BwnK22PHKY3_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "subject_user_id"
       ],
       "schemaTo": "public",
@@ -16687,6 +18082,227 @@
       "entityType": "fks",
       "schema": "public",
       "table": "training_period"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "organization_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_import_organization_id_organization_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "created_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_import_created_by_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "ended_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_import_ended_by_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "import_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization_import",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_import_row_import_id_organization_import_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "person_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "person",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_import_row_person_id_person_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "membership_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization_membership",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_member_record_a4RpyCvljhgq_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "import_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization_import",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_member_record_smZKIAhxeQFq_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "organization_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_teacher_claim_organization_id_organization_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "student_person_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "person",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_teacher_claim_student_person_id_person_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "teacher_person_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "person",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "organization_teacher_claim_teacher_person_id_person_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "import_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "organization_import",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_teacher_claim_t3aCkuPADN8T_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "created_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_teacher_claim_created_by_user_id_auth_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "withdrawn_by_user_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "auth_user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "organization_teacher_claim_0ahVXkgiwLoh_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
     },
     {
       "nameExplicit": false,
@@ -18194,6 +19810,16 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "federation_trial_pkey",
+      "schema": "public",
+      "table": "federation_trial",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "entitlement_grant_pkey",
       "schema": "public",
       "table": "entitlement_grant",
@@ -18377,6 +20003,46 @@
       "name": "training_period_pkey",
       "schema": "public",
       "table": "training_period",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "organization_import_pkey",
+      "schema": "public",
+      "table": "organization_import",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "organization_import_row_pkey",
+      "schema": "public",
+      "table": "organization_import_row",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "organization_member_record_pkey",
+      "schema": "public",
+      "table": "organization_member_record",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "organization_teacher_claim_pkey",
+      "schema": "public",
+      "table": "organization_teacher_claim",
       "entityType": "pks"
     },
     {
@@ -18885,6 +20551,27 @@
       "table": "billing_subscription"
     },
     {
+      "value": "(\"scheduled_plan_code\" IS NULL) = (\"scheduled_interval\" IS NULL)",
+      "name": "billing_subscription_scheduled_change",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "billing_subscription"
+    },
+    {
+      "value": "\"scheduled_plan_code\" IS NULL OR \"scheduled_plan_code\" IN ('free_student', 'premium_student', 'free_sifu', 'pro_sifu', 'federation')",
+      "name": "billing_subscription_scheduled_plan_code_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "billing_subscription"
+    },
+    {
+      "value": "\"scheduled_interval\" IS NULL OR \"scheduled_interval\" IN ('month', 'year')",
+      "name": "billing_subscription_scheduled_interval_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "billing_subscription"
+    },
+    {
       "value": "\"card\" IN ('succeeds', 'declines', 'fails_at_renewal')",
       "name": "billing_test_subscription_card_check",
       "entityType": "checks",
@@ -18904,6 +20591,48 @@
       "entityType": "checks",
       "schema": "public",
       "table": "billing_test_subscription"
+    },
+    {
+      "value": "(\"scheduled_plan_code\" IS NULL) = (\"scheduled_interval\" IS NULL) AND (\"scheduled_plan_code\" IS NULL) = (\"scheduled_amount_cents\" IS NULL)",
+      "name": "billing_test_subscription_scheduled_change",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "billing_test_subscription"
+    },
+    {
+      "value": "\"status\" IN ('active', 'converted', 'ended', 'revoked')",
+      "name": "federation_trial_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "value": "\"months\" IN (6, 12)",
+      "name": "federation_trial_months_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "value": "\"ends_at\" > \"starts_at\"",
+      "name": "federation_trial_period",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "value": "(\"status\" = 'active') = (\"ended_at\" IS NULL)",
+      "name": "federation_trial_ended",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "federation_trial"
+    },
+    {
+      "value": "char_length(btrim(\"reason\")) BETWEEN 1 AND 500",
+      "name": "federation_trial_reason_length",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "federation_trial"
     },
     {
       "value": "num_nonnulls(\"subject_user_id\", \"subject_organization_id\") = 1",
@@ -19429,6 +21158,104 @@
       "entityType": "checks",
       "schema": "public",
       "table": "training_period"
+    },
+    {
+      "value": "\"status\" IN ('previewed', 'committed', 'discarded', 'expired')",
+      "name": "organization_import_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "value": "\"file_sha256\" ~ '^[0-9a-f]{64}$'",
+      "name": "organization_import_sha256_format",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "value": "\"row_count\" BETWEEN 0 AND 500 AND \"valid_count\" >= 0 AND \"error_count\" >= 0 AND \"valid_count\" + \"error_count\" = \"row_count\" AND \"imported_count\" BETWEEN 0 AND \"valid_count\"",
+      "name": "organization_import_counts",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "value": "\"file_bytes\" BETWEEN 0 AND 262144",
+      "name": "organization_import_file_bytes",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "value": "\"status\" = 'previewed' OR \"ended_at\" IS NOT NULL",
+      "name": "organization_import_ended_has_time",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import"
+    },
+    {
+      "value": "\"status\" IN ('valid', 'error', 'imported', 'skipped')",
+      "name": "organization_import_row_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "value": "\"row_number\" >= 2",
+      "name": "organization_import_row_number",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "value": "\"status\" <> 'imported' OR \"person_id\" IS NOT NULL",
+      "name": "organization_import_row_imported_has_person",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_import_row"
+    },
+    {
+      "value": "(\"rank_label\" IS NULL OR char_length(\"rank_label\") BETWEEN 1 AND 80) AND (\"school_city\" IS NULL OR char_length(\"school_city\") BETWEEN 1 AND 80)",
+      "name": "organization_member_record_lengths",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_member_record"
+    },
+    {
+      "value": "\"status\" IN ('claimed_by_organization', 'withdrawn')",
+      "name": "organization_teacher_claim_status_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "value": "\"student_person_id\" <> \"teacher_person_id\"",
+      "name": "organization_teacher_claim_not_self",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "value": "\"start_year\" IS NULL OR \"start_year\" BETWEEN 1900 AND 2100",
+      "name": "organization_teacher_claim_start_year",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "value": "(\"status\" = 'withdrawn') = (\"withdrawn_at\" IS NOT NULL) AND (\"status\" = 'withdrawn') = (\"withdraw_reason\" IS NOT NULL)",
+      "name": "organization_teacher_claim_withdrawn",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
+    },
+    {
+      "value": "\"withdraw_reason\" IS NULL OR \"withdraw_reason\" IN ('organization', 'separation')",
+      "name": "organization_teacher_claim_withdraw_reason_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "organization_teacher_claim"
     },
     {
       "value": "\"slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'",

@@ -137,6 +137,9 @@ export const NOTIFICATION_CATALOG = {
   'organization.admin_added': dashboardOnly('organizations'),
   'organization.school_requested': dashboardOnly('organizations'),
   'organization.school_answered': dashboardOnly('organizations'),
+  // M24: separations (DEFAULT M24 question 10: in the dashboard, no e-mail).
+  'organization.member_left': dashboardOnly('organizations'),
+  'organization.membership_ended': dashboardOnly('organizations'),
   // M17: events (DEFAULT M17, question 3: e-mail off by default; an account may switch it on).
   'event.published': mailed('events', 'notice'),
   'event.cancelled': mailed('events', 'notice'),
@@ -172,6 +175,15 @@ export const NOTIFICATION_CATALOG = {
   'billing.payment-failed': mailed('billing', 'notice'),
   'billing.payment-recovered': mailed('billing', 'notice'),
   'billing.ended': mailed('billing', 'notice'),
+  // M23 (docs/adr/0026-federation-billing.md): a change of plan or billing period, in the Billing
+  // category (never off); a Federation trial's start, its reminders 14 and 7 days before its end and
+  // its end, to the organization's admins in the Plan category (e-mail on by default, may be off;
+  // DEFAULT M23, question 5).
+  'billing.plan-changed': mailed('billing', 'notice'),
+  'billing.change-scheduled': mailed('billing', 'notice'),
+  'federation.trial-started': mailed('plan', 'notice'),
+  'federation.trial-ending': mailed('plan', 'notice'),
+  'federation.trial-ended': mailed('plan', 'notice'),
   // M25: governance (docs/adr/0028-governance.md; DEFAULT M25, question 6). A nomination and its
   // answer are between a teacher and a student (Teachers and students); a succession request and
   // its decision change who administers a school, so they are account notices whose e-mail is never

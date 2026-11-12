@@ -2,7 +2,8 @@
 // app's own test provider, in place of a provider's hosted checkout. The plan, its proposed price
 // and the three test cards (succeeds, declines, fails at renewal); "Test mode, no real charge" at
 // the top. Only the account that started the checkout sees it (billing.testCheckout; 404 for any
-// other). Reads the session, so it renders per request.
+// other). Reads the session, so it renders per request. M23: an organization's checkout goes back
+// to the organization's billing page, and one during a trial says nothing is charged before it ends.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -14,6 +15,7 @@ import { TEST_CHECKOUT_LOAD_ERROR } from '@/components/account/load-errors/test-
 import { PageRedirect } from '@/components/account/page-redirect';
 import { TestModeBanner } from '@/components/billing/status';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageReadOne } from '@/server/rpc/form';
@@ -48,7 +50,7 @@ export default async function TestCheckoutPage({ params, searchParams }: { param
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[40rem]">
         <p className="eyebrow">
-          <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center">
+          <Link href={checkout.backHref} className="link inline-flex min-h-11 items-center">
             Billing
           </Link>
         </p>
@@ -67,23 +69,30 @@ export default async function TestCheckoutPage({ params, searchParams }: { param
             <span className="text-sm text-fg-muted">{checkout.priceLabel}</span>
           </p>
           <p className="text-sm text-fg-muted">Renews {checkout.interval === 'year' ? 'every year' : 'every month'} until you cancel. You can cancel at any time.</p>
+          {checkout.trialEndsAt ? (
+            // M23 (DEFAULT M23, question 3): a checkout during the trial charges nothing before it ends.
+            <p className="text-ui" data-testid="test-checkout-trial">
+              The organization&apos;s trial runs until <span data-visual-date="">{formatDay(checkout.trialEndsAt)}</span>. Nothing is charged today; the first
+              payment of {checkout.amount} is due then.
+            </p>
+          ) : null}
         </section>
         <div className="mt-8">
           {checkout.status === 'open' ? (
-            <TestPayForm checkoutId={checkout.id} amount={checkout.amount} cards={checkout.cards} initial={initial} />
+            <TestPayForm checkoutId={checkout.id} amount={checkout.trialEndsAt ? null : checkout.amount} cards={checkout.cards} initial={initial} />
           ) : (
             <div className="grid justify-items-start gap-3" data-testid="test-checkout-closed">
               <p className="text-ui">
                 {checkout.status === 'completed' ? 'This checkout is paid.' : 'This checkout has expired. Nothing was charged.'}
               </p>
-              <Link href={`/dashboard/billing?checkout=${checkout.id}#outcome`} className={buttonVariants({ variant: 'secondary' })}>
+              <Link href={`${checkout.backHref}?checkout=${checkout.id}#outcome`} className={buttonVariants({ variant: 'secondary' })}>
                 Back to billing
               </Link>
             </div>
           )}
         </div>
         <p className="mt-6 text-ui">
-          <Link href={`/dashboard/billing?checkout=${checkout.id}&cancelled=1#outcome`} className="link inline-flex min-h-11 items-center">
+          <Link href={`${checkout.backHref}?checkout=${checkout.id}&cancelled=1#outcome`} className="link inline-flex min-h-11 items-center">
             Leave the checkout
           </Link>
         </p>

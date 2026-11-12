@@ -585,6 +585,66 @@ const STATES: readonly ScreenState[] = [
       await expect(page.getByTestId('admin-billing-events').filter({ visible: true })).toBeVisible();
     },
   },
+  ...(['owner', 'admin'] as const).map(
+    (who): ScreenState => ({
+      // M23: the billing page of demo-federation-north (its Federation test plan), as its owner sees
+      // it (what Federation gives now and the monthly and yearly offers) and as an admin who is not
+      // an owner reads it (no form). Nothing is bought.
+      name: `organization-billing-${who}`,
+      milestone: 'M23',
+      async reach(page) {
+        const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM organization WHERE slug = 'demo-federation-north'`);
+        expect(rows.rows).toHaveLength(1);
+        await signInAs(page, who === 'owner' ? 'demo-federation-owner' : 'demo-organization-admin');
+        await page.goto(`/dashboard/organization/${rows.rows[0]!.id}/billing`);
+        await expect(page.getByTestId('organization-billing-plan').filter({ visible: true })).toHaveAttribute('data-plan', 'federation');
+      },
+    }),
+  ),
+  ...(['import', 'analytics', 'heatmap'] as const).map(
+    (tool): ScreenState => ({
+      // M24: the organization tools of demo-federation-north as demo-federation-owner sees them
+      // (the template and the claims, the counts, the squares); nothing is imported.
+      name: `organization-${tool}`,
+      milestone: 'M24',
+      async reach(page) {
+        const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM organization WHERE slug = 'demo-federation-north'`);
+        expect(rows.rows).toHaveLength(1);
+        await signInAs(page, 'demo-federation-owner');
+        await page.goto(`/dashboard/organization/${rows.rows[0]!.id}/${tool}`);
+        await expect(page.getByTestId(`organization-${tool}`).filter({ visible: true })).toBeVisible();
+      },
+    }),
+  ),
+  {
+    // M23: the administrator's page of demo-federation-north with its trial section (no trial can
+    // start: it holds Federation already). Nothing is started.
+    name: 'admin-organization-trial',
+    milestone: 'M23',
+    async reach(page) {
+      const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM organization WHERE slug = 'demo-federation-north'`);
+      expect(rows.rows).toHaveLength(1);
+      await signInAs(page, 'admin');
+      await page.goto(`/admin/organizations/${rows.rows[0]!.id}`);
+      await expect(page.getByTestId('admin-organization-trial').filter({ visible: true })).toBeVisible();
+    },
+  },
+  {
+    // M24: the preview of a fictional file of two rows, one with a problem (nothing is imported).
+    name: 'organization-import-preview',
+    milestone: 'M24',
+    async reach(page) {
+      const rows = await getDb().execute<{ id: string }>(sql`SELECT id::text AS id FROM organization WHERE slug = 'demo-federation-north'`);
+      expect(rows.rows).toHaveLength(1);
+      const organizationId = rows.rows[0]!.id;
+      await signInAs(page, 'demo-federation-owner');
+      const csv = 'First_Name,Last_Name,Chinese_Name,Start_Year,Current_Rank,Sifu_Database_ID\nDemo,Preview Student,示範,2016,Demo first level,/people/demo-hub-a\nDemo,Second Preview,,not-a-year,,\n';
+      const preview = await apiPost(page, '/organizations/imports/preview', { organizationId, contentBase64: Buffer.from(csv).toString('base64') });
+      expect(preview.status(), await preview.text()).toBe(200);
+      await page.goto(`/dashboard/organization/${organizationId}/import/${((await preview.json()) as { id: string }).id}`);
+      await expect(page.getByTestId('organization-import-detail').filter({ visible: true })).toBeVisible();
+      },
+    },
   {
     // M25: a nomination as digital successor, waiting for the nominee's answer: a new student and a
     // fictional owner made for this screen (their nomination written straight to the database, so no

@@ -575,6 +575,29 @@ export function purchasablePlans(audience: PlanDefinition['audience']): PlanCode
     .map((p) => p.code);
 }
 
+/**
+ * M23 (DEFAULT M23, question 1; docs/adr/0026-federation-billing.md): the plans an organization may
+ * buy: Federation, monthly or yearly, for an approved federation, by its owner. The plan as a whole
+ * stays 'planned' on /plans (bulk import, the heatmap and its other features are later
+ * milestones); what the subscription gives now is what an active Federation grant gives now: the
+ * member and school administration of M15 and the organization's events of M17
+ * (FEDERATION_BENEFITS_NOW). The price stays a proposal (DEFAULT D09).
+ */
+export const ORGANIZATION_PURCHASABLE_PLANS: readonly PlanCode[] = ['federation'];
+
+/**
+ * M23 (CLAUDE.md §11): what a Federation subscription or trial gives an organization now, the
+ * only benefits its billing page names.
+ */
+export const FEDERATION_BENEFITS_NOW: readonly string[] = [
+  'Manage the organization’s members: public people as leader, officials or members',
+  'Link affiliated schools that accept the link',
+  'Publish the organization’s events without a monthly limit',
+];
+
+/** M23: an interval's words, "a month" or "a year". */
+export const INTERVAL_WORDS: Readonly<Record<BillingInterval, string>> = { month: 'a month', year: 'a year' };
+
 /** "$19.00" (cents of US dollars); another currency reads "19.00 EUR". */
 export function formatAmount(cents: number, currency: string): string {
   const value = (cents / 100).toFixed(2);

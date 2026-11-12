@@ -87,6 +87,7 @@ import { photoOf, publicPhotoRefs } from './photo-refs';
 import { idempotencyKey, keyReused } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 import { notify, notifyEach } from './notify';
+import { accountOfPerson, separateMembership } from './organization-separation-core';
 
 // --- Words ---------------------------------------------------------------------------------------
 
@@ -336,8 +337,9 @@ export async function adminIdsOf(db: Executor, organizationId: string): Promise<
  * takes it before any other row), with the account's role; 404 for an organization it does not
  * administer, whatever exists (one organization's admin never learns about another's).
  */
-async function managed(tx: Executor, p: Principal, organizationId: string): Promise<{ org: OrgRow & { version: string }; role: OrganizationAdminRole }> {
-  const org = await organizationRow(tx, organizationId, true);
+/** The organization this account administers (404 for any other); its row locked unless `lock` is false (a read). */
+export async function managed(tx: Executor, p: Principal, organizationId: string, lock = true): Promise<{ org: OrgRow & { version: string }; role: OrganizationAdminRole }> {
+  const org = await organizationRow(tx, organizationId, lock);
   if (!org) throw notFound();
   const role = await adminRoleOf(tx, org.id, p.user.id);
   if (!role) throw notFound();
@@ -345,7 +347,7 @@ async function managed(tx: Executor, p: Principal, organizationId: string): Prom
 }
 
 /** Member and school administration: approved, and an active Federation grant (DEFAULT D08). */
-async function requireAdministration(tx: Executor, org: OrgRow): Promise<void> {
+export async function requireAdministration(tx: Executor, org: OrgRow): Promise<void> {
   if (org.status !== 'active') throw new ServiceError('CONFLICT', 'Members and schools are managed once the organization is approved.');
   const plan = await organizationPlan({ kind: 'organization', organizationId: org.id }, { db: tx });
   if (!plan.plan) {
@@ -353,7 +355,7 @@ async function requireAdministration(tx: Executor, org: OrgRow): Promise<void> {
   }
 }
 
-async function tellAdmins(tx: Transaction, organizationId: string, template: NotificationKind, payload: Record<string, unknown>, except: readonly string[] = []): Promise<void> {
+export async function tellAdmins(tx: Transaction, organizationId: string, template: NotificationKind, payload: Record<string, unknown>, except: readonly string[] = []): Promise<void> {
   const ids = (await adminIdsOf(tx, organizationId)).filter((id) => !except.includes(id));
   if (ids.length > 0) await notifyEach(tx, ids, template, payload);
 }
@@ -576,7 +578,8 @@ export interface ManagedOrganization {
   administrationNote: string | null;
   application: ApplicationView | null;
   admins: { id: string; userId: string; label: string; role: OrganizationAdminRole; roleLabel: string; you: boolean }[];
-  members: { id: string; person: PersonRef; role: OrganizationMemberRole; roleLabel: string; startsOn: string | null; endsOn: string | null; current: boolean }[];
+  /** M24: `recordOnly` is a private record without an account (an import): it has no public page to link. */
+  members: { id: string; person: PersonRef; role: OrganizationMemberRole; roleLabel: string; startsOn: string | null; endsOn: string | null; current: boolean; recordOnly: boolean }[];
   schools: { id: string; schoolId: string; slug: string; name: string; city: string; countryCode: string; status: SchoolLinkStatus; statusLabel: string }[];
   countries: readonly { code: string; name: string }[];
   kinds: { value: OrganizationKind; label: string }[];
@@ -633,6 +636,11 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
     .orderBy(sql`(${organizationMembership.endsOn} IS NOT NULL)`, sql`CASE ${organizationMembership.role} WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END`, asc(organizationMembership.createdAt))
     .limit(ORGANIZATION_LIST_LIMIT);
   const refs = await peopleRefs(memberRows.map((m) => m.personId));
+  const shown = new Set(
+    memberRows.length === 0
+      ? []
+      : (await db.execute<{ id: string }>(sql`SELECT id::text AS id FROM v_public_person WHERE id = ANY (${SQL_IDS(memberRows.map((m) => m.personId))})`)).rows.map((r) => r.id),
+  );
   const today = isoDay(new Date());
   const links = await db.execute<{ id: string; school_id: string; slug: string; name: string; city: string; country_code: string; status: SchoolLinkStatus }>(sql`
     SELECT l.id, l.school_id, s.slug, s.name, pl.name AS city, pl.country_code, l.status
@@ -665,7 +673,7 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
       const person = refs.get(m.personId);
       if (!person) return [];
       const current = membershipIsCurrent(m, today);
-      return [{ id: m.id, person, role: m.role, roleLabel: MEMBER_ROLE_LABELS[m.role], startsOn: m.startsOn, endsOn: m.endsOn, current }];
+      return [{ id: m.id, person, role: m.role, roleLabel: MEMBER_ROLE_LABELS[m.role], startsOn: m.startsOn, endsOn: m.endsOn, current, recordOnly: !shown.has(m.personId) }];
     }),
     schools: links.rows.map((l) => ({ id: l.id, schoolId: l.school_id, slug: l.slug, name: l.name, city: l.city, countryCode: l.country_code, status: l.status, statusLabel: LINK_STATUS_LABELS[l.status] })),
     countries: COUNTRIES,
@@ -958,7 +966,7 @@ export async function endOrganizationMember(principal: Principal | null, raw: z.
     const { org } = await managed(tx, p, input.organizationId);
     await requireAdministration(tx, org);
     const [row] = await tx
-      .select({ id: organizationMembership.id, startsOn: organizationMembership.startsOn, endsOn: organizationMembership.endsOn })
+      .select({ id: organizationMembership.id, personId: organizationMembership.personId, startsOn: organizationMembership.startsOn, endsOn: organizationMembership.endsOn })
       .from(organizationMembership)
       .where(and(eq(organizationMembership.id, input.membershipId), eq(organizationMembership.organizationId, org.id)))
       .for('update');
@@ -968,6 +976,9 @@ export async function endOrganizationMember(principal: Principal | null, raw: z.
     // A membership that starts later than today ends on its first day (ends_on >= starts_on).
     const endsOn = row.startsOn !== null && row.startsOn > today ? row.startsOn : today;
     await tx.update(organizationMembership).set({ endsOn, updatedAt: new Date() }).where(eq(organizationMembership.id, row.id));
+    // M24 (DEFAULT M24 question 9): a separation removes the organization's own fields and claims
+    // about the person; the membership, the person and every teaching relationship stay.
+    const separated = await separateMembership(tx, { membershipId: row.id, organizationId: org.id, personId: row.personId, actorUserId: p.user.id });
     await writeAudit(tx, {
       action: 'organization.member_end',
       actorUserId: p.user.id,
@@ -975,10 +986,14 @@ export async function endOrganizationMember(principal: Principal | null, raw: z.
       subjectType: 'organization',
       subjectId: org.id,
       before: { membershipId: row.id, endsOn: row.endsOn },
-      after: { endsOn },
+      after: { endsOn, fieldsRemoved: separated.fieldsRemoved, claimsWithdrawn: separated.claimsWithdrawn },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
+    // M24 (DEFAULT M24 question 10): the person's own account, when the record has one, is told
+    // (not when that account ended its own membership).
+    const account = await accountOfPerson(tx, row.personId);
+    if (account && account !== p.user.id) await notify(tx, account, 'organization.membership_ended', { organizationId: org.id });
     return { membershipId: row.id };
   });
   invalidatePublic([ORGANIZATIONS_TAG], 'procedure');

@@ -222,7 +222,12 @@ import {
   adminBillingList,
   billingAdminListInput,
   billingMineInput,
+  cancelPlanChange,
   cancelSubscription,
+  changePlanInput,
+  changeSubscriptionPlan,
+  organizationBilling,
+  organizationBillingInput,
   checkoutIdInput,
   checkoutInput,
   moveTestClock,
@@ -235,8 +240,12 @@ import {
   testPay,
   testPayInput,
 } from '../services/billing';
+import { adminFederationTrial, adminTrialInput, endFederationTrial, endTrialInput, startFederationTrial, startTrialInput } from '../services/federation-trials';
 import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
+import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
+import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
+import { claimsInput, leaveInput, leaveOrganization, myMemberships, organizationClaims, withdrawClaim, withdrawClaimInput } from '../services/organization-separation';
 import {
   addAdminInput,
   addMemberInput,
@@ -1059,6 +1068,30 @@ export const router = {
       .route({ method: 'POST', path: '/billing/resume', summary: 'Take back a cancellation at the period end while the period runs: the subscription renews again; audited' })
       .input(subscriptionIdInput)
       .handler(({ context, input }) => resumeSubscription(context.principal, input, context.meta)),
+    // M23 (docs/adr/0026-federation-billing.md): an organization's billing, a change of plan or
+    // billing period, and taking back a scheduled change.
+    organization: signedIn
+      .route({
+        method: 'GET',
+        path: '/billing/organizations/{organizationId}',
+        summary:
+          "An organization's Federation plan in test mode, for its admins: its trial, its subscription, the payment history and, for an owner, monthly or yearly Federation to choose (proposed prices, not final); 404 for anyone else",
+      })
+      .input(organizationBillingInput)
+      .handler(({ context, input }) => organizationBilling(context.principal, input)),
+    changePlan: signedIn
+      .route({
+        method: 'POST',
+        path: '/billing/change-plan',
+        summary:
+          'Change the plan or billing period of your subscription (or of an organization you own): an upgrade (monthly to yearly, or a higher plan) takes effect now with proration; a downgrade at the end of the period; asking for the current plan takes back a scheduled change; no real charge; audited',
+      })
+      .input(changePlanInput)
+      .handler(({ context, input }) => changeSubscriptionPlan(context.principal, input, context.meta)),
+    cancelChange: signedIn
+      .route({ method: 'POST', path: '/billing/cancel-change', summary: 'Take back a change of plan or billing period scheduled for the end of the period; audited' })
+      .input(subscriptionIdInput)
+      .handler(({ context, input }) => cancelPlanChange(context.principal, input, context.meta)),
     adminList: adminWithSecondFactor
       .route({ method: 'GET', path: '/admin/billing', summary: 'Subscriptions in test mode, newest first, with their status and account type (admin with a verified second factor; read-only)' })
       .input(billingAdminListInput)
@@ -1080,6 +1113,27 @@ export const router = {
       })
       .input(testClockInput)
       .handler(({ context, input }) => moveTestClock(context.principal, input, context.meta)),
+  },
+  // M23 (docs/adr/0026-federation-billing.md; specification §10.2): Federation trials without a card,
+  // set up by an administrator with a verified second factor.
+  federationTrials: {
+    adminGet: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/organizations/{organizationId}/trial', summary: "An organization's Federation trial and whether one can be started (administrator with a verified second factor)" })
+      .input(adminTrialInput)
+      .handler(({ context, input }) => adminFederationTrial(context.principal, input)),
+    start: adminWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/admin/organizations/trial/start',
+        summary:
+          'Start a Federation trial without a card for an approved federation that has no Federation and had no trial: 6 or 12 months (12 unless chosen), with a reason; its admins are told; audited',
+      })
+      .input(startTrialInput)
+      .handler(({ context, input }) => startFederationTrial(context.principal, input, context.meta)),
+    end: adminWithSecondFactor
+      .route({ method: 'POST', path: '/admin/organizations/trial/end', summary: 'End a running Federation trial now, with a reason: its grant is revoked, nothing is deleted; audited' })
+      .input(endTrialInput)
+      .handler(({ context, input }) => endFederationTrial(context.principal, input, context.meta)),
   },
   // M15: organizations (docs/adr/0018-organizations.md). The public reads give public DTOs only;
   // an organization's admin reaches only the organizations they administer (404 for any other).
@@ -1157,6 +1211,54 @@ export const router = {
       .route({ method: 'POST', path: '/admin/organizations/revoke-grant', summary: "Revoke an organization's plan with a reason (admin, audited); members, school links and the public page stay" })
       .input(organizationRevokeInput)
       .handler(({ context, input }) => revokeOrganizationPlan(context.principal, input, context.meta)),
+  },
+  // M24: organization tools (docs/adr/0027-organization-tools.md): the bulk import, the analytics,
+  // the heatmap and the separation rules. Every procedure checks the account itself; another
+  // organization's import, claim or numbers are 404, the same answer as for none.
+  organizationTools: {
+    imports: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/imports', summary: "The organization's bulk imports, newest first, and the template's columns (its admins only)" })
+      .input(importListInput)
+      .handler(({ context, input }) => listImports(context.principal, input)),
+    importGet: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/imports/{importId}', summary: 'One import with its rows and their errors; the parsed fields only while the preview is open' })
+      .input(importIdInput)
+      .handler(({ context, input }) => getImport(context.principal, input)),
+    importPreview: signedIn
+      .route({ method: 'POST', path: '/organizations/imports/preview', summary: 'Check a CSV file of the template (base64) row by row and keep the preview for 24 hours; nothing is imported yet (approval and the Federation plan)' })
+      .input(importPreviewInput)
+      .handler(({ context, input }) => previewImport(context.principal, input, context.meta)),
+    importCommit: signedIn
+      .route({ method: 'POST', path: '/organizations/imports/commit', summary: "Import a preview's valid rows: private, unclaimed records, memberships and teacher claims that are never verified relationships (audited)" })
+      .input(importIdInput)
+      .handler(({ context, input }) => commitImport(context.principal, input, context.meta)),
+    importDiscard: signedIn
+      .route({ method: 'POST', path: '/organizations/imports/discard', summary: 'End a preview without importing anything; its rows are cleared (audited)' })
+      .input(importIdInput)
+      .handler(({ context, input }) => discardImport(context.principal, input, context.meta)),
+    claims: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/claims', summary: "The organization's teacher claims from its imports: claimed by the organization, never verified (its admins only)" })
+      .input(claimsInput)
+      .handler(({ context, input }) => organizationClaims(context.principal, input)),
+    withdrawClaim: signedIn
+      .route({ method: 'POST', path: '/organizations/claims/withdraw', summary: "Withdraw one of the organization's teacher claims (audited)" })
+      .input(withdrawClaimInput)
+      .handler(({ context, input }) => withdrawClaim(context.principal, input, context.meta)),
+    analytics: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/analytics', summary: "Counts of the organization's own members, schools, public verification states and claims, by country, city and month (Federation plan)" })
+      .input(insightsInput)
+      .handler(({ context, input }) => organizationAnalytics(context.principal, input)),
+    heatmap: base
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/heatmap', summary: "The density of the organization's linked schools in squares of 1°, at their cities' centres; squares under 3 schools are counted by country only (Federation plan)" })
+      .input(insightsInput)
+      .handler(({ context, input }) => organizationHeatmap(context.principal, input)),
+    memberships: base
+      .route({ method: 'GET', path: '/organizations/memberships', summary: "The signed-in account's own memberships, what each organization records about it, and the separation rules" })
+      .handler(({ context }) => myMemberships(context.principal)),
+    leave: signedIn
+      .route({ method: 'POST', path: '/organizations/memberships/leave', summary: "End your own membership today; the organization's fields and claims about you go, your teachers, students and profile stay (audited)" })
+      .input(leaveInput)
+      .handler(({ context, input }) => leaveOrganization(context.principal, input, context.meta)),
   },
   // M17: the event calendar (docs/adr/0020-events.md). The public reads give public DTOs only
   // (v_public_event); an event is changed and cancelled only by its organizer, removed by staff.

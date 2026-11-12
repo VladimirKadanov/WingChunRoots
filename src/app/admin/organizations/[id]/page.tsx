@@ -2,7 +2,8 @@
 // D04), its plan grants with their reasons, and the forms to give a test or complimentary
 // Federation plan (DEFAULT D09: "Proposed price (not final)"; nothing is charged) or to revoke one
 // (DEFAULT D08: revoking closes only member and school administration; members, links and the
-// public page stay). For administrators with a verified second factor.
+// public page stay). For administrators with a verified second factor. M23: the organization's
+// Federation trial without a card (federationTrials.adminGet, start, end; docs/adr/0026-federation-billing.md).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -18,8 +19,9 @@ import { PLANS } from '@/server/entitlements/plans';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { GRANT_FORM, revokeForm } from '../form-ids';
-import { GrantForm, RevokeForm } from '../forms';
+import { TrialStatusTag } from '@/components/billing/status';
+import { GRANT_FORM, revokeForm, TRIAL_END_FORM, TRIAL_START_FORM } from '../form-ids';
+import { GrantForm, RevokeForm, TrialEndForm, TrialStartForm } from '../forms';
 
 export const instant = false;
 
@@ -35,6 +37,8 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<str
 const DONE: Record<string, string> = {
   granted: 'Federation was given. The organization’s admins can manage members and schools while it holds.',
   revoked: 'The grant was revoked. Members, school links and the public page stay; member and school administration is closed.',
+  'trial-started': 'The Federation trial started. The organization’s admins were told; no card is needed and nothing is charged.',
+  'trial-ended': 'The trial was ended. Members, school links and the public page stay; nothing was charged.',
 };
 
 function NotFound() {
@@ -70,6 +74,8 @@ export default async function AdminOrganizationPage({ params, searchParams }: Pr
   const org = read;
   if (!org) return <LoadError {...ORGANIZATION_LOAD_ERRORS.admin} retryHref={page} />;
   const grantResult = await readFormResult(GRANT_FORM, query.outcome);
+  const trial = await pageRead(serverClient(await headers(), guard.principal).federationTrials.adminGet({ organizationId: id }));
+  const [trialStartResult, trialEndResult] = await Promise.all([readFormResult(TRIAL_START_FORM, query.outcome), readFormResult(TRIAL_END_FORM, query.outcome)]);
   const grants = await Promise.all(org.grants.map(async (g) => ({ ...g, initial: await readFormResult(revokeForm(g.id), query.outcome) })));
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
   const federation = PLANS.federation;
@@ -148,6 +154,40 @@ export default async function AdminOrganizationPage({ params, searchParams }: Pr
               </ul>
             )}
           </section>
+
+          {trial ? (
+            <section aria-labelledby="organization-trial" className="grid gap-4 border-t border-border-subtle pt-6" data-testid="admin-organization-trial">
+              <h2 id="organization-trial" className="font-display text-2xl">
+                {federation.name} trial
+              </h2>
+              <p className="max-w-[60ch] text-sm text-fg-muted">
+                A trial without a card. The organization’s admins are told when it starts, 14 and 7 days before it ends and when it ends. If no owner
+                subscribes, it simply ends: nothing is charged and nothing is deleted.
+              </p>
+              {trial.trial ? (
+                <div className="grid gap-2" data-testid="organization-trial" data-status={trial.trial.status}>
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-semibold">{trial.trial.months} months</span>
+                    <TrialStatusTag status={trial.trial.status} label={trial.trial.statusLabel} />
+                  </p>
+                  <p className="text-sm text-fg-muted" data-visual-date="">
+                    From {formatDay(trial.trial.startsAt)} to {formatDay(trial.trial.endsAt)}
+                  </p>
+                  <p className="max-w-[60ch] text-sm" data-visual-date="">
+                    {trial.trial.summary}
+                  </p>
+                  {trial.canEnd ? <TrialEndForm organizationId={org.id} trialId={trial.trial.id} initial={trialEndResult} /> : null}
+                </div>
+              ) : null}
+              {trial.canStart ? (
+                <TrialStartForm organizationId={org.id} months={trial.months} defaultMonths={trial.defaultMonths} initial={trialStartResult} />
+              ) : !trial.trial ? (
+                <p className="max-w-[60ch] rounded-sm bg-surface-2 px-4 py-4 text-ui" data-testid="organization-trial-note">
+                  {trial.startNote}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           <section aria-labelledby="organization-give" className="grid gap-4 border-t border-border-subtle pt-6">
             <h2 id="organization-give" className="font-display text-2xl">

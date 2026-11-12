@@ -15,6 +15,15 @@
 // - billing_test_subscription: the test provider's own store (src/server/billing/test-provider.ts),
 //   the "provider side" of a test subscription; the app's tables never read it.
 //
+// - federation_trial (M23; docs/adr/0026-federation-billing.md): a Federation trial of an
+//   organization, without a card (specification §10.2): its period, the complimentary grant it
+//   gives, and how it ended (converted into a subscription, ran out, or revoked by an administrator).
+//
+// M23 adds to billing_subscription and billing_test_subscription the change of plan or billing
+// period that is scheduled for the end of the period (DEFAULT M23, question 2), and to
+// billing_checkout the end of the organization's trial, when the checkout continues one (the first
+// charge then comes at the trial's end).
+//
 // Only app_rw reads and writes these tables; app_public_ro has no privilege on any of them.
 
 import { sql } from 'drizzle-orm';
@@ -31,6 +40,8 @@ import {
   BILLING_PROVIDERS,
   BILLING_SUBSCRIPTION_STATUSES,
   BILLING_TEST_CARDS,
+  FEDERATION_TRIAL_MONTHS,
+  FEDERATION_TRIAL_STATUSES,
   idColumn,
   inList,
   PLAN_CODES,
@@ -84,6 +95,8 @@ export const billingCheckout = pgTable(
     providerSubscriptionId: text('provider_subscription_id'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    /** M23: the end of the organization's trial this checkout continues; nothing is charged before it. */
+    trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
     ...timestamps(),
   },
   (t) => [
@@ -126,6 +139,9 @@ export const billingSubscription = pgTable(
     providerVersion: bigint('provider_version', { mode: 'number' }).notNull(),
     /** The plan grant (source 'stripe') this subscription drives; its ends_at is the paid-through date. */
     grantId: uuid('grant_id').references(() => entitlementGrant.id, { onDelete: 'set null' }),
+    /** M23 (DEFAULT M23, question 2): the plan and billing period that start at current_period_end. */
+    scheduledPlanCode: text('scheduled_plan_code', { enum: PLAN_CODES }),
+    scheduledInterval: text('scheduled_interval', { enum: BILLING_INTERVALS }),
     ...timestamps(),
   },
   (t) => [
@@ -149,6 +165,9 @@ export const billingSubscription = pgTable(
     check('billing_subscription_period', sql`${t.currentPeriodEnd} > ${t.currentPeriodStart}`),
     check('billing_subscription_ended', sql`(${t.status} = 'canceled') = (${t.endedAt} IS NOT NULL AND ${t.endReason} IS NOT NULL)`),
     check('billing_subscription_past_due_since', sql`${t.status} <> 'past_due' OR ${t.pastDueSince} IS NOT NULL`),
+    check('billing_subscription_scheduled_change', sql`(${t.scheduledPlanCode} IS NULL) = (${t.scheduledInterval} IS NULL)`),
+    check('billing_subscription_scheduled_plan_code_check', sql`${t.scheduledPlanCode} IS NULL OR ${inList(t.scheduledPlanCode.name, PLAN_CODES)}`),
+    check('billing_subscription_scheduled_interval_check', sql`${t.scheduledInterval} IS NULL OR ${inList(t.scheduledInterval.name, BILLING_INTERVALS)}`),
   ],
 );
 
@@ -234,6 +253,10 @@ export const billingTestSubscription = pgTable(
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }).notNull(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     version: bigint('version', { mode: 'number' }).notNull(),
+    /** M23: the change the test provider applies at the period end (DEFAULT M23, question 2). */
+    scheduledPlanCode: text('scheduled_plan_code', { enum: PLAN_CODES }),
+    scheduledInterval: text('scheduled_interval', { enum: BILLING_INTERVALS }),
+    scheduledAmountCents: integer('scheduled_amount_cents'),
     ...timestamps(),
   },
   (t) => [
@@ -241,5 +264,52 @@ export const billingTestSubscription = pgTable(
     check('billing_test_subscription_card_check', inList(t.card.name, BILLING_TEST_CARDS)),
     check('billing_test_subscription_status_check', inList(t.status.name, BILLING_SUBSCRIPTION_STATUSES)),
     check('billing_test_subscription_period', sql`${t.currentPeriodEnd} > ${t.currentPeriodStart}`),
+    check(
+      'billing_test_subscription_scheduled_change',
+      sql`(${t.scheduledPlanCode} IS NULL) = (${t.scheduledInterval} IS NULL) AND (${t.scheduledPlanCode} IS NULL) = (${t.scheduledAmountCents} IS NULL)`,
+    ),
+  ],
+);
+
+/**
+ * M23 (specification §10.2; docs/adr/0026-federation-billing.md): a Federation trial without a card.
+ * An administrator starts it for an approved federation; it gives a complimentary Federation grant
+ * from starts_at to ends_at. DEFAULT M23 (question 4): one trial per organization, ever.
+ */
+export const federationTrial = pgTable(
+  'federation_trial',
+  {
+    id: idColumn(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    months: integer('months').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    status: text('status', { enum: FEDERATION_TRIAL_STATUSES }).notNull().default('active'),
+    /** The complimentary Federation grant of the trial. */
+    grantId: uuid('grant_id').references(() => entitlementGrant.id, { onDelete: 'set null' }),
+    startedByUserId: uuid('started_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    /** The administrator's reason, kept in the audit log too. */
+    reason: text('reason').notNull(),
+    /** When it stopped being active: converted, ran out (ends_at) or revoked. */
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    endedByUserId: uuid('ended_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    /** The subscription it was converted into (the organization subscribed during the trial). */
+    convertedSubscriptionId: uuid('converted_subscription_id').references(() => billingSubscription.id, { onDelete: 'set null' }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('federation_trial_organization_key').on(t.organizationId),
+    index('federation_trial_active_idx').on(t.endsAt).where(sql`${t.status} = 'active'`),
+    index('federation_trial_grant_id_idx').on(t.grantId),
+    index('federation_trial_started_by_user_id_idx').on(t.startedByUserId),
+    index('federation_trial_ended_by_user_id_idx').on(t.endedByUserId),
+    index('federation_trial_converted_subscription_id_idx').on(t.convertedSubscriptionId),
+    check('federation_trial_status_check', inList(t.status.name, FEDERATION_TRIAL_STATUSES)),
+    check('federation_trial_months_check', sql.raw(`"months" IN (${FEDERATION_TRIAL_MONTHS.join(', ')})`)),
+    check('federation_trial_period', sql`${t.endsAt} > ${t.startsAt}`),
+    check('federation_trial_ended', sql`(${t.status} = 'active') = (${t.endedAt} IS NULL)`),
+    check('federation_trial_reason_length', sql`char_length(btrim(${t.reason})) BETWEEN 1 AND 500`),
   ],
 );

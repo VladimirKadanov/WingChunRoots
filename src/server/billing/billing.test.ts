@@ -14,7 +14,7 @@ import { BillingConfigError, billingProviderName, checkBillingSettings, stripeSe
 import { redactEvent } from './redact';
 import { signPayload, verifySignature, WEBHOOK_TOLERANCE_SECONDS } from './signature';
 import { createStripeProvider, formEncode, normalizeStripeEvent, stripeStatus } from './stripe';
-import { addInterval, normalizeTestEvent } from './test-provider';
+import { addInterval, normalizeTestEvent, prorate } from './test-provider';
 import { WebhookSignatureError } from './types';
 
 const fakeKey = (prefix: string) => [prefix, randomBytes(12).toString('hex')].join('_');
@@ -217,6 +217,60 @@ describe('the Stripe adapter', () => {
     expect(String(cancel.init.body)).toBe('cancel_at_period_end=true');
   });
 
+  it('M23: a checkout during a trial sets trial_end and plan_code; a change now prorates; a change at the period end is refused', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    let answer: Record<string, unknown> = { id: 'cs_test_Demo0003', url: 'https://checkout.stripe.com/c/pay/cs_test_Demo0003', livemode: false };
+    const stripe = createStripeProvider({
+      env: { STRIPE_SECRET_KEY: fakeKey('sk_test'), STRIPE_WEBHOOK_SECRET: fakeKey('whsec') },
+      fetch: async (url, init) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json' } });
+      },
+    });
+    const trialEndsAt = new Date(Date.now() + 90 * 86_400_000);
+    await stripe.createCheckout({
+      checkoutId: '0190a5c0-0000-7000-8000-00000000fed1',
+      planCode: 'federation',
+      planName: 'Federation',
+      interval: 'year',
+      amountCents: 99000,
+      currency: 'usd',
+      customerId: null,
+      successUrl: 'http://localhost:3000/dashboard/organization/x/billing#outcome',
+      cancelUrl: 'http://localhost:3000/dashboard/organization/x/billing#outcome',
+      expiresAt: new Date(Date.now() + 60 * 60_000),
+      trialEndsAt,
+    });
+    const form = new URLSearchParams(String(calls[0]!.init.body));
+    expect(form.get('subscription_data[trial_end]')).toBe(String(Math.floor(trialEndsAt.getTime() / 1000)));
+    expect(form.get('subscription_data[metadata][plan_code]')).toBe('federation');
+    expect(form.get('line_items[0][price_data][recurring][interval]')).toBe('year');
+
+    answer = {
+      id: 'sub_Demo0002',
+      object: 'subscription',
+      livemode: false,
+      status: 'active',
+      customer: 'cus_Demo0002',
+      cancel_at_period_end: false,
+      metadata: { checkout_ref: '0190a5c0-0000-7000-8000-00000000fed1', plan_code: 'federation' },
+      items: { data: [{ id: 'si_Demo0002', price: { product: 'prod_Demo0002', recurring: { interval: 'month' } }, current_period_start: 1794470400, current_period_end: 1797148800 }] },
+    };
+    const change = { planCode: 'federation' as const, planName: 'Federation', interval: 'year' as const, amountCents: 99000, currency: 'usd' };
+    await stripe.changePlan('sub_Demo0002', { ...change, when: 'now' });
+    const post = new URLSearchParams(String(calls.at(-1)!.init.body));
+    expect(calls.at(-1)!.url).toBe('https://api.stripe.com/v1/subscriptions/sub_Demo0002');
+    expect(post.get('proration_behavior')).toBe('always_invoice');
+    expect(post.get('billing_cycle_anchor')).toBe('now');
+    expect(post.get('items[0][id]')).toBe('si_Demo0002');
+    expect(post.get('items[0][price_data][unit_amount]')).toBe('99000');
+    expect(post.get('metadata[plan_code]')).toBe('federation');
+    const before = calls.length;
+    await expect(stripe.changePlan('sub_Demo0002', { ...change, interval: 'month', amountCents: 9900, when: 'period_end' })).rejects.toMatchObject({ code: 'unsupported' });
+    // Only the GET of the current state; nothing was changed.
+    expect(calls.slice(before).every((c) => (c.init.method ?? 'GET') === 'GET')).toBe(true);
+  });
+
   it('cannot be made with a live key', () => {
     expect(() => createStripeProvider({ env: { STRIPE_SECRET_KEY: fakeKey('sk_live'), STRIPE_WEBHOOK_SECRET: fakeKey('whsec') } })).toThrow(/live key/);
   });
@@ -255,6 +309,15 @@ describe('the test provider', () => {
     expect(addInterval(new Date('2026-01-31T09:00:00Z'), 'month').toISOString()).toBe('2026-02-28T09:00:00.000Z');
     expect(addInterval(new Date('2026-11-11T09:00:00Z'), 'month').toISOString()).toBe('2026-12-11T09:00:00.000Z');
     expect(addInterval(new Date('2028-02-29T09:00:00Z'), 'year').toISOString()).toBe('2029-03-01T09:00:00.000Z');
+  });
+
+  it('M23: credits the unused part of the current period on a change now', () => {
+    const row = { amountCents: 9900, currentPeriodStart: new Date('2026-11-01T00:00:00Z'), currentPeriodEnd: new Date('2026-12-01T00:00:00Z') };
+    expect(prorate(row, 99000, new Date('2026-11-01T00:00:00Z'))).toBe(99000 - 9900);
+    expect(prorate(row, 99000, new Date('2026-11-16T00:00:00Z'))).toBe(99000 - 4950);
+    expect(prorate(row, 99000, new Date('2026-12-05T00:00:00Z'))).toBe(99000);
+    // Never below zero.
+    expect(prorate({ ...row, amountCents: 99000 }, 9900, new Date('2026-11-02T00:00:00Z'))).toBe(0);
   });
 
   it('reads its own events and refuses a live or malformed one', () => {

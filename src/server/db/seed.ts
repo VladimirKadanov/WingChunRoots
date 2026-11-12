@@ -58,8 +58,12 @@ import {
   notificationPreference,
   organization,
   organizationAdmin,
+  organizationImport,
+  organizationImportRow,
+  organizationMemberRecord,
   organizationMembership,
   organizationSchool,
+  organizationTeacherClaim,
   passportCertificate,
   passportExam,
   passportRank,
@@ -88,6 +92,7 @@ import {
   successionRequest,
   teachingRelationship,
   trainingPeriod,
+  federationTrial,
   trialInquiry,
 } from './schema';
 
@@ -115,6 +120,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   eventAttendance,
   eventInstructor,
   evidenceFile,
+  // M23: Federation trials (none in the demo data).
+  federationTrial,
   evidenceLink,
   invitation,
   lineage,
@@ -124,8 +131,13 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   notificationPreference,
   organization,
   organizationAdmin,
+  // M24: the organization tools (no demo rows; emptied like every table).
+  organizationImport,
+  organizationImportRow,
+  organizationMemberRecord,
   organizationMembership,
   organizationSchool,
+  organizationTeacherClaim,
   passportCertificate,
   passportExam,
   passportRank,

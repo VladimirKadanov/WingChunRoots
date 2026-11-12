@@ -24,7 +24,8 @@ export function TestPayForm({
   initial,
 }: {
   checkoutId: string;
-  amount: string;
+  /** Null during a trial (M23): nothing is charged today. */
+  amount: string | null;
   cards: { card: string; label: string; number: string }[];
   initial?: FormState | null;
 }) {
@@ -76,7 +77,7 @@ export function TestPayForm({
       </fieldset>
       <div>
         <SubmitButton pending={pending} pendingLabel="Paying with the test card…">
-          Pay {amount} in test mode
+          {amount ? `Pay ${amount} in test mode` : 'Subscribe with the test card'}
         </SubmitButton>
       </div>
     </form>

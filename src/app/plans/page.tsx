@@ -16,6 +16,9 @@
 // has "Choose this plan", a link to /dashboard/billing, where a signed-in account of that type
 // starts a checkout in test mode (no real charge). The page stays static: the link is the same for
 // every visitor, and the billing page decides who may buy what.
+//
+// M23 (docs/adr/0026-federation-billing.md): Federation stays planned here as a whole; a line
+// under "For organizations" points the owner of an approved federation to its billing page.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -338,7 +341,17 @@ export default function PlansPage() {
               <h2 id="organizations-heading" className="font-display text-2xl sm:text-3xl">
                 For organizations
               </h2>
-              <p className="max-w-[60ch] text-ui">For associations and federations with affiliated schools. It is not part of the pilot.</p>
+              <p className="max-w-[60ch] text-ui">For associations and federations with affiliated schools. Most of it is planned.</p>
+              {/* M23 (docs/adr/0026-federation-billing.md; DEFAULT M23, question 1): the owner of an
+                  approved federation subscribes, in test mode, from the organization's billing page,
+                  for what the plan gives now. The link is the same for every visitor. */}
+              <p className="max-w-[60ch] text-ui text-fg-muted">
+                The owner of an approved federation can subscribe in test mode, with no real charge, from{' '}
+                <Link href="/dashboard/organization" className="link text-fg">
+                  the organization&rsquo;s billing page
+                </Link>
+                , where what it gives now is listed.
+              </p>
             </header>
             <div className="grid gap-5 sm:grid-cols-2 sm:gap-x-8">
               <PlanEntry plan={federation} plannedLabel={catalog.plannedLabel} />
