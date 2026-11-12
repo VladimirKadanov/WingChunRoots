@@ -74,6 +74,14 @@ check "scripts/verify.sh runs the pilot last, after the ordinary and the exclusi
   grep -q "pnpm e2e \"\$@\" || return 1" /tmp/m13-run-e2e.$$ &&
   grep -q "PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests \"\$@\" || return 1" /tmp/m13-run-e2e.$$ &&
   tail -n 4 /tmp/m13-run-e2e.$$ | grep -q "PW_PILOT=1 pnpm e2e$"; rc=$?; rm -f /tmp/m13-run-e2e.$$; exit $rc'
+check "the INP budget tests (@vitals) run in a run of their own, one at a time, right after the ordinary run, and in no other run" bash -c '
+  grep -q "export const VITALS_TAG = '\''@vitals'\''" e2e/projects.ts &&
+  grep -q "grep: VITALS_GREP, fullyParallel: false, workers: 1" e2e/projects.ts && grep -q "grepInvert: VITALS_GREP" e2e/projects.ts &&
+  grep -q "process.env.PW_VITALS === '\''1'\''" playwright.config.ts && grep -q "workers: vitals ? 1 : workers" playwright.config.ts &&
+  for f in e2e/m05-explorer.spec.ts e2e/m06-explorer-a11y.spec.ts e2e/m13-vitals.spec.ts; do
+    [ "$(grep -c "INP under 200 ms at 4x CPU throttling'\'', { tag: '\''@vitals'\'' }" "$f")" = "$(grep -c "INP under 200 ms at 4x CPU throttling'\''" "$f")" ] || exit 1
+  done &&
+  awk "/^run_e2e\\(\\) \\{/,/^\\}/" scripts/verify.sh | grep -A3 "^  pnpm e2e \"\$@\" || return 1" | grep -q "PW_VITALS=1 pnpm e2e --pass-with-no-tests \"\$@\" || return 1"'
 check "scripts/verify.sh M13 includes everything of all (every check and the whole E2E suite)" \
   grep -q 'if \[ "$target" = "all" \] || \[ "$target" = "M13" \]; then' scripts/verify.sh
 check "the leak scan reads the sitemap, Open Graph, JSON-LD, the city-only private points, the evidence key and the pilot server log" bash -c '
