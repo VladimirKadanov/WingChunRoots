@@ -345,7 +345,7 @@
 
 - `*_m24_organization_tools`: таблиците `organization_import`, `organization_import_row`, `organization_member_record` и `organization_teacher_claim`, с `CHECK` за състоянията, броевете, времената на края и оттеглянето, и частичния уникален индекс за едно отворено твърдение. Накрая, на ръка, правата: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 
-Миграцията в M23 (след тази на M24):
+Миграцията в M23 (след тази на M24: при сливането с `main` е генерирана наново върху миграцията на M24, със същия SQL):
 
 - `*_m23_federation_billing`: таблицата `federation_trial` с `CHECK` и индексите си; колоните `trial_ends_at` в `billing_checkout`, `scheduled_plan_code` и `scheduled_interval` в `billing_subscription`, и същите със `scheduled_amount_cents` в `billing_test_subscription`, с техните `CHECK`. Накрая, на ръка, правата върху `federation_trial`: `app_rw` получава `SELECT`, `INSERT`, `UPDATE`, `DELETE`, а `REVOKE ALL` ги затваря за `app_public_ro`. Само SQL за PostgreSQL 16+.
 
