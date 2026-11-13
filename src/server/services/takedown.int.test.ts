@@ -16,6 +16,7 @@ import { uuidv7 } from '../db/ids';
 import { auditLog, consentRecord, contentReport, notification, person, personName, reviewNote, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { personProfile } from './lineage';
+import { consentWithdraw } from './privacy';
 import { profileUpdate } from './profile';
 import { approveRelationship, requestTeacher } from './relationships';
 import { key, member, meta, newLineage, ongoingFrom, staff } from './relationships.test-support';
@@ -203,6 +204,20 @@ describe('take down and restore', () => {
     expect(back.visibility).toBe('involved_only');
   });
 
+  it('withdrawing the publication consent on the privacy page while held is kept for the restore', async () => {
+    const owner = await member('takedown-consent');
+    const moderator = await staff('takedown-consent-mod', 'moderator');
+    await takeDownProfile(moderator.principal, { personId: owner.personId, reason: REASON }, meta);
+    expect((await rowOf(owner.personId)).takenDownVisibility).toBe('public');
+    const result = await consentWithdraw(owner.principal, { kinds: ['publication'] }, meta);
+    // Nothing public changes (the record is hidden already), but the choice waits for the restore.
+    expect(result.profileHidden).toBe(false);
+    expect((await rowOf(owner.personId)).takenDownVisibility).toBe('involved_only');
+    const back = await restoreProfile(moderator.principal, { personId: owner.personId, reason: 'Resolved.' }, meta);
+    expect(back.visibility).toBe('involved_only');
+    expect(await publicIds(owner.personId)).toEqual([]);
+  });
+
   it('an approval that would publish both ends of a link leaves a held person hidden', async () => {
     const teacher = await member('takedown-teacher', { sifu: true });
     const student = await member('takedown-student', { hidden: true });
@@ -215,9 +230,12 @@ describe('take down and restore', () => {
     expect(link?.status).toBe('verified');
     expect(await publicIds(teacher.personId, student.personId)).toEqual([teacher.personId]);
     expect((await rowOf(student.personId)).takenDownAt).not.toBeNull();
-    // The restore then publishes what the approval would have: nothing was lost.
+    // The restore then publishes what the approval would have: nothing was lost (the student never withdrew
+    // the consent to publish; a student who had would stay hidden, below).
+    expect((await rowOf(student.personId)).takenDownVisibility).toBe('public');
     const back = await restoreProfile(moderator.principal, { personId: student.personId, reason: 'Resolved.' }, meta);
-    expect(back.visibility).toBe('involved_only');
+    expect(back.visibility).toBe('public');
+    expect(await publicIds(teacher.personId, student.personId)).toEqual([teacher.personId, student.personId].sort());
   });
 });
 

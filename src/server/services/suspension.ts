@@ -30,7 +30,7 @@ import * as z from 'zod';
 import { writeAudit } from '../audit';
 import { requireStaff2FA } from '../auth/guards';
 import type { Principal } from '../auth/principal';
-import { accountSuspended, isErasedEmail } from '../auth/suspension';
+import { accountSuspended, ERASED_EMAIL_DOMAIN, isErasedEmail } from '../auth/suspension';
 import { getDb } from '../db';
 import { authSession, authUser, authVerification } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
@@ -97,7 +97,7 @@ export interface SuspendedAccount {
   reason: string | null;
   /** When the suspension ends by itself, or null. */
   until: string | null;
-  /** When it was set (the account's last change). */
+  /** When it was set (the audit log's latest suspension of the account). */
   since: string;
 }
 
@@ -216,18 +216,35 @@ export async function unsuspendAccount(principal: Principal | null, raw: Unsuspe
   });
 }
 
-/** accounts.suspended: the accounts that are suspended now (admin with a verified second factor), the oldest first. */
+/**
+ * accounts.suspended: the accounts that are suspended now (admin with a verified second factor), the
+ * oldest first. A ban that ran out is not listed (it is checked in the query, so many old timed
+ * suspensions never push a current one out of the page); `since` is the day of the suspension in the
+ * audit log, not auth_user.updated_at, which any later change to the account would move.
+ */
 export async function listSuspended(principal: Principal | null): Promise<{ accounts: SuspendedAccount[] }> {
   requireStaff2FA(principal, ['admin']);
+  const suspendedAt = sql`coalesce((SELECT max(a.occurred_at) FROM audit_log a WHERE a.action = 'account.suspend' AND a.subject_type = 'user' AND a.subject_id = ${authUser.id}::text), ${authUser.updatedAt})`;
   const rows = await getDb()
-    .select({ id: authUser.id, email: authUser.email, reason: authUser.banReason, banned: authUser.banned, banExpires: authUser.banExpires, since: authUser.updatedAt })
+    .select({
+      id: authUser.id,
+      email: authUser.email,
+      reason: authUser.banReason,
+      banExpires: authUser.banExpires,
+      // The driver hands timestamps over as text, so the day comes out of the database already as ISO 8601 in UTC.
+      since: sql<string>`to_char(${suspendedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+    })
     .from(authUser)
-    .where(and(eq(authUser.banned, true), sql`${authUser.email} NOT LIKE '%@erased.invalid'`))
-    .orderBy(authUser.updatedAt, authUser.id)
+    .where(and(eq(authUser.banned, true), sql`(${authUser.banExpires} IS NULL OR ${authUser.banExpires} > now())`, sql`${authUser.email} NOT LIKE ${`%@${ERASED_EMAIL_DOMAIN}`}`))
+    .orderBy(suspendedAt, authUser.id)
     .limit(200);
   return {
-    accounts: rows
-      .filter((r) => accountSuspended(r))
-      .map((r) => ({ id: r.id, email: r.email, reason: r.reason, until: r.banExpires?.toISOString() ?? null, since: r.since.toISOString() })),
+    accounts: rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      reason: r.reason,
+      until: r.banExpires?.toISOString() ?? null,
+      since: r.since,
+    })),
   };
 }

@@ -1310,7 +1310,9 @@ export async function markVerified(tx: Transaction, row: RelRow, confirmedByUser
   // the publication consent: DEFAULT D03, the owner's choice wins (docs/plan/questions/M07.md).
   // Hiding a profile always leaves that withdrawal as the latest record, also when publication was
   // never granted (profile.ts setOwnVisibility, privacy.ts consentWithdraw; M09 review, code-1).
-  // A profile staff took down stays hidden until staff restore it (review 2026-11, takedown.ts).
+  // A profile staff took down stays hidden until staff restore it (review 2026-11, takedown.ts); what
+  // the approval would have made of it is kept in taken_down_visibility, so the restore gives it back
+  // (the restore itself checks the consent again).
   const published = await tx.execute<{ id: string }>(sql`
 UPDATE person p SET visibility = 'public', updated_at = now()
  WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
@@ -1321,6 +1323,14 @@ UPDATE person p SET visibility = 'public', updated_at = now()
           WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
           ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')
 RETURNING p.id::text AS id`);
+  await tx.execute(sql`
+UPDATE person p SET taken_down_visibility = 'public', updated_at = now()
+ WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
+   AND p.taken_down_at IS NOT NULL AND p.taken_down_visibility <> 'public' AND p.deleted_at IS NULL
+   AND NOT (p.stewardship = 'self' AND COALESCE((
+         SELECT c.action FROM consent_record c
+          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
+          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')`);
   return { isDisplayPrimary: primary, previousPrimaryId: primary && current ? current.id : null, publishedPersonIds: published.rows.map((r) => r.id) };
 }
 

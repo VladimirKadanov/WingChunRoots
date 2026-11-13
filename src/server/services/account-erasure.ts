@@ -784,9 +784,12 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   const consents = await tx.execute(sql`SELECT count(*)::int AS n FROM consent_record WHERE user_id = ${userId}`);
   counts.consentsRemoved = Number((consents.rows[0] as { n?: number } | undefined)?.n ?? 0);
   // A paid subscription ends at the provider first (its rows go with the account); if the provider
-  // does not answer, the whole erasure is refused and nothing is changed.
+  // does not answer, the whole erasure is refused and nothing is changed. The call has its own timeout
+  // (10 s, billing/stripe.ts) and runs under the global verify lock: an approval waits at most that long.
   await endSubscriptionsBeforeDeletion(tx, userId);
-  await tx.execute(sql`DELETE FROM auth_verification WHERE value = ${userId} OR strpos(lower(identifier), ${email}) > 0`);
+  // The short-lived values of the account (reset tokens, the second-factor challenge, trusted devices) hold
+  // its id as their value, the way the auth_user_end_sessions trigger finds them; the identifier is hashed.
+  await tx.execute(sql`DELETE FROM auth_verification WHERE value = ${userId}`);
 
   // 4. The deletion request is closed; the audit row; then every reference of the catalogue.
   if (deletionCaseId) {

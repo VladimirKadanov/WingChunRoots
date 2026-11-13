@@ -139,11 +139,12 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
     let personId: string | null = null;
     if (kinds.includes('publication')) {
       const [own] = await tx
-        .select({ id: person.id, visibility: person.visibility, stewardship: person.stewardship })
+        .select({ id: person.id, visibility: person.visibility, stewardship: person.stewardship, takenDownAt: person.takenDownAt, takenDownVisibility: person.takenDownVisibility })
         .from(person)
         .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)))
         .for('update');
-      // Hides the profile (its consent is withdrawn above).
+      // Hides the profile (its consent is withdrawn above). A profile staff hold is hidden already: the
+      // withdrawal is recorded for the restore (taken_down_visibility) and nothing public changes.
       if (own && own.stewardship === 'self') {
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
         personId = own.id;

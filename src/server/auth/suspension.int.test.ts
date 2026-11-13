@@ -4,6 +4,8 @@
 // account cannot sign in, a lifted suspension works again, nobody suspends their own account or the
 // last active administrator, the account gets no e-mail or notice, and the audit rows carry no address.
 
+import { randomBytes } from 'node:crypto';
+
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -166,6 +168,32 @@ describe('a suspended account', () => {
     // Ended by itself: no longer listed and not suspended.
     await getDb().update(authUser).set({ banExpires: new Date(Date.now() - 1000) }).where(eq(authUser.id, victim.id));
     expect((await listSuspended(boss.principal)).accounts.find((a) => a.id === victim.id)).toBeUndefined();
+  });
+
+  it('lists what is suspended now: ended timed bans never push a current one out, and since is the suspension, not the last change', async () => {
+    const boss = await admin('list-boss');
+    // More ended timed suspensions than the page holds (they keep banned = true in the row).
+    const ended = Array.from({ length: 205 }, (_, i) => ({
+      id: uuidv7(),
+      email: `demo-list-ended-${i}-${randomBytes(3).toString('hex')}@example.test`,
+      emailVerified: true,
+      name: '',
+      banned: true,
+      banReason: 'Fictional ended suspension.',
+      banExpires: new Date(Date.now() - 86_400_000),
+      updatedAt: new Date(Date.now() - 10 * 86_400_000),
+    }));
+    await getDb().insert(authUser).values(ended);
+    const victim = await createAccount({ label: 'list-victim' });
+    await suspendAccount(boss.principal, { email: victim.email, reason: REASON }, META);
+    const [audited] = await getDb().select({ at: auditLog.occurredAt }).from(auditLog).where(and(eq(auditLog.action, 'account.suspend'), eq(auditLog.subjectId, victim.id)));
+    // A later change to the row (a time zone, a role) does not move the date of the suspension.
+    await getDb().update(authUser).set({ timezone: 'Europe/Sofia', updatedAt: new Date(Date.now() + 3_600_000) }).where(eq(authUser.id, victim.id));
+    const { accounts } = await listSuspended(boss.principal);
+    expect(accounts.some((a) => a.email.startsWith('demo-list-ended-'))).toBe(false);
+    const listed = accounts.find((a) => a.id === victim.id);
+    expect(listed).toBeDefined();
+    expect(new Date(listed!.since).getTime()).toBe(audited!.at.getTime());
   });
 });
 
