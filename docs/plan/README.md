@@ -22,19 +22,19 @@
 | M10b | [M10b — Покани, поемане на профил, проверка на инструктор, сигнали и арбитраж](M10b-claims-reports.md) | M10a | слят ([#22](https://github.com/VladimirKadanov/WingChunRoots/pull/22), merge commit ae08122; въпроси в [questions/M10b.md](questions/M10b.md)) |
 | M11 | [M11 — Школи, карта и филтри по линия](M11-schools-map.md) | M08, M10a | слят ([#23](https://github.com/VladimirKadanov/WingChunRoots/pull/23), merge commit ea0b7a0; въпроси в [questions/M11.md](questions/M11.md)) |
 | M12 | [M12 — Локално пускане като в production, основно наблюдение, локален архив и учение по възстановяване](M12-local-ops.md) | M10b, M11 | слят ([#24](https://github.com/VladimirKadanov/WingChunRoots/pull/24), merge commit b9c2b5d; въпроси в [questions/M12.md](questions/M12.md)) |
-| M13 | [M13 — Приемане на пилота (локално)](M13-pilot-acceptance.md) | M12 | в работа (клон `m13-pilot-acceptance`) |
-| M14 | [M14 — Снимки на профила](M14-profile-photos.md) | M13 | в изпълнение (клон `m14-profile-photos`) |
-| M15 | [M15 — Организации](M15-organizations.md) | M14 | в изпълнение (клон `m15-organizations`; въпроси в [questions/M15.md](questions/M15.md)) |
-| M16 | [M16 — Галерии](M16-galleries.md) | M15 | в изпълнение (клон `m16-galleries`; въпроси в [questions/M16.md](questions/M16.md)) |
-| M17 | [M17 — Календар на събитията](M17-events.md) | M16 | в изпълнение (клон `m17-events`; въпроси в [questions/M17.md](questions/M17.md)) |
-| M18 | [M18 — Известия за жизнения цикъл](M18-notices.md) | M17 | в изпълнение (клон `m18-notices`; въпроси в [questions/M18.md](questions/M18.md)) |
-| M19 | [M19 — Кунг Фу паспорт](M19-passport.md) | M18 | в изпълнение (клон `m19-passport`; въпроси в [questions/M19.md](questions/M19.md)) |
-| M20 | [M20 — Проверка за активност на школите](M20-school-activity.md) | M19 | в изпълнение (клон `m20-school-activity`; въпроси в [questions/M20.md](questions/M20.md)) |
-| M21 | [M21 — Пробни тренировки и основна статистика на школите](M21-trial-lessons.md) | M20 | в изпълнение (клон `m21-trial-lessons`; въпроси в [questions/M21.md](questions/M21.md)) |
-| M22 | [M22 — Плащания в тестов режим](M22-billing.md) | M21 | в изпълнение (клон `m22-billing`; въпроси в [questions/M22.md](questions/M22.md)) |
-| M23 | [M23 — Абонамент Federation, смяна на плана и пробен период на федерация](M23-federation-billing.md) | M22 | в изпълнение (клон `m23-federation-billing`; въпроси в [questions/M23.md](questions/M23.md)) |
-| M24 | [M24 — Инструменти на организациите](M24-organization-tools.md) | M22 | в изпълнение (клон `m24-organization-tools`; въпроси в [questions/M24.md](questions/M24.md)) |
-| M25 | [M25 — Управление: наследник, спорове и обжалване, исторически записи](M25-governance.md) | M22 | в изпълнение (клон `m25-governance`; въпроси в [questions/M25.md](questions/M25.md)) |
+| M13 | [M13 — Приемане на пилота (локално)](M13-pilot-acceptance.md) | M12 | слят ([#25](https://github.com/VladimirKadanov/WingChunRoots/pull/25), merge commit 921c2c2; въпроси в [questions/M13.md](questions/M13.md)) |
+| M14 | [M14 — Снимки на профила](M14-profile-photos.md) | M13 | слят ([#26](https://github.com/VladimirKadanov/WingChunRoots/pull/26), merge commit d2cca69) |
+| M15 | [M15 — Организации](M15-organizations.md) | M14 | слят ([#30](https://github.com/VladimirKadanov/WingChunRoots/pull/30), merge commit 89e3b9a; въпроси в [questions/M15.md](questions/M15.md)) |
+| M16 | [M16 — Галерии](M16-galleries.md) | M15 | слят ([#32](https://github.com/VladimirKadanov/WingChunRoots/pull/32), merge commit ca1d3fa; въпроси в [questions/M16.md](questions/M16.md)) |
+| M17 | [M17 — Календар на събитията](M17-events.md) | M16 | слят ([#34](https://github.com/VladimirKadanov/WingChunRoots/pull/34), merge commit 5f56346; въпроси в [questions/M17.md](questions/M17.md)) |
+| M18 | [M18 — Известия за жизнения цикъл](M18-notices.md) | M17 | слят ([#37](https://github.com/VladimirKadanov/WingChunRoots/pull/37), merge commit 73824af; въпроси в [questions/M18.md](questions/M18.md)) |
+| M19 | [M19 — Кунг Фу паспорт](M19-passport.md) | M18 | слят ([#40](https://github.com/VladimirKadanov/WingChunRoots/pull/40), merge commit 8b62ad1; въпроси в [questions/M19.md](questions/M19.md)) |
+| M20 | [M20 — Проверка за активност на школите](M20-school-activity.md) | M19 | слят ([#41](https://github.com/VladimirKadanov/WingChunRoots/pull/41), merge commit 30e484d; въпроси в [questions/M20.md](questions/M20.md)) |
+| M21 | [M21 — Пробни тренировки и основна статистика на школите](M21-trial-lessons.md) | M20 | слят ([#42](https://github.com/VladimirKadanov/WingChunRoots/pull/42), merge commit 7115364; въпроси в [questions/M21.md](questions/M21.md)) |
+| M22 | [M22 — Плащания в тестов режим](M22-billing.md) | M21 | слят ([#43](https://github.com/VladimirKadanov/WingChunRoots/pull/43), merge commit 8e091a7; въпроси в [questions/M22.md](questions/M22.md)) |
+| M23 | [M23 — Абонамент Federation, смяна на плана и пробен период на федерация](M23-federation-billing.md) | M22 | слят ([#46](https://github.com/VladimirKadanov/WingChunRoots/pull/46), merge commit d75f70d; въпроси в [questions/M23.md](questions/M23.md)) |
+| M24 | [M24 — Инструменти на организациите](M24-organization-tools.md) | M22 | слят ([#45](https://github.com/VladimirKadanov/WingChunRoots/pull/45), merge commit f114f4c; въпроси в [questions/M24.md](questions/M24.md)) |
+| M25 | [M25 — Управление: наследник, спорове и обжалване, исторически записи](M25-governance.md) | M22 | слят ([#47](https://github.com/VladimirKadanov/WingChunRoots/pull/47), merge commit 27abc81; въпроси в [questions/M25.md](questions/M25.md)) |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |
 | Отложен | [Настойници и непълнолетни](deferred-minors.md) | правна политика (решение на собственика от 11.11.2026) | извън обхвата засега; платформата приема само пълнолетни |
 
