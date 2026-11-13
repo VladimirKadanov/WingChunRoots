@@ -157,6 +157,10 @@ export interface OwnProfile {
   personId: string;
   slug: string;
   visibility: 'public' | 'involved_only';
+  /** Review 2026-11: staff hold the profile off the public pages (takedown.ts); the owner may still edit it. */
+  takenDown: boolean;
+  /** What the owner chose: the box "Show my profile publicly". While the profile is held, the choice kept for the restore. */
+  wantsPublic: boolean;
   names: ProfileName[];
   bio: { body: string; lang: string } | null;
   countryCode: string | null;
@@ -186,6 +190,8 @@ async function ownProfile(db: Executor, userId: string): Promise<OwnProfile | nu
       id: person.id,
       slug: person.slug,
       visibility: person.visibility,
+      takenDownAt: person.takenDownAt,
+      takenDownVisibility: person.takenDownVisibility,
       countryCode: person.countryCode,
       placeId: person.placeId,
       trainingStartYear: person.trainingStartYear,
@@ -204,6 +210,8 @@ async function ownProfile(db: Executor, userId: string): Promise<OwnProfile | nu
     personId: row.id,
     slug: row.slug,
     visibility: row.visibility,
+    takenDown: row.takenDownAt !== null,
+    wantsPublic: row.takenDownAt !== null ? row.takenDownVisibility === 'public' : row.visibility === 'public',
     names,
     bio,
     countryCode: row.countryCode,
@@ -299,18 +307,28 @@ SELECT id::text AS id FROM (SELECT id FROM a LIMIT ${ANCESTORS_CAP + 1}) x`);
 export async function setOwnVisibility(
   tx: Transaction,
   p: Principal,
-  own: { id: string; visibility: 'public' | 'involved_only' },
+  own: { id: string; visibility: 'public' | 'involved_only'; takenDownAt?: Date | null; takenDownVisibility?: 'public' | 'involved_only' | null },
   showPublicly: boolean,
   meta: RequestMeta,
 ): Promise<boolean> {
   const visibility = showPublicly ? ('public' as const) : ('involved_only' as const);
+  // Review 2026-11: while staff hold the profile (takedown.ts) it stays hidden whatever the box says;
+  // the owner's choice is kept for the restore, in taken_down_visibility, and the consent records
+  // it as always. `chosen` is what the owner had chosen before this save.
+  const held = own.takenDownAt != null;
+  const chosen = held ? (own.takenDownVisibility ?? 'involved_only') : own.visibility;
   const consents = await currentConsents(tx, p.user.id);
   if (showPublicly && !consents.has('publication')) await grantConsents(tx, p.user.id, p.user.role, ['publication'], meta);
   // Withdraws a grant of any version (withdrawConsents records only what is still granted), and
   // records the refusal of a public profile that was never granted (DEFAULT D03: the owner's choice
   // wins over a later approval).
   if (!showPublicly) {
-    await withdrawConsents(tx, p.user.id, p.user.role, ['publication'], meta, own.visibility === 'public' ? { evenIfNotGiven: ['publication'] } : {});
+    await withdrawConsents(tx, p.user.id, p.user.role, ['publication'], meta, chosen === 'public' ? { evenIfNotGiven: ['publication'] } : {});
+  }
+  if (held) {
+    if (chosen !== visibility) await tx.update(person).set({ takenDownVisibility: visibility }).where(and(eq(person.id, own.id), eq(person.stewardship, 'self')));
+    // Nothing public changes: the record stays hidden until staff restore it.
+    return false;
   }
   if (own.visibility === visibility) return false;
   // DEFAULT D03: a self-stewarded record is public only while its owner keeps it so; unticking hides
@@ -360,6 +378,8 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       .select({
         id: person.id,
         visibility: person.visibility,
+        takenDownAt: person.takenDownAt,
+        takenDownVisibility: person.takenDownVisibility,
         stewardship: person.stewardship,
         countryCode: person.countryCode,
         placeId: person.placeId,

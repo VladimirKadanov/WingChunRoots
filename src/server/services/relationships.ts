@@ -1296,10 +1296,12 @@ export async function markVerified(tx: Transaction, row: RelRow, confirmedByUser
   // the publication consent: DEFAULT D03, the owner's choice wins (docs/plan/questions/M07.md).
   // Hiding a profile always leaves that withdrawal as the latest record, also when publication was
   // never granted (profile.ts setOwnVisibility, privacy.ts consentWithdraw; M09 review, code-1).
+  // A profile staff took down stays hidden until staff restore it (review 2026-11, takedown.ts).
   const published = await tx.execute<{ id: string }>(sql`
 UPDATE person p SET visibility = 'public', updated_at = now()
  WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
    AND p.visibility <> 'public' AND p.deleted_at IS NULL
+   AND p.taken_down_at IS NULL
    AND NOT (p.stewardship = 'self' AND COALESCE((
          SELECT c.action FROM consent_record c
           WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'

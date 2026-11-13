@@ -40,7 +40,7 @@ async function saveProfile(form: FormData): Promise<FormState> {
       countryCode: result.profile.countryCode ?? '',
       placeId: result.profile.placeId ?? '',
       trainingStartYear: result.profile.trainingStartYear === null ? '' : String(result.profile.trainingStartYear),
-      showPublicly: result.profile.visibility === 'public',
+      showPublicly: result.profile.wantsPublic,
     };
     const visibility = result.visibilityChanged
       ? result.profile.visibility === 'public'

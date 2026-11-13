@@ -78,6 +78,7 @@ import { clientIp, ipHmac } from './ip';
 import { passwordAttemptKey, rememberDevice } from './known-devices';
 import { isStaffRole } from './principal';
 import { hold, requestScope, settle } from './request-scope';
+import { accountSuspended, SUSPENDED_MESSAGE } from './suspension';
 import { claimOnce, clear, release, reserve, SIGN_IN_FAILURE_LIMIT, SIGN_IN_LOCK_S, TOTP_REPLAY_WINDOW_S, totpKey } from './throttle';
 
 export const VERIFY_TOTP_PATH = '/two-factor/verify-totp';
@@ -290,7 +291,23 @@ async function releaseSessionSecondFactor(userId: string): Promise<void> {
     .where(and(eq(authTwoFactor.userId, userId), gt(authTwoFactor.failedVerificationCount, 0)));
 }
 
+/**
+ * Review 2026-11: a suspended account uses no endpoint of Better Auth with a session it still
+ * holds, except signing out (its sessions are deleted when it is suspended; this closes the race of
+ * one created in that moment). The app's own reads (principalFromHeaders) call get-session without
+ * a request and check the account themselves (session.ts), so they are not read twice.
+ */
+async function refuseSuspendedSession(ctx: HookContext): Promise<void> {
+  if (ctx.path === '/sign-out') return;
+  if (ctx.path === '/get-session' && !ctx.request) return;
+  const session = await sessionOf(ctx);
+  if (session && accountSuspended(session.user as { banned?: boolean | null; banExpires?: Date | string | null })) {
+    refuse('FORBIDDEN', 'BANNED_USER', SUSPENDED_MESSAGE);
+  }
+}
+
 export const beforeHook = createAuthMiddleware(async (ctx) => {
+  await refuseSuspendedSession(ctx);
   if (ctx.path === '/sign-up/email') {
     const body = bodyOf(ctx);
     try {

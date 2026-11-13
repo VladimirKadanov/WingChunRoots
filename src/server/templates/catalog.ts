@@ -154,6 +154,10 @@ export const NOTIFICATION_CATALOG = {
   'plan.expired': mailed('plan', 'notice'),
   'limit.reached': dashboardOnly('plan'),
   'content.removed': mailed('account', 'notice'),
+  // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down of a profile and
+  // its restore: a statement of reasons to the owner, never off.
+  'profile.taken-down': mailed('account', 'notice'),
+  'profile.restored': mailed('account', 'notice'),
   // M19: the training passport, between teachers and students (docs/adr/0022-passport.md).
   'passport.entry-added': mailed('teaching', 'notice'),
   'passport.correction': mailed('teaching', 'notice'),

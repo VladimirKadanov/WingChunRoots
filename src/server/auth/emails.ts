@@ -29,6 +29,7 @@ import { queueEmail, type Transaction } from '../jobs/outbox';
 import type { NameData } from '../templates/email';
 import { appUrl } from './env';
 import { logAuth } from './logger';
+import { accountSuspended } from './suspension';
 
 /** This process's job producer (pg-boss stays inside src/server/jobs). */
 type Producer = Awaited<ReturnType<typeof getProducer>>;
@@ -82,6 +83,13 @@ export async function withinHourlyCap(
   const boss = await getProducer();
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`account-email:${userId}:${template}`}, 0))`);
+    // Review 2026-11: a suspended account gets no e-mail (notices skip it too, notify.ts).
+    const standing = await tx.execute<{ banned: boolean; ban_expires: Date | null }>(sql`SELECT banned, ban_expires FROM auth_user WHERE id = ${userId}`);
+    const account = standing.rows[0];
+    if (account && accountSuspended({ banned: account.banned, banExpires: account.ban_expires })) {
+      logAuth('warn', `account e-mail dropped: the account for ${template} is suspended`);
+      return false;
+    }
     const rows = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM email_delivery
        WHERE user_id = ${userId} AND template = ${template} AND created_at > now() - interval '1 hour'`);

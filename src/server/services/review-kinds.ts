@@ -13,9 +13,10 @@
 //                            profile, and the relationship panel's "Approved by an unverified
 //                            instructor" goes (DEFAULT D04/D13); audit instructor.verify; reject;
 //                            needs_info.
-//   profile_report           verify (uphold) or reject (dismiss), with no automatic hiding: what a
-//                            report shows is put right with the archival edit or by an
-//                            administrator (DEFAULT, docs/evidence-and-review.md).
+//   profile_report           verify (uphold) or reject (dismiss). Upholding hides nothing by itself
+//                            (DEFAULT, docs/evidence-and-review.md); staff may tick "also take the
+//                            profile down" (default off), which does what takedown.ts does, with the
+//                            decision's reason, in the same transaction (review 2026-11).
 //   relationship_dispute     verify: in_arbitration → verified (the link stands); reject:
 //                            in_arbitration → revoked (out of the public lineage); needs_info: the
 //                            parties are asked again. Always with a reason both parties read
@@ -37,11 +38,14 @@ import { neighbourTags } from './profile';
 import { accountOf, namesFor, publicTags, recordEvent, type RelRow, url } from './relationships';
 import { type CaseRow, recordCaseEvent } from './review-core';
 import { notify } from './notify';
+import { applyTakeDown } from './takedown';
 
 export interface KindDecisionInput {
   decision: 'verify' | 'reject' | 'needs_info';
   reason: string | null;
   idempotencyKey: string;
+  /** profile_report, verify: also take the profile down (review 2026-11). Off when left out. */
+  takeDown?: boolean;
 }
 
 export interface KindDecisionOutcome {
@@ -255,6 +259,13 @@ async function decideReport(tx: Transaction, p: Principal, c: CaseRow, input: Ki
     .update(contentReport)
     .set({ status: upheld ? 'resolved' : 'dismissed', updatedAt: new Date() })
     .where(eq(contentReport.reviewCaseId, c.id));
+  // Review 2026-11: upholding a report takes the profile down only when staff choose it, with the
+  // decision's reason (which the owner reads); the result is on the case as an internal note.
+  if (upheld && input.takeDown) {
+    if (!c.personId) throw new ServiceError('CONFLICT', 'This report has no profile to take down.');
+    const taken = await applyTakeDown(tx, p, { personId: c.personId, reason: input.reason!, caseId: c.id }, meta);
+    return { tags: taken.tags };
+  }
   return NONE;
 }
 

@@ -56,6 +56,14 @@ export const person = pgTable(
     // M14: the current profile photo (person_photo, status active), or none. v_public_person
     // shows it only for a public person (docs/adr/0016-profile-photos.md).
     photoId: uuid('photo_id').references((): AnyPgColumn => personPhoto.id, { onDelete: 'set null' }),
+    // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down. While
+    // taken_down_at is set the record is involved_only (the CHECK below), so every public surface
+    // (the v_public_* views, search, lineage, photos) leaves it out, and nothing may publish it
+    // again until staff restore it. taken_down_visibility is what it was before, for the restore.
+    // Not deleted_at: the owner and the staff still open the record (deleted_at means "removed").
+    takenDownAt: timestamp('taken_down_at', { withTimezone: true }),
+    takenDownReason: text('taken_down_reason'),
+    takenDownVisibility: text('taken_down_visibility', { enum: VISIBILITIES }),
     ...timestamps(),
     deletedAt: deletedAt(),
   },
@@ -69,6 +77,18 @@ export const person = pgTable(
     check('person_life_status_check', inList(t.lifeStatus.name, LIFE_STATUSES)),
     check('person_stewardship_check', inList(t.stewardship.name, STEWARDSHIPS)),
     check('person_visibility_check', inList(t.visibility.name, VISIBILITIES)),
+    // A taken-down record is never public, whichever code path writes it (review 2026-11), and the
+    // three hold columns are set together, with a reason.
+    check(
+      'person_taken_down_hidden',
+      sql`${t.takenDownAt} IS NULL OR ${t.visibility} = 'involved_only'`,
+    ),
+    check(
+      'person_taken_down_complete',
+      sql`(${t.takenDownAt} IS NULL AND ${t.takenDownReason} IS NULL AND ${t.takenDownVisibility} IS NULL)
+        OR (${t.takenDownAt} IS NOT NULL AND ${t.takenDownVisibility} IS NOT NULL AND ${t.takenDownReason} IS NOT NULL AND btrim(${t.takenDownReason}) <> '' AND length(${t.takenDownReason}) <= 500)`,
+    ),
+    check('person_taken_down_visibility_check', inList(t.takenDownVisibility.name, VISIBILITIES)),
     // A self-stewarded record always belongs to an account.
     check('person_self_needs_account', sql`${t.stewardship} <> 'self' OR ${t.claimedByUserId} IS NOT NULL`),
     check('person_country_code_format', sql`${t.countryCode} IS NULL OR ${t.countryCode} ~ '^[A-Z]{2}$'`),

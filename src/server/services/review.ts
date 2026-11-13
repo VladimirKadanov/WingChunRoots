@@ -77,6 +77,7 @@ import { decideOrganizationApplication, isDecidableApplication, lockApplication,
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import { decideKind } from './review-kinds';
+import { TAKEDOWN_REASON_MAX, TAKEDOWN_ROLES } from './takedown';
 import { proposalFacts, recordRevisionRow } from './stewardship';
 import { appealFacts, appealOfCase, decidedBeforeAppeal, lineageReportFacts } from './disputes';
 import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
@@ -169,11 +170,21 @@ export const reviewDecideInput = z
      * organization.version). Required to approve; an application edited since is refused (CONFLICT).
      */
     organizationVersion: z.string().regex(/^[0-9]{1,20}$/, { error: 'Open the case again and decide from the application it shows.' }).nullish(),
+    /**
+     * Review 2026-11 (profile_report, verify only): also take the reported profile off the public
+     * pages, with the decision's reason as the take-down's reason (takedown.ts). Off unless staff choose it.
+     */
+    takeDown: z.boolean().nullish().transform((v) => v === true),
   })
   .superRefine((input, ctx) => {
     if (input.reason && input.reason.length > REVIEW_TEXT_MAX) ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${REVIEW_TEXT_MAX} characters.` });
     if (!input.reason && input.decision === 'reject') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the claimant will read.' });
     if (!input.reason && input.decision === 'needs_info') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write what the claimant should add.' });
+    if (input.takeDown && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['takeDown'], message: 'A profile is taken down only when the report is upheld.' });
+    if (input.takeDown && !input.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the owner will read.' });
+    if (input.takeDown && input.reason && input.reason.length > TAKEDOWN_REASON_MAX) {
+      ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${TAKEDOWN_REASON_MAX} characters when the profile is taken down.` });
+    }
   });
 
 export const reviewNoteInput = z.object({
@@ -296,7 +307,7 @@ export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, 
       label: 'Uphold the report',
       pending: 'Saving…',
       reason: 'Note on the decision',
-      hint: 'Optional, for the reviewers. Nothing is hidden automatically: correct the record with the archival edit, or ask an administrator.',
+      hint: 'Optional, for the reviewers. Nothing is hidden unless you tick the box below; you can also correct the record with the archival edit, or take it down later from its record page.',
       optional: true,
       done: 'The report is upheld. Correct the record with the archival edit where needed.',
     },
@@ -511,7 +522,16 @@ export interface ReviewCaseView {
    * M10b: what a case without a teacher claim is about (the record claimed, the instructor, the
    * reported profile), with the facts the reviewer weighs; null for a historical claim.
    */
-  subject: { label: string; person: PersonRef | null; facts: { label: string; value: string }[] } | null;
+  subject: {
+    label: string;
+    person: PersonRef | null;
+    facts: { label: string; value: string }[];
+    /**
+     * Review 2026-11 (profile_report): whether staff hold the reported profile off the public pages
+     * (takedown.ts), why, and whether this reviewer may take it down or restore it from the case.
+     */
+    takeDown?: { held: boolean; reason: string | null; allowed: boolean };
+  } | null;
   /** M10b: the words of the three decisions for this kind (verify, reject, needs_info). */
   decisions: Record<'verify' | 'reject' | 'needs_info', DecisionText>;
   can: { assignSelf: boolean; unassign: boolean; assignOthers: boolean; verify: boolean; reject: boolean; needsInfo: boolean; note: boolean };
@@ -736,7 +756,12 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
     ? { can: { ...abilitiesNow.can, verify: false, reject: false, needsInfo: false }, decideNote: 'You decided this case before its appeal: another member of staff decides it now.' }
     : abilitiesNow;
   const facts = await subjectOf(db, c, p.user.id);
-  const subject = facts && outsideParty ? { ...facts, facts: [] } : facts;
+  const subject =
+    facts && outsideParty
+      ? { label: facts.label, person: facts.person, facts: [] }
+      : facts?.takeDown
+        ? { ...facts, takeDown: { ...facts.takeDown, allowed: !own && hasStaff2FA(p, TAKEDOWN_ROLES) } }
+        : facts;
   const reviewers = can.assignOthers
     ? (
         await db
@@ -809,7 +834,15 @@ async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<Re
   if (!c.personId || (c.kind !== 'person_claim' && c.kind !== 'instructor_verification' && c.kind !== 'profile_report')) return null;
   const ref = (await peopleRefs([c.personId])).get(c.personId) ?? null;
   const [record] = await db
-    .select({ kind: person.kind, lifeStatus: person.lifeStatus, stewardship: person.stewardship, visibility: person.visibility, claimedBy: person.claimedByUserId })
+    .select({
+      kind: person.kind,
+      lifeStatus: person.lifeStatus,
+      stewardship: person.stewardship,
+      visibility: person.visibility,
+      claimedBy: person.claimedByUserId,
+      takenDownAt: person.takenDownAt,
+      takenDownReason: person.takenDownReason,
+    })
     .from(person)
     .where(eq(person.id, c.personId));
   if (c.kind === 'person_claim') {
@@ -861,7 +894,12 @@ async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<Re
       { label: 'Reason', value: report ? REPORT_REASON_LABELS[report.reason] : 'Not recorded' },
       { label: 'Details', value: report?.details ?? 'None given' },
       { label: 'Record', value: record?.stewardship === 'self' ? 'Claimed by the person' : record?.stewardship === 'platform' ? 'Kept by the archive' : 'Unclaimed record' },
+      {
+        label: 'Public pages',
+        value: record?.takenDownAt ? 'Taken down by staff' : record?.visibility === 'public' ? 'The profile is shown' : 'The profile is not public',
+      },
     ],
+    takeDown: { held: record?.takenDownAt != null, reason: record?.takenDownReason ?? null, allowed: false },
   };
 }
 
@@ -1013,6 +1051,7 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
   const db = getDb();
   // M11: a school listing is decided by school-review.ts (no relationship, no evidence).
   const [kindOf] = await db.select({ kind: reviewCase.kind }).from(reviewCase).where(eq(reviewCase.id, input.caseId));
+  if (input.takeDown && kindOf && kindOf.kind !== 'profile_report') throw new ServiceError('BAD_REQUEST', 'Only an upheld report about a profile takes the profile down.', { takeDown: 'Only an upheld report about a profile takes the profile down.' });
   if (kindOf?.kind === 'school_listing') {
     const replayed = await decideSchoolListing(p, input, meta);
     return { case: await getReviewCase(p, { id: input.caseId }), replayed };
@@ -1327,6 +1366,12 @@ export interface ArchiveRecordView {
   lifeStatus: 'living' | 'deceased' | 'unknown';
   stewardship: 'self' | 'platform' | 'unclaimed';
   visibility: 'public' | 'involved_only';
+  /**
+   * Review 2026-11: staff hold the record off the public pages (takedown.ts): since when and why,
+   * and whether this reviewer may take it down or restore it (a moderator or an administrator,
+   * never their own record).
+   */
+  takeDown: { held: boolean; since: string | null; reason: string | null; allowed: boolean };
   primaryName: string;
   original: { value: string; lang: string } | null;
   bio: string | null;
@@ -1346,7 +1391,17 @@ const ARCHIVIST_ONLY = 'Only an archivist edits archival records.';
 
 async function recordOf(db: Executor, where: SQL, lock = false) {
   const query = db
-    .select({ id: person.id, slug: person.slug, kind: person.kind, lifeStatus: person.lifeStatus, stewardship: person.stewardship, visibility: person.visibility })
+    .select({
+      id: person.id,
+      slug: person.slug,
+      kind: person.kind,
+      lifeStatus: person.lifeStatus,
+      stewardship: person.stewardship,
+      visibility: person.visibility,
+      claimedByUserId: person.claimedByUserId,
+      takenDownAt: person.takenDownAt,
+      takenDownReason: person.takenDownReason,
+    })
     .from(person)
     .where(and(where, isNull(person.deletedAt)));
   const [row] = lock ? await query.for('update') : await query;
@@ -1386,8 +1441,15 @@ export async function getArchiveRecord(principal: Principal | null, raw: z.input
     .orderBy(asc(teachingRelationship.createdAt), asc(teachingRelationship.id))
     .limit(200);
   const refs = await peopleRefs([...new Set(links.map((l) => (l.teacher === record.id ? l.student : l.teacher)))]);
+  const { claimedByUserId, takenDownAt, takenDownReason, ...rest } = record;
   return {
-    ...record,
+    ...rest,
+    takeDown: {
+      held: takenDownAt !== null,
+      since: takenDownAt?.toISOString() ?? null,
+      reason: takenDownReason,
+      allowed: hasStaff2FA(p, TAKEDOWN_ROLES) && claimedByUserId !== p.user.id,
+    },
     relationships: links
       .filter((l) => refs.has(l.teacher === record.id ? l.student : l.teacher))
       .map((l) => ({

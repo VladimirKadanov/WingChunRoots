@@ -66,7 +66,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
     countryCode: profile.countryCode ?? '',
     placeId: profile.placeId ?? '',
     trainingStartYear: profile.trainingStartYear === null ? '' : String(profile.trainingStartYear),
-    showPublicly: profile.visibility === 'public',
+    showPublicly: profile.wantsPublic,
   };
 
   return (
@@ -77,6 +77,12 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         <p className="mt-3 max-w-[60ch] text-fg-muted">
           How you are recorded: your names, a few words about you, and whether anyone can find your profile.
         </p>
+        {profile.takenDown ? (
+          <p role="status" className="mt-5 max-w-[60ch] rounded-md border border-border-strong bg-surface-1 px-4 py-3 text-ui">
+            <strong className="font-medium">Hidden by the moderators.</strong> Your profile is off the public pages for now. You and the people involved in
+            your links can still open it, and you can keep editing it. The reason was sent to you as a notice.
+          </p>
+        ) : null}
         <div className="mt-8">
           <ProfileEditor
             initialValues={initialValues}

@@ -154,7 +154,14 @@ export type AuditAction =
   | 'appeal.create'
   | 'appeal.decide'
   | 'record.propose'
-  | 'record.decide';
+  | 'record.decide'
+  // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down of a profile
+  // and its restore, and an administrator's suspension of an account. The rows carry ids, the
+  // visibility before and after and the case; the reason is the staff member's own.
+  | 'person.takedown'
+  | 'person.restore'
+  | 'account.suspend'
+  | 'account.unsuspend';
 
 export interface AuditEntry {
   action: AuditAction;

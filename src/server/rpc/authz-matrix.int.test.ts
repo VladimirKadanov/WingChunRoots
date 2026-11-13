@@ -59,6 +59,8 @@ import { requestTrial } from '../services/trial-lessons';
 import { cancelSubscription, startCheckout, testPay } from '../services/billing';
 import { applyPendingBillingEvents, paidSubscription } from '../services/billing.test-support';
 import { startFederationTrial } from '../services/federation-trials';
+import { suspendAccount } from '../services/suspension';
+import { takeDownProfile } from '../services/takedown';
 import { signUnsubscribeToken } from '../services/unsubscribe';
 import { SIGN_UP_CONSENTS } from '../legal/documents';
 import { handleApiRequest } from './handler';
@@ -1055,6 +1057,44 @@ const ROWS: Row[] = [
       return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
     expect: staffOnly({ archivist: 'ok' }),
+  },
+  // Review 2026-11: a staff take-down of a profile (moderator or administrator) and account suspension (administrator).
+  {
+    path: 'moderation.takeDown',
+    make: async () => {
+      const owner = await actor('takedown');
+      return { owner, input: { personId: owner.personId!, reason: 'Fictional take-down for the matrix.' } };
+    },
+    expect: { ...staffOnly({ moderator: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'moderation.restore',
+    make: async () => {
+      const owner = await actor('restore');
+      await takeDownProfile(world.moderator.principal, { personId: owner.personId!, reason: 'Fictional take-down for the matrix.' }, meta);
+      return { owner, input: { personId: owner.personId!, reason: 'Fictional restore for the matrix.' } };
+    },
+    expect: { ...staffOnly({ moderator: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  { path: 'accounts.suspended', make: noInput, expect: staffOnly({ admin: 'ok' }) },
+  {
+    path: 'accounts.suspend',
+    make: async () => {
+      const owner = await actor('suspend');
+      return { owner, input: { email: owner.email, reason: 'Fictional suspension for the matrix.' } };
+    },
+    // The account suspended has no say in it (and a moderator or an archivist is not an administrator).
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    path: 'accounts.unsuspend',
+    make: async () => {
+      const owner = await actor('unsuspend');
+      await suspendAccount(world.admin.principal, { email: owner.email, reason: 'Fictional suspension for the matrix.' }, meta);
+      return { owner, input: { email: owner.email, reason: 'Fictional end of the suspension for the matrix.' } };
+    },
+    // The suspended account has no principal at all, even with the bearer token of a live session row.
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'UNAUTHORIZED' },
   },
   // schools
   { path: 'schools.search', make: () => ({ input: {} }), expect: everyone },

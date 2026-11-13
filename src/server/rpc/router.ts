@@ -171,6 +171,8 @@ import {
   updateArchiveRecord,
 } from '../services/review';
 import { setRoleInput, setUserRole } from '../services/roles';
+import { listSuspended, suspendAccount, suspendInput, unsuspendAccount, unsuspendInput } from '../services/suspension';
+import { restoreInput, restoreProfile, takeDownInput, takeDownProfile } from '../services/takedown';
 import { systemStatus } from '../services/system';
 import { twoFactorOverview } from '../services/two-factor';
 import { profileGet, profileUpdate, profileUpdateInput } from '../services/profile';
@@ -359,6 +361,11 @@ const adminWithSecondFactor = base.use(({ context, next }) => {
 // each action further (review.ts).
 const staffWithSecondFactor = base.use(({ context, next }) => {
   requireStaff2FA(context.principal);
+  return next();
+});
+// Review 2026-11: taking a profile down and putting it back (a moderator or an administrator).
+const moderatorWithSecondFactor = base.use(({ context, next }) => {
+  requireStaff2FA(context.principal, ['moderator', 'admin']);
   return next();
 });
 
@@ -880,6 +887,46 @@ export const router = {
       .route({ method: 'POST', path: '/archive/update', summary: 'Edit a record kept by the platform or unclaimed with a required reason and optional evidence (archivist only); audited' })
       .input(archiveUpdateInput)
       .handler(({ context, input }) => updateArchiveRecord(context.principal, input, context.meta)),
+  },
+  // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down of a profile,
+  // reversible; a moderator or an administrator with a verified second factor.
+  moderation: {
+    takeDown: moderatorWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/moderation/take-down',
+        summary:
+          'Take a person record off every public page, with a reason the owner reads (a moderator or administrator; a self-kept, unclaimed, archive-kept or historical record); reversible; audited; the owner is told',
+      })
+      .input(takeDownInput)
+      .handler(({ context, input }) => takeDownProfile(context.principal, input, context.meta)),
+    restore: moderatorWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/moderation/restore',
+        summary: 'Put a taken-down record back, with a reason (a moderator or administrator); it returns to what the owner chose; audited; the owner is told',
+      })
+      .input(restoreInput)
+      .handler(({ context, input }) => restoreProfile(context.principal, input, context.meta)),
+  },
+  // Review 2026-11: suspending an account (admin with a verified second factor).
+  accounts: {
+    suspended: adminWithSecondFactor
+      .route({ method: 'GET', path: '/accounts/suspended', summary: 'The accounts that are suspended now (admin with a verified second factor)' })
+      .handler(({ context }) => listSuspended(context.principal)),
+    suspend: adminWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/accounts/suspend',
+        summary:
+          'Suspend an account with a reason: its sessions end at once and every later request and sign-in is refused; not your own account, not the last active administrator; no notice to the account; audited',
+      })
+      .input(suspendInput)
+      .handler(({ context, input }) => suspendAccount(context.principal, input, context.meta)),
+    unsuspend: adminWithSecondFactor
+      .route({ method: 'POST', path: '/accounts/unsuspend', summary: 'Lift the suspension of an account, with a reason; audited' })
+      .input(unsuspendInput)
+      .handler(({ context, input }) => unsuspendAccount(context.principal, input, context.meta)),
   },
   // M11: schools, the map and the lineage filter (plan §6.4). The public reads are POST, so a
   // visitor's search centre or map view stays out of URLs and proxy logs (as search.query).
