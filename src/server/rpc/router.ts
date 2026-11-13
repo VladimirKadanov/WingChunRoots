@@ -171,6 +171,7 @@ import {
   updateArchiveRecord,
 } from '../services/review';
 import { setRoleInput, setUserRole } from '../services/roles';
+import { eraseAccountAsAdmin, eraseInput } from '../services/account-erasure';
 import { listSuspended, suspendAccount, suspendInput, unsuspendAccount, unsuspendInput } from '../services/suspension';
 import { restoreInput, restoreProfile, takeDownInput, takeDownProfile } from '../services/takedown';
 import { systemStatus } from '../services/system';
@@ -909,7 +910,7 @@ export const router = {
       .input(restoreInput)
       .handler(({ context, input }) => restoreProfile(context.principal, input, context.meta)),
   },
-  // Review 2026-11: suspending an account (admin with a verified second factor).
+  // Review 2026-11: suspending and erasing an account (admin with a verified second factor).
   accounts: {
     suspended: adminWithSecondFactor
       .route({ method: 'GET', path: '/accounts/suspended', summary: 'The accounts that are suspended now (admin with a verified second factor)' })
@@ -927,6 +928,15 @@ export const router = {
       .route({ method: 'POST', path: '/accounts/unsuspend', summary: 'Lift the suspension of an account, with a reason; audited' })
       .input(unsuspendInput)
       .handler(({ context, input }) => unsuspendAccount(context.principal, input, context.meta)),
+    erase: adminWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/accounts/erase',
+        summary:
+          'Erase an account for good (an administrator with a verified second factor, with a reason): its profile becomes an unclaimed record, everything that belongs to the person is removed or blanked, pending requests are withdrawn, and the account row stays only as a nameless tombstone while a record that must stay refers to it; not your own account, not a staff account; audited',
+      })
+      .input(eraseInput)
+      .handler(({ context, input }) => eraseAccountAsAdmin(context.principal, input, context.meta)),
   },
   // M11: schools, the map and the lineage filter (plan §6.4). The public reads are POST, so a
   // visitor's search centre or map view stays out of URLs and proxy logs (as search.query).

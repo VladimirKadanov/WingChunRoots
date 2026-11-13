@@ -1,11 +1,13 @@
 // `pnpm account:delete --case <id>` (milestone M07, In scope 5 and 9): carries out an account
 // deletion request until the review tool of M10a (carryOutDeletionFromCommandLine in
-// src/server/services/privacy.ts); with `--cancel`, closes it without carrying it out. The case id
+// src/server/services/privacy.ts, which calls services/account-erasure.ts); with `--cancel`, closes it without carrying it out. The case id
 // is on /admin, under "Account deletion requests".
 //
 // Local only, like `pnpm admin:create`: refused with NODE_ENV=production and for a database that
 // is not on this machine. Prints ids only, never a name or an address. It runs in its own process
 // and cannot drop the web server's public cache, so it says to restart the web server.
+// On the hosted service an administrator erases an account in /admin/accounts (accounts.erase,
+// services/account-erasure.ts, the same code).
 // Values come from the environment, then from .env.
 
 import path from 'node:path';
@@ -33,7 +35,10 @@ async function main(): Promise<number> {
       return 0;
     }
     const outcome = await carryOutDeletionFromCommandLine(args.caseId);
-    console.log('account:delete: the sign-in account, its sessions and its consent records are deleted; the request is closed (account.delete is in the audit log).');
+    console.log('account:delete: the account is erased (its sign-in data, sessions, consents, photos, schools, events and passport are removed or blanked, its pending requests withdrawn) and the request is closed; account.delete is in the audit log.');
+    if (outcome.tombstone) {
+      console.log('account:delete: the account row stays as a nameless tombstone, because records that others rely on still refer to it.');
+    }
     if (outcome.personId) {
       console.log(`account:delete: profile ${outcome.personId} keeps only its Latin display name, as an unclaimed record (${outcome.visibility}).`);
     }

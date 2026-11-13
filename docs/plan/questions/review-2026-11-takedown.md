@@ -40,6 +40,20 @@ Fix PR B of the 2026-11-13 review (`docs/adr/0030-takedown-suspension-erasure.md
 - Evidence files uploaded by the person stay (they belong to a relationship record that survives) but the original file name, the hash of the original and the link notes are cleared.
 - A staff account (moderator, archivist, administrator) is not erased through this procedure: its role is removed first.
 
+## 2026-11-13 — Account erasure: what is kept of the record, the evidence and the organizations
+
+**Question:** an erasure has to keep what other people rely on (a relationship they confirmed) and remove what belongs to the person. Where is the line, in the cases the first question does not settle?
+
+**Proposed defaults (each marked `DEFAULT review-2026-11` in `src/server/services/account-erasure.ts`):**
+- **The name on the kept record.** The Latin display name stays on the unclaimed record (the same as `privacy.ts` always did), so a verified lineage still reads as a lineage. Every other name (original script, Jyutping, pinyin), the biography, the photos, the city, the training year, **the country and the birth date** are removed. Option: also blank or replace the display name ("Former member") on a record that no verified relationship needs; this would make the graph show a nameless node, so it was not done without your word. A record without a verified relationship is hidden, not public, and still has its name for the people at the other end of its (pending) links.
+- **Evidence.** A file the person uploaded that no verified relationship rests on is deleted (the object is removed, the row is marked deleted). A file a verified relationship rests on stays (the relationship record survives) with the original file name, the hash of the original and the link notes cleared. Option: delete these files too and keep the relationship as "verified, evidence withdrawn"; this weakens the proof of the relationship, so the safer default keeps them.
+- **The training passport** of the kept record (certificates with their files, ranks, examinations, skills, attendance, organization memberships) is removed (the rows have no DELETE, so they are marked removed with their text blanked; the certificate files are deleted): it is the person's own account of their training, not a record others rely on. A rank or an examination another person wrote about the student goes with it.
+- **Pending relationship requests.** The erased student's own requests and claims in any state before a decision (and a declined one) are withdrawn, so nobody can approve them later; requests waiting for the erased record as the teacher are withdrawn too. Nobody is sent a notice about it (the student of an erased teacher simply sees the request as withdrawn). A request that races the erasure still cannot be approved: `refuseStudentWithoutAccount` refuses a student whose record has no account, in the teacher's approval and in the committee's decision. Verified, disputed and revoked relationships are the historical record and stay.
+- **Organizations.** An erased account that administered an organization has its `organization_admin` rows revoked (the rows stay, because the table has no DELETE: who held authority stays on record, so the account row stays as a tombstone). If it was the only administrator the organization is left without one, and no other administrator is appointed by this procedure. Please say if an organization with a lone administrator must block the erasure instead.
+- **Staff accounts** (moderator, archivist, administrator) are not erased through this procedure: the role is taken away first. Nobody erases their own account.
+- **What is not scrubbed.** `audit_log` keeps ids (never a name or an address) and the `ip_hmac` values until their key is destroyed (`docs/data-model.md` §7); `record_revision` keeps the old names of an archive record because it is append-only; `billing_event.raw` may hold what the payment provider sent (it is test-mode only in Phase 1).
+- **The tombstone.** When a record that must stay still points at the account, the `auth_user` row stays: address `erased-<id>@erased.invalid`, name blank, banned for good, role `user`, no credentials. It cannot be restored (`accounts.unsuspend` refuses it). The privacy notice must name it.
+
 ## 2026-11-13 — Self-service "Delete my account"
 
 **Question:** should a person be able to request their own erasure in the app?
@@ -59,3 +73,4 @@ The privacy notice text itself is not part of this PR. Once erasure, suspension 
 ## Progress
 
 - 2026-11-13 — checkpoint 1: take-down and suspension services, enforcement, procedures, matrix and parity rows, admin forms.
+- 2026-11-13 — checkpoint 2: account erasure (anonymise in place, tombstone, `USER_REFERENCES` catalogue and its test), `accounts.erase`, `/admin/accounts` (suspend, lift, erase), authorization-matrix rows for the three forms, ADR 0030, Bulgarian guides and data model.

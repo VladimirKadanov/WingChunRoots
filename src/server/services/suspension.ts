@@ -12,8 +12,11 @@
 //     cannot sign in again (the admin plugin's BANNED_USER);
 //   - the account gets no notice and no e-mail (notify.ts, auth/emails.ts): a suspension is not
 //     announced to the person, the administrator tells them by other means if at all.
-// DEFAULT review-2026-11: the suspended person's profile stays as it is; staff take a profile down
-// separately (takedown.ts), so a suspension is not also a deletion or a hiding.
+// DEFAULT review-2026-11 (docs/plan/questions/review-2026-11-takedown.md): only an administrator with a
+// verified second factor suspends or lifts (a moderator takes profiles down, not people out); the
+// suspended person is told nothing; the person's profile stays as it is (staff take a profile down
+// separately, takedown.ts, so a suspension is not also a deletion or a hiding); Better Auth's admin
+// plugin endpoints stay disabled, so this service is the only way to suspend.
 //
 // Nobody suspends their own account, and nobody suspends the last active administrator. The checks
 // run under one lock, so two administrators cannot suspend each other at the same moment.
@@ -38,7 +41,7 @@ export const SUSPENSION_REASON_MAX = 500;
 /** The one lock of every change to who may sign in: two administrators never suspend each other. */
 const SUSPENSION_LOCK = 'account.suspension';
 
-const reasonText = (message: string) =>
+export const reasonText = (message: string) =>
   z
     .string({ error: message })
     .transform((s) => s.normalize('NFC').replace(/\r\n?/g, '\n').trim())
@@ -48,7 +51,7 @@ const EMAIL_MESSAGE = 'Enter the e-mail address of the account.';
 const NO_ACCOUNT = 'Choose an account by its e-mail address.';
 
 /** The account the call is about: its id or its e-mail address, one of them. */
-const accountRef = {
+export const accountRef = {
   userId: z.uuid({ error: NO_ACCOUNT }).nullish().transform((v) => v ?? null),
   email: z
     .string({ error: EMAIL_MESSAGE })
@@ -98,7 +101,7 @@ export interface SuspendedAccount {
   since: string;
 }
 
-function parseOrThrow<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
+export function parseOrThrow<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
   const parsed = schema.safeParse(raw);
   if (parsed.success) return parsed.data;
   const fields: Record<string, string> = {};
@@ -127,7 +130,7 @@ async function lockTarget(tx: Transaction, ref: { userId: string | null; email: 
 }
 
 /** The administrator is still a standing administrator: not suspended or demoted since the request began. */
-async function requireStandingAdmin(tx: Transaction, actor: Principal): Promise<void> {
+export async function requireStandingAdmin(tx: Transaction, actor: Principal): Promise<void> {
   const [row] = await tx
     .select({ role: authUser.role, banned: authUser.banned, banExpires: authUser.banExpires })
     .from(authUser)

@@ -1175,6 +1175,16 @@ export async function publicTags(tx: Executor, row: Pick<RelRow, 'teacherPersonI
   return [...new Set(tags)];
 }
 
+/**
+ * Refuses (409) when the student's record has no account any more: a request or a claim belongs to
+ * the account that made it, and an erased account (services/account-erasure.ts) leaves an unclaimed
+ * record behind. Shared by the teacher's approval and the committee's verify decision.
+ */
+export async function refuseStudentWithoutAccount(tx: Executor, studentPersonId: string, message: string): Promise<void> {
+  const [row] = await tx.select({ claimedBy: person.claimedByUserId }).from(person).where(eq(person.id, studentPersonId));
+  if (!row || row.claimedBy === null) throw new ServiceError('CONFLICT', message);
+}
+
 // --- approve -----------------------------------------------------------------------------------
 
 /**
@@ -1210,6 +1220,10 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
         .from(person)
         .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), isNotNull(person.deletedAt)));
       if (removed) throw new ServiceError('CONFLICT', 'This request can no longer be answered: the profile was removed.');
+      // Flows-core L3 (review 2026-11): a request is made by the student's account. When that account
+      // was erased the record has no account (account-erasure.ts withdraws the request; this is the
+      // second line, for a request that raced the erasure): it is never approved.
+      await refuseStudentWithoutAccount(tx, row.studentPersonId, 'This request can no longer be answered: the student’s account was erased.');
 
       // 2. The plan's allowance (DEFAULT D06), with withQuota's own lock after the global one.
       // DEFAULT D04/D13: a Sifu who chose the account type and is not verified yet ("Instructor

@@ -85,8 +85,8 @@ export default async function AdminPage() {
           ) : (
             <>
               <p className="mt-3 max-w-[60ch] text-sm text-fg-muted">
-                Carry each request out as the administration guide describes: delete the account&apos;s data and keep the links others
-                confirmed as historical records until the legal review.
+                Carry each request out with &ldquo;Erase this account&rdquo;: the account&apos;s data is erased and the links others
+                confirmed stay as historical records until the legal review.
               </p>
               <ul className="mt-4 grid border-b border-border-subtle">
                 {overview.deletionRequests.map((request) => (
@@ -110,6 +110,12 @@ export default async function AdminPage() {
                       <span translate="no" className="font-mono">
                         {request.caseId}
                       </span>
+                    </p>
+                    <p>
+                      <Link href={`/admin/accounts?case=${request.caseId}#erase`} className="link inline-flex min-h-11 items-center">
+                        Erase this account
+                        {request.accountEmail ? <span className="sr-only"> of {request.accountEmail}</span> : null}
+                      </Link>
                     </p>
                   </li>
                 ))}
@@ -141,6 +147,15 @@ export default async function AdminPage() {
             Plan grants
           </Link>
           <p className="text-sm text-fg-muted">Give and revoke test plans of the pilot, and answer pilot access requests.</p>
+        </div>
+      ) : null}
+      {/* Review 2026-11: suspending and erasing accounts. */}
+      {guard.principal?.user.role === 'admin' ? (
+        <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+          <Link href="/admin/accounts" className={buttonVariants({ variant: 'secondary' })} data-testid="admin-accounts-link">
+            Accounts
+          </Link>
+          <p className="text-sm text-fg-muted">Suspend an account and lift a suspension, or erase an account when its person asks.</p>
         </div>
       ) : null}
       {/* M22: the subscriptions in test mode and their provider events (read-only). */}

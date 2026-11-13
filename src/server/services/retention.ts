@@ -76,7 +76,7 @@ async function inBatches(db: Database, batchSize: number, statement: (limit: num
 }
 
 /** The SET list that erases a delivery's address; one still queued was never going to be sent. */
-const ERASE_DELIVERY_ADDRESS = sql.raw(`to_email = NULL,
+export const ERASE_DELIVERY_ADDRESS = sql.raw(`to_email = NULL,
              status = CASE WHEN status = 'queued' THEN 'failed' ELSE status END,
              error = CASE WHEN status = 'queued' THEN coalesce(error, 'not sent within the retention period') ELSE error END,
              updated_at = now()`);

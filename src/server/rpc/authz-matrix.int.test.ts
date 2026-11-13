@@ -1090,11 +1090,22 @@ const ROWS: Row[] = [
     path: 'accounts.unsuspend',
     make: async () => {
       const owner = await actor('unsuspend');
+      // The form of /admin/accounts names the account by its id (the list of suspended accounts has it).
+      unsuspendIds.set(owner.email, owner.id);
       await suspendAccount(world.admin.principal, { email: owner.email, reason: 'Fictional suspension for the matrix.' }, meta);
       return { owner, input: { email: owner.email, reason: 'Fictional end of the suspension for the matrix.' } };
     },
     // The suspended account has no principal at all, even with the bearer token of a live session row.
     expect: { ...staffOnly({ admin: 'ok' }), owner: 'UNAUTHORIZED' },
+  },
+  {
+    path: 'accounts.erase',
+    make: async () => {
+      const owner = await actor('erase');
+      return { owner, input: { email: owner.email, reason: 'Fictional erasure for the matrix.', confirm: true } };
+    },
+    // The account erased has no say in it (and a moderator or an archivist is not an administrator).
+    expect: { ...staffOnly({ admin: 'ok' }), owner: 'FORBIDDEN' },
   },
   // schools
   { path: 'schools.search', make: () => ({ input: {} }), expect: everyone },
@@ -2243,6 +2254,8 @@ describe('what the public reads return to each caller (M13 review)', () => {
 type FormFrom = (input: Record<string, unknown>) => Record<string, string>;
 
 const same: FormFrom = (input) => Object.fromEntries(Object.entries(input).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v as string]));
+/** The id of the account each unsuspend fixture suspended, by address: the accounts form posts the id. */
+const unsuspendIds = new Map<string, string>();
 const periodsForm = { periodCount: '1', 'periods.0.fromYear': '2019', 'periods.0.fromMonth': '4', 'periods.0.ongoing': 'on' };
 
 /**
@@ -2324,6 +2337,21 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  // Review 2026-11: the account forms of /admin/accounts. The unsuspend form names the account by its id,
+  // and the erase form has the box that confirms it cannot be undone.
+  { action: 'src/app/admin/accounts/actions.ts#suspendAction', row: 'accounts.suspend', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  {
+    action: 'src/app/admin/accounts/actions.ts#unsuspendAction',
+    row: 'accounts.unsuspend',
+    form: (i) => ({ userId: unsuspendIds.get(String(i.email)) ?? '', reason: String(i.reason) }),
+    roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'],
+  },
+  {
+    action: 'src/app/admin/accounts/actions.ts#eraseAction',
+    row: 'accounts.erase',
+    form: (i) => ({ ...same(i), confirm: 'on' }),
+    roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'],
+  },
   { action: 'src/app/dashboard/schools/actions.ts#updateSchoolAction', row: 'schools.update', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#submitSchoolAction', row: 'schools.submit', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#confirmSchoolAction', row: 'schools.confirm', form: same, roles: ['anonymous', 'member', 'owner'] },

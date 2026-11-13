@@ -60,6 +60,9 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   // Review 2026-11: a staff take-down of a profile and its restore.
   'src/app/admin/review/actions.ts#takeDownAction': { rpc: ['moderation.takeDown'] },
   'src/app/admin/review/actions.ts#restoreAction': { rpc: ['moderation.restore'] },
+  'src/app/admin/accounts/actions.ts#suspendAction': { rpc: ['accounts.suspend'] },
+  'src/app/admin/accounts/actions.ts#unsuspendAction': { rpc: ['accounts.unsuspend'] },
+  'src/app/admin/accounts/actions.ts#eraseAction': { rpc: ['accounts.erase'] },
   // M11: schools and their listing.
   'src/app/dashboard/schools/actions.ts#createSchoolAction': { rpc: ['schools.create'] },
   'src/app/dashboard/schools/actions.ts#updateSchoolAction': { rpc: ['schools.update'] },

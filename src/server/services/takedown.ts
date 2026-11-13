@@ -14,6 +14,9 @@
 // leaves it hidden (relationships.ts markVerified). It is not `deleted_at`: that means "removed" and
 // the owner, the staff and the people at the other end of a link still open the record.
 //
+// DEFAULT review-2026-11 (docs/plan/questions/review-2026-11-takedown.md): a take-down is a reversible hold that
+// stays visible to the people involved (option 1), not a deletion and not a hiding from the owner.
+//
 // A restore returns the record to what it was, unless the owner changed their mind in the meantime:
 // a self-stewarded record whose owner withdrew the publication consent stays private (DEFAULT D03).
 //
