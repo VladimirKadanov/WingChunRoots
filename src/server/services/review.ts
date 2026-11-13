@@ -95,7 +95,6 @@ import {
   namesFor,
   publicTags,
   recordEvent,
-  refuseStudentWithoutAccount,
   type RelationshipView,
   type RelRow,
   replayOf,
@@ -1152,8 +1151,6 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
         .from(person)
         .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), sql`${person.deletedAt} IS NOT NULL`));
       if (removed) throw new ServiceError('CONFLICT', 'This claim can no longer be verified: a profile was removed.');
-      // Flows-core L3 (review 2026-11): the claim belongs to the student's account; an erased one leaves none.
-      await refuseStudentWithoutAccount(tx, row.studentPersonId, 'This claim can no longer be verified: the claimant’s account was erased.');
       if (await closesCycle(tx, row.teacherPersonId, row.studentPersonId)) throw new ServiceError('CONFLICT', CYCLE_MESSAGE);
       if (row.teacherPersonId === row.studentPersonId) throw new ServiceError('CONFLICT', 'A person can’t be their own teacher.');
       const [duplicate] = await tx

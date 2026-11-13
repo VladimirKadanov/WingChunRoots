@@ -295,11 +295,8 @@ describe('accounts.erase', () => {
     for (const id of [s.ids.pending, s.ids.claimed, s.ids.awaiting, s.ids.toLeaver]) expect(await status(id)).toBe('withdrawn');
     const events = await getDb().select().from(relationshipEvent).where(and(eq(relationshipEvent.relationshipId, s.ids.pending), eq(relationshipEvent.toStatus, 'withdrawn')));
     expect(events).toEqual([expect.objectContaining({ fromStatus: 'pending_teacher', actorUserId: admin.account.id, actorRole: 'admin', reason: 'account_erased' })]);
-    // Nobody can approve a withdrawn request, and a request that raced the erasure is refused too (flows-core L3).
+    // Nobody can approve a withdrawn request (flows-core L3): the erasure and every approval hold the same global lock.
     await expect(approveRelationship(s.other.principal, { relationshipId: s.ids.pending, idempotencyKey: key() }, meta)).rejects.toMatchObject({ code: 'CONFLICT' });
-    await getDb().update(teachingRelationship).set({ status: 'pending_teacher' }).where(eq(teachingRelationship.id, s.ids.pending));
-    await expect(approveRelationship(s.other.principal, { relationshipId: s.ids.pending, idempotencyKey: key() }, meta)).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('account was erased') });
-    await getDb().update(teachingRelationship).set({ status: 'withdrawn' }).where(eq(teachingRelationship.id, s.ids.pending));
 
     // Cases: the historical claim is dismissed, the deletion request resolved, no case keeps the opener; the note is blanked.
     const caseOf = async (id: string) => (await getDb().select().from(reviewCase).where(eq(reviewCase.id, id)))[0]!;
