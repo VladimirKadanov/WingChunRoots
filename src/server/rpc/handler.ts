@@ -24,6 +24,7 @@ import { RPCHandler } from '@orpc/server/fetch';
 
 import { appUrl } from '../auth/env';
 import { PHOTO_MAX_BYTES } from '../db/schema/common';
+import { readBounded, SAFE_METHODS } from '../http-body';
 import { createContext } from './context';
 import { logProcedureFailure } from './failure-log';
 import { router } from './router';
@@ -36,7 +37,6 @@ export const OPENAPI_PREFIX = '/api/v1';
 const rpcHandler = new RPCHandler(router, { clientInterceptors: [logProcedureFailure] });
 const openApiHandler = new OpenAPIHandler(router, { clientInterceptors: [logProcedureFailure] });
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 /** The bearer session of a native client: the same test as session.ts. */
 const BEARER = /^bearer\s/i;
 
@@ -120,25 +120,8 @@ export function bodyRefusal(request: Request): Response | null {
 export async function boundedRequest(request: Request): Promise<Request | Response> {
   if (SAFE_METHODS.has(request.method.toUpperCase()) || request.body === null) return request;
   const limit = bodyLimit(request);
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      await reader.cancel().catch(() => undefined);
-      return tooLarge(limit === MULTIPART_MAX_BYTES);
-    }
-    chunks.push(value);
-  }
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const body = await readBounded(request, limit);
+  if (body === null) return tooLarge(limit === MULTIPART_MAX_BYTES);
   return new Request(request.url, { method: request.method, headers: request.headers, body, signal: request.signal });
 }
 

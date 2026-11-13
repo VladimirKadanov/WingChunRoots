@@ -138,3 +138,4 @@ docker compose --profile app down      # спира и маха контейне
 | Портът 3000 е зает (например от `pnpm dev`) | Спрете другия процес или задайте `APP_PORT` и `APP_URL` |
 | `/admin/system` казва, че архив няма, а има | Архивът е за друга база или в друга папка: `web` чете `backups/` на хоста |
 | `backups/` е собственост на root (Linux) | `sudo chown "$USER" backups`; папката идва с хранилището, за да не я създаде Docker |
+| Заявка получава `413` с `PAYLOAD_TOO_LARGE` | Тялото е над границата на пътя: `/api/auth/*` 64 KiB, `/unsubscribe/one-click` 8 KiB, `/api/internal/revalidate` 256 KiB. Редът е в [`reverse-proxy.md`](reverse-proxy.md), „Граници на тялото“; обикновен клиент никога не стига до тях |
