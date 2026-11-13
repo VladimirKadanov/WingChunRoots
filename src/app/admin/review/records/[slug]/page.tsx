@@ -23,8 +23,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARCHIVE_FORM } from '../../form-ids';
-import { ArchiveForm } from '../../forms';
+import { ARCHIVE_FORM, RESTORE_FORM, TAKEDOWN_FORM } from '../../form-ids';
+import { ArchiveForm, TakeDownForm } from '../../forms';
 
 export const instant = false;
 
@@ -90,7 +90,18 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
   }
   if (!record) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
   const initial = await readFormResult(ARCHIVE_FORM, query.outcome);
-  const done = query.done === 'saved' ? 'The record is saved. The change and its reason are in the audit log.' : query.done === 'unchanged' ? 'Nothing changed, so nothing was saved.' : null;
+  const takeDownResult = await readFormResult(TAKEDOWN_FORM, query.outcome);
+  const restoreResult = await readFormResult(RESTORE_FORM, query.outcome);
+  const done =
+    query.done === 'saved'
+      ? 'The record is saved. The change and its reason are in the audit log.'
+      : query.done === 'unchanged'
+        ? 'Nothing changed, so nothing was saved.'
+        : query.done === 'taken-down'
+          ? 'The record is off the public pages. Your reason is in the audit log, and the owner, if there is one, was sent it.'
+          : query.done === 'restored'
+            ? 'The record is back. The change and your reason are in the audit log, and the owner, if there is one, was told.'
+            : null;
 
   return (
     <Frame>
@@ -100,7 +111,7 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
       <p className="mt-3 flex flex-wrap gap-x-3 text-ui text-fg-muted" data-testid="record-facts">
         <span>{record.kind === 'historical' ? 'Historical record' : 'Record'}</span>
         <span>Kept by {record.stewardship === 'self' ? 'its owner' : record.stewardship === 'platform' ? 'the platform' : 'nobody (unclaimed)'}</span>
-        <span>{record.visibility === 'public' ? 'Public' : 'Not public'}</span>
+        <span>{record.takeDown.held ? 'Taken down by staff' : record.visibility === 'public' ? 'Public' : 'Not public'}</span>
       </p>
       {/* It takes the focus (OutcomeNote, the M09 pattern; M10a review, screens-5). Keyed by `n`, new
           for every save (actions.ts doneAt): a second save mounts a new note, which takes the focus. */}
@@ -110,6 +121,28 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
         </div>
       ) : null}
       <div className="mt-8 grid gap-8">
+        {record.takeDown.allowed || record.takeDown.held ? (
+          <section aria-labelledby="record-public" className="grid gap-2">
+            <h2 id="record-public" className="font-display text-2xl">
+              Public pages
+            </h2>
+            <p className="max-w-[60ch] text-ui" data-testid="takedown-state">
+              {record.takeDown.held ? (
+                <>
+                  <span className="font-semibold">Taken down by staff.</span> The record is off every public page; its owner and the people at the other end of its links still see it.
+                  {record.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">Reason: {record.takeDown.reason}</span> : null}
+                </>
+              ) : (
+                <>The record is shown as its visibility says. A moderator or an administrator can take it off every public page, with a reason, and put it back.</>
+              )}
+            </p>
+            {record.takeDown.allowed ? (
+              <div className="max-w-[40rem]">
+                <TakeDownForm personId={record.id} slug={record.slug} held={record.takeDown.held} initial={record.takeDown.held ? restoreResult : takeDownResult} />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
         {record.files.length > 0 ? (
           <section aria-labelledby="record-evidence" className="grid gap-2">
             <h2 id="record-evidence" className="font-display text-2xl">

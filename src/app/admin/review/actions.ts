@@ -2,7 +2,8 @@
 
 // The Server Actions of the review queue (milestone M10a, In scope 4 and 5; M10b: arbitration):
 // thin wrappers over review.assign, review.decide, review.note, review.arbitrate,
-// archive.update and (M14) photos.remove (src/server/rpc/parity.ts), called
+// archive.update, (M14) photos.remove and (review 2026-11) moderation.takeDown and
+// moderation.restore (src/server/rpc/parity.ts), called
 // in-process with this request's session, so the forms and /api/v1 run the same checks (the
 // second factor, the roles, the assignment). Each mutation carries an idempotency key the page
 // made for it, except the archival edit, which writes nothing when nothing changed. A failure
@@ -21,7 +22,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, SCHOOL_PHOTO_REMOVE_FORM } from './form-ids';
+import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -84,6 +85,8 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
   const caseId = textValue(form, 'caseId', 40);
   const decision = textValue(form, 'decision', 20);
   const reason = textValue(form, 'reason', 4000);
+  // Review 2026-11: the box of an upheld report; off unless ticked.
+  const takeDown = textValue(form, 'takeDown', 4) === 'on';
   // M11: the version of the school listing the card showed (review.decide refuses a newer one).
   const schoolVersion = textValue(form, 'schoolVersion', 24);
   // M15: the version of the organization's application the card showed (the same check).
@@ -95,13 +98,14 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
       decision: decision === 'verify' || decision === 'reject' || decision === 'needs_info' ? decision : ('' as 'verify'),
       reason: reason || null,
       idempotencyKey: key(form),
+      ...(takeDown ? { takeDown: true } : {}),
       ...(schoolVersion ? { schoolVersion } : {}),
       ...(organizationVersion ? { organizationVersion } : {}),
     });
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
-    const state = formStateFromFailure(error, { caseId, decision, reason });
+    const state = formStateFromFailure(error, { caseId, decision, reason, ...(takeDown ? { takeDown: 'on' } : {}) });
     return formResult({ form: `${DECIDE_FORM}-${decision}`, page, anchor: outcomeTarget(`${DECIDE_FORM}-${decision}`, state, true) }, state);
   }
   redirect(doneAt(page, decision === 'verify' ? 'verified' : decision === 'reject' ? 'refused' : 'asked'));
@@ -239,4 +243,35 @@ export async function removeSchoolPhotoAction(_previous: FormState, form: FormDa
     return formResult({ form: SCHOOL_PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(SCHOOL_PHOTO_REMOVE_FORM, state, true) }, state);
   }
   redirect(doneAt(page, 'school-photo-removed'));
+}
+
+/**
+ * Review 2026-11: "Take down" and "Restore" of a profile (moderation.takeDown, moderation.restore;
+ * a moderator or an administrator with the second factor). From a report's case (`caseId`) the
+ * result is recorded on the case and the case card reloads; from the record page (no case) the
+ * record page does. Audited with the reason, which the owner reads.
+ */
+async function moderationAction(form: FormData, formName: string, run: (c: Awaited<ReturnType<typeof client>>, input: { personId: string; reason: string; caseId?: string }) => Promise<unknown>, done: string): Promise<FormState> {
+  const caseId = textValue(form, 'caseId', 40);
+  const personId = textValue(form, 'personId', 40);
+  const slug = textValue(form, 'slug', 120);
+  const reason = textValue(form, 'reason', 4000);
+  const page = UUID.test(caseId) ? casePage(caseId) : SLUG.test(slug) ? `/admin/review/records/${slug}` : '/admin/review';
+  try {
+    await run(await client(), { personId: UUID.test(personId) ? personId : '', reason, ...(UUID.test(caseId) ? { caseId } : {}) });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
+    const state = formStateFromFailure(error, { caseId, personId, slug, reason });
+    return formResult({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
+  }
+  redirect(doneAt(page, done));
+}
+
+export async function takeDownAction(_previous: FormState, form: FormData): Promise<FormState> {
+  return moderationAction(form, TAKEDOWN_FORM, (c, input) => c.moderation.takeDown(input), 'taken-down');
+}
+
+export async function restoreAction(_previous: FormState, form: FormData): Promise<FormState> {
+  return moderationAction(form, RESTORE_FORM, (c, input) => c.moderation.restore(input), 'restored');
 }

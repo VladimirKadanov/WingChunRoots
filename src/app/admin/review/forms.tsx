@@ -9,7 +9,7 @@
 
 import { useActionState, useState } from 'react';
 
-import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { ChevronDownIcon } from '@/components/icons';
@@ -18,8 +18,8 @@ import { cx } from '@/lib/cx';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction } from './actions';
-import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, SCHOOL_PHOTO_REMOVE_FORM } from './form-ids';
+import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction } from './actions';
+import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
   return (
@@ -137,6 +137,7 @@ export function DecideForm({
   text: given,
   schoolVersion = null,
   organizationVersion = null,
+  takeDownOption = false,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
@@ -147,6 +148,8 @@ export function DecideForm({
   schoolVersion?: string | null;
   /** M15: an organization's application is decided from the version the card shows (organization-review.ts). */
   organizationVersion?: string | null;
+  /** Review 2026-11: an upheld report may also take the profile down (a box, never ticked in advance). */
+  takeDownOption?: boolean;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
@@ -168,6 +171,15 @@ export function DecideForm({
         {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         {organizationVersion ? <input type="hidden" name="organizationVersion" value={organizationVersion} /> : null}
         <TextAreaField form={formId} name="reason" label={text.reason} optional={text.optional} maxLength={2000} hint={text.hint} state={state} />
+        {takeDownOption ? (
+          <CheckboxField
+            form={formId}
+            name="takeDown"
+            label="Also take the profile down from the public pages"
+            hint="Not ticked unless you choose it. The note above is then required and is sent to the owner as the reason (never name the reporter). You can put the profile back from the record page."
+            state={state}
+          />
+        ) : null}
         <div>
           <Button pending={pending} label={text.label} pendingLabel={text.pending} variant={text.variant} />
         </div>
@@ -364,6 +376,54 @@ export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; in
         <SubmitButton pending={pending} pendingLabel="Saving…">
           Save the record
         </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Review 2026-11: "Take down" (the record leaves every public page, with a reason the owner reads)
+ * and "Restore" (it goes back), for a moderator or an administrator. From a case, `caseId` records
+ * the change on it.
+ */
+export function TakeDownForm({
+  personId,
+  slug,
+  caseId,
+  held,
+  initial,
+}: {
+  personId: string;
+  slug: string;
+  caseId?: string;
+  held: boolean;
+  initial?: FormState | null;
+}) {
+  const fixed = held ? RESTORE_FORM : TAKEDOWN_FORM;
+  const [state, action, pending] = useActionState(held ? restoreAction : takeDownAction, initial ?? IDLE);
+  const generatedId = useFormId(fixed);
+  const formId = initial ? fixed : generatedId;
+  useFocusOnError(formId, state);
+  return (
+    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid={held ? 'restore-form' : 'takedown-form'}>
+      <FormMessage form={formId} state={state} single />
+      <input type="hidden" name="personId" value={personId} />
+      <input type="hidden" name="slug" value={slug} />
+      {caseId ? <input type="hidden" name="caseId" value={caseId} /> : null}
+      <TextAreaField
+        form={formId}
+        name="reason"
+        label={held ? 'Reason for putting the record back' : 'Reason for taking the record down'}
+        maxLength={500}
+        hint={
+          held
+            ? 'Required. Kept in the audit log. The owner is told the record is back, and it returns to what the owner chose.'
+            : 'Required. Kept in the audit log and sent to the owner, if the record has one. Write it for the owner to read, and never name a reporter. The record can be put back at any time.'
+        }
+        state={state}
+      />
+      <div>
+        <Button pending={pending} label={held ? 'Restore record' : 'Take record down'} pendingLabel={held ? 'Restoring…' : 'Taking down…'} variant={held ? 'secondary' : 'danger'} />
       </div>
     </form>
   );

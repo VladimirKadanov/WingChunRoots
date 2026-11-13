@@ -29,8 +29,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, SCHOOL_PHOTO_REMOVE_FORM } from '../form-ids';
-import { AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm } from '../forms';
+import { assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from '../form-ids';
+import { AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm } from '../forms';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
 
@@ -65,6 +65,9 @@ const DONE: Record<string, string> = {
   // M16: gallery.remove and schoolPhotos.remove from the case.
   'gallery-photo-removed': 'The photo is removed from the gallery. The removal and your reason are in the audit log.',
   'school-photo-removed': 'The school photo is removed. The removal and your reason are in the audit log.',
+  // Review 2026-11: moderation.takeDown and moderation.restore from the case of a reported profile.
+  'taken-down': 'The record is off the public pages. Your reason is in the audit log and on this case, and the owner, if there is one, was sent it.',
+  restored: 'The record is back. The change and your reason are in the audit log and on this case, and the owner, if there is one, was told.',
   // M10b: review.arbitrate opens the dispute here.
   arbitrated: 'The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.',
 };
@@ -129,7 +132,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     );
   }
   if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
-  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult] = await Promise.all([
+  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult, takeDownResult, restoreResult] = await Promise.all([
     readFormResult(assignForm('self'), query.outcome),
     readFormResult(assignForm('none'), query.outcome),
     readFormResult(assignForm('choose'), query.outcome),
@@ -140,6 +143,8 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(PHOTO_REMOVE_FORM, query.outcome),
     readFormResult(GALLERY_REMOVE_FORM, query.outcome),
     readFormResult(SCHOOL_PHOTO_REMOVE_FORM, query.outcome),
+    readFormResult(TAKEDOWN_FORM, query.outcome),
+    readFormResult(RESTORE_FORM, query.outcome),
   ]);
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
   const done = decided ? view.decisions[decided].done : typeof query.done === 'string' ? DONE[query.done] : undefined;
@@ -214,6 +219,30 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
                 {view.resolutionReason}
               </p>
             ) : null}
+          </Section>
+        ) : null}
+
+        {view.subject?.takeDown?.allowed && view.subject.person && subjectSlug ? (
+          <Section id="takedown" title="Public pages">
+            <p className="max-w-[60ch] text-ui" data-testid="takedown-state">
+              {view.subject.takeDown.held ? (
+                <>
+                  <span className="font-semibold">Taken down by staff.</span> The profile is off every public page; its owner and the people at the other end of its links still see it.
+                  {view.subject.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">Reason: {view.subject.takeDown.reason}</span> : null}
+                </>
+              ) : (
+                <>Upholding the report hides nothing by itself. You can take the profile down here, or tick the box when you uphold the report.</>
+              )}
+            </p>
+            <div className="max-w-[40rem]">
+              <TakeDownForm
+                personId={view.subject.person.id}
+                slug={subjectSlug}
+                caseId={view.id}
+                held={view.subject.takeDown.held}
+                initial={view.subject.takeDown.held ? restoreResult : takeDownResult}
+              />
+            </div>
           </Section>
         ) : null}
 
@@ -346,7 +375,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} /> : null}
             {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
             {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
           </div>

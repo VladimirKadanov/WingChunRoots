@@ -241,6 +241,11 @@ function parseOrThrow<S extends z.ZodType>(schema: S, raw: unknown): z.output<S>
   throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', fields);
 }
 
+/** The result without the cache tags, which are for the caller's own revalidation only. */
+function publicResult(result: TakedownResult & { tags: string[] }): TakedownResult {
+  return { personId: result.personId, slug: result.slug, takenDown: result.takenDown, visibility: result.visibility, changed: result.changed };
+}
+
 /**
  * moderation.takeDown: takes a person record off every public surface, with a reason. A moderator
  * or an administrator with a verified second factor. Works for a self-kept profile and for an
@@ -251,8 +256,7 @@ export async function takeDownProfile(principal: Principal | null, raw: TakeDown
   const input = parseOrThrow(takeDownInput, raw);
   const result = await getDb().transaction((tx) => applyTakeDown(tx, actor, input, meta));
   invalidatePublic(result.tags, 'procedure');
-  const { tags: _tags, ...rest } = result;
-  return rest;
+  return publicResult(result);
 }
 
 /** moderation.restore: puts a taken-down record back (see the top of this file). */
@@ -261,6 +265,5 @@ export async function restoreProfile(principal: Principal | null, raw: RestoreIn
   const input = parseOrThrow(restoreInput, raw);
   const result = await getDb().transaction((tx) => applyRestore(tx, actor, input, meta));
   invalidatePublic(result.tags, 'procedure');
-  const { tags: _tags, ...rest } = result;
-  return rest;
+  return publicResult(result);
 }

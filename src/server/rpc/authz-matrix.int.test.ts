@@ -2321,6 +2321,9 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
   },
   { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist'] },
+  // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
+  { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/dashboard/schools/actions.ts#updateSchoolAction', row: 'schools.update', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#submitSchoolAction', row: 'schools.submit', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#confirmSchoolAction', row: 'schools.confirm', form: same, roles: ['anonymous', 'member', 'owner'] },
