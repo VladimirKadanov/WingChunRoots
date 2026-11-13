@@ -26,6 +26,7 @@ import { contentHash, withClient } from './admin';
 import { type DemoCertificateFile, writeDemoCertificates } from './seed-certificates';
 import { type DemoPhoto, writeDemoPhotos } from './seed-photos';
 import { assertNotProduction, assertSafeToReset, redactUrl } from './env';
+import { assertWipeAllowed } from './wipe-guard';
 import {
   auditLog,
   authAccount,
@@ -393,6 +394,9 @@ export async function seedDatabase(
   assertNotProduction('db:seed');
   // It empties every application table first: like db:reset, only a local or the test database.
   assertSafeToReset(url, process.env, 'db:seed');
+  // Review 2026-11-13 (ops.md H2): and only a database that holds nothing but demo data, or one the
+  // operator explicitly allows to be wiped (WCR_ALLOW_WIPE=1). Checked before any file is written.
+  await withClient(url, (client) => assertWipeAllowed(client, 'db:seed', url), 'wingchunroots:seed-guard');
   const fixtures = generateFixtures(seed);
   const creds = await credentialRows(fixtures, credentials);
   // M14: the demo photos' files first (the photo store, src/server/storage); without a store that
@@ -425,6 +429,8 @@ export async function seedDatabase(
       const names = RESETTABLE_TABLES.map((t) => `"${getTableName(t)}"`).join(', ');
       let counts: Record<string, number>;
       try {
+        // Once more inside the transaction that empties the tables: what is there now is what is lost.
+        await assertWipeAllowed(client, 'db:seed', url, { quiet: true });
         await client.query(`TRUNCATE TABLE ${names}`);
         counts = await load(client, fixtures, creds, photos, certificates);
         await client.query('COMMIT');

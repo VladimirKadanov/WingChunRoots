@@ -343,10 +343,13 @@ bootstrap_test_db() {
 }
 
 # Always the test database: DATABASE_URL from the environment wins over .env in the db:*
-# scripts, so the development database is never reset here.
+# scripts, so the development database is never reset here. The test database holds the rows of the
+# previous E2E run (accounts and people the tests created), which db:reset's data check
+# (src/server/db/wipe-guard.ts, review 2026-11-13) would refuse as "not demo data": this one command
+# says explicitly that wiping is intended. db:migrate and db:seed then work on an empty database.
 reset_migrate_seed() {
   export DATABASE_URL="$TEST_DATABASE_URL"
-  pnpm db:reset && pnpm db:migrate && pnpm db:seed
+  WCR_ALLOW_WIPE=1 pnpm db:reset && pnpm db:migrate && pnpm db:seed
 }
 
 # --- the contract, in order (plan §7.5) ----------------------------------------------
