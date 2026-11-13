@@ -1,0 +1,22 @@
+# Review 2026-11-13, PR A "safety net": questions and defaults
+
+Context: the full review of 2026-11-13 (`review-2026-11-13/ops.md`, `auth.md`, `uploads.md`), main 63dcb05.
+Everything below that carries `DEFAULT review-2026-11` is a default taken without the owner, safest option first.
+
+## Questions
+
+### Q1 (2026-11-13) BACKUP_AGE_RECIPIENT is set but `age` is not on PATH
+
+- Question: should `scripts/backup-local.sh` fail, or write a plain archive?
+- Options: (a) write the plain archive and print a loud warning on stderr; (b) fail the backup.
+- Proposed default: (a). `age` is optional by the task's own rule; a failing nightly backup is worse than a plain one for data loss, and the warning is in `backup.log`. `// DEFAULT review-2026-11:` in `scripts/backup-local.sh`.
+
+### Q2 (2026-11-13) Versioned secrets (`BETTER_AUTH_SECRET` rotation)
+
+- Out of scope for PR A. Rotating `BETTER_AUTH_SECRET` makes every stored TOTP secret unreadable (Better Auth encrypts them with it). PR A adds `pnpm account:reset-2fa` so staff can re-enrol after a rotation, but a rotation still logs everyone out and invalidates all TOTP secrets at once.
+- Options: (a) leave as is and document; (b) use Better Auth's versioned secrets (`secrets: [{ version, value }]`) so an old key still decrypts while a new one signs.
+- Proposed default: (a) until the owner decides on (b).
+
+## Progress
+
+- 2026-11-13 Task 1 (complete backups): `scripts/lib/object-families.ts` lists the five object families (evidence, certificate, person_photo, school_photo, event_poster); `backup-local.sh --objects` copies all of them, `restore-drill.sh` samples each and fails on a missing object; optional `age`; unit tests (`object-families.test.ts` fails when a table with a storage key is not covered, `object-archive.test.ts`), integration test `src/server/backups-objects.int.test.ts`; backup/restore doc and admin guide updated. Verified by hand against the seeded test database: plain and age-encrypted backup, drill pass, drill FAIL with a missing rendition and a missing family.

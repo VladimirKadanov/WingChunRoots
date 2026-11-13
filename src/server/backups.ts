@@ -1,5 +1,6 @@
 // The local archives that scripts/backup-local.sh writes (milestone M12; plan §3.1 "Архиви"):
-// `<database>-<YYYYMMDDTHHMMSSZ>.dump` (pg_dump -Fc) beside `<same name>.sha256`, in BACKUP_DIR
+// `<database>-<YYYYMMDDTHHMMSSZ>.dump` (pg_dump -Fc), or `….dump.age` when BACKUP_AGE_RECIPIENT
+// encrypted it, beside `<same name>.sha256`, in BACKUP_DIR
 // (default `backups/` in the working directory; the Compose `web` service mounts the host's
 // backups/ read-only). /admin/system shows when the newest one of the app's database was made.
 //
@@ -36,12 +37,13 @@ export function backupDir(env: Env = process.env, cwd: string = process.cwd()): 
   return path.resolve(cwd, env.BACKUP_DIR || DEFAULT_BACKUP_DIR);
 }
 
-/** The time in a dump's name `<database>-<stamp>.dump`, or null when the name is not one. */
+/** The time in a dump's name `<database>-<stamp>.dump` (or `.dump.age`, encrypted), or null when the name is not one. */
 export function backupTime(file: string, database: string): string | null {
   if (!DATABASE.test(database)) return null;
   const prefix = `${database}-`;
-  if (!file.startsWith(prefix) || !file.endsWith('.dump')) return null;
-  const match = STAMP.exec(file.slice(prefix.length, -'.dump'.length));
+  const suffix = file.endsWith('.dump.age') ? '.dump.age' : '.dump';
+  if (!file.startsWith(prefix) || !file.endsWith(suffix)) return null;
+  const match = STAMP.exec(file.slice(prefix.length, -suffix.length));
   if (!match) return null;
   const [, y, mo, d, h, mi, s] = match.map(Number) as [number, number, number, number, number, number, number];
   const time = new Date(Date.UTC(y, mo - 1, d, h, mi, s));

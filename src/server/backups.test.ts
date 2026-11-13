@@ -24,6 +24,13 @@ describe('backupTime', () => {
     expect(backupTime('wingchunroots-20261101T081530Z.dump', 'wingchunroots')).toBe('2026-11-01T08:15:30.000Z');
   });
 
+  it('reads the time in the name of an encrypted dump (.dump.age) too', () => {
+    expect(backupTime('wingchunroots-20261101T081530Z.dump.age', 'wingchunroots')).toBe('2026-11-01T08:15:30.000Z');
+    expect(backupTime('wingchunroots-20261101T081530Z.dump.age.sha256', 'wingchunroots')).toBeNull();
+    expect(backupTime('wingchunroots-20261101T081530Z.dump.age.partial', 'wingchunroots')).toBeNull();
+    expect(backupTime('wingchunroots-20261101T081530Z.age', 'wingchunroots')).toBeNull();
+  });
+
   it('refuses another database, another extension and impossible times', () => {
     expect(backupTime('other-20261101T081530Z.dump', 'wingchunroots')).toBeNull();
     expect(backupTime('wingchunroots_test-20261101T081530Z.dump', 'wingchunroots')).toBeNull();
@@ -56,6 +63,23 @@ describe('backupSummary', () => {
     await writeFile(path.join(dir, 'wingchunroots-20261101T020000Z.dump.sha256'), 'x');
     expect((await backupSummary(dir, 'wingchunroots')).latest?.hasChecksum).toBe(true);
     expect((await backupSummary(dir, 'wingchunroots_test')).latest?.file).toBe('wingchunroots_test-20261103T020000Z.dump');
+  });
+});
+
+describe('backupSummary with encrypted archives', () => {
+  it('counts a .dump.age archive and sees its checksum file', async () => {
+    const encrypted = await mkdtemp(path.join(tmpdir(), 'wcr-backups-age-'));
+    try {
+      await writeFile(path.join(encrypted, 'wingchunroots-20261101T020000Z.dump'), 'a');
+      await writeFile(path.join(encrypted, 'wingchunroots-20261102T020000Z.dump.age'), 'abc');
+      await writeFile(path.join(encrypted, 'wingchunroots-20261102T020000Z.dump.age.sha256'), 'x');
+      expect(await backupSummary(encrypted, 'wingchunroots')).toEqual({
+        latest: { file: 'wingchunroots-20261102T020000Z.dump.age', createdAt: '2026-11-02T02:00:00.000Z', sizeBytes: 3, hasChecksum: true },
+        count: 2,
+      });
+    } finally {
+      await rm(encrypted, { recursive: true, force: true });
+    }
   });
 });
 
