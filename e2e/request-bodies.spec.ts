@@ -31,7 +31,9 @@ const oneClickBody = (size: number) => `${FORM}&pad=${'a'.repeat(size - FORM.len
 function postChunked(path: string, headers: Record<string, string>, first: string, pieces: number): Promise<{ status: number; body: string } | { error: string }> {
   const url = new URL(path, BASE_URL);
   return new Promise((resolve) => {
-    const req = httpRequest(url, { method: 'POST', headers: { ...headers, 'transfer-encoding': 'chunked' } }, (res) => {
+    // A connection of its own: the server closes the one that carried an oversize body, and a kept-alive
+    // socket reused for the next request would fail with ECONNRESET before it was ever read.
+    const req = httpRequest(url, { method: 'POST', agent: false, headers: { ...headers, connection: 'close', 'transfer-encoding': 'chunked' } }, (res) => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (chunk: string) => (body += chunk));
