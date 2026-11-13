@@ -24,7 +24,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { appUrl } from './auth/env';
 import { EXPLORE_START_TAG, SCHOOLS_TAG } from './cache-tags';
-import { declaredLengthRefusal, payloadTooLarge, readBounded } from './http-body';
+import { declaredLengthRefusal, readBounded } from './http-body';
 
 type Env = Record<string, string | undefined>;
 
@@ -38,6 +38,7 @@ export const MAX_TAGS = 2000;
  * (docs/plan/questions/review-2026-11-safety-net.md, Q3).
  */
 export const REVALIDATE_BODY_MAX_BYTES = 256 * 1024;
+const TOO_LARGE_MESSAGE = `The body must be at most ${REVALIDATE_BODY_MAX_BYTES / 1024} KiB.`;
 const MIN_SECRET_LENGTH = 32;
 const TAG = /^(person|lineage|lineage-membership):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -98,10 +99,13 @@ export function hasRevalidateSecret(request: Request, env: Env = process.env): b
  */
 export async function handleRevalidate(request: Request, revalidate: (tag: string) => void, env: Env = process.env): Promise<Response> {
   if (!hasRevalidateSecret(request, env)) return json(401, { error: 'UNAUTHORIZED' });
+  // The route's own answer shape ({ error, message }), not the one of http-body.ts.
   const refused = declaredLengthRefusal(request, REVALIDATE_BODY_MAX_BYTES);
-  if (refused) return refused;
+  if (refused) {
+    return refused.status === 413 ? json(413, { error: 'PAYLOAD_TOO_LARGE', message: TOO_LARGE_MESSAGE }) : json(400, { error: 'BAD_REQUEST', message: 'The Content-Length header is not a number.' });
+  }
   const bytes = await readBounded(request, REVALIDATE_BODY_MAX_BYTES);
-  if (bytes === null) return payloadTooLarge();
+  if (bytes === null) return json(413, { error: 'PAYLOAD_TOO_LARGE', message: TOO_LARGE_MESSAGE });
   let body: unknown;
   try {
     body = JSON.parse(new TextDecoder().decode(bytes));

@@ -1,4 +1,4 @@
-// Bounded request bodies (review 2026-11-13: auth.md 1, uploads.md 1; docs/adr/0016-photos.md, 0029).
+// Bounded request bodies (review 2026-11-13: auth.md 1, uploads.md 1; docs/adr/0016-profile-photos.md, 0029-safety-net.md).
 //
 // A route that reads a body reads at most a limit it names, whatever the client says about the
 // length: the declared Content-Length is checked first (the common, cheap refusal), and the stream

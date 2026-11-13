@@ -4,8 +4,8 @@
 // a file's content (CLAUDE.md §6): the results carry row ids, family names and counts.
 
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
-import { chmod, mkdir, readFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { chmod, mkdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -90,7 +90,12 @@ async function sha256OfStream(body: ReadableStream<Uint8Array>): Promise<string>
 /** The SHA-256 of one stored object, or null when it is not there. `dir`: the archive's copy; otherwise the store. */
 async function sha256Of(key: string, source: { dir: string } | { store: ObjectStore }): Promise<string | null> {
   try {
-    if ('dir' in source) return createHash('sha256').update(await readFile(objectPath(source.dir, key))).digest('hex');
+    if ('dir' in source) {
+      // Streamed: a rendition can be large, and the drill reads many.
+      const hash = createHash('sha256');
+      for await (const chunk of createReadStream(objectPath(source.dir, key))) hash.update(chunk as Buffer);
+      return hash.digest('hex');
+    }
     const object = await source.store.get(key);
     return object ? await sha256OfStream(object.body) : null;
   } catch {
@@ -101,10 +106,7 @@ async function sha256Of(key: string, source: { dir: string } | { store: ObjectSt
 /** Whether one stored object exists (without reading all of it from a store). */
 async function exists(key: string, source: { dir: string } | { store: ObjectStore }): Promise<boolean> {
   try {
-    if ('dir' in source) {
-      await readFile(objectPath(source.dir, key));
-      return true;
-    }
+    if ('dir' in source) return (await stat(objectPath(source.dir, key))).isFile();
     const object = await source.store.get(key);
     if (!object) return false;
     await object.body.cancel().catch(() => undefined);

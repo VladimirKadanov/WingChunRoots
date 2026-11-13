@@ -9,7 +9,7 @@
 // then by counting the stream, before the form is parsed. Never 411: a mail client may send the
 // body chunked (HTTP/2 has no Content-Length at all) and must still unsubscribe.
 
-import { readBounded } from './http-body';
+import { declaredLengthRefusal, readBounded } from './http-body';
 import { ORPCError, serverClient } from './rpc/server';
 
 const TEXT = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
@@ -23,19 +23,15 @@ export const ONE_CLICK_BODY_MAX_BYTES = 8 * 1024;
 
 const tooLarge = () => new Response('This request is too large.\n', { status: 413, headers: TEXT });
 
-/** Whether Content-Length says the body is above the limit; a value that is not a number is left to the stream count. */
-function declaredTooLarge(request: Request): boolean {
-  const value = (request.headers.get('content-length') ?? '').trim();
-  return /^\d{1,16}$/.test(value) && Number(value) > ONE_CLICK_BODY_MAX_BYTES;
-}
-
 /**
  * RFC 8058 §3.2: the POST carries `List-Unsubscribe=One-Click` (urlencoded or multipart). 'too large'
- * when the body is past ONE_CLICK_BODY_MAX_BYTES (the rest is never read), 'no' for anything that
- * is not the one-click form.
+ * when the body is past ONE_CLICK_BODY_MAX_BYTES (the rest is never read), 'bad length' for a
+ * Content-Length that is not a number, 'no' for anything that is not the one-click form.
  */
-async function oneClick(request: Request): Promise<'yes' | 'no' | 'too large'> {
-  if (declaredTooLarge(request)) return 'too large';
+async function oneClick(request: Request): Promise<'yes' | 'no' | 'too large' | 'bad length'> {
+  // The shared rule (src/server/http-body.ts): 413 above the limit, 400 for a value that is not a number.
+  const refused = declaredLengthRefusal(request, ONE_CLICK_BODY_MAX_BYTES);
+  if (refused) return refused.status === 413 ? 'too large' : 'bad length';
   const body = await readBounded(request, ONE_CLICK_BODY_MAX_BYTES);
   if (body === null) return 'too large';
   try {
@@ -51,6 +47,7 @@ export async function handleOneClick(request: Request): Promise<Response> {
   const token = new URL(request.url).searchParams.get('token') ?? '';
   const answer = await oneClick(request);
   if (answer === 'too large') return tooLarge();
+  if (answer === 'bad length') return new Response('The Content-Length header is not a number.\n', { status: 400, headers: TEXT });
   // Anything else (a scanner, an empty POST) switches nothing off.
   if (answer !== 'yes') return new Response('Send List-Unsubscribe=One-Click, or open the address to unsubscribe.\n', { status: 400, headers: TEXT });
   try {

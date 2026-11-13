@@ -69,7 +69,8 @@ export interface TwoFactorReset {
  *   /account/security and gets its role back (`pnpm admin:create` for an admin; /admin/users for the
  *   other roles).
  * - Every session of the account ends, and so do its short-lived values (a half-done sign-in, trusted
- *   devices, password-reset links; they carry the user id as their value): the trigger of M02 ends
+ *   devices, password-reset links; they carry the user id as their value, the rule of the trigger
+ *   auth_user_end_sessions, whose own test covers it): the trigger of M02 ends
  *   sessions when a role changes or two-factor turns ON, not when it turns off, so it is done here.
  * - One audit row, auth.2fa.reset, with no actor (the person at the terminal of the local machine),
  *   shapes only: whether it was on and the role before and after; no secret, no address.

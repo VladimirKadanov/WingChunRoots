@@ -113,9 +113,13 @@ name="$database-$stamp.dump"
 file="$dir/$name"
 partial="$file.partial"
 objects_partial=""
+# The plain copy of the objects while an encrypted archive is being made: removed on any exit that
+# comes before it was encrypted (a full disk, a bad recipient key), so no plaintext copy stays behind.
+objects_plain=""
 cleanup() {
   rm -f "$partial" "$file.age.partial"
   [ -z "$objects_partial" ] || rm -f "$objects_partial"
+  [ -z "$objects_plain" ] || rm -rf "$objects_plain"
 }
 trap cleanup EXIT
 
@@ -173,6 +177,7 @@ if [ "$objects" -eq 1 ]; then
   # and the retention below has run).
   out="$dir/objects/$database-$stamp"
   mkdir -p "$out"
+  [ "$encrypt" -eq 0 ] || objects_plain="$out"
   objects_sql="$(pnpm -s exec tsx scripts/ops/evidence-objects.ts sql)"
   pg_tool psql -X -q -t -A -v ON_ERROR_STOP=1 -c "$objects_sql" |
     pnpm -s exec tsx scripts/ops/evidence-objects.ts copy --out "$out" || objects_status=$?
@@ -183,6 +188,7 @@ if [ "$objects" -eq 1 ]; then
     mv "$objects_partial" "$out.tar.age"
     objects_partial=""
     rm -rf "$out"
+    objects_plain=""
     echo "backup: wrote $out.tar.age (the object copy, encrypted with age)"
   fi
 fi

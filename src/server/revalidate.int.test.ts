@@ -107,7 +107,7 @@ describe('POST /api/internal/revalidate', () => {
     declared.headers.set('content-length', String(over.length));
     const refused = await POST(declared);
     expect(refused.status).toBe(413);
-    expect(await refused.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+    expect(await refused.json()).toMatchObject({ error: 'PAYLOAD_TOO_LARGE' });
     expect((await POST(post(over, auth))).status).toBe(413);
     const chunked = new Request('http://127.0.0.1:3999/api/internal/revalidate', {
       method: 'POST',
