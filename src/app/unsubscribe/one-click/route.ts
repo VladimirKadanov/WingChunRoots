@@ -5,7 +5,7 @@
 
 import { handleOneClick } from '@/server/one-click';
 
-export function POST(request: Request): Promise<Response> {
+export async function POST(request: Request): Promise<Response> {
   return handleOneClick(request);
 }
 
