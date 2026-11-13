@@ -1270,6 +1270,15 @@ export interface VerifiedWrites {
 }
 
 /**
+ * The publication rule of an approval, for a person aliased `p`: a self-stewarded profile whose owner
+ * withdrew the publication consent is never published (DEFAULT D03); everything else may be.
+ */
+const OWNER_KEEPS_PUBLICATION = sql`NOT (p.stewardship = 'self' AND COALESCE((
+         SELECT c.action FROM consent_record c
+          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
+          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')`;
+
+/**
  * The writes that make a relationship verified, shared by the teacher's approval (M09) and the
  * review committee's verify decision (M10a, review.ts): the display-primary line, verified and
  * public, both people public. The caller holds the global verify lock and has run the cycle,
@@ -1306,19 +1315,13 @@ UPDATE person p SET visibility = 'public', updated_at = now()
  WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
    AND p.visibility <> 'public' AND p.deleted_at IS NULL
    AND p.taken_down_at IS NULL
-   AND NOT (p.stewardship = 'self' AND COALESCE((
-         SELECT c.action FROM consent_record c
-          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
-          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')
+   AND ${OWNER_KEEPS_PUBLICATION}
 RETURNING p.id::text AS id`);
   await tx.execute(sql`
 UPDATE person p SET taken_down_visibility = 'public', updated_at = now()
  WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
    AND p.taken_down_at IS NOT NULL AND p.taken_down_visibility <> 'public' AND p.deleted_at IS NULL
-   AND NOT (p.stewardship = 'self' AND COALESCE((
-         SELECT c.action FROM consent_record c
-          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
-          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')`);
+   AND ${OWNER_KEEPS_PUBLICATION}`);
   return { isDisplayPrimary: primary, previousPrimaryId: primary && current ? current.id : null, publishedPersonIds: published.rows.map((r) => r.id) };
 }
 

@@ -783,10 +783,6 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   await endSuccession(tx, userId, actor);
   const consents = await tx.execute(sql`SELECT count(*)::int AS n FROM consent_record WHERE user_id = ${userId}`);
   counts.consentsRemoved = Number((consents.rows[0] as { n?: number } | undefined)?.n ?? 0);
-  // A paid subscription ends at the provider first (its rows go with the account); if the provider
-  // does not answer, the whole erasure is refused and nothing is changed. The call has its own timeout
-  // (10 s, billing/stripe.ts) and runs under the global verify lock: an approval waits at most that long.
-  await endSubscriptionsBeforeDeletion(tx, userId);
   // The short-lived values of the account (reset tokens, the second-factor challenge, trusted devices) hold
   // its id as their value, the way the auth_user_end_sessions trigger finds them; the identifier is hashed.
   await tx.execute(sql`DELETE FROM auth_verification WHERE value = ${userId}`);
@@ -858,6 +854,42 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   return { userId, caseId: deletionCaseId, personId: own?.id ?? null, visibility, tombstone, counts, tags: [...new Set(tags)] };
 }
 
+/**
+ * A paid subscription ends at the provider before the account goes (its rows go with the account), and
+ * if the provider does not answer the erasure is refused with nothing changed. The call can take
+ * seconds (10 s, billing/stripe.ts), so it runs before any lock is taken: under the global verify lock
+ * an approval would wait for it and be cancelled by the pool's 2 s statement timeout. The account is
+ * looked up without a lock and only when it is plainly erasable; the transaction checks everything again
+ * under the locks, so a refusal there (a race) can leave a subscription ended for an account that stays.
+ */
+async function endSubscriptionsFirst(request: ErasureRequest): Promise<void> {
+  const db = getDb();
+  if (request.actor) {
+    const actor = request.actor;
+    await db.transaction((tx) => requireStandingAdmin(tx, actor));
+  }
+  let userId: string | null = null;
+  // A malformed id is for the transaction to refuse, with its message.
+  if ('caseId' in request.by && !z.uuid().safeParse(request.by.caseId).success) return;
+  if ('userId' in request.by && !z.uuid().safeParse(request.by.userId).success) return;
+  if ('caseId' in request.by) {
+    const [open] = await db
+      .select({ userId: reviewCase.openedByUserId })
+      .from(reviewCase)
+      .where(and(eq(reviewCase.id, request.by.caseId), eq(reviewCase.kind, 'deletion_request'), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES])));
+    userId = open?.userId ?? null;
+  } else if ('userId' in request.by) {
+    userId = request.by.userId;
+  } else {
+    const [found] = await db.select({ id: authUser.id }).from(authUser).where(eq(authUser.email, request.by.email.trim().toLowerCase()));
+    userId = found?.id ?? null;
+  }
+  if (!userId) return;
+  const [account] = await db.select({ email: authUser.email, role: authUser.role }).from(authUser).where(eq(authUser.id, userId));
+  if (!account || account.role !== 'user' || isErasedEmail(account.email) || userId === request.actor?.user.id) return;
+  await endSubscriptionsBeforeDeletion(db, userId);
+}
+
 /** The files that no row refers to any more, deleted after the commit (best effort; the rows say what was there). */
 async function deleteFiles(files: Files, evidenceStore: ObjectStore): Promise<void> {
   await deletePhotoFiles([...files.photos, ...files.schoolPhotos, ...files.posters]);
@@ -875,6 +907,7 @@ async function deleteFiles(files: Files, evidenceStore: ObjectStore): Promise<vo
  * in the web process drop the public cache with `outcome.tags`.
  */
 export async function eraseAccount(request: ErasureRequest, evidenceStore: ObjectStore = getEvidenceStore()): Promise<ErasureOutcome> {
+  await endSubscriptionsFirst(request);
   const files: Files = { photos: [], schoolPhotos: [], posters: [], certificates: [], evidence: [] };
   const outcome = await getDb().transaction((tx) => eraseInTransaction(tx, request, files));
   await deleteFiles(files, evidenceStore);

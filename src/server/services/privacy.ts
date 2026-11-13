@@ -112,6 +112,8 @@ export interface ConsentWithdrawResult {
   withdrawn: OptionalConsent[];
   /** True when withdrawing `publication` took the own profile out of public view. */
   profileHidden: boolean;
+  /** Present (true) when staff hold the own profile: it was hidden already, and the withdrawal waits for the restore. */
+  profileHeld?: true;
 }
 
 /**
@@ -136,6 +138,7 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
     // review, code-1).
     const withdrawn = (await withdrawConsents(tx, p.user.id, p.user.role, kinds, meta, { evenIfNotGiven: ['publication'] })) as OptionalConsent[];
     let profileHidden = false;
+    let profileHeld = false;
     let personId: string | null = null;
     if (kinds.includes('publication')) {
       const [own] = await tx
@@ -147,6 +150,7 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
       // withdrawal is recorded for the restore (taken_down_visibility) and nothing public changes.
       if (own && own.stewardship === 'self') {
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
+        profileHeld = own.takenDownAt != null;
         personId = own.id;
         // The visibility change is a change to the person (plan §6.6): before and after, no names.
         if (profileHidden) {
@@ -164,11 +168,11 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
         }
       }
     }
-    return { withdrawn, profileHidden, tags: profileHidden && personId ? await neighbourTags(tx, personId, { ancestors: true }) : [] };
+    return { withdrawn, profileHidden, profileHeld, tags: profileHidden && personId ? await neighbourTags(tx, personId, { ancestors: true }) : [] };
   });
   // The person and the people and lineages next to it, as after a profile save.
   if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
-  return { withdrawn: outcome.withdrawn, profileHidden: outcome.profileHidden };
+  return { withdrawn: outcome.withdrawn, profileHidden: outcome.profileHidden, ...(outcome.profileHeld ? { profileHeld: true as const } : {}) };
 }
 
 // --- account.requestDeletion ---------------------------------------------------------------------

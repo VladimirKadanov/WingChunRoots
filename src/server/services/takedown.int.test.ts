@@ -211,7 +211,7 @@ describe('take down and restore', () => {
     expect((await rowOf(owner.personId)).takenDownVisibility).toBe('public');
     const result = await consentWithdraw(owner.principal, { kinds: ['publication'] }, meta);
     // Nothing public changes (the record is hidden already), but the choice waits for the restore.
-    expect(result.profileHidden).toBe(false);
+    expect(result).toEqual({ withdrawn: ['publication'], profileHidden: false, profileHeld: true });
     expect((await rowOf(owner.personId)).takenDownVisibility).toBe('involved_only');
     const back = await restoreProfile(moderator.principal, { personId: owner.personId, reason: 'Resolved.' }, meta);
     expect(back.visibility).toBe('involved_only');
@@ -236,6 +236,21 @@ describe('take down and restore', () => {
     const back = await restoreProfile(moderator.principal, { personId: student.personId, reason: 'Resolved.' }, meta);
     expect(back.visibility).toBe('public');
     expect(await publicIds(teacher.personId, student.personId)).toEqual([teacher.personId, student.personId].sort());
+  });
+
+  it('an approval during a hold does not mark a person for publication whose owner withdrew the consent', async () => {
+    const teacher = await member('takedown-teacher-w', { sifu: true });
+    const student = await member('takedown-student-w');
+    const moderator = await staff('takedown-link-mod-w', 'moderator');
+    const lineageId = await newLineage('takedown-w');
+    const request = await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta);
+    await takeDownProfile(moderator.principal, { personId: student.personId, reason: REASON }, meta);
+    await consentWithdraw(student.principal, { kinds: ['publication'] }, meta);
+    await approveRelationship(teacher.principal, { relationshipId: request.relationship.id, idempotencyKey: key() }, meta);
+    expect((await rowOf(student.personId)).takenDownVisibility).toBe('involved_only');
+    const back = await restoreProfile(moderator.principal, { personId: student.personId, reason: 'Resolved.' }, meta);
+    expect(back.visibility).toBe('involved_only');
+    expect(await publicIds(student.personId)).toEqual([]);
   });
 });
 
