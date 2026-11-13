@@ -13,11 +13,15 @@ Fix PR B of the 2026-11-13 review (`docs/adr/0030-takedown-suspension-erasure.md
 
 **Proposed default:** option 1.
 
+**Answer:** (filled in by the owner)
+
 ## 2026-11-13 — Take-down: "Uphold the report" and the take-down checkbox
 
 **Question:** should upholding a profile report take the profile down by itself?
 
 **Proposed default:** no. "Uphold the report" still only closes the case; a moderator who also wants the profile held ticks "Take the profile down" on the same form (off by default), with a reason. Both the decision and the take-down are audited and noted on the case.
+
+**Answer:** (filled in by the owner)
 
 ## 2026-11-13 — Suspension: who, what the person sees, what stays public
 
@@ -31,6 +35,8 @@ Fix PR B of the 2026-11-13 review (`docs/adr/0030-takedown-suspension-erasure.md
 - Nobody suspends their own account and nobody suspends the last active administrator.
 - Better Auth's admin-plugin HTTP endpoints stay disabled; the only way to suspend is the service (`accounts.suspend`).
 
+**Answer:** (filled in by the owner)
+
 ## 2026-11-13 — Account erasure on the hosted service
 
 **Question:** `pnpm account:delete` refuses production, and nothing else erased a person, so a hosted service could not honour an erasure request. How is an account erased hosted, and what remains of it?
@@ -39,6 +45,8 @@ Fix PR B of the 2026-11-13 review (`docs/adr/0030-takedown-suspension-erasure.md
 - The local command `pnpm account:delete` stays the production-refusing local tool and calls the same service.
 - Evidence files uploaded by the person stay (they belong to a relationship record that survives) but the original file name, the hash of the original and the link notes are cleared.
 - A staff account (moderator, archivist, administrator) is not erased through this procedure: its role is removed first.
+
+**Answer:** (filled in by the owner)
 
 ## 2026-11-13 — Account erasure: what is kept of the record, the evidence and the organizations
 
@@ -54,11 +62,15 @@ Fix PR B of the 2026-11-13 review (`docs/adr/0030-takedown-suspension-erasure.md
 - **What is not scrubbed.** `audit_log` keeps ids (never a name or an address) and the `ip_hmac` values until their key is destroyed (`docs/data-model.md` §7); `record_revision` keeps the old names of an archive record because it is append-only; `billing_event.raw` may hold what the payment provider sent (it is test-mode only in Phase 1).
 - **The tombstone.** When a record that must stay still points at the account, the `auth_user` row stays: address `erased-<id>@erased.invalid`, name blank, banned for good, role `user`, no credentials. It cannot be restored (`accounts.unsuspend` refuses it). The privacy notice must name it.
 
+**Answer:** (filled in by the owner)
+
 ## 2026-11-13 — Self-service "Delete my account"
 
 **Question:** should a person be able to request their own erasure in the app?
 
 **Proposed default:** not in this PR. The existing "Request deletion" case stays the way in; an administrator carries it out. A later "Delete my account" form would ask for the password again and then open the same case. Please say if it should be built.
+
+**Answer:** (filled in by the owner)
 
 ## 2026-11-13 — Privacy notice (out of scope here; what it must say)
 
@@ -74,3 +86,4 @@ The privacy notice text itself is not part of this PR. Once erasure, suspension 
 
 - 2026-11-13 — checkpoint 1: take-down and suspension services, enforcement, procedures, matrix and parity rows, admin forms.
 - 2026-11-13 — checkpoint 2: account erasure (anonymise in place, tombstone, `USER_REFERENCES` catalogue and its test), `accounts.erase`, `/admin/accounts` (suspend, lift, erase), authorization-matrix rows for the three forms, ADR 0030, Bulgarian guides and data model.
+- 2026-11-13 — checkpoint 3: code-review fixes (a held profile keeps the owner's consent withdrawal and what an approval would publish for the restore; the suspended list filters ended bans in SQL; erasure matches verification rows by account id only).
