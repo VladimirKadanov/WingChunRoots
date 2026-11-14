@@ -138,6 +138,7 @@ export function DecideForm({
   schoolVersion = null,
   organizationVersion = null,
   takeDownOption = false,
+  lifeStatusChoice = false,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
@@ -150,12 +151,26 @@ export function DecideForm({
   organizationVersion?: string | null;
   /** Review 2026-11: an upheld report may also take the profile down (a box, never ticked in advance). */
   takeDownOption?: boolean;
+  /**
+   * Review 2026-11-14 (owner decision): the teacher's life status is "unknown", so the record is
+   * treated as living and hidden. Verifying asks the plain question first (the evidence shows a
+   * death, or it cannot be established); only the first publishes the record.
+   */
+  lifeStatusChoice?: boolean;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
   useFocusOnError(formId, state);
+  const choosing = lifeStatusChoice && decision === 'verify';
+  const [deceased, setDeceased] = useState(state.values?.deceased ?? '');
+  const establishing = choosing && deceased === 'established';
   const text = { ...DECISIONS[decision], ...given, variant: DECISIONS[decision].variant };
+  const reasonHint = establishing
+    ? 'Required. Say what the evidence shows and where to find it (a file on this case, a source). Kept with the case and in the audit log; the claimant is not shown it.'
+    : choosing
+      ? 'Optional here. Kept with the case for the reviewers; the claimant is told the claim was confirmed.'
+      : text.hint;
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
       {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}
@@ -170,7 +185,8 @@ export function DecideForm({
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
         {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         {organizationVersion ? <input type="hidden" name="organizationVersion" value={organizationVersion} /> : null}
-        <TextAreaField form={formId} name="reason" label={text.reason} optional={text.optional} maxLength={2000} hint={text.hint} state={state} />
+        {choosing ? <LifeStatusChoice form={formId} state={state} value={deceased} onValue={setDeceased} /> : null}
+        <TextAreaField form={formId} name="reason" label={text.reason} optional={establishing ? false : text.optional} maxLength={2000} hint={reasonHint} state={state} />
         {takeDownOption ? (
           <CheckboxField
             form={formId}
@@ -185,6 +201,68 @@ export function DecideForm({
         </div>
       </form>
     </details>
+  );
+}
+
+/**
+ * The plain choice a verify of a claim about a teacher with an unknown life status asks for
+ * (review 2026-11-14). Both answers verify the claim when the evidence supports the training; only
+ * the first makes the record public, because only that one establishes that the teacher has died.
+ */
+function LifeStatusChoice({ form, state, value, onValue }: { form: string; state: FormState; value: string; onValue: (value: string) => void }) {
+  const error = state.status === 'error' ? state.fields?.deceased : undefined;
+  const errorId = `${fieldId(form, 'deceased')}-error`;
+  const options = [
+    {
+      value: 'established',
+      label: 'The evidence shows this person is deceased',
+      text: 'The record is marked deceased with your reason and is shown publicly once both people of the link have chosen to be public.',
+    },
+    {
+      value: 'not_established',
+      label: 'I cannot establish this',
+      text: 'The claim can still be verified. The record stays hidden, treated as a living person, until someone with the evidence marks it deceased.',
+    },
+  ] as const;
+  return (
+    <fieldset aria-describedby={error ? errorId : undefined} className="grid gap-2" data-testid="life-status-choice">
+      <legend className="mb-1 font-semibold">The teacher’s life status is not known</legend>
+      <p className="text-sm text-fg-muted">A person whose status is not known is treated as living and is never shown publicly. Choose one to verify.</p>
+      {error ? (
+        <p id={errorId} className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+      {options.map((option, index) => (
+        <label
+          key={option.value}
+          className={cx(
+            'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-sm border border-border-strong bg-surface-1 p-3',
+            'transition-colors duration-(--duration-fast) hover:border-fg-muted has-[:checked]:border-fg has-[:checked]:bg-surface-2',
+            'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
+            'forced-colors:has-[:checked]:border-2 forced-colors:has-[:checked]:p-[11px]',
+          )}
+        >
+          <input
+            type="radio"
+            name="deceased"
+            value={option.value}
+            id={index === 0 ? fieldId(form, 'deceased') : undefined}
+            checked={value === option.value}
+            onChange={() => onValue(option.value)}
+            className={cx(
+              'mt-0.5 grid size-5 shrink-0 cursor-pointer appearance-none place-content-center rounded-full border-[1.5px] border-fg bg-surface-1 focus-visible:outline-none',
+              'before:size-2.5 before:scale-0 before:rounded-full before:bg-fg before:transition-transform before:duration-(--duration-fast) checked:before:scale-100',
+              'forced-colors:appearance-auto forced-colors:before:hidden',
+            )}
+          />
+          <span className="grid gap-0.5">
+            <span className="font-semibold">{option.label}</span>
+            <span className="text-sm text-fg-muted">{option.text}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

@@ -33,6 +33,7 @@ import { pgErrorOf, ServiceError } from './errors';
 import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript } from './names';
 import { BIO_MAX_LENGTH } from './profile';
 import { idempotencyKey, keyReused } from './relationships';
+import { UNKNOWN_STATUS_MESSAGE } from './publication';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 
 export const RECORD_FIELD_LABELS: Record<keyof RecordFields, string> = {
@@ -111,6 +112,10 @@ export function changedFields(before: RecordFields, after: RecordFields): (keyof
 export async function writeRecordFields(tx: Transaction, state: RecordState, next: RecordFields): Promise<{ changed: (keyof RecordFields)[]; searchKeys: number | null }> {
   const changed = changedFields(state.fields, next);
   if (changed.length === 0) return { changed, searchKeys: null };
+  // Review 2026-11-14: a record that is shown publicly is never set back to "unknown" (the CHECK
+  // person_unknown_not_public would refuse it anyway): its status is corrected to a known one, or
+  // the record is taken down first.
+  if (changed.includes('lifeStatus') && next.lifeStatus === 'unknown' && state.visibility === 'public') throw new ServiceError('CONFLICT', UNKNOWN_STATUS_MESSAGE);
   const now = new Date();
   const script = next.originalName && next.originalLang ? originalScript(next.originalLang)! : null;
   if (changed.includes('primaryName')) {
@@ -145,6 +150,51 @@ export async function recordRevisionRow(
   const id = uuidv7();
   await tx.insert(recordRevision).values({ id, ...row, changed: [...row.changed] });
   return id;
+}
+
+/**
+ * Review 2026-11-14 (owner decision): a reviewer with the review role establishes that a record whose
+ * life status is `unknown` is deceased, with a written reason that cites the evidence, inside the
+ * caller's transaction (the committee's verify panel, review.ts; the archival edit does the same
+ * through its own form). The record is locked and its change history gets a row; the audit row
+ * carries the case, the evidence files the decision rests on and the reason, never a name. Does not
+ * publish: the verify that follows does (relationships.ts markVerified). Returns whether it changed.
+ */
+export async function establishDeceased(
+  tx: Transaction,
+  actor: Principal,
+  personId: string,
+  input: { reason: string; reviewCaseId: string; evidenceIds: readonly string[] },
+  meta: RequestMeta,
+): Promise<{ changed: boolean }> {
+  const state = await recordState(tx, { id: personId }, true);
+  if (!state || state.fields.lifeStatus !== 'unknown') return { changed: false };
+  const next = { ...state.fields, lifeStatus: 'deceased' as const };
+  await writeRecordFields(tx, state, next);
+  await recordRevisionRow(tx, {
+    personId: state.id,
+    source: 'archival_edit',
+    actorUserId: actor.user.id,
+    reviewCaseId: input.reviewCaseId,
+    changed: ['lifeStatus'],
+    before: state.fields,
+    after: next,
+    reason: input.reason,
+  });
+  await writeAudit(tx, {
+    action: 'person.update',
+    actorUserId: actor.user.id,
+    actorRole: actor.user.role,
+    subjectType: 'person',
+    subjectId: state.id,
+    before: { lifeStatus: 'unknown', stewardship: state.stewardship },
+    after: { archival: true, via: 'committee_review', changed: { lifeStatus: true }, lifeStatus: 'deceased', caseId: input.reviewCaseId },
+    reason: input.reason,
+    evidenceIds: input.evidenceIds,
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  return { changed: true };
 }
 
 // --- Input ---------------------------------------------------------------------------------------
@@ -301,6 +351,9 @@ export async function proposeRecordChange(principal: Principal | null, raw: z.in
       if (state.stewardship === 'self') throw new ServiceError('FORBIDDEN', NOT_SHARED);
       const changed = changedFields(state.fields, next);
       if (changed.length === 0) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { form: 'Change at least one field: the record already says this.' });
+      if (changed.includes('lifeStatus') && next.lifeStatus === 'unknown') {
+        throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lifeStatus: UNKNOWN_STATUS_MESSAGE });
+      }
       if (changed.includes('lifeStatus') && input.evidenceIds.length === 0) {
         throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { evidenceIds: 'A change of the life status needs at least one file of evidence.' });
       }
