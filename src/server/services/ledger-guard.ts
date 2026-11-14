@@ -13,6 +13,12 @@
 //
 // A ServiceError is the refusal the services already use, so the transaction rolls back as for any other
 // refusal. No line was written, so the caller has no handle to settle (there is nothing to mark `aborted`).
+//
+// The code is CONFLICT (409), not a 5xx, on purpose: a failure of 500 or above is, by design, shown to every
+// caller as a bare "Internal server error" (src/server/rpc/failure-log.ts, form.ts), which is exactly what hid
+// the reason from the administrator. The server log gets the reason in an error line either way. `operator` is for
+// the entry points only staff and the command line reach (an administrator's erasure, pnpm account:delete); a
+// caller a member can reach must pass `member`, or the message would name a folder of the server.
 
 import { beginLedger, checkLedgerWritable, ErasureLedgerError, type LedgerHandle, type LedgerOperation } from '../erasure-ledger';
 import { logger } from '../log';

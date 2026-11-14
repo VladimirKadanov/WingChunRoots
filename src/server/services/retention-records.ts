@@ -122,8 +122,9 @@ const ENDED_AT: SQL = sql.raw(`greatest(
     (SELECT max(CASE i.status
                   WHEN 'accepted' THEN coalesce(i.accepted_at, i.updated_at)
                   -- Revoked: the last change of the row, as retention.ts reads it, while the address is still there. Erasing
-                  -- the address (30 days later) touches the row again, so after that its own time says nothing; the
-                  -- withdrawal or the newer invitation that revoked it is counted by the other terms.
+                  -- the address (30 days later) touches the row again, so after that its own time says nothing. Only two
+                  -- writers revoke an invitation, and each leaves a term of its own: the resend (invitations.ts) makes a
+                  -- newer invitation, the student's withdrawal (relationships.ts) updates the relationship.
                   WHEN 'revoked' THEN CASE WHEN i.email IS NOT NULL THEN i.updated_at END
                   ELSE i.expires_at
                 END)
