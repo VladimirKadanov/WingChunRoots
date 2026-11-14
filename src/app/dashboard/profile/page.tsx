@@ -66,8 +66,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
     countryCode: profile.countryCode ?? '',
     placeId: profile.placeId ?? '',
     trainingStartYear: profile.trainingStartYear === null ? '' : String(profile.trainingStartYear),
-    showPublicly: profile.wantsPublic,
+    showPublicly: profile.visibility === 'public',
   };
+  // A profile staff hold is hidden whatever the box says: the box shows what the owner chose, for the restore.
+  if (profile.takenDown) initialValues.showPublicly = profile.wantsPublic;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
