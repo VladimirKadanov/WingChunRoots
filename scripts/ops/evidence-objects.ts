@@ -1,19 +1,27 @@
-// The evidence objects of a local archive (milestone M12; plan §3.1 "Архиви", §6.4), for
-// scripts/backup-local.sh and scripts/restore-drill.sh. Evidence stays private: the copies go only
-// into the git-ignored backups/ folder with owner-only permissions, and nothing here prints a
-// storage key, a name or a file's content (CLAUDE.md §6).
+// The objects of a local archive (milestone M12; plan §3.1 "Архиви", §6.4; extended by the review of
+// 2026-11-13, ops.md H1), for scripts/backup-local.sh and scripts/restore-drill.sh. The name is the
+// M12 one: it began with the evidence files alone and now handles every object family the database
+// points at (scripts/lib/object-families.ts: evidence, passport certificates, profile and gallery
+// photos, school photos and logos, event posters), each in the store that holds it. Objects stay
+// private: the copies go only into the git-ignored backups/ folder with owner-only permissions, and
+// nothing here prints a storage key, a name or a file's content (CLAUDE.md §6).
 //
+//   tsx scripts/ops/evidence-objects.ts sql [--sample <n>] [--family <id>]
+//       prints the SELECT that lists the objects of the database, one
+//       `<family>|<id>|<key>|<sha256>|<mime>|<parts>` line per row that has files now; with
+//       --sample, that many random rows of each family. Pipe it into `psql -t -A -f -`.
 //   tsx scripts/ops/evidence-objects.ts copy --out <dir>
-//       storage keys on stdin, one per line: each object of the evidence store (SeaweedFS or the
-//       private folder, src/server/storage) is copied to <dir>/<key>
+//       those lines on stdin (or, as in M12, one evidence storage key per line): each object of
+//       each row is copied from its store (SeaweedFS or the private folders, src/server/storage)
+//       to <dir>/<key>. A row with an object missing in the store fails the command.
 //   tsx scripts/ops/evidence-objects.ts verify [--objects <dir>]
-//       lines `<id>|<storage key>|<sha256>` on stdin (a sample of evidence_file from the restored
-//       copy): the SHA-256 of each stored object (from <dir> when given, else from the store) must
-//       be the row's sha256, the hash of the stored object
+//       those lines on stdin (or, as in M12, `<id>|<key>|<sha256>` of evidence_file): every object
+//       of each row must be there (in <dir> when given, else in the store) and the one the row's
+//       SHA-256 describes must have that hash. A row that points at a missing object fails.
 //   tsx scripts/ops/evidence-objects.ts restore --objects <dir>
-//       lines `<storage key>|<mime>|<sha256>` on stdin (evidence_file of the restored database): puts each
-//       object of an archive's copy whose SHA-256 is the row's back into the evidence store (after a real restore that lost
-//       the store too; docs/operations/backup-and-restore.md)
+//       those lines on stdin (or, as in M12, `<key>|<mime>|<sha256>` of evidence_file): puts each
+//       object of an archive's copy back into its store, a row all or nothing, after a real
+//       restore that lost the stores too (docs/operations/backup-and-restore.md)
 //   tsx scripts/ops/evidence-objects.ts fixture [--test-database]
 //       one clearly fictional demo PDF in the store and its evidence_file row, so that the drill
 //       has an object to check; a local database or TEST_DATABASE_URL only, never in production
@@ -21,19 +29,18 @@
 // Values come from the environment, then from .env.
 
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
-import { chmod, mkdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 
 import { createRoleDatabase } from '../../src/server/db';
 import { loadDotEnv } from '../../src/server/db/dotenv';
 import { assertSafeToReset, rolePassword, targetDatabaseUrl } from '../../src/server/db/env';
 import { evidenceFile } from '../../src/server/db/schema';
-import { getEvidenceStore, isStorageKey } from '../../src/server/storage';
+import { getEvidenceStore, getPhotoStore } from '../../src/server/storage';
+import { type ArchiveResult, copyObjects, restoreObjects, type StoreResolver, verifyObjects } from '../lib/object-archive';
+import { listSql, OBJECT_FAMILIES, type ObjectRow, parseRow } from '../lib/object-families';
 
 const say = (line: string) => process.stdout.write(`${line}\n`);
+
+const stores: StoreResolver = (name) => (name === 'media' ? getPhotoStore() : getEvidenceStore());
 
 async function stdinLines(): Promise<string[]> {
   const chunks: Buffer[] = [];
@@ -50,115 +57,62 @@ function option(name: string): string | undefined {
   return at === -1 ? undefined : process.argv[at + 1];
 }
 
-/** <dir>/<key>, refusing a key that is not one (no "..", no absolute path). */
-function objectPath(dir: string, key: string): string {
-  if (!isStorageKey(key)) throw new Error('a malformed storage key was refused');
-  return path.join(dir, ...key.split('/'));
+/** The rows on stdin; a line that is not a row is reported (its number only) and fails the command. */
+async function stdinRows(legacy: 'copy' | 'verify' | 'restore'): Promise<ObjectRow[]> {
+  const rows: ObjectRow[] = [];
+  const malformed: number[] = [];
+  for (const [index, line] of (await stdinLines()).entries()) {
+    const row = parseRow(line, legacy);
+    if (row) rows.push(row);
+    else malformed.push(index + 1);
+  }
+  if (malformed.length > 0) {
+    say(`objects: ${malformed.length} line(s) of the list are not objects (lines ${malformed.slice(0, 10).join(', ')})`);
+    process.exitCode = 1;
+  }
+  return rows;
+}
+
+const WHAT: Record<'copy' | 'verify' | 'restore', { done: string; where: string }> = {
+  copy: { done: 'copied', where: 'from the' },
+  verify: { done: 'match', where: 'in the' },
+  restore: { done: 'put back', where: 'into the' },
+};
+
+/** One line per family that had rows, then the problems (row ids and reasons only); exit status 1 on any problem. */
+function report(command: 'copy' | 'verify' | 'restore', result: ArchiveResult): void {
+  for (const family of OBJECT_FAMILIES) {
+    for (const tally of result.tallies.filter((t) => t.family.id === family.id)) {
+      const source = tally.source === 'archive' ? 'the archive copy' : `${WHAT[command].where} ${tally.source} store`;
+      say(`objects: ${family.id}: ${tally.ok} of ${tally.rows} ${WHAT[command].done} (${source})`);
+    }
+  }
+  if (result.tallies.length === 0) say('objects: no rows with files');
+  for (const problem of result.problems.slice(0, 20)) say(`objects: ${problem.family} ${problem.row}: ${problem.reason}`);
+  if (result.problems.length > 20) say(`objects: ${result.problems.length - 20} more problems`);
+  if (result.problems.length > 0) process.exitCode = 1;
+}
+
+function sql(): void {
+  const sample = option('--sample');
+  say(listSql({ sample: sample === undefined ? undefined : Number(sample), only: option('--family') }));
 }
 
 async function copy(): Promise<void> {
   const out = option('--out');
   if (!out) throw new Error('copy needs --out <dir>');
-  const keys = await stdinLines();
-  const store = getEvidenceStore();
-  await mkdir(out, { recursive: true, mode: 0o700 });
-  let copied = 0;
-  const missing: number[] = [];
-  for (const [index, key] of keys.entries()) {
-    const object = await store.get(key);
-    if (!object) {
-      missing.push(index + 1);
-      continue;
-    }
-    const target = objectPath(out, key);
-    await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-    await pipeline(Readable.fromWeb(object.body as import('node:stream/web').ReadableStream), createWriteStream(target, { mode: 0o600 }));
-    await chmod(target, 0o600);
-    copied += 1;
-  }
-  say(`evidence objects: ${copied} of ${keys.length} copied (${store.driver} store)`);
-  if (missing.length > 0) {
-    say(`evidence objects: ${missing.length} not found in the store (lines ${missing.slice(0, 10).join(', ')})`);
-    process.exitCode = 1;
-  }
-}
-
-async function sha256OfStream(body: ReadableStream<Uint8Array>): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of Readable.fromWeb(body as import('node:stream/web').ReadableStream)) hash.update(chunk as Buffer);
-  return hash.digest('hex');
+  report('copy', await copyObjects(await stdinRows('copy'), stores, out));
 }
 
 async function verify(): Promise<void> {
   const dir = option('--objects');
-  const rows = (await stdinLines()).map((line) => {
-    const [id = '', key = '', sha256 = ''] = line.split('|');
-    return { id, key, sha256 };
-  });
-  const store = dir ? null : getEvidenceStore();
-  let matched = 0;
-  const failed: string[] = [];
-  for (const row of rows) {
-    let actual: string | null = null;
-    try {
-      if (dir) {
-        actual = createHash('sha256')
-          .update(await readFile(objectPath(dir, row.key)))
-          .digest('hex');
-      } else {
-        const object = await store!.get(row.key);
-        actual = object ? await sha256OfStream(object.body) : null;
-      }
-    } catch {
-      actual = null;
-    }
-    if (actual !== null && actual === row.sha256) matched += 1;
-    else failed.push(`${row.id} (${actual === null ? 'object missing' : 'hash differs'})`);
-  }
-  const source = dir ? 'the archive copy' : `the ${store!.driver} store`;
-  say(`evidence sample: ${matched} of ${rows.length} objects match evidence_file.sha256 (${source})`);
-  if (failed.length > 0) {
-    for (const line of failed.slice(0, 20)) say(`evidence sample: mismatch ${line}`);
-    process.exitCode = 1;
-  }
+  report('verify', await verifyObjects(await stdinRows('verify'), dir ? { dir } : { stores }));
 }
 
 async function restore(): Promise<void> {
   const dir = option('--objects');
   if (!dir) throw new Error('restore needs --objects <dir>');
-  const rows = (await stdinLines()).map((line) => {
-    const [key = '', mime = '', sha256 = ''] = line.split('|');
-    return { key, mime, sha256 };
-  });
-  const store = getEvidenceStore();
-  let restored = 0;
-  const missing: number[] = [];
-  const differ: number[] = [];
-  for (const [index, row] of rows.entries()) {
-    let body: Buffer;
-    try {
-      body = await readFile(objectPath(dir, row.key));
-    } catch {
-      missing.push(index + 1);
-      continue;
-    }
-    const actual = createHash('sha256').update(body).digest('hex');
-    if (actual !== row.sha256) {
-      differ.push(index + 1);
-      continue;
-    }
-    await store.put(row.key, body, { contentType: row.mime, sha256: actual });
-    restored += 1;
-  }
-  if (differ.length > 0) {
-    say(`evidence objects: ${differ.length} refused, their SHA-256 is not evidence_file.sha256 (lines ${differ.slice(0, 10).join(', ')})`);
-    process.exitCode = 1;
-  }
-  say(`evidence objects: ${restored} of ${rows.length} put back into the ${store.driver} store`);
-  if (missing.length > 0) {
-    say(`evidence objects: ${missing.length} not in the archive copy (lines ${missing.slice(0, 10).join(', ')})`);
-    process.exitCode = 1;
-  }
+  report('restore', await restoreObjects(await stdinRows('restore'), dir, stores));
 }
 
 /** A fictional one-page PDF: no person, no lineage, no real record (CLAUDE.md §7). */
@@ -199,11 +153,12 @@ async function fixture(): Promise<void> {
 async function main(): Promise<void> {
   loadDotEnv();
   const command = process.argv[2];
+  if (command === 'sql') return sql();
   if (command === 'copy') return copy();
   if (command === 'verify') return verify();
   if (command === 'restore') return restore();
   if (command === 'fixture') return fixture();
-  throw new Error('usage: evidence-objects.ts copy --out <dir> | verify [--objects <dir>] | restore --objects <dir> | fixture [--test-database]');
+  throw new Error('usage: evidence-objects.ts sql [--sample <n>] [--family <id>] | copy --out <dir> | verify [--objects <dir>] | restore --objects <dir> | fixture [--test-database]');
 }
 
 main().catch((error: unknown) => {

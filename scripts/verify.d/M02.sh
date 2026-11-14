@@ -167,6 +167,22 @@ refute "the M02 migrations are PostgreSQL 16 SQL (no uuidv7(), no virtual column
 check "audit: role.change, consent.grant and auth.2fa.enable are written" bash -c '
   grep -rq "'\''role.change'\''" src/server/services/roles.ts && grep -rq "'\''consent.grant'\''" src/server/services/consent.ts &&
   grep -rq "'\''auth.2fa.enable'\''" src/server/auth/hooks.ts'
+check "pnpm account:reset-2fa: a local-only owner command with a service and an integration test (review 2026-11-13, auth.md 2)" bash -c '
+  grep -q "\"account:reset-2fa\": \"tsx src/server/auth/reset-2fa-cli.ts\"" package.json &&
+  grep -q "export async function resetTwoFactorFromCommandLine" src/server/services/two-factor.ts &&
+  grep -q "assertNotProduction(.account:reset-2fa., env)" src/server/auth/reset-2fa.ts &&
+  grep -q "assertLocalDatabase(.account:reset-2fa., env)" src/server/auth/reset-2fa.ts &&
+  grep -q "assertResetTwoFactorLocal()" src/server/auth/reset-2fa-cli.ts &&
+  grep -q "auth.2fa.reset" src/server/audit/index.ts &&
+  grep -q "pnpm account:reset-2fa" src/server/auth/reset-2fa.int.test.ts'
+check "the operations guide has the lost second factor section, and the admin guide names the command" bash -c '
+  grep -q "^## Изгубен втори фактор" docs/operations/incident.md && grep -q "pnpm account:reset-2fa" docs/operations/incident.md &&
+  grep -q "pnpm account:reset-2fa" docs/guides/admin-guide.bg.md'
+check "/api/auth reads its body through the bounded reader (review 2026-11-13, auth.md 1)" bash -c '
+  grep -q "readBoundedOrThrow(request, AUTH_BODY_MAX_BYTES)" src/server/auth/route.ts &&
+  ! grep -q "request.arrayBuffer()" src/server/auth/route.ts &&
+  grep -q "AUTH_BODY_MAX_BYTES" src/server/auth/route.test.ts &&
+  grep -q "413" e2e/request-bodies.spec.ts'
 
 if [ -n "${TEST_DATABASE_URL:-}" ]; then
   facts="$(psql_url "$TEST_DATABASE_URL" -X -q -At -F ' ' -c "

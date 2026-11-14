@@ -45,6 +45,9 @@ x-app-env: &app-env
   MAIL_SEAL_KEY: ${MAIL_SEAL_KEY:?MAIL_SEAL_KEY is not set; run scripts/init-env.sh to create .env}
   INTERNAL_REVALIDATE_SECRET: ${INTERNAL_REVALIDATE_SECRET:-}
   TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+  # The sender of every e-mail. Empty: the default of src/server/mail/config.ts (a .test address that
+  # never routes). Without this line a MAIL_FROM in .env never reached the containers.
+  MAIL_FROM: ${MAIL_FROM:-}
   # Evidence in the private bucket of the SeaweedFS above (src/server/storage).
   S3_ENDPOINT: http://seaweedfs:8333
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is not set; run scripts/init-env.sh to create .env}

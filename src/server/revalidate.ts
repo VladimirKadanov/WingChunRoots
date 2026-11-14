@@ -24,12 +24,21 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { appUrl } from './auth/env';
 import { EXPLORE_START_TAG, SCHOOLS_TAG } from './cache-tags';
+import { declaredLengthRefusal, readBounded } from './http-body';
 
 type Env = Record<string, string | undefined>;
 
 export const REVALIDATE_PATH = '/api/internal/revalidate';
 /** More than one change ever needs: a person with every teacher above them and the neighbours. */
 export const MAX_TAGS = 2000;
+/**
+ * The largest body the route reads, after the secret check (review 2026-11-13, auth.md 1): the
+ * longest legitimate one, MAX_TAGS tags of the longest shape (`lineage-membership:<uuid>`, 62
+ * characters with quotes and comma), is about 130 KB. DEFAULT review-2026-11: 256 KiB
+ * (docs/plan/questions/review-2026-11-safety-net.md, Q3).
+ */
+export const REVALIDATE_BODY_MAX_BYTES = 256 * 1024;
+const TOO_LARGE_MESSAGE = `The body must be at most ${REVALIDATE_BODY_MAX_BYTES / 1024} KiB.`;
 const MIN_SECRET_LENGTH = 32;
 const TAG = /^(person|lineage|lineage-membership):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -84,14 +93,22 @@ export function hasRevalidateSecret(request: Request, env: Env = process.env): b
 }
 
 /**
- * Handles POST /api/internal/revalidate: 401 without the secret (the body is not read), 400 for a
- * body that is not `{ tags: [...] }` of known tags, else calls `revalidate` once per distinct tag.
+ * Handles POST /api/internal/revalidate: 401 without the secret (the body is not read), 413 for a
+ * body above REVALIDATE_BODY_MAX_BYTES (counted as it is read), 400 for a body that is not
+ * `{ tags: [...] }` of known tags, else calls `revalidate` once per distinct tag.
  */
 export async function handleRevalidate(request: Request, revalidate: (tag: string) => void, env: Env = process.env): Promise<Response> {
   if (!hasRevalidateSecret(request, env)) return json(401, { error: 'UNAUTHORIZED' });
+  // The route's own answer shape ({ error, message }), not the one of http-body.ts.
+  const refused = declaredLengthRefusal(request, REVALIDATE_BODY_MAX_BYTES);
+  if (refused) {
+    return refused.status === 413 ? json(413, { error: 'PAYLOAD_TOO_LARGE', message: TOO_LARGE_MESSAGE }) : json(400, { error: 'BAD_REQUEST', message: 'The Content-Length header is not a number.' });
+  }
+  const bytes = await readBounded(request, REVALIDATE_BODY_MAX_BYTES);
+  if (bytes === null) return json(413, { error: 'PAYLOAD_TOO_LARGE', message: TOO_LARGE_MESSAGE });
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return json(400, { error: 'BAD_REQUEST', message: 'The body must be JSON: { "tags": [...] }.' });
   }

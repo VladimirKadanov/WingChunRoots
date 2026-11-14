@@ -6,6 +6,11 @@
 //   pnpm db:seed      replace the application data with the fictional demo data (never in production)
 //   pnpm db:reset     drop every application object; only a local database or TEST_DATABASE_URL,
 //                     never with NODE_ENV=production; run db:migrate and db:seed after it
+//
+// db:seed and db:reset also refuse a database that holds anything that is not demo data (a person
+// or school slug not starting with demo-, an account outside the reserved .test domain), unless
+// WCR_ALLOW_WIPE=1 is set for that command (src/server/db/wipe-guard.ts; review 2026-11-13, ops.md
+// H2): demo data goes into a separate database, never the real one.
 //   pnpm db:check     drizzle-kit check, no ungenerated schema changes, and every migration and the
 //                     pg-boss schema applied to a new empty database (twice: the second run
 //                     applies nothing)

@@ -12,6 +12,9 @@ export type AuditAction =
   | 'role.change'
   | 'consent.grant'
   | 'auth.2fa.enable'
+  // pnpm account:reset-2fa (review 2026-11-13, docs/adr/0029-safety-net.md): the owner removed an
+  // account's second factor on the machine. Shapes only: whether it was on, the role before and after.
+  | 'auth.2fa.reset'
   | 'person.create'
   // M08: plans (plan §6.5, §6.6).
   | 'grant.create'
