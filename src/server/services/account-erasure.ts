@@ -53,6 +53,7 @@ import { erasedEmail, isErasedEmail } from '../auth/suspension';
 import { EVENTS_TAG, invalidatePublic, ORGANIZATIONS_TAG, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
+import { beginLedger, type LedgerHandle } from '../erasure-ledger';
 import {
   authUser,
   event,
@@ -91,7 +92,7 @@ import { getEvidenceStore, type ObjectStore } from '../storage';
 import { lockAccount } from './account-lock';
 import { endSubscriptionsBeforeDeletion } from './billing-subject';
 import type { RequestMeta } from './context';
-import { ServiceError } from './errors';
+import { isServiceError, ServiceError } from './errors';
 import { queueRecomputeForPerson } from './lineage-membership';
 import { notify } from './notify';
 import { deleteCertificateFiles } from './passport';
@@ -241,6 +242,11 @@ export interface ErasureRequest {
   meta?: RequestMeta;
   /** What the deletion request is closed with. */
   caseNote?: string;
+  /**
+   * Only for the replay of the erasure ledger after a restore (services/erasure-replay.ts), which repeats
+   * an erasure the ledger already records: no new line is written. Every other caller leaves it out.
+   */
+  skipLedger?: boolean;
 }
 
 export interface ErasureCounts {
@@ -258,6 +264,8 @@ export interface ErasureCounts {
   evidenceDeleted: number;
   evidenceKept: number;
   deliveriesErased: number;
+  /** Revisions of the kept record whose text was redacted (docs/adr/0032-retention-and-withdrawal.md). */
+  revisionsRedacted: number;
 }
 
 export interface ErasureOutcome {
@@ -297,6 +305,7 @@ const emptyCounts = (): ErasureCounts => ({
   evidenceDeleted: 0,
   evidenceKept: 0,
   deliveriesErased: 0,
+  revisionsRedacted: 0,
 });
 
 const rowCount = (result: { rowCount?: number | null }): number => result.rowCount ?? 0;
@@ -650,7 +659,7 @@ async function remainingKeepers(tx: Transaction, userId: string): Promise<string
 
 // --- The transaction ---------------------------------------------------------------------------------
 
-async function eraseInTransaction(tx: Transaction, request: ErasureRequest, files: Files): Promise<ErasureOutcome> {
+async function eraseInTransaction(tx: Transaction, request: ErasureRequest, files: Files, ledger: { handle: LedgerHandle | null }): Promise<ErasureOutcome> {
   const { actor } = request;
   // 1. The global verify lock, then the account, then the deletion request (see the top of the file).
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${VERIFY_LOCK}))`);
@@ -682,6 +691,10 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   const email = account.email.toLowerCase();
   const counts = emptyCounts();
   const now = new Date();
+  // Every refusal is behind us. The ledger line goes down BEFORE the first change, inside this
+  // transaction: when it cannot be written the erasure is refused and nothing changes, because an
+  // erasure that no restore can repeat is worse than a delayed one (src/server/erasure-ledger.ts).
+  if (!request.skipLedger) ledger.handle = await beginLedger('account.erase', userId);
 
   // 2. The profile: the account's own record.
   const [own] = await tx
@@ -712,6 +725,10 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
     files.photos.push(...photos);
     counts.photosRemoved = photos.length;
     await tx.update(personPhoto).set({ originalSha256: null, updatedAt: now }).where(eq(personPhoto.personId, own.id));
+    // DEFAULT review-2026-11: the text of the record's archival revisions (a name or biography as it was before a
+    // correction) goes with the person; who, when, which fields and the reason stay (docs/plan/questions/review-2026-11-retention.md, Q2).
+    const redacted = await tx.execute(sql`SELECT redact_person_revisions(${own.id}::uuid) AS n`);
+    counts.revisionsRedacted = Number((redacted.rows[0] as { n?: number } | undefined)?.n ?? 0);
     // The links of the person to organizations, schools and events, and the organizations' unverified claims.
     await tx.delete(organizationMembership).where(eq(organizationMembership.personId, own.id));
     await tx.delete(schoolInstructor).where(eq(schoolInstructor.personId, own.id));
@@ -909,7 +926,17 @@ async function deleteFiles(files: Files, evidenceStore: ObjectStore): Promise<vo
 export async function eraseAccount(request: ErasureRequest, evidenceStore: ObjectStore = getEvidenceStore()): Promise<ErasureOutcome> {
   await endSubscriptionsFirst(request);
   const files: Files = { photos: [], schoolPhotos: [], posters: [], certificates: [], evidence: [] };
-  const outcome = await getDb().transaction((tx) => eraseInTransaction(tx, request, files));
+  const ledger: { handle: LedgerHandle | null } = { handle: null };
+  let outcome: ErasureOutcome;
+  try {
+    outcome = await getDb().transaction((tx) => eraseInTransaction(tx, request, files, ledger));
+  } catch (error) {
+    // A refusal rolled the transaction back for certain: say so, so that a restore does not repeat it. Any other
+    // failure (a lost connection can hide a commit) leaves the line unconfirmed, and replay asks before it repeats it.
+    if (isServiceError(error)) await ledger.handle?.aborted();
+    throw error;
+  }
+  await ledger.handle?.done();
   await deleteFiles(files, evidenceStore);
   return outcome;
 }

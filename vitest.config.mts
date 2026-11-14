@@ -45,6 +45,9 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     environment: 'node',
+    // An erasure writes the erasure ledger first and is refused when it cannot (src/server/erasure-ledger.ts):
+    // the tests that erase get a folder of their own, git-ignored, never the one of a real installation.
+    env: { ERASURE_LEDGER_DIR: fileURLToPath(new URL('./test-results/erasures', import.meta.url)) },
     projects: [
       {
         extends: true,
