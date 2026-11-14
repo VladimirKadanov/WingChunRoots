@@ -78,12 +78,14 @@ import { cleanName, isLatinName, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPT
 import { BIO_MAX_LENGTH, neighbourTags } from './profile';
 import { decideKind } from './review-kinds';
 import { TAKEDOWN_REASON_MAX, TAKEDOWN_ROLES } from './takedown';
-import { proposalFacts, recordRevisionRow } from './stewardship';
+import { establishDeceased, proposalFacts, recordRevisionRow } from './stewardship';
 import { appealFacts, appealOfCase, decidedBeforeAppeal, lineageReportFacts } from './disputes';
 import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
 import { successionFacts } from './succession';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
+import { queueRecomputeForPerson } from './lineage-membership';
 import { notify } from './notify';
+import { bothPublic, publishIfEstablished, UNKNOWN_STATUS_MESSAGE } from './publication';
 import {
   accountOf,
   closesCycle,
@@ -118,6 +120,10 @@ const ARCHIVE_ROLES: readonly StaffRole[] = ['archivist'];
 const NO_CASE = 'No such case.';
 const notFound = () => new ServiceError('NOT_FOUND', NO_CASE);
 const isOpen = (status: string) => (OPEN_REVIEW_CASE_STATUSES as readonly string[]).includes(status);
+
+/** Review 2026-11-14: the written reason that establishes a death must cite the evidence. */
+export const DECEASED_REASON_MESSAGE = 'Write the reason: cite the evidence that shows the teacher has died. It stays with the case and the audit log.';
+const CHOOSE_DECEASED = 'Choose one: the evidence shows that the teacher has died, or you cannot establish this.';
 
 const reviewText = (empty: string) =>
   z
@@ -176,12 +182,21 @@ export const reviewDecideInput = z
      * DEFAULT review-2026-11, "Uphold the report" still only closes the case.
      */
     takeDown: z.boolean().nullish().transform((v) => v === true),
+    /**
+     * Review 2026-11-14 (historical_claim, verify only, and only while the teacher's life status is
+     * `unknown`): the plain choice the verify panel asks for. `established`: the evidence shows that
+     * the teacher has died, with the written `reason` (required) citing it; the record becomes
+     * `deceased`. `not_established`: the claim may still be verified, and the record stays hidden
+     * (a person whose status is unknown is treated as living). Ignored when the status is known.
+     */
+    deceased: z.enum(['established', 'not_established'], { error: 'Choose whether the evidence shows that the teacher has died.' }).nullish().transform((v) => v ?? null),
   })
   .superRefine((input, ctx) => {
     if (input.reason && input.reason.length > REVIEW_TEXT_MAX) ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${REVIEW_TEXT_MAX} characters.` });
     if (!input.reason && input.decision === 'reject') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the claimant will read.' });
     if (!input.reason && input.decision === 'needs_info') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write what the claimant should add.' });
     if (input.takeDown && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['takeDown'], message: 'A profile is taken down only when the report is upheld.' });
+    if (input.deceased && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['deceased'], message: 'This choice belongs to verifying a claim.' });
     if (input.takeDown && !input.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the owner will read.' });
     if (input.takeDown && input.reason && input.reason.length > TAKEDOWN_REASON_MAX) {
       ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${TAKEDOWN_REASON_MAX} characters when the profile is taken down.` });
@@ -224,7 +239,7 @@ export const DECISION_TEXT: Record<Exclude<ReviewCaseKind, 'deletion_request'>, 
       reason: 'Note on the decision',
       hint: 'Optional. Kept with the case for the reviewers; the claimant is told the claim was confirmed.',
       optional: true,
-      done: 'The claim is verified. The link and both profiles are public now, and the student was told.',
+      done: 'The claim is verified and the student was told. The link is public once both profiles are public: the student’s when they have chosen to show it, the teacher’s once the record shows that the teacher has died.',
     },
     reject: {
       label: 'Refuse the claim',
@@ -1016,11 +1031,12 @@ export async function assignReviewCase(principal: Principal | null, raw: z.input
 // --- review.decide -----------------------------------------------------------------------------
 
 /** The notice and the e-mail of a decision, to the student. */
-async function tellStudent(tx: Transaction, row: RelRow, decision: 'verified' | 'rejected' | 'needs_info', eventId: string): Promise<void> {
+async function tellStudent(tx: Transaction, row: RelRow, decision: 'verified' | 'rejected' | 'needs_info', eventId: string, shown = true): Promise<void> {
   const student = await accountOf(tx, row.studentPersonId);
   if (!student) return;
   const teacherNames = await namesFor(tx, row.teacherPersonId);
-  const payload = { relationshipId: row.id, decision };
+  // Review 2026-11-14 (DEFAULT D03): a verified link whose end is private is confirmed, not public yet.
+  const payload = { relationshipId: row.id, decision, ...(decision === 'verified' && !shown ? { shown: false } : {}) };
   // No e-mail without the teacher's name.
   if (teacherNames.length === 0) {
     await notify(tx, student.id, 'review.decided', payload);
@@ -1031,7 +1047,14 @@ async function tellStudent(tx: Transaction, row: RelRow, decision: 'verified' | 
     email: {
       template: 'review-decided',
       idempotencyKey: `review-decided:${eventId}`,
-      data: { decision, teacherNames, lineageName: row.lineageName, url: url('/dashboard/teachers'), ...(recipientNames.length > 0 ? { recipientNames } : {}) },
+      data: {
+        decision,
+        teacherNames,
+        lineageName: row.lineageName,
+        url: url('/dashboard/teachers'),
+        ...(recipientNames.length > 0 ? { recipientNames } : {}),
+        ...(decision === 'verified' && !shown ? { shown: false } : {}),
+      },
     },
   });
 }
@@ -1166,7 +1189,23 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
           ),
         );
       if (duplicate) throw new ServiceError('CONFLICT', 'This training is already confirmed in this lineage.');
+      // Review 2026-11-14 (owner decision): a teacher whose life status is unknown is treated as
+      // living, and the verify panel asks the plain question first. The evidence shows a death (with
+      // a written reason that cites it): the record becomes deceased and the verify publishes it.
+      // Or the reviewer cannot establish it: the claim may still be verified, and the record stays
+      // hidden until someone does (archive.update).
+      const [teacher] = await tx.select({ lifeStatus: person.lifeStatus }).from(person).where(eq(person.id, row.teacherPersonId)).for('update');
+      let deathEstablished = false;
+      if (teacher?.lifeStatus === 'unknown') {
+        if (!input.deceased) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { deceased: CHOOSE_DECEASED });
+        if (input.deceased === 'established') {
+          if (!input.reason) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { reason: DECEASED_REASON_MESSAGE });
+          await establishDeceased(tx, p, row.teacherPersonId, { reason: input.reason, reviewCaseId: c.id, evidenceIds: basis }, meta);
+          deathEstablished = true;
+        }
+      }
       const verified = await markVerified(tx, row, p.user.id, now);
+      const shown = await bothPublic(tx, row.teacherPersonId, row.studentPersonId);
       await tx
         .update(reviewCase)
         .set({ status: 'resolved', resolution: 'approved', resolutionReason: input.reason, resolvedAt: now, updatedAt: now })
@@ -1179,7 +1218,17 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
         subjectType: 'teaching_relationship',
         subjectId: row.id,
         before: { status: 'under_review', visibility: row.visibility, isDisplayPrimary: row.isDisplayPrimary },
-        after: { status: 'verified', visibility: 'public', verificationPath: 'committee_review', caseId: c.id, ...verified, lineageId: row.lineageId },
+        after: {
+          status: 'verified',
+          visibility: 'public',
+          verificationPath: 'committee_review',
+          caseId: c.id,
+          ...verified,
+          shown,
+          // The teacher's life status the decision was made on: unknown, and whether the death was established.
+          ...(teacher?.lifeStatus === 'unknown' ? { lifeStatus: deathEstablished ? 'deceased' : 'unknown', deathEstablished } : {}),
+          lineageId: row.lineageId,
+        },
         evidenceIds: basis,
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
@@ -1195,7 +1244,7 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
         requestId: meta.requestId,
         ipHmac: meta.ipHmac,
       });
-      await tellStudent(tx, row, 'verified', eventId);
+      await tellStudent(tx, row, 'verified', eventId, shown);
       // The derived lineage_membership, from the worker (plan §6.3, §6.4), as for an approval.
       await enqueue(tx, QUEUE.lineageRecompute, { lineageIds: [row.lineageId] });
       return { replayed: false, tags: await publicTags(tx, row) };
@@ -1512,6 +1561,18 @@ export async function updateArchiveRecord(principal: Principal | null, raw: Arch
     const freshEvidence = [...new Set(input.evidenceIds)].filter((id) => !linked.has(id));
     if (!nameChanged && !originalChanged && !lifeChanged && !bioChanged && freshEvidence.length === 0) return { id: record.id, slug: record.slug, changed: false, tags: [] as string[] };
 
+    // Review 2026-11-14 (owner decision): a person whose life status is unknown is treated as living.
+    // A record that is shown publicly is never set to "unknown" (hide it first); and establishing that
+    // an unknown record is deceased needs the evidence, which the reason (required above) cites.
+    if (lifeChanged && input.lifeStatus === 'unknown' && record.visibility === 'public') {
+      throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { lifeStatus: UNKNOWN_STATUS_MESSAGE });
+    }
+    const establishesDeath = lifeChanged && record.lifeStatus === 'unknown' && input.lifeStatus === 'deceased';
+    if (establishesDeath && linked.size + freshEvidence.length === 0) {
+      throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', {
+        evidenceIds: 'A record whose status is unknown becomes “Deceased” only with the evidence that shows it: attach at least one file, and cite it in the reason.',
+      });
+    }
     const evidenceError = await linkFilesToPerson(tx, p, record.id, input.evidenceIds);
     if (evidenceError) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { evidenceIds: evidenceError });
     const now = new Date();
@@ -1536,6 +1597,10 @@ export async function updateArchiveRecord(principal: Principal | null, raw: Arch
       else if (input.bio) await tx.insert(personBio).values({ personId: record.id, lang: 'en', body: input.bio });
     }
     await tx.update(person).set({ updatedAt: now }).where(eq(person.id, record.id));
+    // The death is established: a record that already has an established link (verified with "I cannot
+    // establish this" earlier) becomes public now, where the other rules allow (publication.ts).
+    const published = establishesDeath && (await publishIfEstablished(tx, record.id));
+    if (published) await queueRecomputeForPerson(tx, record.id);
     // M25: the record's change history (record_revision), for every edit that changed a field.
     const changedNames = [nameChanged && 'primaryName', originalChanged && 'originalName', lifeChanged && 'lifeStatus', bioChanged && 'bio'].filter((f): f is string => typeof f === 'string');
     if (changedNames.length > 0) {
@@ -1566,6 +1631,7 @@ export async function updateArchiveRecord(principal: Principal | null, raw: Arch
         bio: input.bio ? { lang: 'en', length: input.bio.length } : null,
         ...(keys !== null ? { searchKeys: keys } : {}),
         evidence_ids: [...new Set(input.evidenceIds)],
+        ...(establishesDeath ? { deathEstablished: true, published } : {}),
       },
       reason: input.reason,
       // The column of plan §6.6 (M10a review, requirements-1), not only the copy in `after`.
@@ -1573,7 +1639,7 @@ export async function updateArchiveRecord(principal: Principal | null, raw: Arch
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    return { id: record.id, slug: record.slug, changed: true, tags: await neighbourTags(tx, record.id) };
+    return { id: record.id, slug: record.slug, changed: true, tags: await neighbourTags(tx, record.id, { ancestors: published }) };
   });
   if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
   return { record: await getArchiveRecord(p, { slug: outcome.slug }), changed: outcome.changed };

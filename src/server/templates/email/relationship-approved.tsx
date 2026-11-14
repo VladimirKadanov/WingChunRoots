@@ -16,6 +16,11 @@ export interface RelationshipApprovedData {
   /** APP_URL/dashboard/teachers (student) or APP_URL/dashboard/students/requests (teacher). */
   url: string;
   recipientNames?: NameData[];
+  /**
+   * Review 2026-11-14 (DEFAULT D03): false when an end of the link is private, so the link is
+   * confirmed but not on the public pages yet. Left out in an e-mail queued before: true.
+   */
+  shown?: boolean;
 }
 
 const NAME = 'relationship-approved';
@@ -35,12 +40,13 @@ export const relationshipApproved: EmailTemplate<RelationshipApprovedData> = {
       lineageName: parseShortText(NAME, 'lineageName', object.lineageName),
       url: parseAppUrl(NAME, 'url', object.url, PATHS[role]),
       ...parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
+      ...(object.shown === false ? { shown: false } : {}),
     };
   },
   subject: ({ role }) => (role === 'student' ? 'Your teacher confirmed you on WingChunRoots' : 'You confirmed a student on WingChunRoots'),
   preview,
   render(data) {
-    const { role, otherNames, lineageName, url, recipientNames = [] } = data;
+    const { role, otherNames, lineageName, url, recipientNames = [], shown = true } = data;
     return (
       <RelationshipEmail
         preview={preview(data)}
@@ -60,8 +66,18 @@ export const relationshipApproved: EmailTemplate<RelationshipApprovedData> = {
           )}
         </Text>
         <Text style={textStyle}>
-          The link is verified and now appears in the public lineage, with you as their {role === 'student' ? 'student' : 'teacher'}. It
-          confirms only this one link: every teacher confirms their own.
+          {shown ? (
+            <>
+              The link is verified and now appears in the public lineage, with you as their {role === 'student' ? 'student' : 'teacher'}. It
+              confirms only this one link: every teacher confirms their own.
+            </>
+          ) : (
+            <>
+              The link is verified, but it is not on the public pages yet: it appears in the public lineage once both profiles are
+              public (each person decides that with “Show my profile publicly”). You can see it on your dashboard, under {role === 'student' ? 'Your teachers' : 'Student requests'}. It
+              confirms only this one link: every teacher confirms their own.
+            </>
+          )}
         </Text>
       </RelationshipEmail>
     );

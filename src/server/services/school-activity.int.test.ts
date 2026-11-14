@@ -376,7 +376,7 @@ describe('restore (In scope 4; DEFAULT D17, D18)', () => {
     const account = await createAccount({ label: 'm20-signin' });
     const db = getDb();
     await db.update(authUser).set({ accountType: 'sifu' }).where(eq(authUser.id, account.id));
-    const personId = (await db.insert(person).values({ slug: `demo-m20-signin-${randomBytes(3).toString('hex')}`, kind: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' }).returning({ id: person.id }))[0]!.id;
+    const personId = (await db.insert(person).values({ slug: `demo-m20-signin-${randomBytes(3).toString('hex')}`, kind: 'living', lifeStatus: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' }).returning({ id: person.id }))[0]!.id;
     await db.insert(personName).values({ personId, value: 'Demo M20 Signin Sifu', script: 'Latn', lang: 'en', isPrimary: true });
     await proGrant(account.id);
     const city = await cityOf('Varna', 'BG');

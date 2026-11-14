@@ -273,7 +273,7 @@ describe('review decisions write relationship_event and audit_log', () => {
     // Nobody reviews a claim of their own: an archivist who is the student.
     const ownStudent = await member('rv-own-arch', { role: 'archivist' });
     const own = await upload(ownStudent, 'rv-own');
-    const ownClaim = await requestHistoricalTeacher(ownStudent.principal, { teacherName: 'Demo Historical Own', lineageId, periods: ongoingFrom(), evidenceIds: [own.id], idempotencyKey: key() }, meta);
+    const ownClaim = await requestHistoricalTeacher(ownStudent.principal, { teacherName: 'Demo Historical Own', lifeStatus: 'deceased', lineageId, periods: ongoingFrom(), evidenceIds: [own.id], idempotencyKey: key() }, meta);
     expect(await refusal(assignReviewCase(ownStudent.principal, { caseId: ownClaim.caseId, assigneeId: ownStudent.account.id, idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
     expect(await refusal(decideReviewCase(ownStudent.principal, { caseId: ownClaim.caseId, decision: 'verify', idempotencyKey: key() }, meta))).toBe('FORBIDDEN');
     const adminVerdict = await decideReviewCase(admin.principal, { caseId: ownClaim.caseId, decision: 'verify', idempotencyKey: key() }, meta);
@@ -352,7 +352,7 @@ describe('the archival edit (plan §6.6)', () => {
   async function platformRecord(label: string) {
     const id = (await getDb()
       .insert(person)
-      .values({ slug: `demo-${label}-${key().slice(0, 8)}`, kind: 'historical', lifeStatus: 'unknown', stewardship: 'platform', visibility: 'public' })
+      .values({ slug: `demo-${label}-${key().slice(0, 8)}`, kind: 'historical', lifeStatus: 'unknown', stewardship: 'platform', visibility: 'involved_only' })
       .returning({ id: person.id, slug: person.slug }))[0]!;
     await getDb().insert(personName).values({ personId: id.id, value: `Demo Archive ${label}`, script: 'Latn', lang: 'und-Latn', isPrimary: true });
     return id;

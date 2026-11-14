@@ -186,7 +186,7 @@ async function actor(label: string, opts: { role?: Role; sifu?: boolean; noPerso
   if (!opts.noPerson && role === 'user') {
     personId = uuidv7();
     slug = `demo-${label}-${randomBytes(4).toString('hex')}`;
-    await db.insert(person).values({ id: personId, slug, kind: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' });
+    await db.insert(person).values({ id: personId, slug, kind: 'living', lifeStatus: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' });
     await db.insert(personName).values({ personId, value: `Demo ${label.replace(/[^A-Za-z]+/g, ' ').trim()}`, script: 'Latn', lang: 'en', isPrimary: true });
   }
   return { ...account, token: await sessionFor(account, role, opts.unverified), principal, personId, slug };
@@ -224,14 +224,14 @@ async function upload(owner: Actor, seed = randomBytes(4).toString('hex')) {
   return uploadEvidence(owner.principal, { declaredLength: bytes.length, body: new Response(bytes).body!, name: encodeURIComponent(`demo-${seed}.pdf`), caseId: null }, meta);
 }
 
-/** A historical claim with evidence: an open review case, an unclaimed teacher record. */
-async function historicalClaim() {
+/** A historical claim with evidence: an open review case, an unclaimed teacher record (review 2026-11-14: `lifeStatus` 'unknown' is treated as living). */
+async function historicalClaim(lifeStatus: 'deceased' | 'unknown' = 'deceased') {
   const student = await actor('claimant');
   const file = await upload(student);
   const lineageId = await newLineage('m13-authz-hist');
   const result = await requestHistoricalTeacher(
     student.principal,
-    { teacherName: 'Demo Historical Teacher', lifeStatus: 'deceased', lineageId, periods: ongoingFrom('1988-03'), evidenceIds: [file.id], note: 'A fictional certificate.', idempotencyKey: key() },
+    { teacherName: 'Demo Historical Teacher', lifeStatus, lineageId, periods: ongoingFrom('1988-03'), evidenceIds: [file.id], note: 'A fictional certificate.', idempotencyKey: key() },
     meta,
   );
   const [rel] = await getDb().select().from(teachingRelationship).where(eq(teachingRelationship.id, result.relationship.id));
@@ -494,7 +494,7 @@ async function successionOf(opts: { nominated?: boolean; accepted?: boolean; ina
 async function sharedRecord() {
   const id = uuidv7();
   const slug = `demo-shared-record-${randomBytes(4).toString('hex')}`;
-  await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'unknown' });
+  await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'deceased' });
   await getDb().insert(personName).values({ personId: id, value: 'Demo Shared Record', script: 'Latn', lang: 'en', isPrimary: true });
   return { id, slug };
 }
@@ -1030,6 +1030,33 @@ const ROWS: Row[] = [
     expect: { ...staffOnly({ archivist: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
   },
   {
+    // Review 2026-11-14: a teacher whose life status is unknown is treated as living. Verifying the
+    // claim asks the plain choice: "I cannot establish this" verifies it and leaves the record hidden.
+    path: 'review.decide (a verify of a claim about a teacher whose life status is unknown, death not established)',
+    make: async (who) => {
+      const c = await historicalClaim('unknown');
+      const reviewer = worldActor(who);
+      if (reviewer && reviewer.principal.user.role !== 'user' && reviewer !== world.adminNo2fa) {
+        await assignReviewCase(reviewer.principal, { caseId: c.caseId, assigneeId: reviewer.id, idempotencyKey: key() }, meta);
+      }
+      return { owner: c.student, input: { caseId: c.caseId, decision: 'verify', deceased: 'not_established', idempotencyKey: key() } };
+    },
+    expect: { ...staffOnly({ archivist: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
+  },
+  {
+    // ...and without the choice the same verify is refused (nothing is written).
+    path: 'review.decide (a verify of an unknown teacher without the choice)',
+    make: async (who) => {
+      const c = await historicalClaim('unknown');
+      const reviewer = worldActor(who);
+      if (reviewer && reviewer.principal.user.role !== 'user' && reviewer !== world.adminNo2fa) {
+        await assignReviewCase(reviewer.principal, { caseId: c.caseId, assigneeId: reviewer.id, idempotencyKey: key() }, meta);
+      }
+      return { owner: c.student, input: { caseId: c.caseId, decision: 'verify', idempotencyKey: key() } };
+    },
+    expect: { ...staffOnly({ archivist: 'BAD_REQUEST', admin: 'BAD_REQUEST' }), owner: 'FORBIDDEN' },
+  },
+  {
     path: 'review.arbitrate',
     make: async () => {
       const r = await verifiedLink();
@@ -1057,6 +1084,15 @@ const ROWS: Row[] = [
       return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
     expect: staffOnly({ archivist: 'ok' }),
+  },
+  {
+    // Review 2026-11-14: an unknown record becomes deceased only with the evidence that shows it.
+    path: 'archive.update (an unknown record set to deceased without evidence)',
+    make: async () => {
+      const c = await historicalClaim('unknown');
+      return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'BAD_REQUEST' }),
   },
   // Review 2026-11: a staff take-down of a profile (moderator or administrator) and account suspension (administrator).
   {
@@ -1919,7 +1955,7 @@ const ROWS: Row[] = [
     path: 'records.propose',
     make: async () => {
       const r = await sharedRecord();
-      return { input: { personId: r.id, primaryName: 'Demo Shared Record Corrected', lifeStatus: 'unknown', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
+      return { input: { personId: r.id, primaryName: 'Demo Shared Record Corrected', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
     expect: own(),
   },

@@ -325,6 +325,15 @@ const STUDENT_QUEUE = '/dashboard/students/requests';
 const OWN_TEACHERS = '/dashboard/teachers';
 
 /**
+ * Review 2026-11-14 (DEFAULT D03): a link is shown publicly only when both people are public. A
+ * notice written while an end was private says so (`shown: false` in its payload); an older row
+ * has no flag and reads as before. Calm and factual: nothing is lost, the link is on the dashboard.
+ */
+const NOT_PUBLIC_YET =
+  ' The link is confirmed but not public yet: it appears in the public lineage once both profiles are public (each person decides that with “Show my profile publicly”).';
+const shownOf = (data: Record<string, unknown>) => data.shown !== false;
+
+/**
  * "relationship.requested": to the teacher, when a student sends a request or sends it again. While
  * it waits it says when the training started (In scope 2 of M09): `trainingStart` is not stored
  * either, but read from the request's periods when the list is read ("April 2019"), so a corrected
@@ -373,23 +382,30 @@ const relationshipRequested: NotificationTemplate<RelationshipNotice & { resubmi
 };
 
 /** "relationship.approved": to both people, when the teacher approves (the role says which side reads it). */
-const relationshipApproved: NotificationTemplate<RelationshipNotice & { role: 'student' | 'teacher' }> = {
+const relationshipApproved: NotificationTemplate<RelationshipNotice & { role: 'student' | 'teacher'; shown: boolean }> = {
   name: 'relationship.approved',
   parse(payload) {
     const { data, ...notice } = relationshipNotice('relationship.approved', payload);
     if (data.role !== 'student' && data.role !== 'teacher') throw new NotificationDataError('relationship.approved', 'role must be student or teacher');
-    return { ...notice, role: data.role };
+    return { ...notice, role: data.role, shown: shownOf(data) };
   },
-  render: ({ other, lineageName, role }) =>
+  render: ({ other, lineageName, role, shown }) =>
     role === 'student'
       ? {
           title: 'Teacher confirmed',
-          body: [who(other, 'Your teacher'), { text: ` confirmed that they taught you${inLineage(lineageName)}. The link is now public.` }],
+          body: [
+            who(other, 'Your teacher'),
+            { text: ` confirmed that they taught you${inLineage(lineageName)}.${shown ? ' The link is now public.' : `${NOT_PUBLIC_YET} You see it under Your teachers.`}` },
+          ],
           action: { label: 'See your teachers', href: OWN_TEACHERS },
         }
       : {
           title: 'Student confirmed',
-          body: [{ text: 'You confirmed ' }, who(other, 'a student'), { text: ` as your student${inLineage(lineageName)}. The link is now public.` }],
+          body: [
+            { text: 'You confirmed ' },
+            who(other, 'a student'),
+            { text: ` as your student${inLineage(lineageName)}.${shown ? ' The link is now public.' : `${NOT_PUBLIC_YET} You see it under Student requests.`}` },
+          ],
           action: { label: 'See your students', href: STUDENT_QUEUE },
         },
   sample: {
@@ -398,6 +414,7 @@ const relationshipApproved: NotificationTemplate<RelationshipNotice & { role: 's
     lineageName: 'Demo Lineage A',
     status: 'verified',
     role: 'student',
+    shown: true,
   },
 };
 
@@ -459,20 +476,30 @@ const relationshipEnded: NotificationTemplate<RelationshipNotice & { by: 'studen
  * "review.decided": to the student of a historical teacher claim, when the reviewers verify it,
  * refuse it or ask for more information. The reviewers' own words are on Your teachers.
  */
-const reviewDecided: NotificationTemplate<RelationshipNotice & { decision: 'verified' | 'rejected' | 'needs_info' }> = {
+const reviewDecided: NotificationTemplate<RelationshipNotice & { decision: 'verified' | 'rejected' | 'needs_info'; shown: boolean }> = {
   name: 'review.decided',
   parse(payload) {
     const { data, ...notice } = relationshipNotice('review.decided', payload);
     if (data.decision !== 'verified' && data.decision !== 'rejected' && data.decision !== 'needs_info') {
       throw new NotificationDataError('review.decided', 'decision must be verified, rejected or needs_info');
     }
-    return { ...notice, decision: data.decision };
+    return { ...notice, decision: data.decision, shown: shownOf(data) };
   },
-  render: ({ other, lineageName, decision }) =>
+  render: ({ other, lineageName, decision, shown }) =>
     decision === 'verified'
       ? {
           title: 'Historical teacher confirmed',
-          body: [{ text: 'The reviewers confirmed from your evidence that ' }, who(other, 'your teacher'), { text: ` taught you${inLineage(lineageName)}. The link is now public.` }],
+          body: [
+            { text: 'The reviewers confirmed from your evidence that ' },
+            who(other, 'your teacher'),
+            {
+              text: ` taught you${inLineage(lineageName)}.${
+                shown
+                  ? ' The link is now public.'
+                  : ' The link is confirmed but not public yet: it appears in the public lineage once both profiles are public. Each person decides that with “Show my profile publicly”, and the record of a teacher whose death the reviewers could not establish stays private. You see the link under Your teachers.'
+              }`,
+            },
+          ],
           action: { label: 'See your teachers', href: OWN_TEACHERS },
         }
       : decision === 'rejected'
@@ -492,6 +519,7 @@ const reviewDecided: NotificationTemplate<RelationshipNotice & { decision: 'veri
     lineageName: 'Demo Lineage A',
     status: 'verified',
     decision: 'verified',
+    shown: true,
   },
 };
 

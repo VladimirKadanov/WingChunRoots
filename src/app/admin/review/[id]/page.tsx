@@ -31,6 +31,7 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from '../form-ids';
 import { AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm } from '../forms';
+import { LIFE_STATUS_CHOICE } from '../life-status-choice';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
 
@@ -375,7 +376,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? LIFE_STATUS_CHOICE : undefined} /> : null}
             {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
             {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
           </div>
