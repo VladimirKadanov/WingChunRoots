@@ -128,6 +128,9 @@ check "the Testcontainers image is the PostGIS digest of docker-compose.yml and 
   [ -n "$image" ] && grep -qF "$image" docker-compose.yml && grep -qF "$image" .github/workflows/ci.yml'
 check "scripts/verify.sh runs db:reset+migrate+seed against TEST_DATABASE_URL" \
   grep -qE 'DATABASE_URL="\$TEST_DATABASE_URL"' scripts/verify.sh
+check "db:seed and db:reset refuse a database with data that is not demo data (WCR_ALLOW_WIPE=1 overrides; scripts/verify.sh sets it for its own reset only)" bash -c '
+  grep -q "assertWipeAllowed(client, .db:seed." src/server/db/seed.ts && grep -q "assertWipeAllowed(client, .db:reset." src/server/db/admin.ts &&
+  grep -q "WCR_ALLOW_WIPE=1 pnpm db:reset" scripts/verify.sh && ! grep -q "WCR_ALLOW_WIPE" .env.example'
 check "scripts/verify.sh bootstraps the test database" grep -qE 'step db-bootstrap ' scripts/verify.sh
 check "scripts/cloud-setup.sh bootstraps the roles (SessionStart hook)" grep -q 'db-bootstrap.sh' scripts/cloud-setup.sh
 check "vitest.config.mts keeps integration tests out of pnpm test" grep -qF "'src/**/*.int.test.ts'" vitest.config.mts

@@ -1,0 +1,69 @@
+# An example reverse proxy for a pilot or a staging server (docs/operations/reverse-proxy.md,
+# review 2026-11-13, ops.md M2 and M5). Caddy 2.8 or newer.
+#
+# Not part of the Compose services and not started by anything in this repository: copy it to a
+# file named Caddyfile outside the repository (it has no secrets, but it names your host), change
+# the lines marked CHANGE, check it with `caddy validate --config Caddyfile` and run it on the host.
+# This file was written without a Caddy at hand (no check ran here): validate it before you rely on it.
+#
+# What it does, in the order of the rules below:
+#   1. everything except /healthz needs the pilot's user name and password (basic auth);
+#   2. /api/internal/* is answered 404: it is the worker's route and the worker does not use the proxy;
+#   3. X-Request-Id and X-Forwarded-For are set by the proxy, never taken from the client;
+#   4. HSTS and X-Robots-Tag: noindex are sent (the image sends no HSTS: next.config.ts adds it only
+#      when APP_URL is https at BUILD time and the Dockerfile builds without APP_URL);
+#   5. a request body above 22 MB is refused before it reaches the app (the largest real one is the
+#      20 MB evidence file; every route also limits its own body).
+#
+# Settings, from the environment of the process that runs Caddy (never written in this file):
+#   PILOT_USER            the user name of the pilot (one shared account)
+#   PILOT_PASSWORD_HASH   the bcrypt hash from `caddy hash-password` (never the password)
+#   WEB_UPSTREAM          where the app listens: 127.0.0.1:3000 (the default, Caddy on the host)
+#                         or web:3000 (Caddy as a container on the Compose network)
+
+# Optional: a contact address for Let's Encrypt goes into a block of global options at the very top
+# of the file:  { email ops@example.org }
+
+# CHANGE: the public name. The same name, with https://, is APP_URL in .env.
+pilot.example.org {
+	# 5. The outer wall for bodies.
+	request_body {
+		max_size 22MB
+	}
+
+	# 4. Headers of every answer, the 401 and the 404 of this file too.
+	header {
+		# The value of next.config.ts. A browser that has seen it refuses plain http to this name
+		# for two years: send it only when https works, and for the first days lower it to
+		# max-age=300 (then raise it again).
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		# For the pilot. Remove the line when the site is meant to be found.
+		X-Robots-Tag "noindex"
+	}
+
+	# 1. Basic auth for everything but the health check. The default is "protected": a path that is
+	# added later is closed until it is named here. A Stripe test webhook cannot send a password: see
+	# docs/operations/reverse-proxy.md before opening /api/billing/webhook (add it after /healthz).
+	@protected not path /healthz
+	basic_auth @protected {
+		{$PILOT_USER} {$PILOT_PASSWORD_HASH}
+	}
+
+	# 2. The worker asks the app to drop its cache through the Compose network (INTERNAL_APP_URL),
+	# never through here. The route has its own secret too; this only keeps it off the internet.
+	handle /api/internal/* {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy {$WEB_UPSTREAM:127.0.0.1:3000} {
+			# 3. The app writes X-Request-Id into the audit log and the logs, and reads the client
+			# address from X-Forwarded-For alone (src/server/auth/ip.ts): both are set here.
+			header_up X-Request-Id {http.request.uuid}
+			header_up X-Forwarded-For {http.request.remote.host}
+			# The pilot's password has done its work at the proxy; the app does not need it.
+			header_up -Authorization
+			# Do not change the Host header: Server Actions compare Origin with it.
+		}
+	}
+}

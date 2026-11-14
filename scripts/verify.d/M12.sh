@@ -51,8 +51,10 @@ required=(
   Dockerfile .dockerignore docker/app/entrypoint.sh docker-compose.yml
   scripts/check-env.sh scripts/check-env.test.sh scripts/backup-local.sh scripts/restore-drill.sh
   scripts/lib/pg-run.sh scripts/ops/lineage-digest.sql scripts/ops/evidence-objects.ts
+  scripts/lib/object-families.ts scripts/lib/object-archive.ts src/server/backups-objects.int.test.ts
   .github/workflows/restore-drill.yml
   docs/operations/local-run.md docs/operations/backup-and-restore.md docs/operations/incident.md
+  docs/operations/reverse-proxy.md docker/caddy/Caddyfile.example
   docs/guides/admin-guide.bg.md docs/adr/0015-local-ops.md
   src/server/log/index.ts src/server/log/redact.ts src/server/log/request-error.ts src/server/log/logger.redaction.test.ts
   src/app/healthz/route.ts src/app/admin/system/page.tsx src/server/services/system.ts src/server/jobs/stats.ts src/server/backups.ts
@@ -103,6 +105,18 @@ else
     sed 's/^/     /' "$drill_log" | tail -n 40
   fi
 fi
+check "the archive copies every object family the database references and the drill samples each one (review 2026-11-13)" bash -c '
+  grep -q "evidence-objects.ts sql" scripts/backup-local.sh && grep -q "evidence-objects.ts sql --sample" scripts/restore-drill.sh &&
+  grep -q "BACKUP_AGE_RECIPIENT" scripts/backup-local.sh && grep -q "BACKUP_AGE_IDENTITY" scripts/restore-drill.sh &&
+  grep -q "id: .event_poster." scripts/lib/object-families.ts && grep -q "id: .certificate." scripts/lib/object-families.ts'
+check "the reverse proxy example: basic auth but /healthz, 404 for /api/internal/*, X-Request-Id, HSTS, noindex (review 2026-11-13, ops.md M2, M5)" bash -c '
+  f=docker/caddy/Caddyfile.example
+  grep -q "not path /healthz" "$f" && grep -q "basic_auth @protected" "$f" && grep -q "handle /api/internal/\*" "$f" && grep -q "respond 404" "$f" &&
+  grep -q "header_up X-Request-Id {http.request.uuid}" "$f" && grep -q "header_up X-Forwarded-For" "$f" &&
+  grep -q "Strict-Transport-Security" "$f" && grep -q "X-Robots-Tag" "$f" && ! grep -qE "^[^#]*(password|secret)[^#]*=" "$f" &&
+  grep -q "TRUSTED_PROXIES" docs/operations/reverse-proxy.md && grep -q "Mailpit" docs/operations/reverse-proxy.md && grep -q "Stripe" docs/operations/reverse-proxy.md'
+check "docker-compose.yml passes MAIL_FROM to web and worker through x-app-env" bash -c '
+  grep -q "MAIL_FROM: \${MAIL_FROM:-}" docker-compose.yml'
 check "the drill's RTO is 4 hours by default (DEFAULT D24)" bash -c '
   grep -qx "RTO_DEFAULT_SECONDS=14400" scripts/restore-drill.sh && grep -q "DEFAULT D24" scripts/restore-drill.sh'
 check "the drill checks amcheck, rows, foreign keys, cycles, self-links, ancestor paths, evidence hashes, the Better Auth tables and the private tables" bash -c '

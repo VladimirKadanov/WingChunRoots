@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { POST } from '../app/api/internal/revalidate/route';
-import { hasRevalidateSecret, MAX_TAGS, revalidateSecret, revalidateUrl } from './revalidate';
+import { hasRevalidateSecret, MAX_TAGS, REVALIDATE_BODY_MAX_BYTES, revalidateSecret, revalidateUrl } from './revalidate';
 
 const calls = vi.hoisted(() => ({ revalidated: [] as [string, unknown][] }));
 vi.mock('next/cache', () => ({
@@ -80,6 +80,50 @@ describe('POST /api/internal/revalidate', () => {
       expect((await POST(post(body, auth))).status).toBe(400);
     }
     expect(calls.revalidated).toEqual([]);
+  });
+
+  it('reads at most REVALIDATE_BODY_MAX_BYTES (review 2026-11-13, auth.md 1): the longest real body fits, one byte over is 413', async () => {
+    process.env.MAIL_SEAL_KEY = SEAL;
+    const auth = `Bearer ${revalidateSecret()}`;
+    // MAX_TAGS of the longest shape is the largest body the worker can send, well within the limit.
+    const longest = 'lineage-membership:0190a5c0-0000-7000-8000-00000000000a';
+    const real = JSON.stringify({ tags: Array(MAX_TAGS).fill(longest) });
+    expect(real.length).toBeLessThan(REVALIDATE_BODY_MAX_BYTES / 1.5);
+    expect((await POST(post(real, auth))).status).toBe(200);
+    expect(calls.revalidated).toHaveLength(1);
+    calls.revalidated = [];
+
+    // Exactly the limit (JSON whitespace pads it): read and answered as a body.
+    const base = JSON.stringify({ tags: [TAG] });
+    const exact = base + ' '.repeat(REVALIDATE_BODY_MAX_BYTES - base.length);
+    expect(exact.length).toBe(REVALIDATE_BODY_MAX_BYTES);
+    expect((await POST(post(exact, auth))).status).toBe(200);
+    expect(calls.revalidated).toEqual([[TAG, 'max']]);
+    calls.revalidated = [];
+
+    // One byte over: 413 by the declared length, and by the count when none is declared.
+    const over = exact + ' ';
+    const declared = post(over, auth);
+    declared.headers.set('content-length', String(over.length));
+    const refused = await POST(declared);
+    expect(refused.status).toBe(413);
+    expect(await refused.json()).toMatchObject({ error: 'PAYLOAD_TOO_LARGE' });
+    expect((await POST(post(over, auth))).status).toBe(413);
+    const chunked = new Request('http://127.0.0.1:3999/api/internal/revalidate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: auth },
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(64 * 1024).fill(0x20));
+        },
+      }),
+      duplex: 'half',
+    } as RequestInit);
+    expect((await POST(chunked)).status).toBe(413);
+    expect(calls.revalidated).toEqual([]);
+
+    // Without the secret an oversize body is still 401: it is not read.
+    expect((await POST(post(over))).status).toBe(401);
   });
 
   it('a dedicated INTERNAL_REVALIDATE_SECRET of 32+ characters wins over the derived one, which never equals the seal key', async () => {

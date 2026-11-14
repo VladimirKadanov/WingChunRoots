@@ -14,6 +14,7 @@ import { Client } from 'pg';
 
 import { migratePgBossSchema, type PgBossMigration } from '../jobs/schema';
 import { assertSafeToReset, databaseName, redactUrl, splitPassword, withDatabase } from './env';
+import { assertWipeAllowed } from './wipe-guard';
 
 /** The repository root: the nearest directory with this project's package.json. */
 export function repoRoot(start = process.cwd()): string {
@@ -195,7 +196,8 @@ export async function appliedMigrations(client: Client): Promise<string[]> {
  * Drops every application object (schemas `public`, `drizzle` and `pgboss`) and restores the empty state
  * of a bootstrapped database: an empty `public` schema owned by pg_database_owner and PostGIS.
  * Only for a local database or TEST_DATABASE_URL, never with NODE_ENV=production, and only as a
- * superuser (PostGIS objects belong to the superuser).
+ * superuser (PostGIS objects belong to the superuser). Refuses a database that holds data that is
+ * not demo data unless WCR_ALLOW_WIPE=1 (./wipe-guard.ts).
  */
 export async function resetDatabase(url: string): Promise<void> {
   assertSafeToReset(url);
@@ -203,6 +205,8 @@ export async function resetDatabase(url: string): Promise<void> {
     if (!(await isSuperuser(client))) {
       throw new Error(`db:reset needs a superuser connection: ${redactUrl(url)}`);
     }
+    // Review 2026-11-13 (ops.md H2): a loopback host is not proof that nothing here matters.
+    await assertWipeAllowed(client, 'db:reset', url);
     await client.query('BEGIN');
     try {
       await client.query('DROP SCHEMA IF EXISTS drizzle CASCADE');

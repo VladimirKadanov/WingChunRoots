@@ -5,7 +5,12 @@
 #
 #   scripts/restore-drill.sh                     # the newest archive of DATABASE_URL's database
 #   scripts/restore-drill.sh --test-database     # the newest archive of TEST_DATABASE_URL's database
-#   scripts/restore-drill.sh [--test-database] <file.dump>
+#   scripts/restore-drill.sh [--test-database] <file.dump | file.dump.age>
+#
+# An archive made with BACKUP_AGE_RECIPIENT (<name>.dump.age, with objects/<name>.tar.age) is
+# decrypted into a private temporary folder first; that needs `age` on PATH and BACKUP_AGE_IDENTITY,
+# the path of the age identity (private key) file, which belongs off the server: without it the
+# drill stops with FAIL, it never skips the check.
 #
 # Where the copy goes (DRILL_TARGET):
 #   container  a temporary container of the PostgreSQL image of the Compose `postgres` service
@@ -24,8 +29,11 @@
 #   5. every foreign key of the archive is there and validated, and no row points nowhere;
 #   6. among the verified edges, no person is their own teacher and there is no cycle;
 #   7. the ancestor paths are those recorded at the time of the dump (<file>.lineage);
-#   8. a sample of evidence objects has the SHA-256 in evidence_file.sha256 (the archive's copy in
-#      objects/ when there is one, else the evidence store);
+#   8. a sample of EVERY object family (evidence files, passport certificates, profile and gallery
+#      photos, school photos, event posters; scripts/lib/object-families.ts) has all its objects,
+#      and the one the row's SHA-256 describes has that hash: from the archive's copy in objects/
+#      when there is one, else from the stores. A row that points at a missing object fails the
+#      drill, so an archive made without a family's files cannot report green;
 #   9. the Better Auth tables are there;
 #  10. the private tables are there: the evidence records (M10a), the invitations, claims, reports
 #      and review history (M10b), the exact school locations (M11) and the audit log.
@@ -56,7 +64,7 @@ for arg in "$@"; do
   case "$arg" in
     --test-database) use_test=1 ;;
     -h | --help)
-      sed -n '2,32p' "$0"
+      sed -n '2,41p' "$0"
       exit 0
       ;;
     -*)
@@ -67,7 +75,7 @@ for arg in "$@"; do
   esac
 done
 
-for name in DATABASE_URL TEST_DATABASE_URL BACKUP_DIR PG_CONTAINER DRILL_TARGET DRILL_IMAGE RESTORE_RTO_SECONDS DRILL_EVIDENCE_SAMPLE; do
+for name in DATABASE_URL TEST_DATABASE_URL BACKUP_DIR PG_CONTAINER DRILL_TARGET DRILL_IMAGE RESTORE_RTO_SECONDS DRILL_EVIDENCE_SAMPLE BACKUP_AGE_IDENTITY; do
   if [ -z "${!name:-}" ] && [ -f .env ]; then
     value="$(dotenv_value "$name")"
     if [ -n "$value" ]; then export "$name=$value"; fi
@@ -89,13 +97,18 @@ pg_target "$url"
 source_db="$PG_URL_DB"
 dir="${BACKUP_DIR:-backups}"
 if [ -z "$dump" ]; then
-  dump="$(find "$dir" -maxdepth 1 -type f -name "$source_db-*.dump" -print 2>/dev/null |
-    grep -E "/$source_db-[0-9]{8}T[0-9]{6}Z\\.dump\$" | sort | tail -n 1 || true)"
+  dump="$(find "$dir" -maxdepth 1 -type f \( -name "$source_db-*.dump" -o -name "$source_db-*.dump.age" \) -print 2>/dev/null |
+    grep -E "/$source_db-[0-9]{8}T[0-9]{6}Z\\.dump(\\.age)?\$" | sort | tail -n 1 || true)"
   [ -n "$dump" ] || { echo "restore-drill: no archive of $source_db in $dir (scripts/backup-local.sh makes one)" >&2; exit 1; }
 fi
 [ -f "$dump" ] || { echo "restore-drill: $dump does not exist" >&2; exit 1; }
 base="$(basename "$dump")"
-objects_dir="$(dirname "$dump")/objects/${base%.dump}"
+stem="${base%.age}"
+stem="${stem%.dump}"
+objects_dir="$(dirname "$dump")/objects/$stem"
+objects_archive="$(dirname "$dump")/objects/$stem.tar.age"
+encrypted=0
+case "$base" in *.age) encrypted=1 ;; esac
 
 fail() {
   echo "restore-drill: FAIL $1" >&2
@@ -119,6 +132,8 @@ drill_db="wcr_drill_$(date -u +%Y%m%d%H%M%S)_$RANDOM"
 drill_container=""
 dump_path=""
 restore_log=""
+restore_file="$dump"
+scratch=""
 
 # The error lines of a pg_restore log, without anything that can quote row data: DETAIL, CONTEXT,
 # HINT, LINE and "Command was" lines are dropped; quoted literals, key values "(k)=(v)" and a value
@@ -133,14 +148,36 @@ restore_errors() {
 cleanup() {
   set +e
   [ -n "$restore_log" ] && rm -f "$restore_log"
+  [ -n "$scratch" ] && rm -rf "$scratch"
   if [ -n "$drill_container" ]; then
     docker rm -f "$drill_container" >/dev/null 2>&1
   else
-    [ -n "$dump_path" ] && [ "$dump_path" != "$dump" ] && pg_remove_copy "$dump_path"
+    [ -n "$dump_path" ] && [ "$dump_path" != "$restore_file" ] && pg_remove_copy "$dump_path"
     pg_tool_on "$source_db" psql -X -q -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$drill_db\" WITH (FORCE)" >/dev/null 2>&1
   fi
 }
 trap cleanup EXIT
+
+# An archive made with BACKUP_AGE_RECIPIENT is decrypted into a private temporary folder (mode 0700,
+# removed on exit); nothing of it is printed. The identity (the private key) is the operator's.
+if [ "$encrypted" -eq 1 ] || [ -f "$objects_archive" ]; then
+  command -v age >/dev/null 2>&1 || fail "the archive is encrypted with age, and age is not on PATH"
+  { [ -n "${BACKUP_AGE_IDENTITY:-}" ] && [ -f "$BACKUP_AGE_IDENTITY" ]; } ||
+    fail "the archive is encrypted: BACKUP_AGE_IDENTITY must name the age identity file (the private key, kept off the server)"
+  scratch="$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/wcr-drill.XXXXXXXXXX")"
+fi
+if [ "$encrypted" -eq 1 ]; then
+  age -d -i "$BACKUP_AGE_IDENTITY" -o "$scratch/$stem.dump" "$dump" || fail "$base could not be decrypted with BACKUP_AGE_IDENTITY"
+  restore_file="$scratch/$stem.dump"
+  echo "restore-drill: $base decrypted with age"
+fi
+if [ -f "$objects_archive" ] && [ ! -d "$objects_dir" ]; then
+  mkdir -p "$scratch/objects"
+  { age -d -i "$BACKUP_AGE_IDENTITY" "$objects_archive" | tar -x -C "$scratch/objects"; } ||
+    fail "the object copy $stem.tar.age could not be decrypted and unpacked"
+  objects_dir="$scratch/objects"
+  echo "restore-drill: the object copy $stem.tar.age decrypted with age"
+fi
 
 case "$target" in
   container)
@@ -190,7 +227,7 @@ SELECT format('CREATE ROLE %I NOLOGIN', r)
 \gexec
 SQL
 
-dump_path="$(pg_copy_in "$dump" "$drill_db.dump")"
+dump_path="$(pg_copy_in "$restore_file" "$drill_db.dump")"
 
 # 2. The restore, timed ------------------------------------------------------------------------
 started="$(now_ms)"
@@ -349,18 +386,25 @@ else
 fi
 echo "restore-drill: ancestor paths: $lineage_note"
 
-# 8. A sample of the evidence objects -------------------------------------------------------------
-evidence_rows="$(on_drill -c "SELECT id || '|' || storage_key || '|' || sha256 FROM evidence_file WHERE deleted_at IS NULL ORDER BY random() LIMIT $sample")"
-if [ -z "$evidence_rows" ]; then
-  evidence_note="no evidence files to check"
+# 8. A sample of every object family ------------------------------------------------------------------
+# The rows come from the restored copy (scripts/lib/object-families.ts: evidence files, passport
+# certificates, profile and gallery photos, school photos, event posters; $sample random rows of each),
+# the objects from the archive's copy in objects/ when there is one, else from the stores. A row whose
+# object is missing, or whose hash differs, fails the drill. An archive made without --objects and a
+# database with photos is therefore checked against the stores as they are now.
+object_sql="$(pnpm -s exec tsx scripts/ops/evidence-objects.ts sql --sample "$sample")"
+object_rows="$(on_drill -c "$object_sql")"
+if [ -z "$object_rows" ]; then
+  objects_note="no rows with files to check"
 else
   verify_args=()
   [ -d "$objects_dir" ] && verify_args=(--objects "$objects_dir")
-  evidence_out="$(printf '%s\n' "$evidence_rows" | pnpm -s exec tsx scripts/ops/evidence-objects.ts verify ${verify_args[@]+"${verify_args[@]}"} 2>&1)" ||
-    { printf '%s\n' "$evidence_out" | sed 's/^/     /' >&2; fail "evidence objects do not match evidence_file.sha256"; }
-  evidence_note="$(printf '%s\n' "$evidence_out" | sed -n 's/^evidence sample: //p' | head -n 1)"
+  object_out="$(printf '%s\n' "$object_rows" | pnpm -s exec tsx scripts/ops/evidence-objects.ts verify ${verify_args[@]+"${verify_args[@]}"} 2>&1)" ||
+    { printf '%s\n' "$object_out" | sed 's/^/     /' >&2; fail "a row points at a missing object, or an object does not match its SHA-256"; }
+  objects_note="$(printf '%s\n' "$object_out" | sed -n 's/^objects: \([a-z_]*\): \([0-9]* of [0-9]*\) .*/\1 \2/p' | paste -sd ',' - | sed 's/,/, /g')"
+  if [ -d "$objects_dir" ]; then objects_note="$objects_note (archive copy)"; else objects_note="$objects_note (stores as they are now; the archive has no object copy)"; fi
 fi
-echo "restore-drill: evidence: $evidence_note"
+echo "restore-drill: objects: $objects_note"
 
 # 9. The Better Auth tables -----------------------------------------------------------------------
 missing=()

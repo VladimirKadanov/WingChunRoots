@@ -28,6 +28,7 @@
     "admin:create": "tsx src/server/auth/cli.ts",
     "billing:test-clock": "tsx src/server/billing/cli.ts",
     "account:delete": "tsx src/server/auth/account-delete-cli.ts",
+    "account:reset-2fa": "tsx src/server/auth/reset-2fa-cli.ts",
     "fixtures:generate": "tsx src/fixtures/cli.ts",
     "tokens:build": "tsx scripts/build-tokens.ts",
     "notices": "tsx scripts/generate-notices.ts",
