@@ -34,6 +34,12 @@ describe('retentionPurgeHandler', () => {
       'retention.purge: deleted 0 closed trial lesson request(s), 0 old school counter(s)',
       // M24: organization import previews past their 24 hours.
       'retention.purge: ended 0 expired organization import preview(s)',
+      // Review 2026-11: third-party records, ended claims, revisions, ip_hmac and unanswered trial requests.
+      'retention.purge: deleted 0 and removed 0 third-party record(s), withdrew 0 request(s) waiting for them',
+      'retention.purge: set the retention of 0 evidence file(s), deleted 0 (0 not deleted), removed the text of 0 review note(s)',
+      'retention.purge: redacted the text of 0 old record revision(s)',
+      'retention.purge: removed 0 old audit ip_hmac value(s), 0 old session value(s)',
+      'retention.purge: closed and scrubbed 0 unanswered and 0 orphaned trial lesson request(s)',
     ]);
   });
 

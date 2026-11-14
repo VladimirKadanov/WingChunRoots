@@ -63,6 +63,7 @@ export type AuditAction =
   | 'trial.answer'
   | 'trial.decline'
   | 'trial.close'
+  | 'trial.withdraw'
   // M10b: invitations, profile claims, instructor verification, reports and arbitration (plan §6.6, §6.7).
   | 'invitation.create'
   | 'invitation.revoke'
@@ -164,7 +165,12 @@ export type AuditAction =
   | 'person.takedown'
   | 'person.restore'
   | 'account.suspend'
-  | 'account.unsuspend';
+  | 'account.unsuspend'
+  // Review 2026-11 (docs/adr/0032-retention-and-withdrawal.md): what the daily retention job removes,
+  // by the system (no actor). The rows carry ids, outcomes and counts, never a name or a value.
+  | 'person.purge'
+  | 'evidence.purge'
+  | 'retention.purge';
 
 export interface AuditEntry {
   action: AuditAction;

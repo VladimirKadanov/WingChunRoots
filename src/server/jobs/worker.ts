@@ -14,6 +14,7 @@ import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
 import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
+import { closeStaleTrialInquiries, nullOldIpHmacs, purgeEndedClaimData, purgeThirdPartyRecords, redactOldRevisions } from '../services/retention-records';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
@@ -144,6 +145,39 @@ export function retentionPurgeHandler(db: Database, log: (line: string) => void)
         // M24: organization import previews past their 24 hours (their rows' data cleared).
         const imports = await expireOrganizationImports(db);
         log(`${QUEUE.retentionPurge}: ended ${imports.imports} expired organization import preview(s)`);
+        // Review 2026-11 (docs/adr/0032-retention-and-withdrawal.md): each step runs even when another fails,
+        // so an object store that does not answer does not keep the others from running; the first failure
+        // is then rethrown for the retry.
+        let firstFailure: unknown = null;
+        const step = async (name: string, run: () => Promise<string>): Promise<void> => {
+          try {
+            log(`${QUEUE.retentionPurge}: ${await run()}`);
+          } catch (error) {
+            log(`${QUEUE.retentionPurge}: step ${name} failed (${failureCode(error)})`);
+            firstFailure ??= error;
+          }
+        };
+        await step('third-party records', async () => {
+          const r = await purgeThirdPartyRecords(db);
+          return `deleted ${r.deleted} and removed ${r.removed} third-party record(s), withdrew ${r.requestsWithdrawn} request(s) waiting for them`;
+        });
+        await step('ended claims', async () => {
+          const r = await purgeEndedClaimData(db);
+          return `set the retention of ${r.stamped} evidence file(s), deleted ${r.files} (${r.failed} not deleted), removed the text of ${r.notes} review note(s)`;
+        });
+        await step('record revisions', async () => {
+          const r = await redactOldRevisions(db);
+          return `redacted the text of ${r.revisions} old record revision(s)`;
+        });
+        await step('ip_hmac', async () => {
+          const r = await nullOldIpHmacs(db);
+          return `removed ${r.audit} old audit ip_hmac value(s), ${r.sessions} old session value(s)`;
+        });
+        await step('open trial requests', async () => {
+          const r = await closeStaleTrialInquiries(db);
+          return `closed and scrubbed ${r.stale} unanswered and ${r.schoolGone} orphaned trial lesson request(s)`;
+        });
+        if (firstFailure) throw firstFailure;
       } catch (error) {
         const code = failureCode(error);
         const last = job.retryCount >= job.retryLimit;

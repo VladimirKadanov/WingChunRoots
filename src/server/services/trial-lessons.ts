@@ -18,6 +18,13 @@
 //   trial.decline     declines one, with an optional reason the sender is told
 //   trial.close       closes one (open or answered); the sender is not told
 //
+// The sender can also take a request back (review 2026-11, docs/adr/0032-retention-and-withdrawal.md):
+//   trial.withdraw    withdraws one of their own open requests: its state becomes `withdrawn` and the
+//                     name, contact, times and message are removed at once (the row stays, without
+//                     personal data, until its retention ends); the school is not told, its inbox
+//                     shows the request as withdrawn. A request that nobody answered is closed and
+//                     scrubbed the same way after TRIAL_OPEN_INQUIRY_DAYS (retention-records.ts).
+//
 // Nobody else reads an inquiry: not another account, not staff (DEFAULT M21, question 4), not a
 // public DTO, a cache or a log. Audit rows and notices carry ids and states only, never the
 // sender's name, contact or message. A new inquiry tells the school (school.trial-requested, in the
@@ -61,6 +68,7 @@ export const TRIAL_STATUS_LABELS: Record<TrialStatus, string> = {
   answered: 'Answered',
   declined: 'Declined',
   closed: 'Closed',
+  withdrawn: 'Withdrawn',
 };
 
 const NO_SCHOOL = 'No such school.';
@@ -107,6 +115,7 @@ export const trialInboxInput = z.object({
 export const trialAnswerInput = z.object({ inquiryId: z.uuid({ error: NO_INQUIRY }), reply: text(TRIAL_REPLY_MAX, `Use at most ${TRIAL_REPLY_MAX} characters.`) });
 export const trialDeclineInput = z.object({ inquiryId: z.uuid({ error: NO_INQUIRY }), reason: text(TRIAL_REPLY_MAX, `Use at most ${TRIAL_REPLY_MAX} characters.`) });
 export const trialCloseInput = z.object({ inquiryId: z.uuid({ error: NO_INQUIRY }) });
+export const trialWithdrawInput = z.object({ inquiryId: z.uuid({ error: NO_INQUIRY }) });
 
 function fieldErrors(error: z.ZodError): ServiceError {
   const fields: Record<string, string> = {};
@@ -294,10 +303,12 @@ export interface OwnTrialInquiry {
   preferredTimes: string | null;
   message: string | null;
   contactMethod: TrialContactMethod;
-  /** The contact the sender chose: their own data. */
-  contactValue: string;
+  /** The contact the sender chose: their own data. Null once the request was withdrawn or scrubbed. */
+  contactValue: string | null;
   /** The school's reply (answered) or reason (declined). */
   reply: string | null;
+  /** True once the request's name, contact, times and message were removed (withdrawn, or closed unanswered after 90 days). */
+  scrubbed: boolean;
   createdAt: string;
   closedAt: string | null;
 }
@@ -315,13 +326,14 @@ export async function myTrialInquiries(principal: Principal | null): Promise<{ i
     preferred_times: string | null;
     message: string | null;
     contact_method: TrialContactMethod;
-    contact_value: string;
+    contact_value: string | null;
     reply: string | null;
+    scrubbed: boolean;
     created_at: Date | string;
     closed_at: Date | string | null;
   }>(sql`
     SELECT t.id, s.id AS school_id, s.slug, s.name, v.id IS NOT NULL AS public, t.status, t.preferred_times, t.message,
-           t.contact_method, t.contact_value, t.reply, t.created_at, t.closed_at
+           t.contact_method, t.contact_value, t.reply, t.scrubbed_at IS NOT NULL AS scrubbed, t.created_at, t.closed_at
       FROM trial_inquiry t JOIN school s ON s.id = t.school_id LEFT JOIN v_public_school v ON v.id = s.id
      WHERE t.sender_user_id = ${p.user.id}::uuid
      ORDER BY t.created_at DESC, t.id DESC
@@ -337,6 +349,7 @@ export async function myTrialInquiries(principal: Principal | null): Promise<{ i
       contactMethod: r.contact_method,
       contactValue: r.contact_value,
       reply: r.reply,
+      scrubbed: r.scrubbed,
       createdAt: new Date(r.created_at).toISOString(),
       closedAt: r.closed_at === null ? null : new Date(r.closed_at).toISOString(),
     })),
@@ -360,12 +373,15 @@ export interface InboxInquiry {
   id: string;
   status: TrialStatus;
   statusLabel: string;
-  senderName: string;
+  /** Null once the request was withdrawn or scrubbed (review 2026-11). */
+  senderName: string | null;
   contactMethod: TrialContactMethod;
-  contactValue: string;
+  contactValue: string | null;
   preferredTimes: string | null;
   message: string | null;
   reply: string | null;
+  /** True once the sender's name, contact, times and message were removed (withdrawn, or closed unanswered after 90 days). */
+  scrubbed: boolean;
   createdAt: string;
   closedAt: string | null;
 }
@@ -391,7 +407,7 @@ export async function trialInbox(principal: Principal | null, raw: z.input<typeo
   if (!handler) throw new ServiceError('NOT_FOUND', NO_SCHOOL);
   const counted = await db.execute<{ status: TrialStatus; n: number }>(sql`
     SELECT status, count(*)::int AS n FROM trial_inquiry WHERE school_id = ${handler.id}::uuid GROUP BY status`);
-  const counts: Record<TrialStatus, number> = { open: 0, answered: 0, declined: 0, closed: 0 };
+  const counts: Record<TrialStatus, number> = { open: 0, answered: 0, declined: 0, closed: 0, withdrawn: 0 };
   for (const row of counted.rows) counts[row.status] = row.n;
   const status = parsed.data.status;
   const rows = await db
@@ -417,6 +433,7 @@ export async function trialInbox(principal: Principal | null, raw: z.input<typeo
       preferredTimes: r.preferredTimes,
       message: r.message,
       reply: r.reply,
+      scrubbed: r.scrubbedAt !== null,
       createdAt: r.createdAt.toISOString(),
       closedAt: r.closedAt?.toISOString() ?? null,
     })),
@@ -497,6 +514,50 @@ export async function closeTrial(principal: Principal | null, raw: z.input<typeo
   const parsed = trialCloseInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   return decide(principal, parsed.data.inquiryId, 'closed', null, meta);
+}
+
+/** What a scrubbed request keeps of the sender: nothing (trial_inquiry_scrub_state). */
+export const SCRUBBED_TRIAL_FIELDS = { senderName: null, contactValue: null, preferredTimes: null, message: null, reply: null } as const;
+
+/**
+ * trial.withdraw (review 2026-11, docs/adr/0032-retention-and-withdrawal.md): the sender takes back
+ * their own open request. The request becomes `withdrawn` and the sender's name, contact, preferred
+ * times and message go at once; the row stays, without personal data, until its retention ends. The
+ * school is not told: its inbox shows a withdrawn request without a name. A second press is a no-op;
+ * an answered, declined or closed request can no longer be withdrawn (the school has handled it);
+ * another account's request is "no such request".
+ */
+export async function withdrawTrial(principal: Principal | null, raw: z.input<typeof trialWithdrawInput>, meta: RequestMeta): Promise<TrialHandled> {
+  const p = requireUser(principal);
+  const parsed = trialWithdrawInput.safeParse(raw);
+  if (!parsed.success) throw fieldErrors(parsed.error);
+  return getDb().transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(trialInquiry)
+      .where(and(eq(trialInquiry.id, parsed.data.inquiryId), eq(trialInquiry.senderUserId, p.user.id)))
+      .for('update');
+    if (!row) throw new ServiceError('NOT_FOUND', NO_INQUIRY);
+    if (row.status === 'withdrawn') return { id: row.id, schoolId: row.schoolId, status: row.status, replayed: true };
+    if (row.status !== 'open') throw new ServiceError('CONFLICT', `This request is ${TRIAL_STATUS_LABELS[row.status].toLowerCase()} by the school already, so it cannot be withdrawn.`);
+    const now = new Date();
+    await tx
+      .update(trialInquiry)
+      .set({ ...SCRUBBED_TRIAL_FIELDS, status: 'withdrawn', closedAt: now, scrubbedAt: now, updatedAt: now })
+      .where(eq(trialInquiry.id, row.id));
+    await writeAudit(tx, {
+      action: 'trial.withdraw',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'trial_inquiry',
+      subjectId: row.id,
+      before: { status: 'open' },
+      after: { status: 'withdrawn', schoolId: row.schoolId },
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    return { id: row.id, schoolId: row.schoolId, status: 'withdrawn' as const, replayed: false };
+  });
 }
 
 /** The number of open requests of each of these schools (the owner's school list). */

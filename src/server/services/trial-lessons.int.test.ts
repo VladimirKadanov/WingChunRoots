@@ -25,7 +25,7 @@ import { purgeOldTrialData } from './retention';
 import { schoolSchedule, updateSchoolSchedule } from './school-schedule';
 import { countSchoolEvent, schoolStats, trackSchoolEvent } from './school-stats';
 import { mySchools, schoolGet } from './schools';
-import { answerTrial, closeTrial, declineTrial, myTrialInquiries, requestTrial, TRIAL_DAILY_LIMIT, trialInbox, trialOptions } from './trial-lessons';
+import { answerTrial, closeTrial, declineTrial, myTrialInquiries, requestTrial, TRIAL_DAILY_LIMIT, trialInbox, trialOptions, withdrawTrial } from './trial-lessons';
 
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -286,7 +286,7 @@ describe('trial lesson requests: who reads and answers one', () => {
     expect(await noticesOf(c.account.id)).toEqual([]);
 
     const inbox = await trialInbox(s.sifu.principal, { schoolId: s.id });
-    expect(inbox.counts).toEqual({ open: 0, answered: 0, declined: 1, closed: 2 });
+    expect(inbox.counts).toEqual({ open: 0, answered: 0, declined: 1, closed: 2, withdrawn: 0 });
     const rows = await getDb().select().from(trialInquiry).where(eq(trialInquiry.schoolId, s.id));
     for (const row of rows) expect(row.closedAt).not.toBeNull();
     const audits = await getDb().select({ action: auditLog.action }).from(auditLog).where(inArray(auditLog.subjectId, rows.map((r) => r.id)));
@@ -299,6 +299,67 @@ describe('trial lesson requests: who reads and answers one', () => {
     await requestTrial((await sender('count-b')).principal, { schoolId: s.id, contactMethod: 'email' }, meta);
     const mine = await mySchools(s.sifu.principal);
     expect(mine.schools.find((x) => x.id === s.id)!.openTrialRequests).toBe(2);
+  });
+});
+
+describe('trial lesson requests: the sender withdraws one (review 2026-11, ADR 0032)', () => {
+  it('removes the name, contact, times and message at once, tells nobody, frees the slot, and a second press changes nothing', async () => {
+    const s = await listedSchool('withdraw');
+    const student = await sender('withdraw-student');
+    const sent = await requestTrial(student.principal, { schoolId: s.id, contactMethod: 'phone', phone: '+000 000 0002', preferredTimes: 'Weekday evenings', message: 'A fictional request.' }, meta);
+    const noticesBefore = (await noticesOf(student.account.id)).length;
+
+    const done = await withdrawTrial(student.principal, { inquiryId: sent.id }, meta);
+    expect(done).toMatchObject({ id: sent.id, schoolId: s.id, status: 'withdrawn', replayed: false });
+    // The row stays as a withdrawn request without any of the sender's words.
+    const [row] = await getDb().select().from(trialInquiry).where(eq(trialInquiry.id, sent.id));
+    expect(row).toMatchObject({ status: 'withdrawn', senderName: null, contactValue: null, preferredTimes: null, message: null, reply: null, handledByUserId: null });
+    expect(row!.closedAt).not.toBeNull();
+    expect(row!.scrubbedAt).not.toBeNull();
+    // The sender sees it as withdrawn; the school sees it without a name or a contact.
+    expect((await myTrialInquiries(student.principal)).inquiries[0]).toMatchObject({ id: sent.id, status: 'withdrawn', statusLabel: 'Withdrawn', contactValue: null, message: null, scrubbed: true });
+    const inbox = await trialInbox(s.sifu.principal, { schoolId: s.id });
+    expect(inbox.counts).toMatchObject({ open: 0, withdrawn: 1 });
+    expect(inbox.inquiries[0]).toMatchObject({ id: sent.id, status: 'withdrawn', senderName: null, contactValue: null, scrubbed: true });
+    expect((await mySchools(s.sifu.principal)).schools.find((x) => x.id === s.id)!.openTrialRequests).toBe(0);
+    expect((await trialInbox(s.sifu.principal, { schoolId: s.id, status: 'withdrawn' })).inquiries).toHaveLength(1);
+    // Nobody is told, and the audit row carries ids and states only.
+    expect((await noticesOf(student.account.id)).length).toBe(noticesBefore);
+    const [audit] = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'trial.withdraw'), eq(auditLog.subjectId, sent.id)));
+    expect(audit).toMatchObject({ actorUserId: student.account.id, before: { status: 'open' }, after: { status: 'withdrawn', schoolId: s.id } });
+    expect(JSON.stringify(audit)).not.toContain('+000 000 0002');
+    // A second press is a replay: nothing changes, nothing is audited twice.
+    expect(await withdrawTrial(student.principal, { inquiryId: sent.id }, meta)).toMatchObject({ status: 'withdrawn', replayed: true });
+    expect(await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'trial.withdraw'), eq(auditLog.subjectId, sent.id)))).toHaveLength(1);
+    // The slot is free again (the daily limit still counts it).
+    expect((await trialOptions(student.principal, { slug: s.slug })).state).toBe('ready');
+    expect(await codeOf(requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email' }, meta))).toBe('ok');
+    // The school cannot answer, decline or close it any more.
+    for (const call of [
+      answerTrial(s.sifu.principal, { inquiryId: sent.id, reply: null }, meta),
+      declineTrial(s.sifu.principal, { inquiryId: sent.id, reason: null }, meta),
+      closeTrial(s.sifu.principal, { inquiryId: sent.id }, meta),
+    ]) {
+      expect(await codeOf(call)).toBe('CONFLICT');
+    }
+  });
+
+  it('is for the sender alone and for an open request: others get 404, an answered request cannot be withdrawn', async () => {
+    const s = await listedSchool('withdraw-who');
+    const student = await sender('withdraw-who-student');
+    const other = await sender('withdraw-who-other');
+    const sent = await requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email', message: 'A fictional request.' }, meta);
+    expect(await codeOf(withdrawTrial(null, { inquiryId: sent.id }, meta))).toBe('UNAUTHORIZED');
+    expect(await codeOf(withdrawTrial(other.principal, { inquiryId: sent.id }, meta))).toBe('NOT_FOUND');
+    expect(await codeOf(withdrawTrial(s.sifu.principal, { inquiryId: sent.id }, meta))).toBe('NOT_FOUND');
+    expect(await codeOf(withdrawTrial(student.principal, { inquiryId: 'not-an-id' }, meta))).toBe('BAD_REQUEST');
+    // Untouched by all of that.
+    const [row] = await getDb().select().from(trialInquiry).where(eq(trialInquiry.id, sent.id));
+    expect(row).toMatchObject({ status: 'open', message: 'A fictional request.', scrubbedAt: null });
+
+    await answerTrial(s.sifu.principal, { inquiryId: sent.id, reply: 'Come on Monday.' }, meta);
+    expect(await codeOf(withdrawTrial(student.principal, { inquiryId: sent.id }, meta))).toBe('CONFLICT');
+    expect((await myTrialInquiries(student.principal)).inquiries[0]).toMatchObject({ status: 'answered', reply: 'Come on Monday.', scrubbed: false });
   });
 });
 
