@@ -19,6 +19,7 @@ import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
 import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction } from './actions';
+import type { LifeStatusChoiceText } from './life-status-choice';
 import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
@@ -138,7 +139,7 @@ export function DecideForm({
   schoolVersion = null,
   organizationVersion = null,
   takeDownOption = false,
-  lifeStatusChoice = false,
+  lifeStatusChoice,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
@@ -154,23 +155,20 @@ export function DecideForm({
   /**
    * Review 2026-11-14 (owner decision): the teacher's life status is "unknown", so the record is
    * treated as living and hidden. Verifying asks the plain question first (the evidence shows a
-   * death, or it cannot be established); only the first publishes the record.
+   * death, or it cannot be established); only the first publishes the record. The words come from
+   * the server page (./life-status-choice.ts) so that they travel in the page, not in this bundle.
    */
-  lifeStatusChoice?: boolean;
+  lifeStatusChoice?: LifeStatusChoiceText;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
   useFocusOnError(formId, state);
-  const choosing = lifeStatusChoice && decision === 'verify';
+  const choosing = lifeStatusChoice !== undefined && decision === 'verify';
   const [deceased, setDeceased] = useState(state.values?.deceased ?? '');
   const establishing = choosing && deceased === 'established';
   const text = { ...DECISIONS[decision], ...given, variant: DECISIONS[decision].variant };
-  const reasonHint = establishing
-    ? 'Required. Say what the evidence shows and where to find it (a file on this case, a source). Kept with the case and in the audit log; the claimant is not shown it.'
-    : choosing
-      ? 'Optional here. Kept with the case for the reviewers; the claimant is told the claim was confirmed.'
-      : text.hint;
+  const reasonHint = establishing ? lifeStatusChoice!.reasonRequiredHint : choosing ? lifeStatusChoice!.reasonOptionalHint : text.hint;
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
       {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}
@@ -185,7 +183,7 @@ export function DecideForm({
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
         {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         {organizationVersion ? <input type="hidden" name="organizationVersion" value={organizationVersion} /> : null}
-        {choosing ? <LifeStatusChoice form={formId} state={state} onValue={setDeceased} /> : null}
+        {choosing ? <LifeStatusChoice form={formId} state={state} text={lifeStatusChoice!} onValue={setDeceased} /> : null}
         <TextAreaField form={formId} name="reason" label={text.reason} optional={establishing ? false : text.optional} maxLength={2000} hint={reasonHint} state={state} />
         {takeDownOption ? (
           <CheckboxField
@@ -209,35 +207,23 @@ export function DecideForm({
  * (review 2026-11-14). Both answers verify the claim when the evidence supports the training; only
  * the first makes the record public, because only that one establishes that the teacher has died.
  */
-function LifeStatusChoice({ form, state, onValue }: { form: string; state: FormState; onValue: (value: string) => void }) {
+function LifeStatusChoice({ form, state, text, onValue }: { form: string; state: FormState; text: LifeStatusChoiceText; onValue: (value: string) => void }) {
   // Uncontrolled, like every field of these forms: React resets a form after its action, and a
   // controlled radio would come back unchecked while its state still said "chosen". What was sent
   // comes back in `state.values`, which is the default the reset returns to.
   const sent = state.values?.deceased;
   const error = state.status === 'error' ? state.fields?.deceased : undefined;
   const errorId = `${fieldId(form, 'deceased')}-error`;
-  const options = [
-    {
-      value: 'established',
-      label: 'The evidence shows this person is deceased',
-      text: 'The record is marked deceased with your reason and is shown publicly once both people of the link have chosen to be public.',
-    },
-    {
-      value: 'not_established',
-      label: 'I cannot establish this',
-      text: 'The claim can still be verified. The record stays hidden, treated as a living person, until someone with the evidence marks it deceased.',
-    },
-  ] as const;
   return (
     <fieldset aria-describedby={error ? errorId : undefined} className="grid gap-2" data-testid="life-status-choice">
-      <legend className="mb-1 font-semibold">The teacher’s life status is not known</legend>
-      <p className="text-sm text-fg-muted">A person whose status is not known is treated as living and is never shown publicly. Choose one to verify.</p>
+      <legend className="mb-1 font-semibold">{text.legend}</legend>
+      <p className="text-sm text-fg-muted">{text.intro}</p>
       {error ? (
         <p id={errorId} className="text-sm text-danger">
           {error}
         </p>
       ) : null}
-      {options.map((option, index) => (
+      {text.options.map((option, index) => (
         <label
           key={option.value}
           className={cx(
