@@ -32,7 +32,9 @@ async function withdraw(kind: string): Promise<FormState> {
         status: 'done',
         message: result.profileHidden
           ? 'Your consent to publication is withdrawn and your profile is private again.'
-          : 'Your consent to publication is withdrawn. Your profile was already private.',
+          : result.profileHeld
+            ? 'Your consent to publication is withdrawn. The moderators are holding your profile off the public pages for now; it stays private when they lift the hold.'
+            : 'Your consent to publication is withdrawn. Your profile was already private.',
       };
     }
     return { status: 'done', message: result.withdrawn.length > 0 ? 'Your acknowledgement of the privacy notice is withdrawn.' : 'It was already withdrawn.' };

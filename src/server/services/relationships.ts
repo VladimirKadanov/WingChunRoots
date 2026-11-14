@@ -1210,6 +1210,8 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
         .from(person)
         .where(and(inArray(person.id, [row.teacherPersonId, row.studentPersonId]), isNotNull(person.deletedAt)));
       if (removed) throw new ServiceError('CONFLICT', 'This request can no longer be answered: the profile was removed.');
+      // Flows-core L3 (review 2026-11): the request of an erased account is withdrawn by the erasure
+      // (account-erasure.ts), which holds this same global lock, so it is no longer pending here.
 
       // 2. The plan's allowance (DEFAULT D06), with withQuota's own lock after the global one.
       // DEFAULT D04/D13: a Sifu who chose the account type and is not verified yet ("Instructor
@@ -1268,6 +1270,15 @@ export interface VerifiedWrites {
 }
 
 /**
+ * The publication rule of an approval, for a person aliased `p`: a self-stewarded profile whose owner
+ * withdrew the publication consent is never published (DEFAULT D03); everything else may be.
+ */
+const OWNER_KEEPS_PUBLICATION = sql`NOT (p.stewardship = 'self' AND COALESCE((
+         SELECT c.action FROM consent_record c
+          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
+          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')`;
+
+/**
  * The writes that make a relationship verified, shared by the teacher's approval (M09) and the
  * review committee's verify decision (M10a, review.ts): the display-primary line, verified and
  * public, both people public. The caller holds the global verify lock and has run the cycle,
@@ -1296,15 +1307,21 @@ export async function markVerified(tx: Transaction, row: RelRow, confirmedByUser
   // the publication consent: DEFAULT D03, the owner's choice wins (docs/plan/questions/M07.md).
   // Hiding a profile always leaves that withdrawal as the latest record, also when publication was
   // never granted (profile.ts setOwnVisibility, privacy.ts consentWithdraw; M09 review, code-1).
+  // A profile staff took down stays hidden until staff restore it (review 2026-11, takedown.ts); what
+  // the approval would have made of it is kept in taken_down_visibility, so the restore gives it back
+  // (the restore itself checks the consent again).
   const published = await tx.execute<{ id: string }>(sql`
 UPDATE person p SET visibility = 'public', updated_at = now()
  WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
    AND p.visibility <> 'public' AND p.deleted_at IS NULL
-   AND NOT (p.stewardship = 'self' AND COALESCE((
-         SELECT c.action FROM consent_record c
-          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
-          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')
+   AND p.taken_down_at IS NULL
+   AND ${OWNER_KEEPS_PUBLICATION}
 RETURNING p.id::text AS id`);
+  await tx.execute(sql`
+UPDATE person p SET taken_down_visibility = 'public', updated_at = now()
+ WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
+   AND p.taken_down_at IS NOT NULL AND p.taken_down_visibility <> 'public' AND p.deleted_at IS NULL
+   AND ${OWNER_KEEPS_PUBLICATION}`);
   return { isDisplayPrimary: primary, previousPrimaryId: primary && current ? current.id : null, publishedPersonIds: published.rows.map((r) => r.id) };
 }
 

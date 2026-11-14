@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createAccount, setTestAuthEnv } from '../auth/test-support';
 import type { Principal } from '../auth/principal';
+import { erasedEmail } from '../auth/suspension';
 import { EXPLORE_START_TAG } from '../cache';
 import { closeDb, getDb } from '../db';
 import { uuidv7 } from '../db/ids';
@@ -533,7 +534,7 @@ describe('pnpm account:delete carries out or cancels a deletion request', () => 
 
     const outcome = await carryOutDeletionFromCommandLine(caseId);
     // demo-root-a has verified relationships: the record stays public, as others confirmed it.
-    expect(outcome).toEqual({ personId, visibility: 'public' });
+    expect(outcome).toEqual({ personId, visibility: 'public', tombstone: false });
     expect(await accountExists(userId)).toBe(false);
     expect(await getDb().select().from(consentRecord).where(eq(consentRecord.userId, userId))).toEqual([]);
     const [kept] = await getDb().select().from(person).where(eq(person.id, personId));
@@ -557,22 +558,31 @@ describe('pnpm account:delete carries out or cancels a deletion request', () => 
   it('makes a record private when it was public by its owner\'s consent only', async () => {
     const { userId, personId, caseId } = await member('demo-deletion-only-consent');
     expect(await peopleSlugs('Demo Leaving Member')).toContain('demo-deletion-only-consent');
-    expect(await carryOutDeletionFromCommandLine(caseId)).toEqual({ personId, visibility: 'involved_only' });
+    expect(await carryOutDeletionFromCommandLine(caseId)).toEqual({ personId, visibility: 'involved_only', tombstone: false });
     expect(await accountExists(userId)).toBe(false);
     expect(await namesOf(personId)).toEqual(['Demo Leaving Member']);
     expect(await peopleSlugs('Demo Leaving Member')).not.toContain('demo-deletion-only-consent');
   });
 
-  it('deletes nothing while another record still refers to the account', async () => {
+  // Review 2026-11: this used to stop with CONFLICT and delete nothing, which left most accounts that
+  // had done anything impossible to erase. The row now stays as a nameless tombstone instead, and
+  // everything that belongs to the person is erased all the same (account-erasure.int.test.ts).
+  it('keeps a nameless tombstone while another record still refers to the account, and erases the rest', async () => {
     const { userId, personId, caseId } = await member('demo-deletion-referenced');
     const [edge] = await getDb().select({ id: teachingRelationship.id }).from(teachingRelationship).limit(1);
     await getDb().update(teachingRelationship).set({ requestedByUserId: userId }).where(eq(teachingRelationship.id, edge!.id));
     try {
-      await expect(carryOutDeletionFromCommandLine(caseId)).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('nothing was deleted') });
-      expect(await accountExists(userId)).toBe(true);
-      expect(await namesOf(personId)).toEqual(['Demo Leaving Member', '離雲']);
-      expect(await caseOf(caseId)).toMatchObject({ status: 'open', openedByUserId: userId });
-      expect(await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.delete'), eq(auditLog.subjectId, caseId)))).toEqual([]);
+      expect(await carryOutDeletionFromCommandLine(caseId)).toEqual({ personId, visibility: 'involved_only', tombstone: true });
+      const [row] = await getDb().select().from(authUser).where(eq(authUser.id, userId));
+      expect(row).toMatchObject({ email: erasedEmail(userId), name: '', emailVerified: false, role: 'user', banned: true, banExpires: null, twoFactorEnabled: false });
+      expect(await namesOf(personId)).toEqual(['Demo Leaving Member']);
+      expect(await getDb().select().from(consentRecord).where(eq(consentRecord.userId, userId))).toEqual([]);
+      expect(await caseOf(caseId)).toMatchObject({ status: 'resolved', resolution: 'approved', openedByUserId: null });
+      const [audit] = await getDb().select().from(auditLog).where(and(eq(auditLog.action, 'account.delete'), eq(auditLog.subjectId, caseId)));
+      expect(audit).toMatchObject({ actorUserId: null, after: expect.objectContaining({ tombstone: true, keptBy: ['teaching_relationship.requested_by_user_id'] }) });
+      // The record that refers to the tombstone is untouched.
+      const [edgeAfter] = await getDb().select({ requestedBy: teachingRelationship.requestedByUserId }).from(teachingRelationship).where(eq(teachingRelationship.id, edge!.id));
+      expect(edgeAfter!.requestedBy).toBe(userId);
     } finally {
       await getDb().update(teachingRelationship).set({ requestedByUserId: null }).where(eq(teachingRelationship.id, edge!.id));
     }

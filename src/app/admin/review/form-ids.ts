@@ -21,3 +21,6 @@ export const PHOTO_REMOVE_FORM = 'review-photo-remove';
 export const GALLERY_REMOVE_FORM = 'review-gallery-remove';
 /** M16: "Remove photo" of a school's logo or room photo, from its listing case (schoolPhotos.remove with a reason). */
 export const SCHOOL_PHOTO_REMOVE_FORM = 'review-school-photo-remove';
+/** Review 2026-11: "Take down" and "Restore" of a profile (moderation.takeDown, moderation.restore). */
+export const TAKEDOWN_FORM = 'review-takedown';
+export const RESTORE_FORM = 'review-restore';

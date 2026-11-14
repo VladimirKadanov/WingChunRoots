@@ -1119,7 +1119,7 @@ export async function setVisibility(principal: Principal | null, raw: z.input<ty
 const CERTIFICATE_SIZES = ['96', '512', 'full'] as const;
 
 /** Deletes a certificate's files (best effort; the row says what was there). */
-async function deleteCertificateFiles(store: ObjectStore, key: string, certificateId: string): Promise<void> {
+export async function deleteCertificateFiles(store: ObjectStore, key: string, certificateId: string): Promise<void> {
   for (const size of CERTIFICATE_SIZES) {
     await store.delete(`${key}/${size}`).catch(() => {
       logger().error(`[passport] a stored file of certificate ${certificateId} could not be removed`);

@@ -10,7 +10,7 @@
 // question 1): when an administrator carries the request out, the account's data is deleted and the
 // relationships that others verified stay as historical records until the legal review.
 
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -18,19 +18,14 @@ import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { invalidatePublic } from '../cache';
 import { getDb } from '../db';
-import { GALLERY_PHOTO_STATUSES } from '../db/schema/common';
-import { authUser, consentRecord, event, person, personBio, personName, personPhoto, reviewCase, school, schoolInstructor, schoolPhoto, schoolPrivateLocation, teachingRelationship } from '../db/schema';
-import type { Transaction } from '../jobs/outbox';
+import { authUser, consentRecord, person, reviewCase } from '../db/schema';
 import { type ConsentKind, consentVersion, REQUIRED_SIGN_UP_CONSENTS } from '../legal/documents';
 import { lockAccount } from './account-lock';
-import { endSubscriptionsBeforeDeletion } from './billing-subject';
+import { eraseAccount, lockOpenDeletionCase } from './account-erasure';
 import { withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
-import { queueRecomputeForPerson } from './lineage-membership';
-import { deletePhotoFiles } from './photos';
 import { neighbourTags, setOwnVisibility } from './profile';
-import { isReferencedRowError } from './retention';
 import { notifyEach } from './notify';
 
 /** The consents an account may withdraw and keep its account: everything the sign-up does not require. */
@@ -117,6 +112,8 @@ export interface ConsentWithdrawResult {
   withdrawn: OptionalConsent[];
   /** True when withdrawing `publication` took the own profile out of public view. */
   profileHidden: boolean;
+  /** Present (true) when staff hold the own profile: it was hidden already, and the withdrawal waits for the restore. */
+  profileHeld?: true;
 }
 
 /**
@@ -141,16 +138,19 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
     // review, code-1).
     const withdrawn = (await withdrawConsents(tx, p.user.id, p.user.role, kinds, meta, { evenIfNotGiven: ['publication'] })) as OptionalConsent[];
     let profileHidden = false;
+    let profileHeld = false;
     let personId: string | null = null;
     if (kinds.includes('publication')) {
       const [own] = await tx
-        .select({ id: person.id, visibility: person.visibility, stewardship: person.stewardship })
+        .select({ id: person.id, visibility: person.visibility, stewardship: person.stewardship, takenDownAt: person.takenDownAt, takenDownVisibility: person.takenDownVisibility })
         .from(person)
         .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)))
         .for('update');
-      // Hides the profile (its consent is withdrawn above).
+      // Hides the profile (its consent is withdrawn above). A profile staff hold is hidden already: the
+      // withdrawal is recorded for the restore (taken_down_visibility) and nothing public changes.
       if (own && own.stewardship === 'self') {
         profileHidden = await setOwnVisibility(tx, p, own, false, meta);
+        profileHeld = own.takenDownAt != null;
         personId = own.id;
         // The visibility change is a change to the person (plan §6.6): before and after, no names.
         if (profileHidden) {
@@ -168,11 +168,11 @@ export async function consentWithdraw(principal: Principal | null, raw: unknown,
         }
       }
     }
-    return { withdrawn, profileHidden, tags: profileHidden && personId ? await neighbourTags(tx, personId, { ancestors: true }) : [] };
+    return { withdrawn, profileHidden, profileHeld, tags: profileHidden && personId ? await neighbourTags(tx, personId, { ancestors: true }) : [] };
   });
   // The person and the people and lineages next to it, as after a profile save.
   if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
-  return { withdrawn: outcome.withdrawn, profileHidden: outcome.profileHidden };
+  return { withdrawn: outcome.withdrawn, profileHidden: outcome.profileHidden, ...(outcome.profileHeld ? { profileHeld: true as const } : {}) };
 }
 
 // --- account.requestDeletion ---------------------------------------------------------------------
@@ -192,6 +192,8 @@ export interface DeletionRequestResult {
  * account.requestDeletion: opens a deletion_request review case for the signed-in account and
  * notifies every administrator. One open request per account: asking again returns it.
  */
+// DEFAULT review-2026-11: no self-service "Delete my account" yet. This request stays the way in and an
+// administrator carries it out (accounts.erase); a later form would ask for the password again and open this same case.
 export async function requestAccountDeletion(principal: Principal | null, raw: unknown, meta: RequestMeta): Promise<DeletionRequestResult> {
   const p = requireUser(principal);
   const parsed = requestDeletionInput.safeParse(raw);
@@ -228,138 +230,20 @@ export async function requestAccountDeletion(principal: Principal | null, raw: u
 
 // --- Carrying out a deletion request (pnpm account:delete) ---------------------------------------
 //
-// Until the review tool of M10a, an administrator carries a request out on the machine that runs
-// the pilot: `pnpm account:delete --case <id>` (src/server/auth/account-delete-cli.ts), or closes it
-// without carrying it out with `--cancel` when the member changed their mind. DEFAULT
-// (docs/plan/questions/M07.md, question 1), in one transaction:
-//   - the profile keeps only its Latin display name: the other names (their search keys go with
-//     them), the biographies, the city and the year are deleted; it becomes an unclaimed record
-//     (stewardship = unclaimed) with no account, and stays public only when it was public and has a
-//     verified relationship, the historical record that others confirmed;
-//   - the account's consent records are deleted (as for an unconfirmed account, retention.ts) and
-//     its review cases keep no link to it;
-//   - the sign-in account goes, with its sessions, credentials, 2FA, notifications and requests
-//     (ON DELETE CASCADE). Another row that still refers to the account (RESTRICT, such as a plan
-//     an admin granted) stops it all with CONFLICT: nothing is deleted.
-// The audit log keeps its rows (append-only; ids and dates, no names) and gains account.delete.
-// The command runs in its own process, so it cannot drop the web server's public cache: the
+// The erasure itself is services/account-erasure.ts (review 2026-11), shared with the administrator's
+// `accounts.erase` procedure, which works on the hosted service. `pnpm account:delete --case <id>`
+// (src/server/auth/account-delete-cli.ts) is the local tool: it refuses production and a database
+// that is not on this machine, and calls the same service with no administrator (the audit row says
+// so). It runs in its own process, so it cannot drop the web server's public cache: the
 // administrator restarts the web server afterwards (docs/guides/admin-guide.bg.md, section 13).
-
-const DELETION_CASE_ID = z.uuid();
-
-async function lockOpenDeletionCase(tx: Transaction, caseId: string): Promise<{ id: string; userId: string }> {
-  if (!DELETION_CASE_ID.safeParse(caseId).success) throw new ServiceError('BAD_REQUEST', 'That is not the id of a case.');
-  const find = () =>
-    tx
-      .select({ id: reviewCase.id, kind: reviewCase.kind, status: reviewCase.status, userId: reviewCase.openedByUserId })
-      .from(reviewCase)
-      .where(eq(reviewCase.id, caseId));
-  const [seen] = await find();
-  if (!seen || seen.kind !== 'deletion_request') throw new ServiceError('NOT_FOUND', 'No account deletion request has this id.');
-  // The account's lock first, as requestAccountDeletion takes it, then the case.
-  if (seen.userId) await lockAccount(tx, { id: seen.userId });
-  const [found] = await find().for('update');
-  if (!found || !found.userId || !(OPEN_CASE_STATUSES as readonly string[]).includes(found.status)) {
-    throw new ServiceError('CONFLICT', 'This deletion request is already closed.');
-  }
-  return { id: found.id, userId: found.userId };
-}
-
-/**
- * The schools an account listed, when the account is deleted (M11 review, security-1). The plan
- * keeps no listing without its account, and school.created_by_user_id is ON DELETE RESTRICT, so
- * each one (a draft, a listing under review, a listed or a hidden school) is archived and
- * soft-deleted: off every public answer (v_public_school shows only active schools that are not
- * deleted), its open listing review dismissed, and nothing of the Sifu's left on it: no contact,
- * website or description, no private point (for an exact school, public_point goes back to the
- * city centre too: a draft's pin was never published), no instructors. The reference is then
- * cleared (ADR 0004: a reference that may outlive its author). The name, slug and city stay, so the
- * review history still says which school a case was about. Returns the number archived.
- */
-async function archiveListedSchools(tx: Transaction, userId: string, removedPhotos: { id: string; storageKey: string }[] = []): Promise<number> {
-  const listed = await tx.select({ id: school.id }).from(school).where(eq(school.createdByUserId, userId)).for('update');
-  if (listed.length === 0) return 0;
-  const ids = listed.map((r) => r.id);
-  const now = new Date();
-  // M16: the school's logo and room photos are the Sifu's too: marked removed (the hash of the
-  // uploaded file cleared), their files deleted after the commit (the caller).
-  removedPhotos.push(
-    ...(await tx
-      .update(schoolPhoto)
-      .set({ status: 'removed', removedAt: now, removedByUserId: null, updatedAt: now })
-      .where(and(inArray(schoolPhoto.schoolId, ids), eq(schoolPhoto.status, 'active')))
-      .returning({ id: schoolPhoto.id, storageKey: schoolPhoto.storageKey })),
-  );
-  await tx.update(schoolPhoto).set({ originalSha256: null, updatedAt: now }).where(inArray(schoolPhoto.schoolId, ids));
-  await tx
-    .update(reviewCase)
-    .set({ status: 'dismissed', resolutionReason: 'The account that listed the school was deleted.', resolvedAt: now, updatedAt: now })
-    .where(and(inArray(reviewCase.schoolId, ids), eq(reviewCase.kind, 'school_listing'), inArray(reviewCase.status, [...OPEN_CASE_STATUSES])));
-  await tx.delete(schoolPrivateLocation).where(inArray(schoolPrivateLocation.schoolId, ids));
-  await tx.delete(schoolInstructor).where(inArray(schoolInstructor.schoolId, ids));
-  // city_only: the trigger school_city_only_point puts the city centre into public_point.
-  await tx
-    .update(school)
-    .set({
-      status: 'archived',
-      deletedAt: now,
-      locationPrivacy: 'city_only',
-      contactEmail: null,
-      contactPhone: null,
-      websiteUrl: null,
-      description: null,
-      createdByUserId: null,
-      updatedAt: now,
-    })
-    .where(inArray(school.id, ids));
-  return ids.length;
-}
-
-/**
- * M17 (docs/adr/0020-events.md): the events the account published as a Sifu go with it, as a
- * listing does: marked removed (404 everywhere), with nothing of the Sifu's left on them (text,
- * link, venue, poster); the poster files are deleted after the commit (the caller). An
- * organization's events stay: they are the organization's, and the account that published one is
- * only cleared (created_by_user_id, ON DELETE SET NULL). Returns the number removed.
- */
-async function removeOwnEvents(tx: Transaction, userId: string, removedPosters: { id: string; storageKey: string }[]): Promise<number> {
-  const own = await tx
-    .select({ id: event.id, posterStorageKey: event.posterStorageKey })
-    .from(event)
-    .where(and(eq(event.organizerUserId, userId), isNull(event.organizationId)))
-    .for('update');
-  if (own.length === 0) return 0;
-  for (const row of own) if (row.posterStorageKey) removedPosters.push({ id: row.id, storageKey: row.posterStorageKey });
-  const now = new Date();
-  await tx
-    .update(event)
-    .set({
-      status: 'removed',
-      removedAt: now,
-      removedByUserId: null,
-      removalReason: 'The organizer’s account was deleted.',
-      description: null,
-      venue: null,
-      externalUrl: null,
-      cancellationNote: null,
-      organizerUserId: null,
-      cancelledByUserId: null,
-      posterStorageKey: null,
-      posterSha256: null,
-      posterWidth: null,
-      posterHeight: null,
-      posterSizeBytes: null,
-      updatedAt: now,
-    })
-    .where(inArray(event.id, own.map((r) => r.id)));
-  return own.length;
-}
 
 export interface DeletionCarriedOut {
   /** The profile that stays as an unclaimed record, or null when the account had none. */
   personId: string | null;
   /** Its visibility afterwards. */
   visibility: 'public' | 'involved_only' | null;
+  /** True when the sign-in row stays as a nameless tombstone (a record that must stay refers to it). */
+  tombstone: boolean;
 }
 
 /**
@@ -367,92 +251,13 @@ export interface DeletionCarriedOut {
  * has already refused production and a database that is not on this machine.
  */
 export async function carryOutDeletionFromCommandLine(caseId: string): Promise<DeletionCarriedOut> {
-  // M14: the profile photo goes with the account (its files after the commit).
-  let photos: { id: string; storageKey: string }[] = [];
-  // M16: the logos and room photos of the schools the account listed.
-  const schoolPhotos: { id: string; storageKey: string }[] = [];
-  // M17: the posters of the account's own events.
-  const posters: { id: string; storageKey: string }[] = [];
-  try {
-    const result = await getDb().transaction(async (tx) => {
-      const request = await lockOpenDeletionCase(tx, caseId);
-      const userId = request.userId;
-      const [own] = await tx
-        .select({ id: person.id, visibility: person.visibility })
-        .from(person)
-        .where(eq(person.claimedByUserId, userId))
-        .for('update');
-      let visibility: DeletionCarriedOut['visibility'] = null;
-      let namesRemoved = 0;
-      let biosRemoved = 0;
-      if (own) {
-        namesRemoved = (await tx.delete(personName).where(and(eq(personName.personId, own.id), eq(personName.isPrimary, false)))).rowCount ?? 0;
-        biosRemoved = (await tx.delete(personBio).where(eq(personBio.personId, own.id))).rowCount ?? 0;
-        // M14: the profile photo is the account's own, like the bio: marked removed, its files deleted below
-        // (M16: and the rest of the gallery).
-        photos = await tx
-          .update(personPhoto)
-          .set({ status: 'removed', removedAt: new Date(), removedByUserId: null, updatedAt: new Date() })
-          // M16: every photo of the gallery, the profile photo among them.
-          .where(and(eq(personPhoto.personId, own.id), inArray(personPhoto.status, [...GALLERY_PHOTO_STATUSES])))
-          .returning({ id: personPhoto.id, storageKey: personPhoto.storageKey });
-        // M14 review: no row of the person (the current photo, replaced or removed ones) keeps the
-        // hash of the file the account uploaded.
-        await tx.update(personPhoto).set({ originalSha256: null, updatedAt: new Date() }).where(eq(personPhoto.personId, own.id));
-        const [verified] = await tx
-          .select({ id: teachingRelationship.id })
-          .from(teachingRelationship)
-          .where(
-            and(
-              eq(teachingRelationship.status, 'verified'),
-              or(eq(teachingRelationship.teacherPersonId, own.id), eq(teachingRelationship.studentPersonId, own.id)),
-            ),
-          )
-          .limit(1);
-        visibility = own.visibility === 'public' && verified ? 'public' : 'involved_only';
-        await tx
-          .update(person)
-          .set({ claimedByUserId: null, stewardship: 'unclaimed', visibility, placeId: null, trainingStartYear: null, photoId: null, updatedAt: new Date() })
-          .where(eq(person.id, own.id));
-        // A profile that stops being public takes its edges out of v_public_edge (M11 review, code-2).
-        if (visibility !== own.visibility) await queueRecomputeForPerson(tx, own.id);
-      }
-      // Records the account added for other people keep no link to it.
-      await tx.update(person).set({ createdByUserId: null }).where(eq(person.createdByUserId, userId));
-      const schoolsArchived = await archiveListedSchools(tx, userId, schoolPhotos);
-      const eventsRemoved = await removeOwnEvents(tx, userId, posters);
-      const consentsRemoved = (await tx.delete(consentRecord).where(eq(consentRecord.userId, userId))).rowCount ?? 0;
-      const now = new Date();
-      await tx
-        .update(reviewCase)
-        .set({ status: 'resolved', resolution: 'approved', resolutionReason: 'Carried out with pnpm account:delete.', resolvedAt: now, updatedAt: now })
-        .where(eq(reviewCase.id, request.id));
-      await tx.update(reviewCase).set({ openedByUserId: null }).where(eq(reviewCase.openedByUserId, userId));
-      await writeAudit(tx, {
-        action: 'account.delete',
-        actorUserId: null,
-        actorRole: null,
-        subjectType: 'review_case',
-        subjectId: request.id,
-        before: { userId, personId: own?.id ?? null, visibility: own?.visibility ?? null },
-        after: { personId: own?.id ?? null, stewardship: own ? 'unclaimed' : null, visibility, namesRemoved, biosRemoved, photosRemoved: photos.length, consentsRemoved, schoolsArchived, eventsRemoved },
-        reason: 'pnpm account:delete (local environment)',
-      });
-      // M22: a paid subscription in test mode ends at the provider first (its rows go with the account).
-      await endSubscriptionsBeforeDeletion(tx, userId);
-      await tx.delete(authUser).where(eq(authUser.id, userId));
-      return { personId: own?.id ?? null, visibility };
-    });
-    await deletePhotoFiles([...photos, ...schoolPhotos, ...posters]);
-    return result;
-  } catch (error) {
-    if (!isReferencedRowError(error)) throw error;
-    const constraint = (error as { constraint?: unknown; cause?: { constraint?: unknown } }).constraint ?? (error as { cause?: { constraint?: unknown } }).cause?.constraint;
-    throw new ServiceError(
-      'CONFLICT',
-      `Another record still refers to the account${typeof constraint === 'string' ? ` (${constraint})` : ''}; nothing was deleted. This request waits for the review tool (M10a).`,
-    );
-  }
+  const outcome = await eraseAccount({
+    actor: null,
+    by: { caseId },
+    reason: 'pnpm account:delete (local environment)',
+    caseNote: 'Carried out with pnpm account:delete.',
+  });
+  return { personId: outcome.personId, visibility: outcome.visibility, tombstone: outcome.tombstone };
 }
 
 /**

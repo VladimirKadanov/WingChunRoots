@@ -348,6 +348,9 @@ class Builder {
       birthDate: null,
       // M14: the demo photos are added by db:seed (src/server/db/seed-photos.ts), not here.
       photoId: null,
+      takenDownAt: null,
+      takenDownReason: null,
+      takenDownVisibility: null,
       createdAt: at,
       updatedAt: at,
       deletedAt: null,

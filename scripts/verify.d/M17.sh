@@ -130,7 +130,10 @@ check "every change is audited (event.*)" bash -c "
     grep -q \"| '\$a'\" src/server/audit/index.ts && grep -q \"action: '\$a'\" $SERVICE || exit 1; done"
 check "a cancelled event is marked in words and with a shape, never colour alone" bash -c "
   grep -q 'export function CancelledMark' $ROWS && grep -q '<rect' $ROWS && grep -q 'Cancelled' $ROWS"
-check "account deletion removes the Sifu's own events" grep -q 'removeOwnEvents' src/server/services/privacy.ts
+# Review 2026-11 (ADR 0030): the erasure moved from privacy.ts to account-erasure.ts, which privacy.ts calls.
+check "account deletion removes the Sifu's own events" bash -c "
+  grep -q 'async function removeOwnEvents' src/server/services/account-erasure.ts && grep -q 'await removeOwnEvents(' src/server/services/account-erasure.ts &&
+  grep -q 'eraseAccount' src/server/services/privacy.ts"
 
 # 6. Notices (In scope 4; DEFAULT M17 question 3) --------------------------------------------------
 check "the notices are a background job with a singleton key, sent from the same transaction" bash -c "

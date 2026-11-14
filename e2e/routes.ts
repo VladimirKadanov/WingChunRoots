@@ -63,6 +63,7 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard', name: 'dashboard-student', status: 200, milestone: 'M08', key: true, signInAs: 'demo-pending' },
   { path: '/dashboard/settings', name: 'dashboard-settings', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/admin/grants', name: 'admin-grants', status: 200, milestone: 'M08', signInAs: 'admin' },
+  { path: '/admin/accounts', name: 'admin-accounts', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
   // The explorer (M05): its starting page. The three graph views and the list view need a demo
   // person's id, so they are screen states (e2e/screenshots.spec.ts, e2e/visual.spec.ts; axe in
   // e2e/m05-explorer.spec.ts).

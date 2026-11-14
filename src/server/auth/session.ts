@@ -7,6 +7,7 @@ import { isAPIError } from 'better-auth/api';
 
 import { getAuth } from './config';
 import { isRole, type Principal } from './principal';
+import { accountSuspended } from './suspension';
 
 function hasBearer(headers: Headers): boolean {
   return /^bearer\s/i.test(headers.get('authorization') ?? '');
@@ -25,6 +26,10 @@ export async function principalFromHeaders(headers: Headers): Promise<Principal 
     });
   if (!result) return null;
   const { user, session } = result;
+  // Review 2026-11: a suspended account has no principal, on any path (pages, procedures, Server
+  // Actions, bearer tokens), whatever session or token it still holds. Its sessions are deleted
+  // when it is suspended; this closes the race of one created in that moment.
+  if (accountSuspended(user as { banned?: boolean | null; banExpires?: Date | string | null })) return null;
   const verifiedAt = (session as { twoFactorVerifiedAt?: unknown }).twoFactorVerifiedAt;
   return {
     user: {

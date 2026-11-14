@@ -1205,6 +1205,52 @@ const contentRemoved: NotificationTemplate<{ content: RemovedContent; reason: st
   sample: { content: 'event', reason: 'The date and the place do not match the poster.', title: 'Demo seminar in Sofia' },
 };
 
+/**
+ * "profile.taken-down" and "profile.restored" (review 2026-11, docs/adr/0030-takedown-suspension-erasure.md):
+ * to the owner of a profile when staff with a verified second factor take it off the public pages
+ * with a reason, and when they put it back. The reason is the staff's words to the owner; no name
+ * of the staff member and none of a reporter. A statement of reasons is never switched off
+ * (category `account`).
+ */
+const profileTakenDown: NotificationTemplate<{ reason: string }> = {
+  name: 'profile.taken-down',
+  parse(payload) {
+    const data = payloadObject('profile.taken-down', payload);
+    if (typeof data.reason !== 'string' || data.reason.trim() === '' || data.reason.length > 1000) throw new NotificationDataError('profile.taken-down', 'reason must be a text');
+    return { reason: data.reason.trim() };
+  },
+  render: ({ reason }) => ({
+    title: 'Your profile is hidden',
+    body: [
+      { text: `The WingChunRoots moderators took your profile off the public pages. Their reason: “${reason}”` },
+      { text: 'You and the people involved in your links can still open it. Write to us if you think this is a mistake.' },
+    ],
+    action: { label: 'Open your profile', href: '/dashboard/profile' },
+  }),
+  sample: { reason: 'The photo and the biography do not match the person named.' },
+};
+
+const profileRestored: NotificationTemplate<{ visible: boolean }> = {
+  name: 'profile.restored',
+  parse(payload) {
+    const data = payloadObject('profile.restored', payload);
+    if (typeof data.visible !== 'boolean') throw new NotificationDataError('profile.restored', 'visible must be true or false');
+    return { visible: data.visible };
+  },
+  render: ({ visible }) => ({
+    title: 'Your profile is back',
+    body: [
+      {
+        text: visible
+          ? 'The WingChunRoots moderators lifted the hold on your profile. It is on the public pages again.'
+          : 'The WingChunRoots moderators lifted the hold on your profile. It stays private, as you chose; you can show it publicly from your profile page.',
+      },
+    ],
+    action: { label: 'Open your profile', href: '/dashboard/profile' },
+  }),
+  sample: { visible: true },
+};
+
 // --- Training passport (M19; docs/adr/0022-passport.md) ---------------------------------------------
 
 /** The kinds of entry a teacher writes (M19, In scope 2); a certificate is the student's own. */
@@ -1894,6 +1940,9 @@ export const NOTIFICATION_TEMPLATES = {
   'plan.expired': planExpired,
   'limit.reached': limitReached,
   'content.removed': contentRemoved,
+  // Review 2026-11.
+  'profile.taken-down': profileTakenDown,
+  'profile.restored': profileRestored,
   // M19.
   'passport.entry-added': passportEntryAdded,
   'passport.correction': passportCorrection,
