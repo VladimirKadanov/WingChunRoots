@@ -378,8 +378,9 @@ export function RequestForm({
 
       <div className="grid gap-3">
         <p className="max-w-[60ch] text-sm text-fg-muted">
-          Until the teacher answers, only you, the teacher and the reviewers see this request. When the teacher confirms it, the link is shown publicly,
-          and so are both profiles, unless you have withdrawn your consent to be shown publicly.
+          Until the teacher answers, only you, the teacher and the reviewers see this request. When the teacher confirms it, the link is confirmed and you see it
+          under Your teachers on your dashboard. It becomes public when both of you have chosen “Show my profile publicly”; until then it stays
+          confirmed but private, and nothing is lost.
         </p>
         <div>
           <SubmitButton pending={pending} pendingLabel="Sending…">

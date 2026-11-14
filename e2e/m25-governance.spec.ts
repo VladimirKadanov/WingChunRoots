@@ -206,7 +206,7 @@ test('@M25 a lineage report that is not upheld changes nothing; its one appeal i
 test('@M25 a correction of a shared archival record is proposed, approved by an archivist and kept in its history', async ({ page, browser }) => {
   const id = uuidv7();
   const slug = `demo-e2e-record-${letters(8)}`;
-  await getDb().execute(sql`INSERT INTO person (id, slug, kind, stewardship, visibility, life_status) VALUES (${id}::uuid, ${slug}, 'historical', 'unclaimed', 'public', 'unknown')`);
+  await getDb().execute(sql`INSERT INTO person (id, slug, kind, stewardship, visibility, life_status) VALUES (${id}::uuid, ${slug}, 'historical', 'unclaimed', 'public', 'deceased')`);
   await getDb().execute(sql`INSERT INTO person_name (person_id, value, script, lang, is_primary) VALUES (${id}::uuid, 'Demo Archival Teacher', 'Latn', 'en', true)`);
   await freshAccount(page, { name: `Demo Proposer ${letters()}` });
   const archivist = await signedIn(browser, 'archivist');

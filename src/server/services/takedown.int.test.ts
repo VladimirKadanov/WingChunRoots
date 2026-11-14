@@ -220,7 +220,7 @@ describe('take down and restore', () => {
 
   it('an approval that would publish both ends of a link leaves a held person hidden', async () => {
     const teacher = await member('takedown-teacher', { sifu: true });
-    const student = await member('takedown-student', { hidden: true });
+    const student = await member('takedown-student', { hidden: true, granted: true });
     const moderator = await staff('takedown-link-mod', 'moderator');
     const lineageId = await newLineage('takedown');
     const request = await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta);
@@ -230,8 +230,8 @@ describe('take down and restore', () => {
     expect(link?.status).toBe('verified');
     expect(await publicIds(teacher.personId, student.personId)).toEqual([teacher.personId]);
     expect((await rowOf(student.personId)).takenDownAt).not.toBeNull();
-    // The restore then publishes what the approval would have: nothing was lost (the student never withdrew
-    // the consent to publish; a student who had would stay hidden, below).
+    // The restore then publishes what the approval would have: nothing was lost (the student granted
+    // the consent to publish; one who withdrew it or never granted it would stay hidden, below).
     expect((await rowOf(student.personId)).takenDownVisibility).toBe('public');
     const back = await restoreProfile(moderator.principal, { personId: student.personId, reason: 'Resolved.' }, meta);
     expect(back.visibility).toBe('public');
@@ -251,6 +251,31 @@ describe('take down and restore', () => {
     const back = await restoreProfile(moderator.principal, { personId: student.personId, reason: 'Resolved.' }, meta);
     expect(back.visibility).toBe('involved_only');
     expect(await publicIds(student.personId)).toEqual([]);
+  });
+});
+
+describe('a restore never publishes without a granted consent (DEFAULT D03, review 2026-11-14)', () => {
+  it('a record that was public without any consent record stays private after a take-down and a restore', async () => {
+    const owner = await member('takedown-legacy', { granted: false });
+    const moderator = await staff('takedown-legacy-mod', 'moderator');
+    await takeDownProfile(moderator.principal, { personId: owner.personId, reason: REASON }, meta);
+    expect((await rowOf(owner.personId)).takenDownVisibility).toBe('public');
+    const back = await restoreProfile(moderator.principal, { personId: owner.personId, reason: 'Resolved.' }, meta);
+    expect(back.visibility).toBe('involved_only');
+    expect(await publicIds(owner.personId)).toEqual([]);
+  });
+
+  it('an approval during a hold does not mark a person for publication whose owner never granted the consent', async () => {
+    const teacher = await member('takedown-teacher-n', { sifu: true });
+    const student = await member('takedown-student-n', { hidden: true });
+    const moderator = await staff('takedown-link-mod-n', 'moderator');
+    const lineageId = await newLineage('takedown-n');
+    const request = await requestTeacher(student.principal, { teacherId: teacher.personId, lineageId, periods: ongoingFrom(), idempotencyKey: key() }, meta);
+    await takeDownProfile(moderator.principal, { personId: student.personId, reason: REASON }, meta);
+    await approveRelationship(teacher.principal, { relationshipId: request.relationship.id, idempotencyKey: key() }, meta);
+    expect((await rowOf(student.personId)).takenDownVisibility).toBe('involved_only');
+    const back = await restoreProfile(moderator.principal, { personId: student.personId, reason: 'Resolved.' }, meta);
+    expect(back.visibility).toBe('involved_only');
   });
 });
 

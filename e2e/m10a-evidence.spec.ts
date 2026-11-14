@@ -105,10 +105,10 @@ async function uploadedIds(page: Page): Promise<string[]> {
 }
 
 /** Fills the claim form for a new historical record (the files are chosen separately). */
-async function fillClaim(page: Page, teacherName: string) {
+async function fillClaim(page: Page, teacherName: string, died = true) {
   const form = visible(page.getByTestId('historical-claim-form'));
   await form.getByLabel(/^Teacher.s name in Latin letters/).fill(teacherName);
-  await form.getByLabel('Has the teacher died?').selectOption({ label: 'Yes, the teacher has died' });
+  await form.getByLabel('Has the teacher died?').selectOption({ label: died ? 'Yes, the teacher has died' : 'Not known' });
   await form.getByLabel(/^Lineage of this training/).selectOption({ label: CLAIM_LINEAGE });
   await form.getByLabel('Started (year)').fill('1981');
   await form.getByLabel('Ended (year)').fill('1994');
@@ -124,10 +124,10 @@ async function sendClaim(page: Page): Promise<string> {
 }
 
 /** A claim through the page: a new historical teacher with one fictional PDF. */
-async function claimThroughPage(student: Member, teacherName: string): Promise<string> {
+async function claimThroughPage(student: Member, teacherName: string, died = true): Promise<string> {
   const { page } = student;
   await page.goto('/dashboard/teachers/historical');
-  await fillClaim(page, teacherName);
+  await fillClaim(page, teacherName, died);
   await chooseFiles(page, [{ name: 'demo-certificate.pdf', mimeType: 'application/pdf', buffer: fictionalPdf(40_000) }]);
   return sendClaim(page);
 }
@@ -234,6 +234,79 @@ test('@M10a a student claims a fictional historical teacher with a PDF; an archi
   // On the student's page, the decision.
   await student.page.goto('/dashboard/teachers');
   await expect(visible(student.page.locator(`li[data-relationship="${relationshipId}"]`))).toContainText('Verified');
+  await Promise.all([student.context.close(), archivist.context.close()]);
+});
+
+/** Opens the case as the archivist, takes it and opens the verify form. */
+async function openVerify(archivist: { page: Page }, caseId: string) {
+  const { page } = archivist;
+  await page.goto(`/admin/review/${caseId}`);
+  await visible(page.getByRole('button', { name: 'Assign to me' })).click();
+  await page.waitForURL(/[?&]done=assigned/);
+  await visible(page.getByText('Verify the claim…')).click();
+  return visible(page.getByTestId('decide-verify'));
+}
+
+test('@M10a a claim about a teacher whose life status is not known: the form says so, the verify panel asks the plain choice, and only an established death publishes the record', async ({ browser, request }) => {
+  test.setTimeout(120_000);
+  // Review 2026-11-14 (owner decision): "unknown" is treated as living and stays hidden until the evidence shows a death.
+  const student = await member(browser, 'Claimant');
+  await student.page.goto('/dashboard/teachers/historical');
+  await expect(visible(student.page.getByTestId('historical-claim-form'))).toContainText('not shown publicly until the reviewers have established');
+
+  // One claim the committee cannot settle ...
+  const unsettledName = `Demo Unsettled ${capital(token())}`;
+  const unsettledId = await claimThroughPage(student, unsettledName, false);
+  const unsettled = await relationshipRow(unsettledId);
+  // ... and one whose death the evidence shows.
+  const diedName = `Demo Departed ${capital(token())}`;
+  const diedId = await claimThroughPage(student, diedName, false);
+  const died = await relationshipRow(diedId);
+
+  const archivist = await signedIn(browser, 'archivist');
+  const { page } = archivist;
+
+  // The plain choice is required: the verify is refused without it, and nothing changes.
+  const first = await openVerify(archivist, (await caseOf(unsettledId)).id);
+  await expect(first.getByTestId('life-status-choice')).toContainText('The teacher’s life status is not known');
+  for (const theme of ['light', 'dark'] as const) {
+    await switchColorScheme(page, theme);
+    await expectNoAxeViolations(page, `the verify panel with the life status choice (${theme})`);
+  }
+  await first.getByRole('button', { name: 'Verify the claim', exact: true }).click();
+  await expect(first.getByTestId('life-status-choice')).toContainText('Choose one');
+  await expectNoAxeViolations(page, 'the verify panel with the choice refused');
+  expect(await relationshipRow(unsettledId)).toMatchObject({ status: 'under_review' });
+
+  // "I cannot establish this": the claim is verified, the record stays hidden, the student is told.
+  await first.getByLabel('I cannot establish this').check();
+  await first.getByRole('button', { name: 'Verify the claim', exact: true }).click();
+  await page.waitForURL(/[?&]done=verified/);
+  expect(await relationshipRow(unsettledId)).toMatchObject({ status: 'verified', visibility: 'public' });
+  expect((await request.get(`${BASE_URL}/people/${unsettled.slug}`)).status()).toBe(404);
+  expect((await request.get(`${BASE_URL}/api/v1/people/${unsettled.slug}`)).status()).toBe(404);
+  const hidden = await getDb().execute<{ life_status: string; visibility: string }>(sql`SELECT life_status, visibility FROM person WHERE id = ${unsettled.teacher}::uuid`);
+  expect(hidden.rows[0]).toEqual({ life_status: 'unknown', visibility: 'involved_only' });
+
+  // "The evidence shows this person is deceased": a reason that cites it is required.
+  const second = await openVerify(archivist, (await caseOf(diedId)).id);
+  await second.getByLabel('The evidence shows this person is deceased').check();
+  await second.getByRole('button', { name: 'Verify the claim', exact: true }).click();
+  await expect(second).toContainText('Write the reason');
+  expect(await relationshipRow(diedId)).toMatchObject({ status: 'under_review' });
+  await second.getByLabel('Note on the decision').fill('The fictional register of the demo hall gives the year of death.');
+  await second.getByRole('button', { name: 'Verify the claim', exact: true }).click();
+  await page.waitForURL(/[?&]done=verified/);
+  expect(await relationshipRow(diedId)).toMatchObject({ status: 'verified', visibility: 'public' });
+  const shown = await getDb().execute<{ life_status: string; visibility: string }>(sql`SELECT life_status, visibility FROM person WHERE id = ${died.teacher}::uuid`);
+  expect(shown.rows[0]).toEqual({ life_status: 'deceased', visibility: 'public' });
+  expect((await request.get(`${BASE_URL}/people/${died.slug}`)).status()).toBe(200);
+  expect(await auditCount('person.update', died.teacher)).toBe(1);
+
+  // On the student's page: the confirmed link that is not public yet says so; the public one does not.
+  await student.page.goto('/dashboard/teachers');
+  await expect(visible(student.page.locator(`li[data-relationship="${unsettledId}"]`)).getByTestId('link-not-public')).toBeVisible();
+  await expect(visible(student.page.locator(`li[data-relationship="${diedId}"]`)).getByTestId('link-not-public')).toHaveCount(0);
   await Promise.all([student.context.close(), archivist.context.close()]);
 });
 

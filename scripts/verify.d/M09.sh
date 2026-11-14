@@ -147,8 +147,11 @@ check "approval: verified and public, relationship_event, audit relationship.app
   grep -q "status: '\''verified'\'', visibility: '\''public'\''" "$f" && grep -q "action: '\''relationship.approve'\''" "$f" &&
   grep -q "template: '\''relationship.approved'\''" "$f" && grep -q "template: '\''relationship-approved'\''" "$f" &&
   grep -q "enqueue(tx, QUEUE.lineageRecompute" "$f" && grep -q "invalidatePublic(outcome.tags" "$f"'
-check "both people become public on approval (UPDATE person ... visibility = public)" \
-  grep -q "UPDATE person p SET visibility = 'public'" "$SERVICE"
+# Since the consent gates (review 2026-11-14, ADR 0031) the one UPDATE that publishes a person lives
+# in publication.ts (publishPeople); the approval reaches it through markVerified.
+check "both people become public on approval (markVerified -> publishPeople -> UPDATE person ... visibility = public)" bash -c '
+  grep -q "publishPeople(tx, \[row.teacherPersonId, row.studentPersonId\])" '"$SERVICE"' &&
+  grep -q "UPDATE person p SET visibility = '\''public'\''" src/server/services/publication.ts'
 check "every transition is audited: request, resubmit, approve, reject, withdraw, end" bash -c '
   for a in request resubmit approve reject withdraw end; do grep -q "action: '\''relationship.$a'\''" '"$SERVICE"' || exit 1; done &&
   for a in request resubmit approve reject withdraw end; do grep -q "'\''relationship.$a'\''" src/server/audit/index.ts || exit 1; done'

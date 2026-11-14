@@ -662,7 +662,8 @@ export function ProfileEditor({
         <legend className="mb-1 font-display text-2xl">Who can see it</legend>
         <p id={`${publicId}-hint`} className="max-w-[62ch] text-sm text-fg-muted">
           A private profile is seen only by the people involved in your links and by the reviewers. A public profile appears in search
-          and on its own page. You can change this at any time; unticking it also withdraws your consent to publication.
+          and on its own page. A confirmed link is shown publicly only when both people in it have chosen this; until then you still see it on
+          your dashboard. You can change this at any time; unticking it also withdraws your consent to publication.
         </p>
         <label htmlFor={publicId} className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 text-ui">
           <span className="relative grid size-6 shrink-0 place-items-center">

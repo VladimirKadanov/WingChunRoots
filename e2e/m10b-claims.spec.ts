@@ -290,6 +290,17 @@ test('@M10b a missing teacher gets an invitation, claims the profile after revie
   await request.getByRole('button', { name: /^Approve/ }).click();
   await invitee.page.waitForURL(/[?&]approved=/);
 
+  // Review 2026-11-14 (D03): the teacher has not chosen "Show my profile publicly", so the approval
+  // confirms the link but publishes nobody; the teacher sees where the link is and how to show it.
+  expect(await relationshipRow(relationshipId)).toMatchObject({ status: 'verified', visibility: 'public', person_visibility: 'involved_only' });
+  expect(await isPublicEdge(relationshipId)).toBe(false);
+  await invitee.page.goto('/dashboard/students/requests');
+  await expect(visible(invitee.page.getByTestId('link-not-public'))).toContainText('Confirmed, not public yet');
+  // The teacher chooses it in the profile editor: the record and the link are public now.
+  await invitee.page.goto('/dashboard/profile');
+  await visible(invitee.page.getByLabel('Show my profile publicly')).check();
+  await visible(invitee.page.getByRole('button', { name: 'Save my profile' })).click();
+  await expect(visible(invitee.page.getByRole('status').filter({ hasText: 'Your profile is saved.' }))).toBeVisible();
   expect(await relationshipRow(relationshipId)).toMatchObject({ status: 'verified', visibility: 'public', person_visibility: 'public' });
   expect(await isPublicEdge(relationshipId)).toBe(true);
   expect(await transitions(relationshipId)).toEqual(['->awaiting_claim:student', 'awaiting_claim>pending_teacher:archivist', 'pending_teacher>verified:teacher']);
@@ -344,7 +355,13 @@ test('@M10b an unclaimed teacher record created by a student is absent from anon
   expect((await relationshipRow(relationshipId)).status).toBe('pending_teacher');
   await expectAbsent('claim approved, request pending');
 
-  // Verified by the teacher: the same addresses show it, so the answers above were about this very record.
+  // Verified by the teacher, who has chosen to be shown publicly (D03: without that choice an approval
+  // publishes nobody): the same addresses show it, so the answers above were about this very record.
+  const chosen = await apiPost(invitee.page, '/profile/update', {
+    names: [{ kind: 'name', value: teacherName, script: 'Latn', lang: 'und-Latn', romanization: null, isPrimary: true }],
+    showPublicly: true,
+  });
+  expect(chosen.status(), await chosen.text()).toBe(200);
   const approved = await apiPost(invitee.page, '/relationships/approve', { relationshipId, idempotencyKey: randomUUID() });
   expect(approved.status(), await approved.text()).toBe(200);
   expect((await request.get(`${BASE_URL}/api/v1/people/${slug}`)).status()).toBe(200);

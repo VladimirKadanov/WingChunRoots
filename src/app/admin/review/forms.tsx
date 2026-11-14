@@ -19,6 +19,7 @@ import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import type { ArchiveRecordView } from '@/server/services/review';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
 import { addNoteAction, arbitrateAction, archiveUpdateAction, assignCaseAction, decideCaseAction, removeGalleryPhotoAction, removePhotoAction, removeSchoolPhotoAction, restoreAction, takeDownAction } from './actions';
+import type { LifeStatusChoiceText } from './life-status-choice';
 import { ARBITRATE_FORM, ARCHIVE_FORM, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
 
 function Button({ pending, label, pendingLabel, variant = 'secondary' }: { pending: boolean; label: string; pendingLabel: string; variant?: 'secondary' | 'ink' | 'danger' | 'primary' }) {
@@ -138,6 +139,7 @@ export function DecideForm({
   schoolVersion = null,
   organizationVersion = null,
   takeDownOption = false,
+  lifeStatusChoice,
 }: {
   caseId: string;
   decision: keyof typeof DECISIONS;
@@ -150,12 +152,23 @@ export function DecideForm({
   organizationVersion?: string | null;
   /** Review 2026-11: an upheld report may also take the profile down (a box, never ticked in advance). */
   takeDownOption?: boolean;
+  /**
+   * Review 2026-11-14 (owner decision): the teacher's life status is "unknown", so the record is
+   * treated as living and hidden. Verifying asks the plain question first (the evidence shows a
+   * death, or it cannot be established); only the first publishes the record. The words come from
+   * the server page (./life-status-choice.ts) so that they travel in the page, not in this bundle.
+   */
+  lifeStatusChoice?: LifeStatusChoiceText;
 }) {
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
   useFocusOnError(formId, state);
+  const choosing = lifeStatusChoice !== undefined && decision === 'verify';
+  const [deceased, setDeceased] = useState(state.values?.deceased ?? '');
+  const establishing = choosing && deceased === 'established';
   const text = { ...DECISIONS[decision], ...given, variant: DECISIONS[decision].variant };
+  const reasonHint = establishing ? lifeStatusChoice!.reasonRequiredHint : choosing ? lifeStatusChoice!.reasonOptionalHint : text.hint;
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
       {/* The chevron turns when the form is open (M10a review, screens-10), as on every disclosure. */}
@@ -170,7 +183,8 @@ export function DecideForm({
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
         {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         {organizationVersion ? <input type="hidden" name="organizationVersion" value={organizationVersion} /> : null}
-        <TextAreaField form={formId} name="reason" label={text.reason} optional={text.optional} maxLength={2000} hint={text.hint} state={state} />
+        {choosing ? <LifeStatusChoice form={formId} state={state} text={lifeStatusChoice!} onValue={setDeceased} /> : null}
+        <TextAreaField form={formId} name="reason" label={text.reason} optional={establishing ? false : text.optional} maxLength={2000} hint={reasonHint} state={state} />
         {takeDownOption ? (
           <CheckboxField
             form={formId}
@@ -185,6 +199,60 @@ export function DecideForm({
         </div>
       </form>
     </details>
+  );
+}
+
+/**
+ * The plain choice a verify of a claim about a teacher with an unknown life status asks for
+ * (review 2026-11-14). Both answers verify the claim when the evidence supports the training; only
+ * the first makes the record public, because only that one establishes that the teacher has died.
+ */
+function LifeStatusChoice({ form, state, text, onValue }: { form: string; state: FormState; text: LifeStatusChoiceText; onValue: (value: string) => void }) {
+  // Uncontrolled, like every field of these forms: React resets a form after its action, and a
+  // controlled radio would come back unchecked while its state still said "chosen". What was sent
+  // comes back in `state.values`, which is the default the reset returns to.
+  const sent = state.values?.deceased;
+  const error = state.status === 'error' ? state.fields?.deceased : undefined;
+  const errorId = `${fieldId(form, 'deceased')}-error`;
+  return (
+    <fieldset aria-describedby={error ? errorId : undefined} className="grid gap-2" data-testid="life-status-choice">
+      <legend className="mb-1 font-semibold">{text.legend}</legend>
+      <p className="text-sm text-fg-muted">{text.intro}</p>
+      {error ? (
+        <p id={errorId} className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+      {text.options.map((option, index) => (
+        <label
+          key={option.value}
+          className={cx(
+            'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-sm border border-border-strong bg-surface-1 p-3',
+            'transition-colors duration-(--duration-fast) hover:border-fg-muted has-[:checked]:border-fg has-[:checked]:bg-surface-2',
+            'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
+            'forced-colors:has-[:checked]:border-2 forced-colors:has-[:checked]:p-[11px]',
+          )}
+        >
+          <input
+            type="radio"
+            name="deceased"
+            value={option.value}
+            id={index === 0 ? fieldId(form, 'deceased') : undefined}
+            defaultChecked={sent === option.value}
+            onChange={() => onValue(option.value)}
+            className={cx(
+              'mt-0.5 grid size-5 shrink-0 cursor-pointer appearance-none place-content-center rounded-full border-[1.5px] border-fg bg-surface-1 focus-visible:outline-none',
+              'before:size-2.5 before:scale-0 before:rounded-full before:bg-fg before:transition-transform before:duration-(--duration-fast) checked:before:scale-100',
+              'forced-colors:appearance-auto forced-colors:before:hidden',
+            )}
+          />
+          <span className="grid gap-0.5">
+            <span className="font-semibold">{option.label}</span>
+            <span className="text-sm text-fg-muted">{option.text}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

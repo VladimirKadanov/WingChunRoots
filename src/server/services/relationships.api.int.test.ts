@@ -69,7 +69,7 @@ async function signedInMember(label: string, sifu = false) {
   if (sifu) await db.update(authUser).set({ accountType: 'sifu' }).where(eq(authUser.id, account.id));
   const [created] = await db
     .insert(person)
-    .values({ slug: `demo-${label}-${account.id.slice(-6)}`, kind: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' })
+    .values({ slug: `demo-${label}-${account.id.slice(-6)}`, kind: 'living', lifeStatus: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' })
     .returning({ id: person.id });
   await db.insert(personName).values({ personId: created!.id, value: `Demo ${label}`, script: 'Latn', lang: 'en', isPrimary: true });
   return { account, token, personId: created!.id, principal: principalOf(account) };

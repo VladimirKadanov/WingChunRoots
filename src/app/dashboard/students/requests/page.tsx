@@ -26,7 +26,7 @@ import { NameText } from '@/components/account/person-names';
 import { UPGRADE_CLOSED_PARAM, UPGRADE_OPEN_PARAM, UPGRADE_SUMMARY_ID } from '@/components/plans/form-ids';
 import { UpgradePrompt } from '@/components/plans/upgrade-prompt';
 import { ApproveForm, DeclineForm, EndTrainingForm } from '@/components/relationships/forms';
-import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
+import { NotPublicNote, OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { allowanceShort } from '@/lib/allowance-text';
 import { formatDay } from '@/lib/dates';
@@ -116,8 +116,8 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
         </p>
         <h1 className="mt-2 font-display text-feature">Student requests</h1>
         <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
-          Students who name you as their teacher ask you to confirm it. Approve a request and the link is shown publicly on both profiles; decline it
-          with a reason and the student can correct it and send it again. You never edit a request yourself.
+          Students who name you as their teacher ask you to confirm it. Approve a request and the link is confirmed; it is shown publicly once both of you have chosen “Show my profile publicly”, and until then
+          you both see it here and under Your teachers. Decline it with a reason and the student can correct it and send it again. You never edit a request yourself.
         </p>
         <p data-testid="student-allowance" className="mt-3 text-sm text-fg-muted">
           Students: {allowanceText}
@@ -126,8 +126,11 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
         <div className="mt-8 grid gap-10">
           {approved ? (
             <OutcomeNote testId="request-approved">
-              You confirmed <NameText name={approved.student.name} /> as your student. The link is now shown publicly, and both of you got a notification
-              and an e-mail.
+              You confirmed <NameText name={approved.student.name} /> as your student.{' '}
+              {approved.shown
+                ? 'The link is now shown publicly, '
+                : 'The link is confirmed, but it is not public yet: it appears in the public lineage once both of you have chosen “Show my profile publicly”. You see it under Your students below, and '}
+              both of you got a notification and an e-mail.
             </OutcomeNote>
           ) : null}
           {declined && !incoming.requests.some((view) => view.id === declined) ? (
@@ -264,7 +267,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
 
           <Section id="students" title="Your students">
             {incoming.students.length === 0 ? (
-              <Empty testId="empty-students">No confirmed students yet. A student you approve appears here, and on your public profile.</Empty>
+              <Empty testId="empty-students">No confirmed students yet. A student you approve appears here, and on your public profile once you and the student have both chosen to be shown publicly.</Empty>
             ) : (
               <ul data-testid="students" className="grid">
                 {incoming.students.map((view) => (
@@ -275,7 +278,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                     className="grid gap-2 border-b border-border-subtle py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-6"
                   >
                     <div className="grid content-start gap-1">
-                      <PersonName person={view.student} link />
+                      <PersonName person={view.student} link={view.shown} />
                       <span className="text-sm text-fg-muted">{view.lineage.name}</span>
                       <div className="text-sm">
                         <PeriodLines periods={view.periods} />
@@ -295,6 +298,7 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
                         />
                       ) : null}
                     </div>
+                    <NotPublicNote view={view} />
                   </li>
                 ))}
               </ul>

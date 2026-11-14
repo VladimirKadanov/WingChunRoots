@@ -124,7 +124,16 @@ export function ClaimForm({ options, teacher, idempotencyKey, initial }: { optio
                 ))}
               </SelectField>
             </div>
-            <SelectField form={formId} name="lifeStatus" label="Has the teacher died?" autoComplete="off" state={state} className="max-w-[34rem]" {...select('lifeStatus')}>
+            <SelectField
+              form={formId}
+              name="lifeStatus"
+              label="Has the teacher died?"
+              hint="A teacher whose status is not known is not shown publicly until the reviewers have established, from evidence, that they have died. The claim can still be confirmed meanwhile; the teacher’s record stays private."
+              autoComplete="off"
+              state={state}
+              className="max-w-[34rem]"
+              {...select('lifeStatus')}
+            >
               <option value="unknown">Not known</option>
               <option value="deceased">Yes, the teacher has died</option>
             </SelectField>
@@ -205,7 +214,8 @@ export function ClaimForm({ options, teacher, idempotencyKey, initial }: { optio
       <div className="grid gap-3">
         <p className="max-w-[60ch] text-sm text-fg-muted">
           Until the reviewers confirm it, only you and the reviewers see this claim{teacher ? '' : ' and the new teacher record'}. When they confirm it,
-          the link is shown publicly, and so are both profiles, unless you have withdrawn your consent to be shown publicly.
+          the link is confirmed and you see it under Your teachers. It is shown publicly once both profiles are public: yours when you have chosen
+          “Show my profile publicly”, and the teacher’s record once the reviewers have established that the teacher has died.
         </p>
         <div>
           <SubmitButton pending={pending} pendingLabel="Sending…">

@@ -327,7 +327,7 @@ describe('last_activity_at (D17)', () => {
     const account = await createAccount({ label: 'm11-signin' });
     const db = getDb();
     await db.update(authUser).set({ accountType: 'sifu' }).where(eq(authUser.id, account.id));
-    const personId = (await db.insert(person).values({ slug: `demo-m11-signin-${randomBytes(3).toString('hex')}`, kind: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' }).returning({ id: person.id }))[0]!.id;
+    const personId = (await db.insert(person).values({ slug: `demo-m11-signin-${randomBytes(3).toString('hex')}`, kind: 'living', lifeStatus: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' }).returning({ id: person.id }))[0]!.id;
     await db.insert(personName).values({ personId, value: 'Demo Signin Sifu', script: 'Latn', lang: 'en', isPrimary: true });
     await db.insert(entitlementGrant).values({ subjectUserId: account.id, planCode: 'pro_sifu', source: 'test_grant', startsAt: new Date(Date.now() - 60_000), reason: 'Demo: M11 test plan' });
     const principal = principalOf({ id: account.id, email: account.email });

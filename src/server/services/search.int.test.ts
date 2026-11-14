@@ -76,7 +76,7 @@ const peopleSlugs = async (q: string, filters: { country?: string; lineageId?: s
 
 /** A public, fictional person with these names (the first is the primary) and its search keys. */
 async function insertPublicPerson(slug: string, names: readonly { value: string; script: string; lang: string }[], id = uuidv7()): Promise<string> {
-  await getDb().insert(person).values({ id, slug, kind: 'living', stewardship: 'unclaimed', visibility: 'public' });
+  await getDb().insert(person).values({ id, slug, kind: 'living', lifeStatus: 'living', stewardship: 'unclaimed', visibility: 'public' });
   await getDb()
     .insert(personName)
     .values(names.map((n, i) => ({ personId: id, value: n.value, script: n.script, lang: n.lang, isPrimary: i === 0, sortOrder: i })));
@@ -510,7 +510,7 @@ describe('pnpm account:delete carries out or cancels a deletion request', () => 
   async function member(slug: string): Promise<{ userId: string; personId: string; caseId: string }> {
     const account = await createAccount({ label: slug });
     const personId = uuidv7();
-    await getDb().insert(person).values({ id: personId, slug, kind: 'living', stewardship: 'self', visibility: 'involved_only', claimedByUserId: account.id, createdByUserId: account.id });
+    await getDb().insert(person).values({ id: personId, slug, kind: 'living', lifeStatus: 'living', stewardship: 'self', visibility: 'involved_only', claimedByUserId: account.id, createdByUserId: account.id });
     await getDb().insert(personName).values({ personId, value: 'Demo Leaving Member', script: 'Latn', lang: 'und-Latn', isPrimary: true });
     const p = principalOf(account.id);
     const names = [

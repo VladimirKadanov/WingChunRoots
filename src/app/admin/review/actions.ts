@@ -91,6 +91,10 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
   const schoolVersion = textValue(form, 'schoolVersion', 24);
   // M15: the version of the organization's application the card showed (the same check).
   const organizationVersion = textValue(form, 'organizationVersion', 24);
+  // Review 2026-11-14: the plain choice a verify of a claim about a teacher with an unknown life
+  // status asks for ("established" or "not_established"); empty for every other decision.
+  const deceasedSent = textValue(form, 'deceased', 20);
+  const deceased = deceasedSent === 'established' || deceasedSent === 'not_established' ? deceasedSent : null;
   const page = casePage(caseId);
   try {
     await (await client()).review.decide({
@@ -101,11 +105,12 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
       ...(takeDown ? { takeDown: true } : {}),
       ...(schoolVersion ? { schoolVersion } : {}),
       ...(organizationVersion ? { organizationVersion } : {}),
+      ...(deceased ? { deceased } : {}),
     });
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
-    const state = formStateFromFailure(error, { caseId, decision, reason, ...(takeDown ? { takeDown: 'on' } : {}) });
+    const state = formStateFromFailure(error, { caseId, decision, reason, ...(takeDown ? { takeDown: 'on' } : {}), ...(deceased ? { deceased } : {}) });
     return formResult({ form: `${DECIDE_FORM}-${decision}`, page, anchor: outcomeTarget(`${DECIDE_FORM}-${decision}`, state, true) }, state);
   }
   redirect(doneAt(page, decision === 'verify' ? 'verified' : decision === 'reject' ? 'refused' : 'asked'));

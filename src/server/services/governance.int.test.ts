@@ -405,7 +405,7 @@ describe('stewardship of shared archival records', () => {
   async function sharedRecord() {
     const id = uuidv7();
     const slug = `demo-gov-record-${key().slice(0, 8)}`;
-    await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'unknown' });
+    await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'deceased' });
     await getDb().insert(personName).values({ personId: id, value: 'Demo Archival Teacher', script: 'Latn', lang: 'en', isPrimary: true });
     return { id, slug };
   }
@@ -415,11 +415,11 @@ describe('stewardship of shared archival records', () => {
     const proposer = await member('gov-proposer', { sifu: true });
     // A change of the life status needs evidence (DEFAULT M25 question 7).
     expect(
-      await code(proposeRecordChange(proposer.principal, { personId: r.id, primaryName: 'Demo Archival Teacher', lifeStatus: 'deceased', bio: null, reason: 'A fictional source.', evidenceIds: [], idempotencyKey: key() }, meta)),
+      await code(proposeRecordChange(proposer.principal, { personId: r.id, primaryName: 'Demo Archival Teacher', lifeStatus: 'living', bio: null, reason: 'A fictional source.', evidenceIds: [], idempotencyKey: key() }, meta)),
     ).toBe('BAD_REQUEST');
     const { caseId } = await proposeRecordChange(
       proposer.principal,
-      { personId: r.id, primaryName: 'Demo Archival Teacher Corrected', lifeStatus: 'unknown', bio: 'A fictional biography.', reason: 'A fictional source.', evidenceIds: [], idempotencyKey: key() },
+      { personId: r.id, primaryName: 'Demo Archival Teacher Corrected', lifeStatus: 'deceased', bio: 'A fictional biography.', reason: 'A fictional source.', evidenceIds: [], idempotencyKey: key() },
       meta,
     );
     expect((await proposeOptions(proposer.principal, { slug: r.slug })).pendingCaseId).toBe(caseId);
@@ -443,7 +443,7 @@ describe('stewardship of shared archival records', () => {
     const own = await member('gov-self-kept');
     expect(await code(proposeOptions(own.principal, { slug: own.slug }))).toBe('FORBIDDEN');
     const r = await sharedRecord();
-    await updateArchiveRecord(archivist.principal, { personId: r.id, primaryName: 'Demo Archival Teacher Edited', lifeStatus: 'unknown', reason: 'A fictional correction.', evidenceIds: [] }, meta);
+    await updateArchiveRecord(archivist.principal, { personId: r.id, primaryName: 'Demo Archival Teacher Edited', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [] }, meta);
     const rows = await getDb().select({ source: recordRevision.source, changed: recordRevision.changed }).from(recordRevision).where(eq(recordRevision.personId, r.id));
     expect(rows).toEqual([{ source: 'archival_edit', changed: ['primaryName'] }]);
   });
@@ -457,8 +457,8 @@ describe('stewardship of shared archival records', () => {
       meta,
     );
     await getDb().update(organization).set({ status: 'active' }).where(eq(organization.id, applied.organizationId));
-    expect(await code(updateArchiveRecord(owner.principal, { personId: r.id, primaryName: 'Demo Archival Teacher Taken', lifeStatus: 'unknown', reason: 'A fictional claim.', evidenceIds: [] }, meta))).toBe('FORBIDDEN');
-    await updateArchiveRecord(archivist.principal, { personId: r.id, primaryName: 'Demo Archival Teacher Kept', lifeStatus: 'unknown', reason: 'A fictional correction.', evidenceIds: [] }, meta);
+    expect(await code(updateArchiveRecord(owner.principal, { personId: r.id, primaryName: 'Demo Archival Teacher Taken', lifeStatus: 'deceased', reason: 'A fictional claim.', evidenceIds: [] }, meta))).toBe('FORBIDDEN');
+    await updateArchiveRecord(archivist.principal, { personId: r.id, primaryName: 'Demo Archival Teacher Kept', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [] }, meta);
     const before = await getDb().select().from(recordRevision).where(eq(recordRevision.personId, r.id));
     // The organization splits off (its administration ends): the record's history is not touched.
     await getDb().update(organizationAdmin).set({ revokedAt: new Date() }).where(eq(organizationAdmin.organizationId, applied.organizationId));

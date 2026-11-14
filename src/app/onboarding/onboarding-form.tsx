@@ -355,7 +355,8 @@ export function OnboardingForm({
         <legend className="mb-2 font-display text-2xl">Who can see it</legend>
         <p className="max-w-[60ch] text-sm text-fg-muted">
           Your profile starts private: only the people involved in your links and the reviewers see it. You can make it public now or
-          later.
+          later. If you leave this unticked, your profile stays private, and so do your confirmed links: a link is shown publicly only when both
+          people in it have chosen “Show my profile publicly”. You always see your links on your dashboard.
         </p>
         <CheckboxField form={FORM} name="showPublicly" label="Show my profile publicly" state={state} />
       </fieldset>

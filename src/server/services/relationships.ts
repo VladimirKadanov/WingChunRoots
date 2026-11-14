@@ -3,7 +3,9 @@
 // its own (one student can have several teachers, each verified independently).
 //
 //   request   (student)  → pending_teacher, involved_only (DEFAULT D03)
-//   approve   (teacher)  pending_teacher → verified, public; both people public
+//   approve   (teacher)  pending_teacher → verified, public; each person public only where
+//             publication.ts allows it (review 2026-11-14: a granted publication consent, a known life
+//             status), so a link whose end is private stays verified and private
 //   reject    (teacher)  pending_teacher → rejected, with a neutral reason
 //   resubmit  (student)  rejected → pending_teacher, with corrected periods or lineage
 //   withdraw  (student)  pending_teacher | rejected | under_review → withdrawn (M10a: an open
@@ -87,6 +89,7 @@ import { pgErrorOf, ServiceError } from './errors';
 import { planSummary } from './plans';
 import { neighbourTags } from './profile';
 import { tellLimitReached } from './limit-notices';
+import { bothPublic, publishPeople } from './publication';
 
 export type RelationshipStatus = (typeof RELATIONSHIP_STATUSES)[number];
 export type RelationshipRole = 'student' | 'teacher' | 'reviewer';
@@ -205,6 +208,13 @@ export interface RelationshipView {
   /** Every period has ended: the link stays, as historical. */
   historical: boolean;
   visibility: 'public' | 'involved_only';
+  /**
+   * Review 2026-11-14 (DEFAULT D03): the link is shown on the public pages now: it is verified and
+   * both people are public. A verified link whose end is private stays verified, and stays on the
+   * dashboards of the people involved; it is public once both have chosen "Show my profile
+   * publicly" (and, for a historical teacher, once the reviewers have established that they died).
+   */
+  shown: boolean;
   prefersDisplayPrimary: boolean;
   isDisplayPrimary: boolean;
   /** The neutral reason of a declined request. */
@@ -443,6 +453,7 @@ type InviteFacts = {
   claim_status: string | null;
   claim_resolution: string | null;
   unverified: boolean;
+  shown: boolean;
 };
 
 async function inviteFactsOf(db: Executor, visible: { row: RelRow; role: RelationshipRole }[]): Promise<Map<string, InviteFacts>> {
@@ -455,9 +466,12 @@ SELECT tr.id::text AS id,
        (tr.verification_path = 'teacher_approval' AND tr.status IN ('verified', 'in_arbitration')
          AND tr.confirmed_by_user_id IS NOT NULL AND tr.confirmed_by_user_id = t.claimed_by_user_id
          AND NOT EXISTS (SELECT 1 FROM review_case v WHERE v.person_id = t.id AND v.kind = 'instructor_verification'
-                          AND v.status = 'resolved' AND v.resolution = 'approved')) AS unverified
+                          AND v.status = 'resolved' AND v.resolution = 'approved')) AS unverified,
+       (tr.status IN ('verified', 'in_arbitration') AND tr.visibility = 'public'
+         AND t.visibility = 'public' AND t.deleted_at IS NULL AND s.visibility = 'public' AND s.deleted_at IS NULL) AS shown
   FROM teaching_relationship tr
   JOIN person t ON t.id = tr.teacher_person_id
+  JOIN person s ON s.id = tr.student_person_id
   LEFT JOIN LATERAL (SELECT status, expires_at FROM invitation WHERE relationship_id = tr.id ORDER BY created_at DESC, id DESC LIMIT 1) i ON tr.status = 'awaiting_claim'
   LEFT JOIN LATERAL (SELECT status, resolution FROM review_case WHERE relationship_id = tr.id AND kind = 'person_claim' ORDER BY created_at DESC, id DESC LIMIT 1) c ON tr.status = 'awaiting_claim'
  WHERE tr.id = ANY(${`{${ids.join(',')}}`}::uuid[])`);
@@ -507,6 +521,7 @@ async function toViews(db: Executor, rows: RelRow[], viewer: Viewer): Promise<Re
       trainingStart: earliestStart(own),
       historical,
       visibility: row.visibility,
+      shown: facts.get(row.id)?.shown === true,
       prefersDisplayPrimary: row.prefersDisplayPrimary,
       isDisplayPrimary: row.isDisplayPrimary,
       rejection: reason ? { reason, text: rejectionReasonText(reason) } : null,
@@ -1179,9 +1194,10 @@ export async function publicTags(tx: Executor, row: Pick<RelRow, 'teacherPersonI
 
 /**
  * relationships.approve: the teacher confirms the request (see the top of this file for the order
- * of the checks). The link becomes verified and public, both people public (except a profile whose
- * owner withdrew its publication: DEFAULT D03, docs/plan/questions/M07.md), and both sides get a
- * notification and an e-mail. At the plan's limit the request stays pending and the error carries
+ * of the checks). The link becomes verified, and public when both people are: each person is made
+ * public only where publication.ts allows it (DEFAULT D03: the owner's latest publication consent is
+ * a grant; no record, like a withdrawal, keeps the profile private and the link private with it, and
+ * both sides are told so), and both sides get a notification and an e-mail. At the plan's limit the request stays pending and the error carries
  * requireEntitlement()'s refusal (`data.entitlement`) for the upgrade prompt. Approving a request
  * that is verified already changes nothing and sends nothing.
  */
@@ -1270,15 +1286,6 @@ export interface VerifiedWrites {
 }
 
 /**
- * The publication rule of an approval, for a person aliased `p`: a self-stewarded profile whose owner
- * withdrew the publication consent is never published (DEFAULT D03); everything else may be.
- */
-const OWNER_KEEPS_PUBLICATION = sql`NOT (p.stewardship = 'self' AND COALESCE((
-         SELECT c.action FROM consent_record c
-          WHERE c.user_id = p.claimed_by_user_id AND c.kind = 'publication'
-          ORDER BY c.occurred_at DESC, c.id DESC LIMIT 1), '') = 'withdrawn')`;
-
-/**
  * The writes that make a relationship verified, shared by the teacher's approval (M09) and the
  * review committee's verify decision (M10a, review.ts): the display-primary line, verified and
  * public, both people public. The caller holds the global verify lock and has run the cycle,
@@ -1303,31 +1310,26 @@ export async function markVerified(tx: Transaction, row: RelRow, confirmedByUser
     .update(teachingRelationship)
     .set({ status: 'verified', visibility: 'public', isDisplayPrimary: primary, confirmedByUserId, confirmedAt: now, statusReason: null, updatedAt: now })
     .where(eq(teachingRelationship.id, row.id));
-  // Both people become public (plan §6.2), except a self-stewarded profile whose owner withdrew
-  // the publication consent: DEFAULT D03, the owner's choice wins (docs/plan/questions/M07.md).
-  // Hiding a profile always leaves that withdrawal as the latest record, also when publication was
-  // never granted (profile.ts setOwnVisibility, privacy.ts consentWithdraw; M09 review, code-1).
-  // A profile staff took down stays hidden until staff restore it (review 2026-11, takedown.ts); what
-  // the approval would have made of it is kept in taken_down_visibility, so the restore gives it back
-  // (the restore itself checks the consent again).
-  const published = await tx.execute<{ id: string }>(sql`
-UPDATE person p SET visibility = 'public', updated_at = now()
- WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
-   AND p.visibility <> 'public' AND p.deleted_at IS NULL
-   AND p.taken_down_at IS NULL
-   AND ${OWNER_KEEPS_PUBLICATION}
-RETURNING p.id::text AS id`);
-  await tx.execute(sql`
-UPDATE person p SET taken_down_visibility = 'public', updated_at = now()
- WHERE p.id IN (${row.teacherPersonId}::uuid, ${row.studentPersonId}::uuid)
-   AND p.taken_down_at IS NOT NULL AND p.taken_down_visibility <> 'public' AND p.deleted_at IS NULL
-   AND ${OWNER_KEEPS_PUBLICATION}`);
-  return { isDisplayPrimary: primary, previousPrimaryId: primary && current ? current.id : null, publishedPersonIds: published.rows.map((r) => r.id) };
+  // Both people become public (plan §6.2) where the two publication rules allow it (publication.ts):
+  // DEFAULT D03 (owner decision 2026-11-14): a person with an account is published only while the
+  // account's latest publication consent is a grant (no record counts as "no"); and a person whose
+  // life status is unknown is treated as living and never published, until a reviewer has
+  // established that they have died (review.ts). The link itself is verified either way: when an
+  // end stays private the link stays confirmed and shows on the dashboards of the people involved,
+  // and becomes public when both ends are (the member turns on "Show my profile publicly").
+  // A profile staff took down stays hidden until staff restore it (review 2026-11, takedown.ts);
+  // what the approval would have made of it is kept in taken_down_visibility, so the restore gives
+  // it back (the restore itself checks the rules again).
+  const publishedPersonIds = await publishPeople(tx, [row.teacherPersonId, row.studentPersonId]);
+  return { isDisplayPrimary: primary, previousPrimaryId: primary && current ? current.id : null, publishedPersonIds };
 }
 
 /** The writes of an approval, inside the transaction that holds both locks. Returns the cache tags. */
 async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: string, meta: RequestMeta): Promise<string[]> {
   const verified = await markVerified(tx, row, p.user.id);
+  // DEFAULT D03: tell both people the truth about the link (publication.ts): confirmed, and public
+  // only when both ends are.
+  const shown = await bothPublic(tx, row.teacherPersonId, row.studentPersonId);
   const eventId = await recordEvent(tx, { relationshipId: row.id, from: 'pending_teacher', to: 'verified', actor: p, role: 'teacher', key });
   await writeAudit(tx, {
     action: 'relationship.approve',
@@ -1336,7 +1338,7 @@ async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: st
     subjectType: 'teaching_relationship',
     subjectId: row.id,
     before: { status: 'pending_teacher', visibility: row.visibility, isDisplayPrimary: row.isDisplayPrimary },
-    after: { status: 'verified', visibility: 'public', ...verified, lineageId: row.lineageId },
+    after: { status: 'verified', visibility: 'public', ...verified, shown, lineageId: row.lineageId },
     requestId: meta.requestId,
     ipHmac: meta.ipHmac,
   });
@@ -1349,7 +1351,7 @@ async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: st
     ['teacher', teacher, studentNames, teacherNames],
   ] as const) {
     if (!account) continue;
-    await notify(tx, account.id, 'relationship.approved', { relationshipId: row.id, role: side }, {
+    await notify(tx, account.id, 'relationship.approved', { relationshipId: row.id, role: side, ...(shown ? {} : { shown: false }) }, {
       // No e-mail without the other person's name.
       ...(other.length > 0
         ? {
@@ -1362,6 +1364,7 @@ async function applyApproval(tx: Transaction, p: Principal, row: RelRow, key: st
                 lineageName: row.lineageName,
                 url: url(side === 'student' ? '/dashboard/teachers' : '/dashboard/students/requests'),
                 ...(own.length > 0 ? { recipientNames: [...own] } : {}),
+                ...(shown ? {} : { shown: false }),
               },
             },
           }

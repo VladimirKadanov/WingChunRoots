@@ -7912,6 +7912,20 @@
                       "boolean",
                       "null"
                     ]
+                  },
+                  "deceased": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "established",
+                          "not_established"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [

@@ -41,7 +41,9 @@ export const person = pgTable(
     lifeStatus: text('life_status', { enum: LIFE_STATUSES }).notNull().default('unknown'),
     stewardship: text('stewardship', { enum: STEWARDSHIPS }).notNull().default('unclaimed'),
     // DEFAULT D03: a record is private to the people involved until one of its relationships is
-    // verified, or until its own claimed owner publishes it.
+    // verified, or until its own claimed owner publishes it. Review 2026-11-14: a person with an
+    // account is published only while their latest publication consent is a grant, and a record whose
+    // life status is unknown is never published (the CHECK person_unknown_not_public below).
     visibility: text('visibility', { enum: VISIBILITIES }).notNull().default('involved_only'),
     claimedByUserId: uuid('claimed_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
@@ -89,6 +91,10 @@ export const person = pgTable(
         OR (${t.takenDownAt} IS NOT NULL AND ${t.takenDownVisibility} IS NOT NULL AND ${t.takenDownReason} IS NOT NULL AND btrim(${t.takenDownReason}) <> '' AND length(${t.takenDownReason}) <= 500)`,
     ),
     check('person_taken_down_visibility_check', inList(t.takenDownVisibility.name, VISIBILITIES)),
+    // Review 2026-11-14 (owner decision, docs/adr/0031-consent-and-living-gates.md): a person whose life
+    // status is unknown is treated as living and is never public, whichever code path writes it,
+    // until a reviewer has established from evidence that they have died (life_status = 'deceased').
+    check('person_unknown_not_public', sql`${t.lifeStatus} <> 'unknown' OR ${t.visibility} = 'involved_only'`),
     // A self-stewarded record always belongs to an account.
     check('person_self_needs_account', sql`${t.stewardship} <> 'self' OR ${t.claimedByUserId} IS NOT NULL`),
     check('person_country_code_format', sql`${t.countryCode} IS NULL OR ${t.countryCode} ~ '^[A-Z]{2}$'`),
