@@ -150,7 +150,7 @@ export async function loadGraph(url: string, graph: ReturnType<typeof generateGr
     await insertBatches(people, 5_000, (batch) =>
       client.query(
         `INSERT INTO person (id, slug, kind, life_status, stewardship, visibility)
-         SELECT id, slug, 'living', 'unknown', 'unclaimed', visibility FROM unnest($1::uuid[], $2::text[], $3::text[]) AS t(id, slug, visibility)`,
+         SELECT id, slug, 'living', 'living', 'unclaimed', visibility FROM unnest($1::uuid[], $2::text[], $3::text[]) AS t(id, slug, visibility)`,
         [batch.map((p) => p.id), batch.map((p) => p.slug), batch.map((p) => p.visibility)],
       ),
     );
