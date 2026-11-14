@@ -197,7 +197,6 @@ export const reviewDecideInput = z
     if (!input.reason && input.decision === 'needs_info') ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write what the claimant should add.' });
     if (input.takeDown && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['takeDown'], message: 'A profile is taken down only when the report is upheld.' });
     if (input.deceased && input.decision !== 'verify') ctx.addIssue({ code: 'custom', path: ['deceased'], message: 'This choice belongs to verifying a claim.' });
-    if (input.deceased === 'established' && !input.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: DECEASED_REASON_MESSAGE });
     if (input.takeDown && !input.reason) ctx.addIssue({ code: 'custom', path: ['reason'], message: 'Write the reason the owner will read.' });
     if (input.takeDown && input.reason && input.reason.length > TAKEDOWN_REASON_MAX) {
       ctx.addIssue({ code: 'custom', path: ['reason'], message: `Use at most ${TAKEDOWN_REASON_MAX} characters when the profile is taken down.` });
@@ -1200,7 +1199,8 @@ export async function decideReviewCase(principal: Principal | null, raw: z.input
       if (teacher?.lifeStatus === 'unknown') {
         if (!input.deceased) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { deceased: CHOOSE_DECEASED });
         if (input.deceased === 'established') {
-          await establishDeceased(tx, p, row.teacherPersonId, { reason: input.reason!, reviewCaseId: c.id, evidenceIds: basis }, meta);
+          if (!input.reason) throw new ServiceError('BAD_REQUEST', 'Check the highlighted fields.', { reason: DECEASED_REASON_MESSAGE });
+          await establishDeceased(tx, p, row.teacherPersonId, { reason: input.reason, reviewCaseId: c.id, evidenceIds: basis }, meta);
           deathEstablished = true;
         }
       }

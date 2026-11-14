@@ -190,9 +190,11 @@ describe('verifying a claim about a teacher whose life status is unknown', () =>
     const archivist = await staff('lg-dead-arch', 'archivist');
     const { caseId, relationshipId, teacherId } = await unknownClaim('lg-dead', { lifeStatus: 'deceased' });
     await claimFor(archivist, caseId);
-    await decideReviewCase(archivist.principal, { caseId, decision: 'verify', idempotencyKey: key() }, meta);
+    // A stale form that still sends the choice (the status was settled meanwhile) is not refused for it.
+    await decideReviewCase(archivist.principal, { caseId, decision: 'verify', deceased: 'established', idempotencyKey: key() }, meta);
     expect(await teacherOf(teacherId)).toMatchObject({ lifeStatus: 'deceased', visibility: 'public' });
     expect(await isPublicEdge(relationshipId)).toBe(true);
+    expect(await auditsOf(teacherId, 'person.update')).toEqual([]);
   });
 });
 

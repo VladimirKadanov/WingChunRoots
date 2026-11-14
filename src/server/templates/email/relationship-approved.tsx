@@ -73,8 +73,8 @@ export const relationshipApproved: EmailTemplate<RelationshipApprovedData> = {
             </>
           ) : (
             <>
-              The link is verified, but it is not on the public pages yet: it appears in the public lineage once both of you have chosen
-              “Show my profile publicly”. You can see it on your dashboard, under {role === 'student' ? 'Your teachers' : 'Student requests'}. It
+              The link is verified, but it is not on the public pages yet: it appears in the public lineage once both profiles are
+              public (each person decides that with “Show my profile publicly”). You can see it on your dashboard, under {role === 'student' ? 'Your teachers' : 'Student requests'}. It
               confirms only this one link: every teacher confirms their own.
             </>
           )}

@@ -330,7 +330,7 @@ const OWN_TEACHERS = '/dashboard/teachers';
  * has no flag and reads as before. Calm and factual: nothing is lost, the link is on the dashboard.
  */
 const NOT_PUBLIC_YET =
-  ' The link is confirmed but not public yet: it appears in the public lineage once both people have chosen “Show my profile publicly”.';
+  ' The link is confirmed but not public yet: it appears in the public lineage once both profiles are public (each person decides that with “Show my profile publicly”).';
 const shownOf = (data: Record<string, unknown>) => data.shown !== false;
 
 /**
@@ -496,7 +496,7 @@ const reviewDecided: NotificationTemplate<RelationshipNotice & { decision: 'veri
               text: ` taught you${inLineage(lineageName)}.${
                 shown
                   ? ' The link is now public.'
-                  : ' The link is confirmed but not public yet: it appears in the public lineage once both profiles are public. Yours becomes public when you choose “Show my profile publicly”; the record of a teacher whose death the reviewers could not establish stays private. You see the link under Your teachers.'
+                  : ' The link is confirmed but not public yet: it appears in the public lineage once both profiles are public. Each person decides that with “Show my profile publicly”, and the record of a teacher whose death the reviewers could not establish stays private. You see the link under Your teachers.'
               }`,
             },
           ],

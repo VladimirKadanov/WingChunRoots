@@ -74,7 +74,7 @@ export const reviewDecided: EmailTemplate<ReviewDecidedData> = {
           {decision === 'verified'
             ? shown
               ? 'The link is verified and now appears in the public lineage. It confirms only this one link.'
-              : 'The link is verified, but it is not on the public pages yet: it appears in the public lineage once both profiles are public. Yours becomes public when you choose “Show my profile publicly”; the record of a teacher whose death the reviewers could not establish stays private. You can see the link on Your teachers. It confirms only this one link.'
+              : 'The link is verified, but it is not on the public pages yet: it appears in the public lineage once both profiles are public. Each person decides that with “Show my profile publicly”, and the record of a teacher whose death the reviewers could not establish stays private. You can see the link on Your teachers. It confirms only this one link.'
             : decision === 'rejected'
               ? 'Their reason is on Your teachers. You can send a new claim with more evidence.'
               : 'Their question is on Your teachers, where you can add evidence to the claim.'}
