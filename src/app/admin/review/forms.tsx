@@ -185,7 +185,7 @@ export function DecideForm({
         <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
         {schoolVersion ? <input type="hidden" name="schoolVersion" value={schoolVersion} /> : null}
         {organizationVersion ? <input type="hidden" name="organizationVersion" value={organizationVersion} /> : null}
-        {choosing ? <LifeStatusChoice form={formId} state={state} value={deceased} onValue={setDeceased} /> : null}
+        {choosing ? <LifeStatusChoice form={formId} state={state} onValue={setDeceased} /> : null}
         <TextAreaField form={formId} name="reason" label={text.reason} optional={establishing ? false : text.optional} maxLength={2000} hint={reasonHint} state={state} />
         {takeDownOption ? (
           <CheckboxField
@@ -209,7 +209,11 @@ export function DecideForm({
  * (review 2026-11-14). Both answers verify the claim when the evidence supports the training; only
  * the first makes the record public, because only that one establishes that the teacher has died.
  */
-function LifeStatusChoice({ form, state, value, onValue }: { form: string; state: FormState; value: string; onValue: (value: string) => void }) {
+function LifeStatusChoice({ form, state, onValue }: { form: string; state: FormState; onValue: (value: string) => void }) {
+  // Uncontrolled, like every field of these forms: React resets a form after its action, and a
+  // controlled radio would come back unchecked while its state still said "chosen". What was sent
+  // comes back in `state.values`, which is the default the reset returns to.
+  const sent = state.values?.deceased;
   const error = state.status === 'error' ? state.fields?.deceased : undefined;
   const errorId = `${fieldId(form, 'deceased')}-error`;
   const options = [
@@ -248,7 +252,7 @@ function LifeStatusChoice({ form, state, value, onValue }: { form: string; state
             name="deceased"
             value={option.value}
             id={index === 0 ? fieldId(form, 'deceased') : undefined}
-            checked={value === option.value}
+            defaultChecked={sent === option.value}
             onChange={() => onValue(option.value)}
             className={cx(
               'mt-0.5 grid size-5 shrink-0 cursor-pointer appearance-none place-content-center rounded-full border-[1.5px] border-fg bg-surface-1 focus-visible:outline-none',
