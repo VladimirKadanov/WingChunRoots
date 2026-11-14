@@ -31,7 +31,7 @@ number in the one constant named for it and the guide text follows (docs/guides/
 
 - Question: notice §3 promises a yearly change of the key and the destruction of the old one; the code has one key and no tooling.
 - Options: (a) null the values after 13 months and change the key once a year (runbook); (b) 6 months; (c) keep.
-- Proposed default: (a), `IP_HMAC_RETENTION_MONTHS = 13`: `audit_log.ip_hmac` (through `null_old_audit_ip_hmac()`, the one change the append-only log allows) and `auth_session.ip_address` are set to NULL after 13 months, and the key is changed every 12 months, so no value outlives its key by more than a month. The runbook is `docs/operations/ip-hmac-rotation.md`.
+- Proposed default: (a), `IP_HMAC_RETENTION_MONTHS = 13`: `audit_log.ip_hmac` (through `null_old_audit_ip_hmac()`, the one change the append-only log allows) and `auth_session.ip_address` are set to NULL after 13 months, and the key is changed every 12 months: no value is older than 13 months, and one key links at most 12 months of activity (the old key is destroyed at each change, so the older values can no longer be matched with new ones, as the notice says). The runbook is `docs/operations/ip-hmac-rotation.md`.
 
 ### Q5 (2026-11-14) How long does an unanswered trial lesson request stay open?
 
@@ -60,3 +60,4 @@ number in the one constant named for it and the guide text follows (docs/guides/
 
 - 2026-11-14 checkpoint 1: schema and migration (`trial_inquiry.scrubbed_at`, the status `withdrawn`, the audit-log exception for `ip_hmac`, the three redaction functions), the five new retention steps in the daily job (`src/server/services/retention-records.ts`) with integration tests, trial withdrawal (service, `trial.withdraw`, the sender's list, the school's inbox).
 - 2026-11-14 checkpoint 2: the erasure ledger (`src/server/erasure-ledger.ts`: begin before the change inside the transaction, done after the commit, aborted after a refusal; fail closed), written by `eraseAccount` and `withdrawTrial`; `pnpm erasures:replay` (dry run by default, `--apply`, `--include-unconfirmed`; local only); check 11 of `scripts/restore-drill.sh` (a fictional account erased after the archive is removed from the restored copy); the text of the revisions of an erased member's kept record is redacted (`redact_person_revisions`); Compose mounts the ledger folder read-write at `/erasures`.
+- 2026-11-14 checkpoint 3: documentation (ADR 0032; `docs/operations/backup-and-restore.md` and `incident.md` with the restore-then-replay step and the 14-dump statement; `docs/operations/ip-hmac-rotation.md`; the admin guide, section 33 "Автоматично изтриване", and the user guide; `docs/data-model.md` §2, §7, §8) and an end-to-end test of the sender's withdrawal.

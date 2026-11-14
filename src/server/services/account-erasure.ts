@@ -34,6 +34,13 @@
 // e-mail delivery log; the evidence nothing live rests on (rows and files); the review notes it
 // wrote (blanked); every nullable reference to it that the app may clear.
 //
+// The text of the kept record's archival revisions (record_revision.before and after) is redacted with
+// the rest (docs/adr/0032-retention-and-withdrawal.md): who, when, which fields and why stay.
+//
+// The erasure is written to the erasure ledger (src/server/erasure-ledger.ts) before the first change, inside
+// the transaction, and is refused when the ledger cannot be written: a restored backup brings the account
+// back, and `pnpm erasures:replay` repeats the erasure from the ledger (services/erasure-replay.ts).
+//
 // A catalogue, USER_REFERENCES, lists every column that refers to auth_user with what erasure does to
 // it; a test (account-erasure.int.test.ts) fails when a new table or column is not in it.
 //

@@ -169,6 +169,66 @@ test('@M21 a student requests a trial lesson, the owner answers, the student see
   await axeBothThemes(page, '/dashboard/schools/[id]/stats');
 });
 
+test('@M21 a student withdraws an open request: the words go at once, the school sees it without a name (review 2026-11)', async ({ page, browser }) => {
+  const sifu = await sifuAccount(page, 'Withdraw Sifu');
+  const admin = await signedIn(browser, 'admin');
+  let school: { id: string; slug: string; name: string };
+  try {
+    await grantProSifu(admin.page, sifu.email);
+    school = await createSchool(page);
+    const submitted = await apiPost(page, '/schools/submit', { id: school.id });
+    expect(submitted.status(), await submitted.text()).toBe(200);
+    await approveListing(admin.page, school.id);
+  } finally {
+    await admin.context.close();
+  }
+  const { id, slug } = school;
+
+  const student = await freshContext(browser);
+  try {
+    await freshAccount(student.page, { name: 'Demo Withdraw Student' });
+    await student.page.goto(`/schools/${slug}/trial`);
+    const form = visible(student.page.getByTestId('trial-form'));
+    await form.getByLabel('Message to the school (optional)').fill('A fictional request that will be withdrawn.');
+    await form.getByRole('button', { name: 'Send the request' }).click();
+    await student.page.waitForURL(/\/dashboard\/trial-lessons\?sent=1/);
+    const own = visible(student.page.getByTestId('own-trial-request'));
+    await expect(own).toHaveAttribute('data-status', 'open');
+    await axeBothThemes(student.page, '/dashboard/trial-lessons (open request)');
+
+    // The owner sees the name and the message while it waits.
+    await page.goto(`/dashboard/schools/${id}/inquiries`);
+    await expect(visible(page.getByTestId('trial-inquiry'))).toContainText('Demo Withdraw Student');
+
+    // The student withdraws it: one press, and the words are gone.
+    await own.getByTestId('trial-withdraw').click();
+    await student.page.waitForURL(/\/dashboard\/trial-lessons\?withdrawn=1/);
+    await expect(visible(student.page.getByTestId('trial-withdrawn'))).toBeVisible();
+    const withdrawn = visible(student.page.getByTestId('own-trial-request'));
+    await expect(withdrawn).toHaveAttribute('data-status', 'withdrawn');
+    await expect(withdrawn.getByTestId('trial-status')).toHaveText('Withdrawn');
+    await expect(visible(student.page.getByTestId('own-trial-scrubbed'))).toContainText('You withdrew this request');
+    await expect(withdrawn).not.toContainText('A fictional request that will be withdrawn.');
+    await expect(withdrawn.getByTestId('trial-withdraw')).toHaveCount(0);
+    await axeBothThemes(student.page, '/dashboard/trial-lessons (withdrawn)');
+
+    // The school sees a withdrawn request with no name and no message, and cannot answer it.
+    await page.goto(`/dashboard/schools/${id}/inquiries`);
+    const inbox = visible(page.getByTestId('trial-inquiry'));
+    await expect(inbox).toHaveAttribute('data-status', 'withdrawn');
+    await expect(inbox).not.toContainText('Demo Withdraw Student');
+    await expect(inbox).not.toContainText('A fictional request that will be withdrawn.');
+    await expect(inbox.getByTestId('trial-scrubbed')).toBeVisible();
+    await expect(inbox.getByTestId('trial-answer')).toHaveCount(0);
+
+    // The student may ask again: the withdrawn request no longer holds the one open place.
+    await student.page.goto(`/schools/${slug}/trial`);
+    await expect(visible(student.page.getByTestId('trial-form'))).toBeVisible();
+  } finally {
+    await student.context.close();
+  }
+});
+
 test('@M21 a Free Sifu sets a schedule without a plan, and the statistics show the upgrade prompt and no numbers', async ({ page }) => {
   const sifu = await sifuAccount(page, 'Free Trial Sifu');
   expect(sifu.email).toMatch(/@example\.test$/);
