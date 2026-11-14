@@ -16,6 +16,8 @@ export interface ReviewDecidedData {
   /** APP_URL/dashboard/teachers. */
   url: string;
   recipientNames?: NameData[];
+  /** Review 2026-11-14 (DEFAULT D03): false when the link is verified but an end of it is private. Left out: true. */
+  shown?: boolean;
 }
 
 const NAME = 'review-decided';
@@ -39,6 +41,7 @@ export const reviewDecided: EmailTemplate<ReviewDecidedData> = {
       lineageName: parseShortText(NAME, 'lineageName', object.lineageName),
       url: parseAppUrl(NAME, 'url', object.url, '/dashboard/teachers'),
       ...parseOptionalNames(NAME, 'recipientNames', object.recipientNames),
+      ...(object.shown === false ? { shown: false } : {}),
     };
   },
   subject: ({ decision }) =>
@@ -49,7 +52,7 @@ export const reviewDecided: EmailTemplate<ReviewDecidedData> = {
         : 'More information needed for your claim on WingChunRoots',
   preview,
   render(data) {
-    const { decision, teacherNames, lineageName, url, recipientNames = [] } = data;
+    const { decision, teacherNames, lineageName, url, recipientNames = [], shown = true } = data;
     return (
       <RelationshipEmail preview={preview(data)} recipientNames={recipientNames} action="See your teachers" url={url}>
         <Text style={textStyle}>
@@ -69,7 +72,9 @@ export const reviewDecided: EmailTemplate<ReviewDecidedData> = {
         </Text>
         <Text style={textStyle}>
           {decision === 'verified'
-            ? 'The link is verified and now appears in the public lineage. It confirms only this one link.'
+            ? shown
+              ? 'The link is verified and now appears in the public lineage. It confirms only this one link.'
+              : 'The link is verified, but it is not on the public pages yet: it appears in the public lineage once both profiles are public. Yours becomes public when you choose “Show my profile publicly”; the record of a teacher whose death the reviewers could not establish stays private. You can see the link on Your teachers. It confirms only this one link.'
             : decision === 'rejected'
               ? 'Their reason is on Your teachers. You can send a new claim with more evidence.'
               : 'Their question is on Your teachers, where you can add evidence to the claim.'}

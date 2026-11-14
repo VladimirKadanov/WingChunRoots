@@ -125,7 +125,9 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
 describe('every transition writes relationship_event and audit_log', () => {
   it('request → approve: pending and involved_only, then verified and public with both people public, both told by notification and e-mail, the counters job queued', async () => {
     const teacher = await member('m09-teacher', { sifu: true });
-    const student = await member('m09-student', { hidden: true });
+    // Review 2026-11-14 (DEFAULT D03): the student ticked "Show my profile publicly" (a granted
+    // consent) while the profile row is still private, so the approval is what publishes it.
+    const student = await member('m09-student', { hidden: true, granted: true });
     const result = await requestTeacher(
       student.principal,
       { teacherId: teacher.personId, lineageId, periods: [{ from: '2019-04', to: null, ongoing: true }], displayPrimary: false, idempotencyKey: key() },
@@ -366,7 +368,7 @@ describe('requests: checks and idempotency', () => {
     expect(await fields({ lineageId: null })).toEqual({ code: 'BAD_REQUEST', fields: ['lineageId'] });
 
     const unclaimed = uuidv7();
-    await getDb().insert(person).values({ id: unclaimed, slug: `demo-m09-unclaimed-${unclaimed.slice(-6)}`, kind: 'living', stewardship: 'unclaimed', visibility: 'public' });
+    await getDb().insert(person).values({ id: unclaimed, slug: `demo-m09-unclaimed-${unclaimed.slice(-6)}`, kind: 'living', lifeStatus: 'living', stewardship: 'unclaimed', visibility: 'public' });
     await getDb().execute(sql`INSERT INTO person_name (person_id, value, script, lang, is_primary) VALUES (${unclaimed}::uuid, 'Demo Unclaimed', 'Latn', 'en', true)`);
     expect(await fields({ teacherId: unclaimed })).toEqual({ code: 'BAD_REQUEST', fields: ['teacherId'] });
 
@@ -543,7 +545,7 @@ describe('requests: checks and idempotency', () => {
     // Twenty other requests wait (MAX_PENDING_REQUESTS), written directly: the cap is the point here.
     for (let i = 0; i < 20; i += 1) {
       const other = uuidv7();
-      await getDb().insert(person).values({ id: other, slug: `demo-m09-cap-${other.slice(-12)}`, kind: 'living', stewardship: 'unclaimed', visibility: 'public' });
+      await getDb().insert(person).values({ id: other, slug: `demo-m09-cap-${other.slice(-12)}`, kind: 'living', lifeStatus: 'living', stewardship: 'unclaimed', visibility: 'public' });
       await getDb()
         .insert(teachingRelationship)
         .values({ id: uuidv7(), teacherPersonId: other, studentPersonId: student.personId, lineageId, status: 'pending_teacher', visibility: 'involved_only', verificationPath: 'teacher_approval' });
@@ -646,14 +648,15 @@ describe('approval: the plan, the display preference and the people', () => {
     expect(await statusOf(id)).toEqual({ status: 'verified', visibility: 'public' });
   });
 
-  // M09 review, code-1 and security-1: the owner never granted publication (onboarding with the box
-  // unticked), an approval made the profile public, and the owner then hid it. The hide must survive
-  // the next approval on both paths: the profile editor and /account/privacy.
+  // M09 review, code-1 and security-1, kept after the rule of 2026-11-14 (an approval never publishes
+  // a member without a granted consent): a profile that was public without any consent record (data
+  // from before the rule, `granted: false`), and its owner then hid it. The hide must survive the
+  // next approval on both paths: the profile editor and /account/privacy.
   const OWNER_NAMES = [{ value: 'Demo Hidden Owner', script: 'Latn', lang: 'en', isPrimary: true }];
   const hideAfterApproval = async (label: string, hide: (owner: Member) => Promise<unknown>) => {
     const first = await member(`${label}-first`, { sifu: true });
     const second = await member(`${label}-second`, { sifu: true });
-    const owner = await member(`${label}-owner`, { hidden: true });
+    const owner = await member(`${label}-owner`, { granted: false });
     await approveRelationship(first.principal, { relationshipId: await request(owner, first), idempotencyKey: key() }, meta);
     expect(await visibilityOf(owner.personId)).toBe('public');
     expect(await publicationActions(owner.account.id)).toEqual([]);
@@ -678,16 +681,78 @@ describe('approval: the plan, the display preference and the people', () => {
     expect(await publicationActions(owner.account.id)).toEqual(['withdrawn', 'granted']);
   };
 
-  it('a profile that an approval made public and its owner then hid in the profile editor stays hidden after the next approval (DEFAULT D03)', async () => {
+  it('a profile that was public without a consent record and its owner then hid in the profile editor stays hidden after the next approval (DEFAULT D03)', async () => {
     await hideAfterApproval('m09-hide-editor', (owner) =>
       profileUpdate(owner.principal, { names: OWNER_NAMES, showPublicly: false }, meta),
     );
   });
 
-  it('a profile that an approval made public and its owner then hid on /account/privacy stays hidden after the next approval (DEFAULT D03)', async () => {
+  it('a profile that was public without a consent record and its owner then hid on /account/privacy stays hidden after the next approval (DEFAULT D03)', async () => {
     await hideAfterApproval('m09-hide-privacy', async (owner) => {
       expect(await consentWithdraw(owner.principal, { kinds: ['publication'] }, meta)).toEqual({ withdrawn: ['publication'], profileHidden: true });
     });
+  });
+});
+
+describe('publication follows consent: an approval publishes nobody who has not granted it (DEFAULT D03, review 2026-11-14)', () => {
+  const publicEdges = async (id: string) => {
+    const result = await getDb().execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM v_public_edge WHERE id = ${id}::uuid`);
+    return result.rows[0]!.n;
+  };
+  const NAMES = [{ value: 'Demo Unticked Student', script: 'Latn', lang: 'en', isPrimary: true }];
+
+  it('a student who left the box unticked stays private: the link is verified but not public, both are told, both still see it', async () => {
+    const teacher = await member('d03-unticked-teacher', { sifu: true });
+    const student = await member('d03-unticked-student', { hidden: true });
+    expect(await publicationActions(student.account.id)).toEqual([]);
+    const id = await request(student, teacher);
+    const approved = await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    // The link is verified (the teacher's answer stands) and private: neither the student's record
+    // nor the link is on the public pages.
+    expect(approved.relationship).toMatchObject({ status: 'verified', visibility: 'public', shown: false });
+    expect(await visibilityOf(student.personId)).toBe('involved_only');
+    expect(await visibilityOf(teacher.personId)).toBe('public');
+    expect(await publicEdges(id)).toBe(0);
+    const rows = await audits(id);
+    expect(rows[1]!.after).toMatchObject({ status: 'verified', publishedPersonIds: [], shown: false });
+    // Both are told, in words, where the link is and what makes it public.
+    for (const who of [student, teacher]) {
+      const notice = (await listNotifications(who.principal)).items.find((n) => n.template === 'relationship.approved')!;
+      expect(JSON.stringify(notice.body)).toContain('not public yet');
+      expect(JSON.stringify(notice.body)).toContain('Show my profile publicly');
+      expect(JSON.stringify(notice.body)).not.toContain('now public');
+    }
+    // And both still see it on their dashboards, flagged as not shown.
+    expect((await myTeachers(student.principal)).teachers.find((v) => v.id === id)).toMatchObject({ status: 'verified', shown: false });
+    expect((await studentRequests(teacher.principal)).students.find((v) => v.id === id)).toMatchObject({ status: 'verified', shown: false });
+    // Ticking the box later publishes the profile, and the link with it: nothing was lost.
+    await profileUpdate(student.principal, { names: NAMES, showPublicly: true }, meta);
+    expect(await visibilityOf(student.personId)).toBe('public');
+    expect(await publicEdges(id)).toBe(1);
+    expect((await myTeachers(student.principal)).teachers.find((v) => v.id === id)).toMatchObject({ shown: true });
+  });
+
+  it('a teacher who withdrew publication after the request stays private, and the student who ticked it stays public with a private link', async () => {
+    const teacher = await member('d03-withdrawn-teacher', { sifu: true });
+    const student = await member('d03-ticked-student');
+    const id = await request(student, teacher);
+    expect((await consentWithdraw(teacher.principal, { kinds: ['publication'] }, meta)).profileHidden).toBe(true);
+    const approved = await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    expect(approved.relationship).toMatchObject({ status: 'verified', shown: false });
+    expect(await visibilityOf(teacher.personId)).toBe('involved_only');
+    expect(await visibilityOf(student.personId)).toBe('public');
+    expect(await publicEdges(id)).toBe(0);
+  });
+
+  it('a grant of an earlier version of the document still counts, a withdrawal after it does not', async () => {
+    const teacher = await member('d03-version-teacher', { sifu: true });
+    const student = await member('d03-version-student', { hidden: true });
+    await getDb().execute(sql`INSERT INTO consent_record (user_id, kind, document_version, action, occurred_at)
+      VALUES (${student.account.id}::uuid, 'publication', 'an-earlier-version', 'granted', now() - interval '1 day')`);
+    const id = await request(student, teacher);
+    await approveRelationship(teacher.principal, { relationshipId: id, idempotencyKey: key() }, meta);
+    expect(await visibilityOf(student.personId)).toBe('public');
+    expect(await publicEdges(id)).toBe(1);
   });
 });
 

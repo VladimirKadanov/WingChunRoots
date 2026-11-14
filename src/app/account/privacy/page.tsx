@@ -35,7 +35,7 @@ const CONSENT_TEXT: Record<string, { title: string; text: string }> = {
   terms: { title: 'Terms of use', text: CONSENT_LABELS.terms },
   authenticity_declaration: { title: 'What you record', text: CONSENT_LABELS.authenticity_declaration },
   privacy_ack: { title: 'Privacy notice', text: CONSENT_LABELS.privacy_ack },
-  publication: { title: 'Publication of your profile', text: 'Show my profile publicly: my names, city and confirmed links appear in search and on my page.' },
+  publication: { title: 'Publication of your profile', text: 'Show my profile publicly: my names, city and confirmed links appear in search and on my page. A link is shown publicly only when both people in it have chosen this; otherwise it stays confirmed but private, and you see it on your dashboard.' },
 };
 
 const STATE_TEXT = { granted: 'Given', withdrawn: 'Withdrawn', outdated: 'Given for an earlier version', never: 'Not given' } as const;

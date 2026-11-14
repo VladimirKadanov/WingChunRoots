@@ -186,7 +186,7 @@ async function actor(label: string, opts: { role?: Role; sifu?: boolean; noPerso
   if (!opts.noPerson && role === 'user') {
     personId = uuidv7();
     slug = `demo-${label}-${randomBytes(4).toString('hex')}`;
-    await db.insert(person).values({ id: personId, slug, kind: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' });
+    await db.insert(person).values({ id: personId, slug, kind: 'living', lifeStatus: 'living', stewardship: 'self', claimedByUserId: account.id, visibility: 'public' });
     await db.insert(personName).values({ personId, value: `Demo ${label.replace(/[^A-Za-z]+/g, ' ').trim()}`, script: 'Latn', lang: 'en', isPrimary: true });
   }
   return { ...account, token: await sessionFor(account, role, opts.unverified), principal, personId, slug };
@@ -494,7 +494,7 @@ async function successionOf(opts: { nominated?: boolean; accepted?: boolean; ina
 async function sharedRecord() {
   const id = uuidv7();
   const slug = `demo-shared-record-${randomBytes(4).toString('hex')}`;
-  await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'unknown' });
+  await getDb().insert(person).values({ id, slug, kind: 'historical', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'deceased' });
   await getDb().insert(personName).values({ personId: id, value: 'Demo Shared Record', script: 'Latn', lang: 'en', isPrimary: true });
   return { id, slug };
 }
@@ -1910,7 +1910,7 @@ const ROWS: Row[] = [
     path: 'records.propose',
     make: async () => {
       const r = await sharedRecord();
-      return { input: { personId: r.id, primaryName: 'Demo Shared Record Corrected', lifeStatus: 'unknown', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
+      return { input: { personId: r.id, primaryName: 'Demo Shared Record Corrected', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
     expect: own(),
   },

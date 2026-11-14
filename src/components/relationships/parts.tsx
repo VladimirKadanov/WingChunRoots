@@ -29,6 +29,25 @@ export function badgeOf(view: Pick<RelationshipView, 'status' | 'historical'>): 
   }
 }
 
+/**
+ * Review 2026-11-14 (DEFAULT D03): a confirmed link whose end is private stays confirmed and stays on
+ * the dashboards of the people involved; it is public once both have chosen "Show my profile
+ * publicly". Said in words, so a member is never left wondering where their link went. Calm: it
+ * lists what is true and where to change it. Spans the whole row of the list it sits in.
+ */
+export function NotPublicNote({ view }: { view: Pick<RelationshipView, 'status' | 'shown'> }) {
+  if (view.shown || (view.status !== 'verified' && view.status !== 'in_arbitration')) return null;
+  return (
+    <p data-testid="link-not-public" className="max-w-[62ch] text-sm text-fg-muted sm:col-span-2">
+      <span className="font-semibold text-fg">Confirmed, not public yet.</span> This link stays here, on your dashboard. It appears in the public lineage once
+      both profiles are public: each person chooses that with “Show my profile publicly”.{' '}
+      <Link href="/dashboard/profile" className="link inline-flex min-h-11 items-center">
+        Open your profile settings
+      </Link>
+    </p>
+  );
+}
+
 export function RelationshipBadge({ view }: { view: Pick<RelationshipView, 'status' | 'historical' | 'statusLabel'> }) {
   return <StatusBadge state={badgeOf(view)} label={view.statusLabel} />;
 }

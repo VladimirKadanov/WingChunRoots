@@ -30,7 +30,7 @@ import { NameText } from '@/components/account/person-names';
 import { ArrowRightIcon } from '@/components/icons';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { EndTrainingForm, WithdrawForm } from '@/components/relationships/forms';
-import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
+import { NotPublicNote, OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { formatSize } from '@/lib/file-size';
@@ -199,7 +199,7 @@ function Row({ view, children, testId }: { view: RelationshipView; children?: Re
       className="grid gap-2 border-b border-border-subtle py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-6"
     >
       <div className="grid content-start gap-1">
-        <PersonName person={view.teacher} link={view.status === 'verified' || view.status === 'in_arbitration'} />
+        <PersonName person={view.teacher} link={view.shown} />
         {view.unclaimedRecord ? (
           <span className="text-sm font-semibold" data-testid="unclaimed-label">
             Unclaimed record
@@ -214,6 +214,7 @@ function Row({ view, children, testId }: { view: RelationshipView; children?: Re
         <RelationshipBadge view={view} />
         {children}
       </div>
+      <NotPublicNote view={view} />
       {view.review ? <ClaimReview review={view.review} /> : null}
       <InvitationLine view={view} />
       <SentEvidence files={view.evidence} />

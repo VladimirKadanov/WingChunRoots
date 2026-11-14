@@ -18,7 +18,7 @@
 // stays visible to the people involved (option 1), not a deletion and not a hiding from the owner.
 //
 // A restore returns the record to what it was, unless the owner changed their mind in the meantime:
-// a self-stewarded record whose owner withdrew the publication consent stays private (DEFAULT D03).
+// a record whose owner has not a granted publication consent stays private (DEFAULT D03, review 2026-11-14).
 //
 // Audit rows carry ids, the visibility before and after and the case; the reason is the staff
 // member's own words and is also what the owner reads in the notice (never the name of a reporter).
@@ -32,13 +32,14 @@ import type { Principal } from '../auth/principal';
 import { EVENTS_TAG, invalidatePublic, ORGANIZATIONS_TAG, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { consentRecord, person, reviewCase, reviewNote } from '../db/schema';
+import { person, reviewCase, reviewNote } from '../db/schema';
 import type { Transaction } from '../jobs/outbox';
 import { queueRecomputeForPerson } from './lineage-membership';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { notify } from './notify';
 import { neighbourTags } from './profile';
+import { publicationGranted } from './publication';
 
 export const TAKEDOWN_REASON_MAX = 500;
 /** Who takes a profile down and restores it: a moderator or an administrator, with a verified second factor. */
@@ -82,6 +83,7 @@ interface Held {
   slug: string;
   visibility: 'public' | 'involved_only';
   stewardship: 'self' | 'platform' | 'unclaimed';
+  lifeStatus: 'living' | 'deceased' | 'unknown';
   claimedByUserId: string | null;
   takenDownAt: Date | null;
   takenDownVisibility: 'public' | 'involved_only' | null;
@@ -94,6 +96,7 @@ async function lockPerson(tx: Transaction, personId: string): Promise<Held> {
       slug: person.slug,
       visibility: person.visibility,
       stewardship: person.stewardship,
+      lifeStatus: person.lifeStatus,
       claimedByUserId: person.claimedByUserId,
       takenDownAt: person.takenDownAt,
       takenDownVisibility: person.takenDownVisibility,
@@ -116,16 +119,15 @@ async function checkCase(tx: Transaction, caseId: string, personId: string): Pro
   if (c.personId !== personId) throw new ServiceError('BAD_REQUEST', 'That case is not about this record.');
 }
 
-/** The publication choice of a self-stewarded owner, as the consent log has it (DEFAULT D03). */
-async function ownerWithdrewPublication(tx: Transaction, row: Held): Promise<boolean> {
-  if (row.stewardship !== 'self' || !row.claimedByUserId) return false;
-  const [latest] = await tx
-    .select({ action: consentRecord.action })
-    .from(consentRecord)
-    .where(and(eq(consentRecord.userId, row.claimedByUserId), eq(consentRecord.kind, 'publication')))
-    .orderBy(sql`${consentRecord.occurredAt} DESC`, sql`${consentRecord.id} DESC`)
-    .limit(1);
-  return latest?.action === 'withdrawn';
+/**
+ * Whether a restore may make the record public again: the owner's latest publication consent is a
+ * grant when the record has an account (DEFAULT D03: no record counts as no), and its life status
+ * is not unknown (publication.ts).
+ */
+async function mayBePublicAgain(tx: Transaction, row: Held): Promise<boolean> {
+  if (row.lifeStatus === 'unknown') return false;
+  if (!row.claimedByUserId) return true;
+  return publicationGranted(tx, row.claimedByUserId);
 }
 
 /** A staff member does not take down or restore a record that is theirs: another one does. */
@@ -202,9 +204,10 @@ async function applyRestore(
   if (!row.takenDownAt) return { personId: row.id, slug: row.slug, takenDown: false, visibility: row.visibility, changed: false, tags: [] };
 
   // What the record was (or what its owner chose since, setOwnVisibility), unless the owner has
-  // withdrawn the publication consent in the meantime: then it stays private (DEFAULT D03).
+  // withdrawn the publication consent in the meantime (or never granted it): then it stays private
+  // (DEFAULT D03), as does a record whose life status is unknown (publication.ts).
   const wanted = row.takenDownVisibility ?? 'involved_only';
-  const visibility = wanted === 'public' && !(await ownerWithdrewPublication(tx, row)) ? 'public' : 'involved_only';
+  const visibility = wanted === 'public' && (await mayBePublicAgain(tx, row)) ? 'public' : 'involved_only';
   await tx
     .update(person)
     .set({ visibility, takenDownAt: null, takenDownReason: null, takenDownVisibility: null, updatedAt: new Date() })

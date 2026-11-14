@@ -9,7 +9,8 @@ import { eq } from 'drizzle-orm';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authUser, lineage, person, personName } from '../db/schema';
+import { authUser, consentRecord, lineage, person, personName } from '../db/schema';
+import { consentVersion } from '../legal/documents';
 
 export const meta = { requestId: 'm09-int-test', ipHmac: null };
 
@@ -56,8 +57,17 @@ export function principalOf(account: Account, role: Principal['user']['role'] = 
 /**
  * An account with its own person (self-stewarded, claimed): public unless `hidden`, a Sifu account
  * when `sifu`. The name is fictional and Latin-script (the primary display name).
+ *
+ * Review 2026-11-14 (DEFAULT D03): a member who ticked "Show my profile publicly" has a granted
+ * publication consent, so a public member gets one here, as onboarding writes it. A `hidden` member
+ * is one who left the box unticked: no consent record, so no approval ever publishes them. `granted`
+ * gives a hidden member the grant (they ticked it, then turned the profile private by other means)
+ * or withholds it from a public one (legacy data: published before the rule).
  */
-export async function member(label: string, opts: { sifu?: boolean; hidden?: boolean; role?: 'moderator' | 'archivist' | 'admin' } = {}): Promise<Member> {
+export async function member(
+  label: string,
+  opts: { sifu?: boolean; hidden?: boolean; role?: 'moderator' | 'archivist' | 'admin'; granted?: boolean } = {},
+): Promise<Member> {
   const account = await createUser(label, opts.role ?? 'user');
   const db = getDb();
   if (opts.sifu) await db.update(authUser).set({ accountType: 'sifu' }).where(eq(authUser.id, account.id));
@@ -67,11 +77,15 @@ export async function member(label: string, opts: { sifu?: boolean; hidden?: boo
     id: personId,
     slug,
     kind: 'living',
+    lifeStatus: 'living',
     stewardship: 'self',
     claimedByUserId: account.id,
     visibility: opts.hidden ? 'involved_only' : 'public',
   });
   await db.insert(personName).values({ personId, value: `Demo ${label.replace(/-/g, ' ')}`, script: 'Latn', lang: 'en', isPrimary: true });
+  if (opts.granted ?? !opts.hidden) {
+    await db.insert(consentRecord).values({ userId: account.id, kind: 'publication', documentVersion: consentVersion('publication'), action: 'granted' });
+  }
   return { account, principal: principalOf(account, opts.role ?? 'user'), personId, slug };
 }
 
