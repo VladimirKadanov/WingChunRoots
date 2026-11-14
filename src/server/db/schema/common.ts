@@ -197,10 +197,12 @@ export const SCHOOL_FEES_MAX = 500;
 export const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 /**
  * A trial lesson inquiry: `open` until the school answers it (`answered`, with an optional reply
- * the sender is told), declines it (`declined`, with an optional reason) or closes it (`closed`).
- * Every state but `open` counts as closed for the retention (TRIAL_INQUIRY_RETENTION_DAYS).
+ * the sender is told), declines it (`declined`, with an optional reason) or closes it (`closed`),
+ * or the sender withdraws it (`withdrawn`, review 2026-11: the sender's name, contact and text are
+ * removed at once). Every state but `open` counts as closed for the retention
+ * (TRIAL_INQUIRY_RETENTION_DAYS).
  */
-export const TRIAL_INQUIRY_STATUSES = ['open', 'answered', 'declined', 'closed'] as const;
+export const TRIAL_INQUIRY_STATUSES = ['open', 'answered', 'declined', 'closed', 'withdrawn'] as const;
 /** How the sender wants to be reached: the e-mail of their account, or a phone typed into the form. */
 export const TRIAL_CONTACT_METHODS = ['email', 'phone'] as const;
 export const TRIAL_MESSAGE_MAX = 1000;
@@ -211,6 +213,11 @@ export const TRIAL_REPLY_MAX = 500;
 export const TRIAL_DAILY_LIMIT = 5;
 /** DEFAULT M21 (question 5): an inquiry is deleted this many days after it closed. */
 export const TRIAL_INQUIRY_RETENTION_DAYS = 365;
+/**
+ * DEFAULT review-2026-11 (docs/plan/questions/review-2026-11-retention.md, question 5): an inquiry
+ * nobody answered is closed and scrubbed of the sender's name, contact and message after 90 days.
+ */
+export const TRIAL_OPEN_INQUIRY_DAYS = 90;
 /** The daily counters of a school's stats (counts only: no IP, account, cookie or fingerprint). */
 export const SCHOOL_STAT_EVENTS = ['page_view', 'pin_open', 'contact_click', 'trial_inquiry'] as const;
 /** DEFAULT M21 (question 7): daily counters older than this many days are deleted. */

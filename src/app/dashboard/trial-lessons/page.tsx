@@ -1,7 +1,9 @@
 // /dashboard/trial-lessons (M21, docs/adr/0024-trial-lessons.md): the trial lesson requests this
 // account sent (trial.mine), the newest first, each with its school, its state in words, what was
-// sent, and the school's answer or reason. ?sent=1 says a request just went out. Reads the session,
-// so it renders per request.
+// sent, and the school's answer or reason. ?sent=1 says a request just went out; ?withdrawn=1 that
+// one was taken back. An open request has "Withdraw request" (trial.withdraw: review 2026-11,
+// docs/adr/0032-retention-and-withdrawal.md); a request nobody answered for 90 days is closed and
+// its name, contact and message are removed. Reads the session, so it renders per request.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -14,8 +16,11 @@ import { TrialStatusTag } from '@/components/schools/trial-status';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
+import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { withdrawForm } from './form-ids';
+import { WithdrawRequest } from './withdraw-request';
 
 export const instant = false;
 
@@ -35,6 +40,7 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
   const query = await searchParams;
   const mine = await pageRead(serverClient(await headers(), guard.principal).trial.mine());
   if (!mine) return <LoadError {...OWN_TRIAL_LOAD_ERROR} retryHref={PAGE} />;
+  const rows = await Promise.all(mine.inquiries.map(async (q) => ({ ...q, initial: q.status === 'open' ? await readFormResult(withdrawForm(q.id), query.outcome) : null })));
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -47,12 +53,18 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
         <h1 className="mt-2 font-display text-feature">Your trial lesson requests</h1>
         <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
           The schools you asked for a trial lesson. A school sees your profile name and the contact you chose; its answer shows here and in your
-          notifications.
+          notifications. You can withdraw a request that waits for an answer, and then your name, contact and message are removed from it. A request
+          nobody answers is closed after 90 days and loses them the same way.
         </p>
         <div className="mt-8 grid gap-6">
           {query.sent === '1' ? (
             <p id="outcome" role="status" tabIndex={-1} className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="trial-sent">
               Your request is sent. The school is told now and answers here.
+            </p>
+          ) : null}
+          {query.withdrawn === '1' ? (
+            <p id="outcome" role="status" tabIndex={-1} className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="trial-withdrawn">
+              Your request is withdrawn. Your name, contact and message are removed from it.
             </p>
           ) : null}
           {mine.inquiries.length === 0 ? (
@@ -64,7 +76,7 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
             </div>
           ) : (
             <ul className="grid" data-testid="own-trial-requests">
-              {mine.inquiries.map((q) => (
+              {rows.map((q) => (
                 <li key={q.id} className="grid gap-2 border-b border-border-subtle py-4" data-testid="own-trial-request" data-status={q.status}>
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     {q.school.public ? (
@@ -78,9 +90,21 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
                   </p>
                   <p className="text-sm text-fg-muted">
                     Sent {formatDay(q.createdAt)}
-                    {q.closedAt ? ` · ${q.status === 'closed' ? 'closed' : q.status} ${formatDay(q.closedAt)}` : ''} · contact by{' '}
-                    {q.contactMethod === 'phone' ? 'phone' : 'e-mail'}: <span className="[overflow-wrap:anywhere]">{q.contactValue}</span>
+                    {q.closedAt ? ` · ${q.statusLabel.toLowerCase()} ${formatDay(q.closedAt)}` : ''}
+                    {q.contactValue ? (
+                      <>
+                        {' '}
+                        · contact by {q.contactMethod === 'phone' ? 'phone' : 'e-mail'}: <span className="[overflow-wrap:anywhere]">{q.contactValue}</span>
+                      </>
+                    ) : null}
                   </p>
+                  {q.scrubbed ? (
+                    <p className="text-sm text-fg-muted" data-testid="own-trial-scrubbed">
+                      {q.status === 'withdrawn'
+                        ? 'You withdrew this request. Your name, contact and message were removed from it.'
+                        : 'Nobody answered, so it was closed. Your name, contact and message were removed from it.'}
+                    </p>
+                  ) : null}
                   {q.preferredTimes ? <p className="text-sm">Times: {q.preferredTimes}</p> : null}
                   {q.message ? <p className="text-sm whitespace-pre-line [overflow-wrap:anywhere]">{q.message}</p> : null}
                   {q.reply ? (
@@ -89,6 +113,7 @@ export default async function OwnTrialLessonsPage({ searchParams }: { searchPara
                       <p className="mt-1 whitespace-pre-line [overflow-wrap:anywhere]">{q.reply}</p>
                     </div>
                   ) : null}
+                  {q.status === 'open' ? <WithdrawRequest inquiryId={q.id} school={q.school.name} initial={q.initial} /> : null}
                 </li>
               ))}
             </ul>

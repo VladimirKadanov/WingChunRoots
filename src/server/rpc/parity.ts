@@ -95,6 +95,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   // M21: trial lesson requests and the schedule and fees.
   'src/app/schools/[slug]/trial/actions.ts#requestTrialAction': { rpc: ['trial.request'] },
   'src/app/dashboard/schools/actions.ts#decideTrialAction': { rpc: ['trial.answer', 'trial.decline', 'trial.close'] },
+  // Review 2026-11: the sender's "Withdraw request".
+  'src/app/dashboard/trial-lessons/actions.ts#withdrawTrialAction': { rpc: ['trial.withdraw'] },
   'src/app/dashboard/schools/actions.ts#updateScheduleAction': { rpc: ['schools.updateSchedule'] },
   // M22: paid plans in test mode (the provider's events arrive at POST /api/billing/webhook).
   'src/app/dashboard/billing/actions.ts#startCheckoutAction': { rpc: ['billing.checkout'] },

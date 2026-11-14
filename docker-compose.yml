@@ -193,6 +193,9 @@ services:
       <<: *app-env
       # The local archives of scripts/backup-local.sh, read-only: /admin/system shows the newest.
       BACKUP_DIR: /backups
+      # The erasure ledger (src/server/erasure-ledger.ts), read-write below: web writes a line for every
+      # erasure and withdrawal, and refuses them while it cannot.
+      ERASURE_LEDGER_DIR: /erasures
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"
     volumes:
@@ -203,6 +206,15 @@ services:
         source: ${BACKUP_DIR:-./backups}
         target: /backups
         read_only: true
+        bind:
+          create_host_path: true
+      # The record that survives a restore (docs/operations/backup-and-restore.md): ERASURE_LEDGER_DIR from .env,
+      # else erasures/ in the backups folder, next to the archives it corrects. Ids and times only. The folder
+      # belongs to the host user (scripts/backup-local.sh makes it); the web process is uid 1000, like the first
+      # user of a Linux or WSL2 machine. This mount is the only one of the web service that is not read-only.
+      - type: bind
+        source: ${ERASURE_LEDGER_DIR:-${BACKUP_DIR:-./backups}/erasures}
+        target: /erasures
         bind:
           create_host_path: true
     healthcheck:

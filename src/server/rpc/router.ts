@@ -219,6 +219,8 @@ import {
   trialOptions,
   trialOptionsInput,
   trialRequestInput,
+  trialWithdrawInput,
+  withdrawTrial,
 } from '../services/trial-lessons';
 import {
   adminBillingGet,
@@ -1077,6 +1079,15 @@ export const router = {
       .route({ method: 'POST', path: '/trial-lessons/close', summary: 'Close an open or answered request; the sender is not told; audited' })
       .input(trialCloseInput)
       .handler(({ context, input }) => closeTrial(context.principal, input, context.meta)),
+    // Review 2026-11 (docs/adr/0032-retention-and-withdrawal.md): the sender takes their request back.
+    withdraw: signedIn
+      .route({
+        method: 'POST',
+        path: '/trial-lessons/withdraw',
+        summary: 'Withdraw your own open trial lesson request: its state becomes withdrawn and your name, contact, times and message are removed at once; the school is not told; audited',
+      })
+      .input(trialWithdrawInput)
+      .handler(({ context, input }) => withdrawTrial(context.principal, input, context.meta)),
   },
   // M22 (docs/adr/0025-billing.md): paid plans in test mode only; no real charge is ever made. The
   // provider's events arrive at POST /api/billing/webhook (a route handler outside this contract:

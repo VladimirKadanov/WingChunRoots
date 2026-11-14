@@ -1,6 +1,7 @@
 // The state of a trial lesson request (M21), as a mark and words, never colour alone (CLAUDE.md
 // §10): a ring with a clock hand (waiting for the school), a filled disc with a check (answered), a
-// ring crossed out (declined), a plain ring (closed). The mark is decorative; the words say it.
+// ring crossed out (declined), a dashed ring (closed), a ring with a dash (withdrawn by the sender).
+// The mark is decorative; the words say it.
 
 import type { TrialStatus } from '@/server/services/trial-lessons';
 
@@ -21,6 +22,11 @@ function Mark({ status }: { status: TrialStatus }) {
         <>
           <circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
           <path d="M4.4 15.6L15.6 4.4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+        </>
+      ) : status === 'withdrawn' ? (
+        <>
+          <circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M5.8 10h8.4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
         </>
       ) : (
         <circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="3 2.4" />
