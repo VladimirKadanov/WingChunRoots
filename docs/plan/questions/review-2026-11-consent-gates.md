@@ -73,4 +73,7 @@ The privacy notice text is not part of this PR (counsel and the owner). `content
 
 ## Progress
 
-- 2026-11-14: service rules (`publication.ts`), take-down restore, `shown` in views, notifications and e-mails, CHECK and migration, verify panel and archival edit, copy: built. Tests: service level, integration, authorization matrix, e2e. See the PR.
+- 2026-11-14: the rules module (`publication.ts`), the take-down restore, the `shown` flag in views, notifications and e-mails, the CHECK and its migration, the verify panel's plain choice, the archival edit with evidence, and the copy (request form, approval page, dashboards, claim form, onboarding, privacy page): built and pushed.
+- Tests: `living-gates.int.test.ts` and `consent-gates.int.test.ts` (service and database level), `relationships.int.test.ts` and `takedown.int.test.ts` (consent), two rows each for `review.decide` and one for `archive.update` in the authorization matrix, and the e2e path of a claim about a teacher whose status is not known (`e2e/m10a-evidence.spec.ts`, with axe). The invited-teacher e2e flows (`e2e/m10b-claims.spec.ts`) now have the teacher choose "Show my profile publicly" before the link is public: that is the new rule at work.
+- Existing test fixtures that made public people with the column default ("unknown") now say `living` or `deceased`; the shared archival records of the governance tests are `deceased`.
+- Left for the owner: the answers above; the privacy notice text.
