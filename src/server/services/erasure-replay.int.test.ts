@@ -21,10 +21,12 @@ import { getDb } from '../db';
 import { withClient } from '../db/admin';
 import { auditLog, authUser, person, trialInquiry } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
-import { appendLedger, ErasureLedgerError, readLedger, settleLedger } from '../erasure-ledger';
+import { appendLedger, readLedger, settleLedger } from '../erasure-ledger';
 import { createObjectStore, type ObjectStore } from '../storage';
 import { eraseAccount } from './account-erasure';
+import { ServiceError } from './errors';
 import { REPLAY_REASON, replayErasures, summariseReplay } from './erasure-replay';
+import { LEDGER_MEMBER_MESSAGE } from './ledger-guard';
 import { member, meta, staff } from './relationships.test-support';
 import { withdrawTrial } from './trial-lessons';
 
@@ -119,8 +121,11 @@ describe('the services write the ledger', () => {
     process.env.ERASURE_LEDGER_DIR = path.join(blocker, 'erasures');
     try {
       const error = await eraseAccount({ actor: null, by: { userId: victim.account.id }, reason: 'A fictional request.' }, store).catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(ErasureLedgerError);
+      // A refusal an administrator's form can show (not an "Internal server error"), before anything is touched.
+      expect(error).toBeInstanceOf(ServiceError);
+      expect(error).toMatchObject({ code: 'CONFLICT' });
       expect((error as Error).message).toContain('so nothing was changed');
+      expect((error as Error).message).toContain('ERASURE_LEDGER_DIR');
     } finally {
       process.env.ERASURE_LEDGER_DIR = ledgerFolder;
     }
@@ -145,7 +150,10 @@ describe('the services write the ledger', () => {
     process.env.ERASURE_LEDGER_DIR = path.join(blocker, 'erasures');
     try {
       const error = await withdrawTrial(blockedSender.principal, { inquiryId: blocked }, meta).catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(ErasureLedgerError);
+      // A calm sentence for the member, with no folder and no error code in it.
+      expect(error).toBeInstanceOf(ServiceError);
+      expect(error).toMatchObject({ code: 'CONFLICT', message: LEDGER_MEMBER_MESSAGE });
+      expect((error as Error).message).not.toMatch(/erasures|ERASURE_LEDGER_DIR|ENOTDIR|\//);
     } finally {
       process.env.ERASURE_LEDGER_DIR = ledgerFolder;
     }

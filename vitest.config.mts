@@ -34,6 +34,7 @@ export const ISOLATED = [
   'src/server/forms/flash.test.ts',
   'src/server/forms/two-factor.test.ts',
   'src/server/rpc/api-parity.test.ts',
+  'src/server/services/ledger-guard.test.ts',
   'src/server/services/lineage-graph.test.ts',
   'src/server/services/organizations.test.ts',
 ];

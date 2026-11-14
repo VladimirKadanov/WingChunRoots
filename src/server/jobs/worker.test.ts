@@ -48,10 +48,30 @@ describe('retentionPurgeHandler', () => {
     const handler = retentionPurgeHandler(failingDb, (line) => lines.push(line));
     await expect(handler([job(0)])).rejects.toThrow(/^retention\.purge failed: database error 57014$/);
     await expect(handler([job(3)])).rejects.toThrow('database error 57014');
-    expect(lines).toEqual([
+    // The two lines of the job itself (review 2026-11: every step now also logs its own failure, below).
+    expect(lines.filter((line) => line.includes(': job '))).toEqual([
       'retention.purge: job job-1: attempt 1 of 4 failed (database error 57014); will retry',
       'retention.purge: job job-1: attempt 4 of 4 failed (database error 57014); no attempts left, the addresses stay until the next run',
     ]);
+    expect(lines.filter((line) => !line.includes(': job ')).every((line) => /^retention\.purge: step [a-z_ -]+ failed \(database error 57014\)$/.test(line))).toBe(true);
     expect(lines.join('\n')).not.toContain('@');
+  });
+
+  it('runs the other steps when one fails, then fails the job once', async () => {
+    // Review 2026-11: a step that fails every night must not keep the retention periods of the others from running.
+    let calls = 0;
+    const firstFails = {
+      execute: async () => {
+        calls += 1;
+        if (calls === 1) throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+        return { rowCount: 0, rows: [] };
+      },
+    } as unknown as Database;
+    const lines: string[] = [];
+    await expect(retentionPurgeHandler(firstFails, (line) => lines.push(line))([job(0)])).rejects.toThrow(/^retention\.purge failed: database error 57014$/);
+    expect(lines[0]).toBe('retention.purge: step addresses failed (database error 57014)');
+    expect(lines).toContain('retention.purge: redacted the text of 0 old record revision(s)');
+    expect(lines).toContain('retention.purge: removed 0 old audit ip_hmac value(s), 0 old session value(s)');
+    expect(lines.at(-1)).toBe('retention.purge: job job-1: attempt 1 of 4 failed (database error 57014); will retry');
   });
 });

@@ -101,12 +101,19 @@ describe('purgeThirdPartyRecords', () => {
     );
   }
 
-  async function invitation(personId: string, relationshipId: string | null, status: string, expiresIn: number, n: number): Promise<void> {
+  async function invitation(
+    personId: string,
+    relationshipId: string | null,
+    status: string,
+    expiresIn: number,
+    n: number,
+    { updatedDays = 120, withEmail = status === 'pending' }: { updatedDays?: number; withEmail?: boolean } = {},
+  ): Promise<void> {
     await withClient(testDb.url, (c) =>
       c.query(
         `INSERT INTO invitation (person_id, relationship_id, invited_by_user_id, email, token_hash, status, expires_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, now() + interval '${expiresIn} days', ${ago(120)}, ${ago(120)})`,
-        [personId, relationshipId, creatorId, status === 'pending' ? `demo-${n}@wingchunroots.test` : null, hex(n), status],
+         VALUES ($1, $2, $3, $4, $5, $6, now() + interval '${expiresIn} days', ${ago(120)}, ${ago(updatedDays)})`,
+        [personId, relationshipId, creatorId, withEmail ? `demo-${n}@wingchunroots.test` : null, hex(n), status],
       ),
     );
   }
@@ -133,7 +140,15 @@ describe('purgeThirdPartyRecords', () => {
     const waiting = await relation(ids['invited-gone']!, 'awaiting_claim', 100);
     await invitation(ids['invited-gone']!, waiting, 'expired', -70, 1);
 
+    // Revoked by a resend 70 days ago (the address is erased since, which touched the row last): the revocation is past 60 days.
+    await made('revoked-old');
+    await invitation(ids['revoked-old']!, await relation(ids['revoked-old']!, 'withdrawn', 100), 'revoked', -90, 3, { updatedDays: 40, withEmail: false });
+    await withClient(testDb.url, (c) => c.query(`UPDATE teaching_relationship SET updated_at = ${ago(70)} WHERE teacher_person_id = $1`, [ids['revoked-old']]));
+
     // Not due.
+    // Revoked 10 days ago, its address still there: the invitation ended 10 days ago, not when it was created 120 days ago.
+    await made('revoked-recent');
+    await invitation(ids['revoked-recent']!, await relation(ids['revoked-recent']!, 'withdrawn', 100), 'revoked', -90, 4, { updatedDays: 10, withEmail: true });
     await made('recent');
     await relation(ids.recent!, 'withdrawn', 59);
     await made('verified');
@@ -164,7 +179,7 @@ describe('purgeThirdPartyRecords', () => {
 
   it('deletes the records past 60 days and removes the one a relationship still refers to, and touches nothing else', async () => {
     const result = await purgeThirdPartyRecords(db);
-    expect(result).toEqual({ deleted: 1, removed: 2, requestsWithdrawn: 1 });
+    expect(result).toEqual({ deleted: 1, removed: 3, requestsWithdrawn: 1 });
     // Idempotent.
     expect(await purgeThirdPartyRecords(db)).toEqual({ deleted: 0, removed: 0, requestsWithdrawn: 0 });
 
@@ -176,12 +191,14 @@ describe('purgeThirdPartyRecords', () => {
       // Removed: the slug came from the name, so it is replaced.
       expect(slugs).not.toContain('demo-third-refused');
       expect(slugs).not.toContain('demo-third-invited-gone');
+      expect(slugs).not.toContain('demo-third-revoked-old');
       expect(left.filter((r) => r.slug.startsWith('removed-'))).toEqual([
         { slug: `removed-${ids.refused!.replaceAll('-', '')}`, deleted: true },
         { slug: `removed-${ids['invited-gone']!.replaceAll('-', '')}`, deleted: true },
+        { slug: `removed-${ids['revoked-old']!.replaceAll('-', '')}`, deleted: true },
       ].sort((a, b) => (a.slug < b.slug ? -1 : 1)));
       // Everything else stays, untouched.
-      for (const label of ['recent', 'verified', 'revoked', 'under-review', 'pending-teacher', 'awaiting-live', 'seed', 'claimed', 'public', 'taken-down', 'lineage-root', 'open-case', 'wrong-reason', 'pending-claim']) {
+      for (const label of ['recent', 'revoked-recent', 'verified', 'revoked', 'under-review', 'pending-teacher', 'awaiting-live', 'seed', 'claimed', 'public', 'taken-down', 'lineage-root', 'open-case', 'wrong-reason', 'pending-claim']) {
         expect(slugs, label).toContain(`demo-third-${label}`);
       }
       // No name, key or text of a removed record is left; its revisions are redacted at once.
@@ -201,7 +218,7 @@ describe('purgeThirdPartyRecords', () => {
       expect(await rows(c, `SELECT status FROM teaching_relationship WHERE teacher_person_id = $1`, [ids.verified])).toEqual([{ status: 'verified' }]);
       expect(await rows(c, `SELECT status FROM teaching_relationship WHERE teacher_person_id = $1`, [ids['awaiting-live']])).toEqual([{ status: 'awaiting_claim' }]);
       // Audited, with ids and outcomes only.
-      expect(await rows(c, `SELECT subject_id, actor_role, after FROM audit_log WHERE action = 'person.purge' ORDER BY after->>'outcome', subject_id`)).toHaveLength(3);
+      expect(await rows(c, `SELECT subject_id, actor_role, after FROM audit_log WHERE action = 'person.purge' ORDER BY after->>'outcome', subject_id`)).toHaveLength(4);
       expect(await value<number>(c, `SELECT count(*)::int FROM audit_log WHERE action = 'person.purge' AND (before::text ~* 'demo' OR after::text ~* 'demo' OR reason ~* 'demo')`)).toBe(0);
     });
   });
@@ -213,6 +230,46 @@ describe('purgeThirdPartyRecords', () => {
     }
     expect(await purgeThirdPartyRecords(db, { batchSize: 2 })).toMatchObject({ removed: 5, deleted: 0 });
     expect(await purgeThirdPartyRecords(db, { batchSize: 2 })).toMatchObject({ removed: 0 });
+  });
+
+  it('takes the evidence of the record itself with it, and clears what a removed record said about the person', async () => {
+    const gone = await made('ev-alone');
+    const kept = await made('ev-removed', { set: { country_code: 'BG', training_start_year: '2001', birth_date: '1990-01-01' } });
+    await relation(kept, 'withdrawn', 70);
+    const file = (n: number) =>
+      withClient(testDb.url, (c) =>
+        value<string>(
+          c,
+          `INSERT INTO evidence_file (storage_key, sha256, original_sha256, mime, size_bytes, scan_status, original_name) VALUES ($1, $2, $2, 'application/pdf', 100, 'clean', $3) RETURNING id::text`,
+          [`evidence/demoperson${n}`, hex(900 + n), `demo-person-${n}.pdf`],
+        ),
+      );
+    const [onlyGone, shared, onlyKept] = [await file(1), await file(2), await file(3)] as [string, string, string];
+    await withClient(testDb.url, async (c) => {
+      const open = await value<string>(c, `INSERT INTO review_case (kind, status) VALUES ('historical_claim', 'open') RETURNING id::text`);
+      await c.query(`INSERT INTO evidence_link (evidence_file_id, person_id, note) VALUES ($1, $2, 'demo note'), ($3, $2, 'demo note'), ($4, $5, 'demo note')`, [onlyGone, gone, shared, onlyKept, kept]);
+      // One file is also evidence of a case that is still open: only the record's own link goes, the file stays.
+      await c.query(`INSERT INTO evidence_link (evidence_file_id, review_case_id) VALUES ($1, $2)`, [shared, open]);
+    });
+
+    await purgeThirdPartyRecords(db);
+    const store = memoryStore(['evidence/demoperson1', 'evidence/demoperson2', 'evidence/demoperson3']);
+    const result = await purgeEndedClaimData(db, { evidenceStore: store });
+    expect(result).toMatchObject({ files: 2, failed: 0 });
+    expect([...store.keys]).toEqual(['evidence/demoperson2']);
+    await withClient(testDb.url, async (c) => {
+      expect(await rows(c, `SELECT storage_key, deleted_at IS NOT NULL AS deleted, retention_until IS NOT NULL AS stamped FROM evidence_file WHERE storage_key LIKE 'evidence/demoperson%' ORDER BY storage_key`)).toEqual([
+        { storage_key: 'evidence/demoperson1', deleted: true, stamped: true },
+        { storage_key: 'evidence/demoperson2', deleted: false, stamped: false },
+        { storage_key: 'evidence/demoperson3', deleted: true, stamped: true },
+      ]);
+      expect(await value<number>(c, `SELECT count(*)::int FROM evidence_link WHERE person_id IN ($1, $2)`, [gone, kept])).toBe(0);
+      expect(await rows(c, `SELECT country_code, training_start_year, birth_date, photo_id, place_id FROM person WHERE id = $1`, [kept])).toEqual([
+        { country_code: null, training_start_year: null, birth_date: null, photo_id: null, place_id: null },
+      ]);
+    });
+    // Idempotent.
+    expect(await purgeEndedClaimData(db, { evidenceStore: store })).toMatchObject({ files: 0, failed: 0 });
   });
 
   it('knows every table that refers to a person: a new foreign key must be sorted in', async () => {
@@ -456,7 +513,8 @@ describe('purgeEndedClaimData', () => {
       const purged = async (label: string) => value<boolean>(c, `SELECT bool_and(body = $1) FROM review_note WHERE review_case_id = $2`, [NOTE_PURGED, cases[label]]);
       expect(await purged('refused-old')).toBe(true);
       for (const label of ['withdrawn-recent', 'approved', 'open', 'report', 'refused-but-verified']) expect(await purged(label), label).toBe(false);
-      expect(await value<number>(c, `SELECT count(*)::int FROM audit_log WHERE action = 'evidence.purge'`)).toBe(2);
+      // Of the files of this describe (the purge of a third party's record, above, deleted two more).
+      expect(await value<number>(c, `SELECT count(*)::int FROM audit_log WHERE action = 'evidence.purge' AND subject_id = ANY ($1::text[])`, [Object.values(files).map((f) => f.id)])).toBe(2);
     });
   });
 

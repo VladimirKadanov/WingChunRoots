@@ -51,11 +51,12 @@ import {
   TRIAL_REPLY_MAX,
 } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
-import { beginLedger, type LedgerHandle } from '../erasure-ledger';
+import type { LedgerHandle } from '../erasure-ledger';
 import type { Transaction } from '../jobs/outbox';
 import { missingRequiredConsents } from './consent';
 import type { RequestMeta } from './context';
 import { isServiceError, pgErrorOf, ServiceError } from './errors';
+import { beginLedgerOrRefuse } from './ledger-guard';
 import { notify, notifyEach } from './notify';
 import { organizationAdminsOf } from './school-activity';
 import { countSchoolEvent } from './school-stats';
@@ -543,10 +544,11 @@ export async function withdrawTrial(principal: Principal | null, raw: z.input<ty
         .for('update');
       if (!row) throw new ServiceError('NOT_FOUND', NO_INQUIRY);
       if (row.status === 'withdrawn') return { id: row.id, schoolId: row.schoolId, status: row.status, replayed: true };
-      if (row.status !== 'open') throw new ServiceError('CONFLICT', `This request is ${TRIAL_STATUS_LABELS[row.status].toLowerCase()} by the school already, so it cannot be withdrawn.`);
+      if (row.scrubbedAt !== null) throw new ServiceError('CONFLICT', 'This request has ended and its details are already removed, so there is nothing to withdraw.');
+      if (row.status !== 'open') throw new ServiceError('CONFLICT', `This request has been ${TRIAL_STATUS_LABELS[row.status].toLowerCase()}, so it cannot be withdrawn.`);
       // The ledger line goes down before the change, inside the transaction: when it cannot be written the request
       // stays as it is (src/server/erasure-ledger.ts), because a withdrawal that a restore cannot repeat is not one.
-      ledger.handle = await beginLedger('trial.withdraw', row.id);
+      ledger.handle = await beginLedgerOrRefuse('trial.withdraw', row.id, 'member');
       const now = new Date();
       await tx
         .update(trialInquiry)

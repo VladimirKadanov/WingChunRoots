@@ -30,7 +30,8 @@
 // travels with the archives it corrects and is covered by the same off-site copy. A line is a single
 // O_APPEND write of well under a page, flushed with fsync; the folder is 0700 and the file 0600.
 
-import { mkdir, open, readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, open, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import * as z from 'zod';
@@ -107,9 +108,33 @@ export async function appendLedger(entry: { op: LedgerOperation; id: string; sta
       await handle.close();
     }
   } catch (error) {
-    throw new ErasureLedgerError(
-      `The erasure ledger cannot be written (${errorCode(error)}) in ${dir}, so nothing was changed. Check ERASURE_LEDGER_DIR and the folder's permissions (docs/operations/backup-and-restore.md).`,
-    );
+    throw cannotWrite(dir, error);
+  }
+}
+
+const cannotWrite = (dir: string, error: unknown): ErasureLedgerError =>
+  new ErasureLedgerError(
+    `The erasure ledger cannot be written (${errorCode(error)}) in ${dir}, so nothing was changed. Check ERASURE_LEDGER_DIR and the folder's permissions (docs/operations/backup-and-restore.md).`,
+  );
+
+/**
+ * A look, before a first irreversible step, at whether the ledger could be written: the folder can be made
+ * and written to, and the file (when there is one) too. It writes nothing. `begin` itself is still the
+ * check that counts, inside the transaction; this only lets a caller refuse early, before it has done
+ * something that the refusal cannot take back (ending a subscription). Throws ErasureLedgerError.
+ */
+export async function checkLedgerWritable(options: Pick<LedgerOptions, 'dir'> = {}): Promise<void> {
+  const dir = options.dir ?? ledgerDir();
+  try {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await access(dir, constants.W_OK);
+    try {
+      await access(path.join(dir, LEDGER_FILE), constants.W_OK);
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+    }
+  } catch (error) {
+    throw cannotWrite(dir, error);
   }
 }
 

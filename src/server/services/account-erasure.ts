@@ -60,7 +60,7 @@ import { erasedEmail, isErasedEmail } from '../auth/suspension';
 import { EVENTS_TAG, invalidatePublic, ORGANIZATIONS_TAG, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { beginLedger, type LedgerHandle } from '../erasure-ledger';
+import type { LedgerHandle } from '../erasure-ledger';
 import {
   authUser,
   event,
@@ -100,6 +100,7 @@ import { lockAccount } from './account-lock';
 import { endSubscriptionsBeforeDeletion } from './billing-subject';
 import type { RequestMeta } from './context';
 import { isServiceError, ServiceError } from './errors';
+import { beginLedgerOrRefuse, requireLedgerWritable } from './ledger-guard';
 import { queueRecomputeForPerson } from './lineage-membership';
 import { notify } from './notify';
 import { deleteCertificateFiles } from './passport';
@@ -701,7 +702,7 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
   // Every refusal is behind us. The ledger line goes down BEFORE the first change, inside this
   // transaction: when it cannot be written the erasure is refused and nothing changes, because an
   // erasure that no restore can repeat is worse than a delayed one (src/server/erasure-ledger.ts).
-  if (!request.skipLedger) ledger.handle = await beginLedger('account.erase', userId);
+  if (!request.skipLedger) ledger.handle = await beginLedgerOrRefuse('account.erase', userId, 'operator');
 
   // 2. The profile: the account's own record.
   const [own] = await tx
@@ -911,6 +912,8 @@ async function endSubscriptionsFirst(request: ErasureRequest): Promise<void> {
   if (!userId) return;
   const [account] = await db.select({ email: authUser.email, role: authUser.role }).from(authUser).where(eq(authUser.id, userId));
   if (!account || account.role !== 'user' || isErasedEmail(account.email) || userId === request.actor?.user.id) return;
+  // Ending a subscription cannot be taken back: when the ledger cannot be written, the transaction would refuse, so refuse first.
+  if (!request.skipLedger) await requireLedgerWritable('account.erase', 'operator');
   await endSubscriptionsBeforeDeletion(db, userId);
 }
 

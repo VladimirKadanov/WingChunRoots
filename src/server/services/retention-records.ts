@@ -12,7 +12,9 @@
 //                           invitation, claim or request about it ended without a verified link.
 //                           Nothing with a live tie is touched. Where a relationship still refers to
 //                           the record (the history of relationships is append-only), the record
-//                           stays as a removed, nameless row.
+//                           stays as a removed, nameless row, without the country, city, start year,
+//                           birth date and photo it held. A file that only the record's own evidence
+//                           links held is due at once (retention_until) and deleted by the evidence step.
 //   record_revision         the before and after text of a revision is redacted after 13 months (who,
 //                           when, which fields, the reason and the case stay): the database function
 //                           redact_record_revisions(), which is all app_rw may do to that table.
@@ -117,7 +119,14 @@ const NO_LIVE_TIES: SQL = sql.join(
 const ENDED_AT: SQL = sql.raw(`greatest(
     p.created_at,
     (SELECT max(r.updated_at) FROM teaching_relationship r WHERE r.teacher_person_id = p.id OR r.student_person_id = p.id),
-    (SELECT max(CASE i.status WHEN 'accepted' THEN coalesce(i.accepted_at, i.updated_at) WHEN 'revoked' THEN i.created_at ELSE i.expires_at END)
+    (SELECT max(CASE i.status
+                  WHEN 'accepted' THEN coalesce(i.accepted_at, i.updated_at)
+                  -- Revoked: the last change of the row, as retention.ts reads it, while the address is still there. Erasing
+                  -- the address (30 days later) touches the row again, so after that its own time says nothing; the
+                  -- withdrawal or the newer invitation that revoked it is counted by the other terms.
+                  WHEN 'revoked' THEN CASE WHEN i.email IS NOT NULL THEN i.updated_at END
+                  ELSE i.expires_at
+                END)
        FROM invitation i WHERE i.person_id = p.id),
     (SELECT max(c.updated_at) FROM person_claim c WHERE c.person_id = p.id),
     (SELECT max(rc.resolved_at) FROM review_case rc WHERE rc.person_id = p.id))`);
@@ -187,6 +196,14 @@ async function purgeOne(db: Database, id: string): Promise<{ outcome: PurgeOutco
       UPDATE invitation SET email = NULL, status = CASE WHEN status = 'pending' THEN 'expired' ELSE status END, updated_at = now()
        WHERE person_id = ${id}::uuid AND (email IS NOT NULL OR status = 'pending')`);
 
+    // A file that only this record's own links hold (an archival edit's evidence) has no reason to stay once the
+    // record goes: it is due now, and purgeEndedClaimData() deletes the object once the links are gone.
+    await tx.execute(sql`
+      UPDATE evidence_file f SET retention_until = now(), updated_at = now()
+       WHERE f.deleted_at IS NULL
+         AND EXISTS (SELECT 1 FROM evidence_link l WHERE l.evidence_file_id = f.id AND l.person_id = ${id}::uuid)
+         AND NOT EXISTS (SELECT 1 FROM evidence_link l WHERE l.evidence_file_id = f.id AND (l.person_id IS NULL OR l.person_id <> ${id}::uuid))`);
+
     // Delete the record, with the names, search keys, biography, claims and invitations that cascade.
     let outcome: PurgeOutcome = 'deleted';
     await tx.execute(sql`SAVEPOINT purge_person`);
@@ -203,11 +220,16 @@ async function purgeOne(db: Database, id: string): Promise<{ outcome: PurgeOutco
       await tx.execute(sql`DELETE FROM person_name_key WHERE person_id = ${id}::uuid`);
       await tx.execute(sql`DELETE FROM person_bio WHERE person_id = ${id}::uuid`);
       await tx.execute(sql`DELETE FROM person_claim WHERE person_id = ${id}::uuid`);
-      await tx.execute(sql`UPDATE evidence_link SET note = NULL, updated_at = now() WHERE person_id = ${id}::uuid AND note IS NOT NULL`);
+      // The record's own evidence links go (the files are stamped above, or stay for a link of something else).
+      await tx.execute(sql`DELETE FROM evidence_link WHERE person_id = ${id}::uuid`);
       await tx.execute(sql`SELECT redact_person_revisions(${id}::uuid)`);
-      // The slug came from the name: it goes too. 'removed-' + the id's 32 hex digits matches the slug format.
+      // The slug came from the name: it goes too ('removed-' + the id's 32 hex digits matches the slug format), and
+      // so does everything else the record said about the person.
       await tx.execute(sql`
-        UPDATE person SET slug = 'removed-' || replace(id::text, '-', ''), deleted_at = now(), updated_at = now() WHERE id = ${id}::uuid`);
+        UPDATE person
+           SET slug = 'removed-' || replace(id::text, '-', ''), deleted_at = now(), updated_at = now(),
+               country_code = NULL, place_id = NULL, training_start_year = NULL, birth_date = NULL, photo_id = NULL
+         WHERE id = ${id}::uuid`);
     }
     await writeAudit(tx, {
       action: 'person.purge',
@@ -323,8 +345,9 @@ const CASE_ENDED_AT = sql.raw(`
 /**
  * The evidence files whose every link is to a claim that ended without a verified link (a case
  * refused or withdrawn, or a relationship rejected or withdrawn), with the time they are due: the end
- * of the last of those claims + 90 days. A file with no link, with a link to a person's record
- * (an archival edit), or to anything still open or verified is not in it.
+ * of the last of those claims + 90 days. A file with a link to a person's record (an archival edit),
+ * or to anything still open or verified is not in it; nor is a file with no link, unless the purge of a
+ * third party's record left it with none and stamped it (the second SELECT).
  */
 const ENDED_EVIDENCE: SQL = sql`
   SELECT s.file_id, max(s.ended_at) + make_interval(days => ${ENDED_CLAIM_RETENTION_DAYS}) AS due_at
@@ -340,7 +363,14 @@ const ENDED_EVIDENCE: SQL = sql`
         LEFT JOIN review_case c ON c.id = l.review_case_id
         LEFT JOIN teaching_relationship cr ON cr.id = c.relationship_id) s
    GROUP BY s.file_id
-  HAVING bool_and(s.ended_at IS NOT NULL)`;
+  HAVING bool_and(s.ended_at IS NOT NULL)
+  UNION ALL
+  -- A file the purge of a third party's record left with no link at all (its only links were to that record):
+  -- purgeOne() gave it retention_until = the moment of the purge, and the object goes at the next step.
+  SELECT f.id AS file_id, f.retention_until AS due_at
+    FROM evidence_file f
+   WHERE f.deleted_at IS NULL AND f.retention_until IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM evidence_link l WHERE l.evidence_file_id = f.id)`;
 
 export interface ClaimDataPurgeResult {
   /** Evidence files whose retention_until was set or changed. */

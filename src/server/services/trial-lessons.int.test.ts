@@ -335,12 +335,13 @@ describe('trial lesson requests: the sender withdraws one (review 2026-11, ADR 0
     expect((await trialOptions(student.principal, { slug: s.slug })).state).toBe('ready');
     expect(await codeOf(requestTrial(student.principal, { schoolId: s.id, contactMethod: 'email' }, meta))).toBe('ok');
     // The school cannot answer, decline or close it any more.
+    // Started one at a time: a call started early and awaited later would reject with nobody listening.
     for (const call of [
-      answerTrial(s.sifu.principal, { inquiryId: sent.id, reply: null }, meta),
-      declineTrial(s.sifu.principal, { inquiryId: sent.id, reason: null }, meta),
-      closeTrial(s.sifu.principal, { inquiryId: sent.id }, meta),
+      () => answerTrial(s.sifu.principal, { inquiryId: sent.id, reply: null }, meta),
+      () => declineTrial(s.sifu.principal, { inquiryId: sent.id, reason: null }, meta),
+      () => closeTrial(s.sifu.principal, { inquiryId: sent.id }, meta),
     ]) {
-      expect(await codeOf(call)).toBe('CONFLICT');
+      expect(await codeOf(call())).toBe('CONFLICT');
     }
   });
 
