@@ -14,6 +14,7 @@ import { SealError } from '../mail/seal';
 import type { Mailer } from '../mail/types';
 import { rebuildAllKeys } from '../search/store';
 import { expireOrganizationImports, purgeExpiredEmailAddresses, purgeExpiredSessions, purgeOldNotifications, purgeOldTrialData, purgeUnconfirmedAccounts } from '../services/retention';
+import { closeStaleTrialInquiries, nullOldIpHmacs, purgeEndedClaimData, purgeThirdPartyRecords, redactOldRevisions } from '../services/retention-records';
 import { logger } from '../log';
 import { TemplateDataError } from '../templates/email';
 import { eventsNotifyHandler } from './event-notify';
@@ -125,27 +126,69 @@ function failureCode(error: unknown): string {
 export function retentionPurgeHandler(db: Database, log: (line: string) => void) {
   return async (jobs: JobWithMetadata<JobData[typeof QUEUE.retentionPurge]>[]): Promise<void> => {
     for (const job of jobs) {
-      try {
+      // Each step runs even when another fails (review 2026-11, docs/adr/0032-retention-and-withdrawal.md): a
+      // step that fails every night (an object store that does not answer, a broken old row) must not keep
+      // the others from running, and the retention periods are promises. The first failure is rethrown at
+      // the end, so that pg-boss retries the job; every step can run twice.
+      let firstFailure: unknown = null;
+      const step = async (name: string, run: () => Promise<string>): Promise<void> => {
+        try {
+          log(`${QUEUE.retentionPurge}: ${await run()}`);
+        } catch (error) {
+          log(`${QUEUE.retentionPurge}: step ${name} failed (${failureCode(error)})`);
+          firstFailure ??= error;
+        }
+      };
+      await step('addresses', async () => {
         const result = await purgeExpiredEmailAddresses(db);
-        log(`${QUEUE.retentionPurge}: erased ${result.emailDeliveries} delivery address(es), ${result.invitations} invitation address(es)`);
+        return `erased ${result.emailDeliveries} delivery address(es), ${result.invitations} invitation address(es)`;
+      });
+      await step('sign-in data', async () => {
         const signIn = await purgeExpiredSessions(db);
-        log(
-          `${QUEUE.retentionPurge}: deleted ${signIn.sessions} expired session(s), ${signIn.verifications} expired verification value(s), ` +
-            `${signIn.throttles} expired throttle row(s)`,
-        );
+        return `deleted ${signIn.sessions} expired session(s), ${signIn.verifications} expired verification value(s), ${signIn.throttles} expired throttle row(s)`;
+      });
+      await step('unconfirmed accounts', async () => {
         const unconfirmed = await purgeUnconfirmedAccounts(db);
-        log(`${QUEUE.retentionPurge}: deleted ${unconfirmed.accounts} unconfirmed account(s), kept ${unconfirmed.kept} still referred to`);
-        // M18 (DEFAULT M18, question 3): read notices after 180 days, unread ones after 365.
+        return `deleted ${unconfirmed.accounts} unconfirmed account(s), kept ${unconfirmed.kept} still referred to`;
+      });
+      // M18 (DEFAULT M18, question 3): read notices after 180 days, unread ones after 365.
+      await step('notifications', async () => {
         const notices = await purgeOldNotifications(db);
-        log(`${QUEUE.retentionPurge}: deleted ${notices.notifications} old notification(s)`);
-        // M21: closed trial lesson inquiries after 365 days, school counters after 400.
+        return `deleted ${notices.notifications} old notification(s)`;
+      });
+      // M21: closed trial lesson inquiries after 365 days, school counters after 400.
+      await step('trial data', async () => {
         const trial = await purgeOldTrialData(db);
-        log(`${QUEUE.retentionPurge}: deleted ${trial.inquiries} closed trial lesson request(s), ${trial.counters} old school counter(s)`);
-        // M24: organization import previews past their 24 hours (their rows' data cleared).
+        return `deleted ${trial.inquiries} closed trial lesson request(s), ${trial.counters} old school counter(s)`;
+      });
+      // M24: organization import previews past their 24 hours (their rows' data cleared).
+      await step('organization imports', async () => {
         const imports = await expireOrganizationImports(db);
-        log(`${QUEUE.retentionPurge}: ended ${imports.imports} expired organization import preview(s)`);
-      } catch (error) {
-        const code = failureCode(error);
+        return `ended ${imports.imports} expired organization import preview(s)`;
+      });
+      // Review 2026-11: third-party records, ended claims, revisions, ip_hmac and unanswered trial requests.
+      await step('third-party records', async () => {
+        const r = await purgeThirdPartyRecords(db);
+        return `deleted ${r.deleted} and removed ${r.removed} third-party record(s), withdrew ${r.requestsWithdrawn} request(s) waiting for them`;
+      });
+      await step('ended claims', async () => {
+        const r = await purgeEndedClaimData(db);
+        return `set the retention of ${r.stamped} evidence file(s), deleted ${r.files} (${r.failed} not deleted), removed the text of ${r.notes} review note(s)`;
+      });
+      await step('record revisions', async () => {
+        const r = await redactOldRevisions(db);
+        return `redacted the text of ${r.revisions} old record revision(s)`;
+      });
+      await step('ip_hmac', async () => {
+        const r = await nullOldIpHmacs(db);
+        return `removed ${r.audit} old audit ip_hmac value(s), ${r.sessions} old session value(s)`;
+      });
+      await step('open trial requests', async () => {
+        const r = await closeStaleTrialInquiries(db);
+        return `closed and scrubbed ${r.stale} unanswered and ${r.schoolGone} orphaned trial lesson request(s)`;
+      });
+      if (firstFailure !== null) {
+        const code = failureCode(firstFailure);
         const last = job.retryCount >= job.retryLimit;
         log(
           `${QUEUE.retentionPurge}: job ${job.id}: attempt ${job.retryCount + 1} of ${job.retryLimit + 1} failed (${code})` +

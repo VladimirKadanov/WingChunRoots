@@ -11420,7 +11420,8 @@
                 "open",
                 "answered",
                 "declined",
-                "closed"
+                "closed",
+                "withdrawn"
               ]
             },
             "allowEmptyValue": true,
@@ -11588,6 +11589,59 @@
       "post": {
         "operationId": "trial.close",
         "summary": "Close an open or answered request; the sender is not told; audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inquiryId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "inquiryId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trial-lessons/withdraw": {
+      "post": {
+        "operationId": "trial.withdraw",
+        "summary": "Withdraw your own open trial lesson request: its state becomes withdrawn and your name, contact, times and message are removed at once; the school is not told; audited",
         "requestBody": {
           "required": true,
           "content": {

@@ -36,7 +36,11 @@
 #      drill, so an archive made without a family's files cannot report green;
 #   9. the Better Auth tables are there;
 #  10. the private tables are there: the evidence records (M10a), the invitations, claims, reports
-#      and review history (M10b), the exact school locations (M11) and the audit log.
+#      and review history (M10b), the exact school locations (M11) and the audit log;
+#  11. the erasure replay (review 2026-11, docs/adr/0032-retention-and-withdrawal.md): a fictional
+#      account is added to the restored copy, a ledger folder of the drill's own says it was erased
+#      after the archive was taken, and `pnpm erasures:replay` (a dry run first, then --apply, then
+#      again) must leave it unchanged, remove it, and find nothing more to do.
 #
 # Prints the restore time and ends with "RESTORE DRILL: PASS ..." or exits 1. Never prints a URL,
 # a password, a name or a storage key.
@@ -64,7 +68,7 @@ for arg in "$@"; do
   case "$arg" in
     --test-database) use_test=1 ;;
     -h | --help)
-      sed -n '2,41p' "$0"
+      sed -n '2,46p' "$0"
       exit 0
       ;;
     -*)
@@ -75,7 +79,7 @@ for arg in "$@"; do
   esac
 done
 
-for name in DATABASE_URL TEST_DATABASE_URL BACKUP_DIR PG_CONTAINER DRILL_TARGET DRILL_IMAGE RESTORE_RTO_SECONDS DRILL_EVIDENCE_SAMPLE BACKUP_AGE_IDENTITY; do
+for name in DATABASE_URL TEST_DATABASE_URL BACKUP_DIR PG_CONTAINER DRILL_TARGET DRILL_IMAGE RESTORE_RTO_SECONDS DRILL_EVIDENCE_SAMPLE BACKUP_AGE_IDENTITY DB_APP_RW_PASSWORD; do
   if [ -z "${!name:-}" ] && [ -f .env ]; then
     value="$(dotenv_value "$name")"
     if [ -n "$value" ]; then export "$name=$value"; fi
@@ -134,6 +138,11 @@ dump_path=""
 restore_log=""
 restore_file="$dump"
 scratch=""
+ledger_dir=""
+# Where the replay of check 11 reaches the restored copy from this machine, and as which password.
+replay_host="$PG_URL_HOST"
+replay_port="$PG_URL_PORT"
+replay_password="${DB_APP_RW_PASSWORD:-}"
 
 # The error lines of a pg_restore log, without anything that can quote row data: DETAIL, CONTEXT,
 # HINT, LINE and "Command was" lines are dropped; quoted literals, key values "(k)=(v)" and a value
@@ -149,6 +158,7 @@ cleanup() {
   set +e
   [ -n "$restore_log" ] && rm -f "$restore_log"
   [ -n "$scratch" ] && rm -rf "$scratch"
+  [ -n "$ledger_dir" ] && rm -rf "$ledger_dir"
   if [ -n "$drill_container" ]; then
     docker rm -f "$drill_container" >/dev/null 2>&1
   else
@@ -193,8 +203,9 @@ case "$target" in
     platform=()
     [ "$image" = "$DEFAULT_DRILL_IMAGE" ] && platform=(--platform linux/amd64)
     drill_password="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(18).toString("hex"))')"
+    # The port is published on the loopback only, for check 11: `pnpm erasures:replay` runs on this machine.
     POSTGRES_PASSWORD="$drill_password" POSTGRES_USER="$drill_user" docker run -d --rm --name "$drill_container" ${platform[@]+"${platform[@]}"} \
-      --shm-size 256m -e POSTGRES_PASSWORD -e POSTGRES_USER -e POSTGRES_DB=postgres \
+      -p 127.0.0.1::5432 --shm-size 256m -e POSTGRES_PASSWORD -e POSTGRES_USER -e POSTGRES_DB=postgres \
       -e "POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C.UTF-8" "$image" >/dev/null
     ready=0
     for _ in $(seq 1 120); do
@@ -210,6 +221,12 @@ case "$target" in
     PG_URL_USER="$drill_user"
     PG_URL_PASSWORD="$drill_password"
     admin_db=postgres
+    mapped="$(docker port "$drill_container" 5432/tcp | head -n 1)"
+    [ -n "$mapped" ] || fail "the temporary database container has no published port"
+    replay_host=127.0.0.1
+    replay_port="${mapped##*:}"
+    # The roles are NOLOGIN here (below): check 11 gives app_rw a throwaway password in this throwaway container.
+    replay_password="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(18).toString("hex"))')"
     ;;
   server) admin_db="$source_db" ;;
   *) fail "DRILL_TARGET must be container or server" ;;
@@ -423,5 +440,38 @@ for table in "${PRIVATE_TABLES[@]}"; do
 done
 [ "${#missing[@]}" -eq 0 ] || fail "private tables missing: ${missing[*]}"
 echo "restore-drill: private tables (evidence, invitations, claims, reports, review history, school locations, audit): ${#PRIVATE_TABLES[@]} present"
+
+# 11. The erasure replay ----------------------------------------------------------------------------
+# A backup brings back what was erased after the dump. The ledger (src/server/erasure-ledger.ts) is the
+# record outside the database, and `pnpm erasures:replay` repeats it. Here a fictional account is added to
+# the restored copy, a ledger folder of the drill's own (never the real one) says it was erased after the
+# archive was taken, and the real command runs against the copy as app_rw: a dry run changes nothing,
+# --apply removes the account, and a second run finds nothing to do.
+[ -n "$replay_password" ] || fail "DB_APP_RW_PASSWORD is not set: the erasure replay connects to the restored copy as app_rw"
+if [ "$target" = container ]; then
+  printf "ALTER ROLE app_rw WITH LOGIN PASSWORD '%s'\n" "$replay_password" | pg_tool_on "$admin_db" psql -X -q -v ON_ERROR_STOP=1 >/dev/null
+fi
+ledger_dir="$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/wcr-drill-ledger.XXXXXXXXXX")"
+drill_email="demo-drill-erased-$RANDOM$RANDOM@example.test"
+drill_account="$(on_drill -c "INSERT INTO auth_user (email, email_verified) VALUES ('$drill_email', true) RETURNING id")" ||
+  fail "the fictional account for the erasure replay could not be added to the restored copy"
+drill_account="$(printf '%s' "$drill_account" | head -n 1 | tr -d '\r\n')"
+[[ "$drill_account" =~ ^[0-9a-f-]{36}$ ]] || fail "the fictional account for the erasure replay has no id"
+pnpm -s exec tsx scripts/ops/erasure-ledger-fixture.ts --dir "$ledger_dir" --id "$drill_account" >/dev/null ||
+  fail "the drill's ledger folder could not be written"
+replay() {
+  DATABASE_URL="postgres://app_rw@$replay_host:$replay_port/$drill_db" DB_APP_RW_PASSWORD="$replay_password" \
+    ERASURE_LEDGER_DIR="$ledger_dir" pnpm -s erasures:replay "$@" 2>&1
+}
+account_rows() { on_drill -c "SELECT count(*) FROM auth_user WHERE email = '$drill_email'"; }
+dry_out="$(replay)" || { printf '%s\n' "$dry_out" | sed 's/^/     /' >&2; fail "pnpm erasures:replay (dry run) stopped with an error"; }
+printf '%s\n' "$dry_out" | grep -q "$drill_account: present, would-erase" || { printf '%s\n' "$dry_out" | sed 's/^/     /' >&2; fail "the dry run does not list the erased account as one to carry out"; }
+[ "$(account_rows)" = 1 ] || fail "the dry run of pnpm erasures:replay changed the restored copy"
+apply_out="$(replay --apply)" || { printf '%s\n' "$apply_out" | sed 's/^/     /' >&2; fail "pnpm erasures:replay --apply stopped with an error"; }
+printf '%s\n' "$apply_out" | grep -q "$drill_account: present, erased" || { printf '%s\n' "$apply_out" | sed 's/^/     /' >&2; fail "pnpm erasures:replay --apply did not carry out the erasure"; }
+[ "$(account_rows)" = 0 ] || fail "the account erased after the archive is still in the restored copy after pnpm erasures:replay --apply"
+again_out="$(replay --apply)" || { printf '%s\n' "$again_out" | sed 's/^/     /' >&2; fail "a second pnpm erasures:replay --apply stopped with an error"; }
+printf '%s\n' "$again_out" | grep -Eq "$drill_account: (absent|already), nothing" || { printf '%s\n' "$again_out" | sed 's/^/     /' >&2; fail "a second pnpm erasures:replay --apply found something more to do"; }
+echo "restore-drill: erasure replay: an account erased after the archive is removed from the restored copy (dry run first, then --apply; a second run finds nothing)"
 
 echo "RESTORE DRILL: PASS — $base restored in ${duration_s}s (RTO ${rto}s, DEFAULT D24); $table_count tables, $total_rows rows, $fks foreign keys, $edge_count verified edges"

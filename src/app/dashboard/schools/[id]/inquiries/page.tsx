@@ -37,6 +37,7 @@ const FILTERS = [
   ['answered', 'Answered'],
   ['declined', 'Declined'],
   ['closed', 'Closed'],
+  ['withdrawn', 'Withdrawn'],
 ] as const;
 type Filter = (typeof FILTERS)[number][0];
 
@@ -63,7 +64,7 @@ export default async function TrialInboxPage({ params, searchParams }: Props) {
   if (missing) return <SchoolNotFound />;
   if (!view) return <LoadError {...TRIAL_INBOX_LOAD_ERROR} retryHref={inbox} />;
   const rows = await Promise.all(view.inquiries.map(async (q) => ({ ...q, initial: await readFormResult(trialForm(q.id), query.outcome) })));
-  const total = view.counts.open + view.counts.answered + view.counts.declined + view.counts.closed;
+  const total = view.counts.open + view.counts.answered + view.counts.declined + view.counts.closed + view.counts.withdrawn;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -72,7 +73,8 @@ export default async function TrialInboxPage({ params, searchParams }: Props) {
       lead={
         <>
           People who asked {view.school.name} for a trial lesson. You see their profile name and the contact they chose; use it only to answer
-          them. Closed requests are deleted after a year.{' '}
+          them. A sender can withdraw a request, and one that nobody answers is closed after 90 days: both lose the name, contact and message. Closed
+          requests are deleted after a year.{' '}
           {view.role === 'owner' ? (
             <Link href={page} className="link inline-flex min-h-11 items-center">
               Back to the listing
@@ -113,25 +115,35 @@ export default async function TrialInboxPage({ params, searchParams }: Props) {
           {rows.map((q) => (
             <li key={q.id} className="grid gap-2 border-b border-border-subtle py-5" data-testid="trial-inquiry" data-status={q.status}>
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-display text-lg [overflow-wrap:anywhere]" translate="no">
-                  {q.senderName}
-                </span>
+                {q.senderName ? (
+                  <span className="font-display text-lg [overflow-wrap:anywhere]" translate="no">
+                    {q.senderName}
+                  </span>
+                ) : (
+                  <span className="font-display text-lg text-fg-muted">Name removed</span>
+                )}
                 <TrialStatusTag status={q.status} label={q.statusLabel} />
               </p>
               <p className="text-sm text-fg-muted">
                 Sent {formatDay(q.createdAt)}
                 {q.closedAt ? ` · ${q.statusLabel.toLowerCase()} ${formatDay(q.closedAt)}` : ''}
               </p>
-              <p className="text-sm">
-                {q.contactMethod === 'phone' ? 'Phone: ' : 'E-mail: '}
-                <a
-                  href={q.contactMethod === 'phone' ? `tel:${q.contactValue.replace(/[^\d+]/g, '')}` : `mailto:${q.contactValue}`}
-                  className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]"
-                  data-testid="trial-contact"
-                >
-                  {q.contactValue}
-                </a>
-              </p>
+              {q.contactValue ? (
+                <p className="text-sm">
+                  {q.contactMethod === 'phone' ? 'Phone: ' : 'E-mail: '}
+                  <a
+                    href={q.contactMethod === 'phone' ? `tel:${q.contactValue.replace(/[^\d+]/g, '')}` : `mailto:${q.contactValue}`}
+                    className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]"
+                    data-testid="trial-contact"
+                  >
+                    {q.contactValue}
+                  </a>
+                </p>
+              ) : (
+                <p className="text-sm text-fg-muted" data-testid="trial-scrubbed">
+                  {q.status === 'withdrawn' ? 'The sender withdrew this request. Their name, contact and message are removed.' : 'Closed without an answer. The sender’s name, contact and message are removed.'}
+                </p>
+              )}
               {q.preferredTimes ? <p className="text-sm">Times: {q.preferredTimes}</p> : null}
               {q.message ? <p className="whitespace-pre-line [overflow-wrap:anywhere]">{q.message}</p> : null}
               {q.reply ? (
@@ -141,7 +153,7 @@ export default async function TrialInboxPage({ params, searchParams }: Props) {
                 </div>
               ) : null}
               {q.status === 'open' || q.status === 'answered' ? (
-                <InquiryActions schoolId={view.school.id} inquiryId={q.id} status={q.status} sender={q.senderName} replyMax={view.limits.reply} initial={q.initial} />
+                <InquiryActions schoolId={view.school.id} inquiryId={q.id} status={q.status} sender={q.senderName ?? 'the sender'} replyMax={view.limits.reply} initial={q.initial} />
               ) : null}
             </li>
           ))}

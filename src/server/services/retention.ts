@@ -65,7 +65,7 @@ export interface RetentionResult {
 }
 
 /** Runs `statement(limit)` until a batch changes fewer than `batchSize` rows; returns the total. */
-async function inBatches(db: Database, batchSize: number, statement: (limit: number) => SQL): Promise<number> {
+export async function inBatches(db: Database, batchSize: number, statement: (limit: number) => SQL): Promise<number> {
   let total = 0;
   for (;;) {
     const result = await db.execute(statement(batchSize));

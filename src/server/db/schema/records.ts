@@ -122,7 +122,10 @@ export const emailDelivery = pgTable(
 
 /**
  * Append-only audit log (plan §6.6). app_rw has SELECT and INSERT only, and a trigger refuses
- * UPDATE, DELETE and TRUNCATE for every role (custom migration *_roles_views_audit).
+ * UPDATE, DELETE and TRUNCATE for every role (custom migration *_roles_views_audit), with ONE
+ * exception (review 2026-11, docs/adr/0032-retention-and-withdrawal.md): a change that only sets
+ * ip_hmac to NULL, which null_old_audit_ip_hmac() (SECURITY DEFINER, owned by migrator, granted to
+ * app_rw) makes for rows older than the retention period of the HMAC.
  * ip_hmac = HMAC-SHA-256(secret key, IP) in hex: personal data with a retention period
  * (docs/data-model.md); a plain SHA-256 of an IPv4 address is reversible by enumeration.
  */
@@ -149,6 +152,8 @@ export const auditLog = pgTable(
   },
   (t) => [
     index('audit_log_occurred_at_idx').on(t.occurredAt),
+    // Review 2026-11: the retention job finds the rows whose ip_hmac is still set, oldest first.
+    index('audit_log_ip_hmac_idx').on(t.occurredAt).where(sql`${t.ipHmac} IS NOT NULL`),
     index('audit_log_subject_idx').on(t.subjectType, t.subjectId),
     index('audit_log_actor_user_id_idx').on(t.actorUserId),
     check('audit_log_action_format', sql`${t.action} ~ '^[a-z0-9_]+(\\.[a-z0-9_]+)+$'`),

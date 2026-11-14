@@ -388,6 +388,39 @@ describe('accounts.erase', () => {
     }
   });
 
+  it('redacts the text of the kept record’s archival revisions and keeps who, when, which fields and why', async () => {
+    const owner = await member('erase-revisions');
+    const other = await member('erase-revisions-other');
+    const superuser = new Client({ connectionString: testDb!.url });
+    await superuser.connect();
+    try {
+      const insert = (personId: string, reason: string) =>
+        superuser.query(
+          `INSERT INTO record_revision (person_id, source, changed, before, after, reason)
+           VALUES ($1, 'archival_edit', ARRAY['primaryName'], '{"primaryName":"Demo Old Name"}', '{"primaryName":"Demo New Name"}', $2)`,
+          [personId, reason],
+        );
+      await insert(owner.personId, 'Demo correction after a complaint.');
+      await insert(other.personId, 'Demo correction of someone else.');
+      const outcome = await eraseAccount({ actor: null, by: { userId: owner.account.id }, reason: REASON }, store);
+      expect(outcome.counts.revisionsRedacted).toBe(1);
+      const { rows } = await superuser.query(`SELECT person_id::text AS person_id, reason, changed, before, after FROM record_revision WHERE person_id = ANY($1::uuid[]) ORDER BY reason`, [[owner.personId, other.personId]]);
+      expect(rows).toEqual([
+        {
+          person_id: owner.personId,
+          reason: 'Demo correction after a complaint.',
+          changed: ['primaryName'],
+          before: { primaryName: '[redacted: 13 characters]', redacted: true },
+          after: { primaryName: '[redacted: 13 characters]', redacted: true },
+        },
+        // Another record's revisions are not touched.
+        { person_id: other.personId, reason: 'Demo correction of someone else.', changed: ['primaryName'], before: { primaryName: 'Demo Old Name' }, after: { primaryName: 'Demo New Name' } },
+      ]);
+    } finally {
+      await superuser.end();
+    }
+  });
+
   it('keeps a record held by staff held, and sets what a restore returns it to', async () => {
     const owner = await member('erase-held');
     const mod = await staff('erase-held-mod', 'moderator');

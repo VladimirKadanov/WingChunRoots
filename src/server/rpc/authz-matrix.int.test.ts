@@ -1321,6 +1321,15 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  {
+    // Review 2026-11: the sender withdraws their own open request (`owner` here is the sender; the school's account is the `party`).
+    path: 'trial.withdraw',
+    make: async () => {
+      const t = await trialInquiryOf();
+      return { owner: t.sender, party: t.school.owner, input: { inquiryId: t.inquiryId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   // M22: paid plans in test mode. `owner` holds the checkout or subscription; anyone else gets 404.
   { path: 'billing.mine', make: noInput, expect: own() },
   {
@@ -2405,6 +2414,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/schools/actions.ts#decideTrialAction', row: 'trial.answer', form: (i) => ({ ...same(i), decision: 'answer', schoolId: '00000000-0000-4000-8000-000000000000' }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#decideTrialAction', row: 'trial.decline', form: (i) => ({ inquiryId: String(i.inquiryId), reply: String(i.reason), decision: 'decline' }), roles: ['anonymous', 'party', 'owner'] },
   { action: 'src/app/dashboard/schools/actions.ts#decideTrialAction', row: 'trial.close', form: (i) => ({ ...same(i), decision: 'close' }), roles: ['anonymous', 'party', 'owner'] },
+  { action: 'src/app/dashboard/trial-lessons/actions.ts#withdrawTrialAction', row: 'trial.withdraw', form: same, roles: ['anonymous', 'party', 'owner'] },
   {
     action: 'src/app/dashboard/schools/actions.ts#updateScheduleAction',
     row: 'schools.updateSchedule',

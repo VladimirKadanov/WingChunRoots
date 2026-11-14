@@ -34,6 +34,7 @@ export const ISOLATED = [
   'src/server/forms/flash.test.ts',
   'src/server/forms/two-factor.test.ts',
   'src/server/rpc/api-parity.test.ts',
+  'src/server/services/ledger-guard.test.ts',
   'src/server/services/lineage-graph.test.ts',
   'src/server/services/organizations.test.ts',
 ];
@@ -45,6 +46,9 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     environment: 'node',
+    // An erasure writes the erasure ledger first and is refused when it cannot (src/server/erasure-ledger.ts):
+    // the tests that erase get a folder of their own, git-ignored, never the one of a real installation.
+    env: { ERASURE_LEDGER_DIR: fileURLToPath(new URL('./test-results/erasures', import.meta.url)) },
     projects: [
       {
         extends: true,

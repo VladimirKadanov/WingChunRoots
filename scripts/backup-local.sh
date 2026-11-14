@@ -100,6 +100,9 @@ case "$database" in *[!A-Za-z0-9_-]*) echo "backup: the database name has charac
 umask 077
 dir="${BACKUP_DIR:-backups}"
 mkdir -p "$dir"
+# The folder of the erasure ledger (src/server/erasure-ledger.ts), made here by the host user so that the
+# Compose web service, which mounts it read-write, does not leave Docker to create it as root.
+mkdir -p "$dir/erasures"
 # The folder may be listed (the Compose web service reads the names and sizes for /admin/system,
 # perhaps as another user id); every archive and evidence copy in it is the owner's alone (0600/0700).
 chmod 755 "$dir" 2>/dev/null || true
