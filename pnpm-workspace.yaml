@@ -29,6 +29,10 @@ allowBuilds:
 # releases). 25.12.0 is the newest release before that (docs/adr/0006-design-system.md).
 overrides:
   lighthouse>puppeteer-core: 25.12.0
+  # fast-uri 3.1.8 (react-email > conf > ajv) has GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr,
+  # GHSA-xhq7-xmqj-769h and GHSA-333x-w4r6-6crp; 3.1.9 is the patch release on the same line
+  # (docs/adr/0001-stack.md).
+  fast-uri@3: 3.1.9
 # Base UI 1.9.0 attaches its outside-press listeners even when pointer dismissal is disabled, and
 # each click then queries the whole document and forces style and layout (INP of a tap on the
 # explorer with its non-modal sheet open). The patch passes `outsidePress: false` in that case,

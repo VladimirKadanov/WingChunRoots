@@ -161,7 +161,7 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [extend-shallow](https://github.com/jonschlinkert/extend-shallow) | 2.0.1 | MIT | [text 26](#licence-text-26) |
 | [extend-shallow](https://github.com/jonschlinkert/extend-shallow) | 3.0.2 | MIT | [text 26](#licence-text-26) |
 | [fast-deep-equal](https://github.com/epoberezkin/fast-deep-equal#readme) | 3.1.3 | MIT | [text 3](#licence-text-3) |
-| [fast-uri](https://github.com/fastify/fast-uri) | 3.1.8 | BSD-3-Clause | [text 46](#licence-text-46) |
+| [fast-uri](https://github.com/fastify/fast-uri) | 3.1.9 | BSD-3-Clause | [text 46](#licence-text-46) |
 | [get-value](https://github.com/jonschlinkert/get-value) | 2.0.6 | MIT | [text 26](#licence-text-26) |
 | [gl-matrix](http://glmatrix.net/) | 3.4.4 | MIT | [text 2](#licence-text-2) |
 | [glob](https://github.com/isaacs/node-glob#readme) | 13.0.6 | BlueOak-1.0.0 | [text 47](#licence-text-47) |
@@ -206,7 +206,7 @@ Tailwind CSS is, because the CSS it generates ships. The same list is on the /le
 | [nanostores](https://github.com/nanostores/nanostores#readme) | 1.5.5 | MIT | [text 58](#licence-text-58) |
 | [negotiator](https://github.com/jshttp/negotiator#readme) | 0.6.3 | MIT | [text 24](#licence-text-24) |
 | [next](https://nextjs.org/) | 16.4.1 | MIT | [text 25](#licence-text-25) |
-| [nodemailer](https://nodemailer.com/) | 10.1.1 | MIT-0 | [text 59](#licence-text-59) |
+| [nodemailer](https://nodemailer.com/) | 10.1.7 | MIT-0 | [text 59](#licence-text-59) |
 | [non-error](https://github.com/sindresorhus/non-error#readme) | 0.1.0 | MIT | [text 35](#licence-text-35) |
 | [normalize-path](https://github.com/jonschlinkert/normalize-path) | 3.0.0 | MIT | [text 26](#licence-text-26) |
 | [nuqs](https://nuqs.dev/) | 2.10.2 | MIT | [text 3](#licence-text-3) |
@@ -3873,12 +3873,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 ### Licence text 46
 
-Used by: fast-uri 3.1.8
+Used by: fast-uri 3.1.9
 
 ```text
-Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae    (fast-uri 3.1.8)
-Copyright (c) 2021-present The Fastify team <https://github.com/fastify/fastify#team>    (fast-uri 3.1.8)
-All rights reserved.    (fast-uri 3.1.8)
+Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae    (fast-uri 3.1.9)
+Copyright (c) 2021-present The Fastify team <https://github.com/fastify/fastify#team>    (fast-uri 3.1.9)
+All rights reserved.    (fast-uri 3.1.9)
 ```
 
 ```text
@@ -4519,10 +4519,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### Licence text 59
 
-Used by: nodemailer 10.1.1
+Used by: nodemailer 10.1.7
 
 ```text
-Copyright (c) 2011-2023 Andris Reinman    (nodemailer 10.1.1)
+Copyright (c) 2011-2023 Andris Reinman    (nodemailer 10.1.7)
 ```
 
 ```text
