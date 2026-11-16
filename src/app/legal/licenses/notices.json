@@ -1226,7 +1226,7 @@
     },
     {
       "name": "fast-uri",
-      "version": "3.1.8",
+      "version": "3.1.9",
       "license": "BSD-3-Clause",
       "author": "Vincent Le Goff",
       "homepage": "https://github.com/fastify/fast-uri",
@@ -1586,7 +1586,7 @@
     },
     {
       "name": "nodemailer",
-      "version": "10.1.1",
+      "version": "10.1.7",
       "license": "MIT-0",
       "author": "Andris Reinman",
       "homepage": "https://nodemailer.com/",
@@ -3513,19 +3513,19 @@
       {
         "line": "Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae",
         "packages": [
-          "fast-uri 3.1.8"
+          "fast-uri 3.1.9"
         ]
       },
       {
         "line": "Copyright (c) 2021-present The Fastify team <https://github.com/fastify/fastify#team>",
         "packages": [
-          "fast-uri 3.1.8"
+          "fast-uri 3.1.9"
         ]
       },
       {
         "line": "All rights reserved.",
         "packages": [
-          "fast-uri 3.1.8"
+          "fast-uri 3.1.9"
         ]
       }
     ],
@@ -3578,7 +3578,7 @@
       {
         "line": "Copyright (c) 2011-2023 Andris Reinman",
         "packages": [
-          "nodemailer 10.1.1"
+          "nodemailer 10.1.7"
         ]
       }
     ],
