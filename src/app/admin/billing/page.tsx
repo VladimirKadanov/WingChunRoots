@@ -68,7 +68,7 @@ function Tile({ label, value, note, href, alert = false, testId }: { label: stri
   const body = (
     <>
       <span className="text-sm text-fg-muted">{label}</span>
-      <span className={cx('font-display text-[2rem] leading-none tabular', alert && 'text-danger')}>
+      <span className={cx('font-display text-2xl leading-none tabular', alert && 'text-danger')}>
         {alert ? <span aria-hidden="true">! </span> : null}
         {value}
       </span>
