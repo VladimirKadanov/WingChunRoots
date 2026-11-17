@@ -73,7 +73,7 @@ import { ConsentRequiredError, grantConsents, parseSignUpConsents } from '../ser
 import { requestMeta } from '../services/context';
 import { type SecurityKind, sendSecurityNotice } from '../services/security-notices';
 import { normalizeBackupCode } from './credentials';
-import { isPublicDeployment } from './env';
+import { demoSignInAllowed } from './env';
 import { clientIp, ipHmac } from './ip';
 import { passwordAttemptKey, rememberDevice } from './known-devices';
 import { isStaffRole } from './principal';
@@ -334,7 +334,7 @@ export const beforeHook = createAuthMiddleware(async (ctx) => {
   if (ctx.path === '/sign-in/email') {
     const email = bodyOf(ctx).email;
     if (typeof email !== 'string') return;
-    if (DEMO_ADDRESS.test(email.trim()) && isPublicDeployment()) throw wrongPassword();
+    if (DEMO_ADDRESS.test(email.trim()) && !demoSignInAllowed()) throw wrongPassword();
     await reservePasswordAttempt(ctx, email);
     return;
   }

@@ -1,0 +1,40 @@
+# Caddy on the password-protected staging server (deploy/staging/compose.staging.yml,
+# docs/operations/staging.md). STAGING_HOST is a name such as 203-0-113-7.sslip.io, which resolves
+# to the server's address without a domain of our own; Caddy gets its certificate from Let's Encrypt.
+#
+# /etc/caddy/auth.caddy holds `basic_auth { <user> <bcrypt hash> }`, written by staging.sh.
+
+(staging_headers) {
+	header {
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+}
+
+{$STAGING_HOST} {
+	import staging_headers
+	encode zstd gzip
+
+	# Health checks from outside (uptime monitors) need no password; the answer is only {"ok":…}.
+	handle /healthz {
+		reverse_proxy web:3000
+	}
+
+	handle {
+		import /etc/caddy/auth.caddy
+		reverse_proxy web:3000 {
+			# The password is for Caddy only; the app never sees it.
+			header_up -Authorization
+		}
+	}
+}
+
+# Mailpit: every e-mail the app sends (sign-up confirmations, notices) stays on the server and is
+# read here, behind the same password.
+mail.{$STAGING_HOST} {
+	import staging_headers
+	import /etc/caddy/auth.caddy
+	reverse_proxy mailpit:8025 {
+		header_up -Authorization
+	}
+}

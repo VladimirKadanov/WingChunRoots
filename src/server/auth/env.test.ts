@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { appUrl, isPublicDeployment, trustedProxies } from './env';
+import { appUrl, demoSignInAllowed, isPublicDeployment, trustedProxies } from './env';
 
 describe('appUrl', () => {
   it('defaults to localhost outside production and keeps only the origin', () => {
@@ -36,5 +36,23 @@ describe('trustedProxies and isPublicDeployment', () => {
     expect(isPublicDeployment({ NODE_ENV: 'production', APP_URL: 'http://127.0.0.1:3100' })).toBe(false);
     expect(trustedProxies({ NODE_ENV: 'production', APP_URL: 'http://127.0.0.1:3100' })).toEqual([]);
     expect(isPublicDeployment({ APP_URL: 'https://wingchunroots.example' })).toBe(false);
+  });
+});
+
+describe('demoSignInAllowed', () => {
+  const publicEnv = { NODE_ENV: 'production', APP_URL: 'https://wingchunroots.example' };
+
+  it('allows the demo accounts everywhere except a public deployment', () => {
+    expect(demoSignInAllowed({})).toBe(true);
+    expect(demoSignInAllowed({ NODE_ENV: 'production', APP_URL: 'http://127.0.0.1:3100' })).toBe(true);
+    expect(demoSignInAllowed(publicEnv)).toBe(false);
+  });
+
+  it('on a public deployment only with WCR_DEMO_SIGN_IN=1 (the staging server with demo data)', () => {
+    expect(demoSignInAllowed({ ...publicEnv, WCR_DEMO_SIGN_IN: '1' })).toBe(true);
+    expect(demoSignInAllowed({ ...publicEnv, WCR_DEMO_SIGN_IN: ' 1 ' })).toBe(true);
+    expect(demoSignInAllowed({ ...publicEnv, WCR_DEMO_SIGN_IN: '' })).toBe(false);
+    expect(demoSignInAllowed({ ...publicEnv, WCR_DEMO_SIGN_IN: 'true' })).toBe(false);
+    expect(demoSignInAllowed({ ...publicEnv, WCR_DEMO_SIGN_IN: '0' })).toBe(false);
   });
 });
