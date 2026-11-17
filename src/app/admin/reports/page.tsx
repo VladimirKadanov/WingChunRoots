@@ -141,9 +141,9 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
         </button>
       </form>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      <div className="mt-6 grid gap-5 2xl:grid-cols-[15rem_minmax(0,1fr)] 2xl:items-start">
         <nav aria-label="Reports">
-          <ul className="flex flex-wrap gap-2 lg:grid lg:gap-1" data-testid="report-list">
+          <ul className="flex flex-wrap gap-2 2xl:grid 2xl:gap-1" data-testid="report-list">
             {reports.map((r) => (
               <li key={r.key}>
                 <Link
@@ -153,11 +153,11 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
                   data-report={r.key}
                   className={cx(
                     'grid min-h-11 content-center gap-0.5 rounded-sm border px-3 py-2 text-ui',
-                    r.key === report ? 'border-fg bg-surface-2 font-semibold lg:border-l-[3px]' : 'border-border-subtle hover:bg-surface-1 lg:border-transparent',
+                    r.key === report ? 'border-fg bg-surface-2 font-semibold 2xl:border-l-[3px]' : 'border-border-subtle hover:bg-surface-1 2xl:border-transparent',
                   )}
                 >
                   <span>{r.label}</span>
-                  <span className="hidden text-sm font-normal text-fg-muted lg:block">{r.note}</span>
+                  <span className="hidden text-sm font-normal text-fg-muted 2xl:block">{r.note}</span>
                 </Link>
               </li>
             ))}
