@@ -24,7 +24,7 @@ export function Figure({ label, value, note, href }: { label: string; value: num
   const body = (
     <>
       <span className="text-sm text-fg-muted">{label}</span>
-      <span className="font-display text-[2rem] leading-none">{number.format(value)}</span>
+      <span className="font-display text-2xl leading-none">{number.format(value)}</span>
       {note ? <span className="text-sm text-fg-muted">{note}</span> : null}
     </>
   );
