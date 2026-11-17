@@ -592,6 +592,7 @@ const noInput = () => ({ input: undefined });
 
 const ROWS: Row[] = [
   // account
+  { path: 'account.menu', make: noInput, expect: own() },
   { path: 'account.me', make: noInput, expect: own() },
   { path: 'account.landing', make: () => ({ input: { next: '/dashboard' } }), expect: own() },
   { path: 'account.twoFactor', make: noInput, expect: own() },
@@ -618,6 +619,8 @@ const ROWS: Row[] = [
   },
   { path: 'search.query', make: () => ({ input: { q: 'Demo' } }), expect: everyone },
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.navCounts', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.dashboard', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   // M12: /admin/system, any staff role with a verified second factor (requireStaff2FA).
   { path: 'system.status', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {
@@ -1179,6 +1182,7 @@ const ROWS: Row[] = [
     expect: { ...staffOnly({ moderator: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
   },
   { path: 'accounts.suspended', make: noInput, expect: staffOnly({ admin: 'ok' }) },
+  { path: 'accounts.list', make: noInput, expect: staffOnly({ admin: 'ok' }) },
   {
     path: 'accounts.suspend',
     make: async () => {

@@ -91,3 +91,9 @@ export async function queueSchemaReady(db: Database): Promise<boolean> {
     SELECT (SELECT version::text FROM ${sql.raw(PGBOSS_SCHEMA)}.version LIMIT 1) AS version`);
   return Number(rows[0]?.version) === PGBOSS_SCHEMA_VERSION;
 }
+
+/** Jobs that failed after their last retry and are still kept, over every queue (the control panel's sidebar). */
+export async function failedJobCount(db: Database): Promise<number> {
+  const { rows } = await db.execute<{ n: string }>(sql`SELECT count(*) AS n FROM ${sql.raw(PGBOSS_SCHEMA)}.job WHERE state = 'failed'`);
+  return Number(rows[0]?.n ?? 0);
+}

@@ -10,6 +10,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import * as z from 'zod';
 
 import { LoadError } from '@/components/account/load-error';
 import { ACCOUNTS_LOAD_ERROR } from '@/components/account/load-errors/accounts';
@@ -19,6 +20,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { listAccountsInput } from '@/server/services/account-directory';
+import { AccountsTable } from './accounts-table';
 import { ERASE_FORM } from './form-ids';
 import { EraseForm, SuspendedItem, SuspendForm } from './forms';
 
@@ -56,7 +59,7 @@ export default async function AdminAccountsPage({ searchParams }: { searchParams
     return (
       <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
         <div className="max-w-[46rem]">
-          <p className="eyebrow">Administration</p>
+          <p className="eyebrow">Control panel</p>
           <h1 className="mt-2 font-display text-feature">Not available</h1>
           <p className="mt-3 max-w-[56ch] text-fg-muted">You don&apos;t have access to accounts. They are available to administrators.</p>
           <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
@@ -70,8 +73,20 @@ export default async function AdminAccountsPage({ searchParams }: { searchParams
   }
   // A failed read shows the error state in the app shell, with "Try again" on the same address.
   const client = serverClient(await headers(), guard.principal);
-  const suspended = await pageRead(client.accounts.suspended());
-  if (!suspended) return <LoadError {...ACCOUNTS_LOAD_ERROR} retryHref={here} />;
+  // Each parameter is checked against the field of accounts.list: an unknown or malformed value
+  // falls back to the default instead of an error page.
+  const field = listAccountsInput.unwrap().shape;
+  const valid = <T,>(r: { success: true; data: T } | { success: false }) => (r.success ? r.data : undefined);
+  const filters = {
+    q: valid(field.q.safeParse(one(query.q)?.slice(0, 200) || undefined)),
+    role: valid(field.role.safeParse(one(query.role) || undefined)),
+    state: valid(field.state.safeParse(one(query.state))) ?? 'all',
+    sort: valid(field.sort.safeParse(one(query.sort))) ?? 'newest',
+  };
+  const page = valid(field.page.safeParse(one(query.page))) ?? 1;
+  const [suspended, list] = await Promise.all([pageRead(client.accounts.suspended()), pageRead(client.accounts.list({ ...filters, page }))]);
+  if (!suspended || !list) return <LoadError {...ACCOUNTS_LOAD_ERROR} retryHref={here} />;
+  const prefillEmail = valid(z.string().email().max(320).safeParse(one(query.email)));
   // The account of an open deletion request, for the erase form; none when the case is not open any more.
   const overview = caseId ? await pageRead(client.admin.overview()) : null;
   const request = caseId ? (overview?.deletionRequests.find((r) => r.caseId === caseId) ?? null) : null;
@@ -84,17 +99,21 @@ export default async function AdminAccountsPage({ searchParams }: { searchParams
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <header className="max-w-[46rem]">
-        <p className="eyebrow">Administration</p>
+        <p className="eyebrow">Control panel</p>
         <h1 className="mt-2 font-display text-feature">Accounts</h1>
         <p className="mt-3 max-w-[60ch] text-fg-muted">
-          Suspend an account that must be stopped now, lift a suspension, or erase an account when its person asks. Each action needs a
-          reason and is kept in the audit log. To take a profile off the public pages, use its record page in the review queue.
+          Find any account, suspend an account that must be stopped now, lift a suspension, or erase an account when its person asks.
+          Each action needs a reason and is kept in the audit log. To take a profile off the public pages, use its record page in the review queue.
         </p>
       </header>
 
       <div className="mt-8 grid gap-10">
+        <Section id="all-accounts" title="All accounts">
+          <AccountsTable list={list} filters={filters} />
+        </Section>
+
         <Section id="suspend" title="Suspend an account">
-          <SuspendForm today={isoDay(new Date())} initial={suspendedNow} />
+          <SuspendForm key={prefillEmail ?? 'new'} today={isoDay(new Date())} initial={suspendedNow} email={prefillEmail} />
         </Section>
 
         <Section id="suspended" title="Suspended accounts">

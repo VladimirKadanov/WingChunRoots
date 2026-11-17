@@ -1,11 +1,13 @@
 // The app shell (plan §5.8 (b)): a top bar and bottom tabs on phones, a side rail from 768 px.
 // It pads every edge with env(safe-area-inset-*) (viewport-fit=cover), sizes with dvh, keeps
 // every control at least 44x44 px and needs no hover. Server component; only the nav links,
-// the theme menu and the search field (M07) hydrate.
+// the theme menu, the search field (M07) and the account menu hydrate. The account entry reads the
+// session, so it streams in behind <Suspense>; the rest of the shell stays in the static shell.
 
 import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
 import { BrandMark } from '@/components/brand/brand-mark';
+import { AccountEntry, AccountSlot } from './account-entry';
 import { DEMO_NOTICE } from './demo-notice';
 import { FocusInView } from './focus-in-view';
 import { NavLinks, NavList } from './nav-links';
@@ -36,6 +38,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex min-w-0 max-w-[11rem] flex-1 justify-end">
             <SearchField variant="bar" />
           </div>
+          {/* Who is signed in (owner request 2026-11-17): "Sign in", or the account menu. */}
+          <Suspense fallback={<AccountSlot variant="bar" />}>
+            <AccountEntry variant="bar" />
+          </Suspense>
           <ThemeMenu variant="icon" />
         </div>
       </header>
@@ -68,6 +74,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Suspense>
           </div>
           <div className="mt-auto hidden flex-col gap-3.5 px-2 pt-6 md:flex">
+            <Suspense fallback={<AccountSlot variant="rail" />}>
+              <AccountEntry variant="rail" />
+            </Suspense>
             <ThemeMenu variant="row" />
             <p className="text-xs text-fg-subtle">{DEMO_NOTICE}</p>
           </div>
