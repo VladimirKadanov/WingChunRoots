@@ -57,7 +57,7 @@ function Figure({ label, value, note, href, testId }: { label: string; value: st
   const body = (
     <>
       <span className="text-sm text-fg-muted">{label}</span>
-      <span className="font-display text-[2rem] leading-none">{value}</span>
+      <span className="font-display text-2xl leading-none">{value}</span>
       <span className="text-sm text-fg-muted">{note}</span>
     </>
   );
