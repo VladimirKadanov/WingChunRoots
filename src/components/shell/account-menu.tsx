@@ -65,7 +65,6 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
         type="button"
         popoverTarget={id}
         data-testid="account-menu-trigger"
-        aria-label={variant === 'bar' ? `Your account: ${name}${unread > 0 ? `, ${unread} unread` : ''}` : undefined}
         style={{ anchorName: anchor } as CSSProperties}
         className={
           variant === 'bar'
@@ -74,6 +73,13 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
         }
       >
         <Initials initials={menu.initials} size={variant === 'bar' ? 'sm' : 'md'} />
+        {variant === 'bar' ? (
+          // The name in words for assistive technology; the initials are a picture of it.
+          <span className="sr-only">
+            Your account: {name}
+            {unread > 0 ? `, ${unread} unread` : ''}
+          </span>
+        ) : null}
         {variant === 'rail' ? (
           <span className="grid min-w-0 flex-1">
             <span className="truncate text-ui font-semibold" {...named}>
@@ -138,7 +144,7 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
             </form>
           </li>
         </ul>
-              </div>
+      </div>
     </>
   );
 }
