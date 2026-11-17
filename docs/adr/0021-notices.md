@@ -28,7 +28,7 @@
 
 ### 3. Предпочитания (DEFAULT M18, въпрос 1)
 
-Таблица `notification_preference` (миграция `*_m18_notices`): изборът за имейл на акаунта по категория и `version`. Без ред важи подразбирането: имейлът е включен за `security`, `account`, `plan`, `teaching`, `review`, `schools` и `organizations` и изключен за `events`. `security` и `account` не се изключват (`CHECK notification_preference_locked_categories` и отказ `BAD_REQUEST` в услугата). Изборът е в `/dashboard/settings`, раздел Notifications; таблото е винаги включено и не е избор.
+Таблица `notification_preference` (миграция `*_m18_notices`): изборът за имейл на акаунта по категория и `version`. Без ред важи подразбирането: имейлът е включен за `security`, `account`, `plan`, `teaching`, `review`, `schools` и `organizations` и изключен за `events`. `security` и `account` не се изключват (`CHECK notification_preference_locked_categories` и отказ `BAD_REQUEST` в услугата). Изборът е в `/account/notifications` („Notification settings“; до прегледа на използваемостта 2026-11 раздел Notifications на `/dashboard/settings`); таблото е винаги включено и не е избор.
 
 ### 4. Отписване с едно натискане
 
