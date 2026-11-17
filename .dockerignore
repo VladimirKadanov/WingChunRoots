@@ -24,6 +24,8 @@ out/
 next-env.d.ts
 
 # Not needed to build or run the app.
+.staging/
+deploy/
 .git/
 .github/
 .claude/

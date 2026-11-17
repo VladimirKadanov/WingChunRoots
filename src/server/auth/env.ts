@@ -66,6 +66,16 @@ export function isPublicDeployment(env: Env = process.env): boolean {
   return isProduction(env) && !isLoopback(new URL(appUrl(env)));
 }
 
+/**
+ * Whether the seeded demo accounts (`demo-…@example.test`) may sign in. Everywhere except a public
+ * deployment; there only with WCR_DEMO_SIGN_IN=1, which the password-protected staging server sets
+ * while it holds the demo data (docs/operations/staging.md, ADR 0033). A clean database has no demo
+ * accounts, and the staging guide removes the switch when it starts one.
+ */
+export function demoSignInAllowed(env: Env = process.env): boolean {
+  return !isPublicDeployment(env) || env.WCR_DEMO_SIGN_IN?.trim() === '1';
+}
+
 function secret(name: string, env: Env): string {
   const value = env[name];
   if (!value) throw new Error(`${name} is not set (local: scripts/init-env.sh; cloud: scripts/cloud-setup.sh)`);

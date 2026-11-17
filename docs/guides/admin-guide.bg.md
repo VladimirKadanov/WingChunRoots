@@ -1548,3 +1548,19 @@ pnpm erasures:replay --apply --include-unconfirmed   # и записите бе�
 ### Тестовете
 
 `src/server/services/retention-records.int.test.ts` (всяка стъпка със състарени редове, партиди, безопасност), `retention-records.flows.int.test.ts` (срещу истинските услуги, които пишат отметките, по които се познава запис на трето лице), `erasure-replay.int.test.ts` и `src/server/erasure-ledger.test.ts` (регистърът и повторението), `src/server/jobs/worker.test.ts` (стъпките в задачата), допълнения в `trial-lessons.int.test.ts` и `account-erasure.int.test.ts`, и проверка 11 на `scripts/restore-drill.sh`.
+
+## 34. Тестов сървър със защита с парола (staging, 17.11.2026)
+
+Хостнатият тестов сайт е на един сървър Hetzner CPX22 зад обща парола (Caddy, HTTPS на `<IP>.sslip.io`). Писмата остават в Mailpit на `https://mail.<адрес>`. Подробностите стъпка по стъпка са в [`docs/operations/staging.md`](../operations/staging.md), а решението е в [ADR 0033](../adr/0033-staging.md). Всичко се прави с `deploy/staging/staging.sh` като потребителя `deploy`:
+
+| Етап | Команди |
+|---|---|
+| Веднъж | `setup-server.sh` (като root), после `staging.sh init` и `staging.sh deploy` |
+| 1: демо данни | `staging.sh seed-demo`; паролата на демо акаунтите е `E2E_PASSWORD` от `.env`, ключът за TOTP на персонала дава `staging.sh totp-key` |
+| 2: чиста база | `staging.sh clean-start` (последен архив, после изтрива всичко), регистрация и TOTP на двамата администратори, `staging.sh make-admin <имейл>` за всеки |
+| Архиви | `staging.sh backup`, `staging.sh install-cron`; копие извън сървъра със `STAGING_OFFSITE` (само криптирани с `age`) |
+
+**Демо акаунтите на публичен адрес.** Приложението ги отказва на всеки публичен адрес. Изключение е `WCR_DEMO_SIGN_IN=1` в `.env`, която `seed-demo` включва, а `clean-start` изключва. Не я включвайте там, където има истински данни.
+
+**Регистърът на изтриванията** на сървъра е в `backups/erasures`, с право на запис за `web` и `worker` (`ERASURE_LEDGER_DIR=/erasures`), и се архивира заедно с архивите.
+

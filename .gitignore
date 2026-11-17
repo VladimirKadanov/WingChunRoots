@@ -60,3 +60,6 @@ next-env.d.ts
 # committed. The folder itself stays (.gitkeep): Compose mounts it into web read-only.
 /backups/*
 !/backups/.gitkeep
+
+# staging server only: the Caddy password snippet (deploy/staging/staging.sh)
+/.staging/
