@@ -68,7 +68,7 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
         style={{ anchorName: anchor } as CSSProperties}
         className={
           variant === 'bar'
-            ? 'relative inline-flex size-11 items-center justify-center rounded-full focus-visible:-outline-offset-2'
+            ? 'relative inline-flex size-[44px] shrink-0 items-center justify-center rounded-full focus-visible:-outline-offset-2'
             : 'flex min-h-[3.25rem] w-full min-w-0 items-center gap-3 rounded-sm px-2 text-left hover:bg-surface-3'
         }
       >

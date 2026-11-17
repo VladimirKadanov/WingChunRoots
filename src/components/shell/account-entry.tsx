@@ -22,7 +22,7 @@ export function AccountSlot({ variant, children }: { variant: AccountVariant; ch
   return (
     <div
       data-account-slot=""
-      className={cx(variant === 'bar' ? 'flex min-h-11 w-[4.75rem] shrink-0 items-center justify-end' : 'flex min-h-[6.25rem] flex-col justify-end gap-2')}
+      className={cx(variant === 'bar' ? 'flex min-h-11 w-[4.75rem] min-w-0 shrink items-center justify-end' : 'flex min-h-[6.25rem] flex-col justify-end gap-2')}
     >
       {children}
     </div>
@@ -32,7 +32,7 @@ export function AccountSlot({ variant, children }: { variant: AccountVariant; ch
 function SignedOut({ variant }: { variant: AccountVariant }) {
   if (variant === 'bar') {
     return (
-      <Link href="/sign-in" className="inline-flex min-h-11 items-center px-1.5 text-ui font-semibold text-fg underline-offset-4 hover:underline" data-testid="shell-sign-in">
+      <Link href="/sign-in" className="inline-flex min-h-11 items-center px-1.5 text-center text-ui leading-tight font-semibold text-fg underline-offset-4 hover:underline" data-testid="shell-sign-in">
         Sign in
       </Link>
     );
