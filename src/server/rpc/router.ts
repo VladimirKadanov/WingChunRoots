@@ -18,6 +18,7 @@ import { adminOverview } from '../services/admin';
 import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
 import { dashboardOverview } from '../services/dashboard';
+import { dashboardNav } from '../services/dashboard-nav';
 import { discardEvidence, discardInput } from '../services/evidence';
 import { isServiceError } from '../services/errors';
 import {
@@ -1547,6 +1548,10 @@ export const router = {
     overview: base
       .route({ method: 'GET', path: '/dashboard', summary: "The signed-in account's dashboard: teachers, requests, schools, allowance, notifications" })
       .handler(({ context }) => dashboardOverview(context.principal)),
+    // The dashboard's grouped menu (docs/adr/0036-member-navigation.md): own data and counts only.
+    nav: base
+      .route({ method: 'GET', path: '/dashboard/nav', summary: "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts" })
+      .handler(({ context }) => dashboardNav(context.principal)),
   },
   // M12: /admin/system (plan §3.1 "Наблюдение"): counts, queue names and times only.
   system: {

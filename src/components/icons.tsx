@@ -41,6 +41,14 @@ export const SearchIcon = icon(
   </>,
   1.7,
 );
+/** The Home tab (owner request 2026-11-17, docs/adr/0036-member-navigation.md). */
+export const HomeIcon = icon(
+  'Home',
+  <>
+    <path d="M3.5 11L12 4.5l8.5 6.5" />
+    <path d="M5.5 9.5V20h4.5v-5.5h4V20h4.5V9.5" />
+  </>,
+);
 export const LineageIcon = icon(
   'Lineage',
   <>

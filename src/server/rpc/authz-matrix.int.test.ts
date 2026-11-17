@@ -1515,6 +1515,7 @@ const ROWS: Row[] = [
   },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
+  { path: 'dashboard.nav', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
   // (404 here, the same answer as for none), as does every member and staff account.
   { path: 'organizations.list', make: noInput, expect: everyone },

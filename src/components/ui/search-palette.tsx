@@ -98,7 +98,7 @@ const SHEET_QUERY = '(min-width: 40rem) and (min-height: 32rem)';
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 /** Pages of the app the palette offers by their title (plan §5.6: the Pages group). */
 const PAGES: readonly { label: string; href: string }[] = [
-  { label: 'Explore', href: '/' },
+  { label: 'Home', href: '/' },
   { label: 'Plans', href: '/plans' },
   { label: 'Your dashboard', href: '/dashboard' },
   // M09: teacher requests.

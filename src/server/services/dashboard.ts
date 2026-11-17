@@ -30,6 +30,7 @@ import { effectivePlan, type Executor, requireEntitlement } from '../entitlement
 import { feature, type Benefit, type FeatureKey, upgradeBenefits } from '../entitlements/plans';
 import type { NameData } from '../templates/email/types';
 import { listNotifications, type NotificationList } from './notifications';
+import { type NextStep, nextSteps } from './next-steps';
 import { INSTRUCTOR_LABELS, instructorStatus, openPilotRequest, type PilotRequestView, type PlanSummary, planSummary } from './plans';
 
 export interface PersonRef {
@@ -135,6 +136,8 @@ export interface DashboardOverview {
     upgrade: UpgradeOffer | null;
   } | null;
   notifications: NotificationList;
+  /** The dashboard home's "Next steps" (docs/adr/0036-member-navigation.md); empty once all are done. */
+  nextSteps: NextStep[];
 }
 
 const REQUEST_LABELS = {
@@ -327,7 +330,8 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       teachers = teachers.sort((a, b) => a.teacher.name.value.localeCompare(b.teacher.name.value, 'en'));
       requests = requests.slice(0, 50);
     }
-    return { ...base, student: { teachers, requests }, sifu: null };
+    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, teacherLinks: teachers.length + requests.length, schools: 0 });
+    return { ...base, student: { teachers, requests }, sifu: null, nextSteps: steps };
   }
 
   // Sifu.
@@ -373,5 +377,6 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
-  return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade } };
+  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, teacherLinks: 0, schools: schools.length });
+  return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade }, nextSteps: steps };
 }

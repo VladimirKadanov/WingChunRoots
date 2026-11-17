@@ -403,7 +403,7 @@ test.describe('@M00b phone', () => {
 
   test('@M00b the tab bar keeps as much room under the current tab’s chop as above its icon, with no bottom inset', async ({ page }) => {
     await page.goto('/');
-    const explore = tabBar(page).getByRole('link', { name: 'Explore' }).filter({ visible: true });
+    const explore = tabBar(page).getByRole('link', { name: 'Home' }).filter({ visible: true });
     await expect(explore).toHaveAttribute('aria-current', 'page');
     // The chop is stamped in (a scale transition): wait until it rests.
     const room = () =>
@@ -900,7 +900,7 @@ test('@M00b the Lineage tab is current on the explorer page once the page has hy
   expect(response?.status()).toBe(200);
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Lineage' })).toHaveAttribute('aria-current', 'page');
-  await expect(links.filter({ hasText: 'Explore' })).not.toHaveAttribute('aria-current', 'page');
+  await expect(links.filter({ hasText: 'Home' })).not.toHaveAttribute('aria-current', 'page');
 });
 
 // Until M11 /schools was the "not drawn yet" page (404); since M11 it is the school finder (200),
@@ -911,7 +911,7 @@ test('@M00b the Schools tab is current on the school finder once the page has hy
   await expect(page.getByRole('heading', { level: 1, name: 'Find a school' })).toBeVisible();
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Schools' })).toHaveAttribute('aria-current', 'page');
-  for (const other of ['Explore', 'Lineage', 'Me']) {
+  for (const other of ['Home', 'Lineage', 'Me']) {
     await expect(links.filter({ hasText: other })).not.toHaveAttribute('aria-current', 'page');
   }
 });

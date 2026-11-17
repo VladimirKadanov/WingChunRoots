@@ -970,7 +970,7 @@ test.describe('at 390x844', () => {
       await expect(other.getByTestId('requests').getByRole('listitem')).toHaveCount(1);
       await expectNoHorizontalScroll(other, 'student dashboard');
       // Its links are tall enough to tap.
-      for (const name of ['Account type and plan', 'Account and security', 'Compare plans']) {
+      for (const name of ['Plan and settings', 'Account and security', 'Compare plans']) {
         expect((await other.getByRole('link', { name, exact: true }).boundingBox())!.height, name).toBeGreaterThanOrEqual(44);
       }
       await other.addStyleTag({ content: 'html { font-size: 200% !important; }' });
