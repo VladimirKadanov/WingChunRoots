@@ -86,7 +86,7 @@ export default async function AdminSchoolsPage({ searchParams }: { searchParams:
           <>
             A listed school whose Sifu has not edited or confirmed it for 90 days awaits confirmation: the Sifu is asked, and the school stays on the map. From day 105
             it is hidden from the public map and list until the Sifu confirms it. Nothing is deleted, and signing in does not count. New listings are decided in the{' '}
-            <Link href="/admin/review?group=listings" className="link">
+            <Link href="/admin/review?group=schools" className="link">
               review queue
             </Link>
             .

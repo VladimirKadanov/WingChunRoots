@@ -144,11 +144,14 @@ const reviewText = (empty: string) =>
  * through, each a saved view of /admin/review with its count. Every queue kind is in one group.
  */
 export const REVIEW_GROUPS = {
-  claims: { label: 'Claims', kinds: ['historical_claim', 'person_claim'] },
-  verifications: { label: 'Instructor checks', kinds: ['instructor_verification'] },
-  listings: { label: 'Schools and organizations', kinds: ['school_listing', 'organization_application'] },
-  disputes: { label: 'Reports and disputes', kinds: ['profile_report', 'relationship_dispute', 'lineage_report', 'decision_appeal'] },
-  records: { label: 'Records and succession', kinds: ['record_proposal', 'succession_request'] },
+  // The same groups, keys and labels as the dashboard's (admin-dashboard.ts REVIEW_KIND_GROUPS), so
+  // a dashboard figure can open its view with ?group=<key>.
+  claims: { label: 'Historical and profile claims', kinds: ['historical_claim', 'person_claim'] },
+  instructors: { label: 'Instructor checks', kinds: ['instructor_verification'] },
+  schools: { label: 'School listings', kinds: ['school_listing'] },
+  organizations: { label: 'Organizations', kinds: ['organization_application'] },
+  records: { label: 'Record proposals', kinds: ['record_proposal'] },
+  disputes: { label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
 } as const satisfies Record<string, { label: string; kinds: readonly Exclude<ReviewCaseKind, 'deletion_request'>[] }>;
 export type ReviewGroup = keyof typeof REVIEW_GROUPS;
 const REVIEW_GROUP_KEYS = Object.keys(REVIEW_GROUPS) as [ReviewGroup, ...ReviewGroup[]];
