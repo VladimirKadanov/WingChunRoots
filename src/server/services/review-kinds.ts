@@ -8,7 +8,10 @@
 //                            stewardship self; still involved_only) and each awaiting_claim
 //                            relationship of the case moves to pending_teacher, which the teacher
 //                            then answers as in M09; reject (with a reason): the relationship stays
-//                            awaiting_claim and the student may invite again; needs_info.
+//                            awaiting_claim and the student may invite again; needs_info. A claim
+//                            asked from a public profile (profile-claims.ts, ADR 0037) has no
+//                            relationship: approved, the record becomes the claimant's own and keeps
+//                            its visibility; refused, it stays as it was.
 //   instructor_verification  verify: "Instructor" instead of "Instructor (unverified)" on the
 //                            profile, and the relationship panel's "Approved by an unverified
 //                            instructor" goes (DEFAULT D04/D13); audit instructor.verify; reject;
@@ -112,14 +115,17 @@ async function tellClaimant(tx: Transaction, c: CaseRow, decision: 'approved' | 
   const claimant = await emailOf(tx, c.openedByUserId);
   if (!claimant) return;
   const teacherNames = c.personId ? await namesFor(tx, c.personId) : [];
+  // A claim asked from the profile page answers no student's request (ADR 0037).
+  const self = c.relationshipId === null;
+  const approvedPath = self ? '/dashboard/profile' : '/dashboard/students/requests';
   // No e-mail without the teacher's name.
-  await notify(tx, claimant.id, 'claim.decided', { caseId: c.id, decision }, {
+  await notify(tx, claimant.id, 'claim.decided', { caseId: c.id, decision, ...(self ? { self: true } : {}) }, {
     ...(teacherNames.length > 0
       ? {
           email: {
             template: 'claim-decided',
             idempotencyKey: `claim-decided:${eventKey}`,
-            data: { decision, teacherNames, url: url(decision === 'approved' ? '/dashboard/students/requests' : `/dashboard/cases/${c.id}`) },
+            data: { decision, teacherNames, url: url(decision === 'approved' ? approvedPath : `/dashboard/cases/${c.id}`), ...(self ? { self: true } : {}) },
           },
         }
       : {}),
@@ -127,8 +133,10 @@ async function tellClaimant(tx: Transaction, c: CaseRow, decision: 'approved' | 
 }
 
 async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row: RelRow | null, input: KindDecisionInput, meta: RequestMeta): Promise<KindDecisionOutcome> {
-  if (!row || !c.personId || !c.openedByUserId) throw new ServiceError('CONFLICT', 'This claim can no longer be decided: its request or its record is gone.');
-  if (row.status !== 'awaiting_claim') {
+  // A claim asked from the profile page (ADR 0037) has no relationship; one of an invitation does.
+  const self = c.relationshipId === null;
+  if ((!self && !row) || !c.personId || !c.openedByUserId) throw new ServiceError('CONFLICT', 'This claim can no longer be decided: its request or its record is gone.');
+  if (row && row.status !== 'awaiting_claim') {
     throw new ServiceError('CONFLICT', row.status === 'withdrawn' ? 'The student has withdrawn the request this claim answers.' : 'The request this claim answers no longer waits for the teacher to join.');
   }
   if (input.decision === 'needs_info') {
@@ -152,6 +160,7 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
       ipHmac: meta.ipHmac,
     });
     await tellClaimant(tx, c, 'rejected', eventId);
+    if (!row) return NONE;
     const student = await accountOf(tx, row.studentPersonId);
     if (student) await notify(tx, student.id, 'invitation.claimed', { relationshipId: row.id, stage: 'refused' });
     return NONE;
@@ -159,17 +168,20 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
 
   // verify: the person after the case (the lock order of review-core.ts).
   const [record] = await tx
-    .select({ claimedBy: person.claimedByUserId, stewardship: person.stewardship, deletedAt: person.deletedAt, visibility: person.visibility })
+    .select({ claimedBy: person.claimedByUserId, stewardship: person.stewardship, deletedAt: person.deletedAt, visibility: person.visibility, kind: person.kind, lifeStatus: person.lifeStatus })
     .from(person)
     .where(eq(person.id, c.personId))
     .for('update');
   if (!record || record.deletedAt || record.claimedBy || record.stewardship !== 'unclaimed') throw new ServiceError('CONFLICT', 'This record can no longer be claimed.');
+  if (self && (record.kind !== 'living' || record.lifeStatus !== 'living')) throw new ServiceError('CONFLICT', 'This record is no longer of a living person, so it cannot be claimed. Refuse this claim.');
   const [own] = await tx.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, c.openedByUserId), isNull(person.deletedAt)));
   if (own) throw new ServiceError('CONFLICT', 'The claimant has a profile of their own now. Refuse this claim, or ask them about it.');
   const claimant = await emailOf(tx, c.openedByUserId);
   if (!claimant) throw new ServiceError('CONFLICT', 'The claimant’s account no longer exists. Refuse this claim.');
 
-  // The record becomes the claimant's own; it stays involved_only until a link with it is verified.
+  // The record becomes the claimant's own. An invited record stays involved_only until a link with
+  // it is verified; a public record claimed from its page keeps its visibility (ADR 0037): the new
+  // owner can hide it in their profile settings.
   await tx.update(person).set({ claimedByUserId: c.openedByUserId, stewardship: 'self', updatedAt: now }).where(eq(person.id, c.personId));
   await tx.update(personClaim).set({ status: 'approved', decidedByUserId: p.user.id, decidedAt: now, updatedAt: now }).where(and(eq(personClaim.reviewCaseId, c.id), eq(personClaim.status, 'pending')));
   const eventId = await resolveCase(tx, p, c, input, 'approved', meta);
@@ -184,6 +196,11 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
     requestId: meta.requestId,
     ipHmac: meta.ipHmac,
   });
+  if (!row) {
+    await tellClaimant(tx, c, 'approved', eventId);
+    // The public profile says "claimed" now, and the pages beside it as well (cached).
+    return { tags: await neighbourTags(tx, c.personId) };
+  }
   // awaiting_claim → pending_teacher: only now, after the approved claim (plan §6.7).
   await tx.update(teachingRelationship).set({ status: 'pending_teacher', statusReason: null, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
   await recordEvent(tx, { relationshipId: row.id, from: 'awaiting_claim', to: 'pending_teacher', actor: p, role: p.user.role, reason: 'person_claim_approved', key: input.idempotencyKey });

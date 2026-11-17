@@ -93,6 +93,7 @@ import {
   sendInvitation,
   sendInvitationInput,
 } from '../services/invitations';
+import { claimGetInput, claimRequestInput, getClaimOption, requestProfileClaim } from '../services/profile-claims';
 import { getPhoto, photoGetInput, photoRemoveInput, photoUploadInput, removePhoto, uploadPhoto } from '../services/photos';
 import {
   addGalleryPhoto,
@@ -647,6 +648,21 @@ export const router = {
       .route({ method: 'POST', path: '/invitations/accept', summary: 'Accept an invitation: claim the unclaimed record, reviewed by an archivist before it becomes yours; single use' })
       .input(acceptInvitationInput)
       .handler(({ context, input }) => acceptInvitation(context.principal, input, context.meta)),
+  },
+  // ADR 0037: "Is this you? Ask to claim this profile" on a public record, without an invitation.
+  claims: {
+    get: signedIn
+      .route({ method: 'GET', path: '/claims/{slug}', summary: 'Whether the signed-in account can ask to claim this public profile now, and why not (404 for a profile that is not public)' })
+      .input(claimGetInput)
+      .handler(({ context, input }) => getClaimOption(context.principal, input)),
+    request: signedIn
+      .route({
+        method: 'POST',
+        path: '/claims/request',
+        summary: 'Ask to claim a public, unclaimed profile of a living person as your own: a review case an archivist decides; one waiting claim at a time',
+      })
+      .input(claimRequestInput)
+      .handler(({ context, input }) => requestProfileClaim(context.principal, input, context.meta)),
   },
   // M10b: instructor verification of a Sifu (plan §6.5, DEFAULT D04/D13).
   instructor: {
