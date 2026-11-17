@@ -111,7 +111,8 @@ export function OnboardingForm({
   const [originalName, setOriginalName] = useState(() => value('originalName'));
   const [jyutping, setJyutping] = useState(() => value('jyutping'));
   const [pinyin, setPinyin] = useState(() => value('pinyin'));
-  const [role, setRole] = useState<string>(() => value('accountType') || accountType);
+  // The account's own type is the starting choice (a role, not a consent tick); a refused submit keeps the one sent.
+  const role = value('accountType') || accountType;
   const hydrated = useHydrated();
   const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
@@ -312,8 +313,7 @@ export function OnboardingForm({
                 name="accountType"
                 value={option.value}
                 id={index === 0 ? fieldId(FORM, 'accountType') : undefined}
-                checked={role === option.value}
-                onChange={() => setRole(option.value)}
+                defaultChecked={role === option.value}
                 aria-describedby={`${fieldId(FORM, 'accountType')}-${option.value}-hint`}
                 autoFocus={first === 'accountType' && index === 0}
                 // Drawn as on /dashboard/settings: a ring in ink and a dot when chosen; the system
