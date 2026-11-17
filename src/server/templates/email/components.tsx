@@ -41,7 +41,7 @@ function UnsubscribeFooter({ link }: { link: UnsubscribeLink | undefined }) {
       <Link href={link.url} style={{ color: '#0b57d0' }}>
         Unsubscribe from {link.category} e-mails
       </Link>{' '}
-      and press the button; no sign-in is needed. You can turn them on again in Account type and plan, under Notifications.
+      and press the button; no sign-in is needed. You can turn them on again in Settings, under Notifications.
     </Text>
   );
 }

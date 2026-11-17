@@ -21,7 +21,7 @@ export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 export { NOTIFICATION_CATEGORIES };
 
 export interface CategoryDefinition {
-  /** The heading of the category in /dashboard/settings and on the unsubscribe page. */
+  /** The heading of the category in /account/notifications and on the unsubscribe page. */
   label: string;
   /** What the category's notices are about, one sentence. */
   description: string;

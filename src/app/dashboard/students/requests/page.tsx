@@ -147,8 +147,8 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
           {incoming.accountType === 'student' && incoming.requests.length > 0 ? (
             <p data-testid="student-account-note" className="max-w-[60ch] rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-ui">
               Your account is a Student account, which approves no students. To answer these requests, switch to Sifu in{' '}
-              <Link href="/dashboard/settings" className="link">
-                Account type and plan
+              <Link href="/account/plan" className="link">
+                Plan and billing
               </Link>
               ; your confirmed links never change.
             </p>

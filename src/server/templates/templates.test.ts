@@ -244,7 +244,7 @@ describe('notification templates', () => {
   it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
     const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
     expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('for the pilot, until 30 December 2026. No payment is involved.');
-    expect(granted.action).toEqual({ label: 'See your plan', href: '/dashboard/settings' });
+    expect(granted.action).toEqual({ label: 'See your plan', href: '/account/plan' });
     const revoked = renderNotification('plan.revoked', { planCode: 'pro_sifu' });
     expect(revoked.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('Every confirmed link stays confirmed and public');
     // A Student plan approves nobody: its text does not speak of approvals.

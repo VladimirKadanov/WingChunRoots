@@ -79,9 +79,9 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
                 security and account e-mails keep coming.
               </p>
               <p className="mt-3 text-ui text-fg-muted">
-                To get them by e-mail again, sign in and tick {result.label} under Notifications in{' '}
-                <Link href="/dashboard/settings#notifications-heading" className="link">
-                  Account type and plan
+                To get them by e-mail again, sign in and tick {result.label} in{' '}
+                <Link href="/account/notifications" className="link">
+                  Notification settings
                 </Link>
                 .
               </p>
@@ -90,10 +90,9 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
             <>
               <h1 className="mt-2 font-display text-feature">This link no longer works</h1>
               <p className="mt-4 text-ui text-fg-muted">
-                Your e-mail settings changed after this e-mail was sent, or the link is not complete. Sign in and choose your e-mails under
-                Notifications in{' '}
-                <Link href="/dashboard/settings#notifications-heading" className="link">
-                  Account type and plan
+                Your e-mail settings changed after this e-mail was sent, or the link is not complete. Sign in and choose your e-mails in{' '}
+                <Link href="/account/notifications" className="link">
+                  Notification settings
                 </Link>
                 .
               </p>
