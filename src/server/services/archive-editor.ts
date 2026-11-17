@@ -885,7 +885,7 @@ export async function endArchiveLink(principal: Principal | null, raw: EndLinkIn
  * nothing written. A member's link is refused (MEMBER_LINK_EDIT), never edited silently.
  */
 export async function editArchiveLink(principal: Principal | null, raw: EditLinkInput, meta: RequestMeta): Promise<{ changed: boolean }> {
-  const p = requireArchiveEditor(principal);
+  const p = editor(principal);
   const parsed = editLinkInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const input = parsed.data;
@@ -924,6 +924,8 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
       ]);
     }
     await tx.update(teachingRelationship).set({ sourceNote: input.source, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+    // Only the lengths of the source go to the audit row, never its text.
+    const sourceLength = input.source?.length ?? 0;
     await writeAudit(tx, {
       action: 'relationship.edit',
       actorUserId: p.user.id,
@@ -931,7 +933,7 @@ export async function editArchiveLink(principal: Principal | null, raw: EditLink
       subjectType: 'teaching_relationship',
       subjectId: row.id,
       before: { years: before, periods: periods.length, source: sourceNote ? { length: sourceNote.length } : null },
-      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: input.source!.length } },
+      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: sourceLength } },
       reason: input.reason,
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
