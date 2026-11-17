@@ -60,7 +60,7 @@ test('@M26 an administrator records two historical teachers, a lineage and a ver
   await lineageForm.getByRole('button', { name: 'Create the lineage' }).click();
   await page.waitForURL(/\/admin\/archive\/lineages\/demo-archive-lineage-[a-z]+\?done=created/);
   await expect(visible(page.getByTestId('lineage-facts'))).toContainText('Not in the explorer yet');
-  await expectNoAxeViolations(page);
+  await expectNoAxeViolations(page, 'the new lineage');
 
   // The search fills the teacher and the student; the link needs its source.
   const lineagePath = new URL(page.url()).pathname;
