@@ -179,6 +179,7 @@ check "ci.yml: POSTGRES_DB is postgres; the test database comes from docker/post
     && grep -Eq '^[^#]*psql .*-f docker/postgres/20-create-test-database.sql' '$ci'"
 check "ci.yml installs Chromium and WebKit for Playwright" grep -Eq 'playwright install --with-deps chromium webkit' "$ci"
 check "ci.yml runs gitleaks" grep -q 'gitleaks' "$ci"
+check "scripts/ci-docs-only.sh tells documentation-only changes apart (scripts/ci-docs-only.test.sh)" scripts/ci-docs-only.test.sh
 check "ci.yml runs pnpm audit --prod --audit-level=high" grep -q 'pnpm audit --prod --audit-level=high' "$ci"
 check "ci.yml takes Node only from .nvmrc" bash -c "
   grep -q 'node-version-file: .nvmrc' '$ci' && ! grep -Eq '^[^#]*node-version:' '$ci'"
