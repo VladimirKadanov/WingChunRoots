@@ -93,10 +93,14 @@ function Shell({ children, lead }: { children: ReactNode; lead: ReactNode }) {
 }
 
 export default async function NewTeacherPage({ searchParams }: { searchParams: Search }) {
-  const guard = await guardRoute(PAGE);
+  const query = await searchParams;
+  // The teacher chosen on a profile ("I trained with", docs/adr/0036-member-navigation.md) survives
+  // signing in and onboarding: both come back to this address with it.
+  const chosenSlug = SLUG.test(one(query.teacher)) ? one(query.teacher) : null;
+  const here = chosenSlug ? `${PAGE}?${new URLSearchParams({ teacher: chosenSlug })}` : PAGE;
+  const guard = await guardRoute(PAGE, here);
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
-  const query = await searchParams;
   const resubmitId = UUID.test(one(query.resubmit)) ? one(query.resubmit) : null;
   const teacherSlug = !resubmitId && SLUG.test(one(query.teacher)) ? one(query.teacher) : null;
   const q = resubmitId ? '' : one(query.q).trim().slice(0, 100);
@@ -119,7 +123,7 @@ export default async function NewTeacherPage({ searchParams }: { searchParams: S
       <Shell lead="A teacher confirms you by your name, so your profile comes first.">
         <div data-testid="needs-profile" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
           <p className="text-ui">Your profile is not set up yet. Add your name, then come back to name your teacher.</p>
-          <Link href={`/onboarding?next=${encodeURIComponent(PAGE)}`} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
+          <Link href={`/onboarding?next=${encodeURIComponent(here)}`} className={buttonVariants({ variant: 'primary', size: 'lg' })}>
             Set up your profile
             <ArrowRightIcon />
           </Link>
