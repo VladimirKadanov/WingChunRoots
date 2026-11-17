@@ -59,7 +59,7 @@ export function ThemeMenu({ variant }: { variant: 'icon' | 'row' }) {
       className={cx(
         'relative inline-flex min-h-11 cursor-pointer items-center rounded-sm text-fg-muted hover:bg-surface-3 hover:text-fg',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
-        variant === 'icon' ? 'size-11 justify-center' : '-ml-2.5 gap-2.5 px-2.5 text-sm',
+        variant === 'icon' ? 'size-[44px] shrink-0 justify-center' : '-ml-2.5 gap-2.5 px-2.5 text-sm',
       )}
     >
       <Icon size={variant === 'icon' ? 22 : 18} />
