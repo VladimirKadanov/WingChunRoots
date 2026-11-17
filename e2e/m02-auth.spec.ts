@@ -471,7 +471,9 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
   await page.getByRole('button', { name: 'Save my profile' }).click();
 
   await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Newcomer');
+  // The account's overview of Settings (usability review 2026-11): the name heads its Profile section.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expect(page.getByTestId('account-name')).toHaveText('Demo Newcomer');
   await expect(page.getByText('Private.')).toBeVisible();
 
   const userId = await userIdOf(account.email);
@@ -566,8 +568,9 @@ test('@M02 onboarding requires a Latin-script primary name and stores an optiona
   // The other spellings are listed under Profile.
   const chinese = page.locator('main dl [lang="zh-Hant"][translate="no"]', { hasText: '蘇竹晴' }).filter({ visible: true });
   await expect(chinese).toBeVisible();
-  // The heading is the name as the register shows it: Latin first, the original beside it.
-  const heading = page.locator('h1').filter({ visible: true });
+  // The name as the register shows it: Latin first, the original beside it (the page's heading
+  // until the usability review of 2026-11, the line that heads the Profile section since).
+  const heading = page.getByTestId('account-name').filter({ visible: true });
   await expect(heading.locator('[lang="und-Latn"][translate="no"]')).toHaveText('So Chuk-ching');
   await expect(heading.locator('[lang="zh-Hant"][translate="no"]')).toHaveText('蘇竹晴');
 
@@ -665,7 +668,7 @@ test.describe('at 390x844', () => {
     await field(page, 'Name in the original script').fill('Мира Пробнова');
     await page.getByRole('button', { name: 'Save my profile' }).tap();
     await expect(page).toHaveURL(/\/account$/);
-    const heading = page.locator('h1').filter({ visible: true });
+    const heading = page.getByTestId('account-name').filter({ visible: true });
     await expect(heading.locator('[lang="bg-Cyrl"][translate="no"]')).toHaveText('Мира Пробнова');
     await expect(page.locator('main dl [lang="bg-Cyrl"][translate="no"]', { hasText: 'Мира Пробнова' }).filter({ visible: true })).toBeVisible();
     await noHorizontalScroll();
@@ -856,7 +859,11 @@ const FIRST_STEP = 'Add WingChunRoots to your authenticator app';
 test('@M02 two-factor setup survives a reload and asks to save the backup codes before it is done', async ({ page, browser }, testInfo) => {
   const account = await signInAs(page, 'new');
   await page.goto('/account/security');
-  await expect(page.getByRole('heading', { level: 1, name: 'Two-factor authentication' })).toBeVisible();
+  // Since the usability review of 2026-11: "Sign-in and security", a section of Settings whose
+  // section row marks it as the current page.
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign-in and security' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Sign-in & security' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText(account.email, { exact: true })).toBeVisible();
   await expectSecurityPageClean(page, 'off');
   await field(page, 'Your password').fill(account.password);
   await page.getByRole('button', { name: 'Set up two-factor authentication' }).click();

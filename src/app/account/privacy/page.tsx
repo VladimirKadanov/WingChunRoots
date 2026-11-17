@@ -2,7 +2,8 @@
 // profile is public, every consent with its state and date, withdrawing an optional consent
 // (consent.withdraw: a new consent_record row, audited), and asking for the account to be deleted
 // (account.requestDeletion: a review case for the administrators). Data from account.privacy.
-// Reads the session: rendered per request.
+// Reads the session: rendered per request. A section of Settings since the usability review of
+// 2026-11, with the settings' section row (SettingsNav).
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -13,6 +14,7 @@ import { CONSENT_LABELS } from '@/components/account/consents';
 import { LoadError } from '@/components/account/load-error';
 import { PRIVACY_LOAD_ERROR } from '@/components/account/load-errors/privacy';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { SettingsNav } from '@/components/account/settings-nav';
 import { CheckIcon, DashIcon, LockIcon } from '@/components/icons';
 import { formatDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
@@ -67,8 +69,9 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
+      <SettingsNav current="privacy" className="mb-8" />
       <div className="max-w-[46rem]">
-        <p className="eyebrow">Your account</p>
+        <p className="eyebrow">Settings</p>
         <h1 className="mt-2 font-display text-feature">Privacy and consents</h1>
         <p className="mt-3 max-w-[60ch] text-fg-muted">
           What you agreed to, what is public, and how to leave. Every change here is recorded with its date, and nothing is rewritten.
@@ -197,7 +200,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
 
         <p className="mt-10 border-t border-border-subtle pt-5 text-ui">
           <Link href="/account" className="link inline-flex min-h-11 items-center">
-            Back to your account
+            Back to settings
           </Link>
         </p>
       </div>
