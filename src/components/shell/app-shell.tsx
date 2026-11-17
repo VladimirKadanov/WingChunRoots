@@ -35,7 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <BrandMark className="min-w-0" />
           </Link>
           {/* M07: the search palette's field (plan §5.6). */}
-          <div className="flex min-w-0 max-w-[11rem] flex-1 justify-end">
+          <div className="flex min-w-11 max-w-[11rem] flex-1 justify-end">
             <SearchField variant="bar" />
           </div>
           {/* Who is signed in (owner request 2026-11-17): "Sign in", or the account menu. */}

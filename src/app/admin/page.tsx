@@ -87,7 +87,7 @@ function GrowthChart({ weeks }: { weeks: { weekStart: string; accounts: number; 
   const last = weeks[weeks.length - 1];
   const total = (key: 'accounts' | 'people') => weeks.reduce((sum, w) => sum + w[key], 0);
   return (
-    <figure className="mt-4">
+    <figure className="relative mt-4">
       <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" aria-hidden="true">
         {[0, 1, 2, 3, 4].map((i) => (
           <g key={i}>
@@ -111,25 +111,28 @@ function GrowthChart({ weeks }: { weeks: { weekStart: string; accounts: number; 
         In {weeks.length} weeks: {plural(total('accounts'), 'new account', 'new accounts')} and {plural(total('people'), 'new person', 'new people')} on record. This week so far:{' '}
         {number.format(last?.accounts ?? 0)} and {number.format(last?.people ?? 0)}.
       </figcaption>
-      <table className="sr-only">
-        <caption>New accounts and new people on record per week</caption>
-        <thead>
-          <tr>
-            <th scope="col">Week of</th>
-            <th scope="col">New accounts</th>
-            <th scope="col">New people</th>
-          </tr>
-        </thead>
-        <tbody>
-          {weeks.map((w) => (
-            <tr key={w.weekStart}>
-              <th scope="row">{formatDay(w.weekStart)}</th>
-              <td>{w.accounts}</td>
-              <td>{w.people}</td>
+      {/* A table ignores the 1 px width of sr-only: its wrapper takes it. */}
+      <div className="sr-only">
+        <table>
+          <caption>New accounts and new people on record per week</caption>
+          <thead>
+            <tr>
+              <th scope="col">Week of</th>
+              <th scope="col">New accounts</th>
+              <th scope="col">New people</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {weeks.map((w) => (
+              <tr key={w.weekStart}>
+                <th scope="row">{formatDay(w.weekStart)}</th>
+                <td>{w.accounts}</td>
+                <td>{w.people}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }
@@ -214,13 +217,11 @@ export default async function AdminPage() {
 
       <section aria-label="Key figures" className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         <Figure label="Accounts" value={number.format(d.accounts.total)} note={`${number.format(d.accounts.recent)} new`} href={isAdmin ? '/admin/accounts' : undefined} testId={isAdmin ? 'admin-accounts-link' : undefined} />
-        <Figure
-          label="People on record"
-          value={number.format(d.people.total)}
-          note={`${number.format(d.people.recent)} new`}
-          href={isAdmin || role === 'archivist' ? '/admin/archive' : undefined}
-          testId={isAdmin || role === 'archivist' ? 'archive-editor-link' : undefined}
-        />
+        {isAdmin || role === 'archivist' ? (
+          <Figure label="People on record" value={number.format(d.people.total)} note={`${number.format(d.people.recent)} new`} href="/admin/archive" testId="archive-editor-link" />
+        ) : (
+          <Figure label="People on record" value={number.format(d.people.total)} note={`${number.format(d.people.recent)} new`} />
+        )}
         <Figure label="Verified links" value={number.format(d.verifiedLinks.total)} note={`${number.format(d.verifiedLinks.recent)} sealed lately`} />
         <Figure
           label="Listed schools"
