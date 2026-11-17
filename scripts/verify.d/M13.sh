@@ -101,9 +101,11 @@ check "the matrix covers every procedure, every role, over /api/rpc and through 
 
 # 4. The home page (In scope 1) -----------------------------------------------------------------------
 check "the home page: mission, verification, search, the explorer, the finder, sign in and sign up" bash -c '
-  f=src/app/page.tsx
+  f=src/app/page.tsx a=src/components/home/home-account.tsx
+  # The sign-up and sign-in links are in the account line the page renders (ADR 0039).
   grep -q "<HomeSearch />" "$f" && grep -q "href=\"/explore\"" "$f" && grep -q "href=\"/schools\"" "$f" &&
-  grep -q "href=\"/sign-up\"" "$f" && grep -q "href=\"/sign-in\"" "$f" && grep -q "how-heading" "$f" &&
+  grep -q "<HomeAccountLine />" "$f" && grep -q "<VisitorAccountLine />" "$f" &&
+  grep -q "href=\"/sign-up\"" "$a" && grep -q "href=\"/sign-in\"" "$a" && grep -q "how-heading" "$f" &&
   grep -q "openSearch" src/components/home/home-search.tsx'
 check "the home route is an M13 key screen" grep -qE "path: '/', name: 'home', status: 200, milestone: 'M13', key: true" e2e/routes.ts
 
