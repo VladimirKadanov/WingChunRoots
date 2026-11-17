@@ -92,7 +92,7 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
           </span>
         ) : unread > 0 ? (
           // Shape and number, not colour alone: a small ink square with the count.
-          <span aria-hidden="true" className="absolute top-0.5 right-0 min-w-4 rounded-[3px] border border-bg bg-fg px-0.5 text-center text-[11px] leading-4 font-semibold text-fg-inverse">
+          <span aria-hidden="true" className="absolute top-0.5 right-0 min-w-4 rounded-[3px] border border-bg bg-fg px-0.5 text-center text-caption leading-4 font-semibold tracking-normal text-fg-inverse">
             {unread > 9 ? '9+' : unread}
           </span>
         ) : null}
