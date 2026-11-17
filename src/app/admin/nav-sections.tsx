@@ -17,7 +17,13 @@ interface Section {
 
 /** Every section of the control panel, by group. A section shows only when its page would open. */
 export const SECTIONS: readonly { label: string; sections: readonly Section[] }[] = [
-  { label: 'Overview', sections: [{ href: '/admin', label: 'Dashboard' }] },
+  {
+    label: 'Overview',
+    sections: [
+      { href: '/admin', label: 'Dashboard' },
+      { href: '/admin/reports', label: 'Reports' },
+    ],
+  },
   { label: 'Queues', sections: [{ href: '/admin/review', label: 'Review requests', count: 'openReview' }] },
   {
     label: 'Directory',

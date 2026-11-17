@@ -16,6 +16,7 @@ import type { Principal } from '../auth/principal';
 import { accountOverview, landingInput, landingPath, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
 import { adminDashboard, adminNavCounts } from '../services/admin-dashboard';
+import { adminBillingReport, adminBillingReportInput, adminReport, adminReportInput } from '../services/admin-reports';
 import { accountMenu } from '../services/account-menu';
 import { listAccounts, listAccountsInput } from '../services/account-directory';
 import { recordConsents, recordConsentsInput } from '../services/consent';
@@ -468,6 +469,15 @@ export const router = {
     dashboard: staffWithSecondFactor
       .route({ method: 'GET', path: '/admin/dashboard', summary: 'Counts and weekly growth for the control panel dashboard; billing figures for admins only (staff with a verified second factor)' })
       .handler(({ context }) => adminDashboard(context.principal)),
+    // ADR 0041: the reports of /admin/reports and their CSV downloads; aggregate counts only.
+    reports: staffWithSecondFactor
+      .route({ method: 'GET', path: '/admin/reports', summary: 'One report of the control panel over a period: growth, review throughput, archive completeness or schools; aggregate counts only (staff with a verified second factor)' })
+      .input(adminReportInput)
+      .handler(({ context, input }) => adminReport(context.principal, input)),
+    billingReport: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/reports/billing', summary: 'Subscriptions by plan and status over a period and their monthly value, test mode (admin with a verified second factor)' })
+      .input(adminBillingReportInput)
+      .handler(({ context, input }) => adminBillingReport(context.principal, input)),
     overview: base
       .route({ method: 'GET', path: '/admin/overview', summary: 'Counts for the admin page (staff with a verified second factor)' })
       .handler(({ context }) => adminOverview(context.principal)),

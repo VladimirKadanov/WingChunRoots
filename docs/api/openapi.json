@@ -1076,6 +1076,123 @@
         }
       }
     },
+    "/admin/reports": {
+      "get": {
+        "operationId": "admin.reports",
+        "summary": "One report of the control panel over a period: growth, review throughput, archive completeness or schools; aggregate counts only (staff with a verified second factor)",
+        "parameters": [
+          {
+            "name": "report",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "growth",
+                "review",
+                "archive",
+                "schools"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "90d",
+              "type": "string",
+              "enum": [
+                "30d",
+                "90d",
+                "12m"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reports/billing": {
+      "get": {
+        "operationId": "admin.billingReport",
+        "summary": "Subscriptions by plan and status over a period and their monthly value, test mode (admin with a verified second factor)",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "default": "90d",
+              "type": "string",
+              "enum": [
+                "30d",
+                "90d",
+                "12m"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/overview": {
       "get": {
         "operationId": "admin.overview",
