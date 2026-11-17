@@ -79,7 +79,7 @@ const radioClass = cx(
 );
 // A checked box is an ink fill with a tick. In forced colours the fill's background would be
 // replaced by Canvas and the tick would vanish with it, so the system draws its own checkbox there
-// (as the account type's radios, src/app/dashboard/settings/forms.tsx; review screens-9).
+// (as the account type's radios, src/app/account/plan/forms.tsx; review screens-9).
 const boxClass = cx(
   'peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1',
   'transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted',

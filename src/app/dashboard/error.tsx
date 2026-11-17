@@ -3,7 +3,7 @@
 // The error boundary of /dashboard (M08 final check, requirements-2; plan §5.6). The page catches
 // the failure of its own reads and shows the same state on the server (works without JavaScript);
 // this boundary is for anything else, inside the app shell, with the boundary's retry().
-// /dashboard/settings has its own (./settings/error.tsx).
+// The settings (/account/plan, formerly /dashboard/settings) have their own.
 
 import { LoadError } from '@/components/account/load-error';
 import { DASHBOARD_LOAD_ERROR } from '@/components/account/load-errors/dashboard';

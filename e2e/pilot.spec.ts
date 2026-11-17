@@ -221,7 +221,8 @@ test('@pilot register → onboarding → find a teacher with the palette → req
   await page.getByRole('button', { name: 'Save my profile' }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await page.goto('/account');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expect(page.getByTestId('account-name')).toHaveText(name);
   const student = await ownPerson((await userIdOf(email))!);
 
   // The request: the teacher is found with the palette in the request form.

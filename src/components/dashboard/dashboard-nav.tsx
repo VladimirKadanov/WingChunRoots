@@ -81,7 +81,7 @@ export function dashboardNavGroups(nav: NavData): DashboardNavGroup[] {
   if (nav.hasProfile) you.push(link('/dashboard/profile', 'Profile'), link('/dashboard/photos', 'Photos'));
   you.push(link('/dashboard/notifications', 'Notifications', nav.unreadNotifications || null, 'unread'));
   if (!nav.staffOnly) you.push(link('/dashboard/cases', 'Cases'), link('/dashboard/succession', 'Digital successor'));
-  you.push(link('/dashboard/billing', 'Billing'), link('/dashboard/settings', 'Plan and settings'), link('/account', 'Account and security'));
+  you.push(link('/account/plan', 'Plan and billing'), link('/account', 'Settings'));
   groups.push({ label: 'You', links: you });
   return groups;
 }

@@ -929,7 +929,7 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
 /** The checks every save makes: a Sifu with a profile, a city, a pin near it, instructors from the list. */
 async function checkFields(db: Executor, userId: string, input: z.output<typeof schoolFieldsInput>): Promise<{ ownId: string; instructorIds: string[] }> {
   if ((await accountTypeOf(db, userId)) !== 'sifu') {
-    throw new ServiceError('FORBIDDEN', 'Schools are listed from a Sifu account. Change your account type in Account type and plan.');
+    throw new ServiceError('FORBIDDEN', 'Schools are listed from a Sifu account. Change your account type in Settings, under Plan and billing.');
   }
   const ownId = await ownPersonId(db, userId);
   if (!ownId) throw new ServiceError('CONFLICT', 'Set up your profile first: you are the head instructor of the schools you list.');

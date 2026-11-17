@@ -61,7 +61,12 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/plans', name: 'plans', status: 200, milestone: 'M08', key: true },
   { path: '/dashboard', name: 'dashboard-sifu', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard', name: 'dashboard-student', status: 200, milestone: 'M08', key: true, signInAs: 'demo-pending' },
-  { path: '/dashboard/settings', name: 'dashboard-settings', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
+  // Settings (usability review 2026-11): one area under /account. "Plan and billing" was
+  // /dashboard/settings (a key screen since M08, for the same demo account; the old address
+  // redirects); its section of e-mail settings is a page of its own, for demo-two-lineages (its
+  // Plan e-mails are off; no test changes them).
+  { path: '/account/plan', name: 'account-plan', status: 200, milestone: 'usability-2026-11', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/account/notifications', name: 'account-notifications', status: 200, milestone: 'usability-2026-11', signInAs: 'demo-two-lineages' },
   { path: '/admin/grants', name: 'admin-grants', status: 200, milestone: 'M08', signInAs: 'admin' },
   { path: '/admin/accounts', name: 'admin-accounts', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
   // M26: the archive editor (an archivist or an administrator).

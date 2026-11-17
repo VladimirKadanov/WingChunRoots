@@ -136,8 +136,8 @@ export default async function InstructorPage({ searchParams }: { searchParams: S
             <p className="max-w-[60ch] rounded-sm bg-surface-2 px-4 py-4 text-ui" data-testid="instructor-refusal">
               {view.refusal}{' '}
               {view.accountType !== 'sifu' ? (
-                <Link href="/dashboard/settings" className="link">
-                  Account type and plan
+                <Link href="/account/plan" className="link">
+                  Plan and billing
                 </Link>
               ) : !view.hasProfile ? (
                 <Link href={`/onboarding?next=${encodeURIComponent(PAGE)}`} className="link">

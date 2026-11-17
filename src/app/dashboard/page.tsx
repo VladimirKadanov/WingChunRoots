@@ -300,12 +300,12 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
   );
 }
 
-/** For a student with a profile: where to say that they teach (the account type lives in Plan and settings). */
+/** For a student with a profile: where to say that they teach (the account type lives in Settings, Plan and billing). */
 function TeachPrompt() {
   return (
     <p data-testid="teach-prompt" className="max-w-[56ch] text-sm text-fg-muted">
       Do you teach Wing Chun?{' '}
-      <Link href="/dashboard/settings" className="link">
+      <Link href="/account/plan" className="link">
         Switch to a Sifu account
       </Link>{' '}
       to accept students, list schools and publish events.

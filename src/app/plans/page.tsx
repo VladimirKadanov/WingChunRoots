@@ -373,8 +373,8 @@ export default function PlansPage() {
 
         <p className="mt-12 border-t border-border-subtle pt-5 text-ui text-fg-muted">
           Student or Sifu is your choice in{' '}
-          <Link href="/dashboard/settings" className="link text-fg">
-            Account type and plan
+          <Link href="/account/plan" className="link text-fg">
+            Plan and billing
           </Link>
           . Choosing Sifu sets the Free Sifu plan; it doesn&apos;t verify you as an instructor, an archivist does that separately.
         </p>

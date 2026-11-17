@@ -18004,6 +18004,29 @@
         }
       }
     },
+    "/dashboard/nav": {
+      "get": {
+        "operationId": "dashboard.nav",
+        "summary": "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/system": {
       "get": {
         "operationId": "system.status",

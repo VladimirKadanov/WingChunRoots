@@ -1,10 +1,14 @@
-// /dashboard/settings, "Account type and plan" (milestone M08, In scope 2; plan §6.5): the account
-// type, Student or Sifu,
-// and the plan in effect with the account's test plans. Changing the type sets the free plan of
-// that type, is audited, and verifies nothing (DEFAULT D04): a Sifu without an approved instructor
+// /account/plan, "Plan and billing" (milestone M08, In scope 2; plan §6.5): the account type,
+// Student or Sifu, and the plan in effect with the account's test plans. Changing the type sets the
+// free plan of that type, is audited, and verifies nothing (DEFAULT D04): a Sifu without an approved instructor
 // verification shows as "Instructor (unverified)" (DEFAULT D04/D13). From Sifu to Student every
 // confirmed link stays confirmed (DEFAULT D06/D08). Reads the session: rendered per request.
-// M18: the e-mail settings of the notices (section Notifications).
+//
+// Until the usability review of 2026-11 this was /dashboard/settings, "Account type and plan", which
+// also held the e-mail settings of the notices (M18). Both are sections of Settings now, with the
+// settings' section row (SettingsNav): the e-mail settings are /account/notifications, and
+// /dashboard/settings redirects here for good (next.config.ts). An old link to its
+// #notifications-heading lands on the pointer to them at the end of this page.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -12,8 +16,9 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { SETTINGS_LOAD_ERROR } from '@/components/account/load-errors/settings';
+import { PLAN_LOAD_ERROR } from '@/components/account/load-errors/plan';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { SettingsNav } from '@/components/account/settings-nav';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDay, untilPlanEnd } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
@@ -21,13 +26,12 @@ import { FREE_SIFU_STUDENT_LIMIT } from '@/server/entitlements/plans';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { NOTIFICATIONS_FORM } from './form-ids';
-import { AccountTypeForm, NotificationEmailsForm } from './forms';
+import { AccountTypeForm } from './forms';
 
 export const instant = false;
 
 export const metadata: Metadata = {
-  title: 'Account type and plan',
+  title: 'Plan and billing',
   robots: { index: false },
 };
 
@@ -44,23 +48,23 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
-export default async function DashboardSettingsPage({ searchParams }: { searchParams: Search }) {
-  const guard = await guardRoute('/dashboard/settings');
+export default async function PlanSettingsPage({ searchParams }: { searchParams: Search }) {
+  const guard = await guardRoute('/account/plan');
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   // A failed read shows the error state in the app shell, with "Try again" (final check, requirements-2).
   const client = serverClient(await headers(), guard.principal);
   const mine = await pageRead(client.plans.mine());
-  const preferences = mine ? await pageRead(client.notifications.preferences()) : null;
-  if (!mine || !preferences) return <LoadError {...SETTINGS_LOAD_ERROR} retryHref="/dashboard/settings" />;
+  if (!mine) return <LoadError {...PLAN_LOAD_ERROR} retryHref="/account/plan" />;
   const badge = mine.instructor.status === 'verified' ? 'verified' : mine.instructor.status === 'unverified' ? 'unconfirmed' : null;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
+      <SettingsNav current="plan" className="mb-8" />
       <div className="max-w-[46rem]">
-        <p className="eyebrow">Dashboard</p>
-        <h1 className="mt-2 font-display text-feature">Account type and plan</h1>
+        <p className="eyebrow">Settings</p>
+        <h1 className="mt-2 font-display text-feature">Plan and billing</h1>
 
         <div className="mt-8 grid gap-10">
           <Section id="account-type-heading" title="Account type">
@@ -107,10 +111,8 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
                   <dt className="pt-3 text-sm text-fg-muted sm:border-t sm:border-border-subtle sm:pb-3">Paid plan</dt>
                   <dd data-testid="settings-paid-plan" className="border-b border-border-subtle pb-3 text-ui sm:border-t sm:border-b-0 sm:pt-3">
                     <span className="font-semibold">{mine.grants.find((grant) => grant.paid)!.planName}</span>
-                    <span className="text-fg-muted"> (test mode, no real charge). </span>
-                    <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center">
-                      Manage billing
-                    </Link>
+                    {/* Managed under "Billing and invoices" below: one link to billing on the page. */}
+                    <span className="text-fg-muted"> (test mode, no real charge).</span>
                   </dd>
                 </>
               ) : null}
@@ -147,28 +149,22 @@ export default async function DashboardSettingsPage({ searchParams }: { searchPa
               <Link href="/plans" className="link inline-flex min-h-11 items-center">
                 Compare plans
               </Link>
-              <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center">
-                Billing
-              </Link>
-              <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
-                Back to your dashboard
+              <Link href="/dashboard/billing" className="link inline-flex min-h-11 items-center" data-testid="billing-link">
+                Billing and invoices
               </Link>
             </p>
           </Section>
 
-          {/* M18 (In scope 3; DEFAULT M18, question 1): e-mail per category; the dashboard always. */}
-          <Section id="notifications-heading" title="Notifications">
-            <div className="grid gap-5">
-              <p className="max-w-[60ch] text-ui text-fg-muted">
-                Every notice appears in your{' '}
-                <Link href="/dashboard/notifications" className="link">
-                  notifications
-                </Link>
-                . Choose which of them also come by e-mail. Each e-mail you can switch off has an unsubscribe link at the bottom.
-              </p>
-              <NotificationEmailsForm categories={preferences.categories} initial={await readFormResult(NOTIFICATIONS_FORM, query.outcome)} />
-            </div>
-          </Section>
+          {/* The e-mail settings of the notices were a section here until the usability review of
+              2026-11: an old /dashboard/settings#notifications-heading link (an e-mail, a bookmark)
+              arrives through the redirect at this id and finds where they are now. */}
+          <p id="notifications-heading" className="scroll-mt-4 border-t border-border-subtle pt-6 text-ui text-fg-muted">
+            Looking for which notices come by e-mail? They are in{' '}
+            <Link href="/account/notifications" className="link text-fg">
+              Notification settings
+            </Link>
+            .
+          </p>
         </div>
       </div>
     </div>

@@ -154,7 +154,7 @@ scripts/verify.sh <етап>        # например scripts/verify.sh M00b
 2. На <http://localhost:3000/sign-up> регистрирайте своя акаунт (виж ръководството за потребителя).
 3. В Mailpit (<http://localhost:8025>) отворете писмото **Confirm your e-mail address for WingChunRoots**, натиснете **Confirm e-mail address**, после **Confirm my address**.
 4. Влезте. Попълнете профила, ако искате (не е задължително за администратора).
-5. Отворете **Me** → **Security settings** (`/account/security`) и включете двуфакторното удостоверяване:
+5. Отворете **Settings** → **Sign-in & security** (`/account/security`, **Sign-in and security**) и включете двуфакторното удостоверяване:
    1. въведете паролата си и натиснете **Set up two-factor authentication**;
    2. сканирайте QR кода с приложението за удостоверяване (или въведете ключа под него);
    3. въведете кода от приложението и натиснете **Turn on two-factor authentication**;
@@ -326,7 +326,7 @@ Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, м
 
 ## 10. Визуална регресия
 
-Тестът `e2e/visual.spec.ts` (таг `@visual`) сравнява ключовите страници (`/`, `/styleguide`, а от M02 `/sign-up`, `/sign-in` и `/onboarding`; от M04 — профилът и списъчният изглед на `demo-two-lineages`, от M08 — `/plans`, `/dashboard` и `/dashboard/settings`, от M05 — началната страница на изследователя `/explore`, трите му изгледа, `explore-person`, `explore-generations` и `explore-lineage`, и списъчният изглед в рамката му, `explore-list`; от M06 — изследователят с избран човек, `explore-selection`, и след разгъване от клавиатурата, `explore-expanded`) при 390×844 и 1440×900 в тъмна и светла тема с базовите снимки в `e2e/__screenshots__/visual.spec.ts/*-linux.png`. Върви **само в CI**, защото само там Chromium е точно версията на закачения Playwright; на друга машина шрифтовете и изглаждането дават малки разлики.
+Тестът `e2e/visual.spec.ts` (таг `@visual`) сравнява ключовите страници (`/`, `/styleguide`, а от M02 `/sign-up`, `/sign-in` и `/onboarding`; от M04 — профилът и списъчният изглед на `demo-two-lineages`, от M08 — `/plans`, `/dashboard` и `/dashboard/settings` (от прегледа на използваемостта 2026-11 `/account/plan`, `account-plan`), от M05 — началната страница на изследователя `/explore`, трите му изгледа, `explore-person`, `explore-generations` и `explore-lineage`, и списъчният изглед в рамката му, `explore-list`; от M06 — изследователят с избран човек, `explore-selection`, и след разгъване от клавиатурата, `explore-expanded`) при 390×844 и 1440×900 в тъмна и светла тема с базовите снимки в `e2e/__screenshots__/visual.spec.ts/*-linux.png`. Върви **само в CI**, защото само там Chromium е точно версията на закачения Playwright; на друга машина шрифтовете и изглаждането дават малки разлики.
 
 Базовите снимки се сменят само с commit. Когато екранът е променен нарочно, CI пада на тези тестове и печата новите снимки в лога на задачата `verify` (стъпка „Print the visual regression screenshots that match no baseline“). Обновяване:
 
@@ -475,7 +475,7 @@ Lighthouse (LCP < 2,5 s и CLS < 0,1 за `/` в мобилен профил, м
 
 Ако базата данни не отговори навреме (например друга операция държи реда на акаунта), формата остава отворена с попълнените полета и казва „Something went wrong on our side; nothing was changed. Try again.“ Наистина нищо не е променено: всяко даване, отнемане, затваряне и смяна на вида е една транзакция, заедно с отговора. В лога на сървъра остава един ред, например `rpc grants.create failed: DrizzleQueryError (postgres 57014) request 01a1…`: процедурата, видът на грешката, кодът на PostgreSQL и идентификаторът на заявката, без адреси, имена и входни данни. По идентификатора намирате заявката в журнала, без да търсите лични данни.
 
-Същото важи, когато не успее четенето на страница. **Plan grants** (и таблото, и **Account type and plan**) показва тогава заглавието си, „We couldn't load the plan grants. Nothing was changed.“, „This is usually brief: try again in a moment.“, бутон **Try again** и **Back to administration**. **Try again** отваря отново същия адрес, със същото търсене, и работи и без JavaScript. Навигацията остава. В лога има същия един ред (`rpc grants.list failed: …`) и ред на Next.js с „Internal server error“ и `digest`, но никога текста на грешката от базата, търсения адрес или идентификатора на акаунт.
+Същото важи, когато не успее четенето на страница. **Plan grants** (и таблото, и **Plan and billing** на `/account/plan`) показва тогава заглавието си, „We couldn't load the plan grants. Nothing was changed.“, „This is usually brief: try again in a moment.“, бутон **Try again** и **Back to administration**. **Try again** отваря отново същия адрес, със същото търсене, и работи и без JavaScript. Навигацията остава. В лога има същия един ред (`rpc grants.list failed: …`) и ред на Next.js с „Internal server error“ и `digest`, но никога текста на грешката от базата, търсения адрес или идентификатора на акаунт.
 
 Пример с `psql` срещу локалната база:
 

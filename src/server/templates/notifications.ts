@@ -178,7 +178,7 @@ interface PlanGranted {
 }
 
 /** The plan notifications lead to the account's plan, not to the dashboard they are shown on. */
-const SEE_YOUR_PLAN = { label: 'See your plan', href: '/dashboard/settings' } as const;
+const SEE_YOUR_PLAN = { label: 'See your plan', href: '/account/plan' } as const;
 const SEE_YOUR_BILLING = { label: 'Open billing', href: '/dashboard/billing' } as const;
 
 /**

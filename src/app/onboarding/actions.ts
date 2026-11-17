@@ -89,7 +89,7 @@ async function onboard(form: FormData, next: string): Promise<FormState> {
 }
 
 /**
- * "I train" or "I teach": the same account.setType as /dashboard/settings, once the profile is
+ * "I train" or "I teach": the same account.setType as /account/plan, once the profile is
  * saved. The type the account already has changes and counts nothing. A refusal (the daily limit of
  * changes, a renewing paid plan) leaves the saved profile as it is and opens the settings page with
  * the reason, where the choice can be made again.
@@ -101,10 +101,10 @@ async function applyAccountType(client: ReturnType<typeof serverClient>, form: F
     await client.account.setType({ accountType });
   } catch (error) {
     unstable_rethrow(error);
-    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fdashboard%2Fsettings');
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Faccount%2Fplan');
     const failure = formStateFromFailure(error);
     await keepFormResult(
-      { form: 'account-type', page: '/dashboard/settings' },
+      { form: 'account-type', page: '/account/plan' },
       { status: 'error', message: `Your profile is saved, but your account type was not changed. ${failure.message ?? ''}`.trim() },
     );
   }

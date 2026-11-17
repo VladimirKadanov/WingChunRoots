@@ -26,7 +26,7 @@ test('@nav a student sees learning and their own pages, never teaching or organi
   await page.goto('/dashboard');
   const nav = menu(page);
   await expect(shown(nav.getByRole('link', { name: 'Overview' }))).toHaveAttribute('aria-current', 'page');
-  for (const name of ['My teachers', 'Training passport', 'Trial lessons', 'Profile', 'Billing', 'Plan and settings']) {
+  for (const name of ['My teachers', 'Training passport', 'Trial lessons', 'Profile', 'Plan and billing', 'Settings']) {
     await expect(shown(nav.getByRole('link', { name, exact: true }))).toHaveCount(1);
   }
   for (const name of ['Student requests', 'My schools', 'Instructor verification']) {

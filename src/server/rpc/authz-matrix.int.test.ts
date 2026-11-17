@@ -2395,10 +2395,10 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     call: (fn, form) => fn(form),
   },
   // M18: an empty form switches off every category that can be (its procedure is the last call).
-  { action: 'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
+  { action: 'src/app/account/notifications/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
   { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
-  { action: 'src/app/dashboard/settings/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
+  { action: 'src/app/account/plan/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#revokeGrantAction', row: 'grants.revoke', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#closeRequestAction', row: 'grants.closeRequest', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
