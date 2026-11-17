@@ -20,6 +20,10 @@
 // own and that a student can name (trainedWithHref), the same link in an empty Students section, a
 // short hint in an empty Teachers section, and the report and correction links grouped at the
 // bottom under "Something wrong?".
+//
+// ADR 0037: "Is this you? Ask to claim this profile" under the header of a public, unclaimed record
+// of a living person (claimProfileHref), to /people/<slug>/claim. Plain words: the eyebrow says
+// "Profile"; an unclaimed record and a teacher row marked "Cross-lineage" get a one-line hint.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -61,6 +65,7 @@ import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
 import { PASSPORT_REMOVE_FORM } from './form-ids';
 import { trainedWithHref } from './trained-with';
+import { claimProfileHref } from './claim-href';
 import { PassportRemoveForm } from './passport-remove-form';
 
 export const instant = false;
@@ -171,7 +176,14 @@ function Relations({
       <Section id="teachers-heading" title="Teachers" count={countText(profile.counts.teachers)} focusable>
         {pendingTeachers > 0 ? <p className="text-sm text-fg-muted">{pendingText(pendingTeachers)}</p> : null}
         {teachers.length > 0 ? (
-          <RelationList rows={teachers} lineages={lineages} role="teacher" label={`Teachers of ${profile.displayName}`} />
+          <>
+            <RelationList rows={teachers} lineages={lineages} role="teacher" label={`Teachers of ${profile.displayName}`} />
+            {teachers.some((t) => t.edges.some((e) => e.kind === 'crossLineage')) ? (
+              <p className="text-sm text-fg-muted" data-testid="cross-lineage-hint">
+                Cross-lineage: a teacher from another lineage than the one this person is listed in.
+              </p>
+            ) : null}
+          </>
         ) : founded.length > 0 ? (
           // DEFAULT D22: a founder is named only when the record says so.
           <EmptyState>
@@ -369,6 +381,16 @@ function Photos({ gallery }: { gallery: GalleryView }) {
   );
 }
 
+/** "Unclaimed record" and "Kept by the archive" in the fact line, in plain words (a shared archival record). */
+function KeeperHint({ claimState }: { claimState: PersonProfileDto['claimState'] }) {
+  if (claimState !== 'unclaimed' && claimState !== 'platform') return null;
+  return (
+    <p className="text-sm text-fg-muted" data-testid="keeper-hint">
+      {claimState === 'unclaimed' ? 'Kept by the archive; nobody has claimed it yet.' : 'Kept by the archive for everyone; anyone can propose a correction.'}
+    </p>
+  );
+}
+
 function About({ bio }: { bio: string }) {
   return (
     <section aria-labelledby="about-heading" className="grid gap-3 border-t border-border-subtle pt-6">
@@ -407,6 +429,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
   const principal = await getRequestPrincipal();
   const passportStaff = passport !== null && hasStaff2FA(principal);
   const trainedWith = trainedWithHref(profile, principal !== null);
+  const claimHref = claimProfileHref(profile);
   const removable = passportStaff ? removableEntries(passport) : [];
   const removeOutcome = removable.length > 0 ? await readFormResult(PASSPORT_REMOVE_FORM, query.outcome) : null;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
@@ -431,10 +454,11 @@ export default async function PersonPage({ params, searchParams }: Props) {
       header={
         <>
           <PersonIdentity profile={profile}>
-            <p className="eyebrow">Person on the record</p>
+            <p className="eyebrow">Profile</p>
             <PersonHeading profile={profile} />
             <PersonReadings profile={profile} />
             <FactStrip profile={profile} />
+            {!profile.limited ? <KeeperHint claimState={profile.claimState} /> : null}
           </PersonIdentity>
           {/* M14: the owner's photo controls (their own record only, never a limited view). */}
           {profile.isOwn && !profile.limited ? <PhotoControl hasPhoto={Boolean(profile.photo)} /> : null}
@@ -446,6 +470,13 @@ export default async function PersonPage({ params, searchParams }: Props) {
                   I trained with <LatinName name={profile.displayName} />
                 </span>
                 <ArrowRightIcon />
+              </Link>
+            </p>
+          ) : null}
+          {claimHref ? (
+            <p className="text-ui">
+              <Link href={claimHref} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="claim-profile-link">
+                Is this you? Ask to claim this profile
               </Link>
             </p>
           ) : null}
