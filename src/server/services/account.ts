@@ -245,7 +245,7 @@ export async function pendingClaimOf(userId: string): Promise<string | null> {
   return row ? (row.caseId ?? 'pending') : null;
 }
 
-/** ADR 0037: the page where an account asks to claim a public profile. */
+/** ADR 0040: the page where an account asks to claim a public profile. */
 const CLAIM_PAGE = /^\/people\/[a-z0-9]+(?:-[a-z0-9]+)*\/claim(?:[?#]|$)/;
 
 export async function landingPath(principal: Principal | null, next: unknown): Promise<string> {
@@ -257,7 +257,7 @@ export async function landingPath(principal: Principal | null, next: unknown): P
   if (settled || target.startsWith('/account/security') || target.startsWith('/admin')) return target;
   // M10b: an invited teacher claims the profile made for them instead of onboarding, so an
   // invitation link, and an account whose claim waits for the reviewers, skip onboarding, but
-  // never the confirmation of the current documents (/onboarding asks for it alone then). ADR 0037:
+  // never the confirmation of the current documents (/onboarding asks for it alone then). ADR 0040:
   // so does the claim page of a public profile (/people/<slug>/claim): onboarding would make the
   // account a profile of its own, and then it could claim none.
   if (confirmed && (target.startsWith('/invite/') || CLAIM_PAGE.test(target) || (await pendingClaimOf(user.id)))) return target;

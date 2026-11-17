@@ -1,4 +1,4 @@
-// The dashboard's frame (owner request 2026-11-17, docs/adr/0036-member-navigation.md): the
+// The dashboard's frame (owner request 2026-11-17, docs/adr/0039-member-navigation.md): the
 // grouped menu of every /dashboard page beside (from 1024 px) or above the page, from the @nav
 // slot (src/app/dashboard/@nav: it knows the address, so the current link is marked on the server
 // with no script). Each page still guards itself (guardRoute): the menu is only a way there. It

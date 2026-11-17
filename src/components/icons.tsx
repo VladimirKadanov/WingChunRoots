@@ -41,7 +41,7 @@ export const SearchIcon = icon(
   </>,
   1.7,
 );
-/** The Home tab (owner request 2026-11-17, docs/adr/0036-member-navigation.md). */
+/** The Home tab (owner request 2026-11-17, docs/adr/0039-member-navigation.md). */
 export const HomeIcon = icon(
   'Home',
   <>

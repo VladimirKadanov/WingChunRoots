@@ -521,7 +521,7 @@ async function sharedRecord() {
   return { id, slug };
 }
 
-/** ADR 0037: a public, unclaimed record of a living person, as the demo records are. */
+/** ADR 0040: a public, unclaimed record of a living person, as the demo records are. */
 async function claimableRecord() {
   const id = uuidv7();
   const slug = `demo-claimable-record-${randomBytes(4).toString('hex')}`;
@@ -531,7 +531,7 @@ async function claimableRecord() {
 }
 
 /**
- * ADR 0037: one waiting claim per account. The world's staff accept invitations in the rows above
+ * ADR 0040: one waiting claim per account. The world's staff accept invitations in the rows above
  * (invitations.accept), so their waiting claims are set aside before each call of a claim row.
  */
 async function noWaitingClaim(who: Who): Promise<void> {
@@ -813,7 +813,7 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', party: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
   },
-  // ADR 0037: a claim from a public profile's page. Any signed-in account reads whether it can claim
+  // ADR 0040: a claim from a public profile's page. Any signed-in account reads whether it can claim
   // (an account with a profile reads why not); an account without a profile of its own claims it (the
   // world's staff accounts have none), an account with one cannot.
   {

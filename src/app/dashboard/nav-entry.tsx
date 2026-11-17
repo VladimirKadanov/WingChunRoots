@@ -1,4 +1,4 @@
-// The dashboard menu's entry (docs/adr/0036-member-navigation.md): reads the session and the
+// The dashboard menu's entry (docs/adr/0039-member-navigation.md): reads the session and the
 // account's menu data per request; nothing for a visitor (the page itself sends them to sign in).
 // The counts are a convenience: if the read fails, the page still works without the menu.
 

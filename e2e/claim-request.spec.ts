@@ -1,5 +1,5 @@
 /**
- * "Is this you? Ask to claim this profile" (ADR 0037): a public, unclaimed record of a living
+ * "Is this you? Ask to claim this profile" (ADR 0040): a public, unclaimed record of a living
  * person offers the claim under its header; the claim page sends a visitor to sign in and back
  * (no profile set-up on the way), explains the review, and its form opens the same person_claim
  * case an invitation's claim opens, without a relationship. The database is read to check what the

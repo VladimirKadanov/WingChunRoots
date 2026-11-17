@@ -101,7 +101,7 @@ function Value({ value, planned }: { value: Feature['values'][PlanCode]; planned
 }
 
 /**
- * Plain words for a feature whose name is a term of the archive (usability round, ADR 0037), on
+ * Plain words for a feature whose name is a term of the archive (usability round, ADR 0040), on
  * this page only: the plan matrix and its pinned version stay as they are.
  */
 const FEATURE_HINTS: Partial<Record<string, string>> = {

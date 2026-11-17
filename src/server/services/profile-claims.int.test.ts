@@ -1,4 +1,4 @@
-// "Is this you? Ask to claim this profile" (ADR 0037), against a migrated throwaway database:
+// "Is this you? Ask to claim this profile" (ADR 0040), against a migrated throwaway database:
 //   - a claim from the profile page opens the same review case of kind person_claim, and the same
 //     person_claim, an invitation's claim opens, without a relationship; the note stays in the
 //     case, the deciders are told, the audit row carries ids only;

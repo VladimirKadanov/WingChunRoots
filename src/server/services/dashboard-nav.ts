@@ -1,4 +1,4 @@
-// The dashboard's navigation (owner request 2026-11-17, docs/adr/0036-member-navigation.md): what a
+// The dashboard's navigation (owner request 2026-11-17, docs/adr/0039-member-navigation.md): what a
 // signed-in account needs to draw the grouped menu beside or above every /dashboard page, and the
 // "Next steps" a new account still has to take. Only the account's own data and counts; never
 // cached (the @nav slot reads it per request behind <Suspense>). Each page still guards itself:

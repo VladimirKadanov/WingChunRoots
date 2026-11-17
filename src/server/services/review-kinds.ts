@@ -9,7 +9,7 @@
 //                            relationship of the case moves to pending_teacher, which the teacher
 //                            then answers as in M09; reject (with a reason): the relationship stays
 //                            awaiting_claim and the student may invite again; needs_info. A claim
-//                            asked from a public profile (profile-claims.ts, ADR 0037) has no
+//                            asked from a public profile (profile-claims.ts, ADR 0040) has no
 //                            relationship: approved, the record becomes the claimant's own and keeps
 //                            its visibility; refused, it stays as it was.
 //   instructor_verification  verify: "Instructor" instead of "Instructor (unverified)" on the
@@ -115,7 +115,7 @@ async function tellClaimant(tx: Transaction, c: CaseRow, decision: 'approved' | 
   const claimant = await emailOf(tx, c.openedByUserId);
   if (!claimant) return;
   const teacherNames = c.personId ? await namesFor(tx, c.personId) : [];
-  // A claim asked from the profile page answers no student's request (ADR 0037).
+  // A claim asked from the profile page answers no student's request (ADR 0040).
   const self = c.relationshipId === null;
   const approvedPath = self ? '/dashboard/profile' : '/dashboard/students/requests';
   // No e-mail without the teacher's name.
@@ -133,7 +133,7 @@ async function tellClaimant(tx: Transaction, c: CaseRow, decision: 'approved' | 
 }
 
 async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row: RelRow | null, input: KindDecisionInput, meta: RequestMeta): Promise<KindDecisionOutcome> {
-  // A claim asked from the profile page (ADR 0037) has no relationship; one of an invitation does.
+  // A claim asked from the profile page (ADR 0040) has no relationship; one of an invitation does.
   const self = c.relationshipId === null;
   if ((!self && !row) || !c.personId || !c.openedByUserId) throw new ServiceError('CONFLICT', 'This claim can no longer be decided: its request or its record is gone.');
   if (row && row.status !== 'awaiting_claim') {
@@ -180,7 +180,7 @@ async function decidePersonClaim(tx: Transaction, p: Principal, c: CaseRow, row:
   if (!claimant) throw new ServiceError('CONFLICT', 'The claimant’s account no longer exists. Refuse this claim.');
 
   // The record becomes the claimant's own. An invited record stays involved_only until a link with
-  // it is verified; a public record claimed from its page keeps its visibility (ADR 0037): the new
+  // it is verified; a public record claimed from its page keeps its visibility (ADR 0040): the new
   // owner can hide it in their profile settings.
   await tx.update(person).set({ claimedByUserId: c.openedByUserId, stewardship: 'self', updatedAt: now }).where(eq(person.id, c.personId));
   await tx.update(personClaim).set({ status: 'approved', decidedByUserId: p.user.id, decidedAt: now, updatedAt: now }).where(and(eq(personClaim.reviewCaseId, c.id), eq(personClaim.status, 'pending')));

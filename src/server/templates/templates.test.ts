@@ -358,7 +358,7 @@ describe('invitations, claims, instructors and arbitration (M10b)', () => {
     await expect(renderEmail('claim-decided', { ...sample, decision: 'rejected', url: `${casePage}/x` })).rejects.toThrow(/dashboard\/cases/);
   });
 
-  it('a claim asked from the profile page (ADR 0037) links an approval to Your profile and names no student', async () => {
+  it('a claim asked from the profile page (ADR 0040) links an approval to Your profile and names no student', async () => {
     const sample = EMAIL_TEMPLATES['claim-decided'].sample;
     const approved = await renderEmail('claim-decided', { ...sample, self: true, url: 'http://localhost:3000/dashboard/profile' });
     expect(approved.text).toContain('Your profile');

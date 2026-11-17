@@ -1,4 +1,4 @@
-// "Ask to claim this profile" (ADR 0037): a note for the reviewers (required) and the button,
+// "Ask to claim this profile" (ADR 0040): a note for the reviewers (required) and the button,
 // posted to a thin Server Action over claims.request with an idempotency key the page made for it,
 // so a double press sends one claim.
 //

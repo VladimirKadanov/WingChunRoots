@@ -1,5 +1,5 @@
 // "Is this you? Ask to claim this profile": offered only on a public, unclaimed record of a living
-// person that is not the viewer's own (ADR 0037).
+// person that is not the viewer's own (ADR 0040).
 
 import { describe, expect, it } from 'vitest';
 

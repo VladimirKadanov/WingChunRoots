@@ -94,7 +94,7 @@ function Shell({ children, lead }: { children: ReactNode; lead: ReactNode }) {
 
 export default async function NewTeacherPage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
-  // The teacher chosen on a profile ("I trained with", docs/adr/0036-member-navigation.md) survives
+  // The teacher chosen on a profile ("I trained with", docs/adr/0039-member-navigation.md) survives
   // signing in and onboarding: both come back to this address with it.
   const chosenSlug = SLUG.test(one(query.teacher)) ? one(query.teacher) : null;
   const here = chosenSlug ? `${PAGE}?${new URLSearchParams({ teacher: chosenSlug })}` : PAGE;

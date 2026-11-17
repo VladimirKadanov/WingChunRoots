@@ -644,7 +644,7 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
 
 // --- review.get --------------------------------------------------------------------------------
 
-/** ADR 0037: the decisions on a profile claim asked from the profile page, which answers no request. */
+/** ADR 0040: the decisions on a profile claim asked from the profile page, which answers no request. */
 const SELF_CLAIM_DECISIONS: ReviewCaseView['decisions'] = {
   ...DECISION_TEXT.person_claim,
   verify: {
@@ -689,7 +689,7 @@ function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: 
   const open = isOpen(c.status);
   const listing = kind === 'school_listing';
   const application = kind === 'organization_application';
-  // A profile claim asked from the profile page (ADR 0037) answers no relationship.
+  // A profile claim asked from the profile page (ADR 0040) answers no relationship.
   const needed = kind === 'person_claim' && c.relationshipId === null ? undefined : DECIDABLE_IN[kind];
   // M11: a new listing (pending_review), or a listed school whose edit reopened the review (active).
   // M15: an application while its organization waits for review.
@@ -890,7 +890,7 @@ async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<Re
           .limit(1)
       : [];
     const [own] = c.openedByUserId ? await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, c.openedByUserId), isNull(person.deletedAt))) : [];
-    // ADR 0037: a claim asked from the record's public page, with no invitation and no student.
+    // ADR 0040: a claim asked from the record's public page, with no invitation and no student.
     const self = c.relationshipId === null;
     const [others] = self
       ? await db

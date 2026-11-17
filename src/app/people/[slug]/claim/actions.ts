@@ -1,6 +1,6 @@
 'use server';
 
-// The Server Action of /people/<slug>/claim (ADR 0037): a thin wrapper over claims.request
+// The Server Action of /people/<slug>/claim (ADR 0040): a thin wrapper over claims.request
 // (src/server/rpc/parity.ts), called in-process with this request's session. The form is rendered
 // by the page's Server Component (no client module), so a refusal is always kept for the page and
 // shown there, whoever posted (keepFormResult). Success opens the claim's case page, by its id only.

@@ -637,7 +637,7 @@ const CASE_PAGE = (caseId: string) => `/dashboard/cases/${caseId}`;
  * "claim.decided": to the teacher who accepted an invitation, when the reviewers approve the
  * profile claim, refuse it or ask for more information, or when the student withdraws the request
  * it answered (closed). The reviewers' words are on the case page. `self`: a claim asked from a
- * public profile (ADR 0037), which answers no student's request; rows without it are invitations.
+ * public profile (ADR 0040), which answers no student's request; rows without it are invitations.
  */
 const claimDecided: NotificationTemplate<{ caseId: string; decision: 'approved' | 'rejected' | 'needs_info' | 'closed'; self: boolean }> = {
   name: 'claim.decided',

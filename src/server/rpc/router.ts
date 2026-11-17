@@ -649,7 +649,7 @@ export const router = {
       .input(acceptInvitationInput)
       .handler(({ context, input }) => acceptInvitation(context.principal, input, context.meta)),
   },
-  // ADR 0037: "Is this you? Ask to claim this profile" on a public record, without an invitation.
+  // ADR 0040: "Is this you? Ask to claim this profile" on a public record, without an invitation.
   claims: {
     get: signedIn
       .route({ method: 'GET', path: '/claims/{slug}', summary: 'Whether the signed-in account can ask to claim this public profile now, and why not (404 for a profile that is not public)' })
@@ -1564,7 +1564,7 @@ export const router = {
     overview: base
       .route({ method: 'GET', path: '/dashboard', summary: "The signed-in account's dashboard: teachers, requests, schools, allowance, notifications" })
       .handler(({ context }) => dashboardOverview(context.principal)),
-    // The dashboard's grouped menu (docs/adr/0036-member-navigation.md): own data and counts only.
+    // The dashboard's grouped menu (docs/adr/0039-member-navigation.md): own data and counts only.
     nav: base
       .route({ method: 'GET', path: '/dashboard/nav', summary: "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts" })
       .handler(({ context }) => dashboardNav(context.principal)),

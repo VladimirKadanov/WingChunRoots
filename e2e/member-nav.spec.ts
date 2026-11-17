@@ -1,5 +1,5 @@
 /**
- * Member navigation (owner request 2026-11-17, docs/adr/0036-member-navigation.md): the dashboard
+ * Member navigation (owner request 2026-11-17, docs/adr/0039-member-navigation.md): the dashboard
  * menu shows each account only the groups it uses and marks the current page in words and shape,
  * the dashboard home lists the next steps of a new account, and the home page knows a member is
  * signed in. Only reads, so it runs in the ordinary projects. Fictional demo accounts (D20).

@@ -1,4 +1,4 @@
-// The dashboard home's "Next steps" (owner request 2026-11-17, docs/adr/0036-member-navigation.md).
+// The dashboard home's "Next steps" (owner request 2026-11-17, docs/adr/0039-member-navigation.md).
 
 export type InstructorState = 'not_instructor' | 'unverified' | 'verified';
 

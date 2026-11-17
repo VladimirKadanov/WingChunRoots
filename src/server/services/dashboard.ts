@@ -136,7 +136,7 @@ export interface DashboardOverview {
     upgrade: UpgradeOffer | null;
   } | null;
   notifications: NotificationList;
-  /** The dashboard home's "Next steps" (docs/adr/0036-member-navigation.md); empty once all are done. */
+  /** The dashboard home's "Next steps" (docs/adr/0039-member-navigation.md); empty once all are done. */
   nextSteps: NextStep[];
 }
 

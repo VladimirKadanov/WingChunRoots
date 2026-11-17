@@ -1,4 +1,4 @@
-// The home page's account line (owner request 2026-11-17, docs/adr/0036-member-navigation.md): a
+// The home page's account line (owner request 2026-11-17, docs/adr/0039-member-navigation.md): a
 // visitor is asked to create an account or sign in; a signed-in member gets the way back to their
 // dashboard instead of a sign-up button. The home page stays prerendered: this part reads the
 // session per request and streams in behind <Suspense>, with the visitor's line as its fallback

@@ -253,7 +253,7 @@ const VERIFY_FOR_DASHBOARD = '/account/security?next=%2Fdashboard';
  * section names no number and leads to /account/security, which comes back here.
  */
 /**
- * "Next steps" (docs/adr/0036-member-navigation.md): the few things a new account still has to do,
+ * "Next steps" (docs/adr/0039-member-navigation.md): the few things a new account still has to do,
  * in order, with the first open one as the button. Done steps show a tick and the word "Done", so
  * the state is never colour alone. The card disappears once every step is done.
  */

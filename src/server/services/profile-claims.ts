@@ -1,4 +1,4 @@
-// "Is this you? Ask to claim this profile" (usability round after M26; ADR 0037): a signed-in
+// "Is this you? Ask to claim this profile" (usability round after M26; ADR 0040): a signed-in
 // account without a profile of its own asks the reviewers to make a public record its own, from
 // the record's page (/people/<slug>/claim), without an invitation.
 //
@@ -20,7 +20,7 @@
 //
 // Which accounts: the same as for an invitation (claimantRefusal): no profile of its own, no other
 // claim waiting for the reviewers (one at a time), the current documents confirmed; and at most
-// SELF_CLAIMS_PER_DAY requests in 24 hours (DEFAULT, ADR 0037), counted under the account's case
+// SELF_CLAIMS_PER_DAY requests in 24 hours (DEFAULT, ADR 0040), counted under the account's case
 // lock, as instructor requests and reports are. Several accounts may claim the same record; the
 // reviewers approve one at most (the unique claimed_by_user_id and the record's stewardship decide).
 //
@@ -41,7 +41,7 @@ import { CLAIM_NOTE_MAX, claimantRefusal, CONFIRM_DOCUMENTS, openPersonClaim } f
 import { fieldErrors, idempotencyKey, keyReused } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases } from './review-core';
 
-/** DEFAULT (ADR 0037): at most this many profile claims from profile pages by one account in 24 hours. */
+/** DEFAULT (ADR 0040): at most this many profile claims from profile pages by one account in 24 hours. */
 export const SELF_CLAIMS_PER_DAY = 3;
 const DAY_MS = 86_400_000;
 

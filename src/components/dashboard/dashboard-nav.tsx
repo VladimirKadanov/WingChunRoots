@@ -1,4 +1,4 @@
-// The dashboard's menu (owner request 2026-11-17, docs/adr/0036-member-navigation.md): the same
+// The dashboard's menu (owner request 2026-11-17, docs/adr/0039-member-navigation.md): the same
 // grouped list on every /dashboard page, showing only the groups the account uses. From 1024 px a
 // sidebar beside the page; narrower, a row of links that scrolls sideways above it, so every
 // section stays one tap away on a phone. The current page is marked with aria-current, weight, an

@@ -48,7 +48,7 @@ export const REVIEW_LOAD_ERRORS = {
     message: "We couldn't load the report form. Nothing was sent.",
     back: { href: '/', label: 'Back to the home page' },
   },
-  // ADR 0037: "Ask to claim this profile".
+  // ADR 0040: "Ask to claim this profile".
   claim: {
     eyebrow: 'Profile',
     title: 'Ask to claim this profile',

@@ -2,7 +2,7 @@
 // reviewer approves their profile claim, refuses it or asks for more information. An approved
 // claim leads to the student's request, which the teacher now answers themselves (M09); the
 // reviewers' own words are on the case page (/dashboard/cases/<id>), never in the e-mail. With
-// `self` (ADR 0037): a claim asked from a public profile, which answers no request; approved, it
+// `self` (ADR 0040): a claim asked from a public profile, which answers no request; approved, it
 // leads to Your profile.
 
 import { Text } from 'react-email';
@@ -21,7 +21,7 @@ export interface ClaimDecidedData {
    */
   url: string;
   recipientNames?: NameData[];
-  /** A claim asked from the profile page (ADR 0037), not an invitation. */
+  /** A claim asked from the profile page (ADR 0040), not an invitation. */
   self?: boolean;
 }
 

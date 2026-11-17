@@ -21,7 +21,7 @@
 // short hint in an empty Teachers section, and the report and correction links grouped at the
 // bottom under "Something wrong?".
 //
-// ADR 0037: "Is this you? Ask to claim this profile" under the header of a public, unclaimed record
+// ADR 0040: "Is this you? Ask to claim this profile" under the header of a public, unclaimed record
 // of a living person (claimProfileHref), to /people/<slug>/claim. Plain words: the eyebrow says
 // "Profile"; an unclaimed record and a teacher row marked "Cross-lineage" get a one-line hint.
 

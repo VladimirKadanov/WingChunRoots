@@ -1,4 +1,4 @@
-// "Is this you? Ask to claim this profile" on a person's profile (ADR 0037): where it leads, from
+// "Is this you? Ask to claim this profile" on a person's profile (ADR 0040): where it leads, from
 // the public profile alone (the record's side of the rules of claims.request,
 // src/server/services/profile-claims.ts), so the page offers it only where the claim can be asked.
 

@@ -1,4 +1,4 @@
-// /people/<slug>/claim (ADR 0037): "Is this you? Ask to claim this profile". A signed-in account
+// /people/<slug>/claim (ADR 0040): "Is this you? Ask to claim this profile". A signed-in account
 // without a profile of its own asks the reviewers to make a public, unclaimed record of a living
 // person its own (claims.request): the same review case of kind person_claim an invitation's claim
 // opens, decided by an archivist or an administrator. claims.get says beforehand whether the record
@@ -6,7 +6,7 @@
 // sign in first and comes back here (landingPath skips onboarding for this page, which would make
 // the account a profile of its own). Reads the session; no client module (claim-form.tsx). An
 // account that has not confirmed the current documents is told so, without a link: /onboarding
-// treats only an invitation as a claim, and would offer to make a profile instead (ADR 0037).
+// treats only an invitation as a claim, and would offer to make a profile instead (ADR 0040).
 
 import { randomUUID } from 'node:crypto';
 
