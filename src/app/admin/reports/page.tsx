@@ -184,7 +184,7 @@ function Growth({ r, period }: { r: GrowthReport; period: ReportPeriod }) {
         {GROWTH_SERIES.map((key) => (
           <div key={key} className="grid min-w-0 content-start gap-1.5 rounded-md border border-border-subtle bg-surface-1 p-4" data-testid="growth-total" data-series={key}>
             <span className="text-sm text-fg-muted">{GROWTH_LABELS[key]}</span>
-            <span className="font-display text-[2rem] leading-none">{number.format(r.totals[key].inPeriod)}</span>
+            <span className="font-display text-2xl leading-none">{number.format(r.totals[key].inPeriod)}</span>
             <span className="text-sm text-fg-muted">{number.format(r.totals[key].now)} in all now</span>
           </div>
         ))}
