@@ -621,9 +621,10 @@ test.describe('at 390x844', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const targetsAtLeast44 = async () => {
       const small = await page.evaluate(() =>
-        [...document.querySelectorAll('main button, main input:not([type=hidden]), main select, main label:has(input[type=checkbox])')]
+        // A checkbox or radio is tapped through its label, which is the target that must be 44 px.
+        [...document.querySelectorAll('main button, main input:not([type=hidden]), main select, main label:has(input[type=checkbox]), main label:has(input[type=radio])')]
           .map((el) => ({ el, box: el.getBoundingClientRect() }))
-          .filter(({ box, el }) => box.width > 0 && box.height > 0 && !(el instanceof HTMLInputElement && el.type === 'checkbox'))
+          .filter(({ box, el }) => box.width > 0 && box.height > 0 && !(el instanceof HTMLInputElement && (el.type === 'checkbox' || (el.type === 'radio' && el.closest('label')))))
           .filter(({ box }) => box.height < 44 || box.width < 44)
           .map(({ el, box }) => `${el.tagName.toLowerCase()} ${Math.round(box.width)}x${Math.round(box.height)}`),
       );

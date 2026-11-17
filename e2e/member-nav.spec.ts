@@ -76,11 +76,11 @@ test('@nav a Sifu gets teaching tools, and a new member gets next steps that sta
 
 test('@nav the home page offers a member their dashboard instead of signing up', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('home-account')).toHaveAttribute('data-signed-in', 'false');
-  await expect(page.getByTestId('home-account').getByRole('link', { name: 'Create an account' })).toBeVisible();
+  await expect(shown(page.getByTestId('home-account'))).toHaveAttribute('data-signed-in', 'false');
+  await expect(shown(page.getByTestId('home-account')).getByRole('link', { name: 'Create an account' })).toBeVisible();
   await signInAs(page, 'demo-pending');
   await page.goto('/');
-  await expect(page.getByTestId('home-account')).toHaveAttribute('data-signed-in', 'true');
-  await expect(page.getByTestId('home-account').getByRole('link', { name: 'Open your dashboard' })).toHaveAttribute('href', '/dashboard');
-  await expect(page.getByTestId('home-account').getByRole('link', { name: 'Create an account' })).toHaveCount(0);
+  await expect(shown(page.getByTestId('home-account'))).toHaveAttribute('data-signed-in', 'true');
+  await expect(shown(page.getByTestId('home-account')).getByRole('link', { name: 'Open your dashboard' })).toHaveAttribute('href', '/dashboard');
+  await expect(shown(page.getByTestId('home-account')).getByRole('link', { name: 'Create an account' })).toHaveCount(0);
 });

@@ -109,7 +109,7 @@ export function DashboardNav({ groups, pathname }: { groups: DashboardNavGroup[]
   const current = currentHref(groups, pathname);
   return (
     <nav aria-label="Dashboard" data-testid="dashboard-nav" className="lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto lg:overscroll-contain">
-      <ul className="flex gap-1.5 overflow-x-auto px-page py-2 [scrollbar-width:thin] lg:hidden">
+      <ul className="relative flex gap-1.5 overflow-x-auto px-page py-2 [scrollbar-width:thin] lg:hidden">
         {links.map((item) => (
           <li key={item.href} className="shrink-0">
             <Link
