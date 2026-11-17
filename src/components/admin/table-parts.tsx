@@ -60,7 +60,7 @@ export interface AdminView {
   testId?: string;
 }
 
-/** The saved views of a list, each with its count: a column beside the table from 1280 px, a wrapped row above it under that. */
+/** The saved views of a list, each with its count: a column beside the table from 1536 px (narrower, the table keeps the width it needs to stay a table), a wrapped row above it under that. */
 export function AdminViews({
   label,
   views,
@@ -70,7 +70,7 @@ export function AdminViews({
 }) {
   return (
     <nav aria-label={label} className="min-w-0">
-      <ul className="flex flex-wrap gap-2 xl:grid xl:gap-0.5">
+      <ul className="flex flex-wrap gap-2 2xl:grid 2xl:gap-0.5">
         {views.map((view) => (
           <li key={view.href}>
             <Link
@@ -78,9 +78,9 @@ export function AdminViews({
               aria-current={view.current ? "page" : undefined}
               data-testid={view.testId}
               className={cx(
-                "flex min-h-11 items-center gap-3 rounded-sm border px-3 text-ui xl:border-transparent xl:border-l-[3px]",
+                "flex min-h-11 items-center gap-3 rounded-sm border px-3 text-ui 2xl:border-transparent 2xl:border-l-[3px]",
                 view.current
-                  ? "border-fg bg-surface-2 font-semibold xl:border-l-fg"
+                  ? "border-fg bg-surface-2 font-semibold 2xl:border-l-fg"
                   : "border-border-subtle hover:bg-surface-1",
               )}
             >
@@ -199,12 +199,13 @@ export function Mark({
   return (
     <span
       className={cx(
-        "inline-flex items-baseline gap-1.5 font-semibold",
+        // Inline, not a flex box: its box is the text's, so it lines up with the other cells' first line.
+        "font-semibold",
         TONE[tone],
       )}
       data-testid={testId}
     >
-      <span aria-hidden="true" className="inline-block w-4 text-center">
+      <span aria-hidden="true" className="mr-1.5 inline-block w-4 text-center">
         {symbol}
       </span>
       {children}

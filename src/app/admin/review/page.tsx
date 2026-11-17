@@ -158,7 +158,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
         }
       />
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8">
+      <div className="mt-6 grid gap-6 2xl:grid-cols-[14rem_minmax(0,1fr)] 2xl:gap-8">
         <AdminViews label="Saved views of the queue" views={queueViews(list)} />
 
         <div className="grid min-w-0 content-start gap-5">

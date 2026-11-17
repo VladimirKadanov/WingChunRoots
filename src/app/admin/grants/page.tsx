@@ -129,15 +129,15 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
         </p>
       </header>
 
-      {/* Control panel: from 1280 px the grants fill the page and the requests and the form sit
-          beside them; narrower, the requests and the form come first, as before. */}
-      <div className="mt-8 grid gap-10 xl:grid-cols-[minmax(0,1fr)_28rem] xl:items-start">
+      {/* Control panel: the page takes the desktop's width, so the table of grants stays a table;
+          the requests and the form keep a reading width. */}
+      <div className="mt-8 grid gap-10">
         {/* Each open request has two answers: give the plan, or close it with a reason (review
             round 2, recheck-5). The section stays when none is open, to say so. */}
-        <Section id="pilot-requests" title="Pilot access requests" className="xl:col-start-2">
+        <Section id="pilot-requests" title="Pilot access requests">
           {closedRequest?.status === 'done' ? <FormMessage form={CLOSED_REQUEST_MESSAGE} state={closedRequest} single /> : null}
           {list.requests.length > 0 ? (
-            <ul data-testid="pilot-requests" className="grid">
+            <ul data-testid="pilot-requests" className="grid max-w-[46rem]">
               {list.requests.map((item) => (
                 <PilotRequestItem
                   key={item.id}
@@ -154,7 +154,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           )}
         </Section>
 
-        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid min-w-0 content-start gap-4 border-t border-border-subtle pt-6 xl:col-start-2">
+        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid min-w-0 content-start gap-4 border-t border-border-subtle pt-6">
           <h2 id="give-plan-heading" className="sr-only">
             Give a test plan
           </h2>
@@ -178,7 +178,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           </GivePlanDisclosure>
         </section>
 
-        <Section id="grants" title="Grants" className="xl:col-start-1 xl:row-span-2 xl:row-start-1">
+        <Section id="grants" title="Grants">
           <form role="search" action="/admin/grants" method="get" className="flex max-w-[34rem] flex-wrap items-end gap-3">
             <div className="grid min-w-0 flex-1 gap-1.5">
               <label htmlFor="grants-q" className="text-sm font-semibold">
