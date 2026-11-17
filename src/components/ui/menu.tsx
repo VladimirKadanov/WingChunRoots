@@ -76,14 +76,6 @@ export function MenuItem({ className, ...props }: WithStringClass<ComponentProps
   return <BaseMenu.Item className={cn(itemClass, className)} {...props} />;
 }
 
-/**
- * A link in the menu (an <a>, or the element `render` gives, e.g. next/link's <Link>): it closes
- * the menu when it is followed, so a soft navigation never leaves the menu open on the next page.
- */
-export function MenuLinkItem({ className, closeOnClick = true, ...props }: WithStringClass<ComponentProps<typeof BaseMenu.LinkItem>>) {
-  return <BaseMenu.LinkItem className={cn(itemClass, className)} closeOnClick={closeOnClick} {...props} />;
-}
-
 export function MenuGroupLabel({ className, ...props }: WithStringClass<ComponentProps<typeof BaseMenu.GroupLabel>>) {
   return <BaseMenu.GroupLabel className={cn('eyebrow px-3 pt-2 pb-1', className)} {...props} />;
 }

@@ -42,7 +42,7 @@ async function createRecord(page: Page, name: string): Promise<string> {
   return slug!;
 }
 
-test('@M26 an administrator records two historical teachers, a lineage and a verified link with its source; the public profile shows the link and never the source', async ({ browser }) => {
+test('@M26 @admin an administrator records two historical teachers, a lineage and a verified link with its source; the public profile shows the link and never the source', async ({ browser }) => {
   const tag = capital(letters(8));
   const { context, page } = await signedIn(browser, 'admin');
 

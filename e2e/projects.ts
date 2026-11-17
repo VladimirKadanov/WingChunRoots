@@ -81,6 +81,14 @@ export const VITALS_TAG = '@vitals';
 const VITALS_GREP = new RegExp(`${VITALS_TAG}\\b`);
 
 /**
+ * The control panel's tests: tagged @admin, or naming an /admin address in their title (the route
+ * tests of e2e/routes.ts). mobile-webkit (the iPhone) leaves them out: staff work on desktop, the
+ * desktop and Pixel projects still run them, and the iPhone run was the slowest part of CI (owner
+ * request 2026-11-17, docs/adr/0035-control-panel.md). Member pages keep the iPhone run.
+ */
+export const ADMIN_GREP = /@admin\b|\s\/admin\b/;
+
+/**
  * Where a run's web server writes its log, and where its artifacts go: the exclusive run (`true`),
  * the pilot run (`'pilot'`, M13) and the vitals run (`'vitals'`) keep their own, so neither empties or overwrites those of a
  * run before it (the visual screenshots that scripts/visual-baselines.sh prints, the server log in
@@ -147,7 +155,8 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
   ];
 
   if (ci) {
-    projects.push({ name: 'mobile-webkit', ...select, use: { ...devices['iPhone 15'] } });
+    const iphone = pilot || vitals ? select : { ...select, grepInvert: [VITALS_GREP, ADMIN_GREP] };
+    projects.push({ name: 'mobile-webkit', ...iphone, use: { ...devices['iPhone 15'] } });
   }
   if (pilot || vitals) return projects;
 
