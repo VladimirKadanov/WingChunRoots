@@ -11,7 +11,7 @@
 
 import { resolve } from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { NAV_ITEMS } from '../src/components/shell/nav';
 import { closeHelpers, signInAsForPages } from './helpers/auth';
@@ -22,6 +22,25 @@ import { SCHOOL_MAP_SCREENS } from './helpers/schools';
 import { KEY_ROUTES, SCREEN_SIZES, THEMES } from './routes';
 
 test.afterAll(closeHelpers);
+
+/**
+ * M22: the demo subscriptions' dates follow the day of the seed (src/fixtures/billing.ts). The
+ * text of [data-visual-date] is transparent (e2e/visual.css), but it keeps its width, and the
+ * width of "7 November 2026" is not that of "2 November 2026": the words after it moved and the
+ * baselines failed on some days without any change in the app. Each date in that text is written
+ * as one fixed date before the screenshot, so the layout is compared and never the day of the run.
+ */
+async function fixVisualDates(page: Page) {
+  await page.evaluate(() => {
+    const date = /\b\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b/g;
+    for (const root of document.querySelectorAll('[data-visual-date]')) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.nodeValue) node.nodeValue = node.nodeValue.replace(date, '1 January 2026');
+      }
+    }
+  });
+}
 
 for (const size of SCREEN_SIZES) {
   test.describe(size.name, () => {
@@ -47,6 +66,7 @@ for (const size of SCREEN_SIZES) {
             const currentTab = page.getByRole('navigation', { name: 'Main' }).locator('a[aria-current="page"]').filter({ visible: true });
             await expect(currentTab).toHaveAttribute('href', tab.href);
           }
+          await fixVisualDates(page);
           await expect(page).toHaveScreenshot(`${route.name}-${size.name}-${theme}.png`, {
             stylePath: resolve('e2e/visual.css'),
           });

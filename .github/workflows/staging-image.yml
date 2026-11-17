@@ -1,0 +1,50 @@
+# The application image of the password-protected staging server (docs/operations/staging.md,
+# ADR 0033): the same Dockerfile as the `image` job of ci.yml, built for every commit on main (and by
+# hand for any other commit) and pushed to GitHub's container registry as sha-<commit>, which
+# deploy/staging/staging.sh deploy pulls. The server never builds: a Next.js build needs more memory
+# than it has spare. The image holds no secret (.dockerignore keeps every .env out of the build).
+name: staging image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit, branch or tag to build (default: the commit this run starts from)"
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: staging-image-${{ github.event.inputs.ref || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.ref || github.sha }}
+          persist-credentials: false
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push sha-<commit>
+        run: |
+          sha="$(git rev-parse HEAD)"
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker build \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${sha}" \
+            --tag "${repo}:sha-${sha}" .
+          docker push "${repo}:sha-${sha}"
+          echo "pushed ${repo}:sha-${sha}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io
