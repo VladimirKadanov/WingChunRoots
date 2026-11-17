@@ -8,6 +8,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Nightly on main (03:00 Sofia in winter): the whole run, with the pilot and the measurements
+  # that pull requests leave to main (docs/adr/0036-ci-split.md).
+  schedule:
+    - cron: "0 1 * * *"
 
 permissions:
   contents: read
@@ -25,8 +29,24 @@ jobs:
     # suite in desktop-chromium, mobile-chromium and mobile-webkit, the visual regression (from
     # M00b), and every scripts/verify.d/*.sh (from M00b with the JavaScript budget and Lighthouse
     # CI), against PostgreSQL 18 + PostGIS 3.6 and Mailpit.
-    name: verify (Node 26, PostgreSQL 18, Playwright)
+    #
+    # Split over parallel machines (owner request 2026-11-17, docs/adr/0036-ci-split.md): one runs
+    # every step and check except E2E, four run a quarter each of the ordinary E2E run, one runs the
+    # runs that need a machine to themselves (@vitals, exclusive, and the pilot outside pull
+    # requests). Each machine has its own database and services. Pull requests leave the pilot run
+    # and the perf:api/perf:web measurements (M13) to main, the nightly run and workflow_dispatch.
+    name: verify (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: checks, part: checks, shard: "" }
+          - { name: e2e 1/4, part: e2e-shard, shard: 1/4 }
+          - { name: e2e 2/4, part: e2e-shard, shard: 2/4 }
+          - { name: e2e 3/4, part: e2e-shard, shard: 3/4 }
+          - { name: e2e 4/4, part: e2e-shard, shard: 4/4 }
+          - { name: e2e serial, part: e2e-serial, shard: "" }
     # 30 minutes stopped the job in checks:M03 after the whole suite had passed (M04, run 39198539517).
     # 60 minutes stopped it inside E2E on a slow runner (M12, run 41312974198): main already took
     # 53 minutes (run 41277130511), so the suite outgrew the budget. Nothing is skipped; the job has more time.
@@ -141,6 +161,10 @@ jobs:
           # M12: the backup and the restore drill of checks:M12 run pg_dump and pg_restore inside the
           # PostgreSQL 18 service container (the runner's client is older; scripts/lib/pg-run.sh).
           PG_CONTAINER: ${{ job.services.postgres.id }}
+          VERIFY_PART: ${{ matrix.part }}
+          E2E_SHARD: ${{ matrix.shard }}
+          VERIFY_PILOT: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          VERIFY_PERF: ${{ github.event_name == 'pull_request' && 'later' || '' }}
         run: scripts/verify.sh all
       # verify.sh shows only the last 80 lines of a failed step; Playwright's numbered failure
       # reports come earlier. The artifact has the whole log, but the reports also belong here.
@@ -167,7 +191,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: verify-log
+          name: verify-log-${{ matrix.part }}${{ matrix.shard && '-' || '' }}${{ matrix.shard && strategy.job-index || '' }}
           path: |
             .verify/
             test-results/
