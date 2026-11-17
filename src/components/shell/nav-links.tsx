@@ -13,11 +13,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
-import { CalendarIcon, HomeIcon, LineageIcon, MeIcon, PinIcon } from '@/components/icons';
+import { CalendarIcon, LineageIcon, MeIcon, PinIcon, SchoolsIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import { NAV_ITEMS } from './nav';
 
-const ICONS = { home: HomeIcon, lineage: LineageIcon, schools: PinIcon, events: CalendarIcon, me: MeIcon } as const;
+// The house drawing serves Home; the school finder is a map pin (docs/adr/0039).
+const ICONS = { home: SchoolsIcon, lineage: LineageIcon, schools: PinIcon, events: CalendarIcon, me: MeIcon } as const;
 
 const subscribeNever = () => () => {};
 

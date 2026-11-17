@@ -18,7 +18,6 @@ import type { ReactNode } from 'react';
 import { LoadError } from '@/components/account/load-error';
 import { NameText } from '@/components/account/person-names';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
@@ -37,6 +36,15 @@ type Params = Promise<{ slug: string }>;
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+// The words of the error state (ADR 0040). Kept here, not in review-load-error-text.ts, which the
+// review pages' client bundles carry (their script budget is full).
+const CLAIM_LOAD_ERROR = {
+  eyebrow: 'Profile',
+  title: 'Ask to claim this profile',
+  message: "We couldn't load the claim form. Nothing was sent.",
+  back: { href: '/', label: 'Back to the home page' },
+};
 
 async function orMissing<T>(read: Promise<T>): Promise<T | 'missing'> {
   try {
@@ -85,7 +93,7 @@ export default async function ClaimProfilePage({ params, searchParams }: { param
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const client = serverClient(await headers(), guard.principal);
   const loaded = slug ? await pageRead(Promise.all([orMissing(client.people.get({ slug })), orMissing(client.claims.get({ slug }))])) : (['missing', 'missing'] as const);
-  if (!loaded) return <LoadError {...REVIEW_LOAD_ERRORS.claim} retryHref={path} />;
+  if (!loaded) return <LoadError {...CLAIM_LOAD_ERROR} retryHref={path} />;
   const [profile, option] = loaded;
   if (profile === 'missing' || option === 'missing' || profile.visibility !== 'public' || profile.limited) {
     return (

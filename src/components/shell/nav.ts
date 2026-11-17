@@ -1,5 +1,5 @@
 // The five destinations of the app shell (Ink Lineage prototype): Home is the home page (called
-// "Explore" until 2026-11-17, renamed because the Lineage tab is the explorer; docs/adr/0036); Me
+// "Explore" until 2026-11-17, renamed because the Lineage tab is the explorer; docs/adr/0039); Me
 // is the dashboard (M08 review round 1, design-7: /dashboard, with requests and notifications; it
 // links to /account; a visitor without a session is sent to /sign-in); Lineage is the explorer
 // (M05); Schools is the school finder (M11); Events is the event calendar (M17).
