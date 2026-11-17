@@ -57,6 +57,12 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/review/actions.ts#decideCaseAction': { rpc: ['review.decide'] },
   'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
   'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
+  // M26: the archive editor (docs/adr/0034-archive-editor.md).
+  'src/app/admin/archive/actions.ts#createLineageAction': { rpc: ['archiveEditor.createLineage'] },
+  'src/app/admin/archive/actions.ts#updateLineageAction': { rpc: ['archiveEditor.updateLineage'] },
+  'src/app/admin/archive/actions.ts#createRecordAction': { rpc: ['archiveEditor.createRecord'] },
+  'src/app/admin/archive/actions.ts#addLinkAction': { rpc: ['archiveEditor.addLink'] },
+  'src/app/admin/archive/actions.ts#endLinkAction': { rpc: ['archiveEditor.endLink'] },
   // Review 2026-11: a staff take-down of a profile and its restore.
   'src/app/admin/review/actions.ts#takeDownAction': { rpc: ['moderation.takeDown'] },
   'src/app/admin/review/actions.ts#restoreAction': { rpc: ['moderation.restore'] },

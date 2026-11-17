@@ -140,6 +140,15 @@ export default async function AdminPage() {
           <p className="text-sm text-fg-muted">The listed schools awaiting their Sifu’s confirmation, and those hidden from the map until it comes.</p>
         </div>
       ) : null}
+      {/* M26: the archive editor, for the roles that keep the archive. */}
+      {guard.principal?.user.role === 'admin' || guard.principal?.user.role === 'archivist' ? (
+        <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">
+          <Link href="/admin/archive" className={buttonVariants({ variant: 'secondary' })} data-testid="archive-editor-link">
+            Archive editor
+          </Link>
+          <p className="text-sm text-fg-muted">Create lineages and historical teachers, and record the links between them with their sources.</p>
+        </div>
+      ) : null}
       {/* M08: the administrators' tool for test plans. */}
       {guard.principal?.user.role === 'admin' ? (
         <div className="mt-8 grid justify-items-start gap-2 border-t border-border-subtle pt-5">

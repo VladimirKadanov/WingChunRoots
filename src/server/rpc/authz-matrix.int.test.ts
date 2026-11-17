@@ -2445,6 +2445,12 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
   },
   { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  // M26: the archive editor's forms post the procedures' fields (the files of a record or a link are uploaded first).
+  { action: 'src/app/admin/archive/actions.ts#createLineageAction', row: 'archiveEditor.createLineage', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#updateLineageAction', row: 'archiveEditor.updateLineage', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#createRecordAction', row: 'archiveEditor.createRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
