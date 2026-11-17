@@ -159,7 +159,7 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
           <h2 id="links-heading" className="sr-only">
             Links of {list.lineage.name}
           </h2>
-          <form role="search" method="get" action={`${base}#links`} className="flex flex-wrap items-end gap-3">
+          <form role="search" aria-label="Find links" method="get" action={`${base}#links`} className="flex flex-wrap items-end gap-3">
             {filters.show !== 'active' ? <input type="hidden" name="show" value={filters.show} /> : null}
             <div className="grid min-w-0 flex-1 basis-[16rem] gap-1.5">
               <label htmlFor="links-q" className="text-sm font-semibold">

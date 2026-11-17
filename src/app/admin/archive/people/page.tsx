@@ -139,7 +139,7 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
           <h2 id="people-heading" className="sr-only">
             Every record
           </h2>
-          <form role="search" method="get" action="/admin/archive/people#people" className="flex flex-wrap items-end gap-3">
+          <form role="search" aria-label="Find a person" method="get" action="/admin/archive/people#people" className="flex flex-wrap items-end gap-3">
             {filters.show !== 'everyone' ? <input type="hidden" name="show" value={filters.show} /> : null}
             <div className="grid min-w-0 flex-1 basis-[18rem] gap-1.5">
               <label htmlFor="people-q" className="text-sm font-semibold">
@@ -289,7 +289,7 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                 Close
               </Link>
             </div>
-            <form method="get" action="/admin/archive/people#new-record" className="flex flex-wrap items-end gap-3" role="search">
+            <form method="get" action="/admin/archive/people#new-record" className="flex flex-wrap items-end gap-3" role="search" aria-label="Similar records">
               <input type="hidden" name="new" value="record" />
               {back ? <input type="hidden" name="back" value={back} /> : null}
               <div className="grid min-w-0 flex-1 basis-[14rem] gap-1.5">

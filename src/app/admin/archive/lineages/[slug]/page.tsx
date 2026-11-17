@@ -284,7 +284,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             <h2 id="tree-heading" className="font-display text-2xl">
               Tree
             </h2>
-            <form method="get" action={`${path}/links#links`} role="search" className="flex flex-wrap items-end gap-2">
+            <form method="get" action={`${path}/links#links`} role="search" aria-label="Find in this lineage" className="flex flex-wrap items-end gap-2">
               <label htmlFor="tree-find" className="sr-only">
                 Find in this lineage
               </label>
@@ -430,7 +430,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             </Link>
             .
           </p>
-          <form method="get" action={`${path}#add-link`} className="flex max-w-[40rem] flex-wrap items-end gap-3" role="search">
+          <form method="get" action={`${path}#add-link`} className="flex max-w-[40rem] flex-wrap items-end gap-3" role="search" aria-label="Find a record for the link">
             {teacher ? <input type="hidden" name="teacher" value={teacher} /> : null}
             {student ? <input type="hidden" name="student" value={student} /> : null}
             {person ? <input type="hidden" name="person" value={person} /> : null}

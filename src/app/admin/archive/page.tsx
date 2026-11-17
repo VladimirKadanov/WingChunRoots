@@ -128,7 +128,7 @@ export default async function ArchiveEditorPage({ searchParams }: { searchParams
         <h2 id="lineages-heading" className="sr-only">
           All lineages
         </h2>
-        <form role="search" method="get" action="/admin/archive#lineages" className="flex flex-wrap items-end gap-3">
+        <form role="search" aria-label="Find a lineage" method="get" action="/admin/archive#lineages" className="flex flex-wrap items-end gap-3">
           <div className="grid min-w-0 flex-1 basis-[18rem] gap-1.5">
             <label htmlFor="lineage-q" className="text-sm font-semibold">
               Find a lineage
