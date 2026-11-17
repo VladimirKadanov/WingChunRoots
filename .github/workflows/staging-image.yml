@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit, branch or tag to build (default: the commit this run starts from)
+        description: "Commit, branch or tag to build (default: the commit this run starts from)"
         required: false
 
 permissions:
