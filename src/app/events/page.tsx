@@ -231,6 +231,14 @@ export default async function EventsPage({ searchParams }: Props) {
                     </Link>
                   </p>
                 ) : null}
+                {!filtered && filters.when === 'upcoming' ? (
+                  <p className="text-sm text-fg-muted" data-testid="no-events-next">
+                    Teaching a seminar?{' '}
+                    <Link href="/dashboard/events/new" prefetch={false} className="link inline-flex min-h-11 items-center">
+                      Publish an event
+                    </Link>
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div data-testid="event-list">
