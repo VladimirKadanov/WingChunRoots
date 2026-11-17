@@ -438,7 +438,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             ) : overview.hasProfile ? null : overview.pendingClaimCaseId ? (
               // M10b: an invited teacher's claim waits for the reviewers; the profile comes with it.
               <div data-testid="pending-claim" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
-                <p className="text-ui">Your claim of the profile you were invited to is with the reviewers. When they approve it, the profile is yours.</p>
+                <p className="text-ui">Your claim of a profile is with the reviewers. When they approve it, the profile is yours.</p>
                 <Link href={`/dashboard/cases/${overview.pendingClaimCaseId}`} className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }))}>
                   See your claim
                 </Link>

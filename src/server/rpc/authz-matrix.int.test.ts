@@ -521,6 +521,24 @@ async function sharedRecord() {
   return { id, slug };
 }
 
+/** ADR 0037: a public, unclaimed record of a living person, as the demo records are. */
+async function claimableRecord() {
+  const id = uuidv7();
+  const slug = `demo-claimable-record-${randomBytes(4).toString('hex')}`;
+  await getDb().insert(person).values({ id, slug, kind: 'living', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'living' });
+  await getDb().insert(personName).values({ personId: id, value: 'Demo Claimable Record', script: 'Latn', lang: 'en', isPrimary: true });
+  return { id, slug };
+}
+
+/**
+ * ADR 0037: one waiting claim per account. The world's staff accept invitations in the rows above
+ * (invitations.accept), so their waiting claims are set aside before each call of a claim row.
+ */
+async function noWaitingClaim(who: Who): Promise<void> {
+  const actor = worldActor(who);
+  if (actor) await getDb().execute(sql`UPDATE person_claim SET status = 'withdrawn' WHERE user_id = ${actor.id}::uuid AND status = 'pending'`);
+}
+
 /** M25: a lineage dispute report by a new account (the `owner`), not upheld by the world's moderator. */
 async function refusedReport() {
   const r = await verifiedLink();
@@ -794,6 +812,23 @@ const ROWS: Row[] = [
       return { owner: await actor('invitee', { sifu: true, noPerson: true }), party: r.student, input: { token: r.token, idempotencyKey: key() } };
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', party: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  // ADR 0037: a claim from a public profile's page. Any signed-in account reads whether it can claim
+  // (an account with a profile reads why not); an account without a profile of its own claims it (the
+  // world's staff accounts have none), an account with one cannot.
+  {
+    path: 'claims.get',
+    make: async () => ({ input: { slug: (await claimableRecord()).slug } }),
+    expect: own(),
+  },
+  {
+    path: 'claims.request',
+    make: async (who) => {
+      await noWaitingClaim(who);
+      const target = await claimableRecord();
+      return { owner: await actor('self-claimant', { noPerson: true }), input: { personId: target.id, note: 'A fictional note for the reviewers.', idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
   },
   { path: 'instructor.mine', make: noInput, expect: own() },
   {
@@ -2412,6 +2447,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction', row: 'invitations.send', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/invite/[token]/actions.ts#acceptInvitationAction', row: 'invitations.accept', form: same, roles: ['anonymous', 'party', 'member'] },
+  { action: 'src/app/people/[slug]/claim/actions.ts#requestClaimAction', row: 'claims.request', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction', row: 'cases.reply', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/people/[slug]/report/actions.ts#reportProfileAction', row: 'reports.create', form: same, roles: ['anonymous', 'member'] },
   {

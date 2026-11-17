@@ -31,6 +31,10 @@ describe('nextSteps', () => {
     expect(nextSteps({ ...base, staffOnly: true })).toEqual([]);
   });
 
+  it('waits while a claim of a profile is with the reviewers', () => {
+    expect(nextSteps({ ...base, pendingClaim: true })).toEqual([]);
+  });
+
   it('sends the profile step back to the dashboard', () => {
     expect(nextSteps(base)[0]!.href).toBe('/onboarding?next=%2Fdashboard');
   });

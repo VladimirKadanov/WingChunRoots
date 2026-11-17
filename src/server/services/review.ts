@@ -644,6 +644,20 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
 
 // --- review.get --------------------------------------------------------------------------------
 
+/** ADR 0037: the decisions on a profile claim asked from the profile page, which answers no request. */
+const SELF_CLAIM_DECISIONS: ReviewCaseView['decisions'] = {
+  ...DECISION_TEXT.person_claim,
+  verify: {
+    ...DECISION_TEXT.person_claim.verify,
+    hint: 'Optional. The record becomes the claimant’s profile and keeps its visibility; they can then edit it and hide it.',
+    done: 'The claim is approved. The record is the claimant’s profile now.',
+  },
+  reject: {
+    ...DECISION_TEXT.person_claim.reject,
+    hint: 'Required. The claimant reads it on their case page. The record stays as it was.',
+  },
+};
+
 /** The relationship status each kind is decided in (null: a kind without a relationship). */
 const DECIDABLE_IN: Partial<Record<ReviewCaseKind, string>> = {
   historical_claim: 'under_review',
@@ -675,7 +689,8 @@ function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: 
   const open = isOpen(c.status);
   const listing = kind === 'school_listing';
   const application = kind === 'organization_application';
-  const needed = DECIDABLE_IN[kind];
+  // A profile claim asked from the profile page (ADR 0037) answers no relationship.
+  const needed = kind === 'person_claim' && c.relationshipId === null ? undefined : DECIDABLE_IN[kind];
   // M11: a new listing (pending_review), or a listed school whose edit reopened the review (active).
   // M15: an application while its organization waits for review.
   const decidable = listing ? isDecidableListing(subjectStatus) : application ? isDecidableApplication(subjectStatus) : needed === undefined || subjectStatus === needed;
@@ -821,7 +836,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       authorSide: n.author !== null && n.author !== p.user.id && parties.has(n.author) ? (sides.get(n.author) ?? null) : null,
     })),
     subject,
-    decisions: DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
+    decisions: c.kind === 'person_claim' && c.relationshipId === null ? SELF_CLAIM_DECISIONS : DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
     can,
     decideNote,
     reviewers,
@@ -875,25 +890,41 @@ async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<Re
           .limit(1)
       : [];
     const [own] = c.openedByUserId ? await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, c.openedByUserId), isNull(person.deletedAt))) : [];
+    // ADR 0037: a claim asked from the record's public page, with no invitation and no student.
+    const self = c.relationshipId === null;
+    const [others] = self
+      ? await db
+          .select({ n: count() })
+          .from(reviewCase)
+          .where(and(eq(reviewCase.kind, 'person_claim'), eq(reviewCase.personId, c.personId), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES]), ne(reviewCase.id, c.id)))
+      : [];
     return {
       label: 'The record claimed',
       person: ref,
       facts: [
         {
           label: 'Record',
-          value: [record?.stewardship === 'unclaimed' ? 'Unclaimed record' : record?.stewardship === 'self' ? 'Claimed' : 'Kept by the archive', record?.lifeStatus === 'living' ? 'living' : null, record?.visibility === 'public' ? 'public' : 'not public', 'created by the student who invited the teacher']
+          value: [
+            record?.stewardship === 'unclaimed' ? 'Unclaimed record' : record?.stewardship === 'self' ? 'Claimed' : 'Kept by the archive',
+            record?.lifeStatus === 'living' ? 'living' : null,
+            record?.visibility === 'public' ? 'public' : 'not public',
+            self ? null : 'created by the student who invited the teacher',
+          ]
             .filter(Boolean)
             .join(' · '),
         },
-        {
-          label: 'Invitation',
-          value:
-            sent?.matches === true
-              ? 'Sent to the address the claimant signed up with'
-              : sent?.matches === false
-                ? 'Sent to another address than the one the claimant signed up with'
-                : 'The address it was sent to is no longer kept',
-        },
+        self
+          ? { label: 'Source', value: 'Asked from the profile’s public page, without an invitation: check who the claimant is from their note and their evidence' }
+          : {
+              label: 'Invitation',
+              value:
+                sent?.matches === true
+                  ? 'Sent to the address the claimant signed up with'
+                  : sent?.matches === false
+                    ? 'Sent to another address than the one the claimant signed up with'
+                    : 'The address it was sent to is no longer kept',
+            },
+        ...(self ? [{ label: 'Other open claims of this record', value: String(others?.n ?? 0) }] : []),
         { label: 'Claimant', value: own && own.id !== c.personId ? 'Has a profile of their own now' : 'An account without a profile of its own' },
       ],
     };

@@ -330,7 +330,7 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
       teachers = teachers.sort((a, b) => a.teacher.name.value.localeCompare(b.teacher.name.value, 'en'));
       requests = requests.slice(0, 50);
     }
-    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, teacherLinks: teachers.length + requests.length, schools: 0 });
+    const steps = nextSteps({ accountType: 'student', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: teachers.length + requests.length, schools: 0 });
     return { ...base, student: { teachers, requests }, sifu: null, nextSteps: steps };
   }
 
@@ -377,6 +377,6 @@ export async function dashboardOverview(principal: Principal | null): Promise<Da
   }
 
   const { approved, limit, upgrade } = await approvalOffer(db, p.user.id, waiting);
-  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, teacherLinks: 0, schools: schools.length });
+  const steps = nextSteps({ accountType: 'sifu', instructor: status, hasProfile: Boolean(own), staffOnly: staff !== null && !own, pendingClaim: base.pendingClaimCaseId !== null, teacherLinks: 0, schools: schools.length });
   return { ...base, student: null, sifu: { requests, students: { approved, limit }, schools, upgrade }, nextSteps: steps };
 }

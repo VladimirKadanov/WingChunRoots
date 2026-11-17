@@ -48,6 +48,13 @@ export const REVIEW_LOAD_ERRORS = {
     message: "We couldn't load the report form. Nothing was sent.",
     back: { href: '/', label: 'Back to the home page' },
   },
+  // ADR 0037: "Ask to claim this profile".
+  claim: {
+    eyebrow: 'Profile',
+    title: 'Ask to claim this profile',
+    message: "We couldn't load the claim form. Nothing was sent.",
+    back: { href: '/', label: 'Back to the home page' },
+  },
   // M25: succession, lineage dispute reports and archival record proposals.
   succession: {
     eyebrow: 'Dashboard',

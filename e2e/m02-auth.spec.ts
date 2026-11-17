@@ -563,7 +563,8 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   // Signed in without a `next`: the confirmation ends on the dashboard.
   await expect(page).toHaveURL(/\/dashboard$/);
   await page.goto('/account');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Returning');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expect(page.getByTestId('account-name')).toHaveText('Demo Returning');
   await expect(notice).toHaveCount(0);
 
   const versions = (await consentsOf(account.email)).filter((row) => row.kind === 'terms').map((row) => row.document_version);

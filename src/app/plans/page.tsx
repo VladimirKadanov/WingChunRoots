@@ -100,7 +100,16 @@ function Value({ value, planned }: { value: Feature['values'][PlanCode]; planned
   );
 }
 
+/**
+ * Plain words for a feature whose name is a term of the archive (usability round, ADR 0037), on
+ * this page only: the plan matrix and its pinned version stay as they are.
+ */
+const FEATURE_HINTS: Partial<Record<string, string>> = {
+  successor: 'A student you name, who can ask to look after your profile if you die or stop using your account.',
+};
+
 function FeatureName({ feature, plannedLabel }: { feature: Feature; plannedLabel: string }) {
+  const hint = FEATURE_HINTS[feature.key];
   return (
     <span className="grid gap-1">
       <span className="font-semibold">
@@ -114,6 +123,11 @@ function FeatureName({ feature, plannedLabel }: { feature: Feature; plannedLabel
         </span>
       ) : null}
       {feature.note ? <span className="max-w-[60ch] text-sm font-normal text-fg-muted">{feature.note}</span> : null}
+      {hint ? (
+        <span className="max-w-[60ch] text-sm font-normal text-fg-muted" data-testid="feature-hint">
+          {hint}
+        </span>
+      ) : null}
     </span>
   );
 }

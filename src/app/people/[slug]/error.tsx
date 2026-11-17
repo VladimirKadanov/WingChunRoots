@@ -14,7 +14,7 @@ import { buttonVariants } from '@/components/ui/button-variants';
 export default function PersonPageError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <div className="mx-auto grid max-w-content content-start gap-5 px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <p className="eyebrow">Person on the record</p>
+      <p className="eyebrow">Profile</p>
       <h1 className="max-w-[20ch] font-display text-section">This page could not be shown</h1>
       <ErrorPanel title="Something went wrong while drawing this record." className="max-w-[40rem]">
         <p className="max-w-[56ch] text-sm text-fg-muted">This is usually brief: try again in a moment.</p>

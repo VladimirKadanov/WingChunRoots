@@ -20,10 +20,12 @@ export function nextSteps(input: {
   instructor: InstructorState;
   hasProfile: boolean;
   staffOnly: boolean;
+  /** A claim of a profile waits for the reviewers: the profile comes with it, so no steps yet. */
+  pendingClaim?: boolean;
   teacherLinks: number;
   schools: number;
 }): NextStep[] {
-  if (input.staffOnly) return [];
+  if (input.staffOnly || input.pendingClaim) return [];
   const steps: NextStep[] = [
     {
       key: 'profile',
