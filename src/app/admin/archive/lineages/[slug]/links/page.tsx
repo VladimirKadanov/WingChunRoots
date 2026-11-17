@@ -2,7 +2,8 @@
 // links of one lineage as a grid. Filtered on the server by status, a missing source or missing
 // years, the teacher's generation and a teacher or student (any spelling), sorted by a column, 50 a
 // page, all in the URL. A row opens the link beside the grid (?link=<id>): its years, its source in
-// full, how it was established, and "End this link" for one entered here by mistake. There is no bulk
+// full, how it was established, a form that corrects the years and the source in place, and "End
+// this link" for one entered here by mistake. There is no bulk
 // action: ending a link needs its own reason. For an archivist or an administrator whose session
 // passed the second factor. Reads the session.
 
@@ -24,8 +25,8 @@ import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { LINK_FILTERS, LINK_SORTS, type ArchiveLinkRow } from '@/server/services/archive-grids';
-import { LINK_END_FORM } from '../../../form-ids';
-import { EndLinkForm } from '../../../forms';
+import { LINK_EDIT_FORM, LINK_END_FORM } from '../../../form-ids';
+import { EditLinkForm, EndLinkForm } from '../../../forms';
 import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, LinkStatus, Missing, number, Pager, rowClass, SortHeader, tableClass, theadClass, years } from '../../../grid-parts';
 import { WorkspaceHeader } from '../workspace';
 
@@ -132,6 +133,7 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
   }
   if (!list) return <LoadError {...ARCHIVE_LOAD_ERROR} retryHref={base} />;
   const endResult = await readFormResult(LINK_END_FORM, query.outcome);
+  const editResult = await readFormResult(LINK_EDIT_FORM, query.outcome);
   const selected = list.selected;
   const chip = (show: Show) => href({ ...filters, show });
   const sortLabel = { generation: 'by generation', teacher: 'by teacher', student: 'by student', years: 'by years', edited: 'last edited first' }[filters.sort];
@@ -151,6 +153,13 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
       {query.done === 'ended' ? (
         <div key={`ended-${String(query.n)}`} className="mt-5 max-w-[46rem]">
           <OutcomeNote testId="archive-outcome">The link is ended and off the public pages. Its history and your reason are kept.</OutcomeNote>
+        </div>
+      ) : null}
+      {query.done === 'edited' || query.done === 'unchanged' ? (
+        <div key={`edited-${String(query.n)}`} className="mt-5 max-w-[46rem]">
+          <OutcomeNote testId="archive-outcome">
+            {query.done === 'edited' ? 'The link’s years and source are saved. Its status and history are unchanged; your reason is in the audit log.' : 'Nothing changed: the years and the source were already these.'}
+          </OutcomeNote>
         </div>
       ) : null}
 
@@ -335,11 +344,16 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
                 Student&apos;s record
               </Link>
             </p>
+            {selected.editable ? (
+              <details className="border-t border-border-subtle pt-4" open={editResult?.values?.relationshipId === selected.id || undefined} data-testid="link-edit">
+                <summary className="inline-flex min-h-11 cursor-pointer items-center text-ui font-semibold">Correct the years or the source</summary>
+                <p className="mt-2 mb-3 text-sm text-fg-muted">The link stays verified with its history; the change and your reason go to the audit log.</p>
+                <EditLinkForm link={selected} slug={list.lineage.slug} initial={editResult?.values?.relationshipId === selected.id ? editResult : null} />
+              </details>
+            ) : null}
             {selected.endable ? (
               <div className="grid gap-2 border-t border-border-subtle pt-4">
-                <p className="text-sm text-fg-muted">
-                  Entered by mistake? End it with a reason. To correct the years or the source, end it and add it again with the right ones.
-                </p>
+                <p className="text-sm text-fg-muted">Entered by mistake? End it with a reason.</p>
                 <EndLinkForm
                   relationshipId={selected.id}
                   slug={list.lineage.slug}
@@ -350,7 +364,7 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
               </div>
             ) : selected.status !== 'revoked' ? (
               <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">
-                This link was approved by the teacher or involves a member&apos;s own record: dispute it through arbitration from the record&apos;s page.
+                This link was approved by the teacher or involves a member&apos;s own record. It is not edited or ended here: the member changes it through their review flow, or dispute it through arbitration from the record&apos;s page.
               </p>
             ) : null}
           </aside>

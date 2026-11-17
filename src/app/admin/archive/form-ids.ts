@@ -6,3 +6,4 @@ export const RECORD_CREATE_FORM = 'archive-record-create';
 export const LINEAGE_EDIT_FORM = 'archive-lineage-edit';
 export const LINK_ADD_FORM = 'archive-link-add';
 export const LINK_END_FORM = 'archive-link-end';
+export const LINK_EDIT_FORM = 'archive-link-edit';
