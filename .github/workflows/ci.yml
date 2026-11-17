@@ -115,6 +115,19 @@ jobs:
         run: npm install --global "pnpm@$(node -p "require('./package.json').packageManager.replace(/^pnpm@/, '')")"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Documentation only? (E2E machines of a pull request)
+        # The pull request's own changes: its merge commit against the base it was merged onto.
+        if: github.event_name == 'pull_request' && matrix.part != 'checks'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed.txt"
+          echo "$(wc -l < "$RUNNER_TEMP/changed.txt") changed files"
+          if scripts/ci-docs-only.sh < "$RUNNER_TEMP/changed.txt"; then
+            echo "Documentation only: the browser tests are not needed."
+            echo "VERIFY_DOCS_ONLY=1" >> "$GITHUB_ENV"
+          fi
       # M04: docs/api/openapi.json matches the router (plan §6.8); fails fast, before the long run.
       - run: pnpm api:openapi --check
       - name: Install Playwright browsers

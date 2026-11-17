@@ -72,6 +72,13 @@ if [ -n "$VERIFY_PART" ] && [ "$target" != "all" ]; then
   echo "verify: VERIFY_PART splits only 'all'" >&2
   exit 2
 fi
+# A pull request that changes only documentation (scripts/ci-docs-only.sh) needs no browser test:
+# CI sets VERIFY_DOCS_ONLY=1 on its E2E machines then. The checks machine always runs everything.
+if [ "${VERIFY_DOCS_ONLY:-}" = "1" ] && { [ "$VERIFY_PART" = "e2e-shard" ] || [ "$VERIFY_PART" = "e2e-serial" ]; }; then
+  echo "STEP e2e: not needed, the pull request changes only documentation (scripts/ci-docs-only.sh)"
+  echo "VERIFY $target ($VERIFY_PART${E2E_SHARD:+ $E2E_SHARD}): PASS"
+  exit 0
+fi
 
 # Milestone checks to run, in milestone order.
 checks=()

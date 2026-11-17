@@ -22,7 +22,12 @@ runners cost nothing.
 2. Pull requests leave the pilot run (`VERIFY_PILOT=1`) and the two M13 measurements
    (`VERIFY_PERF=later`: perf:api, perf:web) to pushes to main, a nightly run on main (01:00 UTC)
    and `workflow_dispatch`. The skipped lines are printed as skips, never as passes.
-3. The required check stays `ci`; it passes only when every machine of the matrix passed.
+3. A pull request that changes only documentation (`scripts/ci-docs-only.sh`: anything under
+   `docs/` except `docs/api/`, and Markdown outside `content/`) skips the browser tests on the E2E
+   machines (`VERIFY_DOCS_ONLY=1`); the checks machine still runs every step and check. Selecting
+   browser tests by changed path was considered and rejected: the tests drive the whole app, so a
+   change to a shared part (shell, guards, services) breaks pages no path rule links to it.
+4. The required check stays `ci`; it passes only when every machine of the matrix passed.
 
 ## Consequences
 
