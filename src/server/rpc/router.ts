@@ -303,6 +303,7 @@ import {
   adminOrganization,
   adminOrganizationInput,
   adminOrganizations,
+  adminOrganizationsInput,
   grantOrganizationPlan,
   organizationGrantInput,
   organizationRevokeInput,
@@ -1345,8 +1346,9 @@ export const router = {
       .input(linkIdInput)
       .handler(({ context, input }) => endSchoolLink(context.principal, input, context.meta)),
     adminList: adminWithSecondFactor
-      .route({ method: 'GET', path: '/admin/organizations', summary: 'Every organization with its approval and its plan, apart (admin with a verified second factor)' })
-      .handler(({ context }) => adminOrganizations(context.principal)),
+      .route({ method: 'GET', path: '/admin/organizations', summary: 'The organizations with their approval and their plan, apart; searched, filtered by approval and plan, paged (admin with a verified second factor)' })
+      .input(adminOrganizationsInput)
+      .handler(({ context, input }) => adminOrganizations(context.principal, input)),
     adminGet: adminWithSecondFactor
       .route({ method: 'GET', path: '/admin/organizations/{organizationId}', summary: 'One organization with its plan grants (admin with a verified second factor)' })
       .input(adminOrganizationInput)
