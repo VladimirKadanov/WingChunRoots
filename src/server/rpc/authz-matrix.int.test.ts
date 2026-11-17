@@ -1141,6 +1141,30 @@ const ROWS: Row[] = [
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   { path: 'archiveEditor.search', make: () => ({ input: { q: 'Demo Matrix' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  // Control panel 2026-11: the archive editor's working views.
+  { path: 'archiveEditor.overview', make: () => ({ input: { sort: 'people' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  { path: 'archiveEditor.people', make: () => ({ input: { q: 'Demo Matrix', show: 'historical' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.links',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug, show: 'no_source' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.tree',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, open: [p.teacher.slug] } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.person',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, person: p.teacher.slug } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
   {
     path: 'archiveEditor.createRecord',
     make: () => ({ input: { primaryName: 'Demo Matrix Created Record', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)', evidenceIds: [] } }),

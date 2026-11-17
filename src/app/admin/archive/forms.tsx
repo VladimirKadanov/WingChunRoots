@@ -105,7 +105,7 @@ export function EditLineageForm({
 }
 
 /** A new historical record kept by the platform: private until one of its links is verified. */
-export function CreateRecordForm({ scripts, back, initial }: { scripts: { lang: string; label: string }[]; back?: string; initial?: FormState | null }) {
+export function CreateRecordForm({ scripts, back, name, initial }: { scripts: { lang: string; label: string }[]; back?: string; name?: string; initial?: FormState | null }) {
   const [state, action, pending] = useActionState(createRecordAction, initial ?? IDLE);
   const generatedId = useFormId(RECORD_CREATE_FORM);
   const formId = initial ? RECORD_CREATE_FORM : generatedId;
@@ -114,7 +114,7 @@ export function CreateRecordForm({ scripts, back, initial }: { scripts: { lang: 
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-5" data-testid="record-create-form">
       <FormMessage form={formId} state={state} labels={RECORD_LABELS} />
       {back ? <input type="hidden" name="back" value={back} /> : null}
-      <TextField form={formId} name="primaryName" label={RECORD_LABELS.primaryName} autoComplete="off" maxLength={120} hint="The everyday spelling, shown as the person's name." state={state} className="max-w-[34rem]" />
+      <TextField form={formId} name="primaryName" label={RECORD_LABELS.primaryName} autoComplete="off" maxLength={120} defaultValue={name} hint="The everyday spelling, shown as the person's name." state={state} className="max-w-[34rem]" />
       <div className="grid gap-3 sm:max-w-[34rem]">
         <TextField form={formId} name="originalName" label={RECORD_LABELS.originalName} optional autoComplete="off" maxLength={120} state={state} />
         <SelectField form={formId} name="originalLang" label={RECORD_LABELS.originalLang} optional autoComplete="off" state={state} defaultValue="">
@@ -168,12 +168,15 @@ export function AddLinkForm({
   studentSlug,
   idempotencyKey,
   initial,
+  person,
 }: {
   lineage: { id: string; slug: string };
   teacherSlug?: string;
   studentSlug?: string;
   idempotencyKey: string;
   initial?: FormState | null;
+  /** The person open in the outline's panel, to come back to. */
+  person?: string;
 }) {
   const [state, action, pending] = useActionState(addLinkAction, initial ?? IDLE);
   const generatedId = useFormId(LINK_ADD_FORM);
@@ -186,6 +189,7 @@ export function AddLinkForm({
       <input type="hidden" name="lineageId" value={lineage.id} />
       <input type="hidden" name="slug" value={lineage.slug} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      {person ? <input type="hidden" name="person" value={person} /> : null}
       <div className="grid gap-3 sm:max-w-[40rem] sm:grid-cols-2">
         <TextField form={formId} name="teacherSlug" label={LINK_LABELS.teacherSlug} {...slugField} defaultValue={teacherSlug} hint="The teacher's record address." state={state} />
         <TextField form={formId} name="studentSlug" label={LINK_LABELS.studentSlug} {...slugField} defaultValue={studentSlug} hint="The student's record address." state={state} />
@@ -222,7 +226,20 @@ export function AddLinkForm({
 }
 
 /** "End this link": a link entered by mistake is ended with a reason (never deleted). */
-export function EndLinkForm({ relationshipId, slug, idempotencyKey, initial }: { relationshipId: string; slug: string; idempotencyKey: string; initial?: FormState | null }) {
+export function EndLinkForm({
+  relationshipId,
+  slug,
+  idempotencyKey,
+  initial,
+  fromLinks = false,
+}: {
+  relationshipId: string;
+  slug: string;
+  idempotencyKey: string;
+  initial?: FormState | null;
+  /** Posted from the links grid: come back there. */
+  fromLinks?: boolean;
+}) {
   const [state, action, pending] = useActionState(endLinkAction, initial ?? IDLE);
   const fixed = `${LINK_END_FORM}-${relationshipId}`;
   const generatedId = useFormId(fixed);
@@ -234,6 +251,7 @@ export function EndLinkForm({ relationshipId, slug, idempotencyKey, initial }: {
       <input type="hidden" name="relationshipId" value={relationshipId} />
       <input type="hidden" name="slug" value={slug} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      {fromLinks ? <input type="hidden" name="view" value="links" /> : null}
       <TextAreaField form={formId} name="reason" label="Reason for ending this link" maxLength={2000} rows={2} hint="Required. The link leaves the public pages; its history stays." state={state} />
       <div>
         <SubmitButton pending={pending} pendingLabel="Ending…" variant="danger">

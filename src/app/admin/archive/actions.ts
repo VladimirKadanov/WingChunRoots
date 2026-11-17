@@ -22,6 +22,7 @@ import { serverClient } from '@/server/rpc/server';
 import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
 
 const HOME = '/admin/archive';
+const PEOPLE = '/admin/archive/people';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
 const SLUG = /^[a-z0-9-]{1,120}$/;
@@ -113,17 +114,21 @@ export async function createRecordAction(_previous: FormState, form: FormData): 
     slug = result.slug;
   } catch (error) {
     unstable_rethrow(error);
-    sendAway(error, HOME);
+    sendAway(error, PEOPLE);
     const state = formStateFromFailure(error, values);
-    return formResult({ form: RECORD_CREATE_FORM, page: HOME, anchor: outcomeTarget(RECORD_CREATE_FORM, state, false) }, state);
+    return formResult({ form: RECORD_CREATE_FORM, page: `${PEOPLE}?new=record`, anchor: outcomeTarget(RECORD_CREATE_FORM, state, false) }, state);
   }
-  redirect(doneAt(HOME, 'record', `&record=${slug}${SLUG.test(back) ? `&back=${back}` : ''}`));
+  redirect(doneAt(PEOPLE, 'record', `&record=${slug}${SLUG.test(back) ? `&back=${back}` : ''}`));
 }
 
 /** "Add the link" (archiveEditor.addLink). */
 export async function addLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
-  const values = keepValues(form, ['lineageId', 'slug', 'teacherSlug', 'studentSlug', 'fromYear', 'toYear', 'source']);
-  const page = lineagePage(textValue(form, 'slug', 200));
+  const values = keepValues(form, ['lineageId', 'slug', 'teacherSlug', 'studentSlug', 'fromYear', 'toYear', 'source', 'person']);
+  const base = lineagePage(textValue(form, 'slug', 200));
+  // The person open in the outline's panel: the page comes back with them selected.
+  const person = textValue(form, 'person', 200);
+  const extra = SLUG.test(person) ? `&person=${person}` : '';
+  const page = extra ? `${base}?${extra.slice(1)}` : base;
   let shown = false;
   try {
     const result = await (await client()).archiveEditor.addLink({
@@ -143,14 +148,17 @@ export async function addLinkAction(_previous: FormState, form: FormData): Promi
     const state = formStateFromFailure(error, values);
     return formResult({ form: LINK_ADD_FORM, page, anchor: outcomeTarget(LINK_ADD_FORM, state, false) }, state);
   }
-  redirect(doneAt(page, shown ? 'linked' : 'linked-hidden'));
+  redirect(doneAt(base, shown ? 'linked' : 'linked-hidden', extra));
 }
 
 /** "End this link" (archiveEditor.endLink). */
 export async function endLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
   const relationshipId = textValue(form, 'relationshipId', 40);
-  const values = keepValues(form, ['relationshipId', 'reason']);
-  const page = lineagePage(textValue(form, 'slug', 200));
+  const values = keepValues(form, ['relationshipId', 'reason', 'view']);
+  // From the links grid: back to it, with the link's panel open on a refusal.
+  const slug = textValue(form, 'slug', 200);
+  const base = textValue(form, 'view', 10) === 'links' && SLUG.test(slug) && UUID.test(relationshipId) ? `${lineagePage(slug)}/links` : lineagePage(slug);
+  const page = base.endsWith('/links') ? `${base}?link=${relationshipId}` : base;
   try {
     await (await client()).archiveEditor.endLink({ relationshipId, reason: textValue(form, 'reason', 4000), idempotencyKey: key(form) });
   } catch (error) {
@@ -159,5 +167,5 @@ export async function endLinkAction(_previous: FormState, form: FormData): Promi
     const state = formStateFromFailure(error, values);
     return formResult({ form: LINK_END_FORM, page, anchor: outcomeTarget(`${LINK_END_FORM}-${relationshipId}`, state, true) }, state);
   }
-  redirect(doneAt(page, 'ended'));
+  redirect(doneAt(base, 'ended'));
 }

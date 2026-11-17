@@ -29,7 +29,7 @@ async function signedIn(browser: Browser, target: SignInTarget) {
 
 /** Creates a historical record from the editor's form; returns its address. */
 async function createRecord(page: Page, name: string): Promise<string> {
-  await page.goto('/admin/archive#new-record');
+  await page.goto('/admin/archive/people?new=record#new-record');
   const form = visible(page.getByTestId('record-create-form'));
   await form.getByLabel(/^Name in Latin letters/).fill(name);
   await form.getByLabel(/^Life status/).selectOption({ label: 'Deceased' });
@@ -52,7 +52,7 @@ test('@M26 @admin an administrator records two historical teachers, a lineage an
   const student = await createRecord(page, studentName);
 
   // A new lineage with the teacher at its root.
-  await page.goto('/admin/archive#new-lineage');
+  await page.goto('/admin/archive?new=lineage#new-lineage');
   const lineageForm = visible(page.getByTestId('lineage-create-form'));
   await lineageForm.getByLabel(/^Name of the lineage/).fill(`Demo Archive Lineage ${tag}`);
   await lineageForm.getByLabel(/^Root record/).fill(teacher);
@@ -83,10 +83,15 @@ test('@M26 @admin an administrator records two historical teachers, a lineage an
   await visible(page.getByTestId('link-add-form')).getByRole('button', { name: 'Add the link' }).click();
   await page.waitForURL(/[?&]done=linked/);
   await expect(visible(page.getByTestId('archive-outcome'))).toContainText('shown on the public pages');
+  await expect(visible(page.getByTestId('lineage-facts'))).toContainText('In the explorer');
+  // The outline shows the root with its new student; the links grid has the years and the source.
+  const tree = visible(page.getByTestId('lineage-tree'));
+  await expect(tree.locator(`[data-node="${teacher}"]`)).toContainText('1 student');
+  await page.goto(`${lineagePath}/links`);
   const links = visible(page.getByTestId('lineage-links'));
   await expect(links).toContainText('1890–1901');
   await expect(links).toContainText(source);
-  await expect(visible(page.getByTestId('lineage-facts'))).toContainText('In the explorer');
+  await expectNoAxeViolations(page, 'the links grid');
 
   const rows = await getDb().execute<{ status: string; path: string; event: string | null }>(sql`
     SELECT r.status, r.verification_path AS path,
