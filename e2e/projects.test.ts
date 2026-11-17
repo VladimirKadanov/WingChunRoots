@@ -104,6 +104,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/m23-federation-billing.spec.ts',
         '**/m25-governance.spec.ts',
         '**/m26-archive-editor.spec.ts',
+        '**/claim-request.spec.ts',
       ]);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);

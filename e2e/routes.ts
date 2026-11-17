@@ -228,6 +228,11 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/people/demo-a-005/dispute', name: 'lineage-dispute', status: 200, milestone: 'M25', signInAs: 'demo-pending' },
   { path: '/people/demo-a-005/record', name: 'record-history', status: 200, milestone: 'M25' },
   { path: '/people/demo-a-005/record', name: 'record-propose', status: 200, milestone: 'M25', signInAs: 'demo-pending' },
+  // ADR 0037: "Ask to claim this profile" of an unclaimed demo record, as an account without a
+  // profile (the form) and as one with a profile (the refusal). No test claims demo-a-005 (the
+  // claim spec makes records of its own, in the exclusive run).
+  { path: '/people/demo-a-005/claim', name: 'claim-profile', status: 200, milestone: 'usability-2026-11', signInAs: 'new' },
+  { path: '/people/demo-a-005/claim', name: 'claim-profile-refused', status: 200, milestone: 'usability-2026-11', signInAs: 'demo-pending' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */
