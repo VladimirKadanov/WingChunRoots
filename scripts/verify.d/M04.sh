@@ -345,6 +345,12 @@ refute "no skipped or focused M04 E2E test" grep -nE "test\.(skip|only|fixme)\("
 # with 200 instead of 404, so the run fails on it. The proxy logs only the code (CLAUDE.md §6).
 proxy_log_clean() {
   local log=test-results/server.log
+  # CI split (ADR 0036): the ordinary E2E run happens on the shard machines, and each of them runs
+  # this same check on its own server log right after its shard (scripts/verify.sh, run_e2e_shard).
+  if [ "${VERIFY_PART:-}" = "checks" ]; then
+    echo "checked on each E2E shard machine, after its run (VERIFY_PART=checks)"
+    return 0
+  fi
   [ -s "$log" ] || { echo "no $log: run the E2E tests first (scripts/verify.sh runs them before these checks)"; return 1; }
   # The line this check reads must still be the one the proxy writes.
   grep -qF '[proxy] the person check failed (${code}); the page answers for itself' src/proxy.ts || return 1
