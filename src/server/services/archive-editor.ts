@@ -298,10 +298,15 @@ export function archiveEditorOptions(): ArchiveEditorOptions {
 
 // --- Helpers -----------------------------------------------------------------------------------
 
-export function requireArchiveEditor(principal: Principal | null) {
+function editor(principal: Principal | null) {
   const p = requireStaff2FA(principal);
   if (!(ARCHIVE_EDITOR_ROLES as readonly string[]).includes(p.user.role)) throw new ServiceError('FORBIDDEN', ARCHIVE_EDITOR_ONLY);
   return p;
+}
+
+/** The same guard for the archive grids service (archive-grids.ts). */
+export function requireArchiveEditor(principal: Principal | null) {
+  return editor(principal);
 }
 
 function fieldErrors(error: z.ZodError): ServiceError {
@@ -429,7 +434,7 @@ const yearOf = (d: string | null) => (d ? Number(d.slice(0, 4)) : null);
 
 /** archiveEditor.lineages: every lineage, by name. */
 export async function listArchiveLineages(principal: Principal | null): Promise<{ lineages: ArchiveLineageSummary[]; options: ArchiveEditorOptions }> {
-  requireArchiveEditor(principal);
+  editor(principal);
   const db = getDb();
   const rows = await db
     .select({
@@ -453,7 +458,7 @@ export async function listArchiveLineages(principal: Principal | null): Promise<
 
 /** archiveEditor.lineage: one lineage with its links (established and ended), oldest first. */
 export async function getArchiveLineage(principal: Principal | null, raw: z.input<typeof archiveLineageInput>): Promise<ArchiveLineageView & { options: ArchiveEditorOptions }> {
-  requireArchiveEditor(principal);
+  editor(principal);
   const parsed = archiveLineageInput.safeParse(raw);
   if (!parsed.success) throw new ServiceError('NOT_FOUND', NO_LINEAGE);
   const db = getDb();
@@ -511,7 +516,7 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
 
 /** archiveEditor.search: records by any spelling of a name, or by their address; public or not. */
 export async function searchArchiveRecords(principal: Principal | null, raw: z.input<typeof archiveSearchInput>): Promise<{ records: ArchiveRecordRef[] }> {
-  requireArchiveEditor(principal);
+  editor(principal);
   const parsed = archiveSearchInput.safeParse(raw);
   const q = parsed.success ? cleanName(parsed.data.q) : '';
   if (q.length < 2) return { records: [] };
@@ -532,7 +537,7 @@ export async function searchArchiveRecords(principal: Principal | null, raw: z.i
 
 /** archiveEditor.createLineage: a new lineage (not shown anywhere until it has a public link). */
 export async function createArchiveLineage(principal: Principal | null, raw: CreateLineageInput, meta: RequestMeta): Promise<{ id: string; slug: string }> {
-  const p = requireArchiveEditor(principal);
+  const p = editor(principal);
   const parsed = createLineageInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const input = parsed.data;
@@ -564,7 +569,7 @@ export async function createArchiveLineage(principal: Principal | null, raw: Cre
 
 /** archiveEditor.updateLineage: the name, the description and the root. Nothing changed: nothing written. */
 export async function updateArchiveLineage(principal: Principal | null, raw: UpdateLineageInput, meta: RequestMeta): Promise<{ slug: string; changed: boolean }> {
-  const p = requireArchiveEditor(principal);
+  const p = editor(principal);
   const parsed = updateLineageInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const input = parsed.data;
@@ -624,7 +629,7 @@ export async function updateArchiveLineage(principal: Principal | null, raw: Upd
  * and pinyin; the search keys are written for every spelling (M07).
  */
 export async function createArchiveRecord(principal: Principal | null, raw: CreateRecordInput, meta: RequestMeta): Promise<{ id: string; slug: string }> {
-  const p = requireArchiveEditor(principal);
+  const p = editor(principal);
   const parsed = createRecordInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const input = parsed.data;
@@ -676,7 +681,7 @@ export async function createArchiveRecord(principal: Principal | null, raw: Crea
  * the top of this file). A second call with the same key returns the first link and writes nothing.
  */
 export async function addArchiveLink(principal: Principal | null, raw: AddLinkInput, meta: RequestMeta): Promise<{ relationshipId: string; shown: boolean; replayed: boolean }> {
-  const p = requireArchiveEditor(principal);
+  const p = editor(principal);
   const parsed = addLinkInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const input = parsed.data;
@@ -784,7 +789,7 @@ export async function addArchiveLink(principal: Principal | null, raw: AddLinkIn
  * arbitration (M10b).
  */
 export async function endArchiveLink(principal: Principal | null, raw: EndLinkInput, meta: RequestMeta): Promise<{ replayed: boolean }> {
-  const p = requireArchiveEditor(principal);
+  const p = editor(principal);
   const parsed = endLinkInput.safeParse(raw);
   if (!parsed.success) throw fieldErrors(parsed.error);
   const input = parsed.data;

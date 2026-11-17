@@ -293,6 +293,10 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
               <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
                 Find
               </button>
+              {/* The tree shows active links only; ended ones are listed in the links grid. */}
+              <Link href={`${path}/links?show=ended#links`} className="link inline-flex min-h-11 items-center text-ui">
+                {'Ended'} links
+              </Link>
               {open.length > 0 ? (
                 <Link href={at({ open: [] })} className="link inline-flex min-h-11 items-center text-ui">
                   Close every branch
