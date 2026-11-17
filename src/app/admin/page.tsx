@@ -217,13 +217,11 @@ export default async function AdminPage() {
 
       <section aria-label="Key figures" className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         <Figure label="Accounts" value={number.format(d.accounts.total)} note={`${number.format(d.accounts.recent)} new`} href={isAdmin ? '/admin/accounts' : undefined} testId={isAdmin ? 'admin-accounts-link' : undefined} />
-        <Figure
-          label="People on record"
-          value={number.format(d.people.total)}
-          note={`${number.format(d.people.recent)} new`}
-          href={isAdmin || role === 'archivist' ? '/admin/archive' : undefined}
-          testId={isAdmin || role === 'archivist' ? 'archive-editor-link' : undefined}
-        />
+        {isAdmin || role === 'archivist' ? (
+          <Figure label="People on record" value={number.format(d.people.total)} note={`${number.format(d.people.recent)} new`} href="/admin/archive" testId="archive-editor-link" />
+        ) : (
+          <Figure label="People on record" value={number.format(d.people.total)} note={`${number.format(d.people.recent)} new`} />
+        )}
         <Figure label="Verified links" value={number.format(d.verifiedLinks.total)} note={`${number.format(d.verifiedLinks.recent)} sealed lately`} />
         <Figure
           label="Listed schools"
