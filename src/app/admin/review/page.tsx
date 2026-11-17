@@ -16,13 +16,14 @@ import type { ReactNode } from 'react';
 import { LoadError } from '@/components/account/load-error';
 import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { AdminPageHeader, AdminViews } from '@/components/admin/table-parts';
 import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import type { ReviewListInput } from '@/server/services/review';
-import { ReviewTable } from './review-table';
+import type { ReviewList, ReviewListInput } from '@/server/services/review';
+import { queueHref, ReviewTable } from './review-table';
 
 export const instant = false;
 
@@ -59,12 +60,31 @@ function FilterSelect({ id, label, name, defaultValue, children }: { id: string;
 
 function returnPath(query: Record<string, string | string[] | undefined>): string {
   const params = new URLSearchParams();
-  for (const key of ['kind', 'status', 'assigned', 'sort', 'page'] as const) {
+  for (const key of ['kind', 'group', 'status', 'assigned', 'age', 'sort', 'page'] as const) {
     const value = one(query[key]);
     if (value) params.set(key, value);
   }
   const search = params.toString();
   return search ? `/admin/review?${search}` : '/admin/review';
+}
+
+/** The saved views of the queue, with their counts (under the list's status filter, which they keep). */
+function queueViews(list: ReviewList) {
+  const f = list.filters;
+  const base: Pick<ReviewList, 'filters' | 'page'> = { filters: { ...f, kind: undefined, group: undefined, assigned: 'any', age: 'any', sort: 'oldest' }, page: 1 };
+  const plain = !f.kind && f.sort === 'oldest';
+  const view = (label: string, count: number, changes: Partial<ReviewList['filters']>, testId?: string) => {
+    const next = { ...base, filters: { ...base.filters, ...changes } };
+    const current = plain && (f.group ?? null) === (next.filters.group ?? null) && f.assigned === next.filters.assigned && f.age === next.filters.age;
+    return { label, count, href: queueHref(next, {}), current, testId };
+  };
+  return [
+    view(f.status === 'waiting' ? 'All waiting' : 'All', list.counts.all, {}, 'view-all'),
+    view('Assigned to me', list.counts.mine, { assigned: 'me' }, 'view-mine'),
+    view('Nobody assigned', list.counts.unassigned, { assigned: 'none' }, 'view-unassigned'),
+    view('Waiting over 3 days', list.counts.late, { age: '3d' }, 'view-late'),
+    ...list.counts.groups.map((g) => view(g.label, g.count, { group: g.value })),
+  ];
 }
 
 export default async function ReviewQueuePage({ searchParams }: { searchParams: Search }) {
@@ -92,6 +112,8 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   // An unknown or malformed parameter falls back to its default in the service (review.list).
   const input = {
     kind: one(query.kind) || undefined,
+    group: one(query.group) || undefined,
+    age: one(query.age) || undefined,
     status: one(query.status) || undefined,
     assigned: one(query.assigned) || undefined,
     sort: one(query.sort) || undefined,
@@ -102,30 +124,58 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   if (!list) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={returnPath(query)} />;
   const archivist = guard.principal?.user.role === 'archivist';
 
-  return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <header className="max-w-[46rem]">
-        <p className="eyebrow">
-          <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Administration
-          </Link>
-        </p>
-        <h1 className="mt-2 font-display text-feature">Review queue</h1>
-        <p className="mt-3 max-w-[60ch] text-fg-muted" data-testid="queue-intro">
-          Cases that wait for a decision, oldest first. An archivist or an administrator decides historical teacher claims, profile claims and
-          instructor verifications; a moderator or an administrator decides profile reports and disputes. Take a case to open it. Every
-          decision is kept in the audit log.
-        </p>
-      </header>
+  const { counts } = list;
+  const statusName = list.filters.status === 'waiting' ? 'waiting' : list.filters.status === 'all' ? 'in all' : (list.statuses.find((x) => x.value === list.filters.status)?.label.toLowerCase() ?? '');
 
-      <div className="mt-8 grid gap-10">
-        <form method="get" action="/admin/review" role="search" aria-label="Filter the queue" className="grid gap-4 rounded-sm border border-border-subtle p-4" data-testid="queue-filters">
-          <div className="grid gap-3 sm:grid-cols-3">
+  return (
+    <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
+      <AdminPageHeader
+        eyebrow={
+          <Link href="/admin" className="link inline-flex min-h-11 items-center">
+            Control panel
+          </Link>
+        }
+        title="Review queue"
+        summary={
+          <span data-testid="queue-summary">
+            <strong>{counts.all}</strong> {statusName} · <strong>{counts.mine}</strong> assigned to you · <strong>{counts.unassigned}</strong> with nobody ·{' '}
+            {counts.late > 0 ? (
+              <span className="font-semibold text-danger">
+                <span aria-hidden="true">! </span>
+                {counts.late} over 3 days
+              </span>
+            ) : (
+              'none over 3 days'
+            )}
+          </span>
+        }
+        intro={
+          <span data-testid="queue-intro">
+            Cases that wait for a decision, oldest first. An archivist or an administrator decides historical teacher claims, profile claims and
+            instructor verifications; a moderator or an administrator decides profile reports and disputes. Take a case to open it. Every
+            decision is kept in the audit log.
+          </span>
+        }
+      />
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8">
+        <AdminViews label="Saved views of the queue" views={queueViews(list)} />
+
+        <div className="grid min-w-0 content-start gap-5">
+          <form method="get" action="/admin/review" role="search" aria-label="Filter the queue" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] items-end gap-3" data-testid="queue-filters">
+            <FilterSelect id="filter-group" name="group" label="Group" defaultValue={list.filters.group ?? ''}>
+              <option value="">Every group</option>
+              {counts.groups.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label} ({g.count})
+                </option>
+              ))}
+            </FilterSelect>
             <FilterSelect id="filter-kind" name="kind" label="Kind" defaultValue={list.filters.kind ?? ''}>
               <option value="">Any kind</option>
               {list.kinds.map((kind) => (
                 <option key={kind.value} value={kind.value}>
-                  {kind.label}
+                  {kind.label} ({counts.kinds[kind.value] ?? 0})
                 </option>
               ))}
             </FilterSelect>
@@ -141,17 +191,30 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
               <option value="me">Me</option>
               <option value="none">Nobody yet</option>
             </FilterSelect>
-          </div>
-          {list.filters.sort !== 'oldest' ? <input type="hidden" name="sort" value={list.filters.sort} /> : null}
-          <div>
-            <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
-              Show cases
-            </button>
-          </div>
-        </form>
+            <FilterSelect id="filter-age" name="age" label="Waiting" defaultValue={list.filters.age}>
+              <option value="any">Any time</option>
+              <option value="1d">Over 1 day</option>
+              <option value="3d">Over 3 days</option>
+              <option value="7d">Over a week</option>
+            </FilterSelect>
+            {list.filters.sort !== 'oldest' ? <input type="hidden" name="sort" value={list.filters.sort} /> : null}
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
+                Show cases
+              </button>
+              {returnPath(query) !== '/admin/review' ? (
+                <Link href="/admin/review" className="link inline-flex min-h-12 items-center text-ui">
+                  Clear
+                </Link>
+              ) : null}
+            </div>
+          </form>
 
-        <ReviewTable list={list} />
+          <ReviewTable list={list} />
+        </div>
+      </div>
 
+      <div className="mt-10 grid max-w-[60rem] gap-10">
         <section aria-labelledby="archive-heading" className="grid gap-3 border-t border-border-subtle pt-6">
           <h2 id="archive-heading" className="font-display text-2xl">
             Archival records

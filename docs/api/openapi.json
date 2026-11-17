@@ -7710,6 +7710,45 @@
             "allowReserved": true
           },
           {
+            "name": "group",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "claims",
+                    "verifications",
+                    "listings",
+                    "disputes",
+                    "records"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "age",
+            "in": "query",
+            "schema": {
+              "default": "any",
+              "type": "string",
+              "enum": [
+                "any",
+                "1d",
+                "3d",
+                "7d"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
             "name": "status",
             "in": "query",
             "schema": {
