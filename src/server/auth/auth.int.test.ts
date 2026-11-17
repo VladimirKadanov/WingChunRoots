@@ -163,6 +163,11 @@ describe('sign-up', () => {
     expect(again.status).toBe(200);
     expect(await deliveryCount('verify-email', invited)).toBe(2);
     expect((await link(invited)).searchParams.get('next')).toBe(invitation);
+    // From a school's trial lesson page: the link carries it, so the visitor gets back to the request.
+    const trial = '/schools/demo-trial-school/trial';
+    const visitor = address('trial-visitor');
+    expect((await signUp(visitor, ALL_TICKS, { callbackURL: trial })).status).toBe(200);
+    expect((await link(visitor)).searchParams.get('next')).toBe(trial);
     // Any other page, and no callback at all: the link has the token only.
     for (const [label, extra] of [['other-page', { callbackURL: '/account' }], ['no-callback', {}]] as const) {
       const email = address(label);
