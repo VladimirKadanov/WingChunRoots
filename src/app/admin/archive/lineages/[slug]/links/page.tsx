@@ -26,7 +26,8 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { LINK_FILTERS, LINK_SORTS, type ArchiveLinkRow } from '@/server/services/archive-grids';
 import { LINK_EDIT_FORM, LINK_END_FORM } from '../../../form-ids';
-import { EditLinkForm, EndLinkForm } from '../../../forms';
+import { EditLinkForm } from '../../../edit-link-form';
+import { EndLinkForm } from '../../../forms';
 import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, LinkStatus, Missing, number, Pager, rowClass, SortHeader, tableClass, theadClass, years } from '../../../grid-parts';
 import { WorkspaceHeader } from '../workspace';
 

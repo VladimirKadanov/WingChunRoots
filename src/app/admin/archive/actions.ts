@@ -16,7 +16,7 @@ import { atOutcome } from '@/components/relationships/outcome-id';
 import { keepValues, textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
-import { formResult } from '@/server/forms/flash';
+import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_EDIT_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
@@ -170,8 +170,12 @@ export async function endLinkAction(_previous: FormState, form: FormData): Promi
   redirect(doneAt(base, 'ended'));
 }
 
-/** "Save the years and source" (archiveEditor.editLink), from the links grid's panel: back to the link. */
-export async function editLinkAction(_previous: FormState, form: FormData): Promise<FormState> {
+/**
+ * "Save the years and source" (archiveEditor.editLink), from the links grid's panel: back to the
+ * link. The form is a Server Component (./edit-link-form.tsx), so a refusal is always kept for the
+ * page and shown there, whoever posted (keepFormResult).
+ */
+export async function editLinkAction(_previous: FormState, form: FormData): Promise<never> {
   const relationshipId = textValue(form, 'relationshipId', 40);
   const values = keepValues(form, ['relationshipId', 'fromYear', 'toYear', 'source', 'reason']);
   const slug = textValue(form, 'slug', 200);
@@ -192,7 +196,7 @@ export async function editLinkAction(_previous: FormState, form: FormData): Prom
     unstable_rethrow(error);
     sendAway(error, page);
     const state = formStateFromFailure(error, values);
-    return formResult({ form: LINK_EDIT_FORM, page, anchor: outcomeTarget(`${LINK_EDIT_FORM}-${relationshipId}`, state, true) }, state);
+    return keepFormResult({ form: LINK_EDIT_FORM, page, anchor: outcomeTarget(`${LINK_EDIT_FORM}-${relationshipId}`, state, true) }, state);
   }
   redirect(doneAt(base, changed ? 'edited' : 'unchanged', link));
 }

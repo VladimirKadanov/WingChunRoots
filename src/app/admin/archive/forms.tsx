@@ -1,8 +1,7 @@
 'use client';
 
 // The forms of the archive editor (milestone M26, docs/adr/0034-archive-editor.md): a new lineage, a
-// lineage's name, description and root, a new historical record, a new link, correcting a link's
-// years and source, and ending a link. Each
+// lineage's name, description and root, a new historical record, a new link and ending a link. Each
 // posts to one thin Server Action over one procedure (./actions.ts) and works without JavaScript (the
 // browser posts the form and a refusal comes back opened at the form's message:
 // src/server/forms/flash.ts). The button is aria-disabled while the action runs, so a double click
@@ -15,8 +14,8 @@ import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { fieldId, type FormState, IDLE } from '@/lib/form-state';
 import { discardEvidenceAction } from '../../dashboard/teachers/historical/actions';
-import { addLinkAction, createLineageAction, createRecordAction, editLinkAction, endLinkAction, updateLineageAction } from './actions';
-import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_EDIT_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
+import { addLinkAction, createLineageAction, createRecordAction, endLinkAction, updateLineageAction } from './actions';
+import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
 
 const LINEAGE_LABELS = { name: 'Name of the lineage', description: 'Description', rootSlug: 'Root record', reason: 'Reason' };
 const RECORD_LABELS = {
@@ -257,43 +256,6 @@ export function EndLinkForm({
       <div>
         <SubmitButton pending={pending} pendingLabel="Ending…" variant="danger">
           End this link
-        </SubmitButton>
-      </div>
-    </form>
-  );
-}
-
-const LINK_EDIT_LABELS = { relationshipId: 'Link', fromYear: 'From (year)', toYear: 'To (year)', source: 'Source', reason: 'Reason' };
-
-/** "Save the years and source": a link the archive keeps, corrected in place with a reason. */
-export function EditLinkForm({
-  link,
-  slug,
-  initial,
-}: {
-  link: { id: string; fromYear: number | null; toYear: number | null; source: string | null };
-  slug: string;
-  initial?: FormState | null;
-}) {
-  const [state, action, pending] = useActionState(editLinkAction, initial ?? IDLE);
-  const fixed = `${LINK_EDIT_FORM}-${link.id}`;
-  const generatedId = useFormId(fixed);
-  const formId = initial ? fixed : generatedId;
-  useFocusOnError(formId, state);
-  return (
-    <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-3" data-testid="link-edit-form">
-      <FormMessage form={formId} state={state} labels={LINK_EDIT_LABELS} />
-      <input type="hidden" name="relationshipId" value={link.id} />
-      <input type="hidden" name="slug" value={slug} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <TextField form={formId} name="fromYear" label={LINK_EDIT_LABELS.fromYear} optional autoComplete="off" inputMode="numeric" maxLength={4} defaultValue={link.fromYear === null ? undefined : String(link.fromYear)} state={state} />
-        <TextField form={formId} name="toYear" label={LINK_EDIT_LABELS.toYear} optional autoComplete="off" inputMode="numeric" maxLength={4} defaultValue={link.toYear === null ? undefined : String(link.toYear)} state={state} />
-      </div>
-      <TextAreaField form={formId} name="source" label={LINK_EDIT_LABELS.source} maxLength={2000} rows={3} defaultValue={link.source ?? undefined} hint="Required. Where this training is recorded. Staff only." state={state} />
-      <TextAreaField form={formId} name="reason" label={LINK_EDIT_LABELS.reason} maxLength={2000} rows={2} hint={REASON_HINT} state={state} />
-      <div>
-        <SubmitButton pending={pending} pendingLabel="Saving…">
-          Save the years and source
         </SubmitButton>
       </div>
     </form>
