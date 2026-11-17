@@ -357,9 +357,12 @@ async function schoolWithPhoto(opts: { listed?: boolean } = {}) {
 /** M15: an organization's application by a new account (its owner); approved when `active`, with Federation when `federation`. */
 async function organizationOf(opts: { active?: boolean; federation?: boolean } = {}) {
   const owner = await actor('org-owner', { noPerson: true });
+  // A name of its own: the slug's random suffix is 3 bytes, and the many same-named organizations
+  // of this file met on one slug in CI (2026-11-17).
+  const tag = randomBytes(4).toString('hex').replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)]!);
   const applied = await applyOrganization(
     owner.principal,
-    { name: 'Demo Matrix Federation', kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
+    { name: `Demo Matrix Federation ${tag}`, kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
     meta,
   );
   if (opts.active || opts.federation) {
