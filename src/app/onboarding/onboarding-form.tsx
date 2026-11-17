@@ -6,6 +6,8 @@
 // country's cities and a city picked first sets its country, and the Chinese readings appear
 // for a Chinese original; without it every field is there and the server checks the rest.
 // `initial` is the outcome of a submit without JavaScript (src/server/forms/flash.ts).
+// "How do you take part?" chooses the account type ("I train", the default, or "I teach"), saved
+// through account.setType once the profile is saved; the radios are controlled too.
 
 import { useActionState, useState } from 'react';
 
@@ -22,7 +24,8 @@ import {
   useHydrated,
 } from '@/components/account/fields';
 import { NameLine, NameText } from '@/components/account/person-names';
-import { IDLE, type FormState } from '@/lib/form-state';
+import { cx } from '@/lib/cx';
+import { IDLE, fieldId, type FormState } from '@/lib/form-state';
 import { onboardAction } from './actions';
 import { type DocumentNote, MissingConsents } from './missing-consents';
 
@@ -41,6 +44,7 @@ const LABELS: Record<string, string> = {
   pinyin: 'Pinyin',
   countryCode: 'Country',
   placeId: 'City',
+  accountType: 'How you take part',
   trainingStartYear: 'Year you started',
 };
 
@@ -60,6 +64,18 @@ export interface OnboardingFormOptions {
   latestStartYear: number;
 }
 
+/** The two ways to take part: the account type account.setType sets (DEFAULT D04: verifies nothing). */
+const ROLES = [
+  { value: 'student', title: 'I train', hint: 'You train with one or more teachers. You can change this later in your settings.' },
+  {
+    value: 'sifu',
+    title: 'I teach',
+    hint: "Sifu can accept students, list schools and publish events. Choosing it doesn't verify you as an instructor; you can send evidence later.",
+  },
+] as const;
+
+type Role = (typeof ROLES)[number]['value'];
+
 /** An example name in a hint: in curly quotes, in its own language, never translated. */
 function Example({ value, lang }: { value: string; lang: string }) {
   return (
@@ -71,12 +87,15 @@ function Example({ value, lang }: { value: string; lang: string }) {
 
 export function OnboardingForm({
   options,
+  accountType,
   missingConsents,
   documents,
   next,
   initial,
 }: {
   options: OnboardingFormOptions;
+  /** The account's type now: a Sifu account starts on "I teach". */
+  accountType: Role;
   /** Required confirmations not given for the current documents. */
   missingConsents: readonly string[];
   documents: readonly DocumentNote[];
@@ -92,6 +111,7 @@ export function OnboardingForm({
   const [originalName, setOriginalName] = useState(() => value('originalName'));
   const [jyutping, setJyutping] = useState(() => value('jyutping'));
   const [pinyin, setPinyin] = useState(() => value('pinyin'));
+  const [role, setRole] = useState<string>(() => value('accountType') || accountType);
   const hydrated = useHydrated();
   const FORM = useFormId(FORM_NAME);
   useFocusOnError(FORM, state);
@@ -268,6 +288,52 @@ export function OnboardingForm({
           )}
         </figure>
       ) : null}
+
+      <fieldset aria-describedby={errors.accountType ? `${fieldId(FORM, 'accountType')}-error` : undefined} className="grid gap-3">
+        <legend className="mb-4 font-display text-2xl">How do you take part?</legend>
+        {errors.accountType ? (
+          <p id={`${fieldId(FORM, 'accountType')}-error`} className="text-sm text-danger">
+            {errors.accountType}
+          </p>
+        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {ROLES.map((option, index) => (
+            <label
+              key={option.value}
+              className={cx(
+                'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-sm border border-border-strong bg-surface-1 p-4',
+                'transition-colors duration-(--duration-fast) hover:border-fg-muted has-[:checked]:border-fg has-[:checked]:bg-surface-2',
+                'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
+                'forced-colors:has-[:checked]:border-2 forced-colors:has-[:checked]:p-[15px]',
+              )}
+            >
+              <input
+                type="radio"
+                name="accountType"
+                value={option.value}
+                id={index === 0 ? fieldId(FORM, 'accountType') : undefined}
+                checked={role === option.value}
+                onChange={() => setRole(option.value)}
+                aria-describedby={`${fieldId(FORM, 'accountType')}-${option.value}-hint`}
+                autoFocus={first === 'accountType' && index === 0}
+                // Drawn as on /dashboard/settings: a ring in ink and a dot when chosen; the system
+                // draws its own radio in forced colours.
+                className={cx(
+                  'mt-1 grid size-5 shrink-0 cursor-pointer appearance-none place-content-center rounded-full border-[1.5px] border-fg bg-surface-1 focus-visible:outline-none',
+                  'before:size-2.5 before:scale-0 before:rounded-full before:bg-fg before:transition-transform before:duration-(--duration-fast) checked:before:scale-100',
+                  'forced-colors:appearance-auto forced-colors:before:hidden',
+                )}
+              />
+              <span className="grid gap-1">
+                <span className="font-display text-xl">{option.title}</span>
+                <span id={`${fieldId(FORM, 'accountType')}-${option.value}-hint`} className="text-sm text-fg-muted">
+                  {option.hint}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="grid gap-6">
         <legend className="mb-4 font-display text-2xl">Where and since when</legend>

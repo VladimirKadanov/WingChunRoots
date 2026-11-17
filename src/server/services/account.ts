@@ -256,7 +256,7 @@ export async function landingPath(principal: Principal | null, next: unknown): P
   // invitation link, and an account whose claim waits for the reviewers, skip onboarding, but
   // never the confirmation of the current documents (/onboarding asks for it alone then).
   if (confirmed && (target.startsWith('/invite/') || (await pendingClaimOf(user.id)))) return target;
-  // Onboarding without a `next` ends on the account page; any other target is kept for after it.
+  // Onboarding without a `next` ends on the dashboard; any other target is kept for after it.
   return `/onboarding${target === LANDING ? '' : `?next=${encodeURIComponent(target)}`}`;
 }
 

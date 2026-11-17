@@ -97,7 +97,7 @@ export default async function AccountPage() {
               ))}
             </ul>
             <p className="pl-6.5">
-              <Link href="/onboarding" className="link inline-flex min-h-11 items-center font-semibold">
+              <Link href="/onboarding?next=%2Faccount" className="link inline-flex min-h-11 items-center font-semibold">
                 Read and confirm
               </Link>
             </p>
@@ -155,7 +155,7 @@ export default async function AccountPage() {
                   Your profile is not set up yet. Add your name so teachers and students can find and confirm you.
                 </p>
                 <div>
-                  <Link href="/onboarding" className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
+                  <Link href="/onboarding?next=%2Faccount" className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
                     Set up your profile
                     <ArrowRightIcon />
                   </Link>

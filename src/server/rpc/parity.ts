@@ -27,7 +27,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/account/security/actions.ts#verifySessionAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
   'src/app/account/security/actions.ts#newBackupCodesAction': { auth: ['/two-factor/generate-backup-codes'] },
   'src/app/account/security/actions.ts#disableTwoFactorAction': { auth: ['/two-factor/disable'] },
-  'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard'] },
+  'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard', 'account.setType'] },
   'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
   // M08: plans, test plans and notifications.
   'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead', 'notifications.markAllRead'] },

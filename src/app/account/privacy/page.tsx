@@ -111,7 +111,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Sear
             ) : (
               <p className="text-ui text-fg-muted">
                 You have no profile yet.{' '}
-                <Link href="/onboarding" className="link">
+                <Link href="/onboarding?next=%2Faccount%2Fprivacy" className="link">
                   Set it up
                 </Link>{' '}
                 when you are ready.
