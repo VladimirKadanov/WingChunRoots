@@ -460,17 +460,42 @@ async function personOf(email: string) {
   return rows.rows;
 }
 
+async function accountTypeOf(email: string) {
+  const rows = await getDb().execute<{ account_type: string }>(sql`SELECT account_type FROM auth_user WHERE email = ${email}`);
+  return rows.rows[0]?.account_type;
+}
+
+test('@M02 onboarding with "I teach" makes a Sifu account and goes back to the page that sent the member there', async ({ page }) => {
+  const account = await signInAs(page, 'new');
+  await page.goto(`/onboarding?next=${encodeURIComponent('/dashboard/settings')}`);
+  await field(page, 'Name in Latin letters').fill('Demo Teaching Newcomer');
+  await page.getByRole('radio', { name: 'I teach' }).check();
+  await expect(page.getByText("Choosing it doesn't verify you as an instructor; you can send evidence later.")).toBeVisible();
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+
+  await expect(page).toHaveURL(/\/dashboard\/settings$/);
+  expect(await accountTypeOf(account.email)).toBe('sifu');
+  expect(await personOf(account.email)).toHaveLength(1);
+});
+
 test('@M02 onboarding creates a person linked to the account', async ({ page }) => {
   const account = await signInAs(page, 'new');
   await page.goto('/onboarding');
   const publicly = field(page, 'Show my profile publicly');
   await expect(publicly).not.toBeChecked();
+  // "I train" is chosen for a new (Student) account; "I teach" is not.
+  await expect(page.getByRole('group', { name: 'How do you take part?' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'I train' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'I teach' })).not.toBeChecked();
   await field(page, 'Name in Latin letters').fill('Demo Newcomer');
   await field(page, 'Country').selectOption({ label: 'Bulgaria' });
   await field(page, 'Year you started Wing Chun').fill('2015');
   await page.getByRole('button', { name: 'Save my profile' }).click();
 
-  await expect(page).toHaveURL(/\/account$/);
+  // Without a `next`, onboarding ends on the dashboard, as a normal sign-in does.
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(await accountTypeOf(account.email)).toBe('student');
+  await page.goto('/account');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Newcomer');
   await expect(page.getByText('Private.')).toBeVisible();
 
@@ -479,9 +504,9 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
   expect(people).toHaveLength(1);
   expect(people[0]).toMatchObject({ stewardship: 'self', visibility: 'involved_only', claimed_by_user_id: userId });
 
-  // A second visit goes to the account page; the API refuses a second profile.
+  // A second visit goes to the dashboard; the API refuses a second profile.
   await page.goto('/onboarding');
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   const again = await page.request.post('/api/v1/account/onboard', {
     data: { primaryName: 'Demo Twice' },
     headers: { origin: BASE_URL },
@@ -494,7 +519,8 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await page.goto('/onboarding');
   await field(page, 'Name in Latin letters').fill('Demo Returning');
   await page.getByRole('button', { name: 'Save my profile' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
   const notice = page.getByRole('link', { name: 'Read and confirm' });
   await expect(notice).toHaveCount(0);
 
@@ -532,7 +558,10 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await expectNoAxeViolations(page, '/onboarding, documents only, with errors');
   await terms.check();
   await page.getByRole('button', { name: 'Confirm and continue' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  // Signed in without a `next`: the confirmation ends on the dashboard.
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Returning');
   await expect(notice).toHaveCount(0);
 
   const versions = (await consentsOf(account.email)).filter((row) => row.kind === 'terms').map((row) => row.document_version);
@@ -562,7 +591,8 @@ test('@M02 onboarding requires a Latin-script primary name and stores an optiona
   await field(page, 'Jyutping').fill('sou1 zuk1 cing4');
   await page.getByRole('button', { name: 'Save my profile' }).click();
 
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
   // The other spellings are listed under Profile.
   const chinese = page.locator('main dl [lang="zh-Hant"][translate="no"]', { hasText: '蘇竹晴' }).filter({ visible: true });
   await expect(chinese).toBeVisible();
@@ -664,7 +694,8 @@ test.describe('at 390x844', () => {
     await field(page, /^Original script/).selectOption('bg-Cyrl');
     await field(page, 'Name in the original script').fill('Мира Пробнова');
     await page.getByRole('button', { name: 'Save my profile' }).tap();
-    await expect(page).toHaveURL(/\/account$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto('/account');
     const heading = page.locator('h1').filter({ visible: true });
     await expect(heading.locator('[lang="bg-Cyrl"][translate="no"]')).toHaveText('Мира Пробнова');
     await expect(page.locator('main dl [lang="bg-Cyrl"][translate="no"]', { hasText: 'Мира Пробнова' }).filter({ visible: true })).toBeVisible();
@@ -802,7 +833,7 @@ test('@M02 onboarding keeps the chosen script, country and city after a server e
   // Fixing only the year saves everything that was chosen.
   await field(page, 'Year you started Wing Chun').fill('2009');
   await page.getByRole('button', { name: 'Save my profile' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   expect(await profileRow(account.email)).toEqual([{ country_code: 'HK', place: 'Hong Kong', training_start_year: 2009 }]);
 });
 

@@ -219,7 +219,8 @@ test('@pilot register → onboarding → find a teacher with the palette → req
   await field(page, 'Name in Latin letters').fill(name);
   await field(page, 'Show my profile publicly').check();
   await page.getByRole('button', { name: 'Save my profile' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
   const student = await ownPerson((await userIdOf(email))!);
 
