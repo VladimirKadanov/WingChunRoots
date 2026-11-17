@@ -40,9 +40,9 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : undefined);
 const valid = <T,>(result: { success: true; data: T } | { success: false }): T | undefined => (result.success ? result.data : undefined);
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({ id, title, children, className }: { id: string; title: string; children: ReactNode; className?: string }) {
   return (
-    <section id={id} aria-labelledby={`${id}-heading`} className="grid content-start gap-4 border-t border-border-subtle pt-6">
+    <section id={id} aria-labelledby={`${id}-heading`} className={`grid min-w-0 content-start gap-4 border-t border-border-subtle pt-6 ${className ?? ''}`}>
       <h2 id={`${id}-heading`} className="font-display text-2xl">
         {title}
       </h2>
@@ -110,23 +110,34 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
   const now = new Date();
 
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <header className="max-w-[46rem]">
-        <p className="eyebrow">Administration</p>
-        <h1 className="mt-2 font-display text-feature">Plan grants</h1>
-        <p className="mt-3 max-w-[60ch] text-fg-muted">
+    <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
+      <header className="grid gap-2">
+        <p className="eyebrow">
+          <Link href="/admin" className="link inline-flex min-h-11 items-center">
+            Control panel
+          </Link>
+        </p>
+        <h1 className="font-display text-feature">Plan grants</h1>
+        <p className="text-ui" data-testid="grants-summary">
+          <strong>{list.requests.length}</strong> pilot {list.requests.length === 1 ? 'request waits' : 'requests wait'} for an answer · <strong>{list.total}</strong>{' '}
+          {list.total === 1 ? 'grant' : 'grants'}
+          {list.q ? ' match the search' : ' in all'}
+        </p>
+        <p className="max-w-[72ch] text-ui text-fg-muted">
           Give a test plan of the pilot to an account, or revoke one. There are no payments in the pilot. Every grant and revocation is
           kept in the audit log with its reason; confirmed links never change.
         </p>
       </header>
 
-      <div className="mt-8 grid gap-10">
+      {/* Control panel: from 1280 px the grants fill the page and the requests and the form sit
+          beside them; narrower, the requests and the form come first, as before. */}
+      <div className="mt-8 grid gap-10 xl:grid-cols-[minmax(0,1fr)_28rem] xl:items-start">
         {/* Each open request has two answers: give the plan, or close it with a reason (review
             round 2, recheck-5). The section stays when none is open, to say so. */}
-        <Section id="pilot-requests" title="Pilot access requests">
+        <Section id="pilot-requests" title="Pilot access requests" className="xl:col-start-2">
           {closedRequest?.status === 'done' ? <FormMessage form={CLOSED_REQUEST_MESSAGE} state={closedRequest} single /> : null}
           {list.requests.length > 0 ? (
-            <ul data-testid="pilot-requests" className="grid max-w-[46rem]">
+            <ul data-testid="pilot-requests" className="grid">
               {list.requests.map((item) => (
                 <PilotRequestItem
                   key={item.id}
@@ -143,7 +154,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           )}
         </Section>
 
-        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid content-start gap-4 border-t border-border-subtle pt-6">
+        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid min-w-0 content-start gap-4 border-t border-border-subtle pt-6 xl:col-start-2">
           <h2 id="give-plan-heading" className="sr-only">
             Give a test plan
           </h2>
@@ -167,7 +178,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           </GivePlanDisclosure>
         </section>
 
-        <Section id="grants" title="Grants">
+        <Section id="grants" title="Grants" className="xl:col-start-1 xl:row-span-2 xl:row-start-1">
           <form role="search" action="/admin/grants" method="get" className="flex max-w-[34rem] flex-wrap items-end gap-3">
             <div className="grid min-w-0 flex-1 gap-1.5">
               <label htmlFor="grants-q" className="text-sm font-semibold">
@@ -197,11 +208,6 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           <GrantsTable list={list} revoked={revoked} />
         </Section>
 
-        <p className="border-t border-border-subtle pt-5 text-ui">
-          <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Back to administration
-          </Link>
-        </p>
       </div>
     </div>
   );

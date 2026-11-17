@@ -7718,10 +7718,11 @@
                   "type": "string",
                   "enum": [
                     "claims",
-                    "verifications",
-                    "listings",
-                    "disputes",
-                    "records"
+                    "instructors",
+                    "schools",
+                    "organizations",
+                    "records",
+                    "disputes"
                   ]
                 },
                 {
@@ -13077,6 +13078,32 @@
                 "past_due",
                 "canceled"
               ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "plan",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "free_student",
+                "premium_student",
+                "free_sifu",
+                "pro_sifu",
+                "federation"
+              ]
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
             },
             "allowEmptyValue": true,
             "allowReserved": true
