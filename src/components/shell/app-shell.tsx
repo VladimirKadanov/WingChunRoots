@@ -34,8 +34,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="inline-flex min-h-11 min-w-0 shrink items-center" aria-label="WingChunRoots, home">
             <BrandMark className="min-w-0" />
           </Link>
-          {/* M07: the search palette's field (plan §5.6). */}
-          <div className="flex min-w-11 max-w-[11rem] flex-1 justify-end">
+          {/* M07: the search palette's field (plan §5.6). The bar's touch targets are 44 CSS px, not rem, so
+              at 200 % text at 320 px the row still fits (M04 reflow tests). */}
+          <div className="flex min-w-[44px] max-w-[11rem] flex-1 justify-end">
             <SearchField variant="bar" />
           </div>
           {/* Who is signed in (owner request 2026-11-17): "Sign in", or the account menu. */}
