@@ -196,9 +196,9 @@ check "decisions and assignments are audited and recorded: relationship.verify, 
   for a in relationship.verify relationship.reject review.resolve review.assign review.needs_info review.note; do
     grep -q "action: '\''$a'\''" '"$REVIEW"' || exit 1; grep -q "'\''$a'\''" src/server/audit/index.ts || exit 1
   done'
-check "the archival edit is for archivists only and audits person.update with reason and evidence_ids" bash -c '
+check "the archival edit is for archivists and (M26, owner decision) administrators, and audits person.update with reason and evidence_ids" bash -c '
   f='"$REVIEW"'
-  grep -q "action: '\''person.update'\''" "$f" && grep -q "evidenceIds" "$f" && grep -q "the archival edit: an archivist only" "$f"'
+  grep -q "action: '\''person.update'\''" "$f" && grep -q "evidenceIds" "$f" && grep -q "the archival edit: an archivist or (M26) an administrator; a moderator gets 403" "$f"'
 check "a decided claim queues lineage.recompute and drops the public cache" bash -c '
   grep -q "enqueue(tx, QUEUE.lineageRecompute" '"$REVIEW"' && grep -q "invalidatePublic(" '"$REVIEW"''
 check "deletion requests stay out of the queue (DEFAULT, question 2 in docs/plan/questions/M10a.md)" \
