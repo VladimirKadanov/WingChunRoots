@@ -54,7 +54,9 @@ PAGE=src/app/dashboard/notifications/page.tsx
 LIST=src/app/dashboard/notifications.tsx
 UNSUB_PAGE=src/app/unsubscribe/page.tsx
 ONE_CLICK=src/app/unsubscribe/one-click/route.ts
-SETTINGS_FORM=src/app/dashboard/settings/forms.tsx
+# The e-mail settings: a section of /dashboard/settings until the usability review of 2026-11.
+SETTINGS_FORM=src/app/account/notifications/forms.tsx
+SETTINGS_ACTIONS=src/app/account/notifications/actions.ts
 SPEC=e2e/m18-notices.spec.ts
 INT=src/server/services/notifications.int.test.ts
 mapfile -t M18_SQL < <(ls drizzle/*_m18_notices/migration.sql 2>/dev/null)
@@ -160,7 +162,7 @@ for path in /notifications/mark-all-read /notifications/preferences /notificatio
 done
 check "the Server Actions are in the parity table" bash -c "
   f=src/server/rpc/parity.ts; grep -qF \"'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead', 'notifications.markAllRead'] },\" \$f &&
-  grep -qF \"'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },\" \$f &&
+  grep -qF \"'src/app/account/notifications/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },\" \$f &&
   grep -qF \"'src/app/unsubscribe/actions.ts#unsubscribeAction': { rpc: ['notifications.unsubscribe'] },\" \$f"
 check "the authorization matrix has the notification rows and actions" bash -c "
   f=src/server/rpc/authz-matrix.int.test.ts; grep -q \"path: 'notifications.markAllRead'\" \$f && grep -q \"path: 'notifications.setPreference'\" \$f &&
@@ -174,7 +176,7 @@ refute "no window.open, no 100vh, no hover-only behaviour in the M18 pages" grep
 check "the pages are in e2e/routes.ts (axe in both themes); /dashboard/notifications is a key screen" bash -c "
   grep -q \"path: '/dashboard/notifications', name: 'dashboard-notifications', status: 200, milestone: 'M18', key: true\" e2e/routes.ts &&
   grep -q \"name: 'dashboard-notifications-empty'\" e2e/routes.ts && grep -q \"path: '/unsubscribe', name: 'unsubscribe-stale'\" e2e/routes.ts"
-check "the settings list security and account as always e-mailed, never as a choice" bash -c "grep -q 'data-testid=\"locked-categories\"' $SETTINGS_FORM && grep -q 'if (category.locked) continue;' src/app/dashboard/settings/actions.ts"
+check "the settings list security and account as always e-mailed, never as a choice" bash -c "grep -q 'data-testid=\"locked-categories\"' $SETTINGS_FORM && grep -q 'if (category.locked) continue;' $SETTINGS_ACTIONS"
 
 # 9. Demo data (In scope 11; D20) ------------------------------------------------------------------
 check "the demo notices are fictional, on fixed dates, on an account no test signs in as" bash -c "

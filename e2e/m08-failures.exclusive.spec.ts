@@ -7,7 +7,8 @@
 // run of its own after the ordinary one, one test at a time (e2e/projects.ts, EXCLUSIVE_SPEC):
 // `PW_EXCLUSIVE=1 pnpm e2e`, which scripts/verify.sh runs after the ordinary run.
 //
-//   requirements-2: /dashboard, /dashboard/settings and /admin/grants show their error state inside
+//   requirements-2: /dashboard, /account/plan (/dashboard/settings until the usability review of
+//   2026-11) and /admin/grants show their error state inside
 //                   the app shell, with "Try again", with and without JavaScript.
 //   security-1:     the server log has the one safe line of serverClient() and never the address or
 //                   the account id, also for a page that awaits the read without a catch (/account,
@@ -85,10 +86,10 @@ test('@M08 a failed read of /dashboard shows the error state in the app shell; "
   await expect(page.getByTestId('load-error')).toHaveCount(0);
   expect(errors, 'no uncaught error').toEqual([]);
 
-  // /dashboard/settings reads the plan: the same state under a lock on the grants.
+  // /account/plan (formerly /dashboard/settings) reads the plan: the same state under a lock on the grants.
   await whileLocked('entitlement_grant', async () => {
-    await page.goto('/dashboard/settings');
-    await expectErrorState(page, 'Account type and plan', "We couldn't load your account type and plan. Nothing was changed.");
+    await page.goto('/account/plan');
+    await expectErrorState(page, 'Plan and billing', "We couldn't load your account type and plan. Nothing was changed.");
   });
   await page.getByTestId('load-error-retry').click();
   await expect(page.getByTestId('settings-plan')).toContainText('Free Sifu');
@@ -160,8 +161,9 @@ test('@M08 /account renders in full when its unread count cannot be read: the ap
   await expect(dashboardLink).toHaveText('Open your dashboard (1 unread)');
 
   /**
-   * The whole account page: the shell with its "Me" tab, the name, both sections, the e-mail, the
-   * link without a count. The tab is marked current once the shell's NavLinks resolve, which
+   * The whole account page (the overview of Settings since the usability review of 2026-11): the
+   * shell with its "Me" tab, the heading, the address signed in, the section rows, the name, the
+   * profile and account sections, the link without a count. The tab is marked current once the shell's NavLinks resolve, which
    * without JavaScript stays at its Suspense fallback (no tab current; src/components/shell/nav-links.tsx).
    */
   const expectFullAccountPage = async (p: Page, { javaScript }: { javaScript: boolean }) => {
@@ -170,10 +172,13 @@ test('@M08 /account renders in full when its unread count cannot be read: the ap
     const me = nav.getByRole('link', { name: 'Me', exact: true });
     await expect(me).toHaveAttribute('href', '/dashboard');
     if (javaScript) await expect(me).toHaveAttribute('aria-current', 'page');
-    await expect(p.getByRole('heading', { level: 1 })).toContainText('Demo Unread Locked');
+    await expect(p.getByRole('heading', { level: 1 })).toHaveText('Settings');
+    await expect(p.getByTestId('signed-in-as')).toHaveText(`Signed in as ${account.email}`);
+    await expect(p.getByTestId('settings-sections').getByRole('listitem')).toHaveCount(5);
+    await expect(p.getByRole('main').getByText('Demo Unread Locked', { exact: true })).toBeVisible();
     await expect(p.getByRole('heading', { level: 2, name: 'Profile' })).toBeVisible();
-    await expect(p.getByRole('heading', { level: 2, name: 'Sign-in and security' })).toBeVisible();
-    await expect(p.getByText(account.email, { exact: true })).toBeVisible();
+    await expect(p.getByRole('heading', { level: 2, name: 'Account' })).toBeVisible();
+    await expect(p.getByRole('definition').getByText(account.email, { exact: true })).toBeVisible();
     await expect(p.getByRole('button', { name: 'Sign out' })).toBeVisible();
     await expect(p.getByTestId('open-dashboard')).toHaveText('Open your dashboard');
     await expect(p.getByTestId('open-dashboard')).toHaveAttribute('href', '/dashboard');

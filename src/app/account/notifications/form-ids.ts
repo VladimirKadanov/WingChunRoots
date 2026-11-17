@@ -1,4 +1,4 @@
-// The ids of the settings page's forms that the page and its actions share (M18).
+// The id of the notifications settings form that the page and its action share (M18).
 
-/** The e-mail settings of the notices (/dashboard/settings#notification-emails). */
+/** The e-mail settings of the notices (/account/notifications#notification-emails). */
 export const NOTIFICATIONS_FORM = 'notification-emails';

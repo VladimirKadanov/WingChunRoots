@@ -59,9 +59,13 @@ grep_code() {
   return "$found"
 }
 mapfile -t M08_SQL < <(ls drizzle/*_m08_entitlements/migration.sql 2>/dev/null)
-mapfile -t PLAN_UI < <(find src/components/plans src/app/plans src/app/dashboard src/app/admin/grants -type f -name '*.tsx' | sort)
+# src/app/account/plan: the account type and plan, /dashboard/settings until the usability review of 2026-11.
+mapfile -t PLAN_UI < <(find src/components/plans src/app/plans src/app/dashboard src/app/account/plan src/app/admin/grants -type f -name '*.tsx' | sort)
 
 KEY_SCREENS=(plans dashboard-sifu dashboard-student dashboard-settings)
+# The key routes of those screens today: the settings screen is account-plan (/account/plan) since
+# the usability review of 2026-11; its M08 screenshots keep their name.
+KEY_ROUTES=(plans dashboard-sifu dashboard-student account-plan)
 STATES=(admin-grants dashboard-sifu-empty upgrade-requested upgrade-open dashboard-admin dashboard-admin-unverified pilot-request-close request-answered)
 SIZES=(390x844 1440x900)
 THEMES=(dark light)
@@ -77,9 +81,9 @@ required=(
   src/server/services/notifications.ts src/server/services/plans.int.test.ts
   src/components/plans/upgrade-prompt.tsx src/server/services/account-lock.ts
   src/app/plans/page.tsx src/app/dashboard/page.tsx src/app/dashboard/notifications.tsx
-  src/app/dashboard/settings/page.tsx src/app/admin/grants/page.tsx src/app/admin/grants/grants-table.tsx
+  src/app/account/plan/page.tsx src/app/admin/grants/page.tsx src/app/admin/grants/grants-table.tsx
   e2e/m08-entitlements.spec.ts e2e/helpers/plans.ts
-  src/components/account/load-error.tsx src/app/dashboard/error.tsx src/app/dashboard/settings/error.tsx
+  src/components/account/load-error.tsx src/app/dashboard/error.tsx src/app/account/plan/error.tsx
   src/app/admin/grants/error.tsx e2e/m08-failures.exclusive.spec.ts src/server/rpc/form.test.ts
   e2e/helpers/next-error.ts e2e/next-error.test.ts e2e/next-error.spec.ts
   docs/entitlements.md docs/adr/0007-entitlements.md scripts/verify.d/M08.sh
@@ -129,8 +133,8 @@ check "ESLint lets routes and components read only the plan matrix of src/server
 check "account.type_change is audited; the unverified label is \"Instructor (unverified)\"" bash -c '
   grep -q "'\''account.type_change'\''" src/server/services/plans.ts &&
   grep -q "unverified: '\''Instructor (unverified)'\''" src/server/services/plans.ts'
-check "/dashboard/settings posts through setAccountTypeAction to account.setType" bash -c '
-  grep -q "account.setType" src/app/dashboard/settings/actions.ts && grep -q "setAccountTypeAction" src/app/dashboard/settings/forms.tsx'
+check "/account/plan (formerly /dashboard/settings) posts through setAccountTypeAction to account.setType" bash -c '
+  grep -q "account.setType" src/app/account/plan/actions.ts && grep -q "setAccountTypeAction" src/app/account/plan/forms.tsx'
 
 # 5. /admin/grants (In scope 3) ----------------------------------------------------------------
 check "/admin/grants is guarded by requireStaff2FA for admins (ROUTE_POLICIES)" \
@@ -157,11 +161,11 @@ check "the in-process oRPC client logs failures like the HTTP handlers (logProce
 check "after its safe line, the in-process client throws a bare 500 without the cause (final check, security-1)" bash -c '
   f=src/server/rpc/failure-log.ts
   grep -q "throw internalServerError();" "$f" && grep -q "new ORPCError(.INTERNAL_SERVER_ERROR., { message: .Internal server error. })" "$f"'
-check "/dashboard, /dashboard/settings and /admin/grants catch their reads and show the error state with a retry link (requirements-2)" bash -c '
-  for f in src/app/dashboard/page.tsx src/app/dashboard/settings/page.tsx src/app/admin/grants/page.tsx; do
+check "/dashboard, /account/plan (formerly /dashboard/settings) and /admin/grants catch their reads and show the error state with a retry link (requirements-2)" bash -c '
+  for f in src/app/dashboard/page.tsx src/app/account/plan/page.tsx src/app/admin/grants/page.tsx; do
     grep -q "await pageRead(" "$f" && grep -q "<LoadError " "$f" && grep -q "retryHref=" "$f" || exit 1
   done
-  for f in src/app/dashboard/error.tsx src/app/dashboard/settings/error.tsx src/app/admin/grants/error.tsx; do
+  for f in src/app/dashboard/error.tsx src/app/account/plan/error.tsx src/app/admin/grants/error.tsx; do
     grep -q "retry={retry}" "$f" || exit 1
   done'
 check "/account (M02) reads the unread count M08 added through pageRead() and renders without it when that read fails (polish, note 1)" bash -c '
@@ -194,7 +198,7 @@ check "the plan summaries name the Free Sifu limit through FREE_SIFU_STUDENT_LIM
   [ "$(grep -c "summary: \`.*\${FREE_SIFU_STUDENT_LIMIT}" "$f")" -eq 2 ] &&
   [ "$(grep -B1 "summary: \`.*\${FREE_SIFU_STUDENT_LIMIT}" "$f" | grep -c "// DEFAULT D06")" -eq 2 ]'
 refute "the M08 Server Actions never rethrow a procedure error (formStateFromFailure after unstable_rethrow)" \
-  grep_code "^\s*throw error;" src/app/admin/grants/actions.ts src/app/dashboard/settings/actions.ts src/app/dashboard/actions.ts
+  grep_code "^\s*throw error;" src/app/admin/grants/actions.ts src/app/account/plan/actions.ts src/app/dashboard/actions.ts
 refute "revoking a plan never changes a relationship (no teaching_relationship write in grants.ts)" \
   grep_code "update\(teachingRelationship\)|delete\(teachingRelationship\)|UPDATE teaching_relationship|DELETE FROM teaching_relationship" src/server/services/grants.ts
 
@@ -295,10 +299,10 @@ else
 fi
 
 # 11. Screens, routes and the quality bar (Done when 3, 4) -----------------------------------------
-for path in /plans /dashboard /dashboard/settings /admin/grants; do
+for path in /plans /dashboard /account/plan /admin/grants; do
   check "route $path is in e2e/routes.ts (axe in both themes)" grep -q "path: '$path'" e2e/routes.ts
 done
-for screen in "${KEY_SCREENS[@]}"; do
+for screen in "${KEY_ROUTES[@]}"; do
   check "$screen is a key screen (visual regression and screenshots)" grep -qE "name: '$screen'.*key: true" e2e/routes.ts
 done
 for screen in "${KEY_SCREENS[@]}" "${STATES[@]}"; do
