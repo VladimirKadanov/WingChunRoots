@@ -68,12 +68,18 @@ export function resolvedTheme(page: Page): Promise<string> {
  * Waits until every CSS transition and animation inside the element has finished. Playwright's
  * toBeVisible ignores opacity, so an axe scan right after a fade-in can measure the half-faded
  * text and report a colour-contrast violation that the settled UI does not have (CI run
- * 41457488899: the /styleguide menu in mobile WebKit, dark theme).
+ * 41457488899: the /styleguide menu in mobile WebKit, dark theme). Base UI removes
+ * data-starting-style one frame after the popup mounts, and only then does the opacity transition
+ * exist, so the animations are read after two frames: read at once, they could still be none (CI
+ * run 44118072023: the same menu, light theme, 3.87:1).
  */
 export async function animationsSettled(locator: Locator) {
-  await locator.evaluate((el) =>
-    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => undefined))).then(() => undefined),
-  );
+  await locator.evaluate(async (el) => {
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
+    await frame();
+    await Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => undefined)));
+  });
 }
 
 export async function expectNoAxeViolations(page: Page, label: string) {

@@ -373,7 +373,7 @@ export function RemoveGalleryPhotoForm({
   );
 }
 
-/** The archival edit of a record kept by the platform or unclaimed (an archivist only). */
+/** The archival edit of a record kept by the platform or unclaimed (an archivist or an administrator). */
 export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; initial?: FormState | null }) {
   const [state, action, pending] = useActionState(archiveUpdateAction, initial ?? IDLE);
   const generatedId = useFormId(ARCHIVE_FORM);

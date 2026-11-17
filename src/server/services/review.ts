@@ -25,7 +25,7 @@
 //     (an administrator also on any other); needs_info: the assignee or an administrator;
 //   - nobody reviews a claim of their own, as the student or the teacher (403), is given one, or
 //     reads its internal notes;
-//   - the archival edit: an archivist only; an administrator or a moderator gets 403.
+//   - the archival edit: an archivist or (M26) an administrator; a moderator gets 403.
 // Verify runs in the order of an approval (plan §6.3): the global verify lock, then the rows (the
 // relationship before its case, the order withdraw takes them), the cycle, duplicate and self
 // checks, then the writes of relationships.ts markVerified. After the commit the public cache of
@@ -84,6 +84,7 @@ import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
 import { successionFacts } from './succession';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import { queueRecomputeForPerson } from './lineage-membership';
+import { ARCHIVE_EDITOR_ONLY, ARCHIVE_EDITOR_ROLES } from './archive-editor';
 import { notify } from './notify';
 import { bothPublic, publishIfEstablished, UNKNOWN_STATUS_MESSAGE } from './publication';
 import {
@@ -114,8 +115,11 @@ export const REVIEW_TEXT_MAX = 2000;
 export const QUEUE_KINDS = REVIEW_CASE_KINDS.filter((k) => k !== 'deletion_request') as Exclude<ReviewCaseKind, 'deletion_request'>[];
 /** The roles that verify or refuse a historical claim (plan §6.7); review-core.ts DECIDERS has every kind's. */
 const DECIDE_ROLES: readonly StaffRole[] = DECIDERS.historical_claim;
-/** The only role that edits archival records (plan §6.6). */
-const ARCHIVE_ROLES: readonly StaffRole[] = ['archivist'];
+/**
+ * The roles that edit archival records (plan §6.6): an archivist and, from M26 (the owner's decision,
+ * docs/adr/0034-archive-editor.md), an administrator, the same roles as the archive editor.
+ */
+const ARCHIVE_ROLES: readonly StaffRole[] = ARCHIVE_EDITOR_ROLES;
 
 const NO_CASE = 'No such case.';
 const notFound = () => new ServiceError('NOT_FOUND', NO_CASE);
@@ -1437,7 +1441,7 @@ export interface ArchiveRecordView {
 }
 
 const SELF_KEPT = 'This record is kept by its owner. Only records kept by the platform or unclaimed are edited here.';
-const ARCHIVIST_ONLY = 'Only an archivist edits archival records.';
+const ARCHIVIST_ONLY = ARCHIVE_EDITOR_ONLY;
 
 async function recordOf(db: Executor, where: SQL, lock = false) {
   const query = db

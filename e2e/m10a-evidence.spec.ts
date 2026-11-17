@@ -537,7 +537,7 @@ test('@M10a an archival edit of demo-root-c requires a reason and records actor,
   // A moderator reads the record but cannot edit it: no form, and the API answers 403.
   const moderator = await signedIn(browser, 'moderator');
   await moderator.page.goto('/admin/review/records/demo-root-c');
-  await expect(visible(moderator.page.getByTestId('archive-refusal'))).toContainText('Only an archivist edits archival records.');
+  await expect(visible(moderator.page.getByTestId('archive-refusal'))).toContainText('Only an archivist or an administrator keeps the archive.');
   await expect(moderator.page.getByTestId('archive-form')).toHaveCount(0);
   const refused = await apiPost(moderator.page, '/archive/update', { personId, primaryName: 'Demo Changed Name', lifeStatus: 'deceased', reason: 'A moderator tries.', evidenceIds: [] });
   expect(refused.status()).toBe(403);

@@ -133,7 +133,7 @@ export async function addNoteAction(_previous: FormState, form: FormData): Promi
   redirect(doneAt(page, 'noted'));
 }
 
-/** "Save the record" of the archival edit (archive.update; an archivist only). */
+/** "Save the record" of the archival edit (archive.update; an archivist or an administrator). */
 export async function archiveUpdateAction(_previous: FormState, form: FormData): Promise<FormState> {
   const values: Record<string, string> = {};
   for (const name of ['personId', 'slug', 'primaryName', 'originalName', 'originalLang', 'lifeStatus', 'bio', 'reason'] as const) {

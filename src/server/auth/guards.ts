@@ -84,6 +84,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/admin/accounts': { kind: 'staff2fa', roles: ['admin'] },
   // M10a: the review queue, for every staff role (the services narrow each action).
   '/admin/review': { kind: 'staff2fa' },
+  // M26: the archive editor, for the roles that keep the archive (archive-editor.ts ARCHIVE_EDITOR_ROLES).
+  '/admin/archive': { kind: 'staff2fa', roles: ['archivist', 'admin'] },
   // M15: organizations and their plans, for admins only (as /admin/grants).
   '/admin/organizations': { kind: 'staff2fa', roles: ['admin'] },
   // M20: the activity check of the listed schools, for the roles that moderate listings (M11).

@@ -35,6 +35,7 @@
 | M23 | [M23 — Абонамент Federation, смяна на плана и пробен период на федерация](M23-federation-billing.md) | M22 | слят ([#46](https://github.com/VladimirKadanov/WingChunRoots/pull/46), merge commit d75f70d; въпроси в [questions/M23.md](questions/M23.md)) |
 | M24 | [M24 — Инструменти на организациите](M24-organization-tools.md) | M22 | слят ([#45](https://github.com/VladimirKadanov/WingChunRoots/pull/45), merge commit f114f4c; въпроси в [questions/M24.md](questions/M24.md)) |
 | M25 | [M25 — Управление: наследник, спорове и обжалване, исторически записи](M25-governance.md) | M22 | слят ([#47](https://github.com/VladimirKadanov/WingChunRoots/pull/47), merge commit 27abc81; въпроси в [questions/M25.md](questions/M25.md)) |
+| M26 | [M26 — Архивен редактор: линии, исторически учители и връзки с източници](M26-archive-editor.md) | M25 | в работа (въпроси в [questions/M26.md](questions/M26.md)) |
 | Отложен | [Хостинг и разгръщане](deferred-hosting.md) | M13 и решението на собственика за хостинга (план §3.3) | чака решение на собственика |
 | Отложен | [Настойници и непълнолетни](deferred-minors.md) | правна политика (решение на собственика от 11.11.2026) | извън обхвата засега; платформата приема само пълнолетни |
 

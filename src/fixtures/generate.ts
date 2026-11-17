@@ -459,6 +459,8 @@ class Builder {
       confirmedByUserId: null,
       confirmedAt: wasVerified ? new Date(created.getTime() + 2 * 86_400_000) : null,
       statusReason: opts.reason ?? null,
+      // M26: the demo data enters no links through the archive editor, so none has a source note.
+      sourceNote: null,
       createdAt: created,
       updatedAt: created,
     };

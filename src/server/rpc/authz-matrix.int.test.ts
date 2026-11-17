@@ -47,6 +47,7 @@ import { inviteTeacher } from '../services/invitations';
 import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
 import { assignReviewCase, decideReviewCase } from '../services/review';
+import { addArchiveLink, createArchiveLineage, createArchiveRecord } from '../services/archive-editor';
 import { reportLineage } from '../services/disputes';
 import { answerNomination, nominateSuccessor } from '../services/succession';
 import { type Account, createUser, key, meta, newLineage, ongoingFrom, principalOf } from '../services/relationships.test-support';
@@ -237,6 +238,27 @@ async function historicalClaim(lifeStatus: 'deceased' | 'unknown' = 'deceased') 
   const [rel] = await getDb().select().from(teachingRelationship).where(eq(teachingRelationship.id, result.relationship.id));
   const [record] = await getDb().select({ slug: person.slug }).from(person).where(eq(person.id, rel!.teacherPersonId));
   return { student, file, caseId: result.caseId, relationshipId: result.relationship.id, recordId: rel!.teacherPersonId, recordSlug: record!.slug };
+}
+
+/** M26: a lineage and two historical records of the archive editor, made by the world's archivist. */
+async function archivePair() {
+  const by = world.archivist.principal;
+  const teacher = await createArchiveRecord(by, { primaryName: 'Demo Matrix Archive Teacher', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)' }, meta);
+  const student = await createArchiveRecord(by, { primaryName: 'Demo Matrix Archive Student', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)' }, meta);
+  const l = await createArchiveLineage(by, { name: `Demo Matrix Archive Lineage ${letterTag()}`, reason: 'M26 matrix (fictional)' }, meta);
+  return { teacher, student, lineage: l };
+}
+
+let archiveTags = 0;
+/** A distinct tail of letters for each lineage name (names are unique; letters, not digits, for the slug). */
+function letterTag(): string {
+  let n = archiveTags++;
+  let out = '';
+  do {
+    out = String.fromCharCode(97 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return out;
 }
 
 /** An instructor verification: a review case of its Sifu, open for their replies. */
@@ -1083,7 +1105,8 @@ const ROWS: Row[] = [
       const c = await historicalClaim();
       return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
-    expect: staffOnly({ archivist: 'ok' }),
+    // M26 (owner decision): administrators keep the archive too.
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   {
     // Review 2026-11-14: an unknown record becomes deceased only with the evidence that shows it.
@@ -1092,7 +1115,50 @@ const ROWS: Row[] = [
       const c = await historicalClaim('unknown');
       return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
-    expect: staffOnly({ archivist: 'BAD_REQUEST' }),
+    expect: staffOnly({ archivist: 'BAD_REQUEST', admin: 'BAD_REQUEST' }),
+  },
+  // M26: the archive editor (an archivist or an administrator with a verified second factor).
+  { path: 'archiveEditor.lineages', make: noInput, expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.lineage',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.createLineage',
+    make: () => ({ input: { name: `Demo Matrix Created Lineage ${letterTag()}`, reason: 'M26 matrix (fictional)' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.updateLineage',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { lineageId: p.lineage.id, name: `Demo Matrix Renamed Lineage ${letterTag()}`, rootSlug: p.teacher.slug, reason: 'M26 matrix (fictional)' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  { path: 'archiveEditor.search', make: () => ({ input: { q: 'Demo Matrix' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.createRecord',
+    make: () => ({ input: { primaryName: 'Demo Matrix Created Record', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)', evidenceIds: [] } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.addLink',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, fromYear: 1901, source: 'A fictional register.', evidenceIds: [], idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.endLink',
+    make: async () => {
+      const p = await archivePair();
+      const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
+      return { input: { relationshipId: link.relationshipId, reason: 'M26 matrix (fictional)', idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   // Review 2026-11: a staff take-down of a profile (moderator or administrator) and account suspension (administrator).
   {
@@ -2378,7 +2444,13 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: same,
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
   },
-  { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist'] },
+  { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  // M26: the archive editor's forms post the procedures' fields (the files of a record or a link are uploaded first).
+  { action: 'src/app/admin/archive/actions.ts#createLineageAction', row: 'archiveEditor.createLineage', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#updateLineageAction', row: 'archiveEditor.updateLineage', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#createRecordAction', row: 'archiveEditor.createRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
