@@ -1,5 +1,5 @@
 // /admin/review/records/<slug> (milestone M10a, In scope 5; plan §6.6): the archival edit of a
-// record kept by the platform or unclaimed. Only an archivist edits it (archive.update): the name
+// record kept by the platform or unclaimed. An archivist or (M26) an administrator edits it (archive.update): the name
 // in Latin letters, the name in its own script, the life status and the English biography, with a
 // required reason and optional evidence, kept in the audit row person.update (reason, evidence_ids).
 // Other reviewers read the record and are told who edits it; a record kept by its owner is never

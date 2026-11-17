@@ -155,6 +155,23 @@ import {
   withdrawRelationship,
 } from '../services/relationships';
 import {
+  addArchiveLink,
+  addLinkInput,
+  archiveLineageInput,
+  archiveSearchInput,
+  createArchiveLineage,
+  createArchiveRecord,
+  createLineageInput,
+  createRecordInput,
+  endArchiveLink,
+  endLinkInput,
+  getArchiveLineage,
+  listArchiveLineages,
+  searchArchiveRecords,
+  updateArchiveLineage,
+  updateLineageInput,
+} from '../services/archive-editor';
+import {
   addReviewNote,
   archiveGetInput,
   archiveUpdateInput,
@@ -887,9 +904,53 @@ export const router = {
       .input(archiveGetInput)
       .handler(({ context, input }) => getArchiveRecord(context.principal, input)),
     update: staffWithSecondFactor
-      .route({ method: 'POST', path: '/archive/update', summary: 'Edit a record kept by the platform or unclaimed with a required reason and optional evidence (archivist only); audited' })
+      .route({ method: 'POST', path: '/archive/update', summary: 'Edit a record kept by the platform or unclaimed with a required reason and optional evidence (an archivist or an administrator); audited' })
       .input(archiveUpdateInput)
       .handler(({ context, input }) => updateArchiveRecord(context.principal, input, context.meta)),
+  },
+  // M26 (docs/adr/0034-archive-editor.md): the archive editor: lineages, historical records and the
+  // links between them with their sources (an archivist or an administrator with a verified second factor).
+  archiveEditor: {
+    lineages: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages', summary: 'Every lineage with its root and the number of its links (an archivist or an administrator)' })
+      .handler(({ context }) => listArchiveLineages(context.principal)),
+    lineage: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}', summary: 'One lineage with its links, their years and sources (an archivist or an administrator)' })
+      .input(archiveLineageInput)
+      .handler(({ context, input }) => getArchiveLineage(context.principal, input)),
+    createLineage: staffWithSecondFactor
+      .route({ method: 'POST', path: '/archive-editor/lineages/create', summary: 'Create a lineage: a name in Latin letters, a description and an optional root record, with a reason; audited' })
+      .input(createLineageInput)
+      .handler(({ context, input }) => createArchiveLineage(context.principal, input, context.meta)),
+    updateLineage: staffWithSecondFactor
+      .route({ method: 'POST', path: '/archive-editor/lineages/update', summary: 'Rename a lineage, change its description or root, with a reason; audited' })
+      .input(updateLineageInput)
+      .handler(({ context, input }) => updateArchiveLineage(context.principal, input, context.meta)),
+    search: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/records', summary: 'Records by any spelling of a name or by their address, public or not (an archivist or an administrator)' })
+      .input(archiveSearchInput)
+      .handler(({ context, input }) => searchArchiveRecords(context.principal, input)),
+    createRecord: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/archive-editor/records/create',
+        summary: 'Create a historical record kept by the platform: names in every script, life status, biography, optional evidence and a reason; private until a link is verified; audited',
+      })
+      .input(createRecordInput)
+      .handler(({ context, input }) => createArchiveRecord(context.principal, input, context.meta)),
+    addLink: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/archive-editor/links/add',
+        summary:
+          'Record a verified teacher-student link between two records kept by the platform, with the years, a required source and optional evidence; cycle and duplicate checks; public once both people are; audited',
+      })
+      .input(addLinkInput)
+      .handler(({ context, input }) => addArchiveLink(context.principal, input, context.meta)),
+    endLink: staffWithSecondFactor
+      .route({ method: 'POST', path: '/archive-editor/links/end', summary: 'End a link entered in the archive by mistake (revoked, never deleted), with a reason; audited' })
+      .input(endLinkInput)
+      .handler(({ context, input }) => endArchiveLink(context.principal, input, context.meta)),
   },
   // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down of a profile,
   // reversible; a moderator or an administrator with a verified second factor.

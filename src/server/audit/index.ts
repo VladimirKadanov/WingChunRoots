@@ -170,7 +170,11 @@ export type AuditAction =
   // by the system (no actor). The rows carry ids, outcomes and counts, never a name or a value.
   | 'person.purge'
   | 'evidence.purge'
-  | 'retention.purge';
+  | 'retention.purge'
+  // M26 (docs/adr/0034-archive-editor.md): the archive editor's lineages. The rows carry ids, the
+  // fields that changed and the length of the description, never a name; the reason is staff's own.
+  | 'lineage.create'
+  | 'lineage.update';
 
 export interface AuditEntry {
   action: AuditAction;

@@ -80,6 +80,9 @@ export const teachingRelationship = pgTable(
     confirmedByUserId: uuid('confirmed_by_user_id').references(() => authUser.id, { onDelete: 'restrict' }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     statusReason: text('status_reason'),
+    // M26 (docs/adr/0034-archive-editor.md): where an archivist found the link they entered in the
+    // archive editor (a book, an interview, a certificate), for staff only. Never in a public view.
+    sourceNote: text('source_note'),
     ...timestamps(),
   },
   (t) => [
@@ -87,6 +90,7 @@ export const teachingRelationship = pgTable(
     check('teaching_relationship_status_check', inList(t.status.name, RELATIONSHIP_STATUSES)),
     check('teaching_relationship_verification_path_check', inList(t.verificationPath.name, VERIFICATION_PATHS)),
     check('teaching_relationship_visibility_check', inList(t.visibility.name, VISIBILITIES)),
+    check('teaching_relationship_source_note_length', sql`${t.sourceNote} IS NULL OR char_length(${t.sourceNote}) BETWEEN 1 AND 2000`),
     // DEFAULT D03: only a relationship that was verified can be public; requests never are.
     check(
       'teaching_relationship_public_only_after_verification',

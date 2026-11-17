@@ -461,7 +461,7 @@ describe('the archival edit (plan §6.6)', () => {
     expect((await getArchiveRecord(admin.principal, { slug: record.slug })).files.map((f) => f.href)).toEqual([`/api/evidence/${mine.id}`]);
   });
 
-  it('requires a reason; a moderator and an administrator get 403; a record kept by its owner is refused', async () => {
+  it('requires a reason; a moderator gets 403 (M26: an administrator may edit); a record kept by its owner is refused', async () => {
     const archivist = await staff('rv-arch-rules', 'archivist');
     const moderator = await staff('rv-arch-rules-mod', 'moderator');
     const admin = await staff('rv-arch-rules-admin', 'admin');
@@ -470,7 +470,8 @@ describe('the archival edit (plan §6.6)', () => {
     const noReason = await updateArchiveRecord(archivist.principal, { ...base, reason: '   ' }, meta).catch((e: unknown) => e);
     expect(noReason).toMatchObject({ code: 'BAD_REQUEST', fields: { reason: 'Write the reason for this edit.' } });
     expect(await refusal(updateArchiveRecord(moderator.principal, base, meta))).toBe('FORBIDDEN');
-    expect(await refusal(updateArchiveRecord(admin.principal, base, meta))).toBe('FORBIDDEN');
+    // M26 (owner decision, docs/adr/0034-archive-editor.md): administrators keep the archive too.
+    expect((await getArchiveRecord(admin.principal, { slug: record.slug })).editable).toBe(true);
     expect((await getArchiveRecord(moderator.principal, { slug: record.slug })).editable).toBe(false);
 
     const owned = await member('rv-arch-owned');
