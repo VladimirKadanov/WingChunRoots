@@ -359,7 +359,15 @@ run_e2e() {
 # or the runs that must each have a machine to themselves, in run_e2e's order.
 run_e2e_shard() {
   export DATABASE_URL="$TEST_DATABASE_URL"
-  pnpm e2e --shard="$E2E_SHARD"
+  pnpm e2e --shard="$E2E_SHARD" || return 1
+  # The check of scripts/verify.d/M04.sh that reads this machine's server log (proxy_log_clean).
+  local log=test-results/server.log
+  [ -s "$log" ] || { echo "no $log after the shard"; return 1; }
+  if grep -F '[proxy] the person check failed (' "$log" | grep -vE '\[proxy\] the person check failed \((timeout|57014)\);'; then
+    echo "the E2E server log has a failed person check in src/proxy.ts other than its deadline (M04)"
+    return 1
+  fi
+  echo "ok   the E2E server log has no failed person check in src/proxy.ts other than its deadline (M04)"
 }
 run_e2e_serial() {
   export DATABASE_URL="$TEST_DATABASE_URL"
