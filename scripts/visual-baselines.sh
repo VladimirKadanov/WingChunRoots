@@ -61,7 +61,8 @@ const [log, out, namePattern] = process.argv.slice(2);
 let current = null;
 let written = 0;
 for (const raw of fs.readFileSync(log, 'utf8').split(/\r?\n/)) {
-  const line = raw.replace(/^\S*Z\s/, '').trim();
+  // A line can start with a byte-order mark (seen in a GitHub job log, 2026-11-17), which \s matches.
+  const line = raw.replace(/^\uFEFF/, '').replace(/^\S*Z\s/, '').trim();
   const begin = /^VISUAL-PNG-BEGIN (\S+) (\d+) ([0-9a-f]{64})$/.exec(line);
   if (begin) {
     if (!new RegExp(namePattern).test(begin[1])) {
