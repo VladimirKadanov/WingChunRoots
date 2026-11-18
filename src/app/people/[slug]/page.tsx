@@ -335,6 +335,21 @@ async function readPassport(profile: PersonProfileDto): Promise<PassportDto | nu
   }
 }
 
+/**
+ * ADR 0045: whether the person has a lineage card (a public person whose plan includes it); the
+ * header then links to it. Any failure only leaves the link out.
+ */
+async function readHasCard(profile: PersonProfileDto): Promise<boolean> {
+  if (profile.limited || profile.visibility !== 'public') return false;
+  try {
+    await (await lineageClient()).people.card({ slug: profile.slug });
+    return true;
+  } catch (error) {
+    if (failure(error) !== 'NOT_FOUND') console.error(`[person-page] the lineage card could not be checked: ${failure(error)}`);
+    return false;
+  }
+}
+
 /** The entries staff can remove: those the profile shows. */
 function removableEntries(passport: PassportDto): { value: string; label: string }[] {
   const all = [...(passport.currentRank ? [passport.currentRank] : []), ...passport.timeline.flatMap((y) => y.items)];
@@ -423,7 +438,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const [relations, gallery, events, passport] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile), readPassport(profile)]);
+  const [relations, gallery, events, passport, hasCard] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile), readPassport(profile), readHasCard(profile)]);
   const here = `/people/${profile.slug}`;
   const query = await searchParams;
   const principal = await getRequestPrincipal();
@@ -477,6 +492,13 @@ export default async function PersonPage({ params, searchParams }: Props) {
             <p className="text-ui">
               <Link href={claimHref} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="claim-profile-link">
                 Is this you? Ask to claim this profile
+              </Link>
+            </p>
+          ) : null}
+          {hasCard ? (
+            <p className="text-ui">
+              <Link href={`${here}/card`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="lineage-card-link">
+                {profile.isOwn ? 'Your lineage card' : 'Lineage card'}
               </Link>
             </p>
           ) : null}

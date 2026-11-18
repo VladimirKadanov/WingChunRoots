@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-18.1';
+export const PLAN_MATRIX_VERSION = '2026-11-18.2';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -129,6 +129,7 @@ export const FEATURE_KEYS = [
   'approve_students',
   'school_map',
   'school_members',
+  'lineage_card',
   'school_business',
   'passport',
   'successor',
@@ -365,6 +366,27 @@ export const FEATURES: readonly FeatureDefinition[] = [
       premium_student: text('Name, photo and rank', 'Your name, photo and rank'),
       free_sifu: { source: 'Name only', label: 'Your name', included: false, neutral: true },
       pro_sifu: text('Name, photo and rank', 'Your name, photo and rank'),
+      federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
+    },
+  },
+  {
+    key: 'lineage_card',
+    source: 'Lineage card',
+    label: 'Your lineage card',
+    // Owner decision 2026-11-18 (docs/adr/0045-lineage-card.md): a designed card of a member's
+    // public route of descent, from the earliest known teacher down to them, at
+    // /people/<slug>/card, with a share image, a print page and PDF through the browser. Only for
+    // a public person whose account's plan includes it (src/server/services/lineage-card.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'Your lineage card with {plan}',
+    note: 'A designed card of your public route of descent, to share as an image, print or save as PDF. It shows only people whose profiles are public.',
+    values: {
+      free_student: { source: 'Lineage view only', label: 'Lineage view only', included: false },
+      premium_student: text('Card, share image, print and PDF', 'Card, share image, print and PDF'),
+      free_sifu: { source: 'Lineage view only', label: 'Lineage view only', included: false },
+      pro_sifu: text('Card, share image, print and PDF', 'Card, share image, print and PDF'),
       federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
     },
   },

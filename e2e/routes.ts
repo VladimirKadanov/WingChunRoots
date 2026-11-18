@@ -243,6 +243,10 @@ export const ROUTES: readonly AppRoute[] = [
   // claim spec makes records of its own, in the exclusive run).
   { path: '/people/demo-a-005/claim', name: 'claim-profile', status: 200, milestone: 'usability-2026-11', signInAs: 'new' },
   { path: '/people/demo-a-005/claim', name: 'claim-profile-refused', status: 200, milestone: 'usability-2026-11', signInAs: 'demo-pending' },
+  // ADR 0045: the lineage card of the seeded Premium Student (public, a student of demo-pro-sifu-8),
+  // and the 404 of a person whose plan has no card.
+  { path: '/people/demo-premium-student/card', name: 'lineage-card', status: 200, milestone: 'premium-2026-11', key: true },
+  { path: '/people/demo-two-lineages/card', name: 'lineage-card-none', status: 404, milestone: 'premium-2026-11' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

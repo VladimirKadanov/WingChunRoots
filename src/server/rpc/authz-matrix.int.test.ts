@@ -661,6 +661,22 @@ const ROWS: Row[] = [
   { path: 'lineage.start', make: noInput, expect: everyone },
   { path: 'people.get', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug } }), expect: everyone },
   { path: 'people.students', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug } }), expect: everyone },
+  // ADR 0045: the lineage card of a public member whose plan includes it is public; without the
+  // plan it is NOT_FOUND for everyone, the member too (the card is a public, shared page).
+  {
+    path: 'people.card',
+    make: async () => {
+      const r = await verifiedLink();
+      await createGrant(world.admin.principal, { email: r.student.email, planCode: 'premium_student', reason: 'ADR 0045 authorization matrix (fictional)' }, meta);
+      return { input: { slug: r.student.slug! } };
+    },
+    expect: everyone,
+  },
+  {
+    path: 'people.card (no plan)',
+    make: async () => ({ input: { slug: (await verifiedLink()).student.slug! } }),
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   {
     // A person who is not public is 404 for every visitor and member; its own account and the
     // reviewers (staff with a verified second factor) see it (plan §6.4, DEFAULT D03).
@@ -2059,7 +2075,7 @@ const ROWS: Row[] = [
   },
   {
     path: 'disputes.relationships',
-    make: async () => ({ input: { slug: (await verifiedLink()).student.slug } }),
+    make: async () => ({ input: { slug: (await verifiedLink()).student.slug! } }),
     expect: own(),
   },
   {

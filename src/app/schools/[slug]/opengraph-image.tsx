@@ -8,11 +8,9 @@
 // (src/lib/og-text.ts: next/og would fetch a font for it from Google Fonts). A school that is not public gets a plain image
 // with status 404.
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
 import { ImageResponse } from 'next/og';
 
+import { OG_COLOURS, ogFonts } from '@/lib/og-fonts';
 import { drawable } from '@/lib/og-text';
 
 import { loadSchool, locationLine } from './data';
@@ -21,28 +19,11 @@ export const alt = 'A Wing Chun school on WingChunRoots';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-const INK = '#121214';
-const PAPER = '#EDEBE5';
-const MUTED = '#A8A49A';
-const SEAL = '#D32F2F';
-
-const FONT_DIR = join(process.cwd(), 'node_modules', '@fontsource', 'noto-serif-display', 'files');
-const SUBSETS = ['latin', 'latin-ext', 'greek', 'cyrillic'];
-
-async function fonts() {
-  return Promise.all(
-    SUBSETS.map(async (subset) => ({
-      name: 'Noto Serif Display',
-      data: await readFile(join(FONT_DIR, `noto-serif-display-${subset}-400-normal.woff`)),
-      weight: 400 as const,
-      style: 'normal' as const,
-    })),
-  );
-}
+const { ink: INK, paper: PAPER, muted: MUTED, seal: SEAL } = OG_COLOURS;
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const read = await loadSchool((await params).slug);
-  const options = { ...size, fonts: await fonts() };
+  const options = { ...size, fonts: await ogFonts() };
   if (read.state !== 'found') {
     return new ImageResponse(
       (
