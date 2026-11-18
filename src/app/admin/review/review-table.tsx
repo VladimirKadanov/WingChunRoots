@@ -176,6 +176,8 @@ const columnsFor = (t: AdminT) =>
   helper.accessor('openedAt', {
     id: 'waiting',
     header: t('Waiting'),
+    // The demo cases are opened at the seed's fixed base date, so "N days" grows with the clock;
+    // data-visual-date makes that text transparent in the visual baselines (e2e/visual.css).
     cell: (info) => {
       const { openedAt, status, now } = info.row.original;
       const open = status === 'open' || status === 'in_review' || status === 'needs_info';
@@ -183,11 +185,15 @@ const columnsFor = (t: AdminT) =>
         <span className="grid gap-0.5">
           {open && waitedOver(openedAt, now, LATE_DAYS) ? (
             <Mark symbol="!" tone="danger" testId="case-late">
-              {waited(t, openedAt, now)}
+              <span data-visual-date="" data-visual-waited="">
+                {waited(t, openedAt, now)}
+              </span>
               <span className="sr-only">{t(', over {n} days', { n: LATE_DAYS })}</span>
             </Mark>
           ) : (
-            <span className="whitespace-nowrap tabular">{open ? waited(t, openedAt, now) : '—'}</span>
+            <span className="whitespace-nowrap tabular" data-visual-date={open ? '' : undefined} data-visual-waited={open ? '' : undefined}>
+              {open ? waited(t, openedAt, now) : '—'}
+            </span>
           )}
           <span className="text-sm text-fg-muted">
             <span className="sr-only">{t('opened')} </span>

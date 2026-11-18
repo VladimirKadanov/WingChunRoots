@@ -29,6 +29,7 @@ test.afterAll(closeHelpers);
  * width of "7 November 2026" is not that of "2 November 2026": the words after it moved and the
  * baselines failed on some days without any change in the app. Each date in that text is written
  * as one fixed date before the screenshot, so the layout is compared and never the day of the run.
+ * The review queue's Waiting column grows the same way and is written as one fixed "9 days".
  */
 async function fixVisualDates(page: Page) {
   await page.evaluate(() => {
@@ -39,6 +40,8 @@ async function fixVisualDates(page: Page) {
         if (node.nodeValue) node.nodeValue = node.nodeValue.replace(date, '1 January 2026');
       }
     }
+    // The review queue's Waiting column counts from the seed's fixed base date, in either language.
+    for (const el of document.querySelectorAll('[data-visual-waited]')) el.textContent = '9 days';
   });
 }
 
