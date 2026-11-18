@@ -19,7 +19,7 @@ const SUSPEND_LABELS = { email: 'Account e-mail', reason: 'Reason', until: 'Ends
 const ERASE_LABELS = { email: 'Account e-mail', reason: 'Reason', confirm: 'Confirmation' };
 
 /** Suspending an account: the person is signed out at once and cannot sign in until it is lifted. */
-export function SuspendForm({ today, initial }: { today: string; initial?: FormState | null }) {
+export function SuspendForm({ today, initial, email }: { today: string; initial?: FormState | null; email?: string }) {
   const [state, action, pending] = useActionState(suspendAction, initial ?? IDLE);
   const generatedId = useFormId('suspend-account');
   // The outcome of a post without JavaScript is opened at its message: a fixed id (./form-ids.ts).
@@ -40,6 +40,7 @@ export function SuspendForm({ today, initial }: { today: string; initial?: FormS
         translate="no"
         maxLength={320}
         hint="The address the account signs in with."
+        defaultValue={email}
         state={state}
       />
       <TextAreaField

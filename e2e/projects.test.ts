@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PILOT_SPEC, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, VITALS_TAG, buildProjects, runPaths } from './projects';
+import { EXCLUSIVE_SPEC, EXCLUSIVE_SPECS, PILOT_SPEC, PUBLIC_WRITE_SPECS, SCREENSHOTS_SPEC, VISUAL_SPEC, VITALS_TAG, ADMIN_GREP, buildProjects, runPaths } from './projects';
 
 describe('buildProjects', () => {
   it('runs desktop and mobile Chromium outside CI, without WebKit', () => {
@@ -18,6 +18,19 @@ describe('buildProjects', () => {
     const webkit = projects.find((p) => p.name === 'mobile-webkit');
     expect(webkit?.use?.defaultBrowserType).toBe('webkit');
     expect(webkit?.use?.isMobile).toBe(true);
+  });
+
+  it('leaves the control panel out of the iPhone run only, keeping member pages there', () => {
+    const byName = Object.fromEntries(buildProjects({ ci: true }).map((p) => [p.name, p]));
+    const invert = [byName['mobile-webkit']?.grepInvert].flat();
+    const skipped = (title: string) => invert.some((re) => re instanceof RegExp && re.test(title));
+    expect(skipped('@M00b /admin/review (review-queue) has no axe violations in the dark theme')).toBe(true);
+    expect(skipped('@M26 @admin an administrator records two historical teachers')).toBe(true);
+    expect(skipped('@M00b /people/demo-root-a (person) has no axe violations in the dark theme')).toBe(false);
+    expect(skipped('@M13 @vitals a person page')).toBe(true);
+    expect(ADMIN_GREP.test('@M02 /administration-guide is a member page')).toBe(false);
+    expect([byName['desktop-chromium']?.grepInvert].flat()).not.toContain(ADMIN_GREP);
+    expect([byName['mobile-chromium']?.grepInvert].flat()).not.toContain(ADMIN_GREP);
   });
 
   it('uses a 1440x900 desktop viewport and a Pixel-class phone', () => {
