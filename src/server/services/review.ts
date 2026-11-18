@@ -139,8 +139,32 @@ const reviewText = (empty: string) =>
 
 // --- Input -------------------------------------------------------------------------------------
 
+/**
+ * Control panel (docs/adr/0035-control-panel.md): the queue's kinds in the groups a reviewer works
+ * through, each a saved view of /admin/review with its count. Every queue kind is in one group.
+ */
+export const REVIEW_GROUPS = {
+  // The same groups, keys and labels as the dashboard's (admin-dashboard.ts REVIEW_KIND_GROUPS), so
+  // a dashboard figure can open its view with ?group=<key>.
+  claims: { label: 'Historical and profile claims', kinds: ['historical_claim', 'person_claim'] },
+  instructors: { label: 'Instructor checks', kinds: ['instructor_verification'] },
+  schools: { label: 'School listings', kinds: ['school_listing'] },
+  organizations: { label: 'Organizations', kinds: ['organization_application'] },
+  records: { label: 'Record proposals', kinds: ['record_proposal'] },
+  disputes: { label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
+} as const satisfies Record<string, { label: string; kinds: readonly Exclude<ReviewCaseKind, 'deletion_request'>[] }>;
+export type ReviewGroup = keyof typeof REVIEW_GROUPS;
+const REVIEW_GROUP_KEYS = Object.keys(REVIEW_GROUPS) as [ReviewGroup, ...ReviewGroup[]];
+/** How long a case has waited, at least (`any`: no limit); "over 3 days" is the queue's late mark. */
+export const REVIEW_AGES = { any: 0, '1d': 1, '3d': 3, '7d': 7 } as const;
+export const REVIEW_LATE_DAYS = 3;
+
 export const reviewListInput = z.object({
   kind: z.enum(QUEUE_KINDS as [string, ...string[]]).nullish(),
+  /** A group of kinds (REVIEW_GROUPS); with `kind`, both apply. */
+  group: z.enum(REVIEW_GROUP_KEYS).nullish(),
+  /** Cases opened at least this many days ago (REVIEW_AGES). */
+  age: z.enum(['any', '1d', '3d', '7d']).default('any'),
   /** `waiting`: open, in review or needing information (the default); `all`: every status. */
   status: z.enum(['waiting', 'all', ...REVIEW_CASE_STATUSES]).default('waiting'),
   assigned: z.enum(['any', 'me', 'none']).default('any'),
@@ -495,9 +519,23 @@ export interface ReviewListRow {
   files: number;
 }
 
+/** The counts of the queue's saved views, under the list's status filter (not its other filters). */
+export interface ReviewListCounts {
+  all: number;
+  mine: number;
+  unassigned: number;
+  /** Opened more than REVIEW_LATE_DAYS days ago. */
+  late: number;
+  kinds: Record<string, number>;
+  groups: { value: ReviewGroup; label: string; count: number }[];
+}
+
 export interface ReviewList {
   rows: ReviewListRow[];
   total: number;
+  counts: ReviewListCounts;
+  /** When the list was read (ISO): the waiting times are measured to it. */
+  asOf: string;
   page: number;
   pageSize: number;
   filters: z.output<typeof reviewListInput>;
@@ -570,11 +608,36 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
   const filters = parsed.success ? parsed.data : reviewListInput.parse({});
   const db = getDb();
   const where: SQL[] = [ne(reviewCase.kind, 'deletion_request')];
-  if (filters.kind) where.push(eq(reviewCase.kind, filters.kind as ReviewCaseKind));
   if (filters.status === 'waiting') where.push(inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES]));
   else if (filters.status !== 'all') where.push(eq(reviewCase.status, filters.status));
+  // The saved views' counts: the status filter only, one grouped read.
+  const lateBefore = sql`now() - make_interval(days => ${REVIEW_LATE_DAYS}::int)`;
+  const counted = await db
+    .select({
+      kind: reviewCase.kind,
+      all: count(),
+      mine: sql<number>`count(*) FILTER (WHERE ${reviewCase.assignedToUserId} = ${p.user.id})::int`,
+      unassigned: sql<number>`count(*) FILTER (WHERE ${reviewCase.assignedToUserId} IS NULL)::int`,
+      late: sql<number>`count(*) FILTER (WHERE ${reviewCase.createdAt} < ${lateBefore})::int`,
+    })
+    .from(reviewCase)
+    .where(and(...where))
+    .groupBy(reviewCase.kind);
+  const kindCounts = Object.fromEntries(QUEUE_KINDS.map((k) => [k, 0])) as Record<string, number>;
+  const counts: ReviewListCounts = { all: 0, mine: 0, unassigned: 0, late: 0, kinds: kindCounts, groups: [] };
+  for (const row of counted) {
+    kindCounts[row.kind] = row.all;
+    counts.all += row.all;
+    counts.mine += row.mine;
+    counts.unassigned += row.unassigned;
+    counts.late += row.late;
+  }
+  counts.groups = REVIEW_GROUP_KEYS.map((g) => ({ value: g, label: REVIEW_GROUPS[g].label, count: REVIEW_GROUPS[g].kinds.reduce((n, k) => n + (kindCounts[k] ?? 0), 0) }));
+  if (filters.kind) where.push(eq(reviewCase.kind, filters.kind as ReviewCaseKind));
+  if (filters.group) where.push(inArray(reviewCase.kind, [...REVIEW_GROUPS[filters.group].kinds]));
   if (filters.assigned === 'me') where.push(eq(reviewCase.assignedToUserId, p.user.id));
   else if (filters.assigned === 'none') where.push(isNull(reviewCase.assignedToUserId));
+  if (filters.age !== 'any') where.push(sql`${reviewCase.createdAt} < now() - make_interval(days => ${REVIEW_AGES[filters.age]}::int)`);
   const condition = and(...where);
   const [{ total } = { total: 0 }] = await db.select({ total: count() }).from(reviewCase).where(condition);
   const order = filters.sort === 'newest' ? [desc(reviewCase.createdAt), desc(reviewCase.id)] : [asc(reviewCase.createdAt), asc(reviewCase.id)];
@@ -630,6 +693,8 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       files: partyView(r) ? r.ownFiles : r.files,
     })),
     total,
+    counts,
+    asOf: new Date().toISOString(),
     page: filters.page,
     pageSize: REVIEW_PAGE_SIZE,
     filters,

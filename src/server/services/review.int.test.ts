@@ -346,6 +346,35 @@ describe('review decisions write relationship_event and audit_log', () => {
     const assigned = await getReviewCase(moderator.principal, { id: caseId });
     expect(assigned.files.map((f) => [f.name, f.href])).toEqual([['demo-rv-queue.pdf', `/api/evidence/${file.id}`]]);
   });
+
+  it('the queue filters by group and by age, and counts its saved views under the status filter (control panel)', async () => {
+    const moderator = await staff('rv-views-mod', 'moderator');
+    const { caseId } = await claim('rv-views');
+    const fresh = await listReviewCases(moderator.principal, { group: 'claims', sort: 'newest' });
+    expect(fresh.rows.map((r) => r.id)).toContain(caseId);
+    expect(fresh.rows.every((r) => r.kind === 'historical_claim' || r.kind === 'person_claim')).toBe(true);
+    expect((await listReviewCases(moderator.principal, { group: 'disputes', sort: 'newest' })).rows.map((r) => r.id)).not.toContain(caseId);
+    // Opened today: not in "waiting over 3 days" until it is that old.
+    expect((await listReviewCases(moderator.principal, { age: '3d', sort: 'newest' })).rows.map((r) => r.id)).not.toContain(caseId);
+    const before = (await listReviewCases(moderator.principal, {})).counts;
+    await getDb().update(reviewCase).set({ createdAt: new Date(Date.now() - 4 * 86_400_000) }).where(eq(reviewCase.id, caseId));
+    const late = await listReviewCases(moderator.principal, { age: '3d', group: 'claims' });
+    expect(late.rows.map((r) => r.id)).toContain(caseId);
+    expect(late.rows.every((r) => Date.parse(r.openedAt) < Date.now() - 3 * 86_400_000)).toBe(true);
+    // The counts ignore the kind, group, assignee and age filters, and agree with the lists.
+    const { counts } = late;
+    expect(counts.late).toBe(before.late + 1);
+    expect(counts.all).toBe((await listReviewCases(moderator.principal, {})).total);
+    expect(counts.unassigned).toBe((await listReviewCases(moderator.principal, { assigned: 'none' })).total);
+    expect(counts.mine).toBe((await listReviewCases(moderator.principal, { assigned: 'me' })).total);
+    expect(counts.groups.find((g) => g.value === 'claims')!.count).toBe((await listReviewCases(moderator.principal, { group: 'claims' })).total);
+    expect(counts.groups.reduce((n, g) => n + g.count, 0)).toBe(counts.all);
+    expect(counts.kinds.historical_claim).toBe((await listReviewCases(moderator.principal, { kind: 'historical_claim' })).total);
+    // An unknown group or age falls back to the defaults.
+    const fallback = (await listReviewCases(moderator.principal, { group: 'nope' as never, age: '2d' as never })).filters;
+    expect(fallback.group ?? null).toBeNull();
+    expect(fallback.age).toBe('any');
+  });
 });
 
 describe('the archival edit (plan §6.6)', () => {
