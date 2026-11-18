@@ -11,7 +11,7 @@ export function formatDay(value: Date | string): string {
 /**
  * The end of a plan, which stops at 00:00 UTC of its end day (milestone M08), as the last full day
  * it covers: an end of 1 January 2027 reads "until 31 December 2026" (review round 1, design-11).
- * The UTC boundary is explained once where a plan is shown in full (/dashboard/settings) and where
+ * The UTC boundary is explained once where a plan is shown in full (/account/plan) and where
  * an admin sets it (/admin/grants), not in every sentence.
  */
 export function untilPlanEnd(value: Date | string): string {

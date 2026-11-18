@@ -66,6 +66,12 @@ for (const size of SCREEN_SIZES) {
             const currentTab = page.getByRole('navigation', { name: 'Main' }).locator('a[aria-current="page"]').filter({ visible: true });
             await expect(currentTab).toHaveAttribute('href', tab.href);
           }
+          // The dashboard menu streams in behind its own <Suspense> (src/app/dashboard/layout.tsx,
+          // docs/adr/0039-member-navigation.md); a screenshot taken before that shows an empty row.
+          if (route.path === '/dashboard' || route.path.startsWith('/dashboard/')) {
+            // Visible, not only attached: streamed content waits in a hidden node before it is swapped in.
+            await expect(page.getByTestId('dashboard-nav').getByRole('link').filter({ visible: true }).first()).toBeVisible();
+          }
           await fixVisualDates(page);
           await expect(page).toHaveScreenshot(`${route.name}-${size.name}-${theme}.png`, {
             stylePath: resolve('e2e/visual.css'),

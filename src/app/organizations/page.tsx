@@ -36,9 +36,15 @@ export default async function OrganizationsPage() {
             </Link>
           </ErrorPanel>
         ) : list.organizations.length === 0 ? (
-          <p className="mt-8 text-fg-muted" data-testid="no-organizations">
-            No organization is listed yet.
-          </p>
+          <div className="mt-8 grid gap-1" data-testid="no-organizations">
+            <p className="text-fg-muted">No organization is listed yet.</p>
+            <p className="text-sm text-fg-muted">
+              Run a federation, an association or a group of schools?{' '}
+              <Link href="/dashboard/organization" className="link inline-flex min-h-11 items-center">
+                Apply for your organization
+              </Link>
+            </p>
+          </div>
         ) : (
           <ul className="mt-8 grid" data-testid="organization-list">
             {list.organizations.map((org) => (
@@ -54,11 +60,14 @@ export default async function OrganizationsPage() {
             ))}
           </ul>
         )}
-        <p className="mt-8 text-sm">
-          <Link href="/dashboard/organization" className="link inline-flex min-h-11 items-center">
-            Apply for your organization
-          </Link>
-        </p>
+        {/* The empty list carries this link itself. */}
+        {list !== null && list.organizations.length === 0 ? null : (
+          <p className="mt-8 text-sm">
+            <Link href="/dashboard/organization" className="link inline-flex min-h-11 items-center">
+              Apply for your organization
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

@@ -15,6 +15,15 @@
 // M19: the "Training passport" section (passport.get: the public DTO only, as the plan of the
 // person's account shows it); "Manage your passport" on one's own; staff with a verified second
 // factor can remove an entry it shows.
+//
+// Next steps: "I trained with <name>" under the header of a public profile that is not the viewer's
+// own and that a student can name (trainedWithHref), the same link in an empty Students section, a
+// short hint in an empty Teachers section, and the report and correction links grouped at the
+// bottom under "Something wrong?".
+//
+// ADR 0040: "Is this you? Ask to claim this profile" under the header of a public, unclaimed record
+// of a living person (claimProfileHref), to /people/<slug>/claim. Plain words: the eyebrow says
+// "Profile"; an unclaimed record and a teacher row marked "Cross-lineage" get a one-line hint.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -40,7 +49,7 @@ import {
 import { PersonLayout } from '@/components/lineage/person-layout';
 import { PhotoControl } from '@/components/lineage/photo-control';
 import { PassportView } from '@/components/passport/passport-view';
-import { LineageName } from '@/components/lineage/person-name';
+import { LatinName, LineageName } from '@/components/lineage/person-name';
 import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
 import { bySeniority, groupRelations, RelationList, type RelationRow, sharedLineage, studentRows } from '@/components/lineage/relation-list';
 import { EmptyState, FailedSections, ProfileError, Section, SectionError } from '@/components/lineage/states';
@@ -55,6 +64,8 @@ import { readFormResult } from '@/server/forms/flash';
 import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
 import { PASSPORT_REMOVE_FORM } from './form-ids';
+import { trainedWithHref } from './trained-with';
+import { claimProfileHref } from './claim-href';
 import { PassportRemoveForm } from './passport-remove-form';
 
 export const instant = false;
@@ -133,7 +144,17 @@ function withNotes(rows: RelationRow[], lineageName: (id: string) => string | un
   return rows.map((row) => ({ ...row, note: notes.get(row.person.id) }));
 }
 
-function Relations({ profile, teachers: graph, students: page }: { profile: PersonProfileDto; teachers: LineageGraphDto; students: StudentsPageDto }) {
+function Relations({
+  profile,
+  teachers: graph,
+  students: page,
+  trainedWith,
+}: {
+  profile: PersonProfileDto;
+  teachers: LineageGraphDto;
+  students: StudentsPageDto;
+  trainedWith: string | null;
+}) {
   const lineages = new Map([...graph.lineages, ...page.lineages].map((l) => [l.id, l]));
   const lineageName = (id: string) => lineages.get(id)?.name;
   const teachers = withNotes(teacherRows(profile, graph), lineageName);
@@ -155,7 +176,14 @@ function Relations({ profile, teachers: graph, students: page }: { profile: Pers
       <Section id="teachers-heading" title="Teachers" count={countText(profile.counts.teachers)} focusable>
         {pendingTeachers > 0 ? <p className="text-sm text-fg-muted">{pendingText(pendingTeachers)}</p> : null}
         {teachers.length > 0 ? (
-          <RelationList rows={teachers} lineages={lineages} role="teacher" label={`Teachers of ${profile.displayName}`} />
+          <>
+            <RelationList rows={teachers} lineages={lineages} role="teacher" label={`Teachers of ${profile.displayName}`} />
+            {teachers.some((t) => t.edges.some((e) => e.kind === 'crossLineage')) ? (
+              <p className="text-sm text-fg-muted" data-testid="cross-lineage-hint">
+                Cross-lineage: a teacher from another lineage than the one this person is listed in.
+              </p>
+            ) : null}
+          </>
         ) : founded.length > 0 ? (
           // DEFAULT D22: a founder is named only when the record says so.
           <EmptyState>
@@ -169,7 +197,24 @@ function Relations({ profile, teachers: graph, students: page }: { profile: Pers
             as recorded. No earlier teacher is on the record.
           </EmptyState>
         ) : (
-          <EmptyState>No teachers are on the record.</EmptyState>
+          <>
+            <EmptyState>No teachers are on the record.</EmptyState>
+            {profile.isOwn && !profile.limited ? (
+              <p className="text-sm text-fg-muted" data-testid="teachers-empty-next">
+                Add the people who taught you.{' '}
+                <Link href="/dashboard/teachers/new" prefetch={false} className="link inline-flex min-h-11 items-center">
+                  Name your teacher
+                </Link>
+              </p>
+            ) : profile.visibility === 'public' && !profile.limited && profile.kind === 'living' && profile.lifeStatus !== 'deceased' && profile.claimState === 'claimed' ? (
+              // relationships.request: only the student names a teacher, so the hint says who acts
+              // (only for a person with their own account, who can send a request).
+              <p className="text-sm text-fg-muted" data-testid="teachers-empty-next">
+                Taught <LatinName name={profile.displayName} />? Only a student can name a teacher, so ask <LatinName name={profile.displayName} /> to send you a
+                request.
+              </p>
+            ) : null}
+          </>
         )}
         {hiddenTeachers > 0 ? (
           <p className="text-sm text-fg-muted">
@@ -210,7 +255,19 @@ function Relations({ profile, teachers: graph, students: page }: { profile: Pers
             />
           </>
         ) : (
-          <EmptyState>No students are on the record.</EmptyState>
+          <>
+            <EmptyState>No students are on the record.</EmptyState>
+            {trainedWith ? (
+              <p className="text-sm text-fg-muted" data-testid="students-empty-next">
+                Trained with <LatinName name={profile.displayName} />?{' '}
+                <Link href={trainedWith} prefetch={false} className="link inline-flex min-h-11 items-center">
+                  <span>
+                    I trained with <LatinName name={profile.displayName} />
+                  </span>
+                </Link>
+              </p>
+            ) : null}
+          </>
         )}
         {publicStudents > shownPublic || descendants > publicStudents ? (
           <p>
@@ -324,6 +381,16 @@ function Photos({ gallery }: { gallery: GalleryView }) {
   );
 }
 
+/** "Unclaimed record" and "Kept by the archive" in the fact line, in plain words (a shared archival record). */
+function KeeperHint({ claimState }: { claimState: PersonProfileDto['claimState'] }) {
+  if (claimState !== 'unclaimed' && claimState !== 'platform') return null;
+  return (
+    <p className="text-sm text-fg-muted" data-testid="keeper-hint">
+      {claimState === 'unclaimed' ? 'Kept by the archive; nobody has claimed it yet.' : 'Kept by the archive for everyone; anyone can propose a correction.'}
+    </p>
+  );
+}
+
 function About({ bio }: { bio: string }) {
   return (
     <section aria-labelledby="about-heading" className="grid gap-3 border-t border-border-subtle pt-6">
@@ -359,7 +426,10 @@ export default async function PersonPage({ params, searchParams }: Props) {
   const [relations, gallery, events, passport] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile), readPassport(profile)]);
   const here = `/people/${profile.slug}`;
   const query = await searchParams;
-  const passportStaff = passport !== null && hasStaff2FA(await getRequestPrincipal());
+  const principal = await getRequestPrincipal();
+  const passportStaff = passport !== null && hasStaff2FA(principal);
+  const trainedWith = trainedWithHref(profile, principal !== null);
+  const claimHref = claimProfileHref(profile);
   const removable = passportStaff ? removableEntries(passport) : [];
   const removeOutcome = removable.length > 0 ? await readFormResult(PASSPORT_REMOVE_FORM, query.outcome) : null;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
@@ -384,14 +454,32 @@ export default async function PersonPage({ params, searchParams }: Props) {
       header={
         <>
           <PersonIdentity profile={profile}>
-            <p className="eyebrow">Person on the record</p>
+            <p className="eyebrow">Profile</p>
             <PersonHeading profile={profile} />
             <PersonReadings profile={profile} />
             <FactStrip profile={profile} />
+            {!profile.limited ? <KeeperHint claimState={profile.claimState} /> : null}
           </PersonIdentity>
           {/* M14: the owner's photo controls (their own record only, never a limited view). */}
           {profile.isOwn && !profile.limited ? <PhotoControl hasPhoto={Boolean(profile.photo)} /> : null}
           {profile.visibility === 'involved_only' ? <PrivateRecordNotice own={profile.isOwn} limited={profile.limited} /> : null}
+          {trainedWith ? (
+            <p>
+              <Link href={trainedWith} prefetch={false} className={buttonVariants({ variant: 'primary' })} data-testid="trained-with">
+                <span>
+                  I trained with <LatinName name={profile.displayName} />
+                </span>
+                <ArrowRightIcon />
+              </Link>
+            </p>
+          ) : null}
+          {claimHref ? (
+            <p className="text-ui">
+              <Link href={claimHref} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="claim-profile-link">
+                Is this you? Ask to claim this profile
+              </Link>
+            </p>
+          ) : null}
         </>
       }
       rail={
@@ -405,7 +493,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
       <p id="relations-status" role="status" className="sr-only" />
       <LineageBoundary what="teachers and students" headings={RELATION_HEADINGS}>
         {relations.ok ? (
-          <Relations profile={profile} teachers={relations.teachers} students={relations.students} />
+          <Relations profile={profile} teachers={relations.teachers} students={relations.students} trainedWith={trainedWith} />
         ) : (
           <Suspense
             fallback={
@@ -460,34 +548,37 @@ export default async function PersonPage({ params, searchParams }: Props) {
         />
       ) : null}
       {/* M10b: "Report profile" for a public profile that is not the viewer's own (one report per
-          account and profile; the page asks to sign in first). */}
+          account and profile; the page asks to sign in first). M25: the lineage error report and the
+          record history. Grouped, quietly, under "Something wrong?". */}
       {profile.visibility === 'public' && !profile.isOwn && !profile.limited ? (
-        <div className="grid gap-1 border-t border-border-subtle pt-6 text-sm text-fg-muted">
-          <p>
-            Something wrong on this profile?{' '}
-            <Link href={`${here}/report`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-profile">
-              Report profile
-            </Link>
-          </p>
-          {/* M25: an evidence-based report that a teaching relationship is wrong (it changes nothing by itself). */}
-          {profile.counts.teachers + profile.counts.students > 0 ? (
-            <p>
-              A teaching relationship here is wrong?{' '}
-              <Link href={`${here}/dispute`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-lineage">
-                Report a lineage error
+        <section aria-labelledby="something-wrong-heading" className="grid gap-1 border-t border-border-subtle pt-6 text-sm text-fg-muted" data-testid="something-wrong">
+          <h2 id="something-wrong-heading" className="text-sm font-semibold text-fg">
+            Something wrong?
+          </h2>
+          <ul className="flex flex-wrap gap-x-6">
+            <li>
+              <Link href={`${here}/report`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-profile">
+                Report profile
               </Link>
-            </p>
-          ) : null}
-          {/* M25: a shared archival record (kept by the archive or unclaimed) is corrected by proposal only. */}
-          {profile.claimState === 'platform' || profile.claimState === 'unclaimed' ? (
-            <p>
-              A shared archival record.{' '}
-              <Link href={`${here}/record`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="record-history-link">
-                Record history and corrections
-              </Link>
-            </p>
-          ) : null}
-        </div>
+            </li>
+            {/* M25: an evidence-based report that a teaching relationship is wrong (it changes nothing by itself). */}
+            {profile.counts.teachers + profile.counts.students > 0 ? (
+              <li>
+                <Link href={`${here}/dispute`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="report-lineage">
+                  Report a lineage error
+                </Link>
+              </li>
+            ) : null}
+            {/* M25: a shared archival record (kept by the archive or unclaimed) is corrected by proposal only. */}
+            {profile.claimState === 'platform' || profile.claimState === 'unclaimed' ? (
+              <li>
+                <Link href={`${here}/record`} prefetch={false} className="link inline-flex min-h-11 items-center" data-testid="record-history-link">
+                  Record history and corrections
+                </Link>
+              </li>
+            ) : null}
+          </ul>
+        </section>
       ) : null}
     </PersonLayout>
   );

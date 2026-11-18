@@ -35,6 +35,7 @@ import { cx } from '@/lib/cx';
 import { DEFAULT_RADIUS_KM, distanceKm, finderHref, searchKey, VIEW_WRITE_MS, viewAddress } from '@/lib/school-finder';
 import { trackSchool } from '@/lib/school-beacon';
 import type { GeoPointDto, SchoolPinDto } from '@/server/dto/schools';
+import { SchoolEmpty } from './school-empty';
 import { locationText, SchoolList } from './school-list';
 
 const SchoolMap = dynamic(() => import('@/components/map/school-map'), {
@@ -220,11 +221,7 @@ export function Finder({ schools, summary, styles, initial, search, listHref }: 
     router.push(finderHref({ center, lat: view.lat, lng: view.lng, z: view.zoom, radius, lineage: search.lineage, view: 'map' }));
   };
 
-  const empty = (
-    <p className="py-4 text-fg-muted" data-testid="school-empty">
-      No public school matches this search. Try a larger radius, another place or all lineages.
-    </p>
-  );
+  const empty = <SchoolEmpty />;
 
   return (
     <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(20rem,26rem)_1fr]" data-testid="school-finder" data-map={mapShown ? 'shown' : 'fallback'}>

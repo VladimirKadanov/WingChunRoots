@@ -22,6 +22,7 @@ import { listAccounts, listAccountsInput } from '../services/account-directory';
 import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
 import { dashboardOverview } from '../services/dashboard';
+import { dashboardNav } from '../services/dashboard-nav';
 import { discardEvidence, discardInput } from '../services/evidence';
 import { isServiceError } from '../services/errors';
 import {
@@ -96,6 +97,7 @@ import {
   sendInvitation,
   sendInvitationInput,
 } from '../services/invitations';
+import { claimGetInput, claimRequestInput, getClaimOption, requestProfileClaim } from '../services/profile-claims';
 import { getPhoto, photoGetInput, photoRemoveInput, photoUploadInput, removePhoto, uploadPhoto } from '../services/photos';
 import {
   addGalleryPhoto,
@@ -674,6 +676,21 @@ export const router = {
       .route({ method: 'POST', path: '/invitations/accept', summary: 'Accept an invitation: claim the unclaimed record, reviewed by an archivist before it becomes yours; single use' })
       .input(acceptInvitationInput)
       .handler(({ context, input }) => acceptInvitation(context.principal, input, context.meta)),
+  },
+  // ADR 0040: "Is this you? Ask to claim this profile" on a public record, without an invitation.
+  claims: {
+    get: signedIn
+      .route({ method: 'GET', path: '/claims/{slug}', summary: 'Whether the signed-in account can ask to claim this public profile now, and why not (404 for a profile that is not public)' })
+      .input(claimGetInput)
+      .handler(({ context, input }) => getClaimOption(context.principal, input)),
+    request: signedIn
+      .route({
+        method: 'POST',
+        path: '/claims/request',
+        summary: 'Ask to claim a public, unclaimed profile of a living person as your own: a review case an archivist decides; one waiting claim at a time',
+      })
+      .input(claimRequestInput)
+      .handler(({ context, input }) => requestProfileClaim(context.principal, input, context.meta)),
   },
   // M10b: instructor verification of a Sifu (plan §6.5, DEFAULT D04/D13).
   instructor: {
@@ -1611,6 +1628,10 @@ export const router = {
     overview: base
       .route({ method: 'GET', path: '/dashboard', summary: "The signed-in account's dashboard: teachers, requests, schools, allowance, notifications" })
       .handler(({ context }) => dashboardOverview(context.principal)),
+    // The dashboard's grouped menu (docs/adr/0039-member-navigation.md): own data and counts only.
+    nav: base
+      .route({ method: 'GET', path: '/dashboard/nav', summary: "The signed-in account's dashboard menu: account type, profile, administered organizations, unread and waiting counts" })
+      .handler(({ context }) => dashboardNav(context.principal)),
   },
   // M12: /admin/system (plan §3.1 "Наблюдение"): counts, queue names and times only.
   system: {

@@ -524,6 +524,24 @@ async function sharedRecord() {
   return { id, slug };
 }
 
+/** ADR 0040: a public, unclaimed record of a living person, as the demo records are. */
+async function claimableRecord() {
+  const id = uuidv7();
+  const slug = `demo-claimable-record-${randomBytes(4).toString('hex')}`;
+  await getDb().insert(person).values({ id, slug, kind: 'living', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'living' });
+  await getDb().insert(personName).values({ personId: id, value: 'Demo Claimable Record', script: 'Latn', lang: 'en', isPrimary: true });
+  return { id, slug };
+}
+
+/**
+ * ADR 0040: one waiting claim per account. The world's staff accept invitations in the rows above
+ * (invitations.accept), so their waiting claims are set aside before each call of a claim row.
+ */
+async function noWaitingClaim(who: Who): Promise<void> {
+  const actor = worldActor(who);
+  if (actor) await getDb().execute(sql`UPDATE person_claim SET status = 'withdrawn' WHERE user_id = ${actor.id}::uuid AND status = 'pending'`);
+}
+
 /** M25: a lineage dispute report by a new account (the `owner`), not upheld by the world's moderator. */
 async function refusedReport() {
   const r = await verifiedLink();
@@ -803,6 +821,23 @@ const ROWS: Row[] = [
       return { owner: await actor('invitee', { sifu: true, noPerson: true }), party: r.student, input: { token: r.token, idempotencyKey: key() } };
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', party: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  // ADR 0040: a claim from a public profile's page. Any signed-in account reads whether it can claim
+  // (an account with a profile reads why not); an account without a profile of its own claims it (the
+  // world's staff accounts have none), an account with one cannot.
+  {
+    path: 'claims.get',
+    make: async () => ({ input: { slug: (await claimableRecord()).slug } }),
+    expect: own(),
+  },
+  {
+    path: 'claims.request',
+    make: async (who) => {
+      await noWaitingClaim(who);
+      const target = await claimableRecord();
+      return { owner: await actor('self-claimant', { noPerson: true }), input: { personId: target.id, note: 'A fictional note for the reviewers.', idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
   },
   { path: 'instructor.mine', make: noInput, expect: own() },
   {
@@ -1558,6 +1593,7 @@ const ROWS: Row[] = [
   },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
+  { path: 'dashboard.nav', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
   // (404 here, the same answer as for none), as does every member and staff account.
   { path: 'organizations.list', make: noInput, expect: everyone },
@@ -2437,10 +2473,10 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     call: (fn, form) => fn(form),
   },
   // M18: an empty form switches off every category that can be (its procedure is the last call).
-  { action: 'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
+  { action: 'src/app/account/notifications/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
   { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
-  { action: 'src/app/dashboard/settings/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
+  { action: 'src/app/account/plan/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#revokeGrantAction', row: 'grants.revoke', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#closeRequestAction', row: 'grants.closeRequest', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
@@ -2454,6 +2490,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction', row: 'invitations.send', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/invite/[token]/actions.ts#acceptInvitationAction', row: 'invitations.accept', form: same, roles: ['anonymous', 'party', 'member'] },
+  { action: 'src/app/people/[slug]/claim/actions.ts#requestClaimAction', row: 'claims.request', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction', row: 'cases.reply', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/people/[slug]/report/actions.ts#reportProfileAction', row: 'reports.create', form: same, roles: ['anonymous', 'member'] },
   {

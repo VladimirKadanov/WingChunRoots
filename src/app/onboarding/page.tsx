@@ -4,18 +4,20 @@
 // publicly" is never ticked in advance (plan §6.2). Data from the account.me and
 // account.onboardingOptions procedures. An account that already has its profile but has not
 // confirmed a new version of the documents gets only the confirmations here (In scope 4).
+// "How do you take part?" sets the account type through account.setType (from plans.mine, so an
+// account that is already a Sifu starts on "I teach"). Afterwards: `next`, else /dashboard.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 
 import { AuthFrame } from '@/components/account/auth-frame';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { safeNextPath } from '@/server/auth/guards';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { documentsFor } from '@/server/legal/documents';
 import { serverClient } from '@/server/rpc/server';
 import { ConfirmConsentsForm } from './confirm-consents-form';
+import { afterOnboarding, onboardingNext } from './destination';
 import { OnboardingForm } from './onboarding-form';
 
 export const instant = false;
@@ -47,7 +49,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
-  const next = safeNextPath(query.next, '/account');
+  const next = onboardingNext(query.next);
   const client = serverClient(await headers(), guard.principal);
   const me = await client.account.me();
   // The documents whose required confirmation is missing; the optional privacy tick links its own.
@@ -56,7 +58,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   // invitation, or whose claim waits for the reviewers, confirms the documents only.
   const claiming = !me.person && (me.pendingClaim || next.startsWith('/invite/'));
   if (me.person || claiming) {
-    const after = next === '/onboarding' ? (me.person ? '/account' : '/dashboard') : next;
+    const after = afterOnboarding(next);
     if (me.missingConsents.length === 0) return <PageRedirect to={after} title={me.person ? 'Your profile is already set up' : 'Nothing to confirm'} />;
     return (
       <AuthFrame
@@ -77,7 +79,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
       </AuthFrame>
     );
   }
-  const [options, initial] = await Promise.all([client.account.onboardingOptions(), readFormResult('onboarding', query.outcome)]);
+  const [options, mine, initial] = await Promise.all([client.account.onboardingOptions(), client.plans.mine(), readFormResult('onboarding', query.outcome)]);
   return (
     <AuthFrame
       eyebrow="Welcome · your profile"
@@ -86,7 +88,14 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
       notes={NOTES}
       notesLabel="How profiles work"
     >
-      <OnboardingForm options={options} missingConsents={me.missingConsents} documents={documents} next={next} initial={initial} />
+      <OnboardingForm
+        options={options}
+        accountType={mine.accountType}
+        missingConsents={me.missingConsents}
+        documents={documents}
+        next={next}
+        initial={initial}
+      />
     </AuthFrame>
   );
 }

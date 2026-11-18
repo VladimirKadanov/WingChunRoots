@@ -70,6 +70,7 @@ export function AuthFrame({
   lede,
   notes,
   notesLabel = 'About this step',
+  nav,
   children,
 }: {
   /** Without a title the child renders its own FrameHeader. */
@@ -78,10 +79,13 @@ export function AuthFrame({
   lede?: ReactNode;
   notes?: readonly FrameNote[];
   notesLabel?: string;
+  /** A navigation above both columns (the settings pages' SettingsNav). */
+  nav?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
+      {nav ? <div className="mb-8">{nav}</div> : null}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-x-16 gap-y-12 lg:grid-cols-[minmax(0,30rem)_minmax(0,1fr)] xl:gap-x-24">
         <div className="min-w-0">
           {title !== undefined && eyebrow !== undefined ? (
