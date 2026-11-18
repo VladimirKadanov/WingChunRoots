@@ -35,7 +35,7 @@
 // never a rank, a title, a correction or a storage key. passport.get is not cached: the plan of the
 // account changes what it shows, and it is read per request like the profile it sits on.
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { formatPartialDate, parsePartialDate, todayUtc } from '../../lib/partial-date';
@@ -45,11 +45,13 @@ import { requireStaff2FA, requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { passportCertificate, passportExam, passportRank, passportSkill, person } from '../db/schema';
+import { passportCertificate, passportExam, passportRank, passportRankPhoto, passportSkill, person, personPhoto } from '../db/schema';
 import {
+  GALLERY_PHOTO_STATUSES,
   PASSPORT_CERTIFICATES_MAX,
   PASSPORT_ENTRY_KINDS,
   PASSPORT_NOTE_MAX,
+  PASSPORT_RANK_PHOTOS_MAX,
   PASSPORT_TEXT_MAX,
   PASSPORT_TITLE_MAX,
   PASSPORT_VISIBILITIES,
@@ -62,6 +64,7 @@ import {
   type PassportEntryDto,
   type PassportKind,
   type PassportPersonDto,
+  type PassportRankPhotoDto,
   type PassportTeacherDto,
   SKILL_PROGRESS_LABELS,
   toPublicPassport,
@@ -77,7 +80,7 @@ import type { RequestMeta } from './context';
 import type { UpgradeOffer } from './dashboard';
 import { ServiceError } from './errors';
 import { notify } from './notify';
-import { PHOTO_HASH_LENGTH } from './photo-refs';
+import { PHOTO_HASH_LENGTH, photoUrl } from './photo-refs';
 import {
   etagMatches,
   fileBytes,
@@ -123,6 +126,7 @@ const FIELD_LABELS: Record<string, string> = {
   reason: `Say why the entry is removed, at most ${PASSPORT_NOTE_MAX} characters.`,
   eventId: 'Choose one of your past events.',
   personIds: 'Choose at least one of your students.',
+  photoIds: `Choose at most ${PASSPORT_RANK_PHOTOS_MAX} photos of your own gallery.`,
 };
 
 function fieldErrors(error: z.ZodError): ServiceError {
@@ -425,8 +429,41 @@ function entryOf(r: EntrySource): PassportEntryDto {
     teacher: personRef(r.teacher_slug, r.teacher_name, r.teacher_lang),
     event: r.event_slug ? { slug: r.event_slug, kindLabel: EVENT_KIND_LABELS[(r.event_kind ?? 'other') as EventKind] ?? 'Event' } : null,
     image: r.kind === 'certificate' ? certificateImage(r.id, r.certificate_sha256, r.certificate_width, r.certificate_height) : null,
+    photos: [],
     createdAt: iso(r.created_at),
   };
+}
+
+/**
+ * The grading photos of ranks (ADR 0046), by rank id, in order: only photos of the rank's own person
+ * that are still in their gallery (statuses active and gallery), which GET /api/photos serves to
+ * anyone exactly when the person is public. A photo taken out of the gallery drops out here.
+ */
+async function rankPhotos(db: Executor, rankIds: readonly string[]): Promise<Map<string, PassportRankPhotoDto[]>> {
+  const out = new Map<string, PassportRankPhotoDto[]>();
+  if (rankIds.length === 0) return out;
+  const rows = await db
+    .select({ rankId: passportRankPhoto.rankId, id: personPhoto.id, sha256: personPhoto.sha256, caption: personPhoto.caption })
+    .from(passportRankPhoto)
+    .innerJoin(passportRank, eq(passportRank.id, passportRankPhoto.rankId))
+    .innerJoin(personPhoto, and(eq(personPhoto.id, passportRankPhoto.photoId), eq(personPhoto.personId, passportRank.personId)))
+    .where(and(inArray(passportRankPhoto.rankId, [...rankIds]), inArray(personPhoto.status, [...GALLERY_PHOTO_STATUSES])))
+    .orderBy(passportRankPhoto.rankId, passportRankPhoto.position);
+  for (const r of rows) {
+    const list = out.get(r.rankId) ?? [];
+    list.push({ id: r.id, small: photoUrl(r.id, r.sha256, 96), large: photoUrl(r.id, r.sha256, 512), caption: r.caption });
+    out.set(r.rankId, list);
+  }
+  return out;
+}
+
+/** The entries with their ranks' grading photos attached. */
+async function withRankPhotos<T extends PassportEntryDto>(db: Executor, entries: T[]): Promise<T[]> {
+  const photos = await rankPhotos(
+    db,
+    entries.filter((e) => e.kind === 'rank').map((e) => e.id),
+  );
+  return entries.map((e) => (e.kind === 'rank' ? { ...e, photos: photos.get(e.id) ?? [] } : e));
 }
 
 /** "2015 – now", "March 2015 – May 2019", "since 2015", "Dates not recorded". */
@@ -511,7 +548,11 @@ export async function passportGet(_principal: Principal | null, raw: z.input<typ
   if (!row) throw notFound(NO_PASSPORT);
   const { level } = await planOf(db, row.id);
   const [entries, teachers, startYear] = await Promise.all([
-    db.execute<EntrySource>(sql`SELECT ${PUBLIC_ENTRY_COLUMNS} FROM v_public_passport WHERE person_id = ${row.id}::uuid`).then((r) => r.rows.map(entryOf)),
+    db
+      .execute<EntrySource>(sql`SELECT ${PUBLIC_ENTRY_COLUMNS} FROM v_public_passport WHERE person_id = ${row.id}::uuid`)
+      // ADR 0046: grading photos are part of the full passport; the basic one shows none.
+      .then((r) => r.rows.map(entryOf))
+      .then((list) => (level === 'full' ? withRankPhotos(db, list) : list)),
     publicTeachers(db, row.id),
     startYearOf(db, row.id),
   ]);
@@ -663,6 +704,8 @@ export interface MyPassport {
   /** The public entries the plan keeps but does not show. */
   hiddenByPlan: number;
   certificates: { count: number; limit: number };
+  /** Grading photos on ranks (ADR 0046): whether the plan lets the student choose them, and how many per rank. */
+  rankPhotos: { allowed: boolean; limit: number };
   /** At the real limit (entries kept but hidden), the plan that shows them; only 'now' benefits. */
   upgrade: UpgradeOffer | null;
 }
@@ -683,7 +726,10 @@ export async function myPassport(principal: Principal | null): Promise<MyPasspor
   // The current rank among the public ones is the one a basic passport shows.
   const publicRanks = rows.filter((r) => r.kind === 'rank' && r.visibility === 'public').map(entryOf);
   const currentPublic = currentOf(publicRanks);
-  const entries = rows.map((r) => ownEntryOf(r, level, profilePublic, currentPublic?.id ?? null));
+  const entries = await withRankPhotos(
+    db,
+    rows.map((r) => ownEntryOf(r, level, profilePublic, currentPublic?.id ?? null)),
+  );
   const current = currentOf(entries.filter((e) => e.kind === 'rank'));
   const hidden = entries.filter((e) => e.hiddenByPlan).length;
   let upgrade: UpgradeOffer | null = null;
@@ -717,6 +763,7 @@ export async function myPassport(principal: Principal | null): Promise<MyPasspor
     entries: timelineByYear(entries).flatMap((y) => y.items),
     hiddenByPlan: hidden,
     certificates: { count: entries.filter((e) => e.kind === 'certificate').length, limit: PASSPORT_CERTIFICATES_MAX },
+    rankPhotos: { allowed: level === 'full', limit: PASSPORT_RANK_PHOTOS_MAX },
     upgrade,
   };
 }
@@ -1128,6 +1175,59 @@ export async function setVisibility(principal: Principal | null, raw: z.input<ty
       });
     }
     return { kind: input.kind, id: entry.id, visibility: input.visibility };
+  });
+}
+
+// --- Grading photos (ADR 0046) -----------------------------------------------------------------------
+
+const RANK_PHOTOS_NEED_PLAN = 'Photos on your ranks are part of Premium Student.';
+const RANK_PHOTOS_NOT_YOURS = 'Choose photos from your own gallery.';
+
+export const setRankPhotosInput = z.object({
+  rankId: id(),
+  photoIds: z
+    .array(z.uuid({ error: RANK_PHOTOS_NOT_YOURS }))
+    .max(PASSPORT_RANK_PHOTOS_MAX, { error: `Choose at most ${PASSPORT_RANK_PHOTOS_MAX} photos.` }),
+});
+
+/**
+ * passport.setRankPhotos: the student puts up to three photos of their own gallery on one of their
+ * active ranks, in the order given (an empty list takes them all off). Part of the full passport
+ * (Premium Student, Professional Sifu); on a lower plan the photos already chosen are kept but not
+ * shown (DEFAULT D08), and choosing again is refused at the plan. Audited with ids and a count only.
+ */
+export async function setRankPhotos(principal: Principal | null, raw: z.input<typeof setRankPhotosInput>, meta: RequestMeta): Promise<{ id: string; photoIds: string[] }> {
+  const p = requireUser(principal);
+  const input = parse(setRankPhotosInput, raw);
+  const photoIds = [...new Set(input.photoIds)];
+  return getDb().transaction(async (tx) => {
+    const entry = await loadEntry(tx, 'rank', input.rankId, true);
+    const own = await ownPersonId(tx, p.user.id);
+    if (!entry || entry.status !== 'active' || own === null || own !== entry.person_id) throw notFound();
+    const { level } = await planOf(tx, own);
+    if (level !== 'full') throw new ServiceError('ENTITLEMENT_REQUIRED', RANK_PHOTOS_NEED_PLAN);
+    if (photoIds.length > 0) {
+      const found = await tx
+        .select({ id: personPhoto.id })
+        .from(personPhoto)
+        .where(and(inArray(personPhoto.id, photoIds), eq(personPhoto.personId, own), inArray(personPhoto.status, [...GALLERY_PHOTO_STATUSES])));
+      if (found.length !== photoIds.length) throw new ServiceError('BAD_REQUEST', RANK_PHOTOS_NOT_YOURS, { photoIds: RANK_PHOTOS_NOT_YOURS });
+    }
+    const before = await tx.select({ id: passportRankPhoto.photoId }).from(passportRankPhoto).where(eq(passportRankPhoto.rankId, entry.id)).orderBy(passportRankPhoto.position);
+    const unchanged = before.length === photoIds.length && before.every((b, i) => b.id === photoIds[i]);
+    if (!unchanged) {
+      await tx.delete(passportRankPhoto).where(eq(passportRankPhoto.rankId, entry.id));
+      if (photoIds.length > 0) await tx.insert(passportRankPhoto).values(photoIds.map((photoId, position) => ({ rankId: entry.id, photoId, position })));
+      await writeAudit(tx, {
+        action: 'passport.rank_photos',
+        ...audited(meta, p),
+        subjectType: 'passport_rank',
+        subjectId: entry.id,
+        before: { photos: before.length },
+        after: { photos: photoIds.length },
+      });
+    }
+    return { id: entry.id, photoIds };
   });
 }
 

@@ -197,6 +197,7 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'event_attendance', column: 'created_by_user_id', action: 'clear', why: 'attendance the account marked' },
   { table: 'event_attendance', column: 'withdrawn_by_user_id', action: 'clear', why: 'as above' },
   { table: 'event_attendance', column: 'removed_by_user_id', action: 'clear', why: 'as above' },
+  { table: 'event_attendance', column: 'decided_by_user_id', action: 'clear', why: 'attendance requests the account confirmed or refused (ADR 0046)' },
   { table: 'federation_trial', column: 'started_by_user_id', action: 'clear', why: 'an organization’s trial the account started' },
   { table: 'federation_trial', column: 'ended_by_user_id', action: 'clear', why: 'as above' },
   { table: 'organization', column: 'created_by_user_id', action: 'clear', why: 'the organization stays, without who created it' },

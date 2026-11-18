@@ -26,7 +26,8 @@ import { requestPilotAccessAction } from '../actions';
 import { ClaimForm, WithdrawClaimForm } from './claim-forms';
 import { CertificateUpload, RemoveCertificateButton, VisibilityForm } from './controls';
 import { CorrectionForm } from './correction-form';
-import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM, PASSPORT_CORRECTION_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
+import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM, PASSPORT_CORRECTION_FORM, PASSPORT_RANK_PHOTOS_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
+import { type RankPhotoChoice, RankPhotosForm } from './rank-photos-form';
 
 export const instant = false;
 
@@ -132,20 +133,34 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
       />
     );
   }
-  const [visibilityOutcome, correctionOutcome, claimOutcome, withdrawOutcome] = await Promise.all([
+  const [visibilityOutcome, correctionOutcome, claimOutcome, withdrawOutcome, photosOutcome] = await Promise.all([
     readFormResult(PASSPORT_VISIBILITY_FORM, query.outcome),
     readFormResult(PASSPORT_CORRECTION_FORM, query.outcome),
     readFormResult(PASSPORT_CLAIM_FORM, query.outcome),
     readFormResult(PASSPORT_CLAIM_WITHDRAW_FORM, query.outcome),
+    readFormResult(PASSPORT_RANK_PHOTOS_FORM, query.outcome),
   ]);
   const correcting = correctionOutcome?.values?.id ?? one(query.correct) ?? null;
+  // ADR 0046: the rank whose photos are being chosen, and the own gallery to choose from.
+  const choosingPhotos = view !== 'no-profile' && view.rankPhotos.allowed ? (photosOutcome?.values?.id ?? one(query.photos) ?? null) : null;
+  let gallery: RankPhotoChoice[] = [];
+  if (choosingPhotos) {
+    try {
+      const own = await serverClient(await headers(), guard.principal).gallery.mine();
+      gallery = own.photos.map((photo) => ({ id: photo.id, small: photo.small, caption: photo.caption }));
+    } catch {
+      gallery = [];
+    }
+  }
   const notice = query.published === '1' ? 'The entry is public now.' : query.hidden === '1' ? 'The entry is private now: only you and your teachers see it.' : query.corrected === '1'
           ? 'Your correction was sent to whoever recorded the entry.'
           : query.claimed === '1'
             ? 'Your request was sent to the organizer. It shows only here until they confirm it.'
             : query.claimWithdrawn === '1'
               ? 'Your request was taken back.'
-              : null;
+              : query.photosSaved === '1'
+                ? 'The photos of the rank were saved.'
+                : null;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -234,7 +249,23 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
                           )
                         ) : null}
                         {entry.kind === 'certificate' ? <RemoveCertificateButton id={entry.id} title={entry.title} /> : null}
+                        {entry.kind === 'rank' && view.rankPhotos.allowed && choosingPhotos !== entry.id ? (
+                          <Link href={`${PAGE}?photos=${entry.id}#entry-${entry.id}`} className="link inline-flex min-h-11 items-center px-2" data-testid="passport-rank-photos-link">
+                            {entry.photos.length > 0 ? 'Change photos' : 'Add photos'}
+                            <span className="sr-only"> of “{entry.title}”</span>
+                          </Link>
+                        ) : null}
                       </div>
+                      {entry.kind === 'rank' && choosingPhotos === entry.id ? (
+                        <RankPhotosForm
+                          id={entry.id}
+                          title={entry.title}
+                          gallery={gallery}
+                          chosen={entry.photos.map((photo) => photo.id)}
+                          limit={view.rankPhotos.limit}
+                          initial={photosOutcome?.values?.id === entry.id ? photosOutcome : null}
+                        />
+                      ) : null}
                       {correcting === entry.id && (entry.kind === 'rank' || entry.kind === 'exam' || entry.kind === 'skill') ? (
                         <CorrectionForm kind={entry.kind} id={entry.id} initial={correctionOutcome} />
                       ) : null}

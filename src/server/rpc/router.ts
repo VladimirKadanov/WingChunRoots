@@ -82,6 +82,8 @@ import {
   passportStudentsInput,
   removeCertificate,
   removePassportEntry,
+  setRankPhotos,
+  setRankPhotosInput,
   setVisibility,
   setVisibilityInput,
   updateEntry,
@@ -1608,6 +1610,15 @@ export const router = {
       .route({ method: 'POST', path: '/passport/entry/visibility', summary: 'Make an entry of your own passport private or public; audited' })
       .input(setVisibilityInput)
       .handler(({ context, input }) => setVisibility(context.principal, input, context.meta)),
+    setRankPhotos: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/rank/photos',
+        summary:
+          'Put up to 3 photos of your own gallery on one of your ranks, in order; an empty list takes them off (Premium Student or Professional Sifu; ADR 0046); shown with the rank where your passport is shown; audited',
+      })
+      .input(setRankPhotosInput)
+      .handler(({ context, input }) => setRankPhotos(context.principal, input, context.meta)),
     uploadCertificate: signedIn
       .route({
         method: 'POST',

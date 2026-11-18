@@ -18128,6 +18128,36 @@
                                 }
                               ]
                             },
+                            "photos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "small": {
+                                    "type": "string"
+                                  },
+                                  "large": {
+                                    "type": "string"
+                                  },
+                                  "caption": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "small",
+                                  "large",
+                                  "caption"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
                             "createdAt": {
                               "type": "string"
                             }
@@ -18145,6 +18175,7 @@
                             "teacher",
                             "event",
                             "image",
+                            "photos",
                             "createdAt"
                           ],
                           "additionalProperties": false
@@ -18469,6 +18500,36 @@
                                     }
                                   ]
                                 },
+                                "photos": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "small": {
+                                        "type": "string"
+                                      },
+                                      "large": {
+                                        "type": "string"
+                                      },
+                                      "caption": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "small",
+                                      "large",
+                                      "caption"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "createdAt": {
                                   "type": "string"
                                 }
@@ -18486,6 +18547,7 @@
                                 "teacher",
                                 "event",
                                 "image",
+                                "photos",
                                 "createdAt"
                               ],
                               "additionalProperties": false
@@ -19093,6 +19155,69 @@
                   "kind",
                   "id",
                   "visibility"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/passport/rank/photos": {
+      "post": {
+        "operationId": "passport.setRankPhotos",
+        "summary": "Put up to 3 photos of your own gallery on one of your ranks, in order; an empty list takes them off (Premium Student or Professional Sifu; ADR 0046); shown with the rank where your passport is shown; audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rankId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "photoIds": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "rankId",
+                  "photoIds"
                 ]
               }
             }

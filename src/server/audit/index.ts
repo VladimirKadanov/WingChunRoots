@@ -131,6 +131,7 @@ export type AuditAction =
   // ADR 0046: a student's claim of attendance at an event and the organizer's decision.
   | 'passport.attendance_claim'
   | 'passport.attendance_decide'
+  | 'passport.rank_photos'
   | 'passport.remove'
   // M22: billing in test mode (docs/adr/0025-billing.md). The rows carry ids, the plan, the
   // provider, states and dates, never a card detail, an amount a customer typed or an address.

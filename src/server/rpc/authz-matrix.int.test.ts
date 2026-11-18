@@ -1997,6 +1997,16 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  {
+    // ADR 0046: the student (Premium Student) puts a photo of their own gallery on their rank.
+    path: 'passport.setRankPhotos',
+    make: async () => {
+      const p = await passportOf({ full: true });
+      const added = await addGalleryPhoto(p.student.principal, { file: await photoFile() }, meta);
+      return { owner: p.student, party: p.teacher, input: { rankId: p.rankId, photoIds: [added.photo.id] } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   // Through /api/v1 as multipart (viaPhotoUpload): the account's own passport; staff have none.
   { path: 'passport.uploadCertificate', make: () => ({ input: {} }), expect: { ...signedInOnly, member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' } },
   {
@@ -2659,6 +2669,12 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     roles: ['anonymous', 'member', 'owner'],
   },
   { action: 'src/app/dashboard/passport/actions.ts#claimAttendanceAction', row: 'passport.claimAttendance', form: same, roles: ['anonymous', 'member', 'owner'] },
+  {
+    action: 'src/app/dashboard/passport/actions.ts#setRankPhotosAction',
+    row: 'passport.setRankPhotos',
+    form: (i) => ({ id: String(i.rankId), photoId: (i.photoIds as string[])[0]! }),
+    roles: ['anonymous', 'member', 'party', 'owner'],
+  },
   { action: 'src/app/dashboard/passport/actions.ts#withdrawClaimAction', row: 'passport.withdrawEntry (a waiting claim)', form: (i) => ({ id: String(i.id) }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/events/attendance/actions.ts#decideAttendanceAction', row: 'passport.decideAttendance', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   {

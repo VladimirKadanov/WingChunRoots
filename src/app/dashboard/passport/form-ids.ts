@@ -9,3 +9,5 @@ export const PASSPORT_CORRECTION_FORM = 'passport-correction';
 export const PASSPORT_CLAIM_FORM = 'passport-claim';
 /** "Take back the request" of a claim that waits for the organizer (ADR 0046). */
 export const PASSPORT_CLAIM_WITHDRAW_FORM = 'passport-claim-withdraw';
+/** "Save photos" of a rank: up to three gallery photos on it (ADR 0046). */
+export const PASSPORT_RANK_PHOTOS_FORM = 'passport-rank-photos';

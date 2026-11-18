@@ -137,6 +137,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   // ADR 0046: attendance requests, from the student and to the organizer.
   'src/app/dashboard/passport/actions.ts#claimAttendanceAction': { rpc: ['passport.claimAttendance'] },
   'src/app/dashboard/passport/actions.ts#withdrawClaimAction': { rpc: ['passport.withdrawEntry'] },
+  'src/app/dashboard/passport/actions.ts#setRankPhotosAction': { rpc: ['passport.setRankPhotos'] },
   'src/app/dashboard/events/attendance/actions.ts#decideAttendanceAction': { rpc: ['passport.decideAttendance'] },
   'src/app/dashboard/students/actions.ts#addRankAction': { rpc: ['passport.addRank'] },
   'src/app/dashboard/students/actions.ts#addExamAction': { rpc: ['passport.addExam'] },

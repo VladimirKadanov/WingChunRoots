@@ -7,7 +7,8 @@
 // failure comes back to the form as a kept result (src/server/forms/flash.ts). Certificates are
 // uploaded and removed from the browser through /api/rpc (passport.uploadCertificate,
 // passport.removeCertificate), as a gallery photo is. ADR 0046: asking an event's organizer to
-// confirm attendance (passport.claimAttendance) and taking the request back (passport.withdrawEntry).
+// confirm attendance (passport.claimAttendance) and taking the request back (passport.withdrawEntry);
+// the grading photos of a rank (passport.setRankPhotos).
 
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
@@ -18,7 +19,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM, PASSPORT_CORRECTION_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
+import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM, PASSPORT_CORRECTION_FORM, PASSPORT_RANK_PHOTOS_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
 
 const PAGE = '/dashboard/passport';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,4 +86,23 @@ export async function withdrawClaimAction(_previous: FormState, form: FormData):
     return formResult({ form: PASSPORT_CLAIM_WITHDRAW_FORM, page: PAGE, anchor: outcomeTarget(PASSPORT_CLAIM_WITHDRAW_FORM, state, true) }, state);
   }
   redirect(`${PAGE}?claimWithdrawn=1#passport-entries`);
+}
+
+/** "Save photos" of a rank (passport.setRankPhotos): the ticked gallery photos, in gallery order. */
+export async function setRankPhotosAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const id = textValue(form, 'id', 40);
+  // Ten at most are passed on: the service refuses more than three with its own words.
+  const photoIds = form
+    .getAll('photoId')
+    .filter((value): value is string => typeof value === 'string' && UUID.test(value))
+    .slice(0, 10);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).passport.setRankPhotos({ rankId: UUID.test(id) ? id : '', photoIds });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(PAGE)}`);
+    const state = formStateFromFailure(error, { id });
+    return formResult({ form: PASSPORT_RANK_PHOTOS_FORM, page: PAGE, anchor: outcomeTarget(PASSPORT_RANK_PHOTOS_FORM, state, true) }, state);
+  }
+  redirect(`${PAGE}?photosSaved=1#entry-${UUID.test(id) ? id : ''}`);
 }
