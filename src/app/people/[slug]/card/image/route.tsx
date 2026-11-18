@@ -57,7 +57,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             {`${lineage ? `${lineage} · ` : ''}${names.length === 1 ? '1 generation' : `${names.length} generations`}`}
           </div>
         </div>
-        <div style={{ display: 'flex', flex: 1, alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', fontSize: 30 }}>
+        <div style={{ display: 'flex', flex: 1, alignItems: 'flex-end', alignContent: 'flex-end', gap: 14, paddingTop: 40, flexWrap: 'wrap', fontSize: 30 }}>
           {shown.map((name, i) => {
             const last = i === shown.length - 1;
             return (

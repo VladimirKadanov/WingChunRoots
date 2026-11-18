@@ -1,9 +1,9 @@
 /**
  * The lineage card (docs/adr/0045-lineage-card.md), as it is seen, on the desktop and the phone.
- * demo-premium-student is public and holds Premium Student, so their profile links to the card,
+ * demo-premium-student (person demo-b-166) is public and holds Premium Student, so their profile links to the card,
  * which shows their public route of descent ending in them; the share image is a PNG; on paper
- * only the card is printed. A person whose plan has no card answers 404 for the page and the
- * image. axe runs in both themes. It only reads, so it runs in the ordinary projects. Fictional (D20).
+ * only the card is printed. A person whose plan has no card gets "Not on the record" (the page
+ * streams, so inline and never indexed) and a 404 for the image. axe runs in both themes. It only reads, so it runs in the ordinary projects. Fictional (D20).
  */
 
 import { expect, test } from '@playwright/test';
@@ -20,12 +20,12 @@ test.beforeEach(async ({ context }) => {
 });
 
 test('@premium a Premium Student has a lineage card: the profile links to it, it ends in them, and it prints alone', async ({ page }) => {
-  await page.goto('/people/demo-premium-student');
+  await page.goto('/people/demo-b-166');
   const link = page.getByTestId('lineage-card-link');
   await expect(link).toHaveText('Lineage card');
   expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await link.click();
-  await expect(page).toHaveURL(/\/people\/demo-premium-student\/card$/);
+  await expect(page).toHaveURL(/\/people\/demo-b-166\/card$/);
 
   const card = page.getByTestId('lineage-card');
   await expect(card).toBeVisible();
@@ -54,10 +54,13 @@ test('@premium a Premium Student has a lineage card: the profile links to it, it
   await expect(page.getByTestId('lineage-card-actions')).toBeHidden();
 });
 
-test('@premium a person whose plan has no card: no link, and 404 for the page and the image', async ({ page }) => {
+test('@premium a person whose plan has no card: no link, "Not on the record" on the page, 404 for the image', async ({ page }) => {
   await page.goto('/people/demo-two-lineages');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByTestId('lineage-card-link')).toHaveCount(0);
-  expect((await page.goto('/people/demo-two-lineages/card'))!.status()).toBe(404);
+  await page.goto('/people/demo-two-lineages/card');
+  await expect(page.getByRole('heading', { level: 1, name: 'No public profile at this address' })).toBeVisible();
+  await expect(page.getByTestId('lineage-card')).toHaveCount(0);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   expect((await page.request.get('/people/demo-two-lineages/card/image')).status()).toBe(404);
 });

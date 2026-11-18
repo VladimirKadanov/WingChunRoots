@@ -4,16 +4,18 @@
 // "Print or save as PDF" opens the browser's print dialog (the print stylesheet keeps the card
 // alone, on paper colours); "Share image" is the card as a PNG (./image).
 //
-// people.card answers only for a public person whose plan includes the card; anyone else gets the
-// app's 404, the same as a missing address (plan §6.4).
+// people.card answers only for a public person whose plan includes the card; for anyone else the
+// page shows the same "Not on the record" as a missing address (plan §6.4), never indexed. The page
+// streams, so that answer comes inline (as the person pages' own fallback); the share image, a
+// route handler, answers 404.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 
 import { ArrowLeftIcon } from '@/components/icons';
 import { cardSteps, generationsText, LineageCard, routeLineage } from '@/components/lineage/lineage-card';
 import { LatinName } from '@/components/lineage/person-name';
+import { notOnRecordMetadata, PersonNotFound } from '@/components/lineage/person-not-found';
 import { PrintButton } from '@/components/lineage/print-button';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -32,8 +34,10 @@ type Props = {
 type CardRead = { state: 'found'; card: LineageCardDto } | { state: 'none' } | { state: 'failed' };
 
 async function readCard(slug: string): Promise<CardRead> {
+  // Outside the try: the request's connection() must reject on its own when a prerender ends.
+  const client = await lineageClient();
   try {
-    return { state: 'found', card: await (await lineageClient()).people.card({ slug }) };
+    return { state: 'found', card: await client.people.card({ slug }) };
   } catch (error) {
     if (failure(error) === 'NOT_FOUND' || failure(error) === 'BAD_REQUEST') return { state: 'none' };
     console.error(`[lineage-card] the card could not be loaded: ${failure(error)}`);
@@ -48,6 +52,7 @@ function focusName(card: LineageCardDto): string {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const read = await readCard(slug);
+  if (read.state === 'none') return notOnRecordMetadata;
   if (read.state !== 'found') return { title: 'Lineage card', robots: { index: false, follow: false } };
   const name = focusName(read.card);
   return {
@@ -61,7 +66,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function LineageCardPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const read = await readCard(slug);
-  if (read.state === 'none') notFound();
+  if (read.state === 'none') return <PersonNotFound />;
   const here = `/people/${slug}`;
   if (read.state === 'failed') {
     return (
