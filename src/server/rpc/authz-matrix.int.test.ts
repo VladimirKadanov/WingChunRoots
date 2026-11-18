@@ -624,6 +624,9 @@ const ROWS: Row[] = [
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   { path: 'admin.navCounts', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   { path: 'admin.dashboard', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  // ADR 0041: the control panel's reports; the billing report for admins only.
+  { path: 'admin.reports', make: () => ({ input: { report: 'review', period: '30d' } }), expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.billingReport', make: () => ({ input: { period: '12m' } }), expect: staffOnly({ admin: 'ok' }) },
   // M12: /admin/system, any staff role with a verified second factor (requireStaff2FA).
   { path: 'system.status', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {

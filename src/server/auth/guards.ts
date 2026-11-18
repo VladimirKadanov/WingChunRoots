@@ -95,6 +95,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   // M22: the test checkout page of a signed-in account; the subscriptions' history for admins only.
   '/billing': { kind: 'user' },
   '/admin/billing': { kind: 'staff2fa', roles: ['admin'] },
+  // ADR 0041: the reports, for every staff role (the billing report inside is for admins only).
+  '/admin/reports': { kind: 'staff2fa' },
 };
 
 export const SIGN_IN_PATH = '/sign-in';
