@@ -145,6 +145,18 @@ export const lineagePathsSchema = lineageGraphSchema.extend({
 });
 export type LineagePathsDto = z.infer<typeof lineagePathsSchema>;
 
+/**
+ * ADR 0045: the lineage card of a public person whose account's plan includes it: their public
+ * routes of descent (the same answer as lineage.paths, public views only), from the earliest
+ * known teacher down to them.
+ */
+export const lineageCardSchema = z.object({
+  personId: z.uuid(),
+  slug: z.string(),
+  paths: lineagePathsSchema,
+});
+export type LineageCardDto = z.infer<typeof lineageCardSchema>;
+
 export const personCountsSchema = z.object({
   teachers: z.number().int(),
   students: z.number().int(),
@@ -232,6 +244,10 @@ export type StudentsPageDto = z.infer<typeof studentsPageSchema>;
 /** Strips everything the public graph schema does not name. */
 export function toPublicGraph(value: LineageGraphDto): LineageGraphDto {
   return lineageGraphSchema.parse(value);
+}
+
+export function toPublicLineageCard(value: LineageCardDto): LineageCardDto {
+  return lineageCardSchema.parse(value);
 }
 
 export function toPublicPaths(value: LineagePathsDto): LineagePathsDto {

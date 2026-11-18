@@ -272,7 +272,7 @@ import {
   testPayInput,
 } from '../services/billing';
 import { adminFederationTrial, adminTrialInput, endFederationTrial, endTrialInput, startFederationTrial, startTrialInput } from '../services/federation-trials';
-import { lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
+import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
 import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
@@ -331,6 +331,7 @@ import {
   studentsInput,
   subtreeInput,
 } from '../services/lineage';
+import { lineageCard, lineageCardInput } from '../services/lineage-card';
 
 import {
   answerNomination,
@@ -531,6 +532,12 @@ export const router = {
       .input(studentsInput)
       .output(studentsPageSchema)
       .handler(({ context, input }) => personStudents(context.principal, input, context.meta)),
+    // ADR 0045: the lineage card, only for a public person whose plan includes it.
+    card: base
+      .route({ method: 'GET', path: '/people/{slug}/card', summary: "A member's lineage card: their public routes of descent (404 unless public and their plan includes it)" })
+      .input(lineageCardInput)
+      .output(lineageCardSchema)
+      .handler(({ context, input }) => lineageCard(context.principal, input, context.meta)),
   },
   // M08: plans, test plans, notifications and the dashboard (plan §5.6, §6.5).
   plans: {

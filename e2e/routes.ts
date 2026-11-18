@@ -175,7 +175,7 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/notifications?category=plan', name: 'dashboard-notifications-plan', status: 200, milestone: 'M18', signInAs: 'demo-two-lineages' },
   { path: '/dashboard/notifications?category=organizations', name: 'dashboard-notifications-empty', status: 200, milestone: 'M18', signInAs: 'demo-two-lineages' },
   { path: '/unsubscribe', name: 'unsubscribe-stale', status: 200, milestone: 'M18' },
-  // The training passport (M19): the profile of the seeded Premium Student (demo-premium-student's
+  // The training passport (M19): the profile of the seeded Premium Student (demo-b-166's
   // person, demo-b-166 with seed 20261016) with the full timeline, and demo-two-lineages above with
   // the basic one (M04's key screen); the own passport of the Premium Student, of the Free Student
   // (entries kept but hidden by the plan, the upgrade prompt) and of an account without a profile;
@@ -243,6 +243,10 @@ export const ROUTES: readonly AppRoute[] = [
   // claim spec makes records of its own, in the exclusive run).
   { path: '/people/demo-a-005/claim', name: 'claim-profile', status: 200, milestone: 'usability-2026-11', signInAs: 'new' },
   { path: '/people/demo-a-005/claim', name: 'claim-profile-refused', status: 200, milestone: 'usability-2026-11', signInAs: 'demo-pending' },
+  // ADR 0045: the lineage card of the seeded Premium Student (public, a student of demo-pro-sifu-8),
+  // and "Not on the record" for a person whose plan has no card (inline: the page streams).
+  { path: '/people/demo-b-166/card', name: 'lineage-card', status: 200, milestone: 'premium-2026-11', key: true },
+  { path: '/people/demo-two-lineages/card', name: 'lineage-card-none', status: 200, milestone: 'premium-2026-11' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

@@ -4552,6 +4552,447 @@
         }
       }
     },
+    "/people/{slug}/card": {
+      "get": {
+        "operationId": "people.card",
+        "summary": "A member's lineage card: their public routes of descent (404 unless public and their plan includes it)",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "personId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "paths": {
+                      "type": "object",
+                      "properties": {
+                        "focusId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dataVersion": {
+                          "type": "string"
+                        },
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "slug": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "altNames": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "script": {
+                                      "type": "string"
+                                    },
+                                    "lang": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "romanization": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "value",
+                                    "script",
+                                    "lang",
+                                    "kind",
+                                    "romanization"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "lifeStatus": {
+                                "type": "string"
+                              },
+                              "claimState": {
+                                "type": "string",
+                                "enum": [
+                                  "claimed",
+                                  "platform",
+                                  "unclaimed",
+                                  "unknown"
+                                ]
+                              },
+                              "lineageIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "childCount": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "hasMoreChildren": {
+                                "type": "boolean"
+                              },
+                              "visibility": {
+                                "type": "string",
+                                "enum": [
+                                  "public",
+                                  "involved_only"
+                                ]
+                              },
+                              "photo": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "small": {
+                                        "type": "string"
+                                      },
+                                      "large": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "small",
+                                      "large"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "slug",
+                              "displayName",
+                              "altNames",
+                              "lifeStatus",
+                              "claimState",
+                              "lineageIds",
+                              "childCount",
+                              "hasMoreChildren",
+                              "visibility"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "edges": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "teacherId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "studentId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "lineageId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "primary",
+                                  "converging",
+                                  "crossLineage"
+                                ]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pending_teacher",
+                                  "awaiting_claim",
+                                  "under_review",
+                                  "verified",
+                                  "rejected",
+                                  "withdrawn",
+                                  "in_arbitration",
+                                  "revoked"
+                                ]
+                              },
+                              "isDisplayPrimary": {
+                                "type": "boolean"
+                              },
+                              "visibility": {
+                                "type": "string",
+                                "enum": [
+                                  "public",
+                                  "involved_only"
+                                ]
+                              },
+                              "periods": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "to": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    },
+                                    "ongoing": {
+                                      "type": "boolean"
+                                    },
+                                    "precision": {
+                                      "type": "string",
+                                      "enum": [
+                                        "year",
+                                        "month",
+                                        "day",
+                                        "unknown"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to",
+                                    "ongoing",
+                                    "precision"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "approvedByUnverifiedInstructor": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "teacherId",
+                              "studentId",
+                              "lineageId",
+                              "kind",
+                              "status",
+                              "isDisplayPrimary",
+                              "visibility",
+                              "periods"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "hiddenCounts": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "teachers": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "students": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "teachers",
+                              "students"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "lineages": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "slug": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "rootPersonId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "slug",
+                              "name",
+                              "rootPersonId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        },
+                        "paths": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "personIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "edgeIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              }
+                            },
+                            "required": [
+                              "personIds",
+                              "edgeIds"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "totalPaths": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "totalPathsCapped": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "focusId",
+                        "dataVersion",
+                        "nodes",
+                        "edges",
+                        "hiddenCounts",
+                        "lineages",
+                        "truncated",
+                        "paths",
+                        "totalPaths",
+                        "totalPathsCapped"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "personId",
+                    "slug",
+                    "paths"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/plans": {
       "get": {
         "operationId": "plans.catalog",
