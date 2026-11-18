@@ -5,8 +5,10 @@
 // JavaScript); this boundary is for anything else, inside the app shell, with the boundary's retry().
 
 import { LoadError } from '@/components/account/load-error';
-import { GRANTS_LOAD_ERROR } from '@/components/account/load-errors/grants';
+import { useAdminT } from '@/components/admin/i18n/client';
+import { grantsLoadError } from './load-error-text';
 
 export default function AdminGrantsError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  return <LoadError {...GRANTS_LOAD_ERROR} retry={retry} />;
+  const t = useAdminT();
+  return <LoadError {...grantsLoadError(t)} retry={retry} />;
 }
