@@ -8,6 +8,7 @@
 
 import type { ReactNode } from 'react';
 
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { AlertIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -60,10 +61,12 @@ function Field({
 }
 
 export function EditLinkForm({
+  t,
   link,
   slug,
   initial,
 }: {
+  t: AdminT;
   link: { id: string; fromYear: number | null; toYear: number | null; source: string | null };
   slug: string;
   initial: FormState | null;
@@ -87,22 +90,22 @@ export function EditLinkForm({
       <input type="hidden" name="relationshipId" value={link.id} />
       <input type="hidden" name="slug" value={slug} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field form={form} name="fromYear" label="From (year), optional" error={error('fromYear')}>
+        <Field form={form} name="fromYear" label={t('From (year), optional')} error={error('fromYear')}>
           {(props) => <input {...props} name="fromYear" inputMode="numeric" maxLength={4} autoComplete="off" defaultValue={value('fromYear', link.fromYear === null ? '' : String(link.fromYear))} className={cx(fieldClass, yearInput)} />}
         </Field>
-        <Field form={form} name="toYear" label="To (year), optional" error={error('toYear')}>
+        <Field form={form} name="toYear" label={t('To (year), optional')} error={error('toYear')}>
           {(props) => <input {...props} name="toYear" inputMode="numeric" maxLength={4} autoComplete="off" defaultValue={value('toYear', link.toYear === null ? '' : String(link.toYear))} className={cx(fieldClass, yearInput)} />}
         </Field>
       </div>
-      <Field form={form} name="source" label="Source" hint="Required. Where this training is recorded. Staff only." error={error('source')}>
+      <Field form={form} name="source" label={t('Source')} hint={t('Required. Where this training is recorded. Staff only.')} error={error('source')}>
         {(props) => <textarea {...props} name="source" rows={3} maxLength={2000} required defaultValue={value('source', link.source ?? '')} className={cx(fieldClass, 'py-2')} />}
       </Field>
-      <Field form={form} name="reason" label="Reason" hint="Required. Why, and on what basis; kept in the audit log with your name and role." error={error('reason')}>
+      <Field form={form} name="reason" label={t('Reason')} hint={t('Required. Why, and on what basis; kept in the audit log with your name and role.')} error={error('reason')}>
         {(props) => <textarea {...props} name="reason" rows={2} maxLength={2000} required defaultValue={value('reason', '')} className={cx(fieldClass, 'py-2')} />}
       </Field>
       <div>
         <button type="submit" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
-          Save the years and source
+          {t('Save the years and source')}
         </button>
       </div>
     </form>

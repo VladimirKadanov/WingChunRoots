@@ -5,24 +5,24 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { NameText } from '@/components/account/person-names';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { ArchiveLineageHead } from '@/server/services/archive-grids';
-import { number } from '../../grid-parts';
 
 export type WorkspaceTab = 'tree' | 'links';
 
-export function WorkspaceHeader({ lineage, tab, action }: { lineage: ArchiveLineageHead; tab: WorkspaceTab; action?: ReactNode }) {
+export function WorkspaceHeader({ t, lineage, tab, action }: { t: AdminT; lineage: ArchiveLineageHead; tab: WorkspaceTab; action?: ReactNode }) {
   const base = `/admin/archive/lineages/${lineage.slug}`;
   const tabs: { key: WorkspaceTab | 'details'; href: string; label: string }[] = [
-    { key: 'tree', href: base, label: 'Tree' },
-    { key: 'links', href: `${base}/links`, label: `Links · ${number.format(lineage.links)}` },
-    { key: 'details', href: `${base}#details`, label: 'Lineage details' },
+    { key: 'tree', href: base, label: t('Tree') },
+    { key: 'links', href: `${base}/links`, label: t('Links · {n}', { n: t.num(lineage.links) }) },
+    { key: 'details', href: `${base}#details`, label: t('Lineage details') },
   ];
   return (
     <header className="grid gap-4">
       <p className="eyebrow">
         <Link href="/admin/archive" className="link inline-flex min-h-11 items-center">
-          Lineages
+          {t('Lineages')}
         </Link>
         <span aria-hidden="true"> / </span>
         {lineage.name}
@@ -34,36 +34,36 @@ export function WorkspaceHeader({ lineage, tab, action }: { lineage: ArchiveLine
             <span>
               {lineage.root ? (
                 <>
-                  Root: <NameText name={lineage.root.name} />
+                  {t('Root:')} <NameText name={lineage.root.name} />
                 </>
               ) : (
-                'Root not known'
+                t('Root not known')
               )}
             </span>
-            <span>{lineage.links === 1 ? '1 link' : `${number.format(lineage.links)} links`}</span>
-            <span>{lineage.people === 1 ? '1 person' : `${number.format(lineage.people)} people`}</span>
-            {lineage.needsWork > 0 ? <span>{number.format(lineage.needsWork)} without a source or years</span> : null}
-            <span>{lineage.listed ? 'In the explorer' : 'Not in the explorer yet'}</span>
+            <span>{t.n(lineage.links, '{n} link', '{n} links')}</span>
+            <span>{t.n(lineage.people, '{n} person', '{n} people')}</span>
+            {lineage.needsWork > 0 ? <span>{t('{n} without a source or years', { n: t.num(lineage.needsWork) })}</span> : null}
+            <span>{lineage.listed ? t('In the explorer') : t('Not in the explorer yet')}</span>
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
           {lineage.listed && lineage.root ? (
             <Link href={`/explore?focus=${lineage.root.id}&lineage=${lineage.id}`} className={buttonVariants({ variant: 'secondary' })}>
-              Open in explorer
+              {t('Open in explorer')}
             </Link>
           ) : null}
           {action}
         </div>
       </div>
-      <nav aria-label="Lineage views" className="flex flex-wrap gap-1 border-b border-border-subtle">
-        {tabs.map((t) => (
+      <nav aria-label={t('Lineage views')} className="flex flex-wrap gap-1 border-b border-border-subtle">
+        {tabs.map((v) => (
           <Link
-            key={t.key}
-            href={t.href}
-            aria-current={t.key === tab ? 'page' : undefined}
+            key={v.key}
+            href={v.href}
+            aria-current={v.key === tab ? 'page' : undefined}
             className="-mb-px inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-ui text-fg-muted hover:text-fg aria-[current=page]:border-fg aria-[current=page]:font-semibold aria-[current=page]:text-fg"
           >
-            {t.label}
+            {v.label}
           </Link>
         ))}
       </nav>
