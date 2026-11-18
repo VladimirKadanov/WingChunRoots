@@ -678,7 +678,7 @@ const JOINED_PHASE_3: readonly FeatureKey[] = ['successor'];
  */
 export function upgradeBenefits(from: PlanCode, to: PlanCode, lead?: FeatureKey): Benefit[] {
   const rank = (key: FeatureKey) => (key === lead ? 0 : JOINED_PHASE_3.includes(key) ? 3 : JOINED_PILOT_LATER.includes(key) ? 2 : 1);
-  return FEATURES.filter((f) => f.availability === 'now' && !f.hidden && improves(f, from, to))
+  return FEATURES.filter((f) => !f.hidden && f.availability === 'now' && improves(f, from, to))
     .map((f, index) => ({ f, index }))
     .sort((a, b) => rank(a.f.key) - rank(b.f.key) || a.index - b.index)
     .map(({ f }) => ({
