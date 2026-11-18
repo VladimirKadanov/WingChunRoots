@@ -42,7 +42,7 @@ export interface AdminT {
   n(count: number, one: string, other: string, vars?: Vars): string;
   /** A number formatted for the language ("1,234" or "1 234"). */
   num(value: number): string;
-  /** "1 February 2026" or "1 февруари 2026 г.", in UTC. */
+  /** "1 February 2026" or "1 февруари 2026", in UTC. */
   day(value: Date | string): string;
   /** "19 Oct 2026" or "19.10.2026", in UTC: for dense tables. */
   shortDay(value: Date | string): string;
@@ -75,7 +75,8 @@ export function makeAdminT(lang: AdminLang, dict: AdminDict): AdminT {
     n: (count: number, one: string, other: string, vars?: Vars) =>
       fill(look(count === 1 ? one : other), { ...vars, n: num(count) }),
     num,
-    day: (value: Date | string) => (bg ? BG_DAY : EN_DAY).format(asDate(value)),
+    // Without the year's " г.", so a date can end a sentence ("… 2026.", not "… 2026 г..").
+    day: (value: Date | string) => (bg ? BG_DAY.format(asDate(value)).replace(/\s*г\.$/, '') : EN_DAY.format(asDate(value))),
     shortDay: (value: Date | string) => {
       const d = asDate(value);
       return bg

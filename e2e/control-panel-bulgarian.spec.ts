@@ -18,7 +18,8 @@ test.afterAll(closeHelpers);
 const ADMIN_ROUTES = ROUTES.filter((route) => route.path.startsWith('/admin') && route.status === 200);
 
 async function chooseBulgarian(context: BrowserContext): Promise<void> {
-  await context.addCookies([{ name: 'wcr.admin_lang', value: 'bg', url: `${BASE_URL}/admin`, sameSite: 'Lax' }]);
+  // The switch's own cookie: path /admin (src/app/api/admin/language/route.ts), so the switch replaces it.
+  await context.addCookies([{ name: 'wcr.admin_lang', value: 'bg', domain: new URL(BASE_URL).hostname, path: '/admin', sameSite: 'Lax' }]);
 }
 
 /**

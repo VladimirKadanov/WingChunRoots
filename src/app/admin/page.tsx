@@ -217,7 +217,7 @@ export default async function AdminPage() {
   const isAdmin = role === 'admin';
   const failed = overview.failedEmailDeliveries;
   const reviewMax = Math.max(1, ...d.review.groups.map((g) => g.open));
-  const usd = new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const usd = new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 });
   const recent = (n: number) => t('{n} new', { n: t.num(n) });
 
   return (

@@ -148,7 +148,7 @@ function reportsHref(report: ReportKey, period: ReportPeriod): string {
 }
 
 const csvHref = (table: ReportTable, period: ReportPeriod) => `/api/admin/reports/${table}?period=${period}`;
-const usdOf = (t: AdminT) => new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const usdOf = (t: AdminT) => new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 });
 function days(t: AdminT, d: number | null): string {
   if (d === null) return '—';
   const fixed = t.lang === 'bg' ? d.toFixed(1).replace('.', ',') : d.toFixed(1);

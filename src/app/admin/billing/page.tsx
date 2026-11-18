@@ -106,7 +106,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/admin" />;
   const t = await getAdminT();
-  const usd = new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const usd = new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 });
   const view = await pageRead(
     serverClient(await headers(), guard.principal).billing.adminList({ ...(filter === 'all' ? {} : { status: filter }), ...(plan ? { plan } : {}), ...(q ? { q } : {}), page }),
   );
