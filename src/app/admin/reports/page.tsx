@@ -13,10 +13,11 @@ import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { adminFieldClass, AdminPageHeader, EmptyState } from '@/components/admin/table-parts';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { formatDay } from '@/lib/dates';
 import { countryName } from '@/lib/regions';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
@@ -26,44 +27,115 @@ import {
   type ArchiveReport,
   type BillingReport,
   DEFAULT_REPORT_PERIOD,
-  GROWTH_LABELS,
   GROWTH_SERIES,
   type GrowthReport,
-  PERIOD_LABELS,
+  type GrowthSeries,
   REPORT_PERIODS,
   type ReportPeriod,
   type ReportRange,
   type ReviewReport,
   type SchoolsReport,
+  type SchoolStageKey,
   type StaffReport,
+  type SubscriptionStatus,
   SUBSCRIPTION_STATUS_LABELS,
 } from '@/server/services/admin-reports';
 
-import { BarChart, bucketLabel, ChartLegend, type ChartSeries, CsvLink, FigureTable, number, ReportCard } from './report-parts';
+import { BarChart, bucketLabel, ChartLegend, type ChartSeries, CsvLink, FigureTable, ReportCard } from './report-parts';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Reports',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Reports'), robots: { index: false } };
+}
 
 const PAGE = '/admin/reports';
-const REPORTS = [
-  { key: 'growth', label: 'Growth', note: 'Accounts, people on record, verified links, schools' },
-  { key: 'review', label: 'Review throughput', note: 'Requests opened and decided, time to decide' },
-  { key: 'archive', label: 'Archive completeness', note: 'People and sourced links per lineage' },
-  { key: 'schools', label: 'Schools', note: 'By stage, country and city' },
-  { key: 'billing', label: 'Billing', note: 'Plans and their monthly value (test mode)', adminOnly: true },
-] as const;
+const REPORTS = [{ key: 'growth' }, { key: 'review' }, { key: 'archive' }, { key: 'schools' }, { key: 'billing', adminOnly: true }] as const;
 type ReportKey = (typeof REPORTS)[number]['key'];
 
-const LOAD_ERROR = {
-  eyebrow: 'Control panel',
-  title: 'Reports',
-  message: "We couldn't load this report. Nothing was changed.",
-  back: { href: '/admin', label: 'Back to the dashboard' },
-} as const;
+/** A report's name and its note in the list. */
+function reportText(t: AdminT, key: ReportKey): { label: string; note: string } {
+  switch (key) {
+    case 'growth': return { label: t('Growth'), note: t('Accounts, people on record, verified links, schools') };
+    case 'review': return { label: t('Review throughput'), note: t('Requests opened and decided, time to decide') };
+    case 'archive': return { label: t('Archive completeness'), note: t('People and sourced links per lineage') };
+    case 'schools': return { label: t('Schools'), note: t('By stage, country and city') };
+    case 'billing': return { label: t('Billing'), note: t('Plans and their monthly value (test mode)') };
+  }
+}
+
+function periodLabel(t: AdminT, period: ReportPeriod): string {
+  switch (period) {
+    case '30d': return t('Last 30 days');
+    case '90d': return t('Last 90 days');
+    case '12m': return t('Last 12 months');
+  }
+}
+
+function growthLabel(t: AdminT, key: GrowthSeries): string {
+  switch (key) {
+    case 'accounts': return t('New accounts');
+    case 'people': return t('New people on record');
+    case 'verifiedLinks': return t('Links verified');
+    case 'schools': return t('Schools added, listed now');
+  }
+}
+
+/** The review groups of admin-dashboard.ts REVIEW_KIND_GROUPS, by key; an unknown one keeps its label. */
+function groupLabel(t: AdminT, key: string, label: string): string {
+  switch (key) {
+    case 'claims': return t('Historical and profile claims');
+    case 'instructors': return t('Instructor checks');
+    case 'schools': return t('School listings');
+    case 'organizations': return t('Organizations');
+    case 'records': return t('Record proposals');
+    case 'disputes': return t('Disputes, reports and appeals');
+    case 'deletions': return t('Account deletion requests');
+    case 'all': return t('All groups');
+    default: return label;
+  }
+}
+
+function stageLabel(t: AdminT, key: SchoolStageKey): string {
+  switch (key) {
+    case 'current': return t('Listed, current');
+    case 'awaiting_confirmation': return t('Listed, awaiting confirmation');
+    case 'activity_hidden': return t('Hidden from the map (no confirmation)');
+    case 'pending_review': return t('Waiting for review');
+    case 'draft': return t('Draft');
+    case 'hidden': return t('Hidden by staff or the owner');
+    case 'archived': return t('Archived');
+  }
+}
+
+function statusLabel(t: AdminT, status: SubscriptionStatus): string {
+  switch (status) {
+    case 'incomplete': return t('Not completed');
+    case 'active': return t('Active');
+    case 'past_due': return t('Payment overdue');
+    case 'canceled': return t('Ended');
+  }
+}
+
+/** A country's name: English as the rest of the site shows it, Bulgarian from Intl. */
+function country(t: AdminT, code: string): string | null {
+  if (t.lang === 'en') return countryName(code);
+  try {
+    return new Intl.DisplayNames(t.locale, { type: 'region' }).of(code) ?? countryName(code);
+  } catch {
+    return countryName(code);
+  }
+}
+
+function loadError(t: AdminT) {
+  return {
+    eyebrow: t('Control panel'),
+    title: t('Reports'),
+    message: t("We couldn't load this report. Nothing was changed."),
+    back: { href: '/admin', label: t('Back to the dashboard') },
+  };
+}
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
@@ -76,13 +148,20 @@ function reportsHref(report: ReportKey, period: ReportPeriod): string {
 }
 
 const csvHref = (table: ReportTable, period: ReportPeriod) => `/api/admin/reports/${table}?period=${period}`;
-const usd = new Intl.NumberFormat('en', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-const days = (d: number | null) => (d === null ? '—' : `${d.toFixed(1)} ${d === 1 ? 'day' : 'days'}`);
+const usdOf = (t: AdminT) => new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+function days(t: AdminT, d: number | null): string {
+  if (d === null) return '—';
+  const fixed = t.lang === 'bg' ? d.toFixed(1).replace('.', ',') : d.toFixed(1);
+  return d === 1 ? t('{d} day', { d: fixed }) : t('{d} days', { d: fixed });
+}
 const pct = (p: number | null) => (p === null ? '—' : `${p}%`);
+const perUnit = (t: AdminT, unit: ReportRange['unit']) => (unit === 'week' ? t('per week') : t('per month'));
+const firstColumnOf = (t: AdminT, unit: ReportRange['unit']) => (unit === 'week' ? t('Week of') : t('Month'));
 
-function rangeLine(range: ReportRange): string {
-  const unit = range.unit === 'week' ? 'per week (from Monday)' : 'per month';
-  return `${formatDay(range.from)} to ${formatDay(range.to)}, ${unit}, UTC.`;
+function rangeLine(t: AdminT, range: ReportRange): string {
+  const from = t.day(range.from);
+  const to = t.day(range.to);
+  return range.unit === 'week' ? t('{from} to {to}, per week (from Monday), UTC.', { from, to }) : t('{from} to {to}, per month, UTC.', { from, to });
 }
 
 const FILLED_OUTLINE = (a: string, b: string): ChartSeries[] => [
@@ -92,6 +171,7 @@ const FILLED_OUTLINE = (a: string, b: string): ChartSeries[] => [
 
 export default async function AdminReportsPage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
+  const t = await getAdminT();
   const askedPeriod = typeof query.period === 'string' ? query.period : DEFAULT_REPORT_PERIOD;
   const period: ReportPeriod = (REPORT_PERIODS as readonly string[]).includes(askedPeriod) ? (askedPeriod as ReportPeriod) : DEFAULT_REPORT_PERIOD;
   const askedReport = typeof query.report === 'string' ? query.report : 'growth';
@@ -106,43 +186,43 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   const client = serverClient(await headers(), guard.principal);
   const read: Promise<StaffReport | BillingReport> = report === 'billing' ? client.admin.billingReport({ period }) : client.admin.reports({ report, period });
   const data = await pageRead(read);
-  if (!data) return <LoadError {...LOAD_ERROR} retryHref={reportsHref(report, period)} />;
-  const current = REPORTS.find((r) => r.key === report)!;
+  if (!data) return <LoadError {...loadError(t)} retryHref={reportsHref(report, period)} />;
+  const current = reportText(t, report);
 
   return (
     <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
       <AdminPageHeader
         eyebrow={
           <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Control panel
+            {t('Control panel')}
           </Link>
         }
-        title="Reports"
-        summary={<span data-testid="report-range">{rangeLine(data.range)}</span>}
-        intro="Counts only: no row names a person, an account or an e-mail address, and schools are counted by city, never by their place on the map. Each table downloads as CSV with the same rows."
+        title={t('Reports')}
+        summary={<span data-testid="report-range">{rangeLine(t, data.range)}</span>}
+        intro={t('Counts only: no row names a person, an account or an e-mail address, and schools are counted by city, never by their place on the map. Each table downloads as CSV with the same rows.')}
       />
 
       <form action={PAGE} method="get" className="mt-5 flex flex-wrap items-end gap-3" data-testid="report-period-form">
         {report !== 'growth' ? <input type="hidden" name="report" value={report} /> : null}
         <div className="grid min-w-0 basis-[14rem] gap-1.5">
           <label htmlFor="report-period" className="text-sm font-semibold">
-            Period
+            {t('Period')}
           </label>
           <select id="report-period" name="period" defaultValue={period} className={adminFieldClass}>
             {REPORT_PERIODS.map((p) => (
               <option key={p} value={p}>
-                {PERIOD_LABELS[p]}
+                {periodLabel(t, p)}
               </option>
             ))}
           </select>
         </div>
         <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-          Show
+          {t('Show')}
         </button>
       </form>
 
       <div className="mt-6 grid gap-5 2xl:grid-cols-[15rem_minmax(0,1fr)] 2xl:items-start">
-        <nav aria-label="Reports">
+        <nav aria-label={t('Reports')}>
           <ul className="flex flex-wrap gap-2 2xl:grid 2xl:gap-1" data-testid="report-list">
             {reports.map((r) => (
               <li key={r.key}>
@@ -156,8 +236,8 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
                     r.key === report ? 'border-fg bg-surface-2 font-semibold 2xl:border-l-[3px]' : 'border-border-subtle hover:bg-surface-1 2xl:border-transparent',
                   )}
                 >
-                  <span>{r.label}</span>
-                  <span className="hidden text-sm font-normal text-fg-muted 2xl:block">{r.note}</span>
+                  <span>{reportText(t, r.key).label}</span>
+                  <span className="hidden text-sm font-normal text-fg-muted 2xl:block">{reportText(t, r.key).note}</span>
                 </Link>
               </li>
             ))}
@@ -165,84 +245,86 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
         </nav>
 
         <section aria-label={current.label} className="grid min-w-0 gap-4" data-testid="report" data-report={report}>
-          {data.kind === 'growth' ? <Growth r={data} period={period} /> : null}
-          {data.kind === 'review' ? <Review r={data} period={period} /> : null}
-          {data.kind === 'archive' ? <Archive r={data} period={period} /> : null}
-          {data.kind === 'schools' ? <Schools r={data} period={period} /> : null}
-          {data.kind === 'billing' ? <Billing r={data} period={period} /> : null}
+          {data.kind === 'growth' ? <Growth r={data} period={period} t={t} /> : null}
+          {data.kind === 'review' ? <Review r={data} period={period} t={t} /> : null}
+          {data.kind === 'archive' ? <Archive r={data} period={period} t={t} /> : null}
+          {data.kind === 'schools' ? <Schools r={data} period={period} t={t} /> : null}
+          {data.kind === 'billing' ? <Billing r={data} period={period} t={t} /> : null}
         </section>
       </div>
     </div>
   );
 }
 
-function Growth({ r, period }: { r: GrowthReport; period: ReportPeriod }) {
+function Growth({ r, period, t }: { r: GrowthReport; period: ReportPeriod; t: AdminT }) {
   const unit = r.range.unit;
   return (
     <>
-      <section aria-label="Totals" className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
+      <section aria-label={t('Totals')} className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         {GROWTH_SERIES.map((key) => (
           <div key={key} className="grid min-w-0 content-start gap-1.5 rounded-md border border-border-subtle bg-surface-1 p-4" data-testid="growth-total" data-series={key}>
-            <span className="text-sm text-fg-muted">{GROWTH_LABELS[key]}</span>
-            <span className="font-display text-2xl leading-none">{number.format(r.totals[key].inPeriod)}</span>
-            <span className="text-sm text-fg-muted">{number.format(r.totals[key].now)} in all now</span>
+            <span className="text-sm text-fg-muted">{growthLabel(t, key)}</span>
+            <span className="font-display text-2xl leading-none">{t.num(r.totals[key].inPeriod)}</span>
+            <span className="text-sm text-fg-muted">{t('{count} in all now', { count: t.num(r.totals[key].now) })}</span>
           </div>
         ))}
       </section>
       {GROWTH_SERIES.map((key) => (
-        <ReportCard key={key} title={GROWTH_LABELS[key]} id={`growth-${key}`}>
+        <ReportCard key={key} title={growthLabel(t, key)} id={`growth-${key}`}>
           <BarChart
-            buckets={r.buckets.map((b) => ({ label: bucketLabel(b.start, unit), values: [b[key]] }))}
-            series={[{ name: GROWTH_LABELS[key], style: 'filled' }]}
-            caption={`${GROWTH_LABELS[key]} ${unit === 'week' ? 'per week' : 'per month'}`}
-            firstColumn={unit === 'week' ? 'Week of' : 'Month'}
+            buckets={r.buckets.map((b) => ({ label: bucketLabel(b.start, unit, t.lang), values: [b[key]] }))}
+            series={[{ name: growthLabel(t, key), style: 'filled' }]}
+            caption={t('{series} {unit}', { series: growthLabel(t, key), unit: perUnit(t, unit) })}
+            firstColumn={firstColumnOf(t, unit)}
+            format={t.num}
           />
         </ReportCard>
       ))}
       <p className="text-sm text-fg-muted">
-        Schools count by the day they were added, if they are listed now. People on record leave out erased records. <CsvLink href={csvHref('growth', period)} label="growth per period" />
+        {t('Schools count by the day they were added, if they are listed now. People on record leave out erased records.')} <CsvLink t={t} href={csvHref('growth', period)} label={t('growth per period')} />
       </p>
     </>
   );
 }
 
-function Review({ r, period }: { r: ReviewReport; period: ReportPeriod }) {
+function Review({ r, period, t }: { r: ReviewReport; period: ReportPeriod; t: AdminT }) {
   const unit = r.range.unit;
-  const series = FILLED_OUTLINE('Opened', 'Decided');
+  const series = FILLED_OUTLINE(t('Opened'), t('Decided'));
   type Row = ReviewReport['groups'][number];
-  const total: Row = { key: 'all', label: 'All groups', ...r.totals };
+  const total: Row = { key: 'all', label: t('All groups'), ...r.totals };
   return (
     <>
-      <ReportCard title={`Requests opened and decided, ${unit === 'week' ? 'per week' : 'per month'}`} id="review-chart" action={<ChartLegend series={series} />} testId="review-chart">
+      <ReportCard title={t('Requests opened and decided, {unit}', { unit: perUnit(t, unit) })} id="review-chart" action={<ChartLegend series={series} />} testId="review-chart">
         <BarChart
-          buckets={r.buckets.map((b) => ({ label: bucketLabel(b.start, unit), values: [b.opened, b.decided] }))}
+          buckets={r.buckets.map((b) => ({ label: bucketLabel(b.start, unit, t.lang), values: [b.opened, b.decided] }))}
           series={series}
-          caption={`Review requests opened and decided ${unit === 'week' ? 'per week' : 'per month'}`}
-          firstColumn={unit === 'week' ? 'Week of' : 'Month'}
+          caption={t('Review requests opened and decided {unit}', { unit: perUnit(t, unit) })}
+          firstColumn={firstColumnOf(t, unit)}
+          format={t.num}
         />
         <p className="mt-2 text-sm text-fg-muted">
-          {number.format(r.totals.opened)} opened and {number.format(r.totals.decided)} decided in the period; median time to a decision {days(r.totals.medianDays)}.{' '}
-          <CsvLink href={csvHref('review-periods', period)} label="opened and decided per period" />
+          {t('{opened} opened and {decided} decided in the period; median time to a decision {median}.', { opened: t.num(r.totals.opened), decided: t.num(r.totals.decided), median: days(t, r.totals.medianDays) })}{' '}
+          <CsvLink t={t} href={csvHref('review-periods', period)} label={t('opened and decided per period')} />
         </p>
       </ReportCard>
-      <ReportCard title="By group" id="review-groups" action={<CsvLink href={csvHref('review-groups', period)} label="review throughput by group" />}>
-        <p className="mt-1 text-sm text-fg-muted">Decided means approved, rejected or closed without a decision (withdrawn, or the account was erased). The median counts the cases decided in the period.</p>
+      <ReportCard title={t('By group')} id="review-groups" action={<CsvLink t={t} href={csvHref('review-groups', period)} label={t('review throughput by group')} />}>
+        <p className="mt-1 text-sm text-fg-muted">{t('Decided means approved, rejected or closed without a decision (withdrawn, or the account was erased). The median counts the cases decided in the period.')}</p>
         <FigureTable<Row>
-          caption="Review throughput by group in the period"
+          caption={t('Review throughput by group in the period')}
           testId="review-group"
           rows={r.groups}
           rowKey={(g) => g.key}
           footer={total}
           columns={[
-            { header: 'Group', cell: (g) => g.label },
-            { header: 'Opened', cell: (g) => number.format(g.opened) },
-            { header: 'Decided', cell: (g) => number.format(g.decided) },
-            { header: 'Approved', cell: (g) => number.format(g.approved) },
-            { header: 'Rejected', cell: (g) => number.format(g.rejected) },
-            { header: 'Closed', cell: (g) => number.format(g.dismissed) },
-            { header: 'Median time', cell: (g) => days(g.medianDays) },
-            { header: 'Appealed', cell: (g) => number.format(g.appealed) },
-            { header: 'Open now', cell: (g) => number.format(g.openNow) },
+            { header: t('Group'), cell: (g) => groupLabel(t, g.key, g.label) },
+            { header: t('Opened'), cell: (g) => t.num(g.opened) },
+            { header: t('Decided'), cell: (g) => t.num(g.decided) },
+            { header: t('Approved'), cell: (g) => t.num(g.approved) },
+            { header: t('Rejected'), cell: (g) => t.num(g.rejected) },
+            { header: t('Closed'), cell: (g) => t.num(g.dismissed) },
+            { header: t('Median time'), cell: (g) => days(t, g.medianDays) },
+            { header: t('Appealed'), cell: (g) => t.num(g.appealed) },
+            { header: t('Open now'), cell: (g) => t.num(g.openNow) },
           ]}
         />
       </ReportCard>
@@ -250,32 +332,32 @@ function Review({ r, period }: { r: ReviewReport; period: ReportPeriod }) {
   );
 }
 
-function Archive({ r, period }: { r: ArchiveReport; period: ReportPeriod }) {
+function Archive({ r, period, t }: { r: ArchiveReport; period: ReportPeriod; t: AdminT }) {
   type Row = ArchiveReport['lineages'][number];
   return (
-    <ReportCard title="Archive completeness by lineage" id="archive-lineages" action={<CsvLink href={csvHref('archive-lineages', period)} label="archive completeness by lineage" />}>
+    <ReportCard title={t('Archive completeness by lineage')} id="archive-lineages" action={<CsvLink t={t} href={csvHref('archive-lineages', period)} label={t('archive completeness by lineage')} />}>
       <p className="mt-1 max-w-[72ch] text-sm text-fg-muted">
-        Established links are verified or in arbitration. A link is sourced when an archivist noted where it was found, or an evidence file is attached to it or to its review.
-        Someone in two lineages counts once in the total.
+        {t('Established links are verified or in arbitration. A link is sourced when an archivist noted where it was found, or an evidence file is attached to it or to its review.')}{' '}
+        {t('Someone in two lineages counts once in the total.')}
       </p>
       {r.lineages.length === 0 ? (
         <div className="mt-3">
-          <EmptyState testId="archive-empty">No lineage is recorded yet. Add one in the archive editor.</EmptyState>
+          <EmptyState testId="archive-empty">{t('No lineage is recorded yet. Add one in the archive editor.')}</EmptyState>
         </div>
       ) : (
         <FigureTable<Row>
-          caption="People, established links and sourced links per lineage"
+          caption={t('People, established links and sourced links per lineage')}
           testId="archive-lineage"
           rows={r.lineages}
           rowKey={(l) => l.slug}
-          footer={{ slug: '', name: 'All lineages', ...r.totals }}
+          footer={{ slug: '', name: t('All lineages'), ...r.totals }}
           columns={[
-            { header: 'Lineage', cell: (l) => (l.slug ? <span translate="no">{l.name}</span> : l.name) },
-            { header: 'People', cell: (l) => number.format(l.people) },
-            { header: 'Links', cell: (l) => number.format(l.links) },
-            { header: 'Sourced', cell: (l) => number.format(l.sourced) },
-            { header: 'Sourced share', cell: (l) => <ShareBar value={l.sourcedPercent} /> },
-            { header: 'Added in period', cell: (l) => number.format(l.addedInPeriod) },
+            { header: t('Lineage'), cell: (l) => (l.slug ? <span translate="no">{l.name}</span> : l.name) },
+            { header: t('People'), cell: (l) => t.num(l.people) },
+            { header: t('Links'), cell: (l) => t.num(l.links) },
+            { header: t('Sourced'), cell: (l) => t.num(l.sourced) },
+            { header: t('Sourced share'), cell: (l) => <ShareBar value={l.sourcedPercent} /> },
+            { header: t('Added in period'), cell: (l) => t.num(l.addedInPeriod) },
           ]}
         />
       )}
@@ -295,57 +377,57 @@ function ShareBar({ value }: { value: number | null }) {
   );
 }
 
-function Schools({ r, period }: { r: SchoolsReport; period: ReportPeriod }) {
+function Schools({ r, period, t }: { r: SchoolsReport; period: ReportPeriod; t: AdminT }) {
   type Stage = SchoolsReport['stages'][number];
   type Country = SchoolsReport['countries'][number];
   type City = SchoolsReport['cities'][number];
   return (
     <>
-      <ReportCard title="Schools by stage" id="schools-stages" action={<CsvLink href={csvHref('schools-stages', period)} label="schools by stage" />}>
-        <p className="mt-1 text-sm text-fg-muted">{number.format(r.listed)} on the public map now. A listed school awaits confirmation from day 90 without an edit, and is hidden from the map from day 105.</p>
+      <ReportCard title={t('Schools by stage')} id="schools-stages" action={<CsvLink t={t} href={csvHref('schools-stages', period)} label={t('schools by stage')} />}>
+        <p className="mt-1 text-sm text-fg-muted">{t('{count} on the public map now. A listed school awaits confirmation from day 90 without an edit, and is hidden from the map from day 105.', { count: t.num(r.listed) })}</p>
         <FigureTable<Stage>
-          caption="Schools by stage"
+          caption={t('Schools by stage')}
           testId="schools-stage"
           rows={r.stages}
           rowKey={(s) => s.key}
           columns={[
-            { header: 'Stage', cell: (s) => s.label },
-            { header: 'Schools', cell: (s) => number.format(s.count) },
-            { header: 'Added in period', cell: (s) => number.format(s.addedInPeriod) },
+            { header: t('Stage'), cell: (s) => stageLabel(t, s.key) },
+            { header: t('Schools'), cell: (s) => t.num(s.count) },
+            { header: t('Added in period'), cell: (s) => t.num(s.addedInPeriod) },
           ]}
         />
       </ReportCard>
-      <ReportCard title="Listed schools by country" id="schools-countries" action={<CsvLink href={csvHref('schools-countries', period)} label="listed schools by country" />}>
+      <ReportCard title={t('Listed schools by country')} id="schools-countries" action={<CsvLink t={t} href={csvHref('schools-countries', period)} label={t('listed schools by country')} />}>
         {r.countries.length === 0 ? (
           <div className="mt-3">
-            <EmptyState testId="schools-empty">No school is on the public map yet. New listings are decided in the review queue.</EmptyState>
+            <EmptyState testId="schools-empty">{t('No school is on the public map yet. New listings are decided in the review queue.')}</EmptyState>
           </div>
         ) : (
           <FigureTable<Country>
-            caption="Listed schools by country"
+            caption={t('Listed schools by country')}
             testId="schools-country"
             rows={r.countries}
             rowKey={(c) => c.countryCode}
             columns={[
-              { header: 'Country', cell: (c) => countryName(c.countryCode) },
-              { header: 'Listed schools', cell: (c) => number.format(c.listed) },
-              { header: 'Cities', cell: (c) => number.format(c.cities) },
-              { header: 'Added in period', cell: (c) => number.format(c.addedInPeriod) },
+              { header: t('Country'), cell: (c) => country(t, c.countryCode) },
+              { header: t('Listed schools'), cell: (c) => t.num(c.listed) },
+              { header: t('Cities'), cell: (c) => t.num(c.cities) },
+              { header: t('Added in period'), cell: (c) => t.num(c.addedInPeriod) },
             ]}
           />
         )}
       </ReportCard>
       {r.cities.length > 0 ? (
-        <ReportCard title="Listed schools by city" id="schools-cities" action={<CsvLink href={csvHref('schools-cities', period)} label="listed schools by city" />}>
+        <ReportCard title={t('Listed schools by city')} id="schools-cities" action={<CsvLink t={t} href={csvHref('schools-cities', period)} label={t('listed schools by city')} />}>
           <FigureTable<City>
-            caption="Listed schools by city, the most first"
+            caption={t('Listed schools by city, the most first')}
             testId="schools-city"
             rows={r.cities}
             rowKey={(c) => `${c.countryCode}-${c.city}`}
             columns={[
-              { header: 'City', cell: (c) => <span translate="no">{c.city}</span> },
-              { header: 'Country', cell: (c) => countryName(c.countryCode), numeric: false },
-              { header: 'Listed schools', cell: (c) => number.format(c.listed) },
+              { header: t('City'), cell: (c) => <span translate="no">{c.city}</span> },
+              { header: t('Country'), cell: (c) => country(t, c.countryCode), numeric: false },
+              { header: t('Listed schools'), cell: (c) => t.num(c.listed) },
             ]}
           />
         </ReportCard>
@@ -354,56 +436,62 @@ function Schools({ r, period }: { r: SchoolsReport; period: ReportPeriod }) {
   );
 }
 
-function Billing({ r, period }: { r: BillingReport; period: ReportPeriod }) {
+function Billing({ r, period, t }: { r: BillingReport; period: ReportPeriod; t: AdminT }) {
   const unit = r.range.unit;
-  const series = FILLED_OUTLINE('Started', 'Ended');
+  const series = FILLED_OUTLINE(t('Started'), t('Ended'));
+  const usd = usdOf(t);
   type Bucket = BillingReport['buckets'][number];
   type Plan = BillingReport['byPlan'][number];
   const statuses = Object.keys(SUBSCRIPTION_STATUS_LABELS) as (keyof typeof SUBSCRIPTION_STATUS_LABELS)[];
   return (
     <>
       <p className="text-ui" data-testid="billing-monthly">
-        Test mode, no real charge. Monthly value now at the proposed prices: <strong>{usd.format(r.monthlyCents / 100)}</strong> (a yearly plan counts a twelfth).
+        {t('Test mode, no real charge. Monthly value now at the proposed prices:')} <strong>{usd.format(r.monthlyCents / 100)}</strong> {t('(a yearly plan counts a twelfth).')}
       </p>
-      <ReportCard title={`Subscriptions started and ended, ${unit === 'week' ? 'per week' : 'per month'}`} id="billing-chart" action={<ChartLegend series={series} />}>
+      <ReportCard title={t('Subscriptions started and ended, {unit}', { unit: perUnit(t, unit) })} id="billing-chart" action={<ChartLegend series={series} />}>
         <BarChart
-          buckets={r.buckets.map((b) => ({ label: bucketLabel(b.start, unit), values: [b.started, b.ended] }))}
+          buckets={r.buckets.map((b) => ({ label: bucketLabel(b.start, unit, t.lang), values: [b.started, b.ended] }))}
           series={series}
-          caption={`Subscriptions started and ended ${unit === 'week' ? 'per week' : 'per month'}`}
-          firstColumn={unit === 'week' ? 'Week of' : 'Month'}
+          caption={t('Subscriptions started and ended {unit}', { unit: perUnit(t, unit) })}
+          firstColumn={firstColumnOf(t, unit)}
+          format={t.num}
         />
       </ReportCard>
-      <ReportCard title="Running and monthly value" id="billing-periods" action={<CsvLink href={csvHref('billing-periods', period)} label="subscriptions per period" />}>
-        <p className="mt-1 max-w-[72ch] text-sm text-fg-muted">At the end of each {unit}: subscriptions that had started and not ended, at the plan they have now (a change of plan is not kept as history).</p>
+      <ReportCard title={t('Running and monthly value')} id="billing-periods" action={<CsvLink t={t} href={csvHref('billing-periods', period)} label={t('subscriptions per period')} />}>
+        <p className="mt-1 max-w-[72ch] text-sm text-fg-muted">
+          {unit === 'week'
+            ? t('At the end of each week: subscriptions that had started and not ended, at the plan they have now (a change of plan is not kept as history).')
+            : t('At the end of each month: subscriptions that had started and not ended, at the plan they have now (a change of plan is not kept as history).')}
+        </p>
         <FigureTable<Bucket>
-          caption="Subscriptions per period and their monthly value"
+          caption={t('Subscriptions per period and their monthly value')}
           testId="billing-period"
           rows={r.buckets}
           rowKey={(b) => b.start}
           columns={[
-            { header: unit === 'week' ? 'Week of' : 'Month', cell: (b) => bucketLabel(b.start, unit) },
-            { header: 'Started', cell: (b) => number.format(b.started) },
-            { header: 'Ended', cell: (b) => number.format(b.ended) },
-            { header: 'Running at the end', cell: (b) => number.format(b.running) },
-            { header: 'Monthly value', cell: (b) => usd.format(b.monthlyCents / 100) },
+            { header: firstColumnOf(t, unit), cell: (b) => bucketLabel(b.start, unit, t.lang) },
+            { header: t('Started'), cell: (b) => t.num(b.started) },
+            { header: t('Ended'), cell: (b) => t.num(b.ended) },
+            { header: t('Running at the end'), cell: (b) => t.num(b.running) },
+            { header: t('Monthly value'), cell: (b) => usd.format(b.monthlyCents / 100) },
           ]}
         />
       </ReportCard>
-      <ReportCard title="By plan and status, now" id="billing-plans" action={<CsvLink href={csvHref('billing-plans', period)} label="subscriptions by plan and status" />}>
+      <ReportCard title={t('By plan and status, now')} id="billing-plans" action={<CsvLink t={t} href={csvHref('billing-plans', period)} label={t('subscriptions by plan and status')} />}>
         {r.byPlan.length === 0 ? (
           <div className="mt-3">
-            <EmptyState testId="billing-empty">No subscription yet. A test checkout on /billing adds one.</EmptyState>
+            <EmptyState testId="billing-empty">{t('No subscription yet. A test checkout on /billing adds one.')}</EmptyState>
           </div>
         ) : (
           <FigureTable<Plan>
-            caption="Subscriptions by plan and status"
+            caption={t('Subscriptions by plan and status')}
             testId="billing-plan"
             rows={r.byPlan}
             rowKey={(p) => p.code}
             columns={[
-              { header: 'Plan', cell: (p) => p.name },
-              ...statuses.map((s) => ({ header: SUBSCRIPTION_STATUS_LABELS[s], cell: (p: Plan) => number.format(p.counts[s]) })),
-              { header: 'All', cell: (p) => number.format(p.total) },
+              { header: t('Plan'), cell: (p) => p.name },
+              ...statuses.map((s) => ({ header: statusLabel(t, s), cell: (p: Plan) => t.num(p.counts[s]) })),
+              { header: t('All'), cell: (p) => t.num(p.total) },
             ]}
           />
         )}
