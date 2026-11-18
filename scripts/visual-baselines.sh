@@ -53,7 +53,8 @@ accept() {
       count=$((count + 1))
     done < <(find "$source" -path '*-visual/*' -name '*-actual.png' | sort)
   elif [ -f "$source" ]; then
-    # GitHub prefixes each log line with a timestamp; the payload is the last field.
+    # GitHub prefixes each log line with a timestamp; the payload is the last field. A long log
+    # is stored in parts, and a part can start with a byte order mark before its timestamp.
     count="$(node - "$source" "$BASELINES" "$NAME_PATTERN" <<'JS'
 const fs = require('fs');
 const crypto = require('crypto');

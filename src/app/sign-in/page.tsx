@@ -7,6 +7,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { AuthFrame, FormFooter, Notice } from '@/components/account/auth-frame';
+import { ForgetRecentSearches } from '@/components/account/forget-recent-searches';
 import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult, readSignInEmail } from '@/server/forms/flash';
 import { SignInForm } from './sign-in-form';
@@ -38,6 +39,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
       lede={next ? 'Sign in to open the page you asked for.' : undefined}
     >
       {notice ? <Notice>{NOTICES[notice]}</Notice> : null}
+      {notice === 'signed-out' ? <ForgetRecentSearches /> : null}
       <SignInForm next={next} email={notice === 'verified' ? email : null} initial={initial} />
       <FormFooter>
         <p>

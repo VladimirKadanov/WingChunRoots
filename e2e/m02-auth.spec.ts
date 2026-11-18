@@ -406,7 +406,7 @@ test('@M02 a staff session without a verified second factor is redirected from /
   // Passing the second factor in this session opens the page.
   await submitStaffCode(page, 'Verify this session');
   await expect(page).toHaveURL(/\/admin$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Administration' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
 });
 
 test('@M02 a seeded staff account signs in with the test TOTP and opens /admin', async ({ page }) => {
@@ -425,7 +425,7 @@ test('@M02 a seeded staff account signs in with the test TOTP and opens /admin',
   await expect(page).toHaveURL(/\/onboarding$/);
 
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { level: 1, name: 'Administration' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
   await expect(page.getByText('Failed e-mail deliveries')).toBeVisible();
   await expect(page.getByTestId('failed-email-deliveries')).toHaveText(/^\d+$/);
 
@@ -436,7 +436,7 @@ test('@M02 a seeded staff account signs in with the test TOTP and opens /admin',
     await giveOwnAddress(archivist);
     await signInAs(other, 'archivist');
     await other.goto('/admin');
-    await expect(other.getByRole('heading', { level: 1, name: 'Administration' })).toBeVisible();
+    await expect(other.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
   } finally {
     await archivist.close();
   }
