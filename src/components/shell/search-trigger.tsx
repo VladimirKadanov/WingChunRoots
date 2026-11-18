@@ -89,14 +89,12 @@ export function SearchField({ variant }: { variant: 'bar' | 'rail' }) {
         'flex min-h-11 min-w-0 items-center gap-2 rounded-sm border border-border-strong bg-surface-1 text-left text-fg-subtle transition-colors duration-(--duration-fast) hover:border-fg-muted hover:text-fg-muted',
         // The bar is a size container: when the top bar leaves it too little room for "Find" (a
         // phone with the wordmark and the account menu), it shows the magnifier alone, centred, and
-        // the word stays its accessible name, never a clipped "Fi…".
+        // the word stays its accessible name, never a clipped "Fi…". The rail is no container.
         variant === 'bar' ? '@container flex-1 px-3 text-sm' : 'w-full px-3 text-ui',
       )}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2 @max-[3.75rem]:justify-center">
-        <SearchIcon size={variant === 'bar' ? 18 : 19} className="shrink-0" />
-        <span className={cx('min-w-0 flex-1 truncate', variant === 'bar' && '@max-[3.75rem]:sr-only')}>{variant === 'bar' ? 'Find' : 'Find a name'}</span>
-      </span>
+      <SearchIcon size={variant === 'bar' ? 18 : 19} className="shrink-0 @max-[3.75rem]:mx-auto" />
+      <span className="min-w-0 flex-1 truncate @max-[3.75rem]:sr-only">{variant === 'bar' ? 'Find' : 'Find a name'}</span>
       {variant === 'rail' ? (
         <kbd aria-hidden="true" className="shrink-0 rounded-[3px] border border-border-subtle px-1.5 font-sans text-xs text-fg-subtle">
           Ctrl K
