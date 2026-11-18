@@ -16,6 +16,7 @@ Documents (Bulgarian; on any conflict the technical plan wins):
 ## 2. Languages
 
 - **The UI is English only, permanently.** No translation library (no `next-intl`, i18next, Paraglide or similar), no `[locale]` route segment, no message files. UI strings are plain English in the components; e-mail and notification texts live only in `src/server/templates/`.
+  - **One exception (owner decision 2026-11-18, ADR 0043):** the control panel (/admin) is in Bulgarian for full administrators (role `admin`), with a switch to English. It uses no library: `t('English text')` from `src/components/admin/i18n/` with Bulgarian in `bg/<area>.ts`; every new /admin string needs its Bulgarian entry (`bg/index.test.ts`). Moderators, archivists and every other role, and every page outside /admin, stay English only.
 - **Names are accepted in any script.** A Latin-script name is mandatory and is the primary display name. Optionally: the original script (Traditional or Simplified Chinese, Cyrillic, …), Jyutping and pinyin. Search finds a person by every spelling (M07). Each name is rendered with its `lang` attribute and `translate="no"`; Chinese uses system CJK fonts (plan §5.3).
 - **Documentation in `docs/` is Bulgarian**, including the guides for the Bulgarian user and administrator, `docs/guides/user-guide.bg.md` and `docs/guides/admin-guide.bg.md` (created in M00b, updated by every milestone that changes user or admin behaviour).
 - **Code, comments, commit messages, PR descriptions and questions to the owner** (`docs/plan/questions/Mxx.md`) are English.

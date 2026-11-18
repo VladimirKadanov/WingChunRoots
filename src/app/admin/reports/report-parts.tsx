@@ -7,16 +7,19 @@
 
 import type { ReactNode } from 'react';
 
-import { table as t } from '@/components/admin/table-parts';
+import type { AdminLang, AdminT } from '@/components/admin/i18n/translate';
+import { table as tbl } from '@/components/admin/table-parts';
 import { cx } from '@/lib/cx';
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const BG_SHORT_MONTHS = ['яну', 'фев', 'мар', 'апр', 'май', 'юни', 'юли', 'авг', 'сеп', 'окт', 'ное', 'дек'] as const;
 export const number = new Intl.NumberFormat('en');
 
-/** "3 Nov" for a week, "Nov 2026" for a month (UTC). */
-export function bucketLabel(start: string, unit: 'week' | 'month'): string {
+/** "3 Nov" for a week, "Nov 2026" for a month (UTC); "3 ное" and "ное 2026" in Bulgarian. */
+export function bucketLabel(start: string, unit: 'week' | 'month', lang: AdminLang = 'en'): string {
   const d = new Date(`${start}T00:00:00Z`);
-  return unit === 'month' ? `${SHORT_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : `${d.getUTCDate()} ${SHORT_MONTHS[d.getUTCMonth()]}`;
+  const month = (lang === 'bg' ? BG_SHORT_MONTHS : SHORT_MONTHS)[d.getUTCMonth()];
+  return unit === 'month' ? `${month} ${d.getUTCFullYear()}` : `${d.getUTCDate()} ${month}`;
 }
 
 export interface ChartSeries {
@@ -181,10 +184,10 @@ export function ReportCard({ title, id, action, children, testId }: { title: str
 }
 
 /** The link that downloads one table as CSV (a plain GET, staff-guarded by its route). */
-export function CsvLink({ href, label }: { href: string; label: string }) {
+export function CsvLink({ href, label, t }: { href: string; label: string; t: AdminT }) {
   return (
     <a href={href} download className="link inline-flex min-h-11 items-center text-ui" data-testid="report-csv">
-      Download CSV<span className="sr-only">: {label}</span>
+      {t('Download CSV')}<span className="sr-only">: {label}</span>
     </a>
   );
 }
@@ -198,15 +201,15 @@ export interface Column<R> {
 /** A dense table of figures; the first column names the row, the others are numbers right-aligned. Cards under 52rem. */
 export function FigureTable<R>({ caption, columns, rows, rowKey, footer, testId }: { caption: string; columns: readonly Column<R>[]; rows: readonly R[]; rowKey: (row: R) => string; footer?: R; testId?: string }) {
   const line = (row: R, total: boolean) => (
-    <tr role="row" key={total ? '__total' : rowKey(row)} className={cx(t.row, total && 'font-semibold')} data-testid={total ? `${testId}-total` : `${testId}-row`}>
+    <tr role="row" key={total ? '__total' : rowKey(row)} className={cx(tbl.row, total && 'font-semibold')} data-testid={total ? `${testId}-total` : `${testId}-row`}>
       {columns.map((c, i) =>
         i === 0 ? (
-          <th role="rowheader" scope="row" key={c.header} className={cx(t.td, 'font-semibold [overflow-wrap:anywhere]')}>
+          <th role="rowheader" scope="row" key={c.header} className={cx(tbl.td, 'font-semibold [overflow-wrap:anywhere]')}>
             {c.cell(row)}
           </th>
         ) : (
-          <td role="cell" key={c.header} className={cx(t.td, c.numeric !== false && 'tabular @min-[52rem]:text-right')}>
-            <span className={t.cardLabel}>{c.header}</span>
+          <td role="cell" key={c.header} className={cx(tbl.td, c.numeric !== false && 'tabular @min-[52rem]:text-right')}>
+            <span className={tbl.cardLabel}>{c.header}</span>
             {c.cell(row)}
           </td>
         ),
@@ -215,18 +218,18 @@ export function FigureTable<R>({ caption, columns, rows, rowKey, footer, testId 
   );
   return (
     <div className="mt-3 @container">
-      <table role="table" className={t.table} data-testid={testId}>
+      <table role="table" className={tbl.table} data-testid={testId}>
         <caption className="sr-only">{caption}</caption>
-        <thead role="rowgroup" className={t.thead}>
-          <tr role="row" className={t.headRow}>
+        <thead role="rowgroup" className={tbl.thead}>
+          <tr role="row" className={tbl.headRow}>
             {columns.map((c, i) => (
-              <th role="columnheader" scope="col" key={c.header} className={cx(t.th, i > 0 && c.numeric !== false && 'text-right')}>
+              <th role="columnheader" scope="col" key={c.header} className={cx(tbl.th, i > 0 && c.numeric !== false && 'text-right')}>
                 {c.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody role="rowgroup" className={t.tbody}>
+        <tbody role="rowgroup" className={tbl.tbody}>
           {rows.map((row) => line(row, false))}
           {footer ? line(footer, true) : null}
         </tbody>

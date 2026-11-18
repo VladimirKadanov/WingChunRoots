@@ -8,41 +8,43 @@
 
 import { PersonName } from '@/components/relationships/parts';
 import { LocationTag } from '@/components/schools/school-list';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import type { SchoolCaseView } from '@/server/services/school-review';
 
-export function ListingSection({ school, reason }: { school: SchoolCaseView; reason: string | null }) {
+export function ListingSection({ school, reason, t }: { school: SchoolCaseView; reason: string | null; t: AdminT }) {
   const rows: [string, string | null][] = [
-    ['Website', school.websiteUrl],
-    ['E-mail', school.contactEmail],
-    ['Phone', school.contactPhone],
+    [t('Website'), school.websiteUrl],
+    [t('E-mail'), school.contactEmail],
+    [t('Phone'), school.contactPhone],
   ];
   return (
     <section id="listing" aria-labelledby="listing-heading" className="grid content-start gap-3 border-t border-border-subtle pt-6" data-testid="case-listing">
       <h2 id="listing-heading" className="font-display text-2xl">
-        The listing
+        {t('The listing')}
       </h2>
       {school.status === 'active' ? (
         <p className="max-w-[60ch] rounded-sm border-l-4 border-fg bg-surface-2 px-3 py-2 text-sm" data-testid="listing-edited">
-          This school is listed. Its Sifu changed it after the approval, and the changes are public now. Approve them to keep the listing as it is, or return it to
-          draft with a reason to take it off the map.
+          {t(
+            'This school is listed. Its Sifu changed it after the approval, and the changes are public now. Approve them to keep the listing as it is, or return it to draft with a reason to take it off the map.',
+          )}
         </p>
       ) : null}
       <p className="font-display text-xl [overflow-wrap:anywhere]">{school.name}</p>
       <p className="text-ui text-fg-muted">
-        {school.city}, {school.countryCode} · {school.locationLabel}
+        {school.city}, {school.countryCode} · {t(school.locationLabel)}
       </p>
       <LocationTag precision={school.locationPrivacy === 'exact' ? 'exact' : 'city'} />
       {school.point ? (
         <p className="text-sm text-fg-muted" translate="no">
-          Pin {school.point.lat}, {school.point.lng}
+          {t('Pin {lat}, {lng}', { lat: school.point.lat, lng: school.point.lng })}
         </p>
       ) : (
-        <p className="text-sm text-fg-muted">The map shows it at the centre of {school.city}; its address stays private.</p>
+        <p className="text-sm text-fg-muted">{t('The map shows it at the centre of {city}; its address stays private.', { city: school.city })}</p>
       )}
       <p className="text-sm" data-testid="listing-plan">
         {school.pinAllowed
-          ? 'The account that listed it holds Professional Sifu: once approved, its pin shows on the map.'
-          : 'The account that listed it does not hold Professional Sifu now: once approved, the school is listed but its pin does not show.'}
+          ? t('The account that listed it holds Professional Sifu: once approved, its pin shows on the map.')
+          : t('The account that listed it does not hold Professional Sifu now: once approved, the school is listed but its pin does not show.')}
       </p>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         {rows.map(([label, value]) => (
@@ -51,24 +53,24 @@ export function ListingSection({ school, reason }: { school: SchoolCaseView; rea
             <dd className="min-w-0 [overflow-wrap:anywhere]">{value ?? '—'}</dd>
           </div>
         ))}
-        <dt className="text-fg-muted">Forms</dt>
+        <dt className="text-fg-muted">{t('Forms')}</dt>
         <dd>{school.forms.length > 0 ? school.forms.join(', ') : '—'}</dd>
       </dl>
       {school.description ? <p className="max-w-[60ch] text-ui whitespace-pre-line">{school.description}</p> : null}
       <div className="grid gap-1">
-        <span className="text-sm text-fg-muted">Instructors</span>
+        <span className="text-sm text-fg-muted">{t('Instructors')}</span>
         <ul className="grid gap-1">
           {school.instructors.map((i) => (
             <li key={i.person.id} className="flex flex-wrap items-baseline gap-x-2">
               <PersonName person={i.person} />
-              <span className="text-sm text-fg-muted">{i.roleLabel}</span>
+              <span className="text-sm text-fg-muted">{t(i.roleLabel)}</span>
             </li>
           ))}
         </ul>
       </div>
       {reason ? (
         <p className="max-w-[60ch] text-sm whitespace-pre-line">
-          <span className="font-semibold">Decision note: </span>
+          <span className="font-semibold">{t('Decision note:')} </span>
           {reason}
         </p>
       ) : null}

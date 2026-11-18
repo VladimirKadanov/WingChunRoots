@@ -15,11 +15,11 @@ import Link from 'next/link';
 
 import { NameText } from '@/components/account/person-names';
 import { LoadError } from '@/components/account/load-error';
-import { ARCHIVE_LOAD_ERROR } from '@/components/account/load-errors/archive';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { OutcomeNote } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
-import { formatShortDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead, rpcErrorCode } from '@/server/rpc/form';
@@ -28,15 +28,17 @@ import { LINK_FILTERS, LINK_SORTS, type ArchiveLinkRow } from '@/server/services
 import { LINK_EDIT_FORM, LINK_END_FORM } from '../../../form-ids';
 import { EditLinkForm } from '../../../edit-link-form';
 import { EndLinkForm } from '../../../forms';
-import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, LinkStatus, Missing, number, Pager, rowClass, SortHeader, tableClass, theadClass, years } from '../../../grid-parts';
+import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, LinkStatus, Missing, Pager, rowClass, SortHeader, tableClass, theadClass, years } from '../../../grid-parts';
+import { archiveLoadError } from '../../../labels';
 import { WorkspaceHeader } from '../workspace';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Links · Archive editor',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Links · Archive editor'), robots: { index: false } };
+}
 
 type Params = Promise<{ slug: string }>;
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -63,10 +65,10 @@ async function orMissing<T>(read: Promise<T>): Promise<T | 'missing'> {
   }
 }
 
-function sourceLine(link: ArchiveLinkRow) {
+function sourceLine(t: AdminT, link: ArchiveLinkRow) {
   if (link.source) return <span className="line-clamp-2 [overflow-wrap:anywhere]">{link.source}</span>;
-  if (link.path === 'teacher_approval') return <span className="text-fg-muted">Approved by the teacher</span>;
-  return <Missing>No source</Missing>;
+  if (link.path === 'teacher_approval') return <span className="text-fg-muted">{t('Approved by the teacher')}</span>;
+  return <Missing>{t('No source')}</Missing>;
 }
 
 export default async function ArchiveLinksPage({ params, searchParams }: { params: Params; searchParams: Search }) {
@@ -94,12 +96,13 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
   };
   const guard = await guardRoute('/admin/archive', href(filters, pageNo, open, ''));
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  const t = await getAdminT();
   if (guard.forbidden) {
     return (
       <Column>
-        <h1 className="mt-2 font-display text-feature">Not available</h1>
+        <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted" data-testid="archive-denied">
-          You don&apos;t have access to the archive editor. It is available to archivists and administrators.
+          {t("You don't have access to the archive editor. It is available to archivists and administrators.")}
         </p>
       </Column>
     );
@@ -121,45 +124,48 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
   if (list === 'missing') {
     return (
       <Column>
-        <h1 className="mt-2 font-display text-feature">No such lineage</h1>
+        <h1 className="mt-2 font-display text-feature">{t('No such lineage')}</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted">
-          No lineage has this address.{' '}
+          {t('No lineage has this address.')}{' '}
           <Link href="/admin/archive" className="link">
-            Open it from the list of lineages
+            {t('Open it from the list of lineages')}
           </Link>
           .
         </p>
       </Column>
     );
   }
-  if (!list) return <LoadError {...ARCHIVE_LOAD_ERROR} retryHref={base} />;
+  if (!list) return <LoadError words={loadErrorWords(t)} {...archiveLoadError(t)} retryHref={base} />;
   const endResult = await readFormResult(LINK_END_FORM, query.outcome);
   const editResult = await readFormResult(LINK_EDIT_FORM, query.outcome);
   const selected = list.selected;
   const chip = (show: Show) => href({ ...filters, show });
-  const sortLabel = { generation: 'by generation', teacher: 'by teacher', student: 'by student', years: 'by years', edited: 'last edited first' }[filters.sort];
+  const sortLabel = { generation: t('by generation'), teacher: t('by teacher'), student: t('by student'), years: t('by years'), edited: t('last edited first') }[filters.sort];
   const filtered = Boolean(filters.q || filters.show !== 'active' || filters.generation);
 
   return (
     <Column wide>
       <WorkspaceHeader
+        t={t}
         lineage={list.lineage}
         tab="links"
         action={
           <Link href={`/admin/archive/lineages/${list.lineage.slug}#add-link`} className={buttonVariants({ variant: 'primary' })}>
-            <span aria-hidden="true">+</span> Add link
+            <span aria-hidden="true">+</span> {t('Add link')}
           </Link>
         }
       />
       {query.done === 'ended' ? (
         <div key={`ended-${String(query.n)}`} className="mt-5 max-w-[46rem]">
-          <OutcomeNote testId="archive-outcome">The link is ended and off the public pages. Its history and your reason are kept.</OutcomeNote>
+          <OutcomeNote testId="archive-outcome">{t('The link is ended and off the public pages. Its history and your reason are kept.')}</OutcomeNote>
         </div>
       ) : null}
       {query.done === 'edited' || query.done === 'unchanged' ? (
         <div key={`edited-${String(query.n)}`} className="mt-5 max-w-[46rem]">
           <OutcomeNote testId="archive-outcome">
-            {query.done === 'edited' ? 'The link’s years and source are saved. Its status and history are unchanged; your reason is in the audit log.' : 'Nothing changed: the years and the source were already these.'}
+            {query.done === 'edited'
+              ? t('The link’s years and source are saved. Its status and history are unchanged; your reason is in the audit log.')
+              : t('Nothing changed: the years and the source were already these.')}
           </OutcomeNote>
         </div>
       ) : null}
@@ -167,100 +173,108 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
       <div className={`mt-6 grid gap-8 ${selected ? 'xl:grid-cols-[minmax(0,1fr)_26rem]' : ''}`}>
         <section id="links" aria-labelledby="links-heading" className="grid min-w-0 content-start gap-4">
           <h2 id="links-heading" className="sr-only">
-            Links of {list.lineage.name}
+            {t('Links of {name}', { name: list.lineage.name })}
           </h2>
-          <form role="search" aria-label="Find links" method="get" action={`${base}#links`} className="flex flex-wrap items-end gap-3">
+          <form role="search" aria-label={t('Find links')} method="get" action={`${base}#links`} className="flex flex-wrap items-end gap-3">
             {filters.show !== 'active' ? <input type="hidden" name="show" value={filters.show} /> : null}
             <div className="grid min-w-0 flex-1 basis-[16rem] gap-1.5">
               <label htmlFor="links-q" className="text-sm font-semibold">
-                Find a teacher or student
+                {t('Find a teacher or student')}
               </label>
               <input id="links-q" name="q" type="search" defaultValue={filters.q} maxLength={200} autoComplete="off" className={fieldClass} />
             </div>
             <div className="grid min-w-0 basis-[10rem] gap-1.5">
               <label htmlFor="links-generation" className="text-sm font-semibold">
-                Teacher&apos;s generation
+                {t("Teacher's generation")}
               </label>
               <select id="links-generation" name="generation" defaultValue={filters.generation ? String(filters.generation) : ''} className={fieldClass}>
-                <option value="">Every generation</option>
+                <option value="">{t('Every generation')}</option>
                 {Array.from({ length: Math.max(list.generations, filters.generation ?? 0) }, (_, i) => (
                   <option key={i + 1} value={String(i + 1)}>
-                    Generation {i + 1}
+                    {t('Generation {n}', { n: i + 1 })}
                   </option>
                 ))}
               </select>
             </div>
             <div className="grid min-w-0 basis-[11rem] gap-1.5">
               <label htmlFor="links-sort" className="text-sm font-semibold">
-                Order
+                {t('Order')}
               </label>
               <select id="links-sort" name="sort" defaultValue={filters.sort} className={fieldClass}>
-                <option value="generation">By generation</option>
-                <option value="teacher">By teacher</option>
-                <option value="student">By student</option>
-                <option value="years">By years</option>
-                <option value="edited">Last edited first</option>
+                <option value="generation">{t('By generation')}</option>
+                <option value="teacher">{t('By teacher')}</option>
+                <option value="student">{t('By student')}</option>
+                <option value="years">{t('By years')}</option>
+                <option value="edited">{t('Last edited first')}</option>
               </select>
             </div>
             <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-              Show
+              {t('Show')}
             </button>
             {filtered || filters.sort !== 'generation' ? (
               <Link href={`${base}#links`} className="link inline-flex min-h-12 items-center text-ui">
-                Clear
+                {t('Clear')}
               </Link>
             ) : null}
           </form>
-          <Chips label="Status">
+          <Chips label={t('Status')}>
             <Chip href={chip('active')} current={filters.show === 'active'}>
-              Every active · {number.format(list.counts.active)}
+              {t('Every active · {n}', { n: t.num(list.counts.active) })}
             </Chip>
             <Chip href={chip('verified')} current={filters.show === 'verified'}>
-              Verified · {number.format(list.counts.verified)}
+              {t('Verified · {n}', { n: t.num(list.counts.verified) })}
             </Chip>
             <Chip href={chip('in_arbitration')} current={filters.show === 'in_arbitration'}>
-              In arbitration · {number.format(list.counts.in_arbitration)}
+              {t('In arbitration · {n}', { n: t.num(list.counts.in_arbitration) })}
             </Chip>
             <Chip href={chip('no_source')} current={filters.show === 'no_source'} testId="links-no-source">
-              No source · {number.format(list.counts.no_source)}
+              {t('No source · {n}', { n: t.num(list.counts.no_source) })}
             </Chip>
             <Chip href={chip('no_years')} current={filters.show === 'no_years'}>
-              Years missing · {number.format(list.counts.no_years)}
+              {t('Years missing · {n}', { n: t.num(list.counts.no_years) })}
             </Chip>
             <Chip href={chip('ended')} current={filters.show === 'ended'}>
-              Ended · {number.format(list.counts.ended)}
+              {t('Ended · {n}', { n: t.num(list.counts.ended) })}
             </Chip>
           </Chips>
 
-          <CountLine total={list.total} page={list.page} pageSize={list.pageSize} noun={['link', 'links']} testId="links-count" />
+          <CountLine
+            t={t}
+            total={list.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            none={t('No links match.')}
+            range={(vars) => t('Links {from} to {to} of {total}', vars)}
+            testId="links-count"
+          />
 
           {list.rows.length > 0 ? (
             <div className="@container">
               <table role="table" data-testid="lineage-links" className={tableClass}>
-                <caption className="sr-only">Links, {sortLabel}</caption>
+                <caption className="sr-only">{t('Links, {order}', { order: sortLabel })}</caption>
                 <thead role="rowgroup" className={theadClass}>
                   <tr role="row" className="border-b border-border-strong">
-                    <SortHeader label="Teacher" href={href({ ...filters, sort: 'teacher' })} current={filters.sort === 'teacher'} className="pl-0" />
-                    <SortHeader label="Student" href={href({ ...filters, sort: 'student' })} current={filters.sort === 'student'} />
-                    <SortHeader label="Gen" href={href({ ...filters, sort: 'generation' })} current={filters.sort === 'generation'} />
-                    <SortHeader label="Years" href={href({ ...filters, sort: 'years' })} current={filters.sort === 'years'} />
-                    <Header label="Status" />
-                    <Header label="Source" />
-                    <SortHeader label="Edited" href={href({ ...filters, sort: 'edited' })} current={filters.sort === 'edited'} />
-                    <Header label={<span className="sr-only">Open</span>} className="pr-0" />
+                    <SortHeader t={t} label={t('Teacher')} href={href({ ...filters, sort: 'teacher' })} current={filters.sort === 'teacher'} className="pl-0" />
+                    <SortHeader t={t} label={t('Student')} href={href({ ...filters, sort: 'student' })} current={filters.sort === 'student'} />
+                    <SortHeader t={t} label={t('Gen')} href={href({ ...filters, sort: 'generation' })} current={filters.sort === 'generation'} />
+                    <SortHeader t={t} label={t('Years')} href={href({ ...filters, sort: 'years' })} current={filters.sort === 'years'} />
+                    <Header label={t('Status')} />
+                    <Header label={t('Source')} />
+                    <SortHeader t={t} label={t('Edited')} href={href({ ...filters, sort: 'edited' })} current={filters.sort === 'edited'} />
+                    <Header label={<span className="sr-only">{t.x('verb', 'Open')}</span>} className="pr-0" />
                   </tr>
                 </thead>
                 <tbody role="rowgroup" className="@max-[52rem]:grid @max-[52rem]:gap-3">
                   {list.rows.map((link) => (
                     <tr role="row" key={link.id} data-relationship={link.id} aria-current={link.id === open ? 'true' : undefined} className={`${rowClass} aria-[current=true]:bg-surface-3`}>
                       <td role="cell" className={`${cell} pl-0`}>
-                        <CardLabel>Teacher:</CardLabel>
+                        <CardLabel>{t('Teacher:')}</CardLabel>
                         <Link href={`/admin/archive/lineages/${list.lineage.slug}?person=${link.teacher.slug}`} className="link">
                           <NameText name={link.teacher.name} />
                         </Link>
                       </td>
                       <td role="cell" className={cell}>
-                        <CardLabel>Student:</CardLabel>
+                        <CardLabel>{t('Student:')}</CardLabel>
                         <span aria-hidden="true" className="mr-1 text-fg-muted @max-[52rem]:hidden">
                           →
                         </span>
@@ -269,29 +283,30 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
                         </Link>
                       </td>
                       <td role="cell" className={`${cell} whitespace-nowrap tabular-nums`}>
-                        <CardLabel>Generation:</CardLabel>
-                        {link.generation === null ? <span className="text-fg-muted">Not connected</span> : `${link.generation}→${link.generation + 1}`}
+                        <CardLabel>{t('Generation:')}</CardLabel>
+                        {link.generation === null ? <span className="text-fg-muted">{t('Not connected')}</span> : `${link.generation}→${link.generation + 1}`}
                       </td>
                       <td role="cell" className={`${cell} whitespace-nowrap`}>
-                        <CardLabel>Years:</CardLabel>
-                        {link.fromYear === null ? <Missing>Not known</Missing> : years(link.fromYear, link.toYear)}
+                        <CardLabel>{t('Years:')}</CardLabel>
+                        {link.fromYear === null ? <Missing>{t('Not known')}</Missing> : years(t, link.fromYear, link.toYear)}
                       </td>
                       <td role="cell" className={cell}>
-                        <CardLabel>Status:</CardLabel>
-                        <LinkStatus status={link.status} />
-                        <span className="block text-sm text-fg-muted">{link.shown ? 'Public' : 'Not public'}</span>
+                        <CardLabel>{t('Status:')}</CardLabel>
+                        <LinkStatus t={t} status={link.status} />
+                        <span className="block text-sm text-fg-muted">{link.shown ? t('Public') : t('Not public')}</span>
                       </td>
                       <td role="cell" className={`${cell} max-w-[22rem] text-sm`}>
-                        <CardLabel>Source:</CardLabel>
-                        {sourceLine(link)}
+                        <CardLabel>{t('Source:')}</CardLabel>
+                        {sourceLine(t, link)}
                       </td>
                       <td role="cell" className={`${cell} whitespace-nowrap`}>
-                        <CardLabel>Edited:</CardLabel>
-                        <time dateTime={link.editedAt}>{formatShortDay(link.editedAt)}</time>
+                        <CardLabel>{t('Edited:')}</CardLabel>
+                        <time dateTime={link.editedAt}>{t.shortDay(link.editedAt)}</time>
                       </td>
                       <td role="cell" className={`${cell} pr-0`}>
                         <Link href={href(filters, list.page, link.id, '#link-panel')} className="link inline-flex min-h-11 items-center whitespace-nowrap">
-                          Open<span className="sr-only"> the link from {link.teacher.name.value} to {link.student.name.value}</span>
+                          {t.x('verb', 'Open')}
+                          <span className="sr-only">{t(' the link from {teacher} to {student}', { teacher: link.teacher.name.value, student: link.student.name.value })}</span>
                         </Link>
                       </td>
                     </tr>
@@ -301,15 +316,15 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
             </div>
           ) : (
             <p className="max-w-[56ch] text-ui text-fg-muted" data-testid="lineage-no-links">
-              {filtered ? 'No link matches these filters. Clear them to see every link.' : 'No link yet. '}
+              {filtered ? t('No link matches these filters. Clear them to see every link.') : t('No link yet. ')}
               {!filtered ? (
                 <Link href={`/admin/archive/lineages/${list.lineage.slug}#add-link`} className="link">
-                  Add the first one
+                  {t('Add the first one')}
                 </Link>
               ) : null}
             </p>
           )}
-          <Pager page={list.page} pages={list.pages} href={(p) => href(filters, p)} label="Pages of links" />
+          <Pager t={t} page={list.page} pages={list.pages} href={(p) => href(filters, p)} label={t('Pages of links')} />
         </section>
 
         {selected ? (
@@ -317,44 +332,44 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
             <div className="flex items-start justify-between gap-3">
               <h2 id="link-panel-heading" className="font-display text-2xl">
                 <NameText name={selected.teacher.name} /> <span aria-hidden="true">→</span>
-                <span className="sr-only"> to </span> <NameText name={selected.student.name} />
+                <span className="sr-only"> {t('to')} </span> <NameText name={selected.student.name} />
               </h2>
               <Link href={href(filters, list.page)} className="link inline-flex min-h-11 min-w-11 items-center justify-center text-ui">
-                Close
+                {t('Close')}
               </Link>
             </div>
             <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-ui">
-              <dt className="text-fg-muted">Status</dt>
+              <dt className="text-fg-muted">{t('Status')}</dt>
               <dd>
-                <LinkStatus status={selected.status} /> · {selected.shown ? 'Public' : 'Not public'}
+                <LinkStatus t={t} status={selected.status} /> · {selected.shown ? t('Public') : t('Not public')}
               </dd>
-              <dt className="text-fg-muted">Years</dt>
-              <dd>{years(selected.fromYear, selected.toYear)}</dd>
-              <dt className="text-fg-muted">Generation</dt>
-              <dd>{selected.generation === null ? 'Not connected to the root' : `${selected.generation} → ${selected.generation + 1}`}</dd>
-              <dt className="text-fg-muted">Established</dt>
-              <dd>{selected.path === 'committee_review' ? 'By staff, on a source' : 'Approved by the teacher'}</dd>
-              <dt className="text-fg-muted">Source</dt>
-              <dd className="whitespace-pre-line [overflow-wrap:anywhere]">{selected.source ?? (selected.path === 'teacher_approval' ? 'Approved by the teacher' : 'None')}</dd>
+              <dt className="text-fg-muted">{t('Years')}</dt>
+              <dd>{years(t, selected.fromYear, selected.toYear)}</dd>
+              <dt className="text-fg-muted">{t('Generation')}</dt>
+              <dd>{selected.generation === null ? t('Not connected to the root') : `${selected.generation} → ${selected.generation + 1}`}</dd>
+              <dt className="text-fg-muted">{t('Established')}</dt>
+              <dd>{selected.path === 'committee_review' ? t('By staff, on a source') : t('Approved by the teacher')}</dd>
+              <dt className="text-fg-muted">{t('Source')}</dt>
+              <dd className="whitespace-pre-line [overflow-wrap:anywhere]">{selected.source ?? (selected.path === 'teacher_approval' ? t('Approved by the teacher') : t('None'))}</dd>
             </dl>
             <p className="flex flex-wrap gap-x-4 text-ui">
               <Link href={`/admin/review/records/${selected.teacher.slug}`} className="link inline-flex min-h-11 items-center">
-                Teacher&apos;s record
+                {t("Teacher's record")}
               </Link>
               <Link href={`/admin/review/records/${selected.student.slug}`} className="link inline-flex min-h-11 items-center">
-                Student&apos;s record
+                {t("Student's record")}
               </Link>
             </p>
             {selected.editable ? (
               <details className="border-t border-border-subtle pt-4" open={editResult?.values?.relationshipId === selected.id || undefined} data-testid="link-edit">
-                <summary className="inline-flex min-h-11 cursor-pointer items-center text-ui font-semibold">Correct the years or the source</summary>
-                <p className="mt-2 mb-3 text-sm text-fg-muted">The link stays verified with its history; the change and your reason go to the audit log.</p>
-                <EditLinkForm link={selected} slug={list.lineage.slug} initial={editResult?.values?.relationshipId === selected.id ? editResult : null} />
+                <summary className="inline-flex min-h-11 cursor-pointer items-center text-ui font-semibold">{t('Correct the years or the source')}</summary>
+                <p className="mt-2 mb-3 text-sm text-fg-muted">{t('The link stays verified with its history; the change and your reason go to the audit log.')}</p>
+                <EditLinkForm t={t} link={selected} slug={list.lineage.slug} initial={editResult?.values?.relationshipId === selected.id ? editResult : null} />
               </details>
             ) : null}
             {selected.endable ? (
               <div className="grid gap-2 border-t border-border-subtle pt-4">
-                <p className="text-sm text-fg-muted">Entered by mistake? End it with a reason.</p>
+                <p className="text-sm text-fg-muted">{t('Entered by mistake? End it with a reason.')}</p>
                 <EndLinkForm
                   relationshipId={selected.id}
                   slug={list.lineage.slug}
@@ -365,7 +380,9 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
               </div>
             ) : selected.status !== 'revoked' ? (
               <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">
-                This link was approved by the teacher or involves a member&apos;s own record. It is not edited or ended here: the member changes it through their review flow, or dispute it through arbitration from the record&apos;s page.
+                {t(
+                  "This link was approved by the teacher or involves a member's own record. It is not edited or ended here: the member changes it through their review flow, or dispute it through arbitration from the record's page.",
+                )}
               </p>
             ) : null}
           </aside>
