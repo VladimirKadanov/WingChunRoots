@@ -199,7 +199,8 @@ export const BG_ARCHIVE: AdminDict = {
   'Add person': 'Добави лице',
   'Find in this lineage': 'Намери в тази линия',
   Find: 'Намери',
-  'Ended links': 'Прекратени връзки',
+  '{ended} links': '{ended} връзки',
+  'links|Ended': 'Прекратени',
   'Close every branch': 'Затвори всички клонове',
   'These are the teachers with no teacher in this lineage (the first {shown} of {total}). Set the root in the lineage details.':
     'Това са учителите без учител в тази линия (първите {shown} от {total}). Задайте корена в данните за линията.',

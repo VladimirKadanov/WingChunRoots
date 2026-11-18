@@ -313,7 +313,8 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
               </button>
               {/* The tree shows active links only; ended ones are listed in the links grid. */}
               <Link href={`${path}/links?show=ended#links`} className="link inline-flex min-h-11 items-center text-ui">
-                {t('Ended links')}
+                {/* The status in words ("Ended"), agreeing with "links" in Bulgarian. */}
+                {t('{ended} links', { ended: t.x('links', 'Ended') })}
               </Link>
               {open.length > 0 ? (
                 <Link href={at({ open: [] })} className="link inline-flex min-h-11 items-center text-ui">
