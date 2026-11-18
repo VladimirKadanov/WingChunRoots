@@ -357,9 +357,12 @@ async function schoolWithPhoto(opts: { listed?: boolean } = {}) {
 /** M15: an organization's application by a new account (its owner); approved when `active`, with Federation when `federation`. */
 async function organizationOf(opts: { active?: boolean; federation?: boolean } = {}) {
   const owner = await actor('org-owner', { noPerson: true });
+  // A name of its own: the slug's random suffix is 3 bytes, and the many same-named organizations
+  // of this file met on one slug in CI (2026-11-17).
+  const tag = randomBytes(4).toString('hex').replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)]!);
   const applied = await applyOrganization(
     owner.principal,
-    { name: 'Demo Matrix Federation', kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
+    { name: `Demo Matrix Federation ${tag}`, kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
     meta,
   );
   if (opts.active || opts.federation) {
@@ -1141,6 +1144,30 @@ const ROWS: Row[] = [
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   { path: 'archiveEditor.search', make: () => ({ input: { q: 'Demo Matrix' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  // Control panel 2026-11: the archive editor's working views.
+  { path: 'archiveEditor.overview', make: () => ({ input: { sort: 'people' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  { path: 'archiveEditor.people', make: () => ({ input: { q: 'Demo Matrix', show: 'historical' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.links',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug, show: 'no_source' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.tree',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, open: [p.teacher.slug] } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.person',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, person: p.teacher.slug } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
   {
     path: 'archiveEditor.createRecord',
     make: () => ({ input: { primaryName: 'Demo Matrix Created Record', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)', evidenceIds: [] } }),
