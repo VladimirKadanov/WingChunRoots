@@ -174,6 +174,7 @@ import {
   updateArchiveLineage,
   updateLineageInput,
 } from '../services/archive-editor';
+import { archiveLinks, archiveLinksInput, archiveOverview, archiveOverviewInput, archivePeople, archivePeopleInput, archivePerson, archivePersonInput, archiveTree, archiveTreeInput } from '../services/archive-grids';
 import {
   addReviewNote,
   archiveGetInput,
@@ -965,6 +966,27 @@ export const router = {
       .route({ method: 'POST', path: '/archive-editor/links/end', summary: 'End a link entered in the archive by mistake (revoked, never deleted), with a reason; audited' })
       .input(endLinkInput)
       .handler(({ context, input }) => endArchiveLink(context.principal, input, context.meta)),
+    // Control panel 2026-11 (docs/adr/0035-control-panel.md): the editor's working views, for thousands of records.
+    overview: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/overview', summary: 'Every lineage with its people, generations, sourced share and last edit, searched and sorted, and the archive figures (an archivist or an administrator)' })
+      .input(archiveOverviewInput)
+      .handler(({ context, input }) => archiveOverview(context.principal, input)),
+    people: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/people', summary: 'Every record, public or not, found by any spelling of a name, filtered, 50 a page (an archivist or an administrator)' })
+      .input(archivePeopleInput)
+      .handler(({ context, input }) => archivePeople(context.principal, input)),
+    links: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}/links', summary: 'One lineage’s links filtered by status, missing source or years, generation and person, sorted, 50 a page (an archivist or an administrator)' })
+      .input(archiveLinksInput)
+      .handler(({ context, input }) => archiveLinks(context.principal, input)),
+    tree: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}/tree', summary: 'One lineage as an outline: the root and the students of the open branches only (an archivist or an administrator)' })
+      .input(archiveTreeInput)
+      .handler(({ context, input }) => archiveTree(context.principal, input)),
+    person: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}/people/{person}', summary: 'One person in one lineage: their teachers and students there and their other lineages (an archivist or an administrator)' })
+      .input(archivePersonInput)
+      .handler(({ context, input }) => archivePerson(context.principal, input)),
   },
   // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down of a profile,
   // reversible; a moderator or an administrator with a verified second factor.

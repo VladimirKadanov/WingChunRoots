@@ -304,13 +304,18 @@ function editor(principal: Principal | null) {
   return p;
 }
 
+/** The same guard for the archive grids service (archive-grids.ts). */
+export function requireArchiveEditor(principal: Principal | null) {
+  return editor(principal);
+}
+
 function fieldErrors(error: z.ZodError): ServiceError {
   const fields: Record<string, string> = {};
   for (const issue of error.issues) fields[String(issue.path[0] ?? 'form')] ??= issue.message;
   return new ServiceError('BAD_REQUEST', CHECK, fields);
 }
 
-async function refsOf(db: Executor, ids: readonly string[]): Promise<Map<string, ArchiveRecordRef>> {
+export async function refsOf(db: Executor, ids: readonly string[]): Promise<Map<string, ArchiveRecordRef>> {
   const out = new Map<string, ArchiveRecordRef>();
   const unique = [...new Set(ids)];
   if (unique.length === 0) return out;
@@ -360,7 +365,7 @@ async function recordBySlug(db: Executor, slug: string, lock = false) {
 }
 
 /** Whether the explorer offers the lineage (explore-start.ts): a public root with a public link. */
-async function listedLineages(db: Executor, ids: readonly string[]): Promise<Set<string>> {
+export async function listedLineages(db: Executor, ids: readonly string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const result = await db.execute<{ id: string }>(sql`
     SELECT DISTINCT e.lineage_id::text AS id FROM v_public_edge e
