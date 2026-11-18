@@ -83,7 +83,7 @@ export const BG_SYSTEM: AdminDict = {
     'Докато не се реши хостингът, всичко след последното резервно копие може да се загуби (точката на възстановяване); възстановяването отнема най-много 4 часа.',
   'Not available': 'Няма достъп',
   "You don't have access to the system status. It is available to moderators, archivists and administrators.": 'Нямате достъп до състоянието на системата. То е достъпно за модератори, архивисти и администратори.',
-  'Back to your account': 'Обратно към акаунта ви',
+  'Back to your account': 'Обратно към вашия акаунт',
   "We couldn't read the system status. Nothing was changed.": 'Състоянието на системата не можа да се прочете. Нищо не е променено.',
   'The job queue, e-mail delivery and the local backup of this installation. Counts and times only: nothing here names a person.':
     'Опашката на задачите, доставката на имейли и локалното резервно копие на тази инсталация. Само бройки и часове: нищо тук не назовава човек.',
