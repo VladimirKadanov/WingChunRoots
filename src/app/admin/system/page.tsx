@@ -8,6 +8,10 @@
 // the second factor is sent to verify it (guardRoute; the policy of /admin, staff2fa, covers it). A plain page: no JavaScript of its own, and
 // "Refresh" is a link to itself. The numbers change from one visit to the next, so they carry
 // data-volatile (masked in the visual regression).
+//
+// Control panel (docs/adr/0038-control-panel-pages.md): problems first. A box at the top lists what
+// needs attention, in words, each linked to its section; the sections that need attention come
+// before the ones that are fine, and within the queue the queues with failures or long waits first.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -60,7 +64,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 const STALE_SECONDS = 15 * 60;
 
 function Column({ children }: { children: ReactNode }) {
-  return <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">{children}</div>;
+  return <div className="mx-auto max-w-[80rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">{children}</div>;
 }
 
 /** "Needs attention" or "OK", as text with a shape (plan §5.8: status never by colour alone). */
@@ -114,7 +118,7 @@ function Summary({ status }: { status: SystemStatus }) {
 
 function Section({ id, title, verdict, children }: { id: string; title: string; verdict?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-labelledby={`${id}-heading`} className="grid gap-4 border-t border-border-subtle pt-6" data-testid={`${id}-section`}>
+    <section id={id} aria-labelledby={`${id}-heading`} className="grid scroll-mt-4 gap-4 border-t border-border-subtle pt-6" data-testid={`${id}-section`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 id={`${id}-heading`} className="font-display text-2xl">
           {title}
@@ -126,16 +130,19 @@ function Section({ id, title, verdict, children }: { id: string; title: string; 
   );
 }
 
+const queueAttention = (status: SystemStatus) => status.queue.queues.some((q) => q.failed > 0 || (q.oldestReadySeconds ?? 0) > STALE_SECONDS);
+const queueRank = (q: SystemStatus['queue']['queues'][number]) => (q.failed > 0 ? 0 : (q.oldestReadySeconds ?? 0) > STALE_SECONDS ? 1 : 2);
+
 function QueueSection({ status }: { status: SystemStatus }) {
-  const attention = status.queue.queues.some((q) => q.failed > 0 || (q.oldestReadySeconds ?? 0) > STALE_SECONDS);
+  const attention = queueAttention(status);
   return (
     <Section id="queues" title="Job queue" verdict={<Verdict attention={attention} testId="queue-verdict" />}>
       <p className="max-w-[60ch] text-ui text-fg-muted">
         The worker takes jobs as they become ready: e-mail, the daily erasure of old addresses, search keys and lineage counters. A job
         that waits long means the worker is stopped or cannot keep up.
       </p>
-      <ul className="grid gap-3 sm:grid-cols-2" data-testid="queue-list">
-        {status.queue.queues.map((q) => {
+      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="queue-list">
+        {[...status.queue.queues].sort((a, b) => queueRank(a) - queueRank(b)).map((q) => {
           const stale = (q.oldestReadySeconds ?? 0) > STALE_SECONDS;
           return (
             <li key={q.queue} data-queue={q.queue} className="grid gap-3 rounded-sm border border-border-subtle p-4">
@@ -219,9 +226,53 @@ function EmailSection({ status }: { status: SystemStatus }) {
 /** An archive older than this needs a look: the backup routine may have stopped. */
 const BACKUP_STALE_MS = 8 * 24 * 60 * 60 * 1000;
 
+const backupStale = (status: SystemStatus) => status.backup.latest !== null && Date.parse(status.checkedAt) - Date.parse(status.backup.latest.createdAt) > BACKUP_STALE_MS;
+
+/** What needs a look, in words, each with the section it is in; empty when all is well. */
+function problemsOf(status: SystemStatus): { section: 'queues' | 'email' | 'backup'; text: string }[] {
+  const problems: { section: 'queues' | 'email' | 'backup'; text: string }[] = [];
+  const failedQueues = status.queue.queues.filter((q) => q.failed > 0);
+  if (failedQueues.length > 0) problems.push({ section: 'queues', text: `${plural(status.queue.failed, 'job', 'jobs')} failed after the last retry, in ${plural(failedQueues.length, 'queue', 'queues')}.` });
+  const slow = status.queue.queues.filter((q) => (q.oldestReadySeconds ?? 0) > STALE_SECONDS);
+  if (slow.length > 0) problems.push({ section: 'queues', text: `${plural(slow.length, 'queue has', 'queues have')} a ready job waiting over 15 minutes: the worker may be stopped.` });
+  if (status.email.failed > 0) problems.push({ section: 'email', text: `${plural(status.email.failed, 'e-mail', 'e-mails')} could not be delivered.` });
+  const latest = status.backup.latest;
+  if (!latest) problems.push({ section: 'backup', text: 'There is no backup of this database yet.' });
+  else if (!latest.hasChecksum) problems.push({ section: 'backup', text: 'The last backup has no checksum file.' });
+  else if (backupStale(status)) problems.push({ section: 'backup', text: 'The last backup is older than a week.' });
+  return problems;
+}
+
+function Problems({ status }: { status: SystemStatus }) {
+  const problems = problemsOf(status);
+  return problems.length > 0 ? (
+    <section aria-labelledby="problems-heading" className="mt-6 grid gap-3 rounded-md border-2 border-dashed border-danger bg-surface-1 p-5" data-testid="system-problems" data-state="attention">
+      <h2 id="problems-heading" className="inline-flex items-center gap-2 font-display text-2xl">
+        <AlertIcon size={22} className="shrink-0 text-danger" />
+        {problems.length === 1 ? '1 thing needs attention' : `${problems.length} things need attention`}
+      </h2>
+      <ul className="grid gap-1 text-ui">
+        {problems.map((p) => (
+          <li key={p.text} data-volatile className="flex flex-wrap items-baseline gap-x-3">
+            <span>{p.text}</span>
+            <a href={`#${p.section}`} className="link inline-flex min-h-11 items-center text-sm">
+              Show it
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : (
+    <p className="mt-6 inline-flex items-center gap-2 rounded-md border border-border-subtle bg-surface-1 px-4 py-3 text-ui" data-testid="system-problems" data-state="ok">
+      <CheckIcon size={18} className="shrink-0" />
+      Nothing needs attention: the queue, e-mail and the backup are fine.
+    </p>
+  );
+}
+
 function BackupSection({ status }: { status: SystemStatus }) {
   const { latest, count } = status.backup;
-  const stale = latest !== null && Date.parse(status.checkedAt) - Date.parse(latest.createdAt) > BACKUP_STALE_MS;
+  const stale = backupStale(status);
   return (
     <Section id="backup" title="Local backup" verdict={<Verdict attention={!latest || !latest.hasChecksum || stale} testId="backup-verdict" />}>
       {latest ? (
@@ -309,11 +360,22 @@ export default async function SystemPage() {
           Read on <span data-volatile data-testid="checked-at">{formatTime(status.checkedAt)}</span>.
         </p>
       </header>
+      <Problems status={status} />
       <Summary status={status} />
       <div className="mt-10 grid gap-10">
-        <QueueSection status={status} />
-        <EmailSection status={status} />
-        <BackupSection status={status} />
+        {(
+          [
+            { key: 'queues', attention: queueAttention(status), node: <QueueSection status={status} /> },
+            { key: 'email', attention: status.email.failed > 0, node: <EmailSection status={status} /> },
+            { key: 'backup', attention: problemsOf(status).some((p) => p.section === 'backup'), node: <BackupSection status={status} /> },
+          ] as const
+        )
+          .toSorted((a, b) => Number(b.attention) - Number(a.attention))
+          .map((section) => (
+            <div key={section.key} className="contents">
+              {section.node}
+            </div>
+          ))}
       </div>
       <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border-subtle pt-5 text-ui">
         <a href={PATH} className={buttonVariants({ variant: 'secondary' })} data-testid="system-refresh">

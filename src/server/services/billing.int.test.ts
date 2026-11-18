@@ -509,6 +509,30 @@ describe('staff', () => {
     await expect(adminBillingList(student.principal, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(moveTestClock(moderator.principal, { subscriptionId: subscription.id, step: 'period_end' }, meta)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
+
+  it('control panel: the list filters by plan and holder, and its figures count every live subscription', async () => {
+    const student = await member('m22-admin-filter');
+    const { subscription } = await paidSubscription(student.principal, 'premium_student');
+    const admin = await staff('m22-admin-filter-admin', 'admin');
+    const all = await adminBillingList(admin.principal, {});
+    const byHolder = await adminBillingList(admin.principal, { q: student.account.email.toUpperCase() });
+    expect(byHolder.rows.map((r) => r.id)).toEqual([subscription.id]);
+    expect(byHolder.q).toBe(student.account.email.toUpperCase());
+    expect((await adminBillingList(admin.principal, { q: student.account.email, plan: 'pro_sifu' })).rows).toEqual([]);
+    const premium = await adminBillingList(admin.principal, { plan: 'premium_student' });
+    expect(premium.rows.every((r) => r.planName === 'Premium Student')).toBe(true);
+    expect(premium.rows.map((r) => r.id)).toContain(subscription.id);
+    // The figures ignore the filters.
+    expect(byHolder.summary).toEqual(all.summary);
+    const { summary } = all;
+    expect(summary.live).toBe(summary.byStatus.active + summary.byStatus.past_due);
+    expect(summary.pastDue).toBe(summary.byStatus.past_due);
+    expect(summary.byPlan.reduce((n, p) => n + p.live, 0)).toBe(summary.live);
+    expect(summary.byPlan.reduce((n, p) => n + p.monthlyCents, 0)).toBe(summary.monthlyCents);
+    expect(summary.byPlan.find((p) => p.code === 'premium_student')!.monthlyCents).toBeGreaterThan(0);
+    expect(Object.values(summary.byStatus).reduce((a, b) => a + b, 0)).toBe(all.total);
+    await expect(adminBillingList(admin.principal, { plan: 'nope' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
 });
 
 describe('secrets, card data and logs', () => {
