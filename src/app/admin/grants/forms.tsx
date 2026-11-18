@@ -19,6 +19,9 @@ import { IDLE, type FormState } from '@/lib/form-state';
 import { closeRequestAction, createGrantAction, revokeGrantAction } from './actions';
 import { closeRequestForm, CREATE_GRANT_FORM, revokeGrantForm } from './form-ids';
 
+/** What /admin/grants says for `?request=` of a request that is no longer open (final check, screens-4). */
+const REQUEST_ANSWERED_TEXT = 'This pilot access request has already been answered. Nothing is waiting in it.';
+
 const labels = (t: AdminT) => ({
   email: t('Account e-mail'),
   planCode: t('Plan'),
@@ -46,8 +49,7 @@ export function GivePlanDisclosure({ openAtFirst, answeredAtFirst, children }: {
       {answered ? (
         <p data-testid="request-answered" className="flex max-w-[46rem] items-start gap-2 rounded-sm bg-surface-2 px-4 py-3 text-ui">
           <CheckIcon size={18} className="mt-1 shrink-0" />
-          {/* What /admin/grants says for `?request=` of a request that is no longer open (final check, screens-4). */}
-          <span>{t('This pilot access request has already been answered. Nothing is waiting in it.')}</span>
+          <span>{t(REQUEST_ANSWERED_TEXT)}</span>
         </p>
       ) : null}
       <details open={open || undefined} className="group max-w-[46rem]">
