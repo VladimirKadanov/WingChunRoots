@@ -64,8 +64,14 @@ import {
   addRankInput,
   addSkill,
   addSkillInput,
+  attendanceClaimable,
+  attendanceClaims,
   certificateIdInput,
   certificateUploadInput,
+  claimAttendance,
+  claimAttendanceInput,
+  decideAttendanceClaim,
+  decideAttendanceInput,
   markAttendance,
   markAttendanceInput,
   myPassport,
@@ -1619,6 +1625,34 @@ export const router = {
       .route({ method: 'POST', path: '/passport/attendance/mark', summary: 'Mark your own established students as attending a past event you organized or taught at; once per event and student; audited' })
       .input(markAttendanceInput)
       .handler(({ context, input }) => markAttendance(context.principal, input, context.meta)),
+    // ADR 0046: a student's claim of attendance, confirmed or refused by the event's organizer.
+    claimable: signedIn
+      .route({
+        method: 'GET',
+        path: '/passport/attendance/claimable',
+        summary: 'The past published events you may say you attended (on a plan with the full passport), newest first, and how many of your requests wait for organizers',
+      })
+      .handler(({ context }) => attendanceClaimable(context.principal)),
+    claimAttendance: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/attendance/claim',
+        summary:
+          "Say you attended a past event (Premium Student or Professional Sifu): the request shows only in your own passport until the organizer, an instructor or an admin of the organizing organization confirms it; at most 20 waiting; the organizer is told; audited",
+      })
+      .input(claimAttendanceInput)
+      .handler(({ context, input }) => claimAttendance(context.principal, input, context.meta)),
+    attendanceClaims: signedIn
+      .route({ method: 'GET', path: '/passport/attendance/claims', summary: 'The attendance requests waiting on events you organized or taught at, or that an organization you administer organized; oldest first' })
+      .handler(({ context }) => attendanceClaims(context.principal)),
+    decideAttendance: signedIn
+      .route({
+        method: 'POST',
+        path: '/passport/attendance/decide',
+        summary: "Confirm (`approve`) or refuse (`refuse`) a student's attendance request on your event: a confirmed one joins their passport, a refused one is kept and shown to nobody; the student is told; audited",
+      })
+      .input(decideAttendanceInput)
+      .handler(({ context, input }) => decideAttendanceClaim(context.principal, input, context.meta)),
     remove: staffWithSecondFactor
       .route({ method: 'POST', path: '/passport/remove', summary: 'Remove any passport entry with a reason kept in the audit log and sent to its owner (staff with a verified second factor)' })
       .input(passportRemoveInput)

@@ -40,7 +40,7 @@ import { uploadPhoto } from '../services/photos';
 import { uploadSchoolPhoto } from '../services/school-photos';
 import { plainImage } from '../storage/test-images';
 import { createGrant } from '../services/grants';
-import { addRank, uploadCertificate } from '../services/passport';
+import { addRank, claimAttendance, uploadCertificate } from '../services/passport';
 import { requestHistoricalTeacher } from '../services/historical';
 import { requestInstructorVerification } from '../services/instructor';
 import { inviteTeacher } from '../services/invitations';
@@ -458,6 +458,14 @@ async function pastEventOf() {
   await getDb().execute(sql`UPDATE event SET organizer_person_id = ${p.teacher.personId}::uuid, organizer_user_id = ${p.teacher.id}::uuid,
     starts_at = starts_at - interval '2 years', ends_at = ends_at - interval '2 years' WHERE id = ${e.id}::uuid`);
   return { ...p, eventId: e.id };
+}
+
+/** ADR 0046: a past event of the teacher (organizer) and its student on Premium Student, with the student's waiting claim when `claimed`. */
+async function attendanceClaimOf(opts: { claimed?: boolean } = {}) {
+  const e = await pastEventOf();
+  await createGrant(world.admin.principal, { email: e.student.email, planCode: 'premium_student', reason: 'ADR 0046 authorization matrix (fictional)' }, meta);
+  const claim = opts.claimed ? await claimAttendance(e.student.principal, { eventId: e.eventId }, meta) : null;
+  return { ...e, claimId: claim?.id ?? null };
 }
 
 /** M22: an open test checkout of a new Student account (the `owner`). */
@@ -2007,6 +2015,34 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  // ADR 0046: attendance claims. `owner` claims (Premium Student) or decides (the organizer).
+  { path: 'passport.claimable', make: noInput, expect: { ...signedInOnly, member: 'ok', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' } },
+  {
+    path: 'passport.claimAttendance',
+    make: async () => {
+      const c = await attendanceClaimOf();
+      return { owner: c.student, party: c.teacher, input: { eventId: c.eventId } };
+    },
+    // The organizer (Free Sifu here) and a Free Student are refused at the plan; staff have no profile.
+    expect: { ...signedInOnly, owner: 'ok', party: 'ENTITLEMENT_REQUIRED', member: 'ENTITLEMENT_REQUIRED', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  { path: 'passport.attendanceClaims', make: noInput, expect: own() },
+  {
+    path: 'passport.decideAttendance',
+    make: async () => {
+      const c = await attendanceClaimOf({ claimed: true });
+      return { owner: c.teacher, party: c.student, input: { id: c.claimId, decision: 'approve' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'passport.withdrawEntry (a waiting claim)',
+    make: async () => {
+      const c = await attendanceClaimOf({ claimed: true });
+      return { owner: c.student, party: c.teacher, input: { kind: 'attendance', id: c.claimId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', party: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
   {
     path: 'passport.remove',
     make: async () => {
@@ -2622,6 +2658,9 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: (i) => ({ eventId: String(i.eventId), personId: String((i.personIds as string[])[0]) }),
     roles: ['anonymous', 'member', 'owner'],
   },
+  { action: 'src/app/dashboard/passport/actions.ts#claimAttendanceAction', row: 'passport.claimAttendance', form: same, roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/passport/actions.ts#withdrawClaimAction', row: 'passport.withdrawEntry (a waiting claim)', form: (i) => ({ id: String(i.id) }), roles: ['anonymous', 'member', 'party', 'owner'] },
+  { action: 'src/app/dashboard/events/attendance/actions.ts#decideAttendanceAction', row: 'passport.decideAttendance', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   {
     action: 'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction',
     row: 'passport.remove',

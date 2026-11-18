@@ -134,6 +134,10 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   // M19: the training passport (certificates are uploaded and removed from the browser through /api/rpc).
   'src/app/dashboard/passport/actions.ts#setVisibilityAction': { rpc: ['passport.setVisibility'] },
   'src/app/dashboard/passport/actions.ts#proposeCorrectionAction': { rpc: ['passport.updateEntry'] },
+  // ADR 0046: attendance requests, from the student and to the organizer.
+  'src/app/dashboard/passport/actions.ts#claimAttendanceAction': { rpc: ['passport.claimAttendance'] },
+  'src/app/dashboard/passport/actions.ts#withdrawClaimAction': { rpc: ['passport.withdrawEntry'] },
+  'src/app/dashboard/events/attendance/actions.ts#decideAttendanceAction': { rpc: ['passport.decideAttendance'] },
   'src/app/dashboard/students/actions.ts#addRankAction': { rpc: ['passport.addRank'] },
   'src/app/dashboard/students/actions.ts#addExamAction': { rpc: ['passport.addExam'] },
   'src/app/dashboard/students/actions.ts#addSkillAction': { rpc: ['passport.addSkill'] },

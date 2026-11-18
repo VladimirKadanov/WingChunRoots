@@ -237,7 +237,7 @@ const TITLE_SQL: Record<PassportKind, string> = {
 interface EntryRow extends Record<string, unknown> {
   id: string;
   person_id: string;
-  status: 'active' | 'withdrawn' | 'removed';
+  status: 'active' | 'withdrawn' | 'removed' | 'pending' | 'refused';
   visibility: 'private' | 'public';
   created_by_user_id: string | null;
   teacher_person_id: string | null;
@@ -538,6 +538,8 @@ interface OwnRow extends EntrySource {
   writer_organization: boolean;
   organization_id: string | null;
   teacher_person_id: string | null;
+  /** A student's attendance claim waiting for the organizer (ADR 0046); only in the student's own passport. */
+  waiting: boolean;
 }
 
 /**
@@ -546,21 +548,23 @@ interface OwnRow extends EntrySource {
  * name, a person of the student's own relationship (DEFAULT D03). `organizationIds` keeps only the
  * entries those organizations recorded (an organization's admin who is not the student's teacher).
  */
-async function ownEntries(db: Executor, personId: string, organizationIds: readonly string[] | null = null): Promise<OwnRow[]> {
+async function ownEntries(db: Executor, personId: string, organizationIds: readonly string[] | null = null, includeClaims = false): Promise<OwnRow[]> {
   const name = (alias: string) => sql.raw(`(SELECT n."value" FROM "person_name" n WHERE n."person_id" = ${alias}."id" AND n."is_primary" LIMIT 1)`);
   const lang = (alias: string) => sql.raw(`(SELECT n."lang" FROM "person_name" n WHERE n."person_id" = ${alias}."id" AND n."is_primary" LIMIT 1)`);
   const result = await db.execute<OwnRow>(sql`
     SELECT 'rank' AS kind, r.id, r.awarded_on AS on_date, r.precision, r.rank AS title, NULL AS progress, o.slug AS organization_slug, o.name AS organization_name,
            NULL AS examiner_slug, NULL AS examiner_name, NULL AS examiner_lang, tp.slug AS teacher_slug, ${name('tp')} AS teacher_name, ${lang('tp')} AS teacher_lang,
            NULL AS event_slug, NULL AS event_kind, NULL AS certificate_sha256, NULL::int AS certificate_width, NULL::int AS certificate_height, r.created_at,
-           r.visibility, r.created_by_user_id, r.correction_note, r.correction_at, (r.teacher_person_id IS NULL) AS writer_organization, r.organization_id, r.teacher_person_id
+           r.visibility, r.created_by_user_id, r.correction_note, r.correction_at, (r.teacher_person_id IS NULL) AS writer_organization, r.organization_id, r.teacher_person_id,
+           false AS waiting
       FROM passport_rank r LEFT JOIN v_public_organization o ON o.id = r.organization_id LEFT JOIN person tp ON tp.id = r.teacher_person_id AND tp.deleted_at IS NULL
      WHERE r.person_id = ${personId}::uuid AND r.status = 'active'
     UNION ALL
     SELECT 'exam', x.id, x.exam_on, x.precision, x.awarded_rank, NULL, o.slug, o.name,
            ep.slug, ep.display_name, ${lang('ep')}, tp.slug, ${name('tp')}, ${lang('tp')},
            NULL, NULL, NULL, NULL::int, NULL::int, x.created_at,
-           x.visibility, x.created_by_user_id, x.correction_note, x.correction_at, (x.teacher_person_id IS NULL), x.organization_id, x.teacher_person_id
+           x.visibility, x.created_by_user_id, x.correction_note, x.correction_at, (x.teacher_person_id IS NULL), x.organization_id, x.teacher_person_id,
+           false
       FROM passport_exam x LEFT JOIN v_public_organization o ON o.id = x.organization_id LEFT JOIN v_public_person ep ON ep.id = x.examiner_person_id
            LEFT JOIN person tp ON tp.id = x.teacher_person_id AND tp.deleted_at IS NULL
      WHERE x.person_id = ${personId}::uuid AND x.status = 'active'
@@ -568,23 +572,26 @@ async function ownEntries(db: Executor, personId: string, organizationIds: reado
     SELECT 'skill', k.id, k.since_on, k.precision, k.name, k.progress, o.slug, o.name,
            NULL, NULL, NULL, tp.slug, ${name('tp')}, ${lang('tp')},
            NULL, NULL, NULL, NULL::int, NULL::int, k.created_at,
-           k.visibility, k.created_by_user_id, k.correction_note, k.correction_at, (k.teacher_person_id IS NULL), k.organization_id, k.teacher_person_id
+           k.visibility, k.created_by_user_id, k.correction_note, k.correction_at, (k.teacher_person_id IS NULL), k.organization_id, k.teacher_person_id,
+           false
       FROM passport_skill k LEFT JOIN v_public_organization o ON o.id = k.organization_id LEFT JOIN person tp ON tp.id = k.teacher_person_id AND tp.deleted_at IS NULL
      WHERE k.person_id = ${personId}::uuid AND k.status = 'active'
     UNION ALL
     SELECT 'certificate', c.id, c.issued_on, c.precision, c.title, NULL, NULL, NULL,
            NULL, NULL, NULL, NULL, NULL, NULL,
            NULL, NULL, c.sha256, c.width, c.height, c.created_at,
-           c.visibility, c.created_by_user_id, NULL, NULL, false, NULL, NULL::uuid
+           c.visibility, c.created_by_user_id, NULL, NULL, false, NULL, NULL::uuid,
+           false
       FROM passport_certificate c
      WHERE c.person_id = ${personId}::uuid AND c.status = 'active'
     UNION ALL
     SELECT 'attendance', a.id, (e.starts_at AT TIME ZONE e.timezone)::date, 'day', e.title, NULL, NULL, NULL,
            NULL, NULL, NULL, tp.slug, ${name('tp')}, ${lang('tp')},
            e.slug, e.kind, NULL, NULL::int, NULL::int, a.created_at,
-           a.visibility, a.created_by_user_id, NULL, NULL, false, NULL, a.teacher_person_id
+           a.visibility, a.created_by_user_id, NULL, NULL, false, NULL, a.teacher_person_id,
+           (a.status = 'pending')
       FROM event_attendance a JOIN event e ON e.id = a.event_id AND e.status <> 'removed' LEFT JOIN person tp ON tp.id = a.teacher_person_id AND tp.deleted_at IS NULL
-     WHERE a.person_id = ${personId}::uuid AND a.status = 'active'`);
+     WHERE a.person_id = ${personId}::uuid AND ${includeClaims ? sql`a.status IN ('active', 'pending')` : sql`a.status = 'active'`}`);
   const rows = result.rows as OwnRow[];
   if (organizationIds === null) return rows;
   // Only what the organization itself recorded: an entry a teacher wrote and named the
@@ -602,6 +609,8 @@ export interface OwnPassportEntry extends PassportEntryDto {
   byOrganization: boolean;
   /** The student's proposed correction, waiting for whoever wrote it. */
   correction: { note: string; at: string } | null;
+  /** An attendance the student claimed, waiting for the organizer to confirm it (ADR 0046): shown nowhere else. */
+  waitingForOrganizer: boolean;
 }
 
 function ownEntryOf(r: OwnRow, level: PassportLevel, profilePublic: boolean, currentRankId: string | null): OwnPassportEntry {
@@ -610,10 +619,11 @@ function ownEntryOf(r: OwnRow, level: PassportLevel, profilePublic: boolean, cur
   return {
     ...entry,
     visibility: r.visibility,
-    shownOnProfile: profilePublic && r.visibility === 'public' && allowed,
-    hiddenByPlan: r.visibility === 'public' && !allowed,
+    shownOnProfile: !r.waiting && profilePublic && r.visibility === 'public' && allowed,
+    hiddenByPlan: !r.waiting && r.visibility === 'public' && !allowed,
     byOrganization: r.writer_organization,
     correction: r.correction_note && r.correction_at ? { note: r.correction_note, at: iso(r.correction_at) } : null,
+    waitingForOrganizer: r.waiting === true,
   };
 }
 
@@ -669,7 +679,7 @@ export async function myPassport(principal: Principal | null): Promise<MyPasspor
   const { plan, level } = await planOf(db, own.id);
   const profile = await db.execute(sql`SELECT 1 AS one FROM v_public_person WHERE id = ${own.id}::uuid`);
   const profilePublic = profile.rows.length > 0;
-  const [rows, teachers, startYear] = await Promise.all([ownEntries(db, own.id), ownTeachers(db, own.id), startYearOf(db, own.id)]);
+  const [rows, teachers, startYear] = await Promise.all([ownEntries(db, own.id, null, true), ownTeachers(db, own.id), startYearOf(db, own.id)]);
   // The current rank among the public ones is the one a basic passport shows.
   const publicRanks = rows.filter((r) => r.kind === 'rank' && r.visibility === 'public').map(entryOf);
   const currentPublic = currentOf(publicRanks);
@@ -1080,6 +1090,13 @@ export async function withdrawEntry(principal: Principal | null, raw: z.input<ty
     const entry = await loadEntry(tx, input.kind, input.id, true);
     if (!entry || entry.status === 'removed') throw notFound();
     const own = await ownPersonId(tx, p.user.id);
+    if (own === entry.person_id && input.kind === 'attendance' && entry.status === 'pending' && entry.created_by_user_id === p.user.id) {
+      // ADR 0046: the student takes back a claim the organizer has not decided yet.
+      await tx.execute(sql`UPDATE event_attendance SET status = 'withdrawn', withdrawn_at = now(), withdrawn_by_user_id = ${p.user.id}::uuid, updated_at = now() WHERE id = ${entry.id}::uuid`);
+      await writeAudit(tx, { action: 'passport.withdraw', ...audited(meta, p), subjectType: 'event_attendance', subjectId: entry.id, before: { status: 'pending' }, after: { status: 'withdrawn' } });
+      return { kind: input.kind, id: entry.id, withdrawn: true };
+    }
+    if (entry.status === 'pending' || entry.status === 'refused') throw notFound();
     if (own === entry.person_id) throw new ServiceError('FORBIDDEN', 'Your teacher withdraws what they recorded. You can make an entry private instead.');
     const may = await mayChange(tx, p.user.id, entry);
     if (may === 'arbitration') throw new ServiceError('FORBIDDEN', ARBITRATION_READ_ONLY);
@@ -1305,13 +1322,226 @@ export async function markAttendance(principal: Principal | null, raw: z.input<t
         INSERT INTO event_attendance (id, person_id, event_id, teacher_person_id, created_by_user_id)
         VALUES (${uuidv7()}::uuid, ${personId}::uuid, ${ev.id}::uuid, ${own}::uuid, ${p.user.id}::uuid)
         ON CONFLICT DO NOTHING RETURNING id`);
-      const row = inserted.rows[0];
+      // ADR 0046: the student's own claim (waiting or refused) becomes the organizer's record.
+      const row =
+        inserted.rows[0] ??
+        (
+          await tx.execute<{ id: string }>(sql`
+            UPDATE event_attendance SET status = 'active', teacher_person_id = ${own}::uuid, decided_at = now(), decided_by_user_id = ${p.user.id}::uuid, updated_at = now()
+             WHERE event_id = ${ev.id}::uuid AND person_id = ${personId}::uuid AND status IN ('pending', 'refused') RETURNING id`)
+        ).rows[0];
       if (!row) continue;
       marked += 1;
       await writeAudit(tx, { action: 'passport.attendance', ...audited(meta, p), subjectType: 'event_attendance', subjectId: row.id, after: { eventId: ev.id, personId } });
       await tellStudent(tx, personId, p.user.id, 'attendance', row.id, ev.title);
     }
     return { eventId: ev.id, marked };
+  });
+}
+
+// --- Attendance claims (owner decision 2026-11-18, docs/adr/0046-passport-extras.md) ----------------
+
+/** At most this many claims wait for organizers at a time, per student. */
+export const ATTENDANCE_CLAIMS_PENDING_MAX = 20;
+/** The past events a student can choose from: the latest ones. */
+export const CLAIMABLE_EVENTS_LIMIT = 100;
+const CLAIM_NEEDS_PLAN = 'Asking an organizer to confirm your attendance is part of Premium Student.';
+const CLAIM_TOO_MANY = `You have ${ATTENDANCE_CLAIMS_PENDING_MAX} requests waiting for organizers. Wait for an answer, or take one back, before you ask again.`;
+const CLAIM_EXISTS = 'This event is already in your passport, or you already asked its organizer.';
+const CLAIM_OWN_EVENT = 'You organized or taught at this event. Mark your students from your passport page instead.';
+
+export const claimAttendanceInput = z.object({ eventId: z.uuid({ error: 'No such event.' }) });
+export const decideAttendanceInput = z.object({ id: id('No such request.'), decision: z.enum(['approve', 'refuse']) });
+
+export interface ClaimableEvent {
+  id: string;
+  slug: string;
+  title: string;
+  kind: EventKind;
+  kindLabel: string;
+  dateText: string;
+}
+
+export interface AttendanceClaimOptions {
+  /** Whether the plan of the account lets it claim (the full passport). */
+  allowed: boolean;
+  /** Past published events the student has not claimed or been marked at, newest first. */
+  events: ClaimableEvent[];
+  pending: number;
+  limit: number;
+}
+
+/** passport.claimable: the past events the signed-in student may say they attended. */
+export async function attendanceClaimable(principal: Principal | null): Promise<AttendanceClaimOptions> {
+  const p = requireUser(principal);
+  const db = getDb();
+  const own = await ownPersonId(db, p.user.id);
+  if (!own) throw notFound(NO_PROFILE);
+  const { level } = await planOf(db, own);
+  const pending = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM event_attendance WHERE person_id = ${own}::uuid AND status = 'pending'`);
+  if (level !== 'full') return { allowed: false, events: [], pending: pending.rows[0]?.n ?? 0, limit: ATTENDANCE_CLAIMS_PENDING_MAX };
+  const rows = await db.execute<{ id: string; slug: string; title: string; kind: EventKind; day: string }>(sql`
+    SELECT e.id, e.slug, e.title, e.kind, to_char((e.starts_at AT TIME ZONE e.timezone)::date, 'YYYY-MM-DD') AS day
+      FROM event e
+     WHERE e.status = 'published' AND e.ends_at < now()
+       AND e.organizer_person_id IS DISTINCT FROM ${own}::uuid
+       AND NOT EXISTS (SELECT 1 FROM event_instructor i WHERE i.event_id = e.id AND i.person_id = ${own}::uuid)
+       AND NOT EXISTS (SELECT 1 FROM event_attendance a WHERE a.event_id = e.id AND a.person_id = ${own}::uuid AND a.status IN ('active', 'pending', 'refused'))
+     ORDER BY e.starts_at DESC, e.id
+     LIMIT ${CLAIMABLE_EVENTS_LIMIT}`);
+  return {
+    allowed: true,
+    events: rows.rows.map((e) => ({ id: e.id, slug: e.slug, title: e.title, kind: e.kind, kindLabel: EVENT_KIND_LABELS[e.kind], dateText: formatPartialDate(e.day) })),
+    pending: pending.rows[0]?.n ?? 0,
+    limit: ATTENDANCE_CLAIMS_PENDING_MAX,
+  };
+}
+
+/** The accounts told about a new claim: the Sifu organizer, or the admins of the organizing organization. */
+async function claimRecipients(db: Executor, eventId: string): Promise<string[]> {
+  const result = await db.execute<{ user_id: string }>(sql`
+    SELECT e.organizer_user_id AS user_id FROM event e WHERE e.id = ${eventId}::uuid AND e.organizer_user_id IS NOT NULL
+    UNION
+    SELECT a.user_id FROM event e
+      JOIN organization_admin a ON a.organization_id = e.organization_id AND a.revoked_at IS NULL
+      JOIN organization o ON o.id = e.organization_id AND o.status = 'active' AND o.deleted_at IS NULL
+     WHERE e.id = ${eventId}::uuid`);
+  return result.rows.map((r) => r.user_id);
+}
+
+/**
+ * passport.attendance.claim: a student on a plan with the full passport says they attended a past
+ * published event. The claim waits, shown only in their own passport, until the organizer, an
+ * instructor or an admin of the organizing organization decides (ADR 0046).
+ */
+export async function claimAttendance(principal: Principal | null, raw: z.input<typeof claimAttendanceInput>, meta: RequestMeta): Promise<{ id: string; eventId: string }> {
+  const p = requireUser(principal);
+  const parsed = claimAttendanceInput.safeParse(raw);
+  if (!parsed.success) throw notFound('No such event.');
+  const input = parsed.data;
+  return getDb().transaction(async (tx) => {
+    const own = await ownPersonId(tx, p.user.id);
+    if (!own) throw notFound(NO_PROFILE);
+    // Serialises one student's claims, so the waiting limit holds.
+    await tx.execute(sql`SELECT id FROM person WHERE id = ${own}::uuid FOR UPDATE`);
+    const { level } = await planOf(tx, own);
+    if (level !== 'full') throw new ServiceError('ENTITLEMENT_REQUIRED', CLAIM_NEEDS_PLAN);
+    const found = await tx.execute<{ id: string; title: string; status: string; past: boolean; teaches: boolean }>(sql`
+      SELECT e.id, e.title, e.status, (e.ends_at < now()) AS past,
+             (e.organizer_person_id = ${own}::uuid OR EXISTS (SELECT 1 FROM event_instructor i WHERE i.event_id = e.id AND i.person_id = ${own}::uuid)) AS teaches
+        FROM event e WHERE e.id = ${input.eventId}::uuid`);
+    const ev = found.rows[0];
+    if (!ev || ev.status === 'removed') throw notFound('No such event.');
+    if (ev.status !== 'published' || !ev.past) throw new ServiceError('CONFLICT', EVENT_NOT_PAST);
+    if (ev.teaches) throw new ServiceError('CONFLICT', CLAIM_OWN_EVENT);
+    const waiting = await tx.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM event_attendance WHERE person_id = ${own}::uuid AND status = 'pending'`);
+    if ((waiting.rows[0]?.n ?? 0) >= ATTENDANCE_CLAIMS_PENDING_MAX) throw new ServiceError('CONFLICT', CLAIM_TOO_MANY);
+    const inserted = await tx.execute<{ id: string }>(sql`
+      INSERT INTO event_attendance (id, person_id, event_id, status, claimed, created_by_user_id)
+      VALUES (${uuidv7()}::uuid, ${own}::uuid, ${ev.id}::uuid, 'pending', true, ${p.user.id}::uuid)
+      ON CONFLICT DO NOTHING RETURNING id`);
+    const row = inserted.rows[0];
+    if (!row) throw new ServiceError('CONFLICT', CLAIM_EXISTS);
+    await writeAudit(tx, { action: 'passport.attendance_claim', ...audited(meta, p), subjectType: 'event_attendance', subjectId: row.id, after: { eventId: ev.id, status: 'pending' } });
+    for (const userId of await claimRecipients(tx, ev.id)) {
+      if (userId === p.user.id) continue;
+      await notify(tx, userId, 'passport.attendance-claimed', { title: ev.title.slice(0, 200) }, { key: `passport.attendance-claimed:${row.id}` });
+    }
+    return { id: row.id, eventId: ev.id };
+  });
+}
+
+export interface AttendanceClaim {
+  id: string;
+  event: { id: string; slug: string; title: string; dateText: string };
+  /** The student, by their primary name; their page only while it is public. */
+  student: { name: { value: string; lang: string | null }; slug: string | null };
+  claimedAt: string;
+}
+
+/** Whether the account decides claims on this event: its organizer, an instructor, or an admin of the organizing organization. */
+const DECIDES = (userId: string, own: string | null) => sql`(
+  e.organizer_user_id = ${userId}::uuid
+  OR (${own}::uuid IS NOT NULL AND (e.organizer_person_id = ${own}::uuid OR EXISTS (SELECT 1 FROM event_instructor i WHERE i.event_id = e.id AND i.person_id = ${own}::uuid)))
+  OR EXISTS (SELECT 1 FROM organization_admin oa JOIN organization o ON o.id = oa.organization_id AND o.status = 'active' AND o.deleted_at IS NULL
+              WHERE oa.organization_id = e.organization_id AND oa.user_id = ${userId}::uuid AND oa.revoked_at IS NULL))`;
+
+/** At most this many waiting claims are listed at once (oldest first). */
+export const ATTENDANCE_CLAIMS_LIST_LIMIT = 100;
+
+/** passport.attendance.claims: the claims waiting on events this account decides, oldest first. */
+export async function attendanceClaims(principal: Principal | null): Promise<{ claims: AttendanceClaim[] }> {
+  const p = requireUser(principal);
+  const db = getDb();
+  const own = await ownPersonId(db, p.user.id);
+  const rows = await db.execute<{ id: string; event_id: string; event_slug: string; event_title: string; day: string; name: string | null; lang: string | null; slug: string | null; created_at: string | Date }>(sql`
+    SELECT a.id, e.id AS event_id, e.slug AS event_slug, e.title AS event_title, to_char((e.starts_at AT TIME ZONE e.timezone)::date, 'YYYY-MM-DD') AS day,
+           (SELECT n.value FROM person_name n WHERE n.person_id = a.person_id AND n.is_primary LIMIT 1) AS name,
+           (SELECT n.lang FROM person_name n WHERE n.person_id = a.person_id AND n.is_primary LIMIT 1) AS lang,
+           pp.slug, a.created_at
+      FROM event_attendance a
+      JOIN event e ON e.id = a.event_id AND e.status = 'published'
+      JOIN person sp ON sp.id = a.person_id AND sp.deleted_at IS NULL
+      LEFT JOIN v_public_person pp ON pp.id = a.person_id
+     WHERE a.status = 'pending' AND ${DECIDES(p.user.id, own)}
+     ORDER BY a.created_at, a.id
+     LIMIT ${ATTENDANCE_CLAIMS_LIST_LIMIT}`);
+  return {
+    claims: rows.rows.map((r) => ({
+      id: r.id,
+      event: { id: r.event_id, slug: r.event_slug, title: r.event_title, dateText: formatPartialDate(r.day) },
+      student: { name: { value: r.name ?? 'A student', lang: r.lang }, slug: r.slug },
+      claimedAt: iso(r.created_at),
+    })),
+  };
+}
+
+/**
+ * passport.attendance.decide: the organizer, an instructor or an admin of the organizing
+ * organization approves a claim (it joins the passport, "Confirmed by the organizer") or refuses
+ * it (kept, shown to nobody). Audited; the student is told.
+ */
+export async function decideAttendanceClaim(
+  principal: Principal | null,
+  raw: z.input<typeof decideAttendanceInput>,
+  meta: RequestMeta,
+): Promise<{ id: string; status: 'active' | 'refused' }> {
+  const p = requireUser(principal);
+  const input = parse(decideAttendanceInput, raw);
+  return getDb().transaction(async (tx) => {
+    const own = await ownPersonId(tx, p.user.id);
+    const found = await tx.execute<{ id: string; person_id: string; status: string; title: string; teaches: boolean; may: boolean }>(sql`
+      SELECT a.id, a.person_id, a.status, e.title,
+             (${own}::uuid IS NOT NULL AND (e.organizer_person_id = ${own}::uuid OR EXISTS (SELECT 1 FROM event_instructor i WHERE i.event_id = e.id AND i.person_id = ${own}::uuid))) AS teaches,
+             ${DECIDES(p.user.id, own)} AS may
+        FROM event_attendance a JOIN event e ON e.id = a.event_id AND e.status = 'published'
+       WHERE a.id = ${input.id}::uuid
+         FOR UPDATE OF a`);
+    const claim = found.rows[0];
+    if (!claim || !claim.may || (claim.status !== 'pending' && claim.status !== 'active' && claim.status !== 'refused')) throw notFound('No such request.');
+    const status = input.decision === 'approve' ? 'active' : 'refused';
+    if (claim.status !== 'pending') {
+      if (claim.status === status) return { id: claim.id, status };
+      throw new ServiceError('CONFLICT', 'This request was already answered.');
+    }
+    await tx.execute(sql`
+      UPDATE event_attendance
+         SET status = ${status}, decided_at = now(), decided_by_user_id = ${p.user.id}::uuid,
+             teacher_person_id = ${status === 'active' && claim.teaches ? own : null}::uuid, updated_at = now()
+       WHERE id = ${claim.id}::uuid`);
+    await writeAudit(tx, {
+      action: 'passport.attendance_decide',
+      ...audited(meta, p),
+      subjectType: 'event_attendance',
+      subjectId: claim.id,
+      before: { status: 'pending' },
+      after: { status },
+    });
+    const owner = await accountOf(tx, claim.person_id);
+    if (owner && owner !== p.user.id) {
+      await notify(tx, owner, 'passport.attendance-decided', { title: claim.title.slice(0, 200), approved: status === 'active' }, { key: `passport.attendance-decided:${claim.id}` });
+    }
+    return { id: claim.id, status };
   });
 }
 

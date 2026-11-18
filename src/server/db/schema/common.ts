@@ -282,6 +282,12 @@ export const PASSPORT_VISIBILITIES = ['private', 'public'] as const;
  * deleted, a downgrade only hides (DEFAULT D08).
  */
 export const PASSPORT_STATUSES = ['active', 'withdrawn', 'removed'] as const;
+/**
+ * Attendance at an event also has a student's claim (owner decision 2026-11-18, ADR 0046): `pending`
+ * until the event's organizer or an instructor approves it (then `active`) or refuses it (`refused`).
+ * Neither is ever public: every public read takes `active` rows only.
+ */
+export const ATTENDANCE_STATUSES = [...PASSPORT_STATUSES, 'pending', 'refused'] as const;
 /** M19: a form or skill is being learned, or the teacher approved it. */
 export const SKILL_PROGRESSES = ['learning', 'approved'] as const;
 /** M19: the kinds of entry of a passport (the API's `kind`). */

@@ -91,6 +91,13 @@ export default async function EventsDashboardPage({ searchParams }: { searchPara
         <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
           Seminars, camps, exam sessions and other events. An event is public as soon as you publish it; you can change or cancel it later.
         </p>
+        {mine.accountType === 'sifu' || mine.publishAs.length > 0 ? (
+          <p className="mt-3 text-ui">
+            <Link href={`${PAGE}/attendance`} className="link inline-flex min-h-11 items-center" data-testid="events-attendance-link">
+              Attendance requests from students
+            </Link>
+          </p>
+        ) : null}
 
         <div className="mt-8 grid gap-6">
           {mine.accountType !== 'sifu' && mine.publishAs.length === 0 ? (

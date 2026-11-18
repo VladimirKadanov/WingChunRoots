@@ -6,7 +6,8 @@
 // failure is never rethrown as it is: the form shows the procedure's answer. Without JavaScript a
 // failure comes back to the form as a kept result (src/server/forms/flash.ts). Certificates are
 // uploaded and removed from the browser through /api/rpc (passport.uploadCertificate,
-// passport.removeCertificate), as a gallery photo is.
+// passport.removeCertificate), as a gallery photo is. ADR 0046: asking an event's organizer to
+// confirm attendance (passport.claimAttendance) and taking the request back (passport.withdrawEntry).
 
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
@@ -17,7 +18,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { PASSPORT_CORRECTION_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
+import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM, PASSPORT_CORRECTION_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
 
 const PAGE = '/dashboard/passport';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,4 +57,32 @@ export async function proposeCorrectionAction(_previous: FormState, form: FormDa
     return formResult({ form: PASSPORT_CORRECTION_FORM, page: PAGE, anchor: outcomeTarget(PASSPORT_CORRECTION_FORM, state, true) }, state);
   }
   redirect(`${PAGE}?corrected=1#entry-${UUID.test(id) ? id : ''}`);
+}
+
+/** "Ask the organizer to confirm" (passport.claimAttendance): the request waits, shown only here. */
+export async function claimAttendanceAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const eventId = textValue(form, 'eventId', 40);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).passport.claimAttendance({ eventId: UUID.test(eventId) ? eventId : '' });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(PAGE)}`);
+    const state = formStateFromFailure(error, { eventId });
+    return formResult({ form: PASSPORT_CLAIM_FORM, page: PAGE, anchor: outcomeTarget(PASSPORT_CLAIM_FORM, state, true) }, state);
+  }
+  redirect(`${PAGE}?claimed=1#passport-claims`);
+}
+
+/** "Take back the request" (passport.withdrawEntry of a claim that still waits). */
+export async function withdrawClaimAction(_previous: FormState, form: FormData): Promise<FormState> {
+  const id = textValue(form, 'id', 40);
+  try {
+    await serverClient(await headers(), await getRequestPrincipal()).passport.withdrawEntry({ kind: 'attendance', id: UUID.test(id) ? id : '' });
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(PAGE)}`);
+    const state = formStateFromFailure(error, { id });
+    return formResult({ form: PASSPORT_CLAIM_WITHDRAW_FORM, page: PAGE, anchor: outcomeTarget(PASSPORT_CLAIM_WITHDRAW_FORM, state, true) }, state);
+  }
+  redirect(`${PAGE}?claimWithdrawn=1#passport-entries`);
 }
