@@ -26,6 +26,11 @@ export function isAdminLang(value: unknown): value is AdminLang {
 export interface AdminT {
   /** `text` in the chosen language, with each {name} replaced by vars.name. */
   (text: string, vars?: Vars): string;
+  /**
+   * `text` where the same English means different things ("Open" the verb and "Open" the status):
+   * the key is `context|text` (`t.x('verb', 'Open')` looks up "verb|Open"); English shows `text`.
+   */
+  x(context: string, text: string, vars?: Vars): string;
   readonly lang: AdminLang;
   /** The BCP 47 tag for lang attributes and Intl ('bg' or 'en'). */
   readonly locale: string;
@@ -64,6 +69,7 @@ export function makeAdminT(lang: AdminLang, dict: AdminDict): AdminT {
   const num = (value: number) => (bg ? BG_NUMBER : EN_NUMBER).format(value);
   const t = ((text: string, vars?: Vars) => fill(look(text), vars)) as AdminT;
   return Object.assign(t, {
+    x: (context: string, text: string, vars?: Vars) => fill(bg ? (dict[`${context}|${text}`] ?? dict[text] ?? text) : text, vars),
     lang,
     locale: lang,
     n: (count: number, one: string, other: string, vars?: Vars) =>

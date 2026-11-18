@@ -30,6 +30,8 @@ function literals(source: string): string[] {
   for (const m of source.matchAll(/\bt\(\s*`([^`$]*)`/g)) found.push(m[1]!);
   const n = /\bt\.n\([^'"`]*?(['"])((?:\\.|(?!\1)[^\\\n])*)\1\s*,\s*(['"])((?:\\.|(?!\3)[^\\\n])*)\3/g;
   for (const m of source.matchAll(n)) found.push(unquote(m[2]!), unquote(m[4]!));
+  const x = /\bt\.x\(\s*(['"])((?:\\.|(?!\1)[^\\\n])*)\1\s*,\s*(['"])((?:\\.|(?!\3)[^\\\n])*)\3/g;
+  for (const m of source.matchAll(x)) found.push(`${unquote(m[2]!)}|${unquote(m[4]!)}`);
   return found;
 }
 
@@ -39,7 +41,7 @@ describe('the control panel in Bulgarian', () => {
   const scanned = SCANNED.flatMap((dir) => files(join(ROOT, dir)));
 
   it('finds the t() calls (the scan works)', () => {
-    expect(literals(`t('A b') t("C") t(\`D\`) t.n(count, '{n} case', '{n} cases')`)).toEqual(['A b', 'C', 'D', '{n} case', '{n} cases']);
+    expect(literals(`t('A b') t("C") t(\`D\`) t.n(count, '{n} case', '{n} cases') t.x('verb', 'Open')`)).toEqual(['A b', 'C', 'D', '{n} case', '{n} cases', 'verb|Open']);
   });
 
   it('has Bulgarian for every literal passed to t() under /admin', () => {
