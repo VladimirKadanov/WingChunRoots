@@ -4,4 +4,5 @@
 import type { AdminDict } from '../translate';
 
 export const BG_BILLING_CLIENT: AdminDict = {
+  'Moving the test clock…': 'Преместване на тестовия часовник…',
 };
