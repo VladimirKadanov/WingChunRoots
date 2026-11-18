@@ -1,6 +1,7 @@
 // The archive editor's working views (control panel 2026-11, docs/adr/0037-archive-editor-grids.md),
-// read-only over the demo data: the lineages table and its order, the people grid's search by every
-// spelling and its filters, the links grid's filters and side panel, and the tree that loads only the
+// over the demo data: the lineages table and its order, the people grid's search by every
+// spelling and its filters, the links grid's filters and side panel (with a link's years and source
+// corrected in place), and the tree that loads only the
 // open branches with the person's panel. Fictional demo data only (D20).
 
 import { expect, test, type Locator } from '@playwright/test';
@@ -50,6 +51,33 @@ test('@admin an archivist works through the lineages table, the people grid, the
   await links.getByRole('link', { name: /^Open the link from Cheng Ho Kai to Nikolay Demov/ }).click();
   await expect(visible(page.getByTestId('link-panel'))).toContainText('Established');
   await expectNoAxeViolations(page, 'the links grid with a link open');
+
+  // The link's years and source corrected in place: the panel's form, prefilled; the grid shows them.
+  // Each project edits its own demo link, so the desktop and phone runs never race on one row.
+  const target = test.info().project.name.includes('mobile') ? { slug: 'demo-c-004', name: 'Cheung Kwai Wing' } : { slug: 'demo-c-003', name: 'Viktor Seedorf' };
+  const source = `A fictional demo register, page ${Date.now() % 100_000}.`;
+  await page.goto(`/admin/archive/lineages/demo-lineage-c/links?q=${target.slug}`);
+  await visible(page.getByTestId('lineage-links')).getByRole('link', { name: new RegExp(`^Open the link from Cheng Ho Kai to ${target.name}`) }).click();
+  const linkPanel = visible(page.getByTestId('link-panel'));
+  await linkPanel.getByText('Correct the years or the source').click();
+  const edit = linkPanel.getByTestId('link-edit-form');
+  await edit.getByLabel(/^From \(year\)/).fill('1931');
+  await edit.getByLabel(/^To \(year\)/).fill('1938');
+  await edit.getByLabel(/^Source/).fill(source);
+  // Without a reason it is refused, and the form comes back with the values typed.
+  await edit.getByRole('button', { name: 'Save the years and source' }).click();
+  const refused = visible(page.getByTestId('link-edit-form'));
+  await expect(refused).toContainText('Write the reason for this change.');
+  await expect(refused.getByLabel(/^Source/)).toHaveValue(source);
+  await expect(refused.getByLabel(/^From \(year\)/)).toHaveValue('1931');
+  await refused.getByLabel(/^Reason/).fill('A fictional correction for the demo.');
+  await refused.getByRole('button', { name: 'Save the years and source' }).click();
+  await expect(visible(page.getByTestId('archive-outcome'))).toContainText('years and source are saved');
+  await expect(visible(page.getByTestId('link-panel'))).toContainText(source);
+  await expectNoAxeViolations(page, 'the links grid after a link was corrected');
+  await page.goto(`/admin/archive/lineages/demo-lineage-c/links?q=${target.slug}`);
+  const corrected = visible(page.getByTestId('lineage-links')).getByRole('row').filter({ hasText: target.name }).filter({ hasText: source });
+  await expect(corrected).toContainText('1931–1938');
 
   // Tree: closed at first; opening the root lists its students; a name opens the panel.
   await page.goto('/admin/archive/lineages/demo-lineage-c');

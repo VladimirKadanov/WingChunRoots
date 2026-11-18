@@ -2,7 +2,7 @@
 
 // The Server Actions of the archive editor (milestone M26, docs/adr/0034-archive-editor.md): thin
 // wrappers over archiveEditor.createLineage, archiveEditor.updateLineage, archiveEditor.createRecord,
-// archiveEditor.addLink and archiveEditor.endLink (src/server/rpc/parity.ts), called in-process with
+// archiveEditor.addLink, archiveEditor.endLink and archiveEditor.editLink (src/server/rpc/parity.ts), called in-process with
 // this request's session, so the forms and /api/v1 run the same checks (an archivist or an
 // administrator with a verified second factor). A failure comes back to its form; success opens the
 // page at its outcome note (#outcome), which takes the focus.
@@ -16,10 +16,10 @@ import { atOutcome } from '@/components/relationships/outcome-id';
 import { keepValues, textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
-import { formResult } from '@/server/forms/flash';
+import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
+import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_EDIT_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
 
 const HOME = '/admin/archive';
 const PEOPLE = '/admin/archive/people';
@@ -168,4 +168,35 @@ export async function endLinkAction(_previous: FormState, form: FormData): Promi
     return formResult({ form: LINK_END_FORM, page, anchor: outcomeTarget(`${LINK_END_FORM}-${relationshipId}`, state, true) }, state);
   }
   redirect(doneAt(base, 'ended'));
+}
+
+/**
+ * "Save the years and source" (archiveEditor.editLink), from the links grid's panel: back to the
+ * link. The form is a Server Component (./edit-link-form.tsx), so a refusal is always kept for the
+ * page and shown there, whoever posted (keepFormResult).
+ */
+export async function editLinkAction(_previous: FormState, form: FormData): Promise<never> {
+  const relationshipId = textValue(form, 'relationshipId', 40);
+  const values = keepValues(form, ['relationshipId', 'fromYear', 'toYear', 'source', 'reason']);
+  const slug = textValue(form, 'slug', 200);
+  const base = SLUG.test(slug) ? `${lineagePage(slug)}/links` : HOME;
+  const link = UUID.test(relationshipId) ? `&link=${relationshipId}` : '';
+  const page = link ? `${base}?${link.slice(1)}` : base;
+  let changed = false;
+  try {
+    const result = await (await client()).archiveEditor.editLink({
+      relationshipId,
+      fromYear: textValue(form, 'fromYear', 8) || null,
+      toYear: textValue(form, 'toYear', 8) || null,
+      source: textValue(form, 'source', 4000),
+      reason: textValue(form, 'reason', 4000),
+    });
+    changed = result.changed;
+  } catch (error) {
+    unstable_rethrow(error);
+    sendAway(error, page);
+    const state = formStateFromFailure(error, values);
+    return keepFormResult({ form: LINK_EDIT_FORM, page, anchor: outcomeTarget(`${LINK_EDIT_FORM}-${relationshipId}`, state, true) }, state);
+  }
+  redirect(doneAt(base, changed ? 'edited' : 'unchanged', link));
 }

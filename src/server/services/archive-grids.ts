@@ -26,7 +26,7 @@ import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import type { Executor } from '../entitlements/access';
 import { queryForms } from '../search/keys';
-import { type ArchiveRecordRef, listedLineages, refsOf, requireArchiveEditor } from './archive-editor';
+import { archiveKeepsLink, type ArchiveRecordRef, listedLineages, refsOf, requireArchiveEditor } from './archive-editor';
 import { ServiceError } from './errors';
 import { cleanName } from './names';
 
@@ -137,6 +137,8 @@ export interface ArchiveLinkRow {
   source: string | null;
   path: 'committee_review' | 'teacher_approval';
   endable: boolean;
+  /** Its years and source may be corrected here (the same links as endable: archiveKeepsLink). */
+  editable: boolean;
   editedAt: string;
 }
 
@@ -572,7 +574,8 @@ export async function archiveLinks(principal: Principal | null, raw: ArchiveLink
           toYear: yearOf(r.ends_on),
           source: r.source_note,
           path: r.verification_path,
-          endable: r.status === 'verified' && r.verification_path === 'committee_review' && teacher.stewardship !== 'self' && student.stewardship !== 'self',
+          endable: archiveKeepsLink({ status: r.status, path: r.verification_path, teacher, student }),
+          editable: archiveKeepsLink({ status: r.status, path: r.verification_path, teacher, student }),
           editedAt: iso(r.updated_at)!,
         };
       });
