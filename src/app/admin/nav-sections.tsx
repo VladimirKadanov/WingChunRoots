@@ -36,7 +36,8 @@ export const SECTIONS: readonly { label: string; sections: readonly Section[] }[
   {
     label: 'Archive',
     sections: [
-      { href: '/admin/archive', label: 'Archive editor' },
+      { href: '/admin/archive', label: 'Lineages' },
+      { href: '/admin/archive/people', label: 'People & records' },
       { href: '/admin/review/records', label: 'Shared records' },
     ],
   },

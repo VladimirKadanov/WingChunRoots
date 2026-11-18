@@ -1147,6 +1147,30 @@ const ROWS: Row[] = [
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   { path: 'archiveEditor.search', make: () => ({ input: { q: 'Demo Matrix' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  // Control panel 2026-11: the archive editor's working views.
+  { path: 'archiveEditor.overview', make: () => ({ input: { sort: 'people' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  { path: 'archiveEditor.people', make: () => ({ input: { q: 'Demo Matrix', show: 'historical' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.links',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug, show: 'no_source' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.tree',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, open: [p.teacher.slug] } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.person',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, person: p.teacher.slug } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
   {
     path: 'archiveEditor.createRecord',
     make: () => ({ input: { primaryName: 'Demo Matrix Created Record', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)', evidenceIds: [] } }),
@@ -1166,6 +1190,15 @@ const ROWS: Row[] = [
       const p = await archivePair();
       const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
       return { input: { relationshipId: link.relationshipId, reason: 'M26 matrix (fictional)', idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.editLink',
+    make: async () => {
+      const p = await archivePair();
+      const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
+      return { input: { relationshipId: link.relationshipId, fromYear: 1902, toYear: 1910, source: 'A fictional register, corrected.', reason: 'Matrix (fictional)' } };
     },
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
@@ -2461,6 +2494,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/archive/actions.ts#createRecordAction', row: 'archiveEditor.createRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#editLinkAction', row: 'archiveEditor.editLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
