@@ -32,11 +32,13 @@ test.afterAll(closeHelpers);
  */
 async function fixVisualDates(page: Page) {
   await page.evaluate(() => {
+    // A count of days up to today (the review queue's Waiting column) grows by one every day.
+    const days = /\b\d+ days?\b/g;
     const date = /\b\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b/g;
     for (const root of document.querySelectorAll('[data-visual-date]')) {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (node.nodeValue) node.nodeValue = node.nodeValue.replace(date, '1 January 2026');
+        if (node.nodeValue) node.nodeValue = node.nodeValue.replace(date, '1 January 2026').replace(days, '100 days');
       }
     }
   });

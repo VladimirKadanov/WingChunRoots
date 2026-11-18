@@ -183,11 +183,11 @@ const columnsFor = (t: AdminT) =>
         <span className="grid gap-0.5">
           {open && waitedOver(openedAt, now, LATE_DAYS) ? (
             <Mark symbol="!" tone="danger" testId="case-late">
-              {waited(t, openedAt, now)}
+              <span data-visual-date="">{waited(t, openedAt, now)}</span>
               <span className="sr-only">{t(', over {n} days', { n: LATE_DAYS })}</span>
             </Mark>
           ) : (
-            <span className="whitespace-nowrap tabular">{open ? waited(t, openedAt, now) : '—'}</span>
+            <span className="whitespace-nowrap tabular" data-visual-date="">{open ? waited(t, openedAt, now) : '—'}</span>
           )}
           <span className="text-sm text-fg-muted">
             <span className="sr-only">{t('opened')} </span>
