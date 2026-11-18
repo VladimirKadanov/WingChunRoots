@@ -18,8 +18,9 @@ import type { ReactNode } from 'react';
 
 import { NameText } from '@/components/account/person-names';
 import { LoadError } from '@/components/account/load-error';
-import { ARCHIVE_LOAD_ERROR } from '@/components/account/load-errors/archive';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { OutcomeNote } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
@@ -29,16 +30,17 @@ import { serverClient } from '@/server/rpc/server';
 import { TREE_CHILDREN_LIMIT, TREE_OPEN_LIMIT, type ArchivePersonLink, type ArchiveTreeNode } from '@/server/services/archive-grids';
 import { LINEAGE_EDIT_FORM, LINK_ADD_FORM } from '../../form-ids';
 import { AddLinkForm, EditLineageForm } from '../../forms';
-import { Column, fieldClass, LinkStatus, Missing, number, years } from '../../grid-parts';
+import { Column, fieldClass, LinkStatus, Missing, years } from '../../grid-parts';
+import { archiveLoadError } from '../../labels';
 import { RecordLine, recordFacts } from '../../parts';
 import { WorkspaceHeader } from './workspace';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Lineage · Archive editor',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Lineage · Archive editor'), robots: { index: false } };
+}
 
 type Params = Promise<{ slug: string }>;
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -46,15 +48,27 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 const SLUG = /^[a-z0-9-]{1,120}$/;
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : '');
 
-const DONE: Record<string, string> = {
-  created: 'The lineage is created. Add its records and links below; the explorer lists it once its root and a link are public.',
-  saved: 'The lineage is saved. The change and its reason are in the audit log.',
-  unchanged: 'Nothing changed, so nothing was saved.',
-  linked: 'The link is verified and shown on the public pages. The source and the evidence are kept with it.',
-  'linked-hidden':
-    'The link is verified. It stays off the public pages until both records are public: a record whose life status is not known is shown once a death is established.',
-  ended: 'The link is ended and off the public pages. Its history and your reason are kept.',
-};
+/** What a finished change says (?done=…), or null for an unknown outcome. */
+function doneText(t: AdminT, done: string): string | null {
+  switch (done) {
+    case 'created':
+      return t('The lineage is created. Add its records and links below; the explorer lists it once its root and a link are public.');
+    case 'saved':
+      return t('The lineage is saved. The change and its reason are in the audit log.');
+    case 'unchanged':
+      return t('Nothing changed, so nothing was saved.');
+    case 'linked':
+      return t('The link is verified and shown on the public pages. The source and the evidence are kept with it.');
+    case 'linked-hidden':
+      return t(
+        'The link is verified. It stays off the public pages until both records are public: a record whose life status is not known is shown once a death is established.',
+      );
+    case 'ended':
+      return t('The link is ended and off the public pages. Its history and your reason are kept.');
+    default:
+      return null;
+  }
+}
 
 async function orMissing<T>(read: Promise<T>): Promise<T | 'missing'> {
   try {
@@ -76,12 +90,12 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
-function Frame({ children }: { children: ReactNode }) {
+function Frame({ t, children }: { t: AdminT; children: ReactNode }) {
   return (
     <Column>
       <p className="eyebrow">
         <Link href="/admin/archive" className="link inline-flex min-h-11 items-center">
-          Lineages
+          {t('Lineages')}
         </Link>
       </p>
       {children}
@@ -90,15 +104,15 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 /** The mark of a node's link from its teacher: verified, in arbitration, or without a source. */
-function NodeMark({ node }: { node: ArchiveTreeNode }) {
-  if (!node.link) return <span className="w-14 shrink-0 text-sm text-fg-muted">Root</span>;
+function NodeMark({ t, node }: { t: AdminT; node: ArchiveTreeNode }) {
+  if (!node.link) return <span className="w-14 shrink-0 text-sm text-fg-muted">{t('Root')}</span>;
   if (!node.link.sourced) {
     return (
       <span className="inline-flex w-14 shrink-0 items-center gap-1 text-sm text-review">
         <span aria-hidden="true">?</span>
-        <span className="sr-only">No source</span>
+        <span className="sr-only">{t('No source')}</span>
         <span aria-hidden="true" className="text-xs">
-          source
+          {t('source')}
         </span>
       </span>
     );
@@ -106,17 +120,17 @@ function NodeMark({ node }: { node: ArchiveTreeNode }) {
   return node.link.status === 'verified' ? (
     <span className="inline-flex w-14 shrink-0 items-center gap-1 text-sm text-verified">
       <span aria-hidden="true">✓</span>
-      <span className="sr-only">Verified</span>
+      <span className="sr-only">{t('Verified')}</span>
     </span>
   ) : (
     <span className="inline-flex w-14 shrink-0 items-center gap-1 text-sm text-review">
       <span aria-hidden="true">⚖</span>
-      <span className="sr-only">In arbitration</span>
+      <span className="sr-only">{t('In arbitration')}</span>
     </span>
   );
 }
 
-function PersonLinks({ title, links, empty, edit, select, footer }: { title: ReactNode; links: ArchivePersonLink[]; empty: string; edit: (id: string) => string; select: (slug: string) => string; footer?: ReactNode }) {
+function PersonLinks({ t, title, links, empty, edit, select, footer }: { t: AdminT; title: ReactNode; links: ArchivePersonLink[]; empty: string; edit: (id: string) => string; select: (slug: string) => string; footer?: ReactNode }) {
   return (
     <div className="grid gap-2">
       <h3 className="flex flex-wrap items-baseline justify-between gap-x-3 text-ui font-semibold">{title}</h3>
@@ -124,17 +138,18 @@ function PersonLinks({ title, links, empty, edit, select, footer }: { title: Rea
         <ul className="grid">
           {links.map((l) => (
             <li key={l.id} className="flex flex-wrap items-center gap-x-2 border-t border-border-subtle py-1">
-              <LinkStatus status={l.status} />
+              <LinkStatus t={t} status={l.status} />
               <Link href={select(l.other.slug)} className="link inline-flex min-h-11 items-center font-semibold">
                 <NameText name={l.other.name} />
               </Link>
               <span className="text-sm text-fg-muted">
-                {years(l.fromYear, l.toYear)}
-                {l.students > 0 ? ` · ${l.students === 1 ? '1 student' : `${number.format(l.students)} students`}` : ''}
+                {years(t, l.fromYear, l.toYear)}
+                {l.students > 0 ? ` · ${t.n(l.students, '{n} student', '{n} students')}` : ''}
               </span>
-              {l.sourced ? null : <Missing>No source</Missing>}
+              {l.sourced ? null : <Missing>{t('No source')}</Missing>}
               <Link href={edit(l.id)} className="link ml-auto inline-flex min-h-11 items-center text-sm">
-                Open link<span className="sr-only"> with {l.other.name.value}</span>
+                {t('Open link')}
+                <span className="sr-only">{t(' with {name}', { name: l.other.name.value })}</span>
               </Link>
             </li>
           ))}
@@ -158,12 +173,13 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
   const path = SLUG.test(slug) ? `/admin/archive/lineages/${slug}` : '/admin/archive';
   const guard = await guardRoute('/admin/archive', path);
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  const t = await getAdminT();
   if (guard.forbidden) {
     return (
-      <Frame>
-        <h1 className="mt-2 font-display text-feature">Not available</h1>
+      <Frame t={t}>
+        <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted" data-testid="archive-denied">
-          You don&apos;t have access to the archive editor. It is available to archivists and administrators.
+          {t("You don't have access to the archive editor. It is available to archivists and administrators.")}
         </p>
       </Frame>
     );
@@ -176,17 +192,17 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
   ]);
   if (tree === 'missing') {
     return (
-      <Frame>
-        <h1 className="mt-2 font-display text-feature">No such lineage</h1>
-        <p className="mt-3 max-w-[56ch] text-fg-muted">No lineage has this address. Open it from the list of the archive editor.</p>
+      <Frame t={t}>
+        <h1 className="mt-2 font-display text-feature">{t('No such lineage')}</h1>
+        <p className="mt-3 max-w-[56ch] text-fg-muted">{t('No lineage has this address. Open it from the list of the archive editor.')}</p>
       </Frame>
     );
   }
-  if (!tree || !found || (person && panel === null)) return <LoadError {...ARCHIVE_LOAD_ERROR} retryHref={path} />;
+  if (!tree || !found || (person && panel === null)) return <LoadError {...archiveLoadError(t)} retryHref={path} />;
   const view = tree.lineage;
   const chosen = panel === 'missing' ? null : panel;
   const [editResult, addResult] = await Promise.all([readFormResult(LINEAGE_EDIT_FORM, query.outcome), readFormResult(LINK_ADD_FORM, query.outcome)]);
-  const done = typeof query.done === 'string' ? (DONE[query.done] ?? null) : null;
+  const done = typeof query.done === 'string' ? doneText(t, query.done) : null;
 
   /** The address of the workspace with these choices, keeping the rest. */
   const at = (change: { open?: string[]; person?: string | null; teacher?: string; student?: string; q?: string }, anchor = '') => {
@@ -197,10 +213,10 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
     if (p) next.set('person', p);
     const qq = change.q ?? q;
     if (qq) next.set('q', qq);
-    const t = change.teacher ?? teacher;
-    const s = change.student ?? student;
-    if (t) next.set('teacher', t);
-    if (s) next.set('student', s);
+    const tc = change.teacher ?? teacher;
+    const st = change.student ?? student;
+    if (tc) next.set('teacher', tc);
+    if (st) next.set('student', st);
     const search = next.toString();
     return `${path}${search ? `?${search}` : ''}${anchor}`;
   };
@@ -215,7 +231,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
     return (
       <li key={`${node.record.id}-${node.link?.id ?? 'top'}`} data-node={node.record.slug} className="grid">
         <div className={`flex min-h-11 items-center gap-2 rounded-sm px-1 ${selected ? 'bg-surface-3 shadow-[inset_2px_0_0_var(--fg)]' : 'hover:bg-surface-2'}`}>
-          <span className="w-12 shrink-0 text-xs text-fg-muted tabular-nums">Gen {node.generation}</span>
+          <span className="w-12 shrink-0 text-xs text-fg-muted tabular-nums">{t('Gen {n}', { n: node.generation })}</span>
           {node.students > 0 ? (
             <Link
               href={at({ open: toggle(node.record.slug) }, `#node-${node.record.slug}`)}
@@ -224,13 +240,13 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             >
               <span aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
               <span className="sr-only">
-                {isOpen ? 'Close' : 'Open'} the students of {node.record.name.value}
+                {isOpen ? t('Close the students of {name}', { name: node.record.name.value }) : t('Open the students of {name}', { name: node.record.name.value })}
               </span>
             </Link>
           ) : (
             <span className="size-11 shrink-0" aria-hidden="true" />
           )}
-          <NodeMark node={node} />
+          <NodeMark t={t} node={node} />
           <Link
             id={`node-${node.record.slug}`}
             href={at({ person: node.record.slug }, '#person-panel')}
@@ -240,8 +256,8 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             <NameText name={node.record.name} />
           </Link>
           <span className="truncate text-sm text-fg-muted">
-            {node.students === 0 ? 'no students' : node.students === 1 ? '1 student' : `${number.format(node.students)} students`}
-            {node.link && node.link.fromYear !== null ? ` · ${years(node.link.fromYear, node.link.toYear)}` : ''}
+            {node.students === 0 ? t('no students') : t.n(node.students, '{n} student', '{n} students')}
+            {node.link && node.link.fromYear !== null ? ` · ${years(t, node.link.fromYear, node.link.toYear)}` : ''}
           </span>
         </div>
         {node.children ? (
@@ -250,7 +266,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             {node.students > node.children.length ? (
               <li>
                 <Link href={`${path}/links?q=${encodeURIComponent(node.record.slug)}`} className="link inline-flex min-h-11 items-center pl-14 text-sm">
-                  + {number.format(node.students - node.children.length)} more students of {node.record.name.value} in the links table
+                  {t('+ {n} more students of {name} in the links table', { n: t.num(node.students - node.children.length), name: node.record.name.value })}
                 </Link>
               </li>
             ) : null}
@@ -263,11 +279,12 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
   return (
     <Column wide>
       <WorkspaceHeader
+        t={t}
         lineage={view}
         tab="tree"
         action={
           <Link href={`/admin/archive/people?new=record&back=${view.slug}#new-record`} className={buttonVariants({ variant: 'primary' })}>
-            <span aria-hidden="true">+</span> Add person
+            <span aria-hidden="true">+</span> {t('Add person')}
           </Link>
         }
       />
@@ -282,24 +299,24 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
         <section id="tree" aria-labelledby="tree-heading" className="grid min-w-0 content-start gap-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 id="tree-heading" className="font-display text-2xl">
-              Tree
+              {t('Tree')}
             </h2>
-            <form method="get" action={`${path}/links#links`} role="search" aria-label="Find in this lineage" className="flex flex-wrap items-end gap-2">
+            <form method="get" action={`${path}/links#links`} role="search" aria-label={t('Find in this lineage')} className="flex flex-wrap items-end gap-2">
               <label htmlFor="tree-find" className="sr-only">
-                Find in this lineage
+                {t('Find in this lineage')}
               </label>
-              <input id="tree-find" name="q" type="search" placeholder="Find in this lineage" maxLength={200} autoComplete="off" className={`${fieldClass} w-64`} />
+              <input id="tree-find" name="q" type="search" placeholder={t('Find in this lineage')} maxLength={200} autoComplete="off" className={`${fieldClass} w-64`} />
               <input type="hidden" name="show" value="all" />
               <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
-                Find
+                {t('Find')}
               </button>
               {/* The tree shows active links only; ended ones are listed in the links grid. */}
               <Link href={`${path}/links?show=ended#links`} className="link inline-flex min-h-11 items-center text-ui">
-                {'Ended'} links
+                {t('Ended links')}
               </Link>
               {open.length > 0 ? (
                 <Link href={at({ open: [] })} className="link inline-flex min-h-11 items-center text-ui">
-                  Close every branch
+                  {t('Close every branch')}
                 </Link>
               ) : null}
             </form>
@@ -308,22 +325,25 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             <>
               {!view.root ? (
                 <p className="text-sm text-fg-muted">
-                  <Missing>No root yet</Missing> These are the teachers with no teacher in this lineage
-                  {tree.topTotal > tree.top.length ? ` (the first ${tree.top.length} of ${number.format(tree.topTotal)})` : ''}. Set the root in the lineage
-                  details.
+                  <Missing>{t('No root yet')}</Missing>{' '}
+                  {tree.topTotal > tree.top.length
+                    ? t('These are the teachers with no teacher in this lineage (the first {shown} of {total}). Set the root in the lineage details.', {
+                        shown: tree.top.length,
+                        total: t.num(tree.topTotal),
+                      })
+                    : t('These are the teachers with no teacher in this lineage. Set the root in the lineage details.')}
                 </p>
               ) : null}
               <ul className="grid" data-testid="lineage-tree">
                 {tree.top.map(renderNode)}
               </ul>
               <p className="text-sm text-fg-muted">
-                Only the open branches load, so a lineage of any size stays fast. A branch lists its first {TREE_CHILDREN_LIMIT} students; the links table has every
-                link.
+                {t('Only the open branches load, so a lineage of any size stays fast. A branch lists its first {n} students; the links table has every link.', { n: TREE_CHILDREN_LIMIT })}
               </p>
             </>
           ) : (
             <p className="max-w-[56ch] text-ui text-fg-muted" data-testid="lineage-no-links">
-              No link yet. Add the first one below.
+              {t('No link yet. Add the first one below.')}
             </p>
           )}
         </section>
@@ -338,17 +358,17 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
                 {chosen.record.original ? <NameText name={chosen.record.original} className="text-ui" /> : null}
               </div>
               <Link href={at({ person: null })} className="link inline-flex min-h-11 min-w-11 items-center justify-center text-ui">
-                Close
+                {t('Close')}
               </Link>
             </div>
             <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-ui">
-              <dt className="text-fg-muted">Record</dt>
-              <dd>{recordFacts(chosen.record)}</dd>
-              <dt className="text-fg-muted">Generation</dt>
-              <dd>{chosen.generation === null ? 'Not connected to the root' : `${chosen.generation} in ${view.name}`}</dd>
+              <dt className="text-fg-muted">{t('Record')}</dt>
+              <dd>{recordFacts(t, chosen.record)}</dd>
+              <dt className="text-fg-muted">{t('Generation')}</dt>
+              <dd>{chosen.generation === null ? t('Not connected to the root') : t('{n} in {lineage}', { n: chosen.generation, lineage: view.name })}</dd>
               {chosen.lineages.length > 0 ? (
                 <>
-                  <dt className="text-fg-muted">Also in</dt>
+                  <dt className="text-fg-muted">{t('Also in')}</dt>
                   <dd className="flex flex-wrap gap-x-3">
                     {chosen.lineages.map((l) => (
                       <Link key={l.slug} href={`/admin/archive/lineages/${l.slug}?person=${chosen.record.slug}`} className="link">
@@ -361,51 +381,53 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
             </dl>
             <p className="flex flex-wrap gap-x-4 text-ui">
               <Link href={`/admin/review/records/${chosen.record.slug}`} className="link inline-flex min-h-11 items-center">
-                Edit the record
+                {t('Edit the record')}
               </Link>
             </p>
             <PersonLinks
               title={
                 <>
-                  <span>Teachers · {chosen.teachers.length}</span>
+                  <span>{t('Teachers · {n}', { n: t.num(chosen.teachers.length) })}</span>
                   {chosen.record.stewardship !== 'self' ? (
                     <Link href={at({ student: chosen.record.slug, teacher: '' }, '#add-link')} className="link inline-flex min-h-11 items-center text-sm font-normal">
-                      + Add a teacher
+                      {t('+ Add a teacher')}
                     </Link>
                   ) : null}
                 </>
               }
               links={chosen.teachers}
-              empty="No teacher in this lineage yet."
+              t={t}
+              empty={t('No teacher in this lineage yet.')}
               edit={linkPanel}
               select={(s) => at({ person: s }, '#person-panel')}
             />
             <PersonLinks
               title={
                 <>
-                  <span>Students · {number.format(chosen.studentsTotal)}</span>
+                  <span>{t('Students · {n}', { n: t.num(chosen.studentsTotal) })}</span>
                   {chosen.record.stewardship !== 'self' ? (
                     <Link href={at({ teacher: chosen.record.slug, student: '' }, '#add-link')} className="link inline-flex min-h-11 items-center text-sm font-normal">
-                      + Add a student
+                      {t('+ Add a student')}
                     </Link>
                   ) : null}
                 </>
               }
               links={chosen.students}
-              empty="No student in this lineage yet."
+              t={t}
+              empty={t('No student in this lineage yet.')}
               edit={linkPanel}
               select={(s) => at({ person: s }, '#person-panel')}
               footer={
                 chosen.studentsTotal > chosen.students.length ? (
                   <Link href={`${path}/links?q=${encodeURIComponent(chosen.record.slug)}`} className="link inline-flex min-h-11 items-center text-sm">
-                    All {number.format(chosen.studentsTotal)} in the links table
+                    {t('All {n} in the links table', { n: t.num(chosen.studentsTotal) })}
                   </Link>
                 ) : null
               }
             />
             {chosen.sources.length > 0 ? (
               <div className="grid gap-1">
-                <h3 className="text-ui font-semibold">Sources</h3>
+                <h3 className="text-ui font-semibold">{t('Sources')}</h3>
                 <ul className="grid gap-1 text-sm">
                   {chosen.sources.map((s) => (
                     <li key={s} className="whitespace-pre-line [overflow-wrap:anywhere]">
@@ -416,51 +438,52 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
               </div>
             ) : null}
             {chosen.record.stewardship === 'self' ? (
-              <p className="text-sm text-fg-muted">This is a member&apos;s own record. Their teachers confirm their links, or they send a claim with evidence.</p>
+              <p className="text-sm text-fg-muted">{t("This is a member's own record. Their teachers confirm their links, or they send a claim with evidence.")}</p>
             ) : null}
           </aside>
         ) : person && panel === 'missing' ? (
-          <p className="text-ui text-fg-muted">No record has the address {person}.</p>
+          <p className="text-ui text-fg-muted">{t('No record has the address {address}.', { address: person })}</p>
         ) : null}
       </div>
 
       <div className="mt-10 grid gap-10">
-        <Section id="add-link" title="Add a link">
+        <Section id="add-link" title={t('Add a link')}>
           <p className="max-w-[60ch] text-ui text-fg-muted">
-            Find the teacher and the student, choose each, and give the source. Both must be records kept by the platform; a member&apos;s own links are
-            confirmed by their teacher or by a claim. A record that is not in the archive yet:{' '}
+            {t(
+              "Find the teacher and the student, choose each, and give the source. Both must be records kept by the platform; a member's own links are confirmed by their teacher or by a claim. A record that is not in the archive yet:",
+            )}{' '}
             <Link href={`/admin/archive/people?new=record&back=${view.slug}#new-record`} className="link">
-              create it first
+              {t('create it first')}
             </Link>
             .
           </p>
-          <form method="get" action={`${path}#add-link`} className="flex max-w-[40rem] flex-wrap items-end gap-3" role="search" aria-label="Find a record for the link">
+          <form method="get" action={`${path}#add-link`} className="flex max-w-[40rem] flex-wrap items-end gap-3" role="search" aria-label={t('Find a record for the link')}>
             {teacher ? <input type="hidden" name="teacher" value={teacher} /> : null}
             {student ? <input type="hidden" name="student" value={student} /> : null}
             {person ? <input type="hidden" name="person" value={person} /> : null}
             {open.length > 0 ? <input type="hidden" name="open" value={open.join(',')} /> : null}
             <div className="grid min-w-0 flex-1 gap-1.5">
               <label htmlFor="lineage-search" className="text-ui font-semibold">
-                Find a record
+                {t('Find a record')}
               </label>
               <input id="lineage-search" name="q" type="search" defaultValue={q} maxLength={200} autoComplete="off" className={fieldClass} />
             </div>
             <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
-              Search
+              {t('Search')}
             </button>
           </form>
           {q ? (
             found.records.length > 0 ? (
               <ul className="grid max-w-[52rem]" data-testid="archive-search-results">
                 {found.records.map((r) => (
-                  <RecordLine key={r.id} record={r}>
+                  <RecordLine key={r.id} t={t} record={r}>
                     {r.stewardship !== 'self' ? (
                       <>
                         <Link href={pick('teacher', r.slug)} className="link inline-flex min-h-11 items-center">
-                          Use as teacher
+                          {t('Use as teacher')}
                         </Link>
                         <Link href={pick('student', r.slug)} className="link inline-flex min-h-11 items-center">
-                          Use as student
+                          {t('Use as student')}
                         </Link>
                       </>
                     ) : null}
@@ -469,9 +492,9 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
               </ul>
             ) : (
               <p className="text-ui" data-testid="archive-search-empty">
-                No record matches.{' '}
+                {t('No record matches.')}{' '}
                 <Link href={`/admin/archive/people?new=record&back=${view.slug}&name=${encodeURIComponent(q)}#new-record`} className="link">
-                  Create it
+                  {t('Create it')}
                 </Link>
                 .
               </p>
@@ -491,7 +514,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
           </div>
         </Section>
 
-        <Section id="details" title="Lineage details">
+        <Section id="details" title={t('Lineage details')}>
           <div className="max-w-[46rem]">
             <EditLineageForm lineage={{ id: view.id, slug: view.slug, name: view.name, description: view.description, rootSlug: view.root?.slug ?? null }} initial={editResult} />
           </div>

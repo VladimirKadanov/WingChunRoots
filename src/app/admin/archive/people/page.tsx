@@ -12,8 +12,9 @@ import Link from 'next/link';
 
 import { NameText } from '@/components/account/person-names';
 import { LoadError } from '@/components/account/load-error';
-import { ARCHIVE_LOAD_ERROR } from '@/components/account/load-errors/archive';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { OutcomeNote } from '@/components/relationships/parts';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { guardRoute } from '@/server/auth/web';
@@ -24,15 +25,16 @@ import { archiveEditorOptions, type ArchiveRecordRef } from '@/server/services/a
 import { PEOPLE_FILTERS } from '@/server/services/archive-grids';
 import { RECORD_CREATE_FORM } from '../form-ids';
 import { CreateRecordForm } from '../forms';
-import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, Missing, number, Pager, rowClass, tableClass, theadClass } from '../grid-parts';
+import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, Missing, Pager, rowClass, tableClass, theadClass } from '../grid-parts';
+import { archiveLoadError, scriptLabel } from '../labels';
 import { recordFacts } from '../parts';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'People & records · Archive editor',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('People & records · Archive editor'), robots: { index: false } };
+}
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 type Show = (typeof PEOPLE_FILTERS)[number];
@@ -56,8 +58,27 @@ function peopleHref(f: Filters, page = 1, extra = '') {
   return `/admin/archive/people${search ? `?${search}` : ''}${extra}`;
 }
 
-const KEPT: Record<ArchiveRecordRef['stewardship'], string> = { self: 'Own account', platform: 'Archive', unclaimed: 'Unclaimed' };
-const LIFE: Record<ArchiveRecordRef['lifeStatus'], string> = { living: 'Living', deceased: 'Deceased', unknown: 'Not known' };
+function keptBy(t: AdminT, stewardship: ArchiveRecordRef['stewardship']): string {
+  switch (stewardship) {
+    case 'self':
+      return t('Own account');
+    case 'platform':
+      return t('Archive');
+    case 'unclaimed':
+      return t('Unclaimed');
+  }
+}
+
+function life(t: AdminT, status: ArchiveRecordRef['lifeStatus']): string {
+  switch (status) {
+    case 'living':
+      return t('Living');
+    case 'deceased':
+      return t('Deceased');
+    case 'unknown':
+      return t('Not known');
+  }
+}
 
 export default async function ArchivePeoplePage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
@@ -70,13 +91,14 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
   const back = SLUG.test(one(query.back)) ? one(query.back) : '';
   const guard = await guardRoute('/admin/archive/people', peopleHref(filters, pageNo));
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  const t = await getAdminT();
   if (guard.forbidden) {
     return (
       <Column>
-        <p className="eyebrow">Archive editor</p>
-        <h1 className="mt-2 font-display text-feature">Not available</h1>
+        <p className="eyebrow">{t('Archive editor')}</p>
+        <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted" data-testid="archive-denied">
-          You don&apos;t have access to the archive editor. It is available to archivists and administrators.
+          {t("You don't have access to the archive editor. It is available to archivists and administrators.")}
         </p>
       </Column>
     );
@@ -90,10 +112,12 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
     pageRead(client.archiveEditor.people({ q: filters.q || undefined, show: filters.show, lineage: filters.lineage || undefined, page: pageNo })),
     creating && draftName.length >= 2 ? pageRead(client.archiveEditor.search({ q: draftName })) : Promise.resolve({ records: [] }),
   ]);
-  if (!list || !similar) return <LoadError {...ARCHIVE_LOAD_ERROR} retryHref="/admin/archive/people" />;
+  if (!list || !similar) return <LoadError {...archiveLoadError(t)} retryHref="/admin/archive/people" />;
   const filtered = Boolean(filters.q || filters.show !== 'everyone' || filters.lineage);
   const newHref = `${peopleHref(filters)}${peopleHref(filters).includes('?') ? '&' : '?'}new=record${back ? `&back=${back}` : ''}#new-record`;
   const chip = (show: Show) => peopleHref({ ...filters, show }, 1, '#people');
+  // The outcome sentence around the new record's address (kept whole, so each language orders it its own way).
+  const [createdBefore = '', createdAfter = ''] = t('The record is created, with the address {address}. It is not public yet: add a link to show it.').split('{address}');
 
   return (
     <Column wide>
@@ -101,32 +125,34 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
         <div className="max-w-[46rem]">
           <p className="eyebrow">
             <Link href="/admin/archive" className="link inline-flex min-h-11 items-center">
-              Archive
+              {t('Archive')}
             </Link>
           </p>
-          <h1 className="mt-1 font-display text-feature">People &amp; records</h1>
+          <h1 className="mt-1 font-display text-feature">{t('People & records')}</h1>
           <p className="mt-2 text-sm text-fg-muted">
-            {number.format(list.total)} {filtered ? 'matching' : 'people on record'} · the search finds every spelling: Latin letters, Chinese characters,
-            Jyutping, pinyin and the record&apos;s address, public or not.
+            {filtered ? t('{n} matching', { n: t.num(list.total) }) : t('{n} people on record', { n: t.num(list.total) })}
+            {t(" · the search finds every spelling: Latin letters, Chinese characters, Jyutping, pinyin and the record's address, public or not.")}
           </p>
         </div>
         <Link href={newHref} className={buttonVariants({ variant: 'primary' })} data-testid="new-record-link">
-          <span aria-hidden="true">+</span> New record
+          <span aria-hidden="true">+</span> {t('New record')}
         </Link>
       </header>
 
       {created ? (
         <div key={`${String(query.done)}-${String(query.n)}`} className="mt-5 max-w-[46rem]">
           <OutcomeNote testId="archive-outcome">
-            The record is created, with the address <code translate="no">{created}</code>. It is not public yet: add a link to show it.{' '}
+            {createdBefore}
+            <code translate="no">{created}</code>
+            {createdAfter}{' '}
             <Link href={`/admin/review/records/${created}`} className="link">
-              Open the record
+              {t('Open the record')}
             </Link>
             {back ? (
               <>
                 {' · '}
                 <Link href={`/admin/archive/lineages/${back}?q=${encodeURIComponent(created)}#add-link`} className="link">
-                  Back to the lineage
+                  {t('Back to the lineage')}
                 </Link>
               </>
             ) : null}
@@ -137,22 +163,22 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
       <div className={`mt-6 grid gap-8 ${creating ? 'xl:grid-cols-[minmax(0,1fr)_30rem]' : ''}`}>
         <section id="people" aria-labelledby="people-heading" className="grid min-w-0 content-start gap-4">
           <h2 id="people-heading" className="sr-only">
-            Every record
+            {t('Every record')}
           </h2>
-          <form role="search" aria-label="Find a person" method="get" action="/admin/archive/people#people" className="flex flex-wrap items-end gap-3">
+          <form role="search" aria-label={t('Find a person')} method="get" action="/admin/archive/people#people" className="flex flex-wrap items-end gap-3">
             {filters.show !== 'everyone' ? <input type="hidden" name="show" value={filters.show} /> : null}
             <div className="grid min-w-0 flex-1 basis-[18rem] gap-1.5">
               <label htmlFor="people-q" className="text-sm font-semibold">
-                Find a person
+                {t('Find a person')}
               </label>
               <input id="people-q" name="q" type="search" defaultValue={filters.q} maxLength={200} autoComplete="off" className={fieldClass} />
             </div>
             <div className="grid min-w-0 basis-[14rem] gap-1.5">
               <label htmlFor="people-lineage" className="text-sm font-semibold">
-                Lineage
+                {t('Lineage')}
               </label>
               <select id="people-lineage" name="lineage" defaultValue={filters.lineage} className={fieldClass}>
-                <option value="">Every lineage</option>
+                <option value="">{t('Every lineage')}</option>
                 {list.lineages.map((l) => (
                   <option key={l.slug} value={l.slug}>
                     {l.name}
@@ -161,51 +187,59 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
               </select>
             </div>
             <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-              Search
+              {t('Search')}
             </button>
             {filtered ? (
               <Link href="/admin/archive/people#people" className="link inline-flex min-h-12 items-center text-ui">
-                Clear
+                {t('Clear')}
               </Link>
             ) : null}
           </form>
-          <Chips label="Show">
+          <Chips label={t('Show')}>
             <Chip href={chip('everyone')} current={filters.show === 'everyone'}>
-              Everyone
+              {t('Everyone')}
             </Chip>
             <Chip href={chip('historical')} current={filters.show === 'historical'}>
-              Historical (archive)
+              {t('Historical (archive)')}
             </Chip>
             <Chip href={chip('members')} current={filters.show === 'members'}>
-              Members with accounts
+              {t('Members with accounts')}
             </Chip>
             <Chip href={chip('hidden')} current={filters.show === 'hidden'}>
-              Not public
+              {t('Not public')}
             </Chip>
             <Chip href={chip('no_teacher')} current={filters.show === 'no_teacher'}>
-              No teacher yet · {number.format(list.counts.noTeacher)}
+              {t('No teacher yet · {n}', { n: t.num(list.counts.noTeacher) })}
             </Chip>
             <Chip href={chip('duplicates')} current={filters.show === 'duplicates'} testId="people-duplicates">
-              Possible duplicates · {number.format(list.counts.duplicates)}
+              {t('Possible duplicates · {n}', { n: t.num(list.counts.duplicates) })}
             </Chip>
           </Chips>
 
-          <CountLine total={list.total} page={list.page} pageSize={list.pageSize} noun={['person', 'people']} testId="people-count" />
+          <CountLine
+            t={t}
+            total={list.total}
+            page={list.page}
+            pageSize={list.pageSize}
+            none={t('No people match.')}
+            range={(vars) => t('People {from} to {to} of {total}', vars)}
+            testId="people-count"
+          />
 
           {list.rows.length > 0 ? (
             <div className="@container">
               <table role="table" data-testid="people-table" className={tableClass}>
-                <caption className="sr-only">People and records, by name</caption>
+                <caption className="sr-only">{t('People and records, by name')}</caption>
                 <thead role="rowgroup" className={theadClass}>
                   <tr role="row" className="border-b border-border-strong">
-                    <Header label="Name" className="pl-0" />
-                    <Header label="Original" />
-                    <Header label="Life" />
-                    <Header label="Lineages" />
-                    <Header label="Teachers" className="text-right" />
-                    <Header label="Students" className="text-right" />
-                    <Header label="Kept by" />
-                    <Header label="Public" className="pr-0" />
+                    <Header label={t('Name')} className="pl-0" />
+                    <Header label={t('Original')} />
+                    <Header label={t('Life')} />
+                    <Header label={t('Lineages')} />
+                    <Header label={t('Teachers')} className="text-right" />
+                    <Header label={t('Students')} className="text-right" />
+                    <Header label={t('Kept by')} />
+                    <Header label={t('Public')} className="pr-0" />
                   </tr>
                 </thead>
                 <tbody role="rowgroup" className="@max-[52rem]:grid @max-[52rem]:gap-3">
@@ -217,7 +251,7 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                         </Link>
                         {duplicate ? (
                           <Link href={peopleHref({ q: record.name.value, show: 'duplicates', lineage: '' }, 1, '#people')} className="ml-2 text-sm text-review">
-                            <span aria-hidden="true">?</span> Possible duplicate
+                            <span aria-hidden="true">?</span> {t('Possible duplicate')}
                           </Link>
                         ) : null}
                         <code className="block text-sm text-fg-muted" translate="no">
@@ -225,15 +259,15 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                         </code>
                       </td>
                       <td role="cell" className={cell}>
-                        <CardLabel>Original:</CardLabel>
-                        {record.original ? <NameText name={record.original} /> : <span className="text-fg-muted">None</span>}
+                        <CardLabel>{t('Original:')}</CardLabel>
+                        {record.original ? <NameText name={record.original} /> : <span className="text-fg-muted">{t('None')}</span>}
                       </td>
                       <td role="cell" className={`${cell} whitespace-nowrap`}>
-                        <CardLabel>Life:</CardLabel>
-                        {record.lifeStatus === 'unknown' ? <Missing>Not known</Missing> : LIFE[record.lifeStatus]}
+                        <CardLabel>{t('Life:')}</CardLabel>
+                        {record.lifeStatus === 'unknown' ? <Missing>{t('Not known')}</Missing> : life(t, record.lifeStatus)}
                       </td>
                       <td role="cell" className={cell}>
-                        <CardLabel>Lineages:</CardLabel>
+                        <CardLabel>{t('Lineages:')}</CardLabel>
                         {lineages.length > 0 ? (
                           <span className="flex flex-wrap gap-x-3">
                             {lineages.map((l) => (
@@ -243,24 +277,24 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                             ))}
                           </span>
                         ) : (
-                          <span className="text-fg-muted">None yet</span>
+                          <span className="text-fg-muted">{t('None yet')}</span>
                         )}
                       </td>
                       <td role="cell" className={`${cell} text-right tabular-nums @max-[52rem]:text-left`}>
-                        <CardLabel>Teachers:</CardLabel>
+                        <CardLabel>{t('Teachers:')}</CardLabel>
                         {teachers}
                       </td>
                       <td role="cell" className={`${cell} text-right tabular-nums @max-[52rem]:text-left`}>
-                        <CardLabel>Students:</CardLabel>
+                        <CardLabel>{t('Students:')}</CardLabel>
                         {students}
                       </td>
                       <td role="cell" className={`${cell} whitespace-nowrap`}>
-                        <CardLabel>Kept by:</CardLabel>
-                        {KEPT[record.stewardship]}
+                        <CardLabel>{t('Kept by:')}</CardLabel>
+                        {keptBy(t, record.stewardship)}
                       </td>
                       <td role="cell" className={`${cell} pr-0 whitespace-nowrap`}>
-                        <CardLabel>Public:</CardLabel>
-                        {record.shown ? 'Yes' : 'No'}
+                        <CardLabel>{t('Public:')}</CardLabel>
+                        {record.shown ? t('Yes') : t('No')}
                       </td>
                     </tr>
                   ))}
@@ -269,37 +303,37 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
             </div>
           ) : (
             <p className="max-w-[56ch] text-ui text-fg-muted" data-testid="people-empty">
-              {filtered ? 'No record matches. Try another spelling, clear the filters, or ' : 'No record yet. '}
+              {filtered ? t('No record matches. Try another spelling, clear the filters, or ') : t('No record yet. ')}
               <Link href={newHref} className="link">
-                create a new record
+                {t('create a new record')}
               </Link>
               .
             </p>
           )}
-          <Pager page={list.page} pages={list.pages} href={(p) => peopleHref(filters, p, '#people')} label="Pages of people" />
+          <Pager t={t} page={list.page} pages={list.pages} href={(p) => peopleHref(filters, p, '#people')} label={t('Pages of people')} />
         </section>
 
         {creating ? (
           <section id="new-record" aria-labelledby="new-record-heading" className="grid min-w-0 content-start gap-4 rounded-md border border-border-strong bg-surface-1 p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <h2 id="new-record-heading" className="font-display text-2xl">
-                New historical record
+                {t('New historical record')}
               </h2>
               <Link href={peopleHref(filters)} className="link inline-flex min-h-11 items-center text-ui">
-                Close
+                {t('Close')}
               </Link>
             </div>
-            <form method="get" action="/admin/archive/people#new-record" className="flex flex-wrap items-end gap-3" role="search" aria-label="Similar records">
+            <form method="get" action="/admin/archive/people#new-record" className="flex flex-wrap items-end gap-3" role="search" aria-label={t('Similar records')}>
               <input type="hidden" name="new" value="record" />
               {back ? <input type="hidden" name="back" value={back} /> : null}
               <div className="grid min-w-0 flex-1 basis-[14rem] gap-1.5">
                 <label htmlFor="similar-q" className="text-sm font-semibold">
-                  Check the name first
+                  {t('Check the name first')}
                 </label>
                 <input id="similar-q" name="name" type="search" defaultValue={draftName} maxLength={120} autoComplete="off" className={fieldClass} />
               </div>
               <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-                Find similar
+                {t('Find similar')}
               </button>
             </form>
             {draftName.length >= 2 ? (
@@ -307,7 +341,7 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                 <div className="grid gap-2 rounded-sm border border-review p-3" data-testid="similar-records">
                   <p className="text-ui font-semibold">
                     <span aria-hidden="true">? </span>
-                    {similar.records.length === 1 ? 'A similar record exists.' : `${similar.records.length} similar records exist.`} Open one, or carry on below.
+                    {t.n(similar.records.length, 'A similar record exists. Open one, or carry on below.', '{n} similar records exist. Open one, or carry on below.')}
                   </p>
                   <ul className="grid">
                     {similar.records.slice(0, 8).map((r) => (
@@ -316,18 +350,18 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
                           <NameText name={r.name} />
                         </Link>
                         {r.original ? <NameText name={r.original} /> : null}
-                        <span className="text-sm text-fg-muted">{recordFacts(r)}</span>
+                        <span className="text-sm text-fg-muted">{recordFacts(t, r)}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : (
                 <p className="text-sm text-fg-muted" data-testid="similar-none">
-                  No record has a similar name.
+                  {t('No record has a similar name.')}
                 </p>
               )
             ) : null}
-            <CreateRecordForm key={draftName} scripts={archiveEditorOptions().scripts} back={back || undefined} name={draftName || undefined} initial={recordResult} />
+            <CreateRecordForm key={draftName} scripts={archiveEditorOptions().scripts.map((script) => ({ lang: script.lang, label: scriptLabel(t, script.label) }))} back={back || undefined} name={draftName || undefined} initial={recordResult} />
           </section>
         ) : null}
       </div>
