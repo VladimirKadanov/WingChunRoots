@@ -223,7 +223,7 @@ async function allowanceOf(db: Executor, userId: string, hasProfilePhoto: boolea
   // Only at the real limit (plan §5.6): the allowance is used up, or the plan has no gallery, and
   // a higher plan of the pilot gives more; its benefits are only the features available now
   // (upgradeBenefits).
-  if (!decision.ok && hasProfilePhoto && decision.grantedBy && limit !== null) {
+  if (!decision.ok && (decision.code === 'quota' || (decision.code === 'plan' && limit === 0)) && hasProfilePhoto && decision.grantedBy && limit !== null) {
     const to = planSummary(decision.grantedBy);
     const text = offerText('photos', used, limit, from, to);
     upgrade = {

@@ -33,8 +33,10 @@ export function limitMonth(now: Date): string {
 function quotaRefusal(error: unknown, feature: LimitFeature): Refusal | null {
   if (!isServiceError(error) || error.code !== 'ENTITLEMENT_REQUIRED') return null;
   const decision = error.details.entitlement as Partial<Refusal> | undefined;
-  const allowance = decision?.code === 'quota' || (feature === 'photos' && decision?.code === 'plan' && decision.limit === 0);
-  if (!decision || decision.ok !== false || !allowance || typeof decision.plan !== 'string' || typeof decision.limit !== 'number') return null;
+  if (!decision || decision.ok !== false || typeof decision.plan !== 'string' || typeof decision.limit !== 'number') return null;
+  // ADR 0044: Free Student's gallery is "Profile photo only" (limit 0), refused with code 'plan';
+  // that is its real limit too. Any other refusal of the plan is no limit reached.
+  if (decision.code !== 'quota' && !(feature === 'photos' && decision.code === 'plan' && decision.limit === 0)) return null;
   return decision as Refusal;
 }
 

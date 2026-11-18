@@ -132,8 +132,10 @@ check "only the account that listed a school changes its photos" bash -c "grep -
 # 5. Decisions by default (In scope 3, 4; CLAUDE.md §8) --------------------------------------------
 check "photos is available now and enforced (DEFAULT D07)" bash -c "
   f=src/server/entitlements/plans.ts; awk '/^    key: .photos.,/{on=1} on && /availability: .now.,/{a=1} on && /enforced: true,/{e=1} on && /^  \\},/{exit} END{exit !(a && e)}' \"\$f\""
-check "every gallery photo counts against 'photos'; replacing the profile photo adds nothing (access.ts)" bash -c "
-  f=src/server/entitlements/access.ts; grep -q \"if (key === 'photos') return activePhotos(db, subject);\" \"\$f\" && grep -q 'GALLERY_PHOTO_STATUSES' \"\$f\""
+# ADR 0044 (owner decision 2026-11-18) replaces "every gallery photo counts, the profile photo too":
+# only the gallery photos count; the profile photo never does, on any plan.
+check "only gallery photos count against 'photos'; the profile photo never does (access.ts, ADR 0044)" bash -c "
+  f=src/server/entitlements/access.ts; grep -q \"if (key === 'photos') return galleryPhotos(db, subject);\" \"\$f\" && grep -q \"eq(personPhoto.status, 'gallery')\" \"\$f\""
 check "DEFAULT D13: evidence never counts against the gallery (marked in access.ts and the services)" bash -c "
   grep -q 'D13' src/server/entitlements/access.ts && grep -q 'DEFAULT D13' $SCHOOL"
 check "the room gallery's limit is a default with its question (SCHOOL_ROOM_PHOTOS_MAX, questions/M16.md)" bash -c "
@@ -172,7 +174,7 @@ check "the new pages are in e2e/routes.ts (axe in both themes)" bash -c "grep -q
 titles=(
   "$VIEWER_SPEC|@M16 the profile gallery opens in its viewer with the keyboard: Enter, the arrow keys, Esc, and the focus back on the photo"
   "$VIEWER_SPEC|@M16 by touch on a phone (a click on the desktop): a tap opens the viewer, Previous and Next move, the photo fits the screen"
-  "$SPEC|@M16 an owner adds a photo with the keyboard, captions it, meets the Free Student limit, and removes it"
+  "$SPEC|@M16 an owner adds a photo with the keyboard, captions it, meets the Free Student limit (the profile photo only, ADR 0044), and removes it"
   "$SPEC|@M16 a Sifu adds a logo and a room photo to their school; the public page shows them and no rendition carries a GPS position"
 )
 for entry in "${titles[@]}"; do
@@ -183,8 +185,8 @@ check "the writing M16 spec runs in the exclusive run (PUBLIC_WRITE_SPECS); the 
   grep -qE \"^export const PUBLIC_WRITE_SPECS = \\[.*'\\*\\*/m16-galleries\\.spec\\.ts'.*\\] as const;\$\" e2e/projects.ts &&
   ! grep -q 'm16-gallery-viewer' e2e/projects.ts"
 int_titles=(
-  "$INT|the first photo becomes the profile photo; at the Free Student limit the next one is refused with the upgrade prompt"
-  "$INT|with a higher plan from an admin grant the gallery grows; every photo counts and evidence never does (DEFAULT D13)"
+  "$INT|the first photo becomes the profile photo and never counts (ADR 0044); Free Student has no gallery, so the next one is refused with the upgrade prompt"
+  "$INT|with a higher plan from an admin grant the gallery grows; every photo besides the profile photo counts and evidence never does (DEFAULT D13)"
   "$INT|strips the EXIF block and GPS position from every rendition, the whole photo too, and keeps its proportions"
   "$INT|a hidden person's gallery is 404 to everyone but the owner and staff with 2FA, and its photos are never public"
   "$SCHOOL_INT|strips the GPS position and camera of every rendition; neither it nor the exact point is in the page"
