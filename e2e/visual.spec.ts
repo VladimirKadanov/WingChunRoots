@@ -29,18 +29,19 @@ test.afterAll(closeHelpers);
  * width of "7 November 2026" is not that of "2 November 2026": the words after it moved and the
  * baselines failed on some days without any change in the app. Each date in that text is written
  * as one fixed date before the screenshot, so the layout is compared and never the day of the run.
+ * The review queue's Waiting column grows the same way and is written as one fixed "9 days".
  */
 async function fixVisualDates(page: Page) {
   await page.evaluate(() => {
-    // A count of days up to today (the review queue's Waiting column) grows by one every day.
-    const days = /\b\d+ days?\b/g;
     const date = /\b\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b/g;
     for (const root of document.querySelectorAll('[data-visual-date]')) {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (node.nodeValue) node.nodeValue = node.nodeValue.replace(date, '1 January 2026').replace(days, '100 days');
+        if (node.nodeValue) node.nodeValue = node.nodeValue.replace(date, '1 January 2026');
       }
     }
+    // The review queue's Waiting column counts from the seed's fixed base date, in either language.
+    for (const el of document.querySelectorAll('[data-visual-waited]')) el.textContent = '9 days';
   });
 }
 
