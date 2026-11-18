@@ -55,10 +55,10 @@ export default async function NewSchoolPage({ searchParams }: { searchParams: Se
               : 'You are the head instructor of the schools you list, so your profile comes first.'}
           </p>
           <Link
-            href={mine.accountType !== 'sifu' ? '/dashboard/settings' : `/onboarding?next=${encodeURIComponent(PAGE)}`}
+            href={mine.accountType !== 'sifu' ? '/account/plan' : `/onboarding?next=${encodeURIComponent(PAGE)}`}
             className={buttonVariants({ variant: 'secondary' })}
           >
-            {mine.accountType !== 'sifu' ? 'Account type and plan' : 'Set up your profile'}
+            {mine.accountType !== 'sifu' ? 'Plan and billing' : 'Set up your profile'}
             <ArrowRightIcon />
           </Link>
         </div>

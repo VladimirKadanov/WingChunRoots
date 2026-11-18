@@ -14,6 +14,7 @@
 import { type InputHTMLAttributes, type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useFormStatus } from 'react-dom';
 
+import { useAdminText } from '@/components/admin/i18n/text-context';
 import { AlertIcon, CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -95,6 +96,10 @@ export function FormMessage({
   labels?: Record<string, string>;
   single?: boolean;
 }) {
+  // Rendered once per submission; not memoized, so the shared script stays as small as before the
+  // control panel's Bulgarian (docs/adr/0043-admin-bulgarian.md). English everywhere but there.
+  'use no memo';
+  const text = useAdminText();
   if (state.status === 'idle') return null;
   const fields = state.status === 'error' ? Object.entries(state.fields ?? {}) : [];
   if (fields.length > 0) {
@@ -113,7 +118,10 @@ export function FormMessage({
       >
         <p id={`${summaryId(form)}-title`} className="flex items-start gap-2 font-semibold">
           <AlertIcon size={18} className="mt-px text-danger" />
-          {fields.length === 1 ? '1 answer needs a look' : `${fields.length} answers need a look`}
+          {(fields.length === 1 ? (text['{n} answer needs a look'] ?? '{n} answer needs a look') : (text['{n} answers need a look'] ?? '{n} answers need a look')).replace(
+            '{n}',
+            String(fields.length),
+          )}
         </p>
         <ul className="grid gap-0.5 pl-7">
           {fields.map(([name, error]) => (
@@ -183,10 +191,13 @@ export interface BaseFieldProps {
 }
 
 export function FieldLabel({ id, label, optional }: { id: string; label: ReactNode; optional?: boolean }) {
+  // A label and two spans: memoizing them costs more script than it saves (docs/adr/0043-admin-bulgarian.md).
+  'use no memo';
+  const text = useAdminText();
   return (
     <label htmlFor={id} className="text-sm font-semibold">
       {label}
-      {optional ? <span className="font-normal text-fg-muted"> (optional)</span> : null}
+      {optional ? <span className="font-normal text-fg-muted"> {text['(optional)'] ?? '(optional)'}</span> : null}
     </label>
   );
 }

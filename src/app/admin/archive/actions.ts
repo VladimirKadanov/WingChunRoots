@@ -5,13 +5,15 @@
 // archiveEditor.addLink, archiveEditor.endLink and archiveEditor.editLink (src/server/rpc/parity.ts), called in-process with
 // this request's session, so the forms and /api/v1 run the same checks (an archivist or an
 // administrator with a verified second factor). A failure comes back to its form; success opens the
-// page at its outcome note (#outcome), which takes the focus.
+// page at its outcome note (#outcome), which takes the focus. A refusal's message and field errors
+// come back in the control panel's language (./labels.ts, docs/adr/0043-admin-bulgarian.md).
 
 import { randomBytes } from 'node:crypto';
 
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
+import { getAdminT } from '@/components/admin/i18n/server';
 import { atOutcome } from '@/components/relationships/outcome-id';
 import { keepValues, textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
@@ -20,6 +22,7 @@ import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { LINEAGE_CREATE_FORM, LINEAGE_EDIT_FORM, LINK_ADD_FORM, LINK_EDIT_FORM, LINK_END_FORM, RECORD_CREATE_FORM } from './form-ids';
+import { translateFormState } from './labels';
 
 const HOME = '/admin/archive';
 const PEOPLE = '/admin/archive/people';
@@ -64,7 +67,7 @@ export async function createLineageAction(_previous: FormState, form: FormData):
   } catch (error) {
     unstable_rethrow(error);
     sendAway(error, HOME);
-    const state = formStateFromFailure(error, values);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
     return formResult({ form: LINEAGE_CREATE_FORM, page: HOME, anchor: outcomeTarget(LINEAGE_CREATE_FORM, state, false) }, state);
   }
   redirect(doneAt(lineagePage(slug), 'created'));
@@ -87,7 +90,7 @@ export async function updateLineageAction(_previous: FormState, form: FormData):
   } catch (error) {
     unstable_rethrow(error);
     sendAway(error, page);
-    const state = formStateFromFailure(error, values);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
     return formResult({ form: LINEAGE_EDIT_FORM, page, anchor: outcomeTarget(LINEAGE_EDIT_FORM, state, false) }, state);
   }
   redirect(doneAt(page, changed ? 'saved' : 'unchanged'));
@@ -115,7 +118,7 @@ export async function createRecordAction(_previous: FormState, form: FormData): 
   } catch (error) {
     unstable_rethrow(error);
     sendAway(error, PEOPLE);
-    const state = formStateFromFailure(error, values);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
     return formResult({ form: RECORD_CREATE_FORM, page: `${PEOPLE}?new=record`, anchor: outcomeTarget(RECORD_CREATE_FORM, state, false) }, state);
   }
   redirect(doneAt(PEOPLE, 'record', `&record=${slug}${SLUG.test(back) ? `&back=${back}` : ''}`));
@@ -145,7 +148,7 @@ export async function addLinkAction(_previous: FormState, form: FormData): Promi
   } catch (error) {
     unstable_rethrow(error);
     sendAway(error, page);
-    const state = formStateFromFailure(error, values);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
     return formResult({ form: LINK_ADD_FORM, page, anchor: outcomeTarget(LINK_ADD_FORM, state, false) }, state);
   }
   redirect(doneAt(base, shown ? 'linked' : 'linked-hidden', extra));
@@ -164,7 +167,7 @@ export async function endLinkAction(_previous: FormState, form: FormData): Promi
   } catch (error) {
     unstable_rethrow(error);
     sendAway(error, page);
-    const state = formStateFromFailure(error, values);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
     return formResult({ form: LINK_END_FORM, page, anchor: outcomeTarget(`${LINK_END_FORM}-${relationshipId}`, state, true) }, state);
   }
   redirect(doneAt(base, 'ended'));
@@ -195,7 +198,7 @@ export async function editLinkAction(_previous: FormState, form: FormData): Prom
   } catch (error) {
     unstable_rethrow(error);
     sendAway(error, page);
-    const state = formStateFromFailure(error, values);
+    const state = translateFormState(await getAdminT(), formStateFromFailure(error, values));
     return keepFormResult({ form: LINK_EDIT_FORM, page, anchor: outcomeTarget(`${LINK_EDIT_FORM}-${relationshipId}`, state, true) }, state);
   }
   redirect(doneAt(base, changed ? 'edited' : 'unchanged', link));

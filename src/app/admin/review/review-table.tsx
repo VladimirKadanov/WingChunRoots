@@ -14,10 +14,11 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { NameText } from '@/components/account/person-names';
-import { EmptyState, Mark, type MarkTone, Pager, RangeLine, table as t } from '@/components/admin/table-parts';
-import { formatDay, formatShortDay } from '@/lib/dates';
-import { waitedOver, waitedText } from '@/lib/waited';
+import type { AdminT } from '@/components/admin/i18n/translate';
+import { EmptyState, Mark, type MarkTone, Pager, RangeLine, table as tbl } from '@/components/admin/table-parts';
+import { waitedOver } from '@/lib/waited';
 import type { ReviewList, ReviewListRow } from '@/server/services/review';
+import { waited } from './text';
 
 /** Control panel: each status with a shape as well as its word (never colour alone). */
 const STATUS_MARK: Record<ReviewListRow['status'], { symbol: string; tone: MarkTone }> = {
@@ -33,27 +34,33 @@ const LATE_DAYS = 3;
 type QueueRow = ReviewListRow & { now: number };
 
 /** What the profile of a case without a relationship is to it: shown, and spoken in the link's name. */
-const SUBJECT_ROLE: Partial<Record<ReviewListRow['kind'], { shown: string; spoken: string }>> = {
-  instructor_verification: { shown: 'Instructor', spoken: 'instructor' },
-  profile_report: { shown: 'Reported', spoken: 'reported profile' },
-};
-const subjectRole = (row: QueueRow) => SUBJECT_ROLE[row.kind] ?? { shown: 'Profile', spoken: 'profile' };
+function subjectRole(t: AdminT, row: QueueRow): { shown: string; spoken: string } {
+  switch (row.kind) {
+    case 'instructor_verification':
+      return { shown: t('Instructor'), spoken: t('instructor') };
+    case 'profile_report':
+      return { shown: t('Reported'), spoken: t('reported profile') };
+    default:
+      return { shown: t('Profile'), spoken: t('profile') };
+  }
+}
 
 const features = tableFeatures({ coreReactivityFeature: storeReactivityBindings() });
 const helper = createColumnHelper<typeof features, QueueRow>();
 
-function Day({ value }: { value: string }) {
+function Day({ value, t }: { value: string; t: AdminT }) {
   return (
-    <time dateTime={value} title={formatDay(value)} className="whitespace-nowrap tabular">
-      {formatShortDay(value)}
+    <time dateTime={value} title={t.day(value)} className="whitespace-nowrap tabular">
+      {t.shortDay(value)}
     </time>
   );
 }
 
-const columns = helper.columns([
+const columnsFor = (t: AdminT) =>
+  helper.columns([
   helper.accessor('kindLabel', {
     id: 'case',
-    header: 'Case',
+    header: t('Case'),
     cell: (info) => {
       const row = info.row.original;
       return (
@@ -62,34 +69,38 @@ const columns = helper.columns([
               difference, so the text shares the first line of the row's other cells (screens-11).
               The name says which case it opens: the people and the day (plan §5.6, screens-6). */}
           <Link href={`/admin/review/${row.id}`} className="link inline-flex min-h-11 items-center font-semibold @min-[52rem]:-mt-3" data-testid="case-link">
-            {info.getValue()}
+            {t(info.getValue())}
             {/* Starts with a word: a browser puts a space before this hidden text. */}
             <span className="sr-only">
-              case:{' '}
+              {t('case:')}{' '}
               {row.teacher && row.student ? (
                 <>
-                  teacher <NameText name={row.teacher.name} />, student <NameText name={row.student.name} />,{' '}
+                  {t('teacher')} <NameText name={row.teacher.name} />, {t('student')} <NameText name={row.student.name} />,{' '}
                 </>
               ) : row.school ? (
-                <>school {row.school.name}, </>
+                <>
+                  {t('school')} {row.school.name},{' '}
+                </>
               ) : row.organization ? (
-                <>organization {row.organization.name}, </>
+                <>
+                  {t('organization')} {row.organization.name},{' '}
+                </>
               ) : row.subject ? (
                 <>
-                  {subjectRole(row).spoken} <NameText name={row.subject.name} />,{' '}
+                  {subjectRole(t, row).spoken} <NameText name={row.subject.name} />,{' '}
                 </>
               ) : null}
-              opened {formatDay(row.openedAt)}
+              {t('opened {day}', { day: t.day(row.openedAt) })}
             </span>
           </Link>
-          <span className="text-sm text-fg-muted">{row.files === 1 ? '1 file' : `${row.files} files`}</span>
+          <span className="text-sm text-fg-muted">{t.n(row.files, '{n} file', '{n} files')}</span>
         </span>
       );
     },
   }),
   helper.accessor('teacher', {
     id: 'people',
-    header: 'People',
+    header: t('People'),
     cell: (info) => {
       const row = info.row.original;
       // M11: a school listing names the school and its city.
@@ -97,7 +108,7 @@ const columns = helper.columns([
         return (
           <span className="grid gap-0.5" data-testid="case-school">
             <span>
-              <span className="text-sm text-fg-muted">School </span>
+              <span className="text-sm text-fg-muted">{t('School')} </span>
               {row.school.name}
             </span>
             <span className="text-sm text-fg-muted">
@@ -111,7 +122,7 @@ const columns = helper.columns([
         return (
           <span className="grid gap-0.5" data-testid="case-organization">
             <span>
-              <span className="text-sm text-fg-muted">Organization </span>
+              <span className="text-sm text-fg-muted">{t('Organization')} </span>
               {row.organization.name}
             </span>
             {row.organization.countryCode ? <span className="text-sm text-fg-muted">{row.organization.countryCode}</span> : null}
@@ -121,7 +132,7 @@ const columns = helper.columns([
       if ((!row.teacher || !row.student) && row.subject) {
         return (
           <span data-testid="case-subject">
-            <span className="text-sm text-fg-muted">{subjectRole(row).shown} </span>
+            <span className="text-sm text-fg-muted">{subjectRole(t, row).shown} </span>
             <NameText name={row.subject.name} />
           </span>
         );
@@ -130,11 +141,11 @@ const columns = helper.columns([
       return (
         <span className="grid gap-0.5">
           <span>
-            <span className="text-sm text-fg-muted">Teacher </span>
+            <span className="text-sm text-fg-muted">{t('Teacher')} </span>
             <NameText name={row.teacher.name} />
           </span>
           <span>
-            <span className="text-sm text-fg-muted">Student </span>
+            <span className="text-sm text-fg-muted">{t('Student')} </span>
             <NameText name={row.student.name} />
           </span>
           {row.lineageName ? <span className="text-sm text-fg-muted">{row.lineageName}</span> : null}
@@ -144,27 +155,27 @@ const columns = helper.columns([
   }),
   helper.accessor('statusLabel', {
     id: 'status',
-    header: 'Status',
+    header: t('Status'),
     cell: (info) => {
       const mark = STATUS_MARK[info.row.original.status];
       return (
         <Mark symbol={mark.symbol} tone={mark.tone}>
-          {info.getValue()}
+          {t(info.getValue())}
         </Mark>
       );
     },
   }),
   helper.accessor('assignee', {
     id: 'assignee',
-    header: 'Assigned to',
+    header: t('Assigned to'),
     cell: (info) => {
       const value = info.getValue();
-      return <span className={value === null ? 'text-fg-muted' : value === 'me' ? 'font-semibold' : undefined}>{value === 'me' ? 'You' : value === 'other' ? 'Another reviewer' : 'Nobody yet'}</span>;
+      return <span className={value === null ? 'text-fg-muted' : value === 'me' ? 'font-semibold' : undefined}>{value === 'me' ? t('You') : value === 'other' ? t('Another reviewer') : t('Nobody yet')}</span>;
     },
   }),
   helper.accessor('openedAt', {
     id: 'waiting',
-    header: 'Waiting',
+    header: t('Waiting'),
     cell: (info) => {
       const { openedAt, status, now } = info.row.original;
       const open = status === 'open' || status === 'in_review' || status === 'needs_info';
@@ -172,15 +183,15 @@ const columns = helper.columns([
         <span className="grid gap-0.5">
           {open && waitedOver(openedAt, now, LATE_DAYS) ? (
             <Mark symbol="!" tone="danger" testId="case-late">
-              {waitedText(openedAt, now)}
-              <span className="sr-only">, over {LATE_DAYS} days</span>
+              {waited(t, openedAt, now)}
+              <span className="sr-only">{t(', over {n} days', { n: LATE_DAYS })}</span>
             </Mark>
           ) : (
-            <span className="whitespace-nowrap tabular">{open ? waitedText(openedAt, now) : '—'}</span>
+            <span className="whitespace-nowrap tabular">{open ? waited(t, openedAt, now) : '—'}</span>
           )}
           <span className="text-sm text-fg-muted">
-            <span className="sr-only">opened </span>
-            <Day value={openedAt} />
+            <span className="sr-only">{t('opened')} </span>
+            <Day value={openedAt} t={t} />
           </span>
         </span>
       );
@@ -205,64 +216,64 @@ export function queueHref(list: Pick<ReviewList, 'filters' | 'page'>, changes: P
   return `/admin/review${query ? `?${query}` : ''}`;
 }
 
-export function ReviewTable({ list }: { list: ReviewList }) {
+export function ReviewTable({ list, t }: { list: ReviewList; t: AdminT }) {
   const now = Date.parse(list.asOf);
-  const table = constructTable({ features, columns, data: list.rows.map((row) => ({ ...row, now })), getRowId: (row) => row.id });
+  const table = constructTable({ features, columns: columnsFor(t), data: list.rows.map((row) => ({ ...row, now })), getRowId: (row) => row.id });
   const pages = Math.max(1, Math.ceil(list.total / list.pageSize));
   const other = list.filters.sort === 'oldest' ? 'newest' : 'oldest';
   return (
     <div className="@container grid gap-4">
       <RangeLine
-        noun="Cases"
+        noun={t('Cases')}
         total={list.total}
         page={list.page}
         pageSize={list.pageSize}
         testId="queue-count"
         extra={
           <>
-            <span>{list.filters.sort === 'oldest' ? 'oldest first' : 'newest first'}</span>
+            <span>{list.filters.sort === 'oldest' ? t('oldest first') : t('newest first')}</span>
             <Link href={queueHref(list, { sort: other, page: 1 })} className="link inline-flex min-h-11 items-center" data-testid="queue-sort">
-              Show {other} first
+              {other === 'newest' ? t('Show newest first') : t('Show oldest first')}
             </Link>
           </>
         }
       />
       {list.rows.length === 0 ? (
         <EmptyState testId="queue-empty">
-          <p className="font-semibold text-fg">No case matches these filters.</p>
+          <p className="font-semibold text-fg">{t('No case matches these filters.')}</p>
           <p className="mt-1">
             {list.counts.all > 0 ? (
               <>
-                {list.counts.all === 1 ? '1 case is' : `${list.counts.all} cases are`} in the queue under this status.{' '}
+                {t.n(list.counts.all, '{n} case is in the queue under this status.', '{n} cases are in the queue under this status.')}{' '}
                 <Link href="/admin/review" className="link">
-                  Show every waiting case
+                  {t('Show every waiting case')}
                 </Link>
               </>
             ) : (
-              'Nothing waits for a decision: the queue is clear.'
+              t('Nothing waits for a decision: the queue is clear.')
             )}
           </p>
         </EmptyState>
       ) : (
-        <table role="table" data-testid="review-table" className={t.table}>
-          <caption className="sr-only">Review cases, {list.filters.sort === 'oldest' ? 'oldest first' : 'newest first'}</caption>
-          <thead role="rowgroup" className={t.thead}>
+        <table role="table" data-testid="review-table" className={tbl.table}>
+          <caption className="sr-only">{list.filters.sort === 'oldest' ? t('Review cases, oldest first') : t('Review cases, newest first')}</caption>
+          <thead role="rowgroup" className={tbl.thead}>
             {table.getHeaderGroups().map((group) => (
-              <tr role="row" key={group.id} className={t.headRow}>
+              <tr role="row" key={group.id} className={tbl.headRow}>
                 {group.headers.map((header) => (
-                  <th role="columnheader" key={header.id} scope="col" className={t.th}>
+                  <th role="columnheader" key={header.id} scope="col" className={tbl.th}>
                     <span className="inline-flex min-h-9 items-center">{FlexRender({ header }) as ReactNode}</span>
                   </th>
                 ))}
               </tr>
             ))}
           </thead>
-          <tbody role="rowgroup" className={t.tbody}>
+          <tbody role="rowgroup" className={tbl.tbody}>
             {table.getRowModel().rows.map((row) => (
-              <tr role="row" key={row.id} data-testid="review-row" data-case={row.original.id} data-status={row.original.status} className={t.row}>
+              <tr role="row" key={row.id} data-testid="review-row" data-case={row.original.id} data-status={row.original.status} className={tbl.row}>
                 {row.getAllCells().map((cell) => (
-                  <td role="cell" key={cell.id} className={t.td}>
-                    <span className={t.cardLabel}>{String(cell.column.columnDef.header)}</span>
+                  <td role="cell" key={cell.id} className={tbl.td}>
+                    <span className={tbl.cardLabel}>{String(cell.column.columnDef.header)}</span>
                     {FlexRender({ cell }) as ReactNode}
                   </td>
                 ))}
@@ -271,7 +282,7 @@ export function ReviewTable({ list }: { list: ReviewList }) {
           </tbody>
         </table>
       )}
-      <Pager label="Pages of the queue" page={list.page} pages={pages} href={(page) => queueHref(list, { page })} />
+      <Pager label={t('Pages of the queue')} page={list.page} pages={pages} href={(page) => queueHref(list, { page })} />
     </div>
   );
 }

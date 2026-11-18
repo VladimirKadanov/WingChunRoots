@@ -12,22 +12,24 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 
 import { LoadError } from '@/components/account/load-error';
-import { ORGANIZATION_LOAD_ERRORS } from '@/components/account/organization-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { adminFieldClass, AdminPageHeader, EmptyState, Mark, type MarkTone, Pager, RangeLine, table as t } from '@/components/admin/table-parts';
+import { getAdminT } from '@/components/admin/i18n/server';
+import { adminFieldClass, AdminPageHeader, EmptyState, Mark, type MarkTone, Pager, RangeLine, table as tbl } from '@/components/admin/table-parts';
 import { buttonVariants } from '@/components/ui/button-variants';
-import { formatShortDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { type AdminOrganizationList, adminOrganizationsInput } from '@/server/services/organization-grants';
 
+import { organizationLoadError, serviceLabel } from './labels';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
+
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Organizations',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Organizations'), robots: { index: false } };
+}
 
 const PAGE = '/admin/organizations';
 
@@ -55,6 +57,7 @@ function organizationsHref(filters: Filters, page = 1): string {
 
 export default async function AdminOrganizationsPage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
+  const t = await getAdminT();
   const asked = { q: one(query.q)?.trim() || undefined, status: one(query.status), plan: one(query.plan), page: one(query.page) };
   const params = new URLSearchParams(Object.entries(asked).filter((e): e is [string, string] => typeof e[1] === 'string'));
   const here = params.size > 0 ? `${PAGE}?${params}` : PAGE;
@@ -71,7 +74,7 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
     page: valid(field.page.safeParse(asked.page)) ?? 1,
   };
   const view = await pageRead(serverClient(await headers(), guard.principal).organizations.adminList(input));
-  if (!view) return <LoadError {...ORGANIZATION_LOAD_ERRORS.admin} retryHref={PAGE} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...organizationLoadError(t)} retryHref={PAGE} />;
   const { filters, counts } = view;
   const pages = Math.max(1, Math.ceil(view.total / view.pageSize));
   const filtered = Boolean(filters.q) || filters.status !== 'all' || filters.plan !== 'all';
@@ -81,115 +84,118 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
       <AdminPageHeader
         eyebrow={
           <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Control panel
+            {t('Control panel')}
           </Link>
         }
-        title="Organizations"
+        title={t('Organizations')}
         summary={
           <span>
-            <strong>{counts.all}</strong> {filters.q ? 'matching' : 'in all'} · <strong>{counts.pending}</strong> waiting for review · <strong>{counts.active}</strong> approved
+            <strong>{counts.all}</strong> {filters.q ? t('matching') : t('in all')} · <strong>{counts.pending}</strong> {t('waiting for review')} · <strong>{counts.active}</strong> {t('approved')}
           </span>
         }
-        intro="Approval is decided in the review queue. The plan is separate: give an approved organization a test or complimentary Federation plan on its page."
+        intro={t('Approval is decided in the review queue. The plan is separate: give an approved organization a test or complimentary Federation plan on its page.')}
       />
 
       <form role="search" action={PAGE} method="get" className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] items-end gap-3" data-testid="admin-organizations-filters">
         <div className="grid min-w-0 gap-1.5 sm:col-span-2">
           <label htmlFor="organizations-q" className="text-sm font-semibold">
-            Name or address
+            {t('Name or address')}
           </label>
           <input id="organizations-q" name="q" type="search" defaultValue={filters.q} maxLength={120} autoComplete="off" spellCheck={false} className={adminFieldClass} />
         </div>
         <div className="grid min-w-0 gap-1.5">
           <label htmlFor="organizations-status" className="text-sm font-semibold">
-            Approval
+            {t('Approval')}
           </label>
           <select id="organizations-status" name="status" defaultValue={filters.status} className={adminFieldClass}>
-            <option value="all">Any ({counts.all})</option>
-            <option value="pending">Waiting for review ({counts.pending})</option>
-            <option value="active">Approved ({counts.active})</option>
-            <option value="suspended">Suspended ({counts.suspended})</option>
-            <option value="rejected">Declined ({counts.rejected})</option>
+            <option value="all">{t('Any ({count})', { count: counts.all })}</option>
+            <option value="pending">{t('Waiting for review ({count})', { count: counts.pending })}</option>
+            <option value="active">{t('Approved ({count})', { count: counts.active })}</option>
+            <option value="suspended">{t('Suspended ({count})', { count: counts.suspended })}</option>
+            <option value="rejected">{t('Declined ({count})', { count: counts.rejected })}</option>
           </select>
         </div>
         <div className="grid min-w-0 gap-1.5">
           <label htmlFor="organizations-plan" className="text-sm font-semibold">
-            Plan
+            {t('Plan')}
           </label>
           <select id="organizations-plan" name="plan" defaultValue={filters.plan} className={adminFieldClass}>
-            <option value="all">Any plan</option>
+            <option value="all">{t('Any plan')}</option>
+            {/* The plan's name (PLANS.federation.name), a product name: not translated. */}
             <option value="federation">Federation</option>
-            <option value="none">No plan</option>
+            <option value="none">{t('No plan')}</option>
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-            Show
+            {t('Show')}
           </button>
           {filtered ? (
             <Link href={PAGE} className="link inline-flex min-h-12 items-center text-ui">
-              Clear
+              {t('Clear')}
             </Link>
           ) : null}
         </div>
       </form>
 
       <div className="mt-5 grid gap-4">
-        <RangeLine noun="Organizations" total={view.total} page={view.page} pageSize={view.pageSize} testId="admin-organizations-count" extra={<span>waiting first, then by name</span>} />
+        <RangeLine noun={t('Organizations')} total={view.total} page={view.page} pageSize={view.pageSize} testId="admin-organizations-count" extra={<span>{t('waiting first, then by name')}</span>} />
         {view.organizations.length === 0 ? (
-          <EmptyState testId="admin-organizations-empty">{filtered ? 'No organization matches these filters. Change them, or clear them.' : 'No organization has applied.'}</EmptyState>
+          <EmptyState testId="admin-organizations-empty">{filtered ? t('No organization matches these filters. Change them, or clear them.') : t('No organization has applied.')}</EmptyState>
         ) : (
           <div className="@container">
-            <table role="table" data-testid="admin-organizations" className={t.table}>
-              <caption className="sr-only">Organizations, waiting for review first, then by name</caption>
-              <thead role="rowgroup" className={t.thead}>
-                <tr role="row" className={t.headRow}>
-                  <th role="columnheader" scope="col" className={t.th}>Organization</th>
-                  <th role="columnheader" scope="col" className={t.th}>Approval</th>
-                  <th role="columnheader" scope="col" className={t.th}>Plan</th>
-                  <th role="columnheader" scope="col" className={t.th}>Admins</th>
-                  <th role="columnheader" scope="col" className={t.th}>
-                    <span className="sr-only">Actions</span>
+            <table role="table" data-testid="admin-organizations" className={tbl.table}>
+              <caption className="sr-only">{t('Organizations, waiting for review first, then by name')}</caption>
+              <thead role="rowgroup" className={tbl.thead}>
+                <tr role="row" className={tbl.headRow}>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Organization')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Approval')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Plan')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Admins')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>
+                    <span className="sr-only">{t('Actions')}</span>
                   </th>
                 </tr>
               </thead>
-              <tbody role="rowgroup" className={t.tbody}>
+              <tbody role="rowgroup" className={tbl.tbody}>
                 {view.organizations.map((org) => {
                   const mark = APPROVAL_MARK[org.status] ?? { symbol: '·', tone: 'neutral' as const };
                   return (
-                    <tr role="row" key={org.id} className={t.row} data-testid="admin-organization" data-status={org.status}>
-                      <td role="cell" className={t.td}>
+                    <tr role="row" key={org.id} className={tbl.row} data-testid="admin-organization" data-status={org.status}>
+                      <td role="cell" className={tbl.td}>
                         <Link href={`${PAGE}/${org.id}`} className="link inline-flex min-h-11 items-center font-semibold [overflow-wrap:anywhere] @min-[52rem]:-my-2.5">
                           {org.name}
                         </Link>
                         <span className="block text-sm text-fg-muted">
-                          {org.kindLabel}
+                          {serviceLabel(t, org.kindLabel)}
                           {org.countryCode ? ` · ${org.countryCode}` : ''}
                         </span>
                       </td>
-                      <td role="cell" className={t.td}>
-                        <span className={t.cardLabel}>Approval</span>
+                      <td role="cell" className={tbl.td}>
+                        <span className={tbl.cardLabel}>{t('Approval')}</span>
                         <Mark symbol={mark.symbol} tone={mark.tone}>
-                          {org.approvalLabel}
+                          {serviceLabel(t, org.approvalLabel)}
                         </Mark>
                       </td>
-                      <td role="cell" className={t.td}>
-                        <span className={t.cardLabel}>Plan</span>
-                        <span className={org.plan.code ? 'font-semibold' : 'text-fg-muted'}>{org.plan.label}</span>
-                        {org.plan.code && org.plan.until ? <span className="block text-sm text-fg-muted">until {formatShortDay(org.plan.until)}</span> : null}
+                      <td role="cell" className={tbl.td}>
+                        <span className={tbl.cardLabel}>{t('Plan')}</span>
+                        <span className={org.plan.code ? 'font-semibold' : 'text-fg-muted'}>{serviceLabel(t, org.plan.label)}</span>
+                        {org.plan.code && org.plan.until ? <span className="block text-sm text-fg-muted">{t('until {date}', { date: t.shortDay(org.plan.until) })}</span> : null}
                       </td>
-                      <td role="cell" className={t.td}>
-                        <span className={t.cardLabel}>Admins</span>
+                      <td role="cell" className={tbl.td}>
+                        <span className={tbl.cardLabel}>{t('Admins')}</span>
                         <span className="tabular">{org.admins}</span>
                       </td>
-                      <td role="cell" className={t.td}>
+                      <td role="cell" className={tbl.td}>
                         <span className="flex flex-wrap gap-x-4 @min-[52rem]:-my-2.5">
                           <Link href={`${PAGE}/${org.id}`} className="link inline-flex min-h-11 items-center whitespace-nowrap">
-                            Plan and details<span className="sr-only"> of {org.name}</span>
+                            {t('Plan and details')}
+                            <span className="sr-only">{t(' of {name}', { name: org.name })}</span>
                           </Link>
                           {org.caseId ? (
                             <Link href={`/admin/review/${org.caseId}`} className="link inline-flex min-h-11 items-center whitespace-nowrap">
-                              Open the application<span className="sr-only"> of {org.name}</span>
+                              {t('Open the application')}
+                              <span className="sr-only">{t(' of {name}', { name: org.name })}</span>
                             </Link>
                           ) : null}
                         </span>
@@ -201,7 +207,7 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
             </table>
           </div>
         )}
-        <Pager label="Pages of organizations" page={view.page} pages={pages} href={(page) => organizationsHref(filters, page)} />
+        <Pager label={t('Pages of organizations')} page={view.page} pages={pages} href={(page) => organizationsHref(filters, page)} />
       </div>
     </div>
   );

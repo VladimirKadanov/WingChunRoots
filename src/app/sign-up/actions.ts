@@ -3,7 +3,7 @@
 // The sign-up form's Server Action (milestone M02): a thin wrapper over Better Auth's
 // POST /api/auth/sign-up/email (src/server/rpc/parity.ts). The checks here only give the form
 // its field messages; the endpoint and its hook refuse the same input for any client. The path of
-// an invitation link in `next` goes to the endpoint as its callbackURL, which the confirmation
+// an invitation link or of a trial lesson page in `next` goes to the endpoint as its callbackURL, which the confirmation
 // e-mail's link keeps (src/server/auth/emails.ts; M10b review, requirements-2).
 
 import { CONSENT_REQUIRED_MESSAGES, type ConsentName } from '@/components/account/consents';
@@ -11,7 +11,7 @@ import { authMessage } from '@/components/account/messages';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/account-limits';
 import { emailValue, keepValues, looksLikeEmail, secretValue, textValue, ticked } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
-import { isInvitationPath } from '@/lib/invitation-path';
+import { ridesInConfirmationLink } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { authAction } from '@/server/auth/web';
 import { formResult } from '@/server/forms/flash';
@@ -40,7 +40,7 @@ async function signUp(form: FormData, next: string): Promise<FormState> {
   if (Object.keys(fields).length > 0) return { status: 'error', message: 'Check the highlighted fields.', fields, values };
 
   // `name` is required by Better Auth; the person's names are asked at onboarding.
-  const callback = isInvitationPath(next) ? { callbackURL: next } : {};
+  const callback = ridesInConfirmationLink(next) ? { callbackURL: next } : {};
   const result = await authAction('/sign-up/email', { body: { name: '', email, password, consents, ...callback } });
   if (!result.ok) {
     const field =

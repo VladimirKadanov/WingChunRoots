@@ -6,25 +6,24 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { buttonVariants } from '@/components/ui/button-variants';
-
-export const number = new Intl.NumberFormat('en-GB');
 
 export const fieldClass =
   'block min-h-12 w-full min-w-0 rounded-sm border border-border-strong bg-surface-1 px-3 text-field text-fg hover:border-fg-muted focus-visible:border-fg';
 
-export const years = (from: number | null, to: number | null) =>
-  from === null ? 'Years not known' : to === null ? `From ${from}` : from === to ? String(from) : `${from}–${to}`;
+export const years = (t: AdminT, from: number | null, to: number | null) =>
+  from === null ? t('Years not known') : to === null ? t('From {year}', { year: from }) : from === to ? String(from) : `${from}–${to}`;
 
 export function Column({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return <div className={`mx-auto px-page pt-6 pb-10 md:pt-9 md:pb-14 ${wide ? 'max-w-[90rem]' : 'max-w-content'}`}>{children}</div>;
 }
 
-export function Figure({ label, value, note, href }: { label: string; value: number; note?: string; href?: string }) {
+export function Figure({ t, label, value, note, href }: { t: AdminT; label: string; value: number; note?: string; href?: string }) {
   const body = (
     <>
       <span className="text-sm text-fg-muted">{label}</span>
-      <span className="font-display text-2xl leading-none">{number.format(value)}</span>
+      <span className="font-display text-2xl leading-none">{t.num(value)}</span>
       {note ? <span className="text-sm text-fg-muted">{note}</span> : null}
     </>
   );
@@ -61,18 +60,29 @@ export function Chips({ label, children }: { label: string; children: ReactNode 
 }
 
 const STATUS = {
-  verified: { mark: '✓', text: 'Verified', className: 'text-verified' },
-  in_arbitration: { mark: '⚖', text: 'In arbitration', className: 'text-review' },
-  revoked: { mark: '×', text: 'Ended', className: 'text-fg-muted' },
+  verified: { mark: '✓', className: 'text-verified' },
+  in_arbitration: { mark: '⚖', className: 'text-review' },
+  revoked: { mark: '×', className: 'text-fg-muted' },
 } as const;
 
+function statusText(t: AdminT, status: keyof typeof STATUS): string {
+  switch (status) {
+    case 'verified':
+      return t('Verified');
+    case 'in_arbitration':
+      return t('In arbitration');
+    case 'revoked':
+      return t('Ended');
+  }
+}
+
 /** A link's status: a mark and a word. */
-export function LinkStatus({ status }: { status: keyof typeof STATUS }) {
+export function LinkStatus({ t, status }: { t: AdminT; status: keyof typeof STATUS }) {
   const s = STATUS[status];
   return (
     <span className={`inline-flex items-center gap-1 whitespace-nowrap ${s.className}`}>
       <span aria-hidden="true">{s.mark}</span>
-      {s.text}
+      {statusText(t, status)}
     </span>
   );
 }
@@ -88,13 +98,13 @@ export function Missing({ children }: { children: ReactNode }) {
 }
 
 /** A sortable column header: a link that sorts by the column, marked when it is the order now. */
-export function SortHeader({ label, href, current, className = '' }: { label: string; href: string; current: boolean; className?: string }) {
+export function SortHeader({ t, label, href, current, className = '' }: { t: AdminT; label: string; href: string; current: boolean; className?: string }) {
   return (
     <th role="columnheader" scope="col" aria-sort={current ? 'ascending' : undefined} className={`px-2 py-2 text-sm font-medium whitespace-nowrap text-fg-muted ${className}`}>
       <Link href={href} className="inline-flex min-h-11 items-center gap-1 hover:text-fg aria-[current=true]:font-semibold aria-[current=true]:text-fg" aria-current={current ? 'true' : undefined}>
         {label}
         {current ? <span aria-hidden="true">▲</span> : null}
-        {current ? <span className="sr-only"> (sorted)</span> : <span className="sr-only">, sort by this column</span>}
+        {current ? <span className="sr-only"> {t('(sorted)')}</span> : <span className="sr-only">{t(', sort by this column')}</span>}
       </Link>
     </th>
   );
@@ -108,32 +118,51 @@ export function Header({ label, className = '' }: { label: ReactNode; className?
   );
 }
 
-/** The count line above a table: "1 to 50 of 1,302". */
-export function CountLine({ total, page, pageSize, noun, testId }: { total: number; page: number; pageSize: number; noun: [string, string]; testId: string }) {
+/**
+ * The count line above a table: "People 1 to 50 of 1,302". `none` and `range` are the page's own
+ * sentences (translated there); `range` gets {from}, {to} and {total}.
+ */
+export function CountLine({
+  t,
+  total,
+  page,
+  pageSize,
+  none,
+  range,
+  testId,
+}: {
+  t: AdminT;
+  total: number;
+  page: number;
+  pageSize: number;
+  none: string;
+  range: (vars: { from: string; to: string; total: string }) => string;
+  testId: string;
+}) {
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(total, page * pageSize);
   return (
     <p className="text-sm text-fg-muted" data-testid={testId} aria-live="polite">
-      {total === 0 ? `No ${noun[1]} match.` : `${noun[1].charAt(0).toUpperCase()}${noun[1].slice(1)} ${number.format(first)} to ${number.format(last)} of ${number.format(total)}`}
+      {total === 0 ? none : range({ from: t.num(first), to: t.num(last), total: t.num(total) })}
     </p>
   );
 }
 
-export function Pager({ page, pages, href, label }: { page: number; pages: number; href: (page: number) => string; label: string }) {
+export function Pager({ t, page, pages, href, label }: { t: AdminT; page: number; pages: number; href: (page: number) => string; label: string }) {
   if (pages <= 1) return null;
   return (
     <nav aria-label={label} className="flex flex-wrap items-center gap-3 text-ui">
       {page > 1 ? (
         <Link href={href(page - 1)} className={buttonVariants({ variant: 'secondary' })} rel="prev">
-          Previous
+          {t('Previous')}
         </Link>
       ) : null}
       <span className="text-fg-muted">
-        Page {number.format(page)} of {number.format(pages)}
+        {t('Page {page} of {pages}', { page: t.num(page), pages: t.num(pages) })}
       </span>
       {page < pages ? (
         <Link href={href(page + 1)} className={buttonVariants({ variant: 'secondary' })} rel="next">
-          Next
+          {t('Next')}
         </Link>
       ) : null}
     </nav>

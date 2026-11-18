@@ -15,34 +15,40 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { ADMIN_BILLING_LOAD_ERROR } from '@/components/account/load-errors/admin-billing';
 import { PageRedirect } from '@/components/account/page-redirect';
-import { adminFieldClass, EmptyState, Pager, RangeLine, table as t } from '@/components/admin/table-parts';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
+import { adminFieldClass, EmptyState, table as tbl } from '@/components/admin/table-parts';
 import { SubscriptionStatusTag, TestModeBanner } from '@/components/billing/status';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { formatDay, formatShortDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
-import { TEST_MODE_LABEL } from '@/server/entitlements/plans';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { BILLING_ADMIN_PAGE_SIZE, billingAdminListInput } from '@/server/services/billing';
+import { billingLoadError } from './load-error-text';
+import { providerLabel, subscriptionStatusLabel } from './labels';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Subscriptions',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Subscriptions'), robots: { index: false } };
+}
 
 const PAGE = '/admin/billing';
-const FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'active', label: 'Active' },
-  { value: 'past_due', label: 'Payment failed' },
-  { value: 'canceled', label: 'Ended' },
-] as const;
+const FILTERS = [{ value: 'all' }, { value: 'active' }, { value: 'past_due' }, { value: 'canceled' }] as const;
 type Filter = (typeof FILTERS)[number]['value'];
+
+function filterLabel(t: AdminT, filter: Filter): string {
+  switch (filter) {
+    case 'all': return t('All');
+    case 'active': return t('Active');
+    case 'past_due': return t('Payment failed');
+    case 'canceled': return t('Ended');
+  }
+}
 const PLAN_OPTIONS = [
   { value: 'premium_student', label: 'Premium Student' },
   { value: 'pro_sifu', label: 'Professional Sifu' },
@@ -51,7 +57,6 @@ const PLAN_OPTIONS = [
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
-const usd = new Intl.NumberFormat('en', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : undefined);
 
 function billingHref(state: { status: Filter; plan: string | null; q: string | null }, page = 1): string {
@@ -101,10 +106,12 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
   const guard = await guardRoute(PAGE, here);
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/admin" />;
+  const t = await getAdminT();
+  const usd = new Intl.NumberFormat(t.locale, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 });
   const view = await pageRead(
     serverClient(await headers(), guard.principal).billing.adminList({ ...(filter === 'all' ? {} : { status: filter }), ...(plan ? { plan } : {}), ...(q ? { q } : {}), page }),
   );
-  if (!view) return <LoadError {...ADMIN_BILLING_LOAD_ERROR} retryHref={PAGE} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...billingLoadError(t)} retryHref={PAGE} />;
   const { summary } = view;
   const counts: Record<Filter, number> = {
     all: Object.values(summary.byStatus).reduce((a, b) => a + b, 0),
@@ -113,79 +120,85 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
     canceled: summary.byStatus.canceled,
   };
   const filtered = filter !== 'all' || plan !== null || q !== null;
+  const first = view.total === 0 ? 0 : (view.page - 1) * BILLING_ADMIN_PAGE_SIZE + 1;
+  const last = Math.min(view.total, view.page * BILLING_ADMIN_PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
       <header className="grid gap-2">
         <p className="eyebrow">
           <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Control panel
+            {t('Control panel')}
           </Link>
         </p>
-        <h1 className="font-display text-feature">Subscriptions</h1>
+        <h1 className="font-display text-feature">{t('Subscriptions')}</h1>
       </header>
       <div className="mt-4 max-w-[60rem]">
-        <TestModeBanner label={TEST_MODE_LABEL}>Read-only. Each subscription shows its provider events in the order they happened.</TestModeBanner>
+        <TestModeBanner label={t('Test mode, no real charge')}>{t('Read-only. Each subscription shows its provider events in the order they happened.')}</TestModeBanner>
       </div>
 
       <section aria-labelledby="billing-figures" className="mt-6 grid gap-4">
         <h2 id="billing-figures" className="sr-only">
-          Figures
+          {t('Figures')}
         </h2>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-3" data-testid="admin-billing-figures">
-          <Tile label="Monthly recurring value" value={usd.format(summary.monthlyCents / 100)} note="live subscriptions at the proposed prices, a yearly plan a twelfth" />
-          <Tile label="Paid plans" value={String(summary.live)} note="active or with a failed payment" />
           <Tile
-            label="Failed payments"
-            value={String(summary.pastDue)}
-            note={summary.pastDue > 0 ? 'in the grace period: show them' : 'none now'}
+            label={t('Monthly recurring value')}
+            value={usd.format(summary.monthlyCents / 100)}
+            note={t('live subscriptions at the proposed prices, a yearly plan a twelfth')}
+          />
+          <Tile label={t('Paid plans')} value={t.num(summary.live)} note={t('active or with a failed payment')} />
+          <Tile
+            label={t('Failed payments')}
+            value={t.num(summary.pastDue)}
+            note={summary.pastDue > 0 ? t('in the grace period: show them') : t('none now')}
             href={summary.pastDue > 0 ? billingHref({ status: 'past_due', plan: null, q: null }) : undefined}
             alert={summary.pastDue > 0}
             testId="admin-billing-past-due"
           />
-          <Tile label="Ending at the period end" value={String(summary.ending)} note="cancelled, access runs to the end" />
+          <Tile label={t('Ending at the period end')} value={t.num(summary.ending)} note={t('cancelled, access runs to the end')} />
         </div>
         {summary.byPlan.length > 0 ? (
           <div className="@container max-w-[44rem]">
-            <table role="table" className={t.table} data-testid="admin-billing-by-plan">
-              <caption className="mb-1 text-left text-sm font-semibold">By plan, live subscriptions</caption>
-              <thead role="rowgroup" className={t.thead}>
-                <tr role="row" className={t.headRow}>
-                  <th role="columnheader" scope="col" className={t.th}>Plan</th>
-                  <th role="columnheader" scope="col" className={cx(t.th, 'text-right')}>Live</th>
-                  <th role="columnheader" scope="col" className={cx(t.th, 'text-right')}>Monthly value</th>
+            <table role="table" className={tbl.table} data-testid="admin-billing-by-plan">
+              <caption className="mb-1 text-left text-sm font-semibold">{t('By plan, live subscriptions')}</caption>
+              <thead role="rowgroup" className={tbl.thead}>
+                <tr role="row" className={tbl.headRow}>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Plan')}</th>
+                  <th role="columnheader" scope="col" className={cx(tbl.th, 'text-right')}>{t('Live')}</th>
+                  <th role="columnheader" scope="col" className={cx(tbl.th, 'text-right')}>{t('Monthly value')}</th>
                 </tr>
               </thead>
-              <tbody role="rowgroup" className={t.tbody}>
+              <tbody role="rowgroup" className={tbl.tbody}>
                 {summary.byPlan.map((row) => (
-                  <tr role="row" key={row.code} className={t.row}>
-                    <td role="cell" className={t.td}>
+                  <tr role="row" key={row.code} className={tbl.row}>
+                    <td role="cell" className={tbl.td}>
                       <Link href={billingHref({ status: 'all', plan: row.code, q: null })} className="link inline-flex min-h-11 items-center @min-[52rem]:-my-2.5">
                         {row.name}
                       </Link>
                     </td>
-                    <td role="cell" className={cx(t.td, 'tabular @min-[52rem]:text-right')}>
-                      <span className={t.cardLabel}>Live</span>
-                      {row.live}
+                    <td role="cell" className={cx(tbl.td, 'tabular @min-[52rem]:text-right')}>
+                      <span className={tbl.cardLabel}>{t('Live')}</span>
+                      {t.num(row.live)}
                     </td>
-                    <td role="cell" className={cx(t.td, 'tabular @min-[52rem]:text-right')}>
-                      <span className={t.cardLabel}>Monthly value</span>
+                    <td role="cell" className={cx(tbl.td, 'tabular @min-[52rem]:text-right')}>
+                      <span className={tbl.cardLabel}>{t('Monthly value')}</span>
                       {usd.format(row.monthlyCents / 100)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="mt-2 text-sm text-fg-muted">The prices are the proposed ones, not final. A plan given as a grant costs nothing and is not counted here.</p>
+            <p className="mt-2 text-sm text-fg-muted">{t('The prices are the proposed ones, not final. A plan given as a grant costs nothing and is not counted here.')}</p>
           </div>
         ) : null}
       </section>
 
       <section aria-labelledby="billing-list" className="mt-10 grid gap-4">
         <h2 id="billing-list" className="font-display text-2xl">
-          All subscriptions
+          {t('All subscriptions')}
         </h2>
-        <nav aria-label="Filter by status">
+        <nav aria-label={t('Filter by status')}>
           <ul className="flex flex-wrap gap-2" data-testid="admin-billing-filter">
             {FILTERS.map((f) => (
               <li key={f.value}>
@@ -198,9 +211,9 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
                   )}
                 >
                   {f.value === filter ? <span aria-hidden="true" className="size-1.5 rounded-full bg-fg" /> : null}
-                  {f.label}
+                  {filterLabel(t, f.value)}
                   <span aria-hidden="true">·</span>
-                  <span>{counts[f.value]}</span>
+                  <span>{t.num(counts[f.value])}</span>
                 </Link>
               </li>
             ))}
@@ -210,16 +223,16 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
           {filter !== 'all' ? <input type="hidden" name="status" value={filter} /> : null}
           <div className="grid min-w-0 flex-1 basis-[16rem] gap-1.5 sm:max-w-[26rem]">
             <label htmlFor="billing-q" className="text-sm font-semibold">
-              Account address or organization
+              {t('Account address or organization')}
             </label>
             <input id="billing-q" name="q" type="search" defaultValue={q ?? ''} maxLength={200} autoComplete="off" spellCheck={false} translate="no" className={adminFieldClass} />
           </div>
           <div className="grid min-w-0 basis-[12rem] gap-1.5">
             <label htmlFor="billing-plan" className="text-sm font-semibold">
-              Plan
+              {t('Plan')}
             </label>
             <select id="billing-plan" name="plan" defaultValue={plan ?? ''} className={adminFieldClass}>
-              <option value="">Every plan</option>
+              <option value="">{t('Every plan')}</option>
               {PLAN_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -228,46 +241,52 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
             </select>
           </div>
           <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-            Show
+            {t('Show')}
           </button>
           {filtered ? (
             <Link href={PAGE} className="link inline-flex min-h-12 items-center text-ui">
-              Clear
+              {t('Clear')}
             </Link>
           ) : null}
         </form>
 
-        <RangeLine noun="Subscriptions" total={view.total} page={view.page} pageSize={BILLING_ADMIN_PAGE_SIZE} testId="admin-billing-count" extra={<span>newest first</span>} />
+        {/* The count line of RangeLine (src/components/admin/table-parts.tsx), its words in the control panel's language. */}
+        <p className="flex flex-wrap items-center gap-x-4 text-sm text-fg-muted" data-testid="admin-billing-count" aria-live="polite">
+          <span>{view.total === 0 ? t('No subscriptions match.') : t('Subscriptions {first} to {last} of {total}', { first, last, total: view.total })}</span>
+          <span>{t('newest first')}</span>
+        </p>
         {view.rows.length === 0 ? (
           <EmptyState testId="admin-billing-empty">
-            No subscription{filtered ? ' matches these filters. Change them, or clear them.' : ' yet. Paid plans appear here once a member starts one in test mode.'}
+            {filtered
+              ? t('No subscription matches these filters. Change them, or clear them.')
+              : t('No subscription yet. Paid plans appear here once a member starts one in test mode.')}
           </EmptyState>
         ) : (
           <div className="@container">
-            <table role="table" data-testid="admin-billing" className={t.table}>
-              <caption className="sr-only">Subscriptions in test mode, newest first</caption>
-              <thead role="rowgroup" className={t.thead}>
-                <tr role="row" className={t.headRow}>
-                  <th role="columnheader" scope="col" className={t.th}>Subscription</th>
-                  <th role="columnheader" scope="col" className={t.th}>State</th>
-                  <th role="columnheader" scope="col" className={t.th}>Started</th>
-                  <th role="columnheader" scope="col" className={t.th}>Access until</th>
-                  <th role="columnheader" scope="col" className={t.th}>Provider</th>
-                  <th role="columnheader" scope="col" className={cx(t.th, 'text-right')}>Events</th>
+            <table role="table" data-testid="admin-billing" className={tbl.table}>
+              <caption className="sr-only">{t('Subscriptions in test mode, newest first')}</caption>
+              <thead role="rowgroup" className={tbl.thead}>
+                <tr role="row" className={tbl.headRow}>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Subscription')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('State')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Started')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Access until')}</th>
+                  <th role="columnheader" scope="col" className={tbl.th}>{t('Provider')}</th>
+                  <th role="columnheader" scope="col" className={cx(tbl.th, 'text-right')}>{t('Events')}</th>
                 </tr>
               </thead>
-              <tbody role="rowgroup" className={t.tbody}>
+              <tbody role="rowgroup" className={tbl.tbody}>
                 {view.rows.map((row) => {
                   const pastDue = row.status === 'past_due';
                   return (
                     <tr
                       role="row"
                       key={row.id}
-                      className={cx(t.row, pastDue && 'bg-surface-2 [&>td:first-child]:border-l-4 [&>td:first-child]:border-l-danger [&>td:first-child]:pl-3 @max-[52rem]:border-l-4 @max-[52rem]:border-l-danger')}
+                      className={cx(tbl.row, pastDue && 'bg-surface-2 [&>td:first-child]:border-l-4 [&>td:first-child]:border-l-danger [&>td:first-child]:pl-3 @max-[52rem]:border-l-4 @max-[52rem]:border-l-danger')}
                       data-testid="admin-subscription"
                       data-status={row.status}
                     >
-                      <td role="cell" className={t.td}>
+                      <td role="cell" className={tbl.td}>
                         <Link href={`${PAGE}/${row.id}`} className="link grid min-h-11 content-center [overflow-wrap:anywhere] @min-[52rem]:-my-1">
                           <span className="font-semibold">
                             {row.planName}
@@ -278,40 +297,41 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
                           </span>
                         </Link>
                       </td>
-                      <td role="cell" className={t.td}>
-                        <span className={t.cardLabel}>State</span>
+                      <td role="cell" className={tbl.td}>
+                        <span className={tbl.cardLabel}>{t('State')}</span>
                         <span className="grid justify-items-start gap-1">
-                          <SubscriptionStatusTag status={row.status} cancelAtPeriodEnd={row.cancelAtPeriodEnd} label={row.statusLabel} />
+                          <SubscriptionStatusTag status={row.status} cancelAtPeriodEnd={row.cancelAtPeriodEnd} label={subscriptionStatusLabel(t, row.status, row.cancelAtPeriodEnd)} />
                           {pastDue ? (
                             <span className="text-sm font-semibold text-danger" data-testid="admin-subscription-attention">
-                              <span aria-hidden="true">! </span>Needs a look
+                              <span aria-hidden="true">! </span>
+                              {t('Needs a look')}
                             </span>
                           ) : null}
                         </span>
                       </td>
-                      <td role="cell" className={cx(t.td, 'whitespace-nowrap')} data-visual-date="">
-                        <span className={t.cardLabel}>Started</span>
-                        <time dateTime={row.createdAt} title={formatDay(row.createdAt)}>
-                          {formatShortDay(row.createdAt)}
+                      <td role="cell" className={cx(tbl.td, 'whitespace-nowrap')} data-visual-date="">
+                        <span className={tbl.cardLabel}>{t('Started')}</span>
+                        <time dateTime={row.createdAt} title={t.day(row.createdAt)}>
+                          {t.shortDay(row.createdAt)}
                         </time>
                       </td>
-                      <td role="cell" className={cx(t.td, 'whitespace-nowrap')} data-visual-date="">
-                        <span className={t.cardLabel}>Access until</span>
+                      <td role="cell" className={cx(tbl.td, 'whitespace-nowrap')} data-visual-date="">
+                        <span className={tbl.cardLabel}>{t('Access until')}</span>
                         {row.accessUntil ? (
-                          <time dateTime={row.accessUntil} title={formatDay(row.accessUntil)}>
-                            {formatShortDay(row.accessUntil)}
+                          <time dateTime={row.accessUntil} title={t.day(row.accessUntil)}>
+                            {t.shortDay(row.accessUntil)}
                           </time>
                         ) : (
                           <span className="text-fg-muted">—</span>
                         )}
                       </td>
-                      <td role="cell" className={t.td}>
-                        <span className={t.cardLabel}>Provider</span>
-                        {row.provider === 'test' ? 'Test provider' : 'Stripe test mode'}
+                      <td role="cell" className={tbl.td}>
+                        <span className={tbl.cardLabel}>{t('Provider')}</span>
+                        {providerLabel(t, row.provider)}
                       </td>
-                      <td role="cell" className={cx(t.td, 'tabular @min-[52rem]:text-right')}>
-                        <span className={t.cardLabel}>Events</span>
-                        {row.events}
+                      <td role="cell" className={cx(tbl.td, 'tabular @min-[52rem]:text-right')}>
+                        <span className={tbl.cardLabel}>{t('Events')}</span>
+                        {t.num(row.events)}
                       </td>
                     </tr>
                   );
@@ -320,23 +340,38 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
             </table>
           </div>
         )}
-        <Pager label="Pages of subscriptions" page={view.page} pages={view.pages} href={(p) => billingHref(state, p)} />
+        {/* The pager of src/components/admin/table-parts.tsx, its words in the control panel's language. */}
+        {view.pages > 1 ? (
+          <nav aria-label={t('Pages of subscriptions')} className="flex flex-wrap items-center gap-3 text-ui">
+            {view.page > 1 ? (
+              <Link href={billingHref(state, view.page - 1)} className={buttonVariants({ variant: 'secondary' })} rel="prev">
+                {t('Previous')}
+              </Link>
+            ) : null}
+            <span className="text-fg-muted">{t('Page {page} of {pages}', { page: view.page, pages: view.pages })}</span>
+            {view.page < view.pages ? (
+              <Link href={billingHref(state, view.page + 1)} className={buttonVariants({ variant: 'secondary' })} rel="next">
+                {t('Next')}
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </section>
 
       {view.unmatched.length > 0 ? (
         <section aria-labelledby="unmatched-heading" className="mt-10 grid max-w-[60rem] gap-3">
           <h2 id="unmatched-heading" className="font-display text-2xl">
-            Events not tied to a subscription
+            {t('Events not tied to a subscription')}
           </h2>
           <p className="max-w-[60ch] text-sm text-fg-muted">
-            Signed events the app recorded but did not apply: an unknown subscription, one that names another account, or a second live subscription.
+            {t('Signed events the app recorded but did not apply: an unknown subscription, one that names another account, or a second live subscription.')}
           </p>
           <ul className="grid" data-testid="admin-billing-unmatched">
             {view.unmatched.map((e) => (
               <li key={e.id} className="border-b border-border-subtle py-2 text-sm">
                 <span className="font-semibold">{e.providerType}</span> · {e.outcome} ·{' '}
                 <span className="text-fg-muted" data-visual-date="">
-                  {formatDay(e.receivedAt)}
+                  {t.day(e.receivedAt)}
                 </span>{' '}
                 <span className="text-fg-muted [overflow-wrap:anywhere]" translate="no">
                   {e.providerEventId}

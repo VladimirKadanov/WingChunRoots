@@ -6,6 +6,8 @@
 // status is a word with a mark (a shape), never colour alone.
 
 import Link from "next/link";
+
+import { getAdminT } from "@/components/admin/i18n/server";
 import type { ReactNode } from "react";
 
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -29,20 +31,21 @@ export const table = {
   cardLabel: "hidden text-label font-semibold text-fg-muted @max-[52rem]:block",
 } as const;
 
-export function AdminPageHeader({
+export async function AdminPageHeader({
   title,
   intro,
   summary,
-  eyebrow = "Control panel",
+  eyebrow,
 }: {
   title: string;
   intro?: ReactNode;
   summary?: ReactNode;
   eyebrow?: ReactNode;
 }) {
+  const t = await getAdminT();
   return (
     <header className="grid gap-2">
-      <p className="eyebrow">{eyebrow}</p>
+      <p className="eyebrow">{eyebrow ?? t("Control panel")}</p>
       <h1 className="font-display text-feature">{title}</h1>
       {summary ? <p className="text-ui text-fg">{summary}</p> : null}
       {intro ? (
@@ -98,8 +101,8 @@ export function AdminViews({
   );
 }
 
-/** "Cases 1 to 25 of 37": the count line of a list. */
-export function RangeLine({
+/** "Cases 1 to 25 of 37": the count line of a list (`noun` comes translated from the page). */
+export async function RangeLine({
   noun,
   total,
   page,
@@ -116,6 +119,7 @@ export function RangeLine({
 }) {
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(total, page * pageSize);
+  const t = await getAdminT();
   return (
     <p
       className="flex flex-wrap items-center gap-x-4 text-sm text-fg-muted"
@@ -124,8 +128,10 @@ export function RangeLine({
     >
       <span>
         {total === 0
-          ? `No ${noun.toLowerCase()} match.`
-          : `${noun} ${first} to ${last} of ${total}`}
+          ? t.lang === "en"
+            ? `No ${noun.toLowerCase()} match.`
+            : t("Nothing matches.")
+          : t("{noun} {first} to {last} of {total}", { noun, first, last, total })}
       </span>
       {extra}
     </p>
@@ -133,7 +139,7 @@ export function RangeLine({
 }
 
 /** Previous and next, with "Page 2 of 5": shown only when there is more than one page. */
-export function Pager({
+export async function Pager({
   label,
   page,
   pages,
@@ -145,6 +151,7 @@ export function Pager({
   href: (page: number) => string;
 }) {
   if (pages <= 1) return null;
+  const t = await getAdminT();
   return (
     <nav
       aria-label={label}
@@ -156,11 +163,11 @@ export function Pager({
           className={buttonVariants({ variant: "secondary" })}
           rel="prev"
         >
-          Previous
+          {t("Previous")}
         </Link>
       ) : null}
       <span className="text-fg-muted">
-        Page {page} of {pages}
+        {t("Page {page} of {pages}", { page, pages })}
       </span>
       {page < pages ? (
         <Link
@@ -168,7 +175,7 @@ export function Pager({
           className={buttonVariants({ variant: "secondary" })}
           rel="next"
         >
-          Next
+          {t("Next")}
         </Link>
       ) : null}
     </nav>

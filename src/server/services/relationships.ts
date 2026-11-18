@@ -1263,7 +1263,7 @@ export async function approveRelationship(principal: Principal | null, raw: z.in
         const message =
           quota.code === 'quota'
             ? `${allowanceSentence({ one: 'student', many: 'students', verb: 'approved' }, quota.current, quota.limit, planSummary(quota.plan).name)} The request stays pending.`
-            : 'Approving students needs a Sifu account. Change your account type in Account type and plan; the request stays pending.';
+            : 'Approving students needs a Sifu account. Change your account type in Settings, under Plan and billing; the request stays pending.';
         throw new ServiceError('ENTITLEMENT_REQUIRED', message, {}, { entitlement: quota });
       }
       return { id: row.id, replayed: false, tags: quota.value };

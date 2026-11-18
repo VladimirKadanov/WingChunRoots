@@ -123,7 +123,7 @@ export function AccountMenu({ variant, menu, signOut }: { variant: 'bar' | 'rail
             {unread > 0 ? <span className="ml-auto text-xs text-fg-muted">{unread} unread</span> : null}
           </Row>
           <Separator />
-          <Row href="/dashboard/billing">Plan and billing</Row>
+          <Row href="/account/plan">Plan and billing</Row>
           <Row href="/account/security">Account and security</Row>
           <Row href="/account/privacy">Privacy and your data</Row>
           {menu.staff ? (

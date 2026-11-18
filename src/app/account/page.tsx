@@ -6,6 +6,12 @@
 // what the page is for: it is read with pageRead(), and when that read fails (a lock on the
 // notification table past the statement timeout, say) the link simply leaves the count out and the
 // page renders as it did before M08 (M08 polish, note 1; plan §5.6).
+//
+// Since the usability review of 2026-11 it is the overview of Settings: the heading says so, the
+// address signed in comes right under it, and the sections (profile, sign-in and security, plan and
+// billing, notifications, privacy) are listed as rows with a line each, under the same section row
+// (SettingsNav) as every settings page. The profile summary, the account's register, its other
+// places (organizations, administration) and signing out follow, signing out last.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -14,6 +20,7 @@ import type { ReactNode } from 'react';
 
 import { PageRedirect } from '@/components/account/page-redirect';
 import { NameLine, NameList } from '@/components/account/person-names';
+import { SETTINGS_SECTIONS, SettingsNav, type SettingsSection } from '@/components/account/settings-nav';
 import { TwoFactorState, type TwoFactorStateKind } from '@/components/account/two-factor-state';
 import { AlertIcon, ArrowRightIcon, LockIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -29,8 +36,17 @@ import { signOutAction } from './actions';
 export const instant = false;
 
 export const metadata: Metadata = {
-  title: 'Your account',
+  title: 'Settings',
   robots: { index: false },
+};
+
+/** The one line under each section of the overview. Overview itself is this page. */
+const SECTION_LINES: Record<Exclude<SettingsSection, 'overview'>, { title: string; text: string }> = {
+  profile: { title: 'Profile', text: 'Your names, how they are written, and whether your profile is public.' },
+  security: { title: 'Sign-in and security', text: 'The address you sign in with, two-factor authentication and backup codes.' },
+  plan: { title: 'Plan and billing', text: 'Student or Sifu, the plan in effect, and billing and invoices.' },
+  notifications: { title: 'Notification settings', text: 'Which notices also come to you by e-mail.' },
+  privacy: { title: 'Privacy', text: 'Your consents, what is public, and deleting your account.' },
 };
 
 const ROLE_LABELS = { user: 'Member', moderator: 'Moderator', archivist: 'Archivist', admin: 'Administrator' } as const;
@@ -80,9 +96,9 @@ export default async function AccountPage() {
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <div className="max-w-[46rem]">
-        {/* The whole account waits on this, so it comes first. */}
-        {changed.length > 0 ? (
+      {/* The whole account waits on this, so it comes first. */}
+      {changed.length > 0 ? (
+        <div className="max-w-[46rem]">
           <div role="status" className="mb-8 grid gap-1 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-ui">
             <p className="flex items-start gap-2 font-semibold">
               <AlertIcon size={18} className="mt-0.5" />
@@ -97,18 +113,25 @@ export default async function AccountPage() {
               ))}
             </ul>
             <p className="pl-6.5">
-              <Link href="/onboarding" className="link inline-flex min-h-11 items-center font-semibold">
+              <Link href="/onboarding?next=%2Faccount" className="link inline-flex min-h-11 items-center font-semibold">
                 Read and confirm
               </Link>
             </p>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {/* Without a profile the heading itself says "Your account". */}
-        <p className="eyebrow">{primary ? 'Your account' : 'Signed in'}</p>
-        <h1 className="mt-2 text-feature [overflow-wrap:anywhere]">
-          {primary ? <NameLine primary={primary.value} original={original} /> : <span className="font-display">Your account</span>}
-        </h1>
+      <SettingsNav current="overview" className="mb-8" />
+      <div className="max-w-[46rem]">
+        <p className="eyebrow">Your account</p>
+        <h1 className="mt-2 font-display text-feature">Settings</h1>
+        {/* "Am I signed in?" is answered first, in words (usability review 2026-11). */}
+        <p data-testid="signed-in-as" className="mt-3 text-ui text-fg-muted [overflow-wrap:anywhere]">
+          Signed in as{' '}
+          <strong className="font-semibold text-fg" translate="no">
+            {me.user.email}
+          </strong>
+        </p>
 
         {/* M08: teachers, requests, schools, notifications and the plan; with the unread count (review round 1, design-7). */}
         <p className="mt-5">
@@ -118,11 +141,36 @@ export default async function AccountPage() {
           </Link>
         </p>
 
-        <div className="mt-8 grid gap-10">
+        <ul aria-label="Settings sections" data-testid="settings-sections" className="mt-8 border-t border-border-subtle">
+          {SETTINGS_SECTIONS.filter((section) => section.key !== 'overview').map((section) => {
+            const line = SECTION_LINES[section.key as Exclude<SettingsSection, 'overview'>];
+            return (
+              <li key={section.key} className="border-b border-border-subtle">
+                <Link href={section.href} className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 hover:bg-surface-2">
+                  <span className="grid gap-0.5">
+                    <span className="text-ui font-semibold text-fg">{line.title}</span>
+                    <span className="text-sm text-fg-muted">{line.text}</span>
+                    {section.key === 'security' ? (
+                      <span className="mt-1 text-sm">
+                        <TwoFactorState state={twoFactor.kind}>Two-factor: {twoFactor.text}</TwoFactorState>
+                      </span>
+                    ) : null}
+                  </span>
+                  <ArrowRightIcon className="text-fg-muted" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-10 grid gap-10">
           <Section id="profile-heading" title="Profile">
-            {me.person ? (
+            {me.person && primary ? (
               <div className="grid gap-5">
-                {/* The Latin-script name is the heading above; the other spellings are listed here. */}
+                <p data-testid="account-name" className="text-2xl [overflow-wrap:anywhere]">
+                  <NameLine primary={primary.value} original={original} />
+                </p>
+                {/* The Latin-script name is the line above; the other spellings are listed here. */}
                 {names.some((name) => !name.isPrimary) ? <NameList names={names.filter((name) => !name.isPrimary)} /> : null}
                 <p className="flex items-start gap-2 text-ui">
                   {me.person.visibility === 'public' ? (
@@ -142,7 +190,7 @@ export default async function AccountPage() {
                     </>
                   )}
                 </p>
-                {/* M07: the profile editor and the privacy page. */}
+                {/* M07: the profile editor. */}
                 <div>
                   <Link href="/dashboard/profile" className={buttonVariants({ variant: 'secondary' })}>
                     Edit your profile
@@ -155,7 +203,7 @@ export default async function AccountPage() {
                   Your profile is not set up yet. Add your name so teachers and students can find and confirm you.
                 </p>
                 <div>
-                  <Link href="/onboarding" className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
+                  <Link href="/onboarding?next=%2Faccount" className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
                     Set up your profile
                     <ArrowRightIcon />
                   </Link>
@@ -164,7 +212,7 @@ export default async function AccountPage() {
             )}
           </Section>
 
-          <Section id="sign-in-heading" title="Sign-in and security">
+          <Section id="account-heading" title="Account">
             <dl className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[10rem_minmax(0,1fr)]">
               <Row label="E-mail" className="[overflow-wrap:anywhere]">
                 <span translate="no">{me.user.email}</span>
@@ -175,13 +223,11 @@ export default async function AccountPage() {
               </Row>
             </dl>
             <div className="mt-5 flex flex-wrap gap-3">
-              <Link href="/account/security" className={buttonVariants({ variant: 'secondary' })}>
-                {tf.status === 'pending' ? 'Finish the two-factor setup' : 'Security settings'}
-              </Link>
-              {/* M07: consents and account deletion. */}
-              <Link href="/account/privacy" className={buttonVariants({ variant: 'secondary' })}>
-                Privacy and consents
-              </Link>
+              {tf.status === 'pending' ? (
+                <Link href="/account/security" className={buttonVariants({ variant: 'secondary' })}>
+                  Finish the two-factor setup
+                </Link>
+              ) : null}
               {/* M15: the organizations this account administers, and the application. */}
               <Link href="/dashboard/organization" className={buttonVariants({ variant: 'secondary' })} data-testid="account-organizations">
                 Organizations
@@ -191,9 +237,13 @@ export default async function AccountPage() {
                   Administration
                 </Link>
               ) : null}
-              <SignOutForm action={signOutAction} />
             </div>
           </Section>
+
+          {/* Signing out comes last, on its own, away from the links above. */}
+          <div className="border-t border-border-subtle pt-6">
+            <SignOutForm action={signOutAction} />
+          </div>
         </div>
       </div>
     </div>

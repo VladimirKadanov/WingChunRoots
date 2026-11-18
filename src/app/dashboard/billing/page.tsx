@@ -172,7 +172,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           {otherType && wantedPlan ? (
             <p className="max-w-[60ch] text-ui text-fg-muted" data-testid="other-type">
               {wantedPlan.name} is for {wantedPlan.audience === 'sifu' ? 'Sifu' : 'Student'} accounts.{' '}
-              <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
+              <Link href="/account/plan" className="link inline-flex min-h-11 items-center">
                 Change your account type
               </Link>
             </p>
@@ -238,8 +238,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
             <Link href="/plans" className="link inline-flex min-h-11 items-center">
               Compare plans
             </Link>
-            <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
-              Account type and plan
+            <Link href="/account/plan" className="link inline-flex min-h-11 items-center">
+              Plan and billing
             </Link>
           </p>
         </div>

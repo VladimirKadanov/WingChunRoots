@@ -13,7 +13,8 @@ import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
-import { formatDay } from '@/lib/dates';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { keepValues, textValue } from '@/lib/form-data';
 import { type FormState, messageId, outcomeTarget } from '@/lib/form-state';
 import { safeNextPath } from '@/server/auth/guards';
@@ -35,6 +36,32 @@ function verifySession(requestId = ''): string {
 }
 const CREATE_FIELDS = ['email', 'planCode', 'source', 'reason', 'startsOn', 'endsOn', 'requestId'] as const;
 
+/**
+ * A service message in the control panel's language (docs/adr/0043-admin-bulgarian.md): the
+ * English text is the key (BG_GRANTS); the two that name a plan are matched with their names kept.
+ */
+function serviceText(t: AdminT, text: string): string {
+  const taken = /^This account already has (.+) for these dates\. Revoke that plan first, or choose dates after it\.$/.exec(text);
+  if (taken) return t('This account already has {plan} for these dates. Revoke that plan first, or choose dates after it.', { plan: taken[1]! });
+  const other = /^This is a (Sifu|Student) account; (.+) is for (Sifu|Student) accounts\. The account changes its type in its dashboard settings\.$/.exec(text);
+  if (other) {
+    const plan = other[2]!;
+    return other[1] === 'Sifu'
+      ? t('This is a Sifu account; {plan} is for Student accounts. The account changes its type in its dashboard settings.', { plan })
+      : t('This is a Student account; {plan} is for Sifu accounts. The account changes its type in its dashboard settings.', { plan });
+  }
+  return t(text);
+}
+
+/** A refusal's message and field errors in the control panel's language. */
+function inLanguage(t: AdminT, state: FormState): FormState {
+  return {
+    ...state,
+    ...(state.message ? { message: serviceText(t, state.message) } : {}),
+    ...(state.fields ? { fields: Object.fromEntries(Object.entries(state.fields).map(([name, text]) => [name, serviceText(t, text)])) } : {}),
+  };
+}
+
 export async function createGrantAction(_previous: FormState, form: FormData): Promise<FormState> {
   const state = await createGrant(form);
   return formResult({ form: 'create-grant', page: PAGE, anchor: outcomeTarget(CREATE_GRANT_FORM, state, false) }, state);
@@ -42,6 +69,7 @@ export async function createGrantAction(_previous: FormState, form: FormData): P
 
 async function createGrant(form: FormData): Promise<FormState> {
   const values = keepValues(form, CREATE_FIELDS);
+  const t = await getAdminT();
   try {
     // The caps only bound the work; each is above the procedure's own limit, so over-long input is
     // refused by grants.create (as through /api/v1), never cut into something valid.
@@ -56,13 +84,18 @@ async function createGrant(form: FormData): Promise<FormState> {
       requestId: textValue(form, 'requestId', 64),
     });
     refresh();
-    const period = grant.endsAt ? `from ${formatDay(grant.startsAt)} to ${formatDay(grant.endsAt)}` : `from ${formatDay(grant.startsAt)}, with no end date`;
-    return { status: 'done', message: `${grant.planName} given to ${grant.email} ${period}.` };
+    const given = { plan: grant.planName, email: grant.email, start: t.day(grant.startsAt) };
+    return {
+      status: 'done',
+      message: grant.endsAt
+        ? t('{plan} given to {email} from {start} to {end}.', { ...given, end: t.day(grant.endsAt) })
+        : t('{plan} given to {email} from {start}, with no end date.', given),
+    };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fadmin%2Fgrants');
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(verifySession(values.requestId));
-    return formStateFromFailure(error, values);
+    return inLanguage(t, formStateFromFailure(error, values));
   }
 }
 
@@ -81,18 +114,19 @@ export async function revokeGrantAction(_previous: FormState, form: FormData): P
 
 async function revokeGrant(form: FormData): Promise<FormState> {
   const values = keepValues(form, ['grantId', 'reason']);
+  const t = await getAdminT();
   try {
     const grant = await serverClient(await headers(), await getRequestPrincipal()).grants.revoke({
       grantId: textValue(form, 'grantId', 64),
       reason: textValue(form, 'reason', 600),
     });
     refresh();
-    return { status: 'done', message: `${grant.planName} of ${grant.email} revoked. Confirmed links stay confirmed.`, values: { grantId: grant.id } };
+    return { status: 'done', message: t('{plan} of {email} revoked. Confirmed links stay confirmed.', { plan: grant.planName, email: grant.email }), values: { grantId: grant.id } };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fadmin%2Fgrants');
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(verifySession());
-    return formStateFromFailure(error, values);
+    return inLanguage(t, formStateFromFailure(error, values));
   }
 }
 
@@ -109,6 +143,7 @@ export async function closeRequestAction(_previous: FormState, form: FormData): 
 
 async function closeRequest(form: FormData): Promise<FormState> {
   const values = keepValues(form, ['requestId', 'reason']);
+  const t = await getAdminT();
   try {
     const closed = await serverClient(await headers(), await getRequestPrincipal()).grants.closeRequest({
       requestId: textValue(form, 'requestId', 64),
@@ -117,13 +152,13 @@ async function closeRequest(form: FormData): Promise<FormState> {
     // No refresh(): the row keeps this message in place of the request until the page is read again.
     return {
       status: 'done',
-      message: `The request of ${closed.email} for ${closed.planName} is closed. The account was told; its plan has not changed.`,
+      message: t('The request of {email} for {plan} is closed. The account was told; its plan has not changed.', { email: closed.email, plan: closed.planName }),
       values: { requestId: closed.id },
     };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fadmin%2Fgrants');
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(verifySession());
-    return formStateFromFailure(error, values);
+    return inLanguage(t, formStateFromFailure(error, values));
   }
 }

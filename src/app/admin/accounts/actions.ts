@@ -10,7 +10,8 @@ import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
-import { formatDay } from '@/lib/dates';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { keepValues, textValue, ticked } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
@@ -28,6 +29,18 @@ const VERIFY = `/account/security?next=${encodeURIComponent(PAGE)}`;
 const SIGN_IN = `/sign-in?next=${encodeURIComponent(PAGE)}`;
 
 /**
+ * A refusal's message and field errors in the control panel's language (docs/adr/0043-admin-bulgarian.md):
+ * the service's English text is the key (BG_ACCOUNTS).
+ */
+function inLanguage(t: AdminT, state: FormState): FormState {
+  return {
+    ...state,
+    ...(state.message ? { message: t(state.message) } : {}),
+    ...(state.fields ? { fields: Object.fromEntries(Object.entries(state.fields).map(([name, text]) => [name, t(text)])) } : {}),
+  };
+}
+
+/**
  * The end of a suspension as the form gives it, a day: from 00:00 UTC that day. Anything else is
  * passed on as it is, and the procedure refuses it with a message under the field.
  */
@@ -43,6 +56,7 @@ export async function suspendAction(_previous: FormState, form: FormData): Promi
 
 async function suspend(form: FormData): Promise<FormState> {
   const values = keepValues(form, ['email', 'reason', 'until']);
+  const t = await getAdminT();
   try {
     const result = await serverClient(await headers(), await getRequestPrincipal()).accounts.suspend({
       email: textValue(form, 'email', 400),
@@ -50,16 +64,23 @@ async function suspend(form: FormData): Promise<FormState> {
       until: untilOf(textValue(form, 'until', 40)),
     });
     refresh();
-    const ends = result.until ? `until ${formatDay(result.until)}` : 'until an administrator lifts it';
+    const email = values.email;
+    const suspended = result.until
+      ? email
+        ? t('{email} is suspended until {date}.', { email, date: t.day(result.until) })
+        : t('The account is suspended until {date}.', { date: t.day(result.until) })
+      : email
+        ? t('{email} is suspended until an administrator lifts it.', { email })
+        : t('The account is suspended until an administrator lifts it.');
     return {
       status: 'done',
-      message: `${values.email ?? 'The account'} is suspended ${ends}. ${result.sessionsEnded} ${result.sessionsEnded === 1 ? 'session' : 'sessions'} ended. The person was not told.`,
+      message: `${suspended} ${t.n(result.sessionsEnded, '{n} session ended.', '{n} sessions ended.')} ${t('The person was not told.')}`,
     };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(SIGN_IN);
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(VERIFY);
-    return formStateFromFailure(error, values);
+    return inLanguage(t, formStateFromFailure(error, values));
   }
 }
 
@@ -71,18 +92,19 @@ export async function unsuspendAction(_previous: FormState, form: FormData): Pro
 async function unsuspend(form: FormData): Promise<FormState> {
   const values = keepValues(form, ['userId', 'reason']);
   const userId = textValue(form, 'userId', 64);
+  const t = await getAdminT();
   try {
     await serverClient(await headers(), await getRequestPrincipal()).accounts.unsuspend({
       userId: UUID.test(userId) ? userId : undefined,
       reason: textValue(form, 'reason', 4000),
     });
     refresh();
-    return { status: 'done', message: 'The suspension is lifted. The person can sign in again.', values: { userId } };
+    return { status: 'done', message: t('The suspension is lifted. The person can sign in again.'), values: { userId } };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(SIGN_IN);
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(VERIFY);
-    return formStateFromFailure(error, values);
+    return inLanguage(t, formStateFromFailure(error, values));
   }
 }
 
@@ -94,6 +116,7 @@ export async function eraseAction(_previous: FormState, form: FormData): Promise
 async function erase(form: FormData): Promise<FormState> {
   const values = keepValues(form, ['email', 'caseId', 'reason'], ['confirm']);
   const caseId = textValue(form, 'caseId', 64);
+  const t = await getAdminT();
   try {
     const result = await serverClient(await headers(), await getRequestPrincipal()).accounts.erase({
       ...(UUID.test(caseId) ? { caseId } : { email: textValue(form, 'email', 400) }),
@@ -102,13 +125,16 @@ async function erase(form: FormData): Promise<FormState> {
       confirm: ticked(form, 'confirm') ? true : (false as unknown as true),
     });
     refresh();
-    const profile = result.personId ? ` Its profile stays as an unclaimed record (${result.visibility === 'public' ? 'public' : 'private'}).` : '';
-    const withdrawn = result.requestsWithdrawn > 0 ? ` ${result.requestsWithdrawn} pending ${result.requestsWithdrawn === 1 ? 'request was' : 'requests were'} withdrawn.` : '';
-    return { status: 'done', message: `The account is erased.${profile}${withdrawn}` };
+    const profile = result.personId
+      ? ` ${result.visibility === 'public' ? t('Its profile stays as an unclaimed record (public).') : t('Its profile stays as an unclaimed record (private).')}`
+      : '';
+    const withdrawn =
+      result.requestsWithdrawn > 0 ? ` ${t.n(result.requestsWithdrawn, '{n} pending request was withdrawn.', '{n} pending requests were withdrawn.')}` : '';
+    return { status: 'done', message: `${t('The account is erased.')}${profile}${withdrawn}` };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(SIGN_IN);
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(VERIFY);
-    return formStateFromFailure(error, values);
+    return inLanguage(t, formStateFromFailure(error, values));
   }
 }

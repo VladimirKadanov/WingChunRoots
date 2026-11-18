@@ -500,20 +500,69 @@ async function invitationByToken(db: Executor, token: string, lock = false): Pro
   return row ?? null;
 }
 
-const CONFIRM_DOCUMENTS = 'Before you claim this profile, confirm the current version of the terms of use and the declarations.';
+export const CONFIRM_DOCUMENTS = 'Before you claim this profile, confirm the current version of the terms of use and the declarations.';
+
+/**
+ * Why the account of `p` may not claim a record now, whatever the way (an invitation, or a request
+ * from the profile page: profile-claims.ts), or null: it has a profile of its own (`ownProfile` is
+ * the refusal's words), it has a claim waiting for the reviewers (one at a time), or it has not
+ * confirmed the current documents. `waitingCaseId` is the case of the waiting claim.
+ */
+export async function claimantRefusal(db: Executor, p: Principal, ownProfile: string): Promise<{ message: string; waitingCaseId: string | null } | null> {
+  const [own] = await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
+  if (own) return { message: ownProfile, waitingCaseId: null };
+  const [waiting] = await db
+    .select({ id: personClaim.id, caseId: personClaim.reviewCaseId })
+    .from(personClaim)
+    .where(and(eq(personClaim.userId, p.user.id), eq(personClaim.status, 'pending')));
+  if (waiting) return { message: CLAIM_WAITING, waitingCaseId: waiting.caseId };
+  // The confirmations every account gives at sign-up, for the current documents: a claim skips
+  // onboarding, never them (landingPath, /onboarding).
+  if ((await missingRequiredConsents(db, p.user.id)).length > 0) return { message: CONFIRM_DOCUMENTS, waitingCaseId: null };
+  return null;
+}
+
+export const CLAIM_WAITING = 'You already have a profile claim waiting for the reviewers.';
 
 /** Why `p` may not accept the invitation now, or null. */
 async function refusalFor(db: Executor, p: Principal, inv: InvitationRow, studentPersonId: string): Promise<string | null> {
   const [student] = await db.select({ userId: person.claimedByUserId }).from(person).where(eq(person.id, studentPersonId));
   if (p.user.id === inv.invitedByUserId || (student?.userId ?? null) === p.user.id) return 'You sent this invitation. It is for your teacher to accept.';
-  const [own] = await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
-  if (own) return 'Your account already has its own profile, so it cannot claim another one. Ask the student to send their request to your profile instead.';
-  const [waiting] = await db.select({ id: personClaim.id }).from(personClaim).where(and(eq(personClaim.userId, p.user.id), eq(personClaim.status, 'pending')));
-  if (waiting) return 'You already have a profile claim waiting for the reviewers.';
-  // The confirmations every account gives at sign-up, for the current documents: a claim skips
-  // onboarding, never them (landingPath, /onboarding).
-  if ((await missingRequiredConsents(db, p.user.id)).length > 0) return CONFIRM_DOCUMENTS;
-  return null;
+  const refusal = await claimantRefusal(db, p, 'Your account already has its own profile, so it cannot claim another one. Ask the student to send their request to your profile instead.');
+  return refusal?.message ?? null;
+}
+
+/**
+ * The writes of a new profile claim, whichever way it came (invitations.accept, or
+ * claims.request in profile-claims.ts), in the caller's transaction after its checks and with the
+ * account's case lock held: the review case of kind person_claim (open; with the relationship of
+ * an invitation, none for a request from the profile page), the person_claim (pending), the
+ * claimant's note for the reviewers, the case's first review_event, the audit row person.claim
+ * (`after` adds the caller's ids) and the notice to the deciders (archivists and administrators).
+ */
+export async function openPersonClaim(
+  tx: Transaction,
+  p: Principal,
+  claim: { personId: string; relationshipId: string | null; note: string | null; key: string; after: Record<string, unknown>; exclude?: readonly string[] },
+  meta: RequestMeta,
+): Promise<string> {
+  const caseId = uuidv7();
+  await tx.insert(reviewCase).values({ id: caseId, kind: 'person_claim', status: 'open', relationshipId: claim.relationshipId, personId: claim.personId, openedByUserId: p.user.id });
+  await tx.insert(personClaim).values({ personId: claim.personId, userId: p.user.id, status: 'pending', reviewCaseId: caseId });
+  if (claim.note) await tx.insert(reviewNote).values({ reviewCaseId: caseId, authorUserId: p.user.id, body: claim.note, isInternal: false });
+  await recordCaseEvent(tx, { caseId, action: 'open', from: null, to: 'open', actor: p, key: claim.key });
+  await writeAudit(tx, {
+    action: 'person.claim',
+    actorUserId: p.user.id,
+    actorRole: p.user.role,
+    subjectType: 'person',
+    subjectId: claim.personId,
+    after: { status: 'pending', caseId, ...claim.after },
+    requestId: meta.requestId,
+    ipHmac: meta.ipHmac,
+  });
+  await tellStaff(tx, caseId, 'person_claim', [p.user.id, ...(claim.exclude ?? [])]);
+  return caseId;
 }
 
 /**
@@ -627,24 +676,21 @@ export async function acceptInvitation(principal: Principal | null, raw: z.input
       if (!record || record.deletedAt || record.claimedBy || record.stewardship !== 'unclaimed') throw new ServiceError('CONFLICT', 'This profile can no longer be claimed.');
 
       const now = new Date();
-      const caseId = uuidv7();
-      await tx.insert(reviewCase).values({ id: caseId, kind: 'person_claim', status: 'open', relationshipId: rel.id, personId: inv.personId, openedByUserId: p.user.id });
-      await tx.insert(personClaim).values({ personId: inv.personId, userId: p.user.id, status: 'pending', reviewCaseId: caseId });
-      if (input.note) await tx.insert(reviewNote).values({ reviewCaseId: caseId, authorUserId: p.user.id, body: input.note, isInternal: false });
       await tx.update(invitation).set({ status: 'accepted', acceptedAt: now, acceptedByUserId: p.user.id, updatedAt: now }).where(eq(invitation.id, inv.id));
-      await recordCaseEvent(tx, { caseId, action: 'open', from: null, to: 'open', actor: p, key: input.idempotencyKey });
-      await writeAudit(tx, {
-        action: 'person.claim',
-        actorUserId: p.user.id,
-        actorRole: p.user.role,
-        subjectType: 'person',
-        subjectId: inv.personId,
-        after: { status: 'pending', caseId, relationshipId: rel.id, invitationId: inv.id },
-        requestId: meta.requestId,
-        ipHmac: meta.ipHmac,
-      });
       const student = await tx.select({ id: person.claimedByUserId }).from(person).where(eq(person.id, rel.studentPersonId));
-      await tellStaff(tx, caseId, 'person_claim', [p.user.id, ...(student[0]?.id ? [student[0].id] : [])]);
+      const caseId = await openPersonClaim(
+        tx,
+        p,
+        {
+          personId: inv.personId,
+          relationshipId: rel.id,
+          note: input.note,
+          key: input.idempotencyKey,
+          after: { relationshipId: rel.id, invitationId: inv.id },
+          exclude: student[0]?.id ? [student[0].id] : [],
+        },
+        meta,
+      );
       if (student[0]?.id) await notify(tx, student[0].id, 'invitation.claimed', { relationshipId: rel.id, stage: 'claimed' });
       return { caseId, replayed: false };
     });

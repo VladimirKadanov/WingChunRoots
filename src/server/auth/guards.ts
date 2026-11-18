@@ -76,6 +76,10 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/onboarding': { kind: 'user' },
   '/account': { kind: 'user' },
   '/account/security': { kind: 'user' },
+  // Usability review 2026-11: the Settings sections that moved here from /dashboard/settings (the
+  // /account prefix covers them already; listed so the role × route matrix checks each one).
+  '/account/plan': { kind: 'user' },
+  '/account/notifications': { kind: 'user' },
   '/admin': { kind: 'staff2fa' },
   // M08: the dashboards and their settings; plan grants for admins only (plan §6.5).
   '/dashboard': { kind: 'user' },

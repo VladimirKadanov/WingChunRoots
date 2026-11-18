@@ -14,8 +14,10 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
+import { reviewLoadError } from '@/app/admin/review/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { AdminPageHeader, AdminViews } from '@/components/admin/table-parts';
 import { ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -24,13 +26,15 @@ import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { ReviewList, ReviewListInput } from '@/server/services/review';
 import { queueHref, ReviewTable } from './review-table';
+import { withStrong } from './text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Review queue',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Review queue'), robots: { index: false } };
+}
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
@@ -69,7 +73,7 @@ function returnPath(query: Record<string, string | string[] | undefined>): strin
 }
 
 /** The saved views of the queue, with their counts (under the list's status filter, which they keep). */
-function queueViews(list: ReviewList) {
+function queueViews(t: AdminT, list: ReviewList) {
   const f = list.filters;
   const base: Pick<ReviewList, 'filters' | 'page'> = { filters: { ...f, kind: undefined, group: undefined, assigned: 'any', age: 'any', sort: 'oldest' }, page: 1 };
   const plain = !f.kind && f.sort === 'oldest';
@@ -79,30 +83,53 @@ function queueViews(list: ReviewList) {
     return { label, count, href: queueHref(next, {}), current, testId };
   };
   return [
-    view(f.status === 'waiting' ? 'All waiting' : 'All', list.counts.all, {}, 'view-all'),
-    view('Assigned to me', list.counts.mine, { assigned: 'me' }, 'view-mine'),
-    view('Nobody assigned', list.counts.unassigned, { assigned: 'none' }, 'view-unassigned'),
-    view('Waiting over 3 days', list.counts.late, { age: '3d' }, 'view-late'),
-    ...list.counts.groups.map((g) => view(g.label, g.count, { group: g.value })),
+    view(f.status === 'waiting' ? t('All waiting') : t('All'), list.counts.all, {}, 'view-all'),
+    view(t('Assigned to me'), list.counts.mine, { assigned: 'me' }, 'view-mine'),
+    view(t('Nobody assigned'), list.counts.unassigned, { assigned: 'none' }, 'view-unassigned'),
+    view(t('Waiting over 3 days'), list.counts.late, { age: '3d' }, 'view-late'),
+    ...list.counts.groups.map((g) => view(t(g.label), g.count, { group: g.value })),
   ];
+}
+
+/** "12 waiting", "3 open", with {n} left for the number (withStrong). */
+function statusCountText(t: AdminT, list: ReviewList): string {
+  switch (list.filters.status) {
+    case 'waiting':
+      return t('{n} waiting');
+    case 'all':
+      return t('{n} in all');
+    case 'open':
+      return t('{n} open');
+    case 'in_review':
+      return t('{n} in review');
+    case 'needs_info':
+      return t('{n} needs information');
+    case 'resolved':
+      return t('{n} decided');
+    case 'dismissed':
+      return t('{n} closed');
+    default:
+      return `{n} ${list.statuses.find((x) => x.value === list.filters.status)?.label.toLowerCase() ?? ''}`;
+  }
 }
 
 export default async function ReviewQueuePage({ searchParams }: { searchParams: Search }) {
   const query = await searchParams;
   const guard = await guardRoute('/admin/review', returnPath(query));
+  const t = await getAdminT();
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) {
     return (
       <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
         <div className="max-w-[46rem]" data-testid="review-denied">
-          <p className="eyebrow">Administration</p>
-          <h1 className="mt-2 font-display text-feature">Not available</h1>
+          <p className="eyebrow">{t('Administration')}</p>
+          <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
           <p className="mt-3 max-w-[56ch] text-fg-muted">
-            You don&apos;t have access to the review queue. It is available to archivists, moderators and administrators.
+            {t("You don't have access to the review queue. It is available to archivists, moderators and administrators.")}
           </p>
           <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
             <Link href="/account" className="link inline-flex min-h-11 items-center">
-              Back to your account
+              {t('Back to your account')}
             </Link>
           </p>
         </div>
@@ -121,117 +148,117 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   } as ReviewListInput;
   const client = serverClient(await headers(), guard.principal);
   const list = await pageRead(client.review.list(input).catch(() => client.review.list({})));
-  if (!list) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={returnPath(query)} />;
+  if (!list) return <LoadError words={loadErrorWords(t)} {...reviewLoadError(t)} retryHref={returnPath(query)} />;
   const archivist = guard.principal?.user.role === 'archivist';
 
   const { counts } = list;
-  const statusName = list.filters.status === 'waiting' ? 'waiting' : list.filters.status === 'all' ? 'in all' : (list.statuses.find((x) => x.value === list.filters.status)?.label.toLowerCase() ?? '');
+  const statusCount = statusCountText(t, list);
 
   return (
     <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
       <AdminPageHeader
         eyebrow={
           <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Control panel
+            {t('Control panel')}
           </Link>
         }
-        title="Review queue"
+        title={t('Review queue')}
         summary={
           <span data-testid="queue-summary">
-            <strong>{counts.all}</strong> {statusName} · <strong>{counts.mine}</strong> assigned to you · <strong>{counts.unassigned}</strong> with nobody ·{' '}
+            {withStrong(statusCount, counts.all)} · {withStrong(t('{n} assigned to you'), counts.mine)} · {withStrong(t('{n} with nobody'), counts.unassigned)} ·{' '}
             {counts.late > 0 ? (
               <span className="font-semibold text-danger">
                 <span aria-hidden="true">! </span>
-                {counts.late} over 3 days
+                {t('{n} over 3 days', { n: counts.late })}
               </span>
             ) : (
-              'none over 3 days'
+              t('none over 3 days')
             )}
           </span>
         }
         intro={
           <span data-testid="queue-intro">
-            Cases that wait for a decision, oldest first. An archivist or an administrator decides historical teacher claims, profile claims and
-            instructor verifications; a moderator or an administrator decides profile reports and disputes. Take a case to open it. Every
-            decision is kept in the audit log.
+            {t(
+              'Cases that wait for a decision, oldest first. An archivist or an administrator decides historical teacher claims, profile claims and instructor verifications; a moderator or an administrator decides profile reports and disputes. Take a case to open it. Every decision is kept in the audit log.',
+            )}
           </span>
         }
       />
 
       <div className="mt-6 grid gap-6 2xl:grid-cols-[14rem_minmax(0,1fr)] 2xl:gap-8">
-        <AdminViews label="Saved views of the queue" views={queueViews(list)} />
+        <AdminViews label={t('Saved views of the queue')} views={queueViews(t, list)} />
 
         <div className="grid min-w-0 content-start gap-5">
-          <form method="get" action="/admin/review" role="search" aria-label="Filter the queue" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] items-end gap-3" data-testid="queue-filters">
-            <FilterSelect id="filter-group" name="group" label="Group" defaultValue={list.filters.group ?? ''}>
-              <option value="">Every group</option>
+          <form method="get" action="/admin/review" role="search" aria-label={t('Filter the queue')} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] items-end gap-3" data-testid="queue-filters">
+            <FilterSelect id="filter-group" name="group" label={t('Group')} defaultValue={list.filters.group ?? ''}>
+              <option value="">{t('Every group')}</option>
               {counts.groups.map((g) => (
                 <option key={g.value} value={g.value}>
-                  {g.label} ({g.count})
+                  {t(g.label)} ({g.count})
                 </option>
               ))}
             </FilterSelect>
-            <FilterSelect id="filter-kind" name="kind" label="Kind" defaultValue={list.filters.kind ?? ''}>
-              <option value="">Any kind</option>
+            <FilterSelect id="filter-kind" name="kind" label={t('Kind')} defaultValue={list.filters.kind ?? ''}>
+              <option value="">{t('Any kind')}</option>
               {list.kinds.map((kind) => (
                 <option key={kind.value} value={kind.value}>
-                  {kind.label} ({counts.kinds[kind.value] ?? 0})
+                  {t(kind.label)} ({counts.kinds[kind.value] ?? 0})
                 </option>
               ))}
             </FilterSelect>
-            <FilterSelect id="filter-status" name="status" label="Status" defaultValue={list.filters.status}>
+            <FilterSelect id="filter-status" name="status" label={t('Status')} defaultValue={list.filters.status}>
               {list.statuses.map((status) => (
                 <option key={status.value} value={status.value}>
-                  {status.label}
+                  {t(status.label)}
                 </option>
               ))}
             </FilterSelect>
-            <FilterSelect id="filter-assigned" name="assigned" label="Assigned to" defaultValue={list.filters.assigned}>
-              <option value="any">Anyone</option>
-              <option value="me">Me</option>
-              <option value="none">Nobody yet</option>
+            <FilterSelect id="filter-assigned" name="assigned" label={t('Assigned to')} defaultValue={list.filters.assigned}>
+              <option value="any">{t('Anyone')}</option>
+              <option value="me">{t('Me')}</option>
+              <option value="none">{t('Nobody yet')}</option>
             </FilterSelect>
-            <FilterSelect id="filter-age" name="age" label="Waiting" defaultValue={list.filters.age}>
-              <option value="any">Any time</option>
-              <option value="1d">Over 1 day</option>
-              <option value="3d">Over 3 days</option>
-              <option value="7d">Over a week</option>
+            <FilterSelect id="filter-age" name="age" label={t('Waiting')} defaultValue={list.filters.age}>
+              <option value="any">{t('Any time')}</option>
+              <option value="1d">{t('Over 1 day')}</option>
+              <option value="3d">{t('Over 3 days')}</option>
+              <option value="7d">{t('Over a week')}</option>
             </FilterSelect>
             {list.filters.sort !== 'oldest' ? <input type="hidden" name="sort" value={list.filters.sort} /> : null}
             <div className="flex flex-wrap items-center gap-3">
               <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-                Show cases
+                {t('Show cases')}
               </button>
               {returnPath(query) !== '/admin/review' ? (
                 <Link href="/admin/review" className="link inline-flex min-h-12 items-center text-ui">
-                  Clear
+                  {t('Clear')}
                 </Link>
               ) : null}
             </div>
           </form>
 
-          <ReviewTable list={list} />
+          <ReviewTable list={list} t={t} />
         </div>
       </div>
 
       <div className="mt-10 grid max-w-[60rem] gap-10">
         <section aria-labelledby="archive-heading" className="grid gap-3 border-t border-border-subtle pt-6">
           <h2 id="archive-heading" className="font-display text-2xl">
-            Archival records
+            {t('Archival records')}
           </h2>
           <p className="max-w-[60ch] text-ui text-fg-muted">
             {archivist
-              ? 'Correct a record kept by the platform or unclaimed, with a reason and optional evidence. Enter the record’s address: the part after /people/.'
-              : 'Archivists correct records kept by the platform or unclaimed. You can open a record to read it.'}
+              ? t('Correct a record kept by the platform or unclaimed, with a reason and optional evidence. Enter the record’s address: the part after /people/.')
+              : t('Archivists correct records kept by the platform or unclaimed. You can open a record to read it.')}
           </p>
           <form method="get" action="/admin/review/records" className="grid gap-3 sm:max-w-[34rem]" data-testid="record-lookup">
             <label htmlFor="record-slug" className="text-sm font-semibold">
-              Record address
+              {t('Record address')}
             </label>
             <input id="record-slug" name="slug" autoComplete="off" maxLength={120} pattern="[a-z0-9\-]+" className={inputClass} />
             <div>
               <button type="submit" className={buttonVariants({ variant: 'secondary' })}>
-                Open the record
+                {t('Open the record')}
               </button>
             </div>
           </form>
