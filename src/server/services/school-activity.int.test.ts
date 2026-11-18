@@ -465,4 +465,26 @@ describe('schools.adminList (In scope 6)', () => {
     const someone = await member('m20-someone');
     await expect(adminSchools(someone.principal)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
+
+  it('control panel: searches by name, city or address, and pages the list with its total', async () => {
+    const admin = await staff('m20-admin-search', 'admin');
+    const all = await adminSchools(admin.principal);
+    expect(all.total).toBe(all.counts.current + all.counts.awaiting_confirmation + all.counts.hidden);
+    expect(all.page).toBe(1);
+    expect(all.schools.length).toBe(Math.min(all.total, all.pageSize));
+    const one = all.schools[0]!;
+    for (const q of [one.name.slice(1, -1), one.slug, one.city.toUpperCase()]) {
+      const found = await adminSchools(admin.principal, { q });
+      expect(found.schools.map((x) => x.id), q).toContain(one.id);
+      expect(found.q).toBe(q);
+      expect(found.total).toBeLessThanOrEqual(all.total);
+    }
+    // A wildcard typed in the box matches itself only.
+    expect((await adminSchools(admin.principal, { q: '%' })).total).toBe(0);
+    // A page past the end is empty but keeps the total.
+    const far = await adminSchools(admin.principal, { page: 999 });
+    expect(far.schools).toEqual([]);
+    expect(far.total).toBe(all.total);
+    expect(far.truncated).toBe(false);
+  });
 });

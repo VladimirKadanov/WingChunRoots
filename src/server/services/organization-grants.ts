@@ -25,12 +25,13 @@ import { requireStaff2FA } from '../auth/guards';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { authUser, entitlementGrant, organization, organizationAdmin, reviewCase } from '../db/schema';
-import { OPEN_REVIEW_CASE_STATUSES } from '../db/schema/common';
+import { OPEN_REVIEW_CASE_STATUSES, ORGANIZATION_STATUSES } from '../db/schema/common';
 import { type Executor, organizationGrantsOf } from '../entitlements/access';
 import { type GrantState, grantState } from '../entitlements/effective';
 import { ORGANIZATION_GRANTABLE_PLANS, type PlanCode, PLANS } from '../entitlements/plans';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { likePattern } from './account-directory';
 import { grantHorizon } from './grants';
 import { APPROVAL_LABELS, ORGANIZATION_KIND_LABELS, type OrganizationStatus, organizationRow, type PlanView } from './organizations';
 
@@ -59,10 +60,40 @@ async function planOf(db: Executor, organizationId: string, now: Date): Promise<
   return { code: 'federation', label: PLANS.federation.name, until: until?.toISOString() ?? null };
 }
 
-/** organizations.adminList: every organization (administrators with the second factor). */
-export async function adminOrganizations(principal: Principal | null, now: Date = new Date()): Promise<{ organizations: AdminOrganizationRow[] }> {
+/** Control panel: the organizations of one page of /admin/organizations. */
+export const ADMIN_ORGANIZATION_PAGE_SIZE = 50;
+
+export const adminOrganizationsInput = z
+  .object({
+    /** Part of the name or the address (slug). */
+    q: z.string().trim().max(120).optional(),
+    status: z.enum(['all', ...ORGANIZATION_STATUSES]).default('all'),
+    plan: z.enum(['all', 'federation', 'none']).default('all'),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+  })
+  .default({ status: 'all', plan: 'all', page: 1 });
+
+export interface AdminOrganizationList {
+  organizations: AdminOrganizationRow[];
+  /** The organizations that match the filters, and the counts by approval (the search applied, not the status). */
+  total: number;
+  counts: Record<OrganizationStatus | 'all', number>;
+  filters: z.output<typeof adminOrganizationsInput>;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * organizations.adminList: the organizations (administrators with the second factor): waiting
+ * first, then approved, by name; control panel: searched by name or address, filtered by approval
+ * and plan, a page at a time. At most 500 are read, as before.
+ */
+export async function adminOrganizations(principal: Principal | null, raw: z.input<typeof adminOrganizationsInput> = {}, now: Date = new Date()): Promise<AdminOrganizationList> {
   requireStaff2FA(principal, ['admin']);
+  const parsed = adminOrganizationsInput.safeParse(raw ?? {});
+  const filters = parsed.success ? parsed.data : adminOrganizationsInput.parse({});
   const db = getDb();
+  const pattern = filters.q ? likePattern(filters.q) : null;
   const rows = await db
     .select({
       id: organization.id,
@@ -76,24 +107,35 @@ export async function adminOrganizations(principal: Principal | null, now: Date 
                  AND c.status IN (${sql.join(OPEN_REVIEW_CASE_STATUSES.map((s) => sql`${s}`), sql`, `)}) LIMIT 1)`,
     })
     .from(organization)
-    .where(isNull(organization.deletedAt))
+    .where(and(isNull(organization.deletedAt), pattern ? sql`(${organization.name} ILIKE ${pattern} OR ${organization.slug} ILIKE ${pattern})` : undefined))
     .orderBy(sql`CASE ${organization.status} WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END`, asc(organization.name), asc(organization.id))
     .limit(500);
+  const counts = { all: rows.length, pending: 0, active: 0, suspended: 0, rejected: 0 } as Record<OrganizationStatus | 'all', number>;
+  for (const r of rows) counts[r.status] += 1;
+  const byStatus = filters.status === 'all' ? rows : rows.filter((r) => r.status === filters.status);
+  const withPlans = await Promise.all(
+    byStatus.map(async (r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      kindLabel: ORGANIZATION_KIND_LABELS[r.kind],
+      countryCode: r.countryCode,
+      status: r.status,
+      approvalLabel: APPROVAL_LABELS[r.status],
+      plan: await planOf(db, r.id, now),
+      admins: r.admins,
+      caseId: r.caseId,
+    })),
+  );
+  const matching = filters.plan === 'all' ? withPlans : withPlans.filter((o) => (filters.plan === 'none' ? o.plan.code === null : o.plan.code === filters.plan));
+  const start = (filters.page - 1) * ADMIN_ORGANIZATION_PAGE_SIZE;
   return {
-    organizations: await Promise.all(
-      rows.map(async (r) => ({
-        id: r.id,
-        slug: r.slug,
-        name: r.name,
-        kindLabel: ORGANIZATION_KIND_LABELS[r.kind],
-        countryCode: r.countryCode,
-        status: r.status,
-        approvalLabel: APPROVAL_LABELS[r.status],
-        plan: await planOf(db, r.id, now),
-        admins: r.admins,
-        caseId: r.caseId,
-      })),
-    ),
+    organizations: matching.slice(start, start + ADMIN_ORGANIZATION_PAGE_SIZE),
+    total: matching.length,
+    counts,
+    filters,
+    page: filters.page,
+    pageSize: ADMIN_ORGANIZATION_PAGE_SIZE,
   };
 }
 

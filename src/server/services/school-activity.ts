@@ -53,6 +53,7 @@ import { getDb } from '../db';
 import { SCHOOL_ACTIVITY_STAGES, SCHOOL_AWAITING_DAYS, SCHOOL_CONFIRM_GRACE_DAYS, SCHOOL_HIDDEN_DAYS } from '../db/schema/common';
 import type { Executor } from '../entitlements/access';
 import { type NoticeProducer, notify, notifyEach } from './notify';
+import { likePattern } from './account-directory';
 
 export { SCHOOL_AWAITING_DAYS, SCHOOL_CONFIRM_GRACE_DAYS, SCHOOL_HIDDEN_DAYS };
 export type SchoolActivityStage = (typeof SCHOOL_ACTIVITY_STAGES)[number];
@@ -264,6 +265,9 @@ async function askAndHide(db: Database, options: SchoolActivityOptions, batch: n
 export const ADMIN_SCHOOL_STAGE_FILTERS = ['all', ...SCHOOL_ACTIVITY_STAGES] as const;
 export const adminSchoolsInput = z.object({
   stage: z.enum(ADMIN_SCHOOL_STAGE_FILTERS, { error: 'Choose a stage from the list.' }).default('all'),
+  /** Control panel: part of the school's name, its city or its address (slug). */
+  q: z.string().trim().max(120).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
 
 export interface AdminSchoolItem {
@@ -283,12 +287,17 @@ export interface AdminSchools {
   stage: (typeof ADMIN_SCHOOL_STAGE_FILTERS)[number];
   counts: Record<SchoolActivityStage, number>;
   schools: AdminSchoolItem[];
-  /** True when more schools match than the list shows. */
+  /** True when more schools match than this page shows. */
   truncated: boolean;
+  /** Control panel: the schools that match the stage and the search, the page and its size. */
+  total: number;
+  q: string | null;
+  page: number;
+  pageSize: number;
 }
 
-/** At most this many schools in the staff list (hidden and awaiting first). */
-export const ADMIN_SCHOOL_LIMIT = 200;
+/** The schools of one page of the staff list (hidden and awaiting first). */
+export const ADMIN_SCHOOL_LIMIT = 50;
 
 /**
  * schools.adminList: the listed schools with their activity stage, for moderators and
@@ -299,8 +308,12 @@ export const ADMIN_SCHOOL_LIMIT = 200;
 export async function adminSchools(principal: Principal | null, raw: z.input<typeof adminSchoolsInput> = {}): Promise<AdminSchools> {
   requireStaff2FA(principal, ['moderator', 'admin']);
   const parsed = adminSchoolsInput.safeParse(raw ?? {});
-  const stage = parsed.success ? parsed.data.stage : 'all';
+  const { stage, q, page } = parsed.success ? parsed.data : adminSchoolsInput.parse({});
   const db = getDb();
+  const pattern = q ? likePattern(q) : null;
+  const matching = sql`s.status = 'active' AND s.deleted_at IS NULL ${stage === 'all' ? sql`` : sql`AND s.activity_stage = ${stage}`}
+    ${pattern ? sql`AND (s.name ILIKE ${pattern} OR p.name ILIKE ${pattern} OR s.slug ILIKE ${pattern})` : sql``}`;
+  const [{ total } = { total: 0 }] = (await db.execute<{ total: number }>(sql`SELECT count(*)::int AS total FROM school s JOIN place p ON p.id = s.place_id WHERE ${matching}`)).rows;
   const counted = await db.execute<{ activity_stage: SchoolActivityStage; n: number }>(sql`
     SELECT s.activity_stage, count(*)::int AS n FROM school s WHERE s.status = 'active' AND s.deleted_at IS NULL GROUP BY s.activity_stage`);
   const counts: Record<SchoolActivityStage, number> = { current: 0, awaiting_confirmation: 0, hidden: 0 };
@@ -323,16 +336,20 @@ export async function adminSchools(principal: Principal | null, raw: z.input<typ
            s.activity_stage, s.last_activity_at, s.activity_awaiting_since, s.activity_hidden_at
       FROM school s JOIN place p ON p.id = s.place_id
       LEFT JOIN v_public_school v ON v.id = s.id
-     WHERE s.status = 'active' AND s.deleted_at IS NULL ${stage === 'all' ? sql`` : sql`AND s.activity_stage = ${stage}`}
+     WHERE ${matching}
      -- Hidden, then awaiting, then current; the schools the check moves before the platform's records.
      ORDER BY CASE s.activity_stage WHEN 'hidden' THEN 0 WHEN 'awaiting_confirmation' THEN 1 ELSE 2 END,
               (s.created_by_user_id IS NULL), s.last_activity_at, s.name, s.id
-     LIMIT ${ADMIN_SCHOOL_LIMIT + 1}`);
-  const rows = result.rows.slice(0, ADMIN_SCHOOL_LIMIT);
+     LIMIT ${ADMIN_SCHOOL_LIMIT} OFFSET ${(page - 1) * ADMIN_SCHOOL_LIMIT}`);
+  const rows = result.rows;
   return {
     stage,
     counts,
-    truncated: result.rows.length > ADMIN_SCHOOL_LIMIT,
+    truncated: total > page * ADMIN_SCHOOL_LIMIT,
+    total,
+    q: q || null,
+    page,
+    pageSize: ADMIN_SCHOOL_LIMIT,
     schools: rows.map((r) => ({
       id: r.id,
       slug: r.slug,

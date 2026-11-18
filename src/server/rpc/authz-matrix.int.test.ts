@@ -357,9 +357,12 @@ async function schoolWithPhoto(opts: { listed?: boolean } = {}) {
 /** M15: an organization's application by a new account (its owner); approved when `active`, with Federation when `federation`. */
 async function organizationOf(opts: { active?: boolean; federation?: boolean } = {}) {
   const owner = await actor('org-owner', { noPerson: true });
+  // A name of its own: the slug's random suffix is 3 bytes, and the many same-named organizations
+  // of this file met on one slug in CI (2026-11-17).
+  const tag = randomBytes(4).toString('hex').replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)]!);
   const applied = await applyOrganization(
     owner.principal,
-    { name: 'Demo Matrix Federation', kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
+    { name: `Demo Matrix Federation ${tag}`, kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
     meta,
   );
   if (opts.active || opts.federation) {
@@ -639,6 +642,9 @@ const ROWS: Row[] = [
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   { path: 'admin.navCounts', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   { path: 'admin.dashboard', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  // ADR 0041: the control panel's reports; the billing report for admins only.
+  { path: 'admin.reports', make: () => ({ input: { report: 'review', period: '30d' } }), expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.billingReport', make: () => ({ input: { period: '12m' } }), expect: staffOnly({ admin: 'ok' }) },
   // M12: /admin/system, any staff role with a verified second factor (requireStaff2FA).
   { path: 'system.status', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {
@@ -1176,6 +1182,30 @@ const ROWS: Row[] = [
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   { path: 'archiveEditor.search', make: () => ({ input: { q: 'Demo Matrix' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  // Control panel 2026-11: the archive editor's working views.
+  { path: 'archiveEditor.overview', make: () => ({ input: { sort: 'people' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  { path: 'archiveEditor.people', make: () => ({ input: { q: 'Demo Matrix', show: 'historical' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.links',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug, show: 'no_source' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.tree',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, open: [p.teacher.slug] } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.person',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, person: p.teacher.slug } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
   {
     path: 'archiveEditor.createRecord',
     make: () => ({ input: { primaryName: 'Demo Matrix Created Record', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)', evidenceIds: [] } }),
@@ -1195,6 +1225,15 @@ const ROWS: Row[] = [
       const p = await archivePair();
       const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
       return { input: { relationshipId: link.relationshipId, reason: 'M26 matrix (fictional)', idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.editLink',
+    make: async () => {
+      const p = await archivePair();
+      const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
+      return { input: { relationshipId: link.relationshipId, fromYear: 1902, toYear: 1910, source: 'A fictional register, corrected.', reason: 'Matrix (fictional)' } };
     },
     expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
@@ -2492,6 +2531,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/admin/archive/actions.ts#createRecordAction', row: 'archiveEditor.createRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#editLinkAction', row: 'archiveEditor.editLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },

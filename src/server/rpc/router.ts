@@ -16,6 +16,7 @@ import type { Principal } from '../auth/principal';
 import { accountOverview, landingInput, landingPath, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
 import { adminDashboard, adminNavCounts } from '../services/admin-dashboard';
+import { adminBillingReport, adminBillingReportInput, adminReport, adminReportInput } from '../services/admin-reports';
 import { accountMenu } from '../services/account-menu';
 import { listAccounts, listAccountsInput } from '../services/account-directory';
 import { recordConsents, recordConsentsInput } from '../services/consent';
@@ -168,6 +169,8 @@ import {
   createArchiveRecord,
   createLineageInput,
   createRecordInput,
+  editArchiveLink,
+  editLinkInput,
   endArchiveLink,
   endLinkInput,
   getArchiveLineage,
@@ -176,6 +179,7 @@ import {
   updateArchiveLineage,
   updateLineageInput,
 } from '../services/archive-editor';
+import { archiveLinks, archiveLinksInput, archiveOverview, archiveOverviewInput, archivePeople, archivePeopleInput, archivePerson, archivePersonInput, archiveTree, archiveTreeInput } from '../services/archive-grids';
 import {
   addReviewNote,
   archiveGetInput,
@@ -305,6 +309,7 @@ import {
   adminOrganization,
   adminOrganizationInput,
   adminOrganizations,
+  adminOrganizationsInput,
   grantOrganizationPlan,
   organizationGrantInput,
   organizationRevokeInput,
@@ -469,6 +474,15 @@ export const router = {
     dashboard: staffWithSecondFactor
       .route({ method: 'GET', path: '/admin/dashboard', summary: 'Counts and weekly growth for the control panel dashboard; billing figures for admins only (staff with a verified second factor)' })
       .handler(({ context }) => adminDashboard(context.principal)),
+    // ADR 0041: the reports of /admin/reports and their CSV downloads; aggregate counts only.
+    reports: staffWithSecondFactor
+      .route({ method: 'GET', path: '/admin/reports', summary: 'One report of the control panel over a period: growth, review throughput, archive completeness or schools; aggregate counts only (staff with a verified second factor)' })
+      .input(adminReportInput)
+      .handler(({ context, input }) => adminReport(context.principal, input)),
+    billingReport: adminWithSecondFactor
+      .route({ method: 'GET', path: '/admin/reports/billing', summary: 'Subscriptions by plan and status over a period and their monthly value, test mode (admin with a verified second factor)' })
+      .input(adminBillingReportInput)
+      .handler(({ context, input }) => adminBillingReport(context.principal, input)),
     overview: base
       .route({ method: 'GET', path: '/admin/overview', summary: 'Counts for the admin page (staff with a verified second factor)' })
       .handler(({ context }) => adminOverview(context.principal)),
@@ -982,6 +996,36 @@ export const router = {
       .route({ method: 'POST', path: '/archive-editor/links/end', summary: 'End a link entered in the archive by mistake (revoked, never deleted), with a reason; audited' })
       .input(endLinkInput)
       .handler(({ context, input }) => endArchiveLink(context.principal, input, context.meta)),
+    // Control panel 2026-11 (docs/adr/0042-archive-link-edit.md): correct a link in place.
+    editLink: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/archive-editor/links/edit',
+        summary: 'Correct the years or the source of a verified link the archive keeps, in place, with a reason (a member’s own link is refused); the status stays; audited',
+      })
+      .input(editLinkInput)
+      .handler(({ context, input }) => editArchiveLink(context.principal, input, context.meta)),
+    // Control panel 2026-11 (docs/adr/0035-control-panel.md): the editor's working views, for thousands of records.
+    overview: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/overview', summary: 'Every lineage with its people, generations, sourced share and last edit, searched and sorted, and the archive figures (an archivist or an administrator)' })
+      .input(archiveOverviewInput)
+      .handler(({ context, input }) => archiveOverview(context.principal, input)),
+    people: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/people', summary: 'Every record, public or not, found by any spelling of a name, filtered, 50 a page (an archivist or an administrator)' })
+      .input(archivePeopleInput)
+      .handler(({ context, input }) => archivePeople(context.principal, input)),
+    links: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}/links', summary: 'One lineage’s links filtered by status, missing source or years, generation and person, sorted, 50 a page (an archivist or an administrator)' })
+      .input(archiveLinksInput)
+      .handler(({ context, input }) => archiveLinks(context.principal, input)),
+    tree: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}/tree', summary: 'One lineage as an outline: the root and the students of the open branches only (an archivist or an administrator)' })
+      .input(archiveTreeInput)
+      .handler(({ context, input }) => archiveTree(context.principal, input)),
+    person: staffWithSecondFactor
+      .route({ method: 'GET', path: '/archive-editor/lineages/{slug}/people/{person}', summary: 'One person in one lineage: their teachers and students there and their other lineages (an archivist or an administrator)' })
+      .input(archivePersonInput)
+      .handler(({ context, input }) => archivePerson(context.principal, input)),
   },
   // Review 2026-11 (docs/adr/0030-takedown-suspension-erasure.md): a staff take-down of a profile,
   // reversible; a moderator or an administrator with a verified second factor.
@@ -1362,8 +1406,9 @@ export const router = {
       .input(linkIdInput)
       .handler(({ context, input }) => endSchoolLink(context.principal, input, context.meta)),
     adminList: adminWithSecondFactor
-      .route({ method: 'GET', path: '/admin/organizations', summary: 'Every organization with its approval and its plan, apart (admin with a verified second factor)' })
-      .handler(({ context }) => adminOrganizations(context.principal)),
+      .route({ method: 'GET', path: '/admin/organizations', summary: 'The organizations with their approval and their plan, apart; searched, filtered by approval and plan, paged (admin with a verified second factor)' })
+      .input(adminOrganizationsInput)
+      .handler(({ context, input }) => adminOrganizations(context.principal, input)),
     adminGet: adminWithSecondFactor
       .route({ method: 'GET', path: '/admin/organizations/{organizationId}', summary: 'One organization with its plan grants (admin with a verified second factor)' })
       .input(adminOrganizationInput)

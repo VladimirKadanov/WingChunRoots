@@ -81,10 +81,10 @@ const RELATIONSHIP_HEADING: Record<string, string> = {
   relationship_dispute: 'The relationship',
 };
 
-function Frame({ children }: { children: ReactNode }) {
+function Frame({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <div className="max-w-[52rem]">
+    <div className={`mx-auto px-page pt-6 pb-10 md:pt-8 md:pb-14 ${wide ? 'max-w-[96rem]' : 'max-w-content'}`}>
+      <div className={wide ? undefined : 'max-w-[52rem]'}>
         <p className="eyebrow">
           <Link href="/admin/review" className="link inline-flex min-h-11 items-center">
             Review queue
@@ -96,9 +96,13 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({ id, title, children, boxed = false }: { id: string; title: string; children: ReactNode; boxed?: boolean }) {
   return (
-    <section id={id} aria-labelledby={`${id}-heading`} className="grid content-start gap-3 border-t border-border-subtle pt-6">
+    <section
+      id={id}
+      aria-labelledby={`${id}-heading`}
+      className={boxed ? 'grid min-w-0 content-start gap-3 rounded-md border border-border-subtle bg-surface-1 p-5' : 'grid min-w-0 content-start gap-3 border-t border-border-subtle pt-6'}
+    >
       <h2 id={`${id}-heading`} className="font-display text-2xl">
         {title}
       </h2>
@@ -183,15 +187,30 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
   const initialFor = (result: typeof galleryResult, photoId: string) => (result?.values?.photoId === photoId ? result : null);
 
   return (
-    <Frame>
+    <Frame wide>
       <h1 className="mt-2 font-display text-feature">{view.kindLabel}</h1>
-      <p className="mt-3 flex flex-wrap gap-x-3 text-ui text-fg-muted">
-        <span data-testid="case-status" data-status={view.status} className="font-semibold text-fg">
-          {view.statusLabel}
-        </span>
-        <span>Opened {formatDay(view.openedAt)}</span>
-        <span>{view.assignee ? (view.assignee.me ? 'Assigned to you' : `Assigned to another reviewer${view.assignee.role ? ` (${view.assignee.role})` : ''}`) : 'Not assigned'}</span>
-      </p>
+      <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3 text-ui" data-testid="case-summary">
+        <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
+          <dt className="text-sm text-fg-muted">Status</dt>
+          <dd data-testid="case-status" data-status={view.status} className="font-semibold text-fg">
+            {view.statusLabel}
+          </dd>
+        </div>
+        <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
+          <dt className="text-sm text-fg-muted">Opened</dt>
+          <dd>{formatDay(view.openedAt)}</dd>
+        </div>
+        <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
+          <dt className="text-sm text-fg-muted">Assigned</dt>
+          <dd className={view.assignee?.me ? 'font-semibold' : undefined}>
+            {view.assignee ? (view.assignee.me ? 'Assigned to you' : `Assigned to another reviewer${view.assignee.role ? ` (${view.assignee.role})` : ''}`) : 'Not assigned'}
+          </dd>
+        </div>
+        <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
+          <dt className="text-sm text-fg-muted">Last change</dt>
+          <dd>{formatDay(view.updatedAt)}</dd>
+        </div>
+      </dl>
       {/* What a change did takes the focus (OutcomeNote, the M09 pattern; M10a review, screens-5).
           A note's confirmation sits under the notes instead, where the reviewer is. */}
       {done && query.done !== 'noted' ? (
@@ -200,7 +219,10 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         </div>
       ) : null}
 
-      <div className="mt-8 grid gap-10">
+      {/* Control panel: what the case is about on the left, what the reviewer can do on the right
+          (from 1024 px); on a phone the actions follow the case and its notes. */}
+      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)] lg:items-start">
+        <div className="grid min-w-0 gap-10 lg:col-start-1 lg:row-start-1">
         {view.subject ? (
           <Section id="subject" title={view.subject.label}>
             {view.subject.person ? <PersonName person={view.subject.person} /> : null}
@@ -220,30 +242,6 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
                 {view.resolutionReason}
               </p>
             ) : null}
-          </Section>
-        ) : null}
-
-        {view.subject?.takeDown?.allowed && view.subject.person && subjectSlug ? (
-          <Section id="takedown" title="Public pages">
-            <p className="max-w-[60ch] text-ui" data-testid="takedown-state">
-              {view.subject.takeDown.held ? (
-                <>
-                  <span className="font-semibold">Taken down by staff.</span> The profile is off every public page; its owner and the people at the other end of its links still see it.
-                  {view.subject.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">Reason: {view.subject.takeDown.reason}</span> : null}
-                </>
-              ) : (
-                <>Upholding the report hides nothing by itself. You can take the profile down here, or tick the box when you uphold the report.</>
-              )}
-            </p>
-            <div className="max-w-[40rem]">
-              <TakeDownForm
-                personId={view.subject.person.id}
-                slug={subjectSlug}
-                caseId={view.id}
-                held={view.subject.takeDown.held}
-                initial={view.subject.takeDown.held ? restoreResult : takeDownResult}
-              />
-            </div>
           </Section>
         ) : null}
 
@@ -359,32 +357,6 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         </Section>
         )}
 
-        <Section id="actions" title="Decision">
-          {view.decideNote ? (
-            <p className="max-w-[60ch] text-ui text-fg-muted" data-testid="decide-note">
-              {view.decideNote}
-            </p>
-          ) : null}
-          {/* On a phone each form takes the full width, so its button does too (screens-10). */}
-          <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-start">
-            {view.can.assignSelf ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'self', userId }} initial={assignResult} /> : null}
-            {view.can.unassign ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'none' }} initial={unassignResult} /> : null}
-          </div>
-          {view.can.assignOthers ? (
-            <div className="max-w-[34rem]">
-              <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'choose' }} reviewers={view.reviewers} initial={chooseResult} />
-            </div>
-          ) : null}
-          <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? LIFE_STATUS_CHOICE : undefined} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
-            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
-          </div>
-          {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
-            <p className="text-ui text-fg-muted">This case is closed.</p>
-          ) : null}
-        </Section>
-
         <Section id="notes" title="Notes">
           {view.notes.length === 0 ? (
             <p className="text-ui text-fg-muted">No notes yet.</p>
@@ -418,6 +390,60 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
           ) : null}
         </Section>
+        </div>
+
+        <aside aria-label="What you can do on this case" className="grid min-w-0 content-start gap-6 lg:row-start-1 lg:col-start-2">
+        <Section id="actions" title="Decision" boxed>
+          {view.decideNote ? (
+            <p className="max-w-[60ch] text-ui text-fg-muted" data-testid="decide-note">
+              {view.decideNote}
+            </p>
+          ) : null}
+          {/* On a phone each form takes the full width, so its button does too (screens-10). */}
+          <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-start">
+            {view.can.assignSelf ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'self', userId }} initial={assignResult} /> : null}
+            {view.can.unassign ? <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'none' }} initial={unassignResult} /> : null}
+          </div>
+          {view.can.assignOthers ? (
+            <div className="max-w-[34rem]">
+              <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'choose' }} reviewers={view.reviewers} initial={chooseResult} />
+            </div>
+          ) : null}
+          <div className="grid max-w-[40rem] gap-3">
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? LIFE_STATUS_CHOICE : undefined} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
+            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
+          </div>
+          {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
+            <p className="text-ui text-fg-muted">This case is closed.</p>
+          ) : null}
+        </Section>
+
+        {view.subject?.takeDown?.allowed && view.subject.person && subjectSlug ? (
+          <Section id="takedown" title="Public pages" boxed>
+            <p className="max-w-[60ch] text-ui" data-testid="takedown-state">
+              {view.subject.takeDown.held ? (
+                <>
+                  <span className="font-semibold">Taken down by staff.</span> The profile is off every public page; its owner and the people at the other end of its links still see it.
+                  {view.subject.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">Reason: {view.subject.takeDown.reason}</span> : null}
+                </>
+              ) : (
+                <>Upholding the report hides nothing by itself. You can take the profile down here, or tick the box when you uphold the report.</>
+              )}
+            </p>
+            <div className="max-w-[40rem]">
+              <TakeDownForm
+                personId={view.subject.person.id}
+                slug={subjectSlug}
+                caseId={view.id}
+                held={view.subject.takeDown.held}
+                initial={view.subject.takeDown.held ? restoreResult : takeDownResult}
+              />
+            </div>
+          </Section>
+        ) : null}
+
+        </aside>
       </div>
     </Frame>
   );

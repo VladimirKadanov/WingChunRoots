@@ -174,7 +174,10 @@ export type AuditAction =
   // M26 (docs/adr/0034-archive-editor.md): the archive editor's lineages. The rows carry ids, the
   // fields that changed and the length of the description, never a name; the reason is staff's own.
   | 'lineage.create'
-  | 'lineage.update';
+  | 'lineage.update'
+  // Control panel 2026-11 (docs/adr/0042-archive-link-edit.md): a staff link's years or source
+  // corrected in place. The row carries ids, the years and the source's length, never its text.
+  | 'relationship.edit';
 
 export interface AuditEntry {
   action: AuditAction;

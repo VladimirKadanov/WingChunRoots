@@ -63,6 +63,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/archive/actions.ts#createRecordAction': { rpc: ['archiveEditor.createRecord'] },
   'src/app/admin/archive/actions.ts#addLinkAction': { rpc: ['archiveEditor.addLink'] },
   'src/app/admin/archive/actions.ts#endLinkAction': { rpc: ['archiveEditor.endLink'] },
+  'src/app/admin/archive/actions.ts#editLinkAction': { rpc: ['archiveEditor.editLink'] },
   // Review 2026-11: a staff take-down of a profile and its restore.
   'src/app/admin/review/actions.ts#takeDownAction': { rpc: ['moderation.takeDown'] },
   'src/app/admin/review/actions.ts#restoreAction': { rpc: ['moderation.restore'] },

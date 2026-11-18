@@ -72,6 +72,8 @@ export const ROUTES: readonly AppRoute[] = [
   // M26: the archive editor (an archivist or an administrator).
   { path: '/admin/archive', name: 'archive-editor', status: 200, milestone: 'M26', signInAs: 'admin' },
   { path: '/admin/archive/lineages/demo-lineage-c', name: 'archive-lineage', status: 200, milestone: 'M26', signInAs: 'demo-archivist' },
+  { path: '/admin/archive/people', name: 'archive-people', status: 200, milestone: 'M26', signInAs: 'admin' },
+  { path: '/admin/archive/lineages/demo-lineage-c/links', name: 'archive-links', status: 200, milestone: 'M26', signInAs: 'demo-archivist' },
   // The explorer (M05): its starting page. The three graph views and the list view need a demo
   // person's id, so they are screen states (e2e/screenshots.spec.ts, e2e/visual.spec.ts; axe in
   // e2e/m05-explorer.spec.ts).
@@ -220,6 +222,9 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/billing', name: 'dashboard-billing-ended', status: 200, milestone: 'M22', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard/billing?plan=premium_student', name: 'dashboard-billing-none', status: 200, milestone: 'M22', signInAs: 'demo-pending' },
   { path: '/admin/billing', name: 'admin-billing', status: 200, milestone: 'M22', signInAs: 'admin' },
+  // ADR 0041: the control panel's reports (growth by default; the billing report for admins).
+  { path: '/admin/reports', name: 'admin-reports', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
+  { path: '/admin/reports?report=billing', name: 'admin-reports-billing', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
   // Governance (M25, docs/adr/0028-governance.md): the digital successor page of demo-pro-sifu-8
   // (Professional Sifu, the nomination form with its verified student demo-premium-student) and of
   // demo-free-sifu-5 (the plan's limit, said once); "Report a lineage error" of a public profile with

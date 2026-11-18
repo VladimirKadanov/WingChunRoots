@@ -66,6 +66,8 @@ import type { RequestMeta } from './context';
 import { type BillingSubject, liveSubscriptionOf } from './billing-subject';
 import { ServiceError } from './errors';
 import { notify, notifyEach, type NoticeProducer } from './notify';
+import { monthlyValueCents } from './admin-dashboard';
+import { likePattern } from './account-directory';
 import { adminIdsOf, adminRoleOf, APPROVAL_LABELS, ORGANIZATION_KIND_LABELS, organizationRow } from './organizations';
 import { PROPOSED_PRICE_LABEL, planSummary, type PlanSummary } from './plans';
 
@@ -1476,8 +1478,23 @@ export async function endExpiredGrace(options: { now?: Date; boss?: NoticeProduc
 export const BILLING_ADMIN_PAGE_SIZE = 25;
 export const billingAdminListInput = z.object({
   status: z.enum(BILLING_SUBSCRIPTION_STATUSES).optional(),
+  /** Control panel: one plan, and part of the account's address or the organization's name. */
+  plan: z.enum(PLAN_CODES).optional(),
+  q: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).max(10_000).optional(),
 });
+
+/** Control panel: the figures above the list, over every subscription (not the filters). */
+export interface AdminBillingSummary {
+  /** Subscriptions that give access (active or past due) and their monthly value in US cents at the proposed prices. */
+  live: number;
+  monthlyCents: number;
+  pastDue: number;
+  /** Active, set to stop at the period end. */
+  ending: number;
+  byStatus: Record<Status, number>;
+  byPlan: { code: PlanCode; name: string; live: number; monthlyCents: number }[];
+}
 
 export interface AdminSubscriptionRow {
   id: string;
@@ -1500,6 +1517,9 @@ export interface AdminSubscriptionList {
   page: number;
   pages: number;
   status: Status | null;
+  plan: PlanCode | null;
+  q: string | null;
+  summary: AdminBillingSummary;
   /** Events the app could not tie to a subscription (unknown, mismatch, conflict), the newest first. */
   unmatched: AdminEventRow[];
 }
@@ -1530,10 +1550,46 @@ export async function adminBillingList(principal: Principal | null, raw: unknown
   const parsed = billingAdminListInput.safeParse(raw ?? {});
   if (!parsed.success) throw new ServiceError('BAD_REQUEST', 'Check the filter.');
   const status = parsed.data.status ?? null;
+  const plan = parsed.data.plan ?? null;
+  const q = parsed.data.q || null;
   const page = parsed.data.page ?? 1;
   const db = getDb();
-  const where = status ? eq(billingSubscription.status, status) : undefined;
-  const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(billingSubscription).where(where);
+  const pattern = q ? likePattern(q) : null;
+  const where = and(
+    status ? eq(billingSubscription.status, status) : undefined,
+    plan ? eq(billingSubscription.planCode, plan) : undefined,
+    pattern ? sql`(${authUser.email} ILIKE ${pattern} OR ${organization.name} ILIKE ${pattern})` : undefined,
+  );
+  const [{ n } = { n: 0 }] = await db
+    .select({ n: count() })
+    .from(billingSubscription)
+    .leftJoin(authUser, eq(authUser.id, billingSubscription.subjectUserId))
+    .leftJoin(organization, eq(organization.id, billingSubscription.subjectOrganizationId))
+    .where(where);
+  const grouped = await db
+    .select({
+      planCode: billingSubscription.planCode,
+      interval: billingSubscription.interval,
+      status: billingSubscription.status,
+      ending: sql<number>`count(*) FILTER (WHERE ${billingSubscription.cancelAtPeriodEnd})::int`,
+      n: count(),
+    })
+    .from(billingSubscription)
+    .groupBy(billingSubscription.planCode, billingSubscription.interval, billingSubscription.status);
+  const liveRows = grouped.filter((r) => r.status === 'active' || r.status === 'past_due');
+  const byStatus = Object.fromEntries(BILLING_SUBSCRIPTION_STATUSES.map((st) => [st, 0])) as Record<Status, number>;
+  for (const r of grouped) byStatus[r.status] += r.n;
+  const summary: AdminBillingSummary = {
+    live: liveRows.reduce((t, r) => t + r.n, 0),
+    monthlyCents: monthlyValueCents(liveRows),
+    pastDue: byStatus.past_due,
+    ending: grouped.filter((r) => r.status === 'active').reduce((t, r) => t + r.ending, 0),
+    byStatus,
+    byPlan: PLAN_CODES.filter((code) => liveRows.some((r) => r.planCode === code)).map((code) => {
+      const rows = liveRows.filter((r) => r.planCode === code);
+      return { code, name: PLANS[code].name, live: rows.reduce((t, r) => t + r.n, 0), monthlyCents: monthlyValueCents(rows) };
+    }),
+  };
   const events = db
     .select({ subscriptionId: billingEvent.subscriptionId, n: count().as('n') })
     .from(billingEvent)
@@ -1576,6 +1632,9 @@ export async function adminBillingList(principal: Principal | null, raw: unknown
     page,
     pages: Math.max(1, Math.ceil(n / BILLING_ADMIN_PAGE_SIZE)),
     status,
+    plan,
+    q,
+    summary,
     unmatched: unmatched.map(eventRow),
   };
 }
