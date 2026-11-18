@@ -31,6 +31,8 @@ export interface ProfileFormValues {
   placeId: string;
   trainingStartYear: string;
   showPublicly: boolean;
+  /** ADR 0044: "List me on my school's page". */
+  listOnSchoolPage: boolean;
 }
 
 export interface Writing {
@@ -93,6 +95,7 @@ export function profileFormFromData(form: FormData): ProfileFormValues {
     placeId: text('placeId', 40),
     trainingStartYear: text('trainingStartYear', 8).trim(),
     showPublicly: form.get('showPublicly') === 'on',
+    listOnSchoolPage: form.get('listOnSchoolPage') === 'on',
   };
 }
 
@@ -151,6 +154,7 @@ export function shownFormValues(form: FormData): ProfileFormValues {
     placeId: text('placeId'),
     trainingStartYear: text('trainingStartYear'),
     showPublicly: form.get('showPublicly') === 'on',
+    listOnSchoolPage: form.get('listOnSchoolPage') === 'on',
   };
 }
 
@@ -195,6 +199,7 @@ export function toUpdateInput(values: ProfileFormValues) {
     placeId: values.placeId || null,
     trainingStartYear: values.trainingStartYear || null,
     showPublicly: values.showPublicly,
+    listOnSchoolPage: values.listOnSchoolPage,
   };
 }
 
@@ -210,6 +215,7 @@ export function flattenValues(values: ProfileFormValues): Record<string, string>
     names: String(values.names.length),
   };
   if (values.showPublicly) flat.showPublicly = 'on';
+  if (values.listOnSchoolPage) flat.listOnSchoolPage = 'on';
   values.names.forEach((row, i) => {
     flat[nameField(i, 'value')] = row.value;
     flat[nameField(i, 'writing')] = row.writing;
@@ -235,6 +241,7 @@ export function unflattenValues(flat: Record<string, string> | undefined): Profi
     placeId: flat.placeId ?? '',
     trainingStartYear: flat.trainingStartYear ?? '',
     showPublicly: flat.showPublicly === 'on',
+    listOnSchoolPage: flat.listOnSchoolPage === 'on',
   };
 }
 

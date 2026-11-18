@@ -8,9 +8,9 @@
 import { and, countDistinct, eq, inArray, isNull } from 'drizzle-orm';
 
 import { getDb, type Database } from '../db';
-import { authUser, entitlementGrant, GALLERY_PHOTO_STATUSES, person, personPhoto, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
+import { authUser, entitlementGrant, person, personPhoto, PUBLIC_RELATIONSHIP_STATUSES, teachingRelationship } from '../db/schema';
 import { decide, type EffectivePlan, type EntitlementDecision, type GrantPeriod, grantState, resolveEffectivePlan } from './effective';
-import { feature, type FeatureKey } from './plans';
+import { feature, type FeatureKey, type PlanCode } from './plans';
 
 /** A Drizzle database or an open transaction. */
 export type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -62,6 +62,36 @@ export async function grantsOf(db: Executor, userId: string): Promise<GrantPerio
     .where(eq(entitlementGrant.subjectUserId, userId));
 }
 
+/**
+ * The plans in effect at `now` of several accounts at once (ADR 0044: the members of a school's
+ * page): one read of their types and one of their grants. An unknown account is left out.
+ */
+export async function effectivePlansOf(db: Executor, userIds: readonly string[], now: Date): Promise<Map<string, PlanCode>> {
+  const out = new Map<string, PlanCode>();
+  if (userIds.length === 0) return out;
+  const ids = [...new Set(userIds)];
+  const accounts = await db.select({ id: authUser.id, accountType: authUser.accountType }).from(authUser).where(inArray(authUser.id, ids));
+  const grants = await db
+    .select({
+      subjectUserId: entitlementGrant.subjectUserId,
+      id: entitlementGrant.id,
+      planCode: entitlementGrant.planCode,
+      source: entitlementGrant.source,
+      startsAt: entitlementGrant.startsAt,
+      endsAt: entitlementGrant.endsAt,
+      revokedAt: entitlementGrant.revokedAt,
+    })
+    .from(entitlementGrant)
+    .where(inArray(entitlementGrant.subjectUserId, ids));
+  for (const account of accounts) {
+    const own: GrantPeriod[] = grants
+      .filter((g) => g.subjectUserId === account.id)
+      .map((g) => ({ id: g.id, planCode: g.planCode, source: g.source, startsAt: g.startsAt, endsAt: g.endsAt, revokedAt: g.revokedAt }));
+    out.set(account.id, resolveEffectivePlan(account.accountType, own, now).plan);
+  }
+  return out;
+}
+
 /** The plan in effect for an account now (or at `now`): the free plan of its type as the floor. */
 export async function effectivePlan(subject: UserSubject, options: EntitlementOptions = {}): Promise<EffectivePlan> {
   const db = options.db ?? getDb();
@@ -71,41 +101,32 @@ export async function effectivePlan(subject: UserSubject, options: EntitlementOp
 }
 
 /**
- * M14 (DEFAULT D07): the active profile photos of the account's own person (at most one). M16
- * (docs/adr/0019-galleries.md): every photo of the person's gallery counts, the profile photo
- * among them (statuses `active` and `gallery`). Only person_photo is counted: evidence files are
+ * The photos of the account's own person that count against 'photos': since the owner decision of
+ * 2026-11-18 (docs/adr/0044-premium-student.md) only the gallery besides the profile photo (status
+ * `gallery`). The profile photo (`active`) never counts, on any plan (before: M14 counted it as one,
+ * M16 with the rest of the gallery, ADR 0019 §3). Only person_photo is counted: evidence files are
  * never photos of a gallery and never count against the allowance (DEFAULT D13), and a school's
  * logo and room photos (school_photo) have their own limit.
- *
- * With `personId` (alreadyCounted): only that person's profile photo, the one photos.upload
- * replaces, so a replacement adds nothing while a new photo of the gallery always counts.
  */
-async function activePhotos(db: Executor, subject: UserSubject, personId?: string): Promise<number> {
+async function galleryPhotos(db: Executor, subject: UserSubject): Promise<number> {
   const [row] = await db
     .select({ n: countDistinct(personPhoto.id) })
     .from(personPhoto)
     .innerJoin(person, eq(person.id, personPhoto.personId))
-    .where(
-      and(
-        eq(person.claimedByUserId, subject.userId),
-        isNull(person.deletedAt),
-        personId === undefined ? inArray(personPhoto.status, [...GALLERY_PHOTO_STATUSES]) : eq(personPhoto.status, 'active'),
-        personId === undefined ? undefined : eq(personPhoto.personId, personId),
-      ),
-    );
+    .where(and(eq(person.claimedByUserId, subject.userId), isNull(person.deletedAt), eq(personPhoto.status, 'gallery')));
   return row?.n ?? 0;
 }
 
 /**
  * How much of a counted feature the account uses now. Approved students (D06): the distinct
  * students of the account's own person whose relationship is established (verified or in
- * arbitration), whatever its visibility. Photos (M14, DEFAULT D07): the current profile photo of
- * the account's own person counts as one; M16: with every other photo of its gallery. The other features count nothing in Phase 1.
+ * arbitration), whatever its visibility. Photos (DEFAULT D07): the photos of the own person's
+ * gallery besides the profile photo, which never counts (ADR 0044). The other features count nothing in Phase 1.
  */
 export async function currentUse(db: Executor, subject: EntitlementSubject, key: FeatureKey): Promise<number> {
   // An organization counts nothing in M15: its features are not counted allowances.
   if (subject.kind === 'organization') return 0;
-  if (key === 'photos') return activePhotos(db, subject);
+  if (key === 'photos') return galleryPhotos(db, subject);
   if (key !== 'approve_students') return 0;
   const [row] = await db
     .select({ n: countDistinct(teachingRelationship.studentPersonId) })
@@ -128,8 +149,6 @@ export async function currentUse(db: Executor, subject: EntitlementSubject, key:
  */
 export async function alreadyCounted(db: Executor, subject: EntitlementSubject, key: FeatureKey, unit: string): Promise<boolean> {
   if (subject.kind === 'organization') return false;
-  // M14: replacing the profile photo of a person who has one adds nothing (the unit is the person).
-  if (key === 'photos') return (await activePhotos(db, subject, unit)) > 0;
   if (key !== 'approve_students') return false;
   const [row] = await db
     .select({ n: countDistinct(teachingRelationship.studentPersonId) })

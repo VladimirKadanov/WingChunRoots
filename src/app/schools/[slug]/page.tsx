@@ -238,6 +238,8 @@ export default async function SchoolPage({ params }: Props) {
           )}
         </section>
 
+        <SchoolMembers school={school} />
+
         {school.forms.length > 0 ? (
           <section aria-labelledby="school-forms">
             <h2 id="school-forms" className="font-display text-xl">
@@ -285,5 +287,58 @@ export default async function SchoolPage({ params }: Props) {
         <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">Listing last edited or confirmed on {formatDay(school.lastActivityOn)}.</p>
       </div>
     </article>
+  );
+}
+
+/**
+ * ADR 0044: the members who chose to be listed on their school's page (and are public). The plans
+ * with the fuller listing show the photo and the current rank; every other member shows by name.
+ * Left out while nobody is listed. Server-rendered: no client JavaScript.
+ */
+function SchoolMembers({ school }: { school: SchoolPageDto }) {
+  if (school.members.length === 0) return null;
+  const full = school.members.filter((m) => m.full);
+  const names = school.members.filter((m) => !m.full);
+  const count = school.memberCount;
+  return (
+    <section aria-labelledby="school-members" data-testid="school-members">
+      <h2 id="school-members" className="font-display text-xl">
+        Members
+      </h2>
+      <p className="mt-1 text-sm text-fg-muted">
+        {count === 1 ? '1 member has' : `${count.toLocaleString('en')} members have`} chosen to be listed here.
+      </p>
+      {full.length > 0 ? (
+        <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+          {full.map((member) => (
+            <li key={member.slug} className="flex items-center gap-3 rounded-sm border border-border-subtle p-3" data-testid="school-member" data-slug={member.slug} data-full="true">
+              <PersonAvatar name={member.displayName.value} photo={member.photo} size="sm" decorative />
+              <div className="min-w-0">
+                <Link href={`/people/${member.slug}`} className="link inline-flex min-h-11 items-center font-display text-lg [overflow-wrap:anywhere]">
+                  <NameText name={member.displayName} />
+                </Link>
+                {member.original ? (
+                  <p className="text-sm text-fg-muted">
+                    <NameText name={member.original} />
+                  </p>
+                ) : null}
+                <p className="text-sm text-fg-muted">{member.rank ?? 'Member'}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {names.length > 0 ? (
+        <ul className="mt-3 flex flex-wrap gap-x-5" aria-label={full.length > 0 ? 'More members' : 'Members'}>
+          {names.map((member) => (
+            <li key={member.slug} data-testid="school-member" data-slug={member.slug} data-full="false">
+              <Link href={`/people/${member.slug}`} className="link inline-flex min-h-11 items-center">
+                <NameText name={member.displayName} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }

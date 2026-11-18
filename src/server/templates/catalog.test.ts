@@ -94,6 +94,14 @@ describe('notification catalog', () => {
     expect(emailWanted('limit.reached', undefined)).toBe(false);
   });
 
+  it('says what a plan without a gallery includes, with no limit to reach (ADR 0044)', () => {
+    const free = renderNotification('limit.reached', { feature: 'photos', planCode: 'free_student', limit: 0, upgradeTo: 'premium_student', month: '2026-11' });
+    expect(free.body).toHaveLength(1);
+    expect((free.body[0] as { text: string }).text).toMatch(/^Free Student includes profile photo only\. Nothing you already have changes\. Premium Student gives Photos: 10 gallery photos/);
+    const sifu = renderNotification('limit.reached', { feature: 'photos', planCode: 'free_sifu', limit: 2, upgradeTo: null, month: '2026-11' });
+    expect((sifu.body[0] as { text: string }).text).toBe('Free Sifu includes 2 gallery photos, and that limit is reached. Nothing you already have changes.');
+  });
+
   it('e-mails the new notices of M18 with the generic notice e-mail', () => {
     for (const kind of [
       'security.password-changed',

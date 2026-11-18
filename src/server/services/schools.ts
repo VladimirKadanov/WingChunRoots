@@ -63,6 +63,7 @@ import { LOCATION_PRIVACIES, OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STAT
 import {
   type GeoPointDto,
   type PlaceSearchDto,
+  type SchoolMemberDto,
   type SchoolPageDto,
   type SchoolPinDto,
   type SchoolSearchDto,
@@ -71,7 +72,7 @@ import {
   toPublicSchoolSearch,
   toPublicSchoolSitemap,
 } from '../dto/schools';
-import { type Executor, requireEntitlement } from '../entitlements/access';
+import { effectivePlansOf, type Executor, requireEntitlement } from '../entitlements/access';
 import type { Transaction } from '../jobs/outbox';
 import { feature, upgradeBenefits } from '../entitlements/plans';
 import { LISTED_PLACE_MIN_POPULATION, type PlaceSearchHit, searchPlaces } from '../geo/places';
@@ -311,6 +312,94 @@ async function instructorsOf(db: Executor, schoolIds: readonly string[]): Promis
   return out;
 }
 
+/** DEFAULT (ADR 0044): at most this many members on a school's page; the count says how many chose it. */
+export const SCHOOL_MEMBERS_MAX = 200;
+/** How many candidates are read before the plans sort them (the fuller listings are kept first). */
+const SCHOOL_MEMBERS_READ_MAX = 2_000;
+
+interface MemberRow extends Record<string, unknown> {
+  id: string;
+  slug: string;
+  display_name: string;
+  lang: string | null;
+  user_id: string;
+  start_year: number | null;
+}
+
+/**
+ * ADR 0044 (owner decision 2026-11-18): the members a school's public page lists. A member is a
+ * person who chose "List me on my school's page" (person.school_listing), is public
+ * (v_public_person) and has a confirmed, public link (v_public_edge, both ends public) whose
+ * training names this school, or whose teacher is one of its public instructors
+ * (v_public_school.instructor_person_ids: the head instructor and those whose link to the head is
+ * confirmed, the rule of instructorsOf). The school's public instructors are left out (they are
+ * listed above). The plan of the member's account decides
+ * whether the photo and the current public rank show (the matrix row `school_members`).
+ */
+async function membersOf(db: Executor, schoolId: string): Promise<{ members: SchoolMemberDto[]; total: number; ids: string[] }> {
+  const result = await db.execute<MemberRow>(sql`
+    WITH s AS (SELECT v.instructor_person_ids AS instructors FROM v_public_school v WHERE v.id = ${schoolId}::uuid)
+    SELECT p.id, p.slug, p.display_name, pn.lang, pe.claimed_by_user_id AS user_id, pe.training_start_year AS start_year
+      FROM s, v_public_person p
+      JOIN person pe ON pe.id = p.id AND pe.school_listing AND pe.claimed_by_user_id IS NOT NULL AND pe.deleted_at IS NULL
+      LEFT JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
+     WHERE EXISTS (
+             SELECT 1 FROM v_public_edge e
+              WHERE e.student_person_id = p.id
+                AND (EXISTS (SELECT 1 FROM training_period tp WHERE tp.relationship_id = e.id AND tp.school_id = ${schoolId}::uuid)
+                  OR e.teacher_person_id = ANY (s.instructors)))
+       AND NOT (p.id = ANY (s.instructors))
+     ORDER BY pe.training_start_year NULLS LAST, p.display_name, p.id
+     LIMIT ${SCHOOL_MEMBERS_READ_MAX}`);
+  const rows = result.rows;
+  if (rows.length === 0) return { members: [], total: 0, ids: [] };
+  const plans = await effectivePlansOf(
+    db,
+    rows.map((r) => r.user_id),
+    new Date(),
+  );
+  const isFull = (row: MemberRow) => {
+    const plan = plans.get(row.user_id);
+    return plan !== undefined && feature('school_members').values[plan].included;
+  };
+  // The fuller listings first, each group in the order of the read (start year, then name); at most SCHOOL_MEMBERS_MAX.
+  const shown = [...rows.filter(isFull), ...rows.filter((r) => !isFull(r))].slice(0, SCHOOL_MEMBERS_MAX);
+  const shownIds = shown.map((r) => r.id);
+  const fullIds = shown.filter(isFull).map((r) => r.id);
+  const [originals, ranks, photos] = await Promise.all([
+    db
+      .execute<{ person_id: string; value: string; lang: string; script: string }>(sql`
+        SELECT DISTINCT ON (pn.person_id) pn.person_id, pn.value, pn.lang, pn.script
+          FROM person_name pn
+         WHERE pn.person_id = ANY (${sql`ARRAY[${sql.join(shownIds.map((id) => sql`${id}::uuid`), sql`, `)}]`}) AND NOT pn.is_primary AND pn.kind = 'name' AND pn.script <> 'Latn'
+         ORDER BY pn.person_id, pn.sort_order, pn.id`)
+      .then((r) => r.rows),
+    fullIds.length === 0
+      ? []
+      : db
+          .execute<{ person_id: string; title: string }>(sql`
+            SELECT DISTINCT ON (v.person_id) v.person_id, v.title
+              FROM v_public_passport v
+             WHERE v.kind = 'rank' AND v.person_id = ANY (${sql`ARRAY[${sql.join(fullIds.map((id) => sql`${id}::uuid`), sql`, `)}]`})
+             ORDER BY v.person_id, (v.on_date IS NULL), v.on_date DESC, v.created_at DESC`)
+          .then((r) => r.rows),
+    publicPhotoRefs(db, fullIds),
+  ]);
+  const members = shown.map((r) => {
+    const full = fullIds.includes(r.id);
+    const original = originals.find((o) => o.person_id === r.id);
+    return {
+      slug: r.slug,
+      displayName: nameOf(r),
+      original: original ? { value: original.value, lang: original.lang, script: original.script } : null,
+      full,
+      photo: full ? photoOf(photos.get(r.id)) : null,
+      rank: full ? (ranks.find((k) => k.person_id === r.id)?.title ?? null) : null,
+    };
+  });
+  return { members, total: rows.length, ids: shownIds };
+}
+
 /** Every instructor of these schools, public or not: for the cache tags only (an id never leaves). */
 async function allInstructorIds(db: Executor, schoolIds: readonly string[]): Promise<string[]> {
   if (schoolIds.length === 0) return [];
@@ -520,7 +609,10 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
   const gallery = await schoolPhotosOf(db, row.id);
   // M21: the schedule and fees (public listing content of a school the view shows).
   const timetable = await publicScheduleOf(db, row.id);
-  tagCacheEntry([SCHOOLS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag)]);
+  // ADR 0044: the members who chose to be listed; a member's plan ends by its date without a tag,
+  // so the page lives minutes (cacheLife above), as the finder's pins do.
+  const listed = await membersOf(db, row.id);
+  tagCacheEntry([SCHOOLS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag), ...listed.ids.map(personTag)]);
   const last = row.last_activity_at instanceof Date ? row.last_activity_at : new Date(row.last_activity_at);
   return toPublicSchoolPage({
     id: row.id,
@@ -550,6 +642,8 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     }),
     logo: gallery.logo,
     photos: gallery.rooms,
+    members: listed.members,
+    memberCount: listed.total,
     schedule: timetable.schedule,
     timezone: timetable.timezone,
     fees: timetable.fees,

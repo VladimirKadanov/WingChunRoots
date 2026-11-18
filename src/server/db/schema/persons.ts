@@ -66,6 +66,10 @@ export const person = pgTable(
     takenDownAt: timestamp('taken_down_at', { withTimezone: true }),
     takenDownReason: text('taken_down_reason'),
     takenDownVisibility: text('taken_down_visibility', { enum: VISIBILITIES }),
+    // Owner decision 2026-11-18 (docs/adr/0044-premium-student.md): the owner's choice "List me on
+    // my school's page", off by default. It lists the person on a school's public members page
+    // only while the person is public (v_public_person) and a confirmed link ties them to the school.
+    schoolListing: boolean('school_listing').notNull().default(false),
     ...timestamps(),
     deletedAt: deletedAt(),
   },

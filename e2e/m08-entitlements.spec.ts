@@ -438,7 +438,9 @@ test('@M08 /plans labels planned features as not yet available and states that p
       await disclosure.locator('summary').click();
       opened += 1;
     }
-    for (const f of FEATURES) {
+    // ADR 0044: a hidden row (the videos, not offered for now) is on no /plans table.
+    for (const f of FEATURES.filter((x) => x.hidden)) await expect(section.locator(`tr[data-feature="${f.key}"]`), f.key).toHaveCount(0);
+    for (const f of FEATURES.filter((x) => !x.hidden)) {
       const row = section.locator(`tbody[data-group="${f.availability}"] tr[data-feature="${f.key}"]`).filter({ visible: true });
       await expect(row, f.key).toHaveCount(1);
       await expect(row).toHaveAttribute('data-availability', f.availability);
@@ -460,13 +462,13 @@ test('@M08 /plans labels planned features as not yet available and states that p
   const federationFeatures = page.locator('section#organizations').getByTestId('federation-features');
   await expect(federationFeatures).not.toHaveAttribute('open');
   await expect(federationFeatures.locator('summary')).toContainText(PLANNED);
-  await expect(federationFeatures.locator('summary')).toContainText(`Federation, feature by feature (${FEATURES.length})`);
+  await expect(federationFeatures.locator('summary')).toContainText(`Federation, feature by feature (${FEATURES.filter((f) => !f.hidden).length})`);
   await federationFeatures.locator('summary').click();
   const federationTable = federationFeatures.getByRole('table', { name: `What Federation would include (${PLANNED})` });
   await expect(federationTable).toBeVisible();
   await expect(federationTable.getByRole('columnheader')).toHaveText(['Feature', 'Federation']);
-  await expect(federationTable.locator('tbody tr[data-feature]')).toHaveCount(FEATURES.length);
-  for (const f of FEATURES) {
+  await expect(federationTable.locator('tbody tr[data-feature]')).toHaveCount(FEATURES.filter((f) => !f.hidden).length);
+  for (const f of FEATURES.filter((x) => !x.hidden)) {
     const row = federationTable.locator(`tr[data-feature="${f.key}"]`);
     await expect(row.getByRole('rowheader'), f.key).toContainText(f.label);
     await expect(row.getByRole('cell'), f.key).toHaveText(f.values.federation.label);

@@ -351,6 +351,7 @@ class Builder {
       takenDownAt: null,
       takenDownReason: null,
       takenDownVisibility: null,
+      schoolListing: false,
       createdAt: at,
       updatedAt: at,
       deletedAt: null,
@@ -1428,6 +1429,9 @@ function demoAccounts(
   const premiumId = add(DEMO_PREMIUM_STUDENT, premiumName, 'user');
   premiumStudent.row.stewardship = 'self';
   premiumStudent.row.claimedByUserId = premiumId;
+  // ADR 0044: the Premium Student chose "List me on my school's page": a member of demo-school-london
+  // (their teacher demo-pro-sifu-8 teaches there), shown with the photo and rank of the plan.
+  premiumStudent.row.schoolListing = true;
   entitlementGrants.push({
     id: id(),
     subjectUserId: premiumId,

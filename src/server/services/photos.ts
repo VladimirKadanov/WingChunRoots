@@ -21,8 +21,8 @@
 //      client's Content-Type; decoded with the decompression-bomb guard, turned upright, every
 //      metadata block dropped, a centred square at 96 and 512 px as WebP (../storage/photo.ts);
 //   4. a random storage key `photos/<48 hex>`, the renditions in the photo store (never the evidence
-//      store), then in one transaction under the quota lock of 'photos' (DEFAULT D07: the current
-//      photo counts as one; a replacement adds nothing): the old photo `replaced`, the new row,
+//      store), then in one transaction (the profile photo never counts against 'photos', ADR 0044):
+//      the old photo `replaced`, the new row,
 //      person.photo_id, the audit row photo.upload. If the transaction fails, the new files go; once
 //      it commits, the old files go. Then the public cache of the person is dropped.
 //
@@ -44,8 +44,6 @@ import { person, personPhoto } from '../db/schema';
 import { PHOTO_MAX_BYTES, PHOTO_REASON_MAX, PHOTO_RENDITION_MAX_BYTES, PHOTO_SIZES } from '../db/schema/common';
 import { SLUG_PATTERN } from '../db/schema/persons';
 import type { PhotoDto } from '../dto/public';
-import type { EntitlementSubject } from '../entitlements/access';
-import { withQuota } from '../entitlements/quota';
 import type { Transaction } from '../jobs/outbox';
 import { logger } from '../log';
 import { getPhotoStore, newStorageKey, type ObjectStore } from '../storage';
@@ -243,71 +241,57 @@ async function uploadProfilePhoto(
   const large = rendered.renditions[512];
   const content = sha256(large);
   const key = newStorageKey('photos');
-  const subject: EntitlementSubject = { kind: 'user', userId: p.user.id };
   const id = uuidv7();
   let previous: { id: string; storageKey: string } | null = null;
   try {
     // Inside the try: a rendition written before a failed one is deleted with it.
     await putRenditions(store, key, rendered);
-    const outcome = await getDb().transaction(async (tx) =>
-      // DEFAULT D07: the current photo counts as one against 'photos', which every plan allows;
-      // a replacement of the person's photo adds nothing (the unit is the person). M16: every
-      // other photo of the gallery counts too; only the profile photo is replaced here.
-      withQuota(
-        tx,
-        subject,
-        'photos',
-        async () => {
-          const [locked] = await tx
-            .select({ id: person.id, photoId: person.photoId, claimedBy: person.claimedByUserId, deletedAt: person.deletedAt })
-            .from(person)
-            .where(eq(person.id, own.id))
-            .for('update');
-          if (!locked || locked.claimedBy !== p.user.id || locked.deletedAt) throw new ServiceError('NOT_FOUND', NO_OWN_PERSON_MESSAGE);
-          const [old] = await tx
-            .select({ id: personPhoto.id, storageKey: personPhoto.storageKey, position: personPhoto.position })
-            .from(personPhoto)
-            .where(and(eq(personPhoto.personId, own.id), eq(personPhoto.status, 'active')));
-          const now = new Date();
-          if (old) await tx.update(personPhoto).set({ status: 'replaced', updatedAt: now }).where(eq(personPhoto.id, old.id));
-          // M16: the new profile photo takes the old one's place in the gallery, or goes first.
-          const position = old ? old.position : await firstPosition(tx, own.id);
-          await tx.insert(personPhoto).values({
-            id,
-            personId: own.id,
-            storageKey: key,
-            sha256: content,
-            originalSha256: sha256(bytes),
-            width: rendered.side,
-            height: rendered.side,
-            sizeBytes: large.byteLength,
-            fullWidth: rendered.full.width,
-            fullHeight: rendered.full.height,
-            position,
-            status: 'active',
-            uploadedByUserId: p.user.id,
-          });
-          await tx.update(person).set({ photoId: id, updatedAt: now }).where(eq(person.id, own.id));
-          await writeAudit(tx, {
-            action: 'photo.upload',
-            actorUserId: p.user.id,
-            actorRole: p.user.role,
-            subjectType: 'person',
-            subjectId: own.id,
-            before: old ? { photoId: old.id } : null,
-            after: { photoId: id, side: rendered.side, sizeBytes: large.byteLength, sha256: content },
-            requestId: meta.requestId,
-            ipHmac: meta.ipHmac,
-          });
-          return old ? { id: old.id, storageKey: old.storageKey } : null;
-        },
-        { unit: own.id },
-      ),
-    );
-    if (!outcome.ok) {
-      throw new ServiceError('ENTITLEMENT_REQUIRED', 'Your plan has no room for another photo.', {}, { entitlement: { ...outcome, key: 'photos' } });
-    }
-    previous = outcome.value;
+    // Owner decision 2026-11-18 (docs/adr/0044-premium-student.md): the profile photo never counts
+    // against 'photos', on any plan, so setting or replacing it takes no quota.
+    previous = await getDb().transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ id: person.id, photoId: person.photoId, claimedBy: person.claimedByUserId, deletedAt: person.deletedAt })
+        .from(person)
+        .where(eq(person.id, own.id))
+        .for('update');
+      if (!locked || locked.claimedBy !== p.user.id || locked.deletedAt) throw new ServiceError('NOT_FOUND', NO_OWN_PERSON_MESSAGE);
+      const [old] = await tx
+        .select({ id: personPhoto.id, storageKey: personPhoto.storageKey, position: personPhoto.position })
+        .from(personPhoto)
+        .where(and(eq(personPhoto.personId, own.id), eq(personPhoto.status, 'active')));
+      const now = new Date();
+      if (old) await tx.update(personPhoto).set({ status: 'replaced', updatedAt: now }).where(eq(personPhoto.id, old.id));
+      // M16: the new profile photo takes the old one's place in the gallery, or goes first.
+      const position = old ? old.position : await firstPosition(tx, own.id);
+      await tx.insert(personPhoto).values({
+        id,
+        personId: own.id,
+        storageKey: key,
+        sha256: content,
+        originalSha256: sha256(bytes),
+        width: rendered.side,
+        height: rendered.side,
+        sizeBytes: large.byteLength,
+        fullWidth: rendered.full.width,
+        fullHeight: rendered.full.height,
+        position,
+        status: 'active',
+        uploadedByUserId: p.user.id,
+      });
+      await tx.update(person).set({ photoId: id, updatedAt: now }).where(eq(person.id, own.id));
+      await writeAudit(tx, {
+        action: 'photo.upload',
+        actorUserId: p.user.id,
+        actorRole: p.user.role,
+        subjectType: 'person',
+        subjectId: own.id,
+        before: old ? { photoId: old.id } : null,
+        after: { photoId: id, side: rendered.side, sizeBytes: large.byteLength, sha256: content },
+        requestId: meta.requestId,
+        ipHmac: meta.ipHmac,
+      });
+      return old ? { id: old.id, storageKey: old.storageKey } : null;
+    });
   } catch (error) {
     await deleteFiles(store, key, id);
     throw error;

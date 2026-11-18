@@ -1194,7 +1194,13 @@ const limitReached: NotificationTemplate<LimitReached> = {
         : '';
     return {
       title: `Plan limit reached: ${f.label}`,
-      body: [{ text: `${PLANS[planCode].name} includes ${own.charAt(0).toLowerCase()}${own.slice(1)}, and that limit is reached. Nothing you already have changes.${offer}` }],
+      // ADR 0044: a plan without any of it (Free Student's gallery: "Profile photo only") has no
+      // limit to reach, only what it includes.
+      body: [
+        {
+          text: `${PLANS[planCode].name} includes ${own.charAt(0).toLowerCase()}${own.slice(1)}${f.values[planCode].limit === 0 ? '' : ', and that limit is reached'}. Nothing you already have changes.${offer}`,
+        },
+      ],
       action: upgradeTo ? { label: 'Compare plans', href: '/plans' } : SEE_YOUR_PLAN,
     };
   },
