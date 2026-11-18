@@ -9,6 +9,7 @@
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
+import { getAdminT } from '@/components/admin/i18n/server';
 import { atOutcome } from '@/components/relationships/outcome-id';
 import { keepValues, textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
@@ -17,6 +18,7 @@ import { formResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { GRANT_FORM, revokeForm, TRIAL_END_FORM, TRIAL_START_FORM } from './form-ids';
+import { serviceMessage } from './labels';
 
 const LIST = '/admin/organizations';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,7 +28,14 @@ async function failed(error: unknown, formId: string, page: string, values: Reco
   unstable_rethrow(error);
   if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(page)}`);
   if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(`/account/security?next=${encodeURIComponent(page)}`);
-  const state = formStateFromFailure(error, values);
+  const failure = formStateFromFailure(error, values);
+  // The procedure's message and field errors in the control panel's language (docs/adr/0043-admin-bulgarian.md).
+  const t = await getAdminT();
+  const state: FormState = {
+    ...failure,
+    ...(failure.message ? { message: serviceMessage(t, failure.message) } : {}),
+    ...(failure.fields ? { fields: Object.fromEntries(Object.entries(failure.fields).map(([name, text]) => [name, serviceMessage(t, text)])) } : {}),
+  };
   return formResult({ form: formId, page, anchor: outcomeTarget(formId, state, single) }, state);
 }
 
