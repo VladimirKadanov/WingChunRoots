@@ -694,7 +694,8 @@ async function ownTeachers(db: Executor, personId: string): Promise<PassportTeac
 const FULL_PLAN_OF: Partial<Record<PlanCode, PlanCode>> = { free_student: 'premium_student', free_sifu: 'pro_sifu' };
 
 export interface MyPassport {
-  person: { slug: string; public: boolean };
+  /** The own person; `name` is the primary display name (the print view's heading, ADR 0046). */
+  person: { slug: string; public: boolean; name: { value: string; lang: string } };
   plan: { code: PlanCode; name: string };
   level: PassportLevel;
   experience: PassportDto['experience'];
@@ -722,6 +723,8 @@ export async function myPassport(principal: Principal | null): Promise<MyPasspor
   const { plan, level } = await planOf(db, own.id);
   const profile = await db.execute(sql`SELECT 1 AS one FROM v_public_person WHERE id = ${own.id}::uuid`);
   const profilePublic = profile.rows.length > 0;
+  const named = await db.execute<{ value: string; lang: string }>(sql`SELECT value, lang FROM person_name WHERE person_id = ${own.id}::uuid AND is_primary LIMIT 1`);
+  const name = named.rows[0] ?? { value: '', lang: 'und-Latn' };
   const [rows, teachers, startYear] = await Promise.all([ownEntries(db, own.id, null, true), ownTeachers(db, own.id), startYearOf(db, own.id)]);
   // The current rank among the public ones is the one a basic passport shows.
   const publicRanks = rows.filter((r) => r.kind === 'rank' && r.visibility === 'public').map(entryOf);
@@ -754,7 +757,7 @@ export async function myPassport(principal: Principal | null): Promise<MyPasspor
     };
   }
   return {
-    person: { slug: own.slug, public: profilePublic },
+    person: { slug: own.slug, public: profilePublic, name: { value: name.value, lang: name.lang } },
     plan: { code: plan, name: PLANS[plan].name },
     level,
     experience: experienceOf(teachers, startYear, 'full'),

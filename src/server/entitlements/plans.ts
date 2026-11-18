@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-18.2';
+export const PLAN_MATRIX_VERSION = '2026-11-18.3';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -423,6 +423,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     // Student and Professional Sifu the whole timeline (examinations, forms and skills,
     // certificates, events). "Instructor record" means a Sifu records for their own students, which
     // the pilot does not limit. A free account's entries are kept and hidden, never deleted (D08).
+    // Owner decision 2026-11-18 (docs/adr/0046-passport-extras.md): the full passport also asks an
+    // event's organizer to confirm attendance, puts up to three gallery photos on each rank, and
+    // prints or saves as a PDF.
     availability: 'now',
     phase: null,
     enforced: true,
@@ -430,9 +433,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     note: 'Your teachers record your ranks, examinations and skills; you choose what is public. Free plans show the current rank, your teachers and the year you began; nothing is deleted on any plan.',
     values: {
       free_student: text('Basic', 'Basic: rank, teachers and start year'),
-      premium_student: text('Full timeline', 'Full timeline'),
+      premium_student: text('Full timeline', 'Full timeline, event confirmations, rank photos and PDF'),
       free_sifu: text('Basic instructor record', 'Basic, and you record for your students'),
-      pro_sifu: text('Full instructor record', 'Full timeline, and you record for your students'),
+      pro_sifu: text('Full instructor record', 'Full timeline with confirmations, photos and PDF, and you record for your students'),
       federation: text('Administrative dashboard'),
     },
   },

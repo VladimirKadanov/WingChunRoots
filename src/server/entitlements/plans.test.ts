@@ -171,7 +171,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-18.2', digest: '44b8ef009c20736d69e82b0f6003c6c8ed6a944d343befc668887d30c644f4fa' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-18.3', digest: '3669a840a50a0547931e70d4673fac241916cf2ebc70442618137279f34a1658' });
   });
 });
 
@@ -211,7 +211,7 @@ describe('features of the pilot that are not built yet (review round 1, requirem
       { feature: 'school_members', label: 'Your school’s members page', from: 'Your name', to: 'Your name, photo and rank', opens: null },
       { feature: 'lineage_card', label: 'Your lineage card', from: 'Lineage view only', to: 'Card, share image, print and PDF', opens: null },
       { feature: 'photos', label: 'Photos', from: 'Profile photo only', to: '10 gallery photos', opens: null },
-      { feature: 'passport', label: 'Training passport', from: 'Basic: rank, teachers and start year', to: 'Full timeline', opens: null },
+      { feature: 'passport', label: 'Training passport', from: 'Basic: rank, teachers and start year', to: 'Full timeline, event confirmations, rank photos and PDF', opens: null },
     ]);
     expect(PLANS_WITHOUT_PILOT_BENEFITS).toEqual([]);
   });
@@ -228,7 +228,7 @@ describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
     expect(benefits[3]).toMatchObject({ feature: 'lineage_card', from: 'Lineage view only', to: 'Card, share image, print and PDF', opens: null });
     expect(benefits[4]).toMatchObject({ from: '2 gallery photos', to: '100 gallery photos', opens: null });
     expect(benefits[5]).toMatchObject({ from: 'Schedule and fees, no statistics', to: 'Schedule, fees and weekly statistics', opens: null });
-    expect(benefits[6]).toMatchObject({ from: 'Basic, and you record for your students', to: 'Full timeline, and you record for your students', opens: null });
+    expect(benefits[6]).toMatchObject({ from: 'Basic, and you record for your students', to: 'Full timeline with confirmations, photos and PDF, and you record for your students', opens: null });
     expect(benefits[7]).toMatchObject({ from: 'No publishing', to: 'Up to 3 events a month', opens: null });
   });
 

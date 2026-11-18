@@ -15,7 +15,7 @@
 
 ## 1. Матрицата
 
-Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-18.2`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
+Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-18.3`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
 
 | Код | Ниво (спецификация) | Име | За кого | Наличност | Предложена цена (DEFAULT D09) | Показва се като |
 |---|---|---|---|---|---|---|
@@ -292,6 +292,7 @@
 | `2026-11-11.1` | M25 (Фаза 3: „Succession nomination, acceptance and administrator review“): `successor` е `now` (без фаза) и `enforced: true`; клетките са както в спецификацията (Professional Sifu и Federation „Yes“). Подканата изрежда `successor` последна (`JOINED_PHASE_3`) |
 | `2026-11-18.1` | Решения на собственика от 18.11.2026 ([ADR 0044](adr/0044-premium-student.md)): **снимката на профила никога не се брои** в `photos`, на нито един план; лимитът брои снимките на галерията освен нея. Free Student: „Profile photo only“ (`limit: 0`, `included: false`, без галерия); Premium Student 10, Free Sifu 2, Professional Sifu 100 снимки в галерията; единица „gallery photo/gallery photos“, `upgradeHeading` „A photo gallery with {plan}“. `videos` е `hidden` (не е на `/plans` и в API каталога). Нов ред `school_members` („School members page“, `now`, `enforced: true`): Free Student и Free Sifu „Name only“ (`neutral`), Premium Student и Professional Sifu „Name, photo and rank“, Federation „Not applicable“; подканата го изрежда с функциите отпреди. Обобщението на Premium Student вече не споменава видеата. Спецификацията §3.1 и §3.2 (EN и BG) са обновени с бележка |
 | `2026-11-18.2` | Решение на собственика от 18.11.2026 ([ADR 0045](adr/0045-lineage-card.md)): нов ред `lineage_card` („Lineage card“, `now`, `enforced: true`) след `school_members`: Free Student и Free Sifu „Lineage view only“, Premium Student и Professional Sifu „Card, share image, print and PDF“, Federation „Not applicable“ (`neutral`). Картата е на `/people/<адрес>/card` само за публичен човек, чийто акаунт има плана; подканата го изрежда с функциите отпреди. Спецификацията §3.1 (EN и BG) е обновена с бележка |
+| `2026-11-18.3` | Решение на собственика от 18.11.2026 ([ADR 0046](adr/0046-passport-extras.md)): клетките на `passport` са както в спецификацията; надписите на пълния паспорт казват и новото: Premium Student „Full timeline, event confirmations, rank photos and PDF“, Professional Sifu „Full timeline with confirmations, photos and PDF, and you record for your students“ (заявка за присъствие, потвърдена от организатора; до 3 снимки от галерията на степен; печат и PDF) |
 
 ## 13. Тестове
 

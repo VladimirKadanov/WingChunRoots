@@ -190,6 +190,11 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
               <Link href={`/people/${view.person.slug}#passport-heading`} className="link inline-flex min-h-11 items-center" data-testid="passport-profile-link">
                 See your profile
               </Link>
+              {view.level === 'full' ? (
+                <Link href={`${PAGE}/print`} className="link inline-flex min-h-11 items-center" data-testid="passport-print-link">
+                  Print or save as PDF
+                </Link>
+              ) : null}
             </p>
             {notice ? (
               <p role="status" className="mt-4 text-ui font-semibold" data-testid="passport-notice">
