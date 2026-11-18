@@ -133,15 +133,16 @@ describe('upload', () => {
     expect(Buffer.from(bytes).includes(Buffer.from('GPS'))).toBe(false);
   });
 
-  it('replacing the photo marks the old one replaced, deletes its files and still counts one photo (DEFAULT D07)', async () => {
+  it('replacing the photo marks the old one replaced, deletes its files, and the profile photo never counts (ADR 0044)', async () => {
     const owner = await member('photo-replace');
     const subject = { kind: 'user' as const, userId: owner.account.id };
     expect(await currentUse(getDb(), subject, 'photos')).toBe(0);
+    // Free Student has no gallery, yet setting the profile photo is always allowed.
     const first = await uploadPhoto(owner.principal, { file: await image('png') }, meta);
-    expect(await currentUse(getDb(), subject, 'photos')).toBe(1);
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(0);
     const second = await uploadPhoto(owner.principal, { file: await image('webp', 300, 300) }, meta);
     expect(second.replaced).toBe(true);
-    expect(await currentUse(getDb(), subject, 'photos')).toBe(1);
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(0);
 
     const [old, current] = await photoRows(owner.personId);
     expect(old!.status).toBe('replaced');

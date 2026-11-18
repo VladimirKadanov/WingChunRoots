@@ -15,7 +15,7 @@
 
 ## 1. Матрицата
 
-Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-11.1`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
+Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-18.1`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
 
 | Код | Ниво (спецификация) | Име | За кого | Наличност | Предложена цена (DEFAULT D09) | Показва се като |
 |---|---|---|---|---|---|---|
@@ -290,6 +290,7 @@
 | `2026-11-07.1` | M19 (избор на собственика от 07.11.2026, Фаза 2: „Training passport“): `passport` е `now` (без фаза) и `enforced: true`. Нивото зависи от плана на акаунта на паспорта (`passportLevel`, `FULL_PASSPORT_PLANS`), не от плана на зрителя: **основен** (Free Student, Free Sifu и запис без акаунт) — текущата степен, учителите с периодите и годината на започване; **пълен** (Premium Student, Professional Sifu, Federation) — и хронологията с изпитите, уменията, сертификатите и събитията. При понижаване нищо не се трие (D08): записите се пазят и в `/dashboard/passport` са „Public, kept“; подканата е само когато има скрити записи. Вписването за ученици не се ограничава по план в пилота (DEFAULT M19, въпрос 3) |
 | `2026-11-10.1` | M21 (Фаза 2: „Trial lesson inquiry flow and basic school analytics“; технически план §1): `school_business` е `now` (без фаза) и `enforced: true`, с етикет „School schedule and statistics“, `upgradeHeading` „Weekly school statistics with {plan}“ и бележка. Клетките: Free Sifu „Schedule and fees, no statistics“ (`included: false`, по спецификацията „No“), Professional Sifu „Schedule, fees and weekly statistics“ (по спецификацията „Yes“). Ограничава се само статистиката; графикът, таксите и заявките са на всяка обявена школа (`DEFAULT M21`, въпрос 6). Подканата изрежда `school_business` след функциите отпреди (`JOINED_PILOT_LATER`) |
 | `2026-11-11.1` | M25 (Фаза 3: „Succession nomination, acceptance and administrator review“): `successor` е `now` (без фаза) и `enforced: true`; клетките са както в спецификацията (Professional Sifu и Federation „Yes“). Подканата изрежда `successor` последна (`JOINED_PHASE_3`) |
+| `2026-11-18.1` | Решения на собственика от 18.11.2026 ([ADR 0044](adr/0044-premium-student.md)): **снимката на профила никога не се брои** в `photos`, на нито един план; лимитът брои снимките на галерията освен нея. Free Student: „Profile photo only“ (`limit: 0`, `included: false`, без галерия); Premium Student 10, Free Sifu 2, Professional Sifu 100 снимки в галерията; единица „gallery photo/gallery photos“, `upgradeHeading` „A photo gallery with {plan}“. `videos` е `hidden` (не е на `/plans` и в API каталога). Нов ред `school_members` („School members page“, `now`, `enforced: true`): Free Student и Free Sifu „Name only“ (`neutral`), Premium Student и Professional Sifu „Name, photo and rank“, Federation „Not applicable“; подканата го изрежда с функциите отпреди. Обобщението на Premium Student вече не споменава видеата. Спецификацията §3.1 и §3.2 (EN и BG) са обновени с бележка |
 
 ## 13. Тестове
 

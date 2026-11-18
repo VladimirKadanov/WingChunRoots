@@ -438,7 +438,9 @@ test('@M08 /plans labels planned features as not yet available and states that p
       await disclosure.locator('summary').click();
       opened += 1;
     }
-    for (const f of FEATURES) {
+    // ADR 0044: a hidden row (the videos, not offered for now) is on no /plans table.
+    for (const f of FEATURES.filter((x) => x.hidden)) await expect(section.locator(`tr[data-feature="${f.key}"]`), f.key).toHaveCount(0);
+    for (const f of FEATURES.filter((x) => !x.hidden)) {
       const row = section.locator(`tbody[data-group="${f.availability}"] tr[data-feature="${f.key}"]`).filter({ visible: true });
       await expect(row, f.key).toHaveCount(1);
       await expect(row).toHaveAttribute('data-availability', f.availability);

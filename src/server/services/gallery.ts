@@ -1,9 +1,10 @@
 // Person galleries (milestone M16; docs/adr/0019-galleries.md). A person's gallery is their
 // person_photo rows with status `active` (the profile photo, at most one, M14) or `gallery` (the
-// other photos), in their `position` order. Every photo of it counts against the plan's `photos`
-// allowance (DEFAULT D07: Free Student 1, Premium Student 10, Free Sifu 2, Professional Sifu 100,
-// Federation without a number), counted under the quota lock (withQuota) in the transaction that
-// adds it; a higher allowance comes only from an admin's grant (no payments). Evidence files are
+// other photos), in their `position` order. Every photo besides the profile photo counts against the
+// plan's `photos` allowance (DEFAULT D07: Free Student none, Premium Student 10, Free Sifu 2,
+// Professional Sifu 100, Federation without a number); the profile photo never counts (owner
+// decision 2026-11-18, docs/adr/0044-premium-student.md). Counted under the quota lock in the
+// transaction that adds it; a higher allowance comes from a plan (an admin's grant or billing). Evidence files are
 // never gallery photos and never count (DEFAULT D13): they stay in the evidence store, private.
 //
 // Who may do what (every function checks it itself, whoever calls it):
@@ -36,7 +37,8 @@ import { GALLERY_PHOTO_STATUSES, PHOTO_CAPTION_MAX, PHOTO_REASON_MAX } from '../
 import { type PersonGalleryPhotoDto, toPublicGallery } from '../dto/gallery';
 import { effectivePlan, type Executor, requireEntitlement } from '../entitlements/access';
 import { feature, upgradeBenefits } from '../entitlements/plans';
-import { withQuota } from '../entitlements/quota';
+import type { EntitlementDecision } from '../entitlements/effective';
+import { lockQuota } from '../entitlements/quota';
 import { getPhotoStore, newStorageKey, type ObjectStore } from '../storage';
 import { PhotoRefused, renderGalleryPhoto } from '../storage/photo';
 import type { RequestMeta } from './context';
@@ -199,7 +201,7 @@ async function primaryName(db: Executor, personId: string): Promise<string> {
 }
 
 /** The owner's allowance and, at the real limit, the upgrade prompt (only 'now' benefits). */
-async function allowanceOf(db: Executor, userId: string): Promise<{ allowance: GalleryAllowance; upgrade: UpgradeOffer | null }> {
+async function allowanceOf(db: Executor, userId: string, hasProfilePhoto: boolean): Promise<{ allowance: GalleryAllowance; upgrade: UpgradeOffer | null }> {
   const subject = { kind: 'user' as const, userId };
   const decision = await requireEntitlement(subject, 'photos', { db });
   const { plan } = await effectivePlan(subject, { db });
@@ -207,13 +209,21 @@ async function allowanceOf(db: Executor, userId: string): Promise<{ allowance: G
   const unit = feature('photos').unit!;
   const limit = decision.limit;
   const used = decision.current;
-  // Over the limit (a downgrade, an ended grant): "You have 3 photos; Free Student includes 1. …".
-  const sentence = allowanceSentence(unit, used, limit, from.name, true);
-  const allowance: GalleryAllowance = { used, limit, planName: from.name, sentence, canAdd: decision.ok };
+  // Over the limit (a downgrade, an ended grant): "You have 3 gallery photos; Premium Student includes 2. …".
+  // A plan with the profile photo only (Free Student, ADR 0044) says so instead of "0 of 0".
+  const sentence =
+    limit === 0
+      ? used === 0
+        ? `${from.name} includes your profile photo only. It is free and never counts.`
+        : `You have ${used.toLocaleString('en')} ${used === 1 ? unit.one : unit.many} besides your profile photo; ${from.name} includes your profile photo only. They stay; remove them as you like.`
+      : allowanceSentence(unit, used, limit, from.name, true);
+  // The first photo of a person without a profile photo becomes it and takes no allowance.
+  const allowance: GalleryAllowance = { used, limit, planName: from.name, sentence, canAdd: decision.ok || !hasProfilePhoto };
   let upgrade: UpgradeOffer | null = null;
-  // Only at the real limit (plan §5.6): the allowance is used up and a higher plan of the pilot
-  // gives more; its benefits are only the features available now (upgradeBenefits).
-  if (!decision.ok && decision.code === 'quota' && decision.grantedBy && limit !== null) {
+  // Only at the real limit (plan §5.6): the allowance is used up, or the plan has no gallery, and
+  // a higher plan of the pilot gives more; its benefits are only the features available now
+  // (upgradeBenefits).
+  if (!decision.ok && hasProfilePhoto && decision.grantedBy && limit !== null) {
     const to = planSummary(decision.grantedBy);
     const text = offerText('photos', used, limit, from, to);
     upgrade = {
@@ -268,7 +278,7 @@ export async function getGallery(principal: Principal | null, raw: z.input<typeo
   if (!isPublic && !isOwn && !staff) throw notFound();
   const photos = (await galleryRows(db, row.id)).map(galleryPhotoDto);
   const displayName = await primaryName(db, row.id);
-  const owner = isOwn ? await allowanceOf(db, principal!.user.id) : null;
+  const owner = isOwn ? await allowanceOf(db, principal!.user.id, photos.some((photo) => photo.isProfile)) : null;
   return {
     // The public part through its schema, which keeps nothing else.
     ...toPublicGallery({ personId: row.id, slug: row.slug, displayName, photos }),
@@ -339,53 +349,59 @@ async function addToGallery(
   let added: GalleryRow;
   try {
     await putRenditions(store, key, rendered);
-    const outcome = await getDb().transaction(async (tx) =>
+    const subject = { kind: 'user' as const, userId: p.user.id };
+    const outcome = await getDb().transaction(async (tx): Promise<{ ok: true; value: GalleryRow } | Extract<EntitlementDecision, { ok: false }>> => {
       // DEFAULT D07: every photo of the gallery counts against 'photos' (no unit: a new photo never
-      // replaces one); the count and the write share the quota lock.
-      withQuota(tx, { kind: 'user', userId: p.user.id }, 'photos', async () => {
-        await lockOwn(tx, p.user.id, own.id);
-        const [current] = await tx
-          .select({ photoId: person.photoId })
-          .from(person)
-          .innerJoin(personPhoto, and(eq(personPhoto.id, person.photoId), eq(personPhoto.status, 'active')))
-          .where(eq(person.id, own.id));
-        const asProfile = !current;
-        const last = await tx.execute(
-          sql`SELECT COALESCE(MAX(position), -1) + 1 AS p FROM person_photo WHERE person_id = ${own.id}::uuid AND status IN ('active', 'gallery')`,
-        );
-        const position = Number(last.rows[0]?.p ?? 0);
-        const now = new Date();
-        const values = {
-          id,
-          personId: own.id,
-          storageKey: key,
-          sha256: content,
-          originalSha256: sha256(bytes),
-          width: rendered.side,
-          height: rendered.side,
-          fullWidth: rendered.full.width,
-          fullHeight: rendered.full.height,
-          sizeBytes: large.byteLength,
-          caption: text,
-          position,
-          status: asProfile ? ('active' as const) : ('gallery' as const),
-          uploadedByUserId: p.user.id,
-        };
-        await tx.insert(personPhoto).values(values);
-        if (asProfile) await tx.update(person).set({ photoId: id, updatedAt: now }).where(eq(person.id, own.id));
-        await writeAudit(tx, {
-          action: 'gallery.add',
-          actorUserId: p.user.id,
-          actorRole: p.user.role,
-          subjectType: 'person',
-          subjectId: own.id,
-          after: { photoId: id, side: rendered.side, sizeBytes: large.byteLength, sha256: content, profile: asProfile },
-          requestId: meta.requestId,
-          ipHmac: meta.ipHmac,
-        });
-        return { ...values, status: values.status as string } satisfies GalleryRow;
-      }),
-    );
+      // replaces one); the count and the write share the quota lock (the order of withQuota). Owner
+      // decision 2026-11-18 (docs/adr/0044-premium-student.md): the first photo of a person
+      // without a profile photo becomes the profile photo, which never counts, so it takes no quota.
+      await lockQuota(tx, subject, 'photos');
+      await lockOwn(tx, p.user.id, own.id);
+      const [current] = await tx
+        .select({ photoId: person.photoId })
+        .from(person)
+        .innerJoin(personPhoto, and(eq(personPhoto.id, person.photoId), eq(personPhoto.status, 'active')))
+        .where(eq(person.id, own.id));
+      const asProfile = !current;
+      if (!asProfile) {
+        const decision = await requireEntitlement(subject, 'photos', { db: tx });
+        if (!decision.ok) return decision;
+      }
+      const last = await tx.execute(
+        sql`SELECT COALESCE(MAX(position), -1) + 1 AS p FROM person_photo WHERE person_id = ${own.id}::uuid AND status IN ('active', 'gallery')`,
+      );
+      const position = Number(last.rows[0]?.p ?? 0);
+      const now = new Date();
+      const values = {
+        id,
+        personId: own.id,
+        storageKey: key,
+        sha256: content,
+        originalSha256: sha256(bytes),
+        width: rendered.side,
+        height: rendered.side,
+        fullWidth: rendered.full.width,
+        fullHeight: rendered.full.height,
+        sizeBytes: large.byteLength,
+        caption: text,
+        position,
+        status: asProfile ? ('active' as const) : ('gallery' as const),
+        uploadedByUserId: p.user.id,
+      };
+      await tx.insert(personPhoto).values(values);
+      if (asProfile) await tx.update(person).set({ photoId: id, updatedAt: now }).where(eq(person.id, own.id));
+      await writeAudit(tx, {
+        action: 'gallery.add',
+        actorUserId: p.user.id,
+        actorRole: p.user.role,
+        subjectType: 'person',
+        subjectId: own.id,
+        after: { photoId: id, side: rendered.side, sizeBytes: large.byteLength, sha256: content, profile: asProfile },
+        requestId: meta.requestId,
+        ipHmac: meta.ipHmac,
+      });
+      return { ok: true, value: { ...values, status: values.status as string } satisfies GalleryRow };
+    });
     if (!outcome.ok) {
       throw new ServiceError('ENTITLEMENT_REQUIRED', GALLERY_FULL_MESSAGE, { file: GALLERY_FULL_MESSAGE }, { entitlement: { ...outcome, key: 'photos' } });
     }

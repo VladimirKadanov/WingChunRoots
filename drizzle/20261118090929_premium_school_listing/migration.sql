@@ -1,0 +1,1 @@
+ALTER TABLE "person" ADD COLUMN "school_listing" boolean DEFAULT false NOT NULL;

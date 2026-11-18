@@ -16,7 +16,7 @@ import * as z from 'zod';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
-import { EXPLORE_START_TAG, invalidatePublic, lineageTag, personTag } from '../cache';
+import { EXPLORE_START_TAG, invalidatePublic, lineageTag, personTag, SCHOOLS_TAG } from '../cache';
 import { getDb } from '../db';
 import { lineage, person, personBio, personName, place, teachingRelationship } from '../db/schema';
 import { ROMANIZATIONS } from '../db/schema/common';
@@ -78,6 +78,8 @@ export const profileUpdateInput = z.object({
     .optional(),
   // Required: an API client that leaves it out must not unpublish the profile by accident.
   showPublicly: z.boolean({ error: 'Say whether your profile is public.' }),
+  /** ADR 0044: "List me on my school's page" (off by default); left out keeps the saved choice. */
+  listOnSchoolPage: z.boolean().optional(),
 });
 export type ProfileUpdateInput = z.input<typeof profileUpdateInput>;
 
@@ -166,6 +168,8 @@ export interface OwnProfile {
   countryCode: string | null;
   placeId: string | null;
   trainingStartYear: number | null;
+  /** ADR 0044: the box "List me on my school's page" (off by default). */
+  listOnSchoolPage: boolean;
 }
 
 export interface ProfileOptions {
@@ -195,6 +199,7 @@ async function ownProfile(db: Executor, userId: string): Promise<OwnProfile | nu
       countryCode: person.countryCode,
       placeId: person.placeId,
       trainingStartYear: person.trainingStartYear,
+      schoolListing: person.schoolListing,
     })
     .from(person)
     .where(and(eq(person.claimedByUserId, userId), isNull(person.deletedAt)));
@@ -217,6 +222,7 @@ async function ownProfile(db: Executor, userId: string): Promise<OwnProfile | nu
     countryCode: row.countryCode,
     placeId: row.placeId,
     trainingStartYear: row.trainingStartYear,
+    listOnSchoolPage: row.schoolListing,
   };
 }
 
@@ -384,6 +390,7 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
         countryCode: person.countryCode,
         placeId: person.placeId,
         trainingStartYear: person.trainingStartYear,
+        schoolListing: person.schoolListing,
       })
       .from(person)
       // Only a self-stewarded record: one kept by the archive is corrected in the review queue (M10a).
@@ -421,9 +428,10 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       if (bioBody) await tx.insert(personBio).values({ personId: own.id, lang: bioLang, body: bioBody });
     }
 
+    const schoolListing = input.listOnSchoolPage ?? own.schoolListing;
     await tx
       .update(person)
-      .set({ countryCode, placeId, trainingStartYear })
+      .set({ countryCode, placeId, trainingStartYear, schoolListing })
       .where(eq(person.id, own.id));
     const visibilityChanged = await setOwnVisibility(tx, p, own, input.showPublicly, meta);
 
@@ -443,6 +451,7 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
         placeId: own.placeId,
         trainingStartYear: own.trainingStartYear,
         visibility: own.visibility,
+        schoolListing: own.schoolListing,
       },
       after: {
         names: shape(names),
@@ -452,11 +461,15 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
         placeId,
         trainingStartYear,
         visibility: visibilityChanged ? (input.showPublicly ? 'public' : 'involved_only') : own.visibility,
+        schoolListing,
       },
       requestId: meta.requestId,
       ipHmac: meta.ipHmac,
     });
-    return { personId: own.id, visibilityChanged, tags: await neighbourTags(tx, own.id, { ancestors: visibilityChanged }) };
+    const tags = await neighbourTags(tx, own.id, { ancestors: visibilityChanged });
+    // A new member of a school's page is not on that page's tags yet (ADR 0044): drop the schools.
+    if (schoolListing !== own.schoolListing || visibilityChanged) tags.push(SCHOOLS_TAG);
+    return { personId: own.id, visibilityChanged, tags };
   });
 
   invalidatePublic(outcome.tags, 'procedure');

@@ -36,6 +36,7 @@ const values = (patch: Partial<ProfileFormValues> = {}): ProfileFormValues => ({
   placeId: '',
   trainingStartYear: '',
   showPublicly: false,
+  listOnSchoolPage: false,
   ...patch,
 });
 
@@ -130,6 +131,7 @@ describe('shownFormValues (what the fields hold when the editor hydrates)', () =
       placeId: '',
       trainingStartYear: '',
       showPublicly: false,
+      listOnSchoolPage: false,
     });
   });
 

@@ -138,7 +138,9 @@ export function GalleryManager({ view }: { view: GalleryView }) {
         <p id={hintId} className="max-w-[60ch] text-sm text-fg-muted">
           {canAdd
             ? `JPEG, PNG or WebP, up to ${MAX_MB} MB. Its location and camera details are removed. Your first photo becomes your profile photo.`
-            : 'Your plan’s photos are all in use. Remove a photo to add another.'}
+            : view.allowance?.limit === 0
+              ? 'Change your profile photo on your profile page. A gallery comes with a higher plan.'
+              : 'Your plan’s gallery photos are all in use. Remove a photo to add another.'}
         </p>
         <StatusLine status={status} testId="gallery-status" />
       </section>

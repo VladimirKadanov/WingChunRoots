@@ -668,6 +668,9 @@
                   },
                   "showPublicly": {
                     "type": "boolean"
+                  },
+                  "listOnSchoolPage": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -11633,6 +11636,105 @@
                         "additionalProperties": false
                       }
                     },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "lang": {
+                                "type": "string"
+                              },
+                              "script": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "lang",
+                              "script"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "original": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "value": {
+                                    "type": "string"
+                                  },
+                                  "lang": {
+                                    "type": "string"
+                                  },
+                                  "script": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "value",
+                                  "lang",
+                                  "script"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "full": {
+                            "type": "boolean"
+                          },
+                          "photo": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "small": {
+                                    "type": "string"
+                                  },
+                                  "large": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "small",
+                                  "large"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rank": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "displayName",
+                          "original",
+                          "full",
+                          "photo",
+                          "rank"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "schedule": {
                       "type": "array",
                       "items": {
@@ -11699,6 +11801,7 @@
                     "instructors",
                     "logo",
                     "photos",
+                    "members",
                     "schedule",
                     "timezone",
                     "fees",

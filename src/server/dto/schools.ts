@@ -74,6 +74,21 @@ export const schoolPageInstructorSchema = schoolInstructorRefSchema.extend({
   photo: photoSchema.nullable().optional(),
 });
 
+/**
+ * ADR 0044: a member listed on the school's page, by their own choice ("List me on my school's
+ * page") and only while public. The plan decides how much shows: `full` adds the profile photo and
+ * the current public rank (Premium Student, Professional Sifu); otherwise the name alone.
+ */
+export const schoolMemberSchema = z.object({
+  slug: z.string(),
+  displayName: searchNameSchema,
+  original: searchNameSchema.nullable(),
+  full: z.boolean(),
+  photo: photoSchema.nullable(),
+  rank: z.string().nullable(),
+});
+export type SchoolMemberDto = z.infer<typeof schoolMemberSchema>;
+
 export const schoolScheduleSlotSchema = z.object({
   /** ISO weekday: 1 is Monday. */
   weekday: z.number().int().min(1).max(7),
@@ -105,6 +120,8 @@ export const schoolPageSchema = z.object({
    */
   logo: schoolLogoSchema.nullable(),
   photos: z.array(galleryPhotoSchema),
+  /** ADR 0044: the members listed on the page, the fuller listings first. */
+  members: z.array(schoolMemberSchema),
   /**
    * M21 (docs/adr/0024-trial-lessons.md): the weekly schedule, by day and time, as wall-clock times
    * ("HH:MM") in `timezone`, the zone of the school's city; the fees as the school wrote them, and

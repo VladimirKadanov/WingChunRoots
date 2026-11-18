@@ -115,11 +115,12 @@ async function premium(userId: string) {
 }
 
 describe('gallery.add and the allowance (DEFAULT D07)', () => {
-  it('the first photo becomes the profile photo; at the Free Student limit the next one is refused with the upgrade prompt', async () => {
+  it('the first photo becomes the profile photo and never counts (ADR 0044); Free Student has no gallery, so the next one is refused with the upgrade prompt', async () => {
     const owner = await member('gallery-free');
     const subject = { kind: 'user' as const, userId: owner.account.id };
     const before = await getOwnGallery(owner.principal);
-    expect(before.allowance).toMatchObject({ used: 0, limit: 1, canAdd: true });
+    // No profile photo yet: the first photo may be added, as the profile photo.
+    expect(before.allowance).toMatchObject({ used: 0, limit: 0, canAdd: true });
     expect(before.upgrade).toBeNull();
 
     const first = await addGalleryPhoto(owner.principal, { file: await image(), caption: '  A demo   caption ' }, meta);
@@ -129,7 +130,7 @@ describe('gallery.add and the allowance (DEFAULT D07)', () => {
     expect(row).toMatchObject({ status: 'active', position: 0, fullWidth: 160, fullHeight: 120 });
     expect(await photoIdOf(owner.personId)).toBe(row!.id);
     expect(filesIn(photoRoot)).toEqual(expect.arrayContaining([`${row!.storageKey}/96`, `${row!.storageKey}/512`, `${row!.storageKey}/full`]));
-    expect(await currentUse(getDb(), subject, 'photos')).toBe(1);
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(0);
 
     // At the limit: refused, nothing stored, and the prompt names a plan that gives more now.
     const files = filesIn(photoRoot).length;
@@ -137,12 +138,13 @@ describe('gallery.add and the allowance (DEFAULT D07)', () => {
     expect(filesIn(photoRoot).length).toBe(files);
     expect(await rowsOf(owner.personId)).toHaveLength(1);
     const full = await getOwnGallery(owner.principal);
-    expect(full.allowance).toMatchObject({ used: 1, limit: 1, canAdd: false });
+    expect(full.allowance).toMatchObject({ used: 0, limit: 0, canAdd: false });
+    expect(full.allowance!.sentence).toBe('Free Student includes your profile photo only. It is free and never counts.');
     expect(full.upgrade).not.toBeNull();
     expect(JSON.stringify(full.upgrade)).toContain('Premium Student');
   });
 
-  it('with a higher plan from an admin grant the gallery grows; every photo counts and evidence never does (DEFAULT D13)', async () => {
+  it('with a higher plan from an admin grant the gallery grows; every photo besides the profile photo counts and evidence never does (DEFAULT D13)', async () => {
     const owner = await member('gallery-premium');
     await premium(owner.account.id);
     const subject = { kind: 'user' as const, userId: owner.account.id };
@@ -157,13 +159,14 @@ describe('gallery.add and the allowance (DEFAULT D07)', () => {
       ['gallery', 1],
       ['gallery', 2],
     ]);
-    expect(await currentUse(getDb(), subject, 'photos')).toBe(3);
+    // ADR 0044: the profile photo never counts.
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(2);
     const view = await getOwnGallery(owner.principal);
-    expect(view.allowance).toMatchObject({ used: 3, limit: 10, canAdd: true });
+    expect(view.allowance).toMatchObject({ used: 2, limit: 10, canAdd: true });
     expect(view.upgrade).toBeNull();
-    // Replacing the profile photo through M14's photos.upload still counts as the same one.
+    // Replacing the profile photo through M14's photos.upload counts nothing.
     await uploadPhoto(owner.principal, { file: await image() }, meta);
-    expect(await currentUse(getDb(), subject, 'photos')).toBe(3);
+    expect(await currentUse(getDb(), subject, 'photos')).toBe(2);
     expect(filesIn(evidenceRoot)).toEqual([]);
     expect(await actionsOf(owner.personId)).toEqual(['gallery.add', 'gallery.add', 'gallery.add', 'photo.upload']);
   });
@@ -224,7 +227,8 @@ describe('caption, order and profile photo', () => {
     expect(statuses).toEqual({ [a.id]: 'gallery', [b.id]: 'gallery', [c.id]: 'active' });
     expect((await personProfile(null, { slug: owner.slug })).photo?.small).toBe(c.small);
     expect(await codeOf(setProfilePhoto(other.principal, { photoId: a.id }, meta))).toBe('NOT_FOUND');
-    expect(await currentUse(getDb(), { kind: 'user', userId: owner.account.id }, 'photos')).toBe(3);
+    // ADR 0044: two gallery photos besides the profile photo; choosing another profile photo changes nothing.
+    expect(await currentUse(getDb(), { kind: 'user', userId: owner.account.id }, 'photos')).toBe(2);
     expect(await actionsOf(owner.personId)).toEqual(['gallery.add', 'gallery.add', 'gallery.add', 'gallery.update', 'gallery.update', 'gallery.reorder', 'gallery.profile']);
   });
 });
@@ -239,7 +243,8 @@ describe('gallery.remove', () => {
     expect((await removeGalleryPhoto(owner.principal, { photoId: b.id }, meta)).removed).toBe(true);
     expect(filesIn(photoRoot).some((f) => f.startsWith(`${rowB!.storageKey}/`))).toBe(false);
     expect(await openPhoto(owner.principal, addressOf(b.full))).toBeNull();
-    expect(await currentUse(getDb(), { kind: 'user', userId: owner.account.id }, 'photos')).toBe(1);
+    // Only the profile photo is left, which never counts (ADR 0044).
+    expect(await currentUse(getDb(), { kind: 'user', userId: owner.account.id }, 'photos')).toBe(0);
     await removeGalleryPhoto(owner.principal, { photoId: a.id }, meta);
     expect(await photoIdOf(owner.personId)).toBeNull();
     expect((await personProfile(null, { slug: owner.slug })).photo).toBeNull();

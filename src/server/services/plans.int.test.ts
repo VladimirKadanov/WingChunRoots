@@ -143,7 +143,9 @@ describe('plans.catalog and plans.mine', () => {
     // M19 (owner's choice 2026-11-07, docs/adr/0022-passport.md): and the training passport.
     // M21 (docs/adr/0024-trial-lessons.md): and the school schedule and weekly statistics.
     // M25 (docs/adr/0028-governance.md): and the digital successor.
-    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'school_business', 'passport', 'successor', 'events']);
+    // ADR 0044 (owner decision 2026-11-18): and the school members page; the videos row is hidden.
+    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'school_members', 'school_business', 'passport', 'successor', 'events']);
+    expect(features.map((f) => f.key)).not.toContain('videos');
   });
 
   it('plans.mine needs a session; a new account is a Student on Free Student', async () => {

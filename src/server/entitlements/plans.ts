@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-11.1';
+export const PLAN_MATRIX_VERSION = '2026-11-18.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -80,7 +80,7 @@ export const PLANS: Readonly<Record<PlanCode, PlanDefinition>> = {
     rank: 1,
     availability: 'now',
     price: proposal(4),
-    summary: 'A full training passport, more photos and notices of your teachers’ events; videos once they arrive.',
+    summary: 'A full training passport, a photo gallery and notices of your teachers’ events.',
   },
   free_sifu: {
     code: 'free_sifu',
@@ -128,6 +128,7 @@ export const FEATURE_KEYS = [
   'claim_teachers',
   'approve_students',
   'school_map',
+  'school_members',
   'school_business',
   'passport',
   'successor',
@@ -189,6 +190,11 @@ export interface FeatureDefinition {
   upgradeHeading?: string;
   /** A short note for /plans, where the plain values need one. */
   note?: string;
+  /**
+   * Left out of /plans and the API catalog (an owner decision keeps the row of specification §3.1
+   * but does not offer it yet): never part of an upgrade prompt either.
+   */
+  hidden?: true;
   values: Readonly<Record<PlanCode, FeatureValue>>;
 }
 
@@ -255,19 +261,19 @@ export const FEATURES: readonly FeatureDefinition[] = [
     availability: 'now',
     phase: null,
     enforced: true,
-    unit: { one: 'photo', many: 'photos', verb: 'added' },
-    upgradeHeading: 'More photos with {plan}',
-    note: 'The profile photo is one of your photos. Evidence you send for review is private and never counts.',
-    // DEFAULT D07: these allowances. M14: the one current profile photo of a person counts as 1
-    // (withQuota in src/server/services/photos.ts); replacing it adds nothing. M16: every photo of
-    // the person's gallery counts (src/server/services/gallery.ts), never an evidence file (DEFAULT
-    // D13) and never a school's logo or room photos (their own limit). Federation's "unlimited" is
-    // no limit in the pilot.
+    unit: { one: 'gallery photo', many: 'gallery photos', verb: 'added' },
+    upgradeHeading: 'A photo gallery with {plan}',
+    note: 'Your profile photo is free on every plan and never counts. Evidence you send for review is private and never counts.',
+    // DEFAULT D07: these allowances. Owner decision 2026-11-18 (docs/adr/0044-premium-student.md):
+    // the profile photo never counts, on any plan; the allowance is the photos of the gallery
+    // besides it (src/server/services/gallery.ts), never an evidence file (DEFAULT D13) and never a
+    // school's logo or room photos (their own limit). Free Student has the profile photo only.
+    // Federation's "unlimited" is no limit in the pilot.
     values: {
-      free_student: quota('1', '1 photo', 1),
-      premium_student: quota('10', '10 photos', 10),
-      free_sifu: quota('2', '2 photos', 2),
-      pro_sifu: quota('100', '100 photos', 100),
+      free_student: { source: 'Profile photo only', label: 'Profile photo only', included: false, limit: 0 },
+      premium_student: quota('10', '10 gallery photos', 10),
+      free_sifu: quota('2', '2 gallery photos', 2),
+      pro_sifu: quota('100', '100 gallery photos', 100),
       federation: quota('Unlimited in source', 'Unlimited, with limits still to be defined', null),
     },
   },
@@ -279,6 +285,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     phase: 2,
     enforced: false,
     unit: { one: 'video', many: 'videos', verb: 'added' },
+    // Owner decision 2026-11-18 (docs/adr/0044-premium-student.md): not offered for now, so the row
+    // is kept but hidden; videos will later be embedded links only, never uploads.
+    hidden: true,
     // DEFAULT D07: recorded here, enforced with the media of Phase 2.
     values: {
       free_student: quota('0', 'No videos', 0),
@@ -337,6 +346,26 @@ export const FEATURES: readonly FeatureDefinition[] = [
       free_sifu: text('No school pin', 'No school pin', false),
       pro_sifu: text('Active school pin', 'Public pin for your school'),
       federation: text('Organization heatmap and school network'),
+    },
+  },
+  {
+    key: 'school_members',
+    source: 'School members page',
+    label: 'Your school’s members page',
+    // Owner decision 2026-11-18 (docs/adr/0044-premium-student.md): a member who chooses "List me
+    // on my school's page" (off by default) and whose profile is public is listed on the public
+    // page of the school where they train; the plan decides how (src/server/services/schools.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'Your photo and rank on your school’s page with {plan}',
+    note: 'You choose to be listed (off by default), and only while your profile is public. Every listed member shows by name; the higher plans add the photo and current rank.',
+    values: {
+      free_student: { source: 'Name only', label: 'Your name', included: false, neutral: true },
+      premium_student: text('Name, photo and rank', 'Your name, photo and rank'),
+      free_sifu: { source: 'Name only', label: 'Your name', included: false, neutral: true },
+      pro_sifu: text('Name, photo and rank', 'Your name, photo and rank'),
+      federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
     },
   },
   {
