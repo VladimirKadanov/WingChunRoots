@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { ErrorPanel } from '@/components/lineage/states';
 import { ChevronDownIcon, SearchIcon } from '@/components/icons';
 import { Finder } from '@/components/schools/finder';
+import { SchoolEmpty } from '@/components/schools/school-empty';
 import { SchoolList, summaryText } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -247,9 +248,7 @@ export default async function SchoolsPage({ searchParams }: Props) {
             {result.schools.length > 0 ? (
               <SchoolList schools={result.schools} className="mt-2" />
             ) : (
-              <p className="py-4 text-fg-muted" data-testid="school-empty">
-                No public school matches this search. Try a larger radius, another place or all lineages.
-              </p>
+              <SchoolEmpty />
             )}
           </section>
         ) : (

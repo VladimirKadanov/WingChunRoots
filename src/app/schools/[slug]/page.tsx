@@ -220,7 +220,21 @@ export default async function SchoolPage({ params }: Props) {
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-fg-muted">No instructor of this school has a public profile yet.</p>
+            <div className="mt-2 grid gap-1" data-testid="school-no-instructors">
+              <p className="text-fg-muted">No instructor of this school has a public profile yet.</p>
+              <p className="text-sm text-fg-muted">
+                {contacts.length > 0 ? (
+                  <>
+                    To ask who teaches here,{' '}
+                    <a href="#school-contact" className="link inline-flex min-h-11 items-center">
+                      contact the school
+                    </a>
+                    .{' '}
+                  </>
+                ) : null}
+                Teach here? The head instructor lists instructors from the students they confirmed.
+              </p>
+            </div>
           )}
         </section>
 

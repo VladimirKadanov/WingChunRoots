@@ -1,13 +1,15 @@
 // Home page (M00b, completed in M13; plan §5.5): the mission through a living lineage, the ways in
 // (the search palette, the explorer, the school finder, signing up and in), how verification works
 // and a featured lineage. All people and halls here are fictional demo content (DEFAULT D20).
-// The page reads no session, so it is the same for everyone and prerendered: the account links
-// are for visitors, and a signed-in member reaches the dashboard from the shell's Me tab.
+// The page is prerendered and the same for everyone except its account line, which streams in per
+// request (src/components/home/home-account.tsx): a member gets "Open your dashboard" instead of
+// the sign-up buttons (owner request 2026-11-17).
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { BrandSeal } from '@/components/brand/brand-mark';
-import { ArrowRightIcon, LineageIcon, LockIcon, SchoolsIcon } from '@/components/icons';
+import { HomeAccountLine, VisitorAccountLine } from '@/components/home/home-account';
+import { ArrowRightIcon, LineageIcon, LockIcon, PinIcon } from '@/components/icons';
 import { DEMO_HALL, DEMO_LINE } from '@/components/home/demo-lineage';
 import { HALL_TREE_KINDS, HALL_TREE_STATS, HallTree, HallTreeKey } from '@/components/home/hall-tree';
 import { HomeSearch } from '@/components/home/home-search';
@@ -132,7 +134,7 @@ export default function HomePage() {
                 href="/schools"
                 className="flex min-h-14 items-center gap-3 rounded-sm border border-border-subtle bg-surface-1 px-4 py-3 text-fg transition-colors duration-(--duration-fast) hover:border-fg-muted"
               >
-                <SchoolsIcon size={22} className="shrink-0 text-fg-muted" />
+                <PinIcon size={22} className="shrink-0 text-fg-muted" />
                 <span className="grid min-w-0 flex-1">
                   <span className="font-medium">Find a school</span>
                   <span className="text-sm text-fg-muted">The map, a radius and a lineage filter</span>
@@ -141,17 +143,9 @@ export default function HomePage() {
               </Link>
             </li>
           </ul>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-border-subtle pt-4">
-            <p className="text-sm text-fg-muted">Trained with someone? Add your link to the record.</p>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/sign-up" className={buttonVariants({ variant: 'primary' })}>
-                Create an account
-              </Link>
-              <Link href="/sign-in" className={buttonVariants({ variant: 'secondary' })}>
-                Sign in
-              </Link>
-            </div>
-          </div>
+          <Suspense fallback={<VisitorAccountLine />}>
+            <HomeAccountLine />
+          </Suspense>
         </div>
       </section>
 

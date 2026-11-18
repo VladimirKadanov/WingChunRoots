@@ -12,7 +12,7 @@ import { redirect } from 'next/navigation';
 import { authMessage } from '@/components/account/messages';
 import { emailValue, keepValues, looksLikeEmail, textValue } from '@/lib/form-data';
 import type { FormState } from '@/lib/form-state';
-import { isInvitationPath } from '@/lib/invitation-path';
+import { ridesInConfirmationLink } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { confirmationEmail } from '@/server/auth/tokens';
 import { authAction } from '@/server/auth/web';
@@ -83,7 +83,7 @@ async function resendConfirmation(form: FormData, next: string): Promise<FormSta
   }
   // Without the session: a signed-in visitor asking for any address gets the same neutral answer
   // (with a session, Better Auth answers EMAIL_MISMATCH or EMAIL_ALREADY_VERIFIED instead).
-  const callback = isInvitationPath(next) ? { callbackURL: next } : {};
+  const callback = ridesInConfirmationLink(next) ? { callbackURL: next } : {};
   const result = await authAction('/send-verification-email', { body: { email, ...callback }, anonymous: true });
   if (!result.ok) return { status: 'error', message: authMessage(result.code), values };
   // The same answer for every address (no account enumeration).

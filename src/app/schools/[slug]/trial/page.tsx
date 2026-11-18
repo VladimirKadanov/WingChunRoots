@@ -87,7 +87,8 @@ export default async function TrialRequestPage({ params, searchParams }: Props) 
             </Link>
           ) : null}
           {options.state === 'no_profile' ? (
-            <Link href="/onboarding" className={buttonVariants({ variant: 'secondary' })}>
+            // Onboarding comes back here, with the request form (its `next`).
+            <Link href={`/onboarding?next=${encodeURIComponent(page)}`} className={buttonVariants({ variant: 'secondary' })}>
               Set up your profile
             </Link>
           ) : null}

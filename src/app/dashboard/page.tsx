@@ -36,6 +36,7 @@ import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { DashboardOverview, PersonRef } from '@/server/services/dashboard';
+import type { NextStep } from '@/server/services/next-steps';
 import { requestPilotAccessAction } from './actions';
 import { Notifications, NotificationsProvider, UnreadLink } from './notifications';
 
@@ -251,6 +252,67 @@ const VERIFY_FOR_DASHBOARD = '/account/security?next=%2Fdashboard';
  * Only in a session that proved the second factor (review round 2, recheck-1): before that the
  * section names no number and leads to /account/security, which comes back here.
  */
+/**
+ * "Next steps" (docs/adr/0039-member-navigation.md): the few things a new account still has to do,
+ * in order, with the first open one as the button. Done steps show a tick and the word "Done", so
+ * the state is never colour alone. The card disappears once every step is done.
+ */
+function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
+  const done = steps.filter((step) => step.done).length;
+  const first = steps.find((step) => !step.done)!;
+  return (
+    <section aria-labelledby="next-steps-heading" data-testid="next-steps" className="grid gap-4 rounded-sm border border-border-subtle bg-surface-2 px-4 py-4 sm:px-5">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 id="next-steps-heading" className="font-display text-2xl">
+          {sifu ? 'Get set up to teach' : 'Get started'}
+        </h2>
+        <p className="text-sm text-fg-muted">
+          {done} of {steps.length} done
+        </p>
+      </header>
+      <ol className="grid gap-3">
+        {steps.map((step, index) => (
+          <li key={step.key} data-testid={`next-step-${step.key}`} data-done={step.done ? 'true' : 'false'} className="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              className={cx(
+                'mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold',
+                step.done ? 'border-verified bg-verified text-on-verified' : 'border-border-strong text-fg',
+              )}
+            >
+              {step.done ? '✓' : index + 1}
+            </span>
+            <span className="grid gap-0.5">
+              <span className={cx('text-ui', step === first && 'font-semibold')}>
+                {step.label}
+                {step.done ? <span className="text-fg-muted"> · Done</span> : null}
+              </span>
+              {step.done ? null : <span className="text-sm text-fg-muted">{step.hint}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <Link href={first.href} className={cx(buttonVariants({ variant: 'primary', size: 'lg' }), 'justify-self-start')}>
+        {first.label}
+        <ArrowRightIcon />
+      </Link>
+    </section>
+  );
+}
+
+/** For a student with a profile: where to say that they teach (the account type lives in Settings, Plan and billing). */
+function TeachPrompt() {
+  return (
+    <p data-testid="teach-prompt" className="max-w-[56ch] text-sm text-fg-muted">
+      Do you teach Wing Chun?{' '}
+      <Link href="/account/plan" className="link">
+        Switch to a Sifu account
+      </Link>{' '}
+      to accept students, list schools and publish events.
+    </p>
+  );
+}
+
 function StaffWork({ staff }: { staff: NonNullable<DashboardOverview['staff']> }) {
   const open = staff.openPilotRequests;
   return (
@@ -350,48 +412,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
               </dd>
             </div>
           </dl>
-          <p className="mt-4 flex flex-wrap gap-x-5 text-sm">
-            {staffOnly ? null : (
-              <Link href="/dashboard/teachers" className="link inline-flex min-h-11 items-center">
-                Your teachers
-              </Link>
-            )}
-            {/* M19: the own training passport. */}
-            {staffOnly ? null : (
-              <Link href="/dashboard/passport" className="link inline-flex min-h-11 items-center" data-testid="dashboard-passport">
-                Training passport
-              </Link>
-            )}
-            {/* M21: the trial lesson requests the account sent. */}
-            {staffOnly ? null : (
-              <Link href="/dashboard/trial-lessons" className="link inline-flex min-h-11 items-center" data-testid="dashboard-trial-lessons">
-                Trial lesson requests
-              </Link>
-            )}
-            <Link href="/dashboard/settings" className="link inline-flex min-h-11 items-center">
-              Account type and plan
-            </Link>
-            {/* M10b: a Sifu not verified yet sends instructor evidence here (DEFAULT D04/D13). */}
-            {sifu && overview.instructor.status !== 'verified' ? (
-              <Link href="/dashboard/instructor" className="link inline-flex min-h-11 items-center">
-                Instructor verification
-              </Link>
-            ) : null}
-            {/* M10b: the account's profile claims, instructor verifications and disputes (cases.mine). */}
-            {staffOnly ? null : (
-              <Link href="/dashboard/cases" className="link inline-flex min-h-11 items-center">
-                Your cases
-              </Link>
-            )}
-            {/* M25: the digital successor (nominations given and received, succession requests). */}
-            {staffOnly ? null : (
-              <Link href="/dashboard/succession" className="link inline-flex min-h-11 items-center" data-testid="dashboard-succession">
-                Digital successor
-              </Link>
-            )}
-            <Link href="/account" className="link inline-flex min-h-11 items-center">
-              Account and security
-            </Link>
+          <p className="mt-3 flex flex-wrap gap-x-5 text-sm">
             <Link href="/plans" className="link inline-flex min-h-11 items-center">
               Compare plans
             </Link>
@@ -403,6 +424,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <div className="grid content-start gap-10">
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
+            {overview.nextSteps.length > 0 ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
+            {!sifu && !staffOnly && overview.hasProfile ? <TeachPrompt /> : null}
 
             {staffOnly ? (
               <p data-testid="staff-no-profile" className="max-w-[56ch] text-ui text-fg-muted">
@@ -415,20 +438,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             ) : overview.hasProfile ? null : overview.pendingClaimCaseId ? (
               // M10b: an invited teacher's claim waits for the reviewers; the profile comes with it.
               <div data-testid="pending-claim" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
-                <p className="text-ui">Your claim of the profile you were invited to is with the reviewers. When they approve it, the profile is yours.</p>
+                <p className="text-ui">Your claim of a profile is with the reviewers. When they approve it, the profile is yours.</p>
                 <Link href={`/dashboard/cases/${overview.pendingClaimCaseId}`} className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }))}>
                   See your claim
                 </Link>
               </div>
-            ) : (
-              <div className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
-                <p className="text-ui">Your profile is not set up yet. Add your name so teachers and students can find and confirm you.</p>
-                <Link href={ONBOARDING} className={cx(buttonVariants({ variant: 'primary', size: 'lg' }))}>
-                  Set up your profile
-                  <ArrowRightIcon />
-                </Link>
-              </div>
-            )}
+            ) : null /* No profile yet: "Next steps" above leads to onboarding. */}
 
             {staffOnly ? null : sifu ? (
               <SifuLists

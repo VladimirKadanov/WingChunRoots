@@ -89,7 +89,7 @@ export default async function RecordPage({ params, searchParams }: { params: Par
   if (history === 'missing' || history === 'not-shared') {
     return (
       <Frame slug={null}>
-        <Note testId="record-not-shared">This is not a shared archival record. A profile kept by its own person is corrected by them.</Note>
+        <Note testId="record-not-shared">This is not a shared archival record (a record the archive keeps because nobody has claimed it, or of a historical teacher). A profile kept by its own person is corrected by them.</Note>
       </Frame>
     );
   }

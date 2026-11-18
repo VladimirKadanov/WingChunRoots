@@ -460,18 +460,45 @@ async function personOf(email: string) {
   return rows.rows;
 }
 
+async function accountTypeOf(email: string) {
+  const rows = await getDb().execute<{ account_type: string }>(sql`SELECT account_type FROM auth_user WHERE email = ${email}`);
+  return rows.rows[0]?.account_type;
+}
+
+test('@M02 onboarding with "I teach" makes a Sifu account and goes back to the page that sent the member there', async ({ page }) => {
+  const account = await signInAs(page, 'new');
+  await page.goto(`/onboarding?next=${encodeURIComponent('/account/plan')}`);
+  await field(page, 'Name in Latin letters').fill('Demo Teaching Newcomer');
+  await page.getByRole('radio', { name: 'I teach' }).check();
+  await expect(page.getByText("Choosing it doesn't verify you as an instructor; you can send evidence later.")).toBeVisible();
+  await page.getByRole('button', { name: 'Save my profile' }).click();
+
+  await expect(page).toHaveURL(/\/account\/plan$/);
+  expect(await accountTypeOf(account.email)).toBe('sifu');
+  expect(await personOf(account.email)).toHaveLength(1);
+});
+
 test('@M02 onboarding creates a person linked to the account', async ({ page }) => {
   const account = await signInAs(page, 'new');
   await page.goto('/onboarding');
   const publicly = field(page, 'Show my profile publicly');
   await expect(publicly).not.toBeChecked();
+  // "I train" is chosen for a new (Student) account; "I teach" is not.
+  await expect(page.getByRole('group', { name: 'How do you take part?' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'I train' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'I teach' })).not.toBeChecked();
   await field(page, 'Name in Latin letters').fill('Demo Newcomer');
   await field(page, 'Country').selectOption({ label: 'Bulgaria' });
   await field(page, 'Year you started Wing Chun').fill('2015');
   await page.getByRole('button', { name: 'Save my profile' }).click();
 
-  await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Newcomer');
+  // Without a `next`, onboarding ends on the dashboard, as a normal sign-in does.
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(await accountTypeOf(account.email)).toBe('student');
+  await page.goto('/account');
+  // The account's overview of Settings (usability review 2026-11): the name heads its Profile section.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expect(page.getByTestId('account-name')).toHaveText('Demo Newcomer');
   await expect(page.getByText('Private.')).toBeVisible();
 
   const userId = await userIdOf(account.email);
@@ -479,9 +506,9 @@ test('@M02 onboarding creates a person linked to the account', async ({ page }) 
   expect(people).toHaveLength(1);
   expect(people[0]).toMatchObject({ stewardship: 'self', visibility: 'involved_only', claimed_by_user_id: userId });
 
-  // A second visit goes to the account page; the API refuses a second profile.
+  // A second visit goes to the dashboard; the API refuses a second profile.
   await page.goto('/onboarding');
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   const again = await page.request.post('/api/v1/account/onboard', {
     data: { primaryName: 'Demo Twice' },
     headers: { origin: BASE_URL },
@@ -494,7 +521,8 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await page.goto('/onboarding');
   await field(page, 'Name in Latin letters').fill('Demo Returning');
   await page.getByRole('button', { name: 'Save my profile' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
   const notice = page.getByRole('link', { name: 'Read and confirm' });
   await expect(notice).toHaveCount(0);
 
@@ -532,7 +560,11 @@ test('@M02 an account with a profile is asked again for a new version of the doc
   await expectNoAxeViolations(page, '/onboarding, documents only, with errors');
   await terms.check();
   await page.getByRole('button', { name: 'Confirm and continue' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  // Signed in without a `next`: the confirmation ends on the dashboard.
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expect(page.getByTestId('account-name')).toHaveText('Demo Returning');
   await expect(notice).toHaveCount(0);
 
   const versions = (await consentsOf(account.email)).filter((row) => row.kind === 'terms').map((row) => row.document_version);
@@ -562,12 +594,14 @@ test('@M02 onboarding requires a Latin-script primary name and stores an optiona
   await field(page, 'Jyutping').fill('sou1 zuk1 cing4');
   await page.getByRole('button', { name: 'Save my profile' }).click();
 
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto('/account');
   // The other spellings are listed under Profile.
   const chinese = page.locator('main dl [lang="zh-Hant"][translate="no"]', { hasText: '蘇竹晴' }).filter({ visible: true });
   await expect(chinese).toBeVisible();
-  // The heading is the name as the register shows it: Latin first, the original beside it.
-  const heading = page.locator('h1').filter({ visible: true });
+  // The name as the register shows it: Latin first, the original beside it (the page's heading
+  // until the usability review of 2026-11, the line that heads the Profile section since).
+  const heading = page.getByTestId('account-name').filter({ visible: true });
   await expect(heading.locator('[lang="und-Latn"][translate="no"]')).toHaveText('So Chuk-ching');
   await expect(heading.locator('[lang="zh-Hant"][translate="no"]')).toHaveText('蘇竹晴');
 
@@ -591,9 +625,10 @@ test.describe('at 390x844', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const targetsAtLeast44 = async () => {
       const small = await page.evaluate(() =>
-        [...document.querySelectorAll('main button, main input:not([type=hidden]), main select, main label:has(input[type=checkbox])')]
+        // A checkbox or radio is tapped through its label, which is the target that must be 44 px.
+        [...document.querySelectorAll('main button, main input:not([type=hidden]), main select, main label:has(input[type=checkbox]), main label:has(input[type=radio])')]
           .map((el) => ({ el, box: el.getBoundingClientRect() }))
-          .filter(({ box, el }) => box.width > 0 && box.height > 0 && !(el instanceof HTMLInputElement && el.type === 'checkbox'))
+          .filter(({ box, el }) => box.width > 0 && box.height > 0 && !(el instanceof HTMLInputElement && (el.type === 'checkbox' || (el.type === 'radio' && el.closest('label')))))
           .filter(({ box }) => box.height < 44 || box.width < 44)
           .map(({ el, box }) => `${el.tagName.toLowerCase()} ${Math.round(box.width)}x${Math.round(box.height)}`),
       );
@@ -664,8 +699,9 @@ test.describe('at 390x844', () => {
     await field(page, /^Original script/).selectOption('bg-Cyrl');
     await field(page, 'Name in the original script').fill('Мира Пробнова');
     await page.getByRole('button', { name: 'Save my profile' }).tap();
-    await expect(page).toHaveURL(/\/account$/);
-    const heading = page.locator('h1').filter({ visible: true });
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto('/account');
+    const heading = page.getByTestId('account-name').filter({ visible: true });
     await expect(heading.locator('[lang="bg-Cyrl"][translate="no"]')).toHaveText('Мира Пробнова');
     await expect(page.locator('main dl [lang="bg-Cyrl"][translate="no"]', { hasText: 'Мира Пробнова' }).filter({ visible: true })).toBeVisible();
     await noHorizontalScroll();
@@ -802,7 +838,7 @@ test('@M02 onboarding keeps the chosen script, country and city after a server e
   // Fixing only the year saves everything that was chosen.
   await field(page, 'Year you started Wing Chun').fill('2009');
   await page.getByRole('button', { name: 'Save my profile' }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   expect(await profileRow(account.email)).toEqual([{ country_code: 'HK', place: 'Hong Kong', training_start_year: 2009 }]);
 });
 
@@ -856,7 +892,11 @@ const FIRST_STEP = 'Add WingChunRoots to your authenticator app';
 test('@M02 two-factor setup survives a reload and asks to save the backup codes before it is done', async ({ page, browser }, testInfo) => {
   const account = await signInAs(page, 'new');
   await page.goto('/account/security');
-  await expect(page.getByRole('heading', { level: 1, name: 'Two-factor authentication' })).toBeVisible();
+  // Since the usability review of 2026-11: "Sign-in and security", a section of Settings whose
+  // section row marks it as the current page.
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign-in and security' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Sign-in & security' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('main').getByText(account.email, { exact: true })).toBeVisible();
   await expectSecurityPageClean(page, 'off');
   await field(page, 'Your password').fill(account.password);
   await page.getByRole('button', { name: 'Set up two-factor authentication' }).click();
