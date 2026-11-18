@@ -15,6 +15,9 @@ import { passportSchema } from '../dto/passport';
 import type { Principal } from '../auth/principal';
 import { accountOverview, landingInput, landingPath, onboard, onboardingOptions, onboardInput } from '../services/account';
 import { adminOverview } from '../services/admin';
+import { adminDashboard, adminNavCounts } from '../services/admin-dashboard';
+import { accountMenu } from '../services/account-menu';
+import { listAccounts, listAccountsInput } from '../services/account-directory';
 import { recordConsents, recordConsentsInput } from '../services/consent';
 import type { RequestMeta } from '../services/context';
 import { dashboardOverview } from '../services/dashboard';
@@ -391,6 +394,10 @@ const moderatorWithSecondFactor = base.use(({ context, next }) => {
 
 export const router = {
   account: {
+    // The shell's account menu (docs/adr/0035-control-panel.md): own name, address, role, unread count.
+    menu: signedIn
+      .route({ method: 'GET', path: '/account/menu', summary: "The signed-in account's menu: its own name, address, role and unread notifications" })
+      .handler(({ context }) => accountMenu(context.principal)),
     me: base
       .route({ method: 'GET', path: '/account/me', summary: 'The signed-in account, its own person and missing consents' })
       .handler(({ context }) => accountOverview(context.principal)),
@@ -453,6 +460,13 @@ export const router = {
       .handler(({ context, input }) => searchQuery(context.principal, input, context.meta)),
   },
   admin: {
+    // The control panel (docs/adr/0035-control-panel.md): counts only, billing for admins only.
+    navCounts: staffWithSecondFactor
+      .route({ method: 'GET', path: '/admin/nav-counts', summary: 'Open review cases and system problems for the control panel sidebar (staff with a verified second factor)' })
+      .handler(({ context }) => adminNavCounts(context.principal)),
+    dashboard: staffWithSecondFactor
+      .route({ method: 'GET', path: '/admin/dashboard', summary: 'Counts and weekly growth for the control panel dashboard; billing figures for admins only (staff with a verified second factor)' })
+      .handler(({ context }) => adminDashboard(context.principal)),
     overview: base
       .route({ method: 'GET', path: '/admin/overview', summary: 'Counts for the admin page (staff with a verified second factor)' })
       .handler(({ context }) => adminOverview(context.principal)),
@@ -975,6 +989,11 @@ export const router = {
   },
   // Review 2026-11: suspending and erasing an account (admin with a verified second factor).
   accounts: {
+    // The control panel's list of accounts (docs/adr/0035-control-panel.md): read-only, a page at a time.
+    list: adminWithSecondFactor
+      .route({ method: 'GET', path: '/accounts/list', summary: 'Every account, a page at a time: search by address or name, filter by role and state, sort (admin with a verified second factor)' })
+      .input(listAccountsInput)
+      .handler(({ context, input }) => listAccounts(context.principal, input)),
     suspended: adminWithSecondFactor
       .route({ method: 'GET', path: '/accounts/suspended', summary: 'The accounts that are suspended now (admin with a verified second factor)' })
       .handler(({ context }) => listSuspended(context.principal)),
