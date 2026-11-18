@@ -7,11 +7,13 @@
 import { useActionState } from 'react';
 
 import { FormMessage, SubmitButton, useFocusOnError } from '@/components/account/fields';
+import { useAdminT } from '@/components/admin/i18n/client';
 import { IDLE, type FormState } from '@/lib/form-state';
 import { moveTestClockAction } from './actions';
 import { TEST_CLOCK_FORM } from './form-ids';
 
 export function TestClockForm({ subscriptionId, steps, initial }: { subscriptionId: string; steps: { step: string; label: string }[]; initial?: FormState | null }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(moveTestClockAction, initial ?? IDLE);
   useFocusOnError(TEST_CLOCK_FORM, state);
   return (
@@ -22,7 +24,7 @@ export function TestClockForm({ subscriptionId, steps, initial }: { subscription
           <form key={s.step} id={s.step === steps[0]!.step ? TEST_CLOCK_FORM : undefined} action={action} noValidate aria-busy={pending || undefined}>
             <input type="hidden" name="subscriptionId" value={subscriptionId} />
             <input type="hidden" name="step" value={s.step} />
-            <SubmitButton pending={pending} pendingLabel="Moving the test clock…" variant="secondary">
+            <SubmitButton pending={pending} pendingLabel={t('Moving the test clock…')} variant="secondary">
               {s.label}
             </SubmitButton>
           </form>

@@ -19,9 +19,9 @@ import { storeReactivityBindings } from '@tanstack/table-core/store-reactivity-b
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { CheckIcon, DashIcon, PlannedIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
-import { formatDay, formatShortDay } from '@/lib/dates';
 import type { FormState } from '@/lib/form-state';
 import type { GrantList, GrantRow, GrantSort } from '@/server/services/grants';
 import { RevokeGrantForm } from './forms';
@@ -32,21 +32,45 @@ const helper = createColumnHelper<typeof features, GrantRow>();
 /** The column ids are the sort keys of grants.list where a column sorts. */
 const SORTABLE = new Set<string>(['email', 'plan', 'starts', 'ends', 'state']);
 
-/** What each sort key is called in words (review round 1, a11y-webview-10), in the "Sort by" bar's order. */
-const SORT_LABELS: Record<GrantSort, string> = {
-  created: 'date given',
-  email: 'account',
-  plan: 'plan',
-  starts: 'start date',
-  ends: 'end date',
-  state: 'state',
-};
+/** The sort keys in the "Sort by" bar's order. */
+const SORT_KEYS: readonly GrantSort[] = ['created', 'email', 'plan', 'starts', 'ends', 'state'];
+
+/** What each sort key is called in words (review round 1, a11y-webview-10). */
+function sortLabel(t: AdminT, sort: GrantSort): string {
+  switch (sort) {
+    case 'created': return t('date given');
+    case 'email': return t('account');
+    case 'plan': return t('plan');
+    case 'starts': return t('start date');
+    case 'ends': return t('end date');
+    case 'state': return t('state');
+  }
+}
 
 /** The direction in words: dates by age, text alphabetically. */
-function directionWords(sort: GrantSort, dir: 'asc' | 'desc'): string {
-  if (sort === 'created' || sort === 'starts' || sort === 'ends') return dir === 'asc' ? 'oldest first' : 'newest first';
-  if (sort === 'email' || sort === 'plan') return dir === 'asc' ? 'A to Z' : 'Z to A';
-  return dir === 'asc' ? 'ascending' : 'descending';
+function directionWords(t: AdminT, sort: GrantSort, dir: 'asc' | 'desc'): string {
+  if (sort === 'created' || sort === 'starts' || sort === 'ends') return dir === 'asc' ? t('oldest first') : t('newest first');
+  if (sort === 'email' || sort === 'plan') return dir === 'asc' ? t('A to Z') : t('Z to A');
+  return dir === 'asc' ? t('ascending') : t('descending');
+}
+
+/** The kind of a grant in words (the service's sourceLabel, in the control panel's language). */
+function sourceLabel(t: AdminT, source: GrantRow['source']): string {
+  switch (source) {
+    case 'test_grant': return t('Test plan');
+    case 'complimentary': return t('Complimentary');
+    case 'stripe': return t('Payment');
+  }
+}
+
+/** The state of a grant in words (the service's stateLabel, in the control panel's language). */
+function stateLabel(t: AdminT, state: GrantRow['state']): string {
+  switch (state) {
+    case 'active': return t('Active');
+    case 'scheduled': return t('Starts later');
+    case 'ended': return t('Ended');
+    case 'revoked': return t('Revoked');
+  }
 }
 
 const STATE_ICONS = {
@@ -57,10 +81,10 @@ const STATE_ICONS = {
 } as const;
 
 /** A day in the short form that never wraps, with the full date in its title. */
-function Day({ value }: { value: string }) {
+function Day({ value, t }: { value: string; t: AdminT }) {
   return (
-    <time dateTime={value} title={formatDay(value)} className="whitespace-nowrap tabular">
-      {formatShortDay(value)}
+    <time dateTime={value} title={t.day(value)} className="whitespace-nowrap tabular">
+      {t.shortDay(value)}
     </time>
   );
 }
@@ -78,41 +102,41 @@ function EmailText({ email }: { email: string }) {
   );
 }
 
-const columns = helper.columns([
+const columnsFor = (t: AdminT) => helper.columns([
   helper.accessor('email', {
     id: 'email',
-    header: 'Account',
+    header: t('Account'),
     cell: (info) => (
       <span className="grid gap-0.5">
         <span translate="no" className="block max-w-[30ch] font-semibold [overflow-wrap:anywhere] @max-[52rem]:max-w-none">
           <EmailText email={info.getValue()} />
         </span>
-        <span className="text-sm text-fg-muted">{info.row.original.accountType === 'sifu' ? 'Sifu account' : 'Student account'}</span>
+        <span className="text-sm text-fg-muted">{info.row.original.accountType === 'sifu' ? t('Sifu account') : t('Student account')}</span>
       </span>
     ),
   }),
   helper.accessor('planName', {
     id: 'plan',
-    header: 'Plan',
+    header: t('Plan'),
     cell: (info) => (
       <span className="grid gap-0.5">
         <span>{info.getValue()}</span>
-        <span className="text-sm text-fg-muted">{info.row.original.sourceLabel}</span>
+        <span className="text-sm text-fg-muted">{sourceLabel(t, info.row.original.source)}</span>
       </span>
     ),
   }),
-  helper.accessor('startsAt', { id: 'starts', header: 'Starts', cell: (info) => <Day value={info.getValue()} /> }),
+  helper.accessor('startsAt', { id: 'starts', header: t('Starts'), cell: (info) => <Day value={info.getValue()} t={t} /> }),
   helper.accessor('endsAt', {
     id: 'ends',
-    header: 'Ends',
+    header: t('Ends'),
     cell: (info) => {
       const value = info.getValue();
-      return value ? <Day value={value} /> : <span className="whitespace-nowrap text-fg-muted">No end date</span>;
+      return value ? <Day value={value} t={t} /> : <span className="whitespace-nowrap text-fg-muted">{t('No end date')}</span>;
     },
   }),
   helper.accessor('stateLabel', {
     id: 'state',
-    header: 'State',
+    header: t('State'),
     cell: (info) => {
       const row = info.row.original;
       const Icon = STATE_ICONS[row.state];
@@ -120,16 +144,16 @@ const columns = helper.columns([
         <span className="grid gap-0.5">
           <span className={cx('inline-flex items-center gap-1.5 font-semibold', row.state !== 'active' && 'text-fg-muted')}>
             <Icon size={16} />
-            {info.getValue()}
+            {stateLabel(t, row.state)}
           </span>
-          {row.state === 'active' && !row.inEffect ? <span className="text-sm text-fg-muted">Not in effect: other account type</span> : null}
+          {row.state === 'active' && !row.inEffect ? <span className="text-sm text-fg-muted">{t('Not in effect: other account type')}</span> : null}
           {row.revokedAt ? (
             <span className="text-sm text-fg-muted">
-              <Day value={row.revokedAt} />
+              <Day value={row.revokedAt} t={t} />
               {row.revokedBy ? (
                 <>
                   {' '}
-                  by <span translate="no">{row.revokedBy}</span>
+                  {t('by')} <span translate="no">{row.revokedBy}</span>
                 </>
               ) : null}
               {row.revokeReason ? `: ${row.revokeReason}` : null}
@@ -141,13 +165,13 @@ const columns = helper.columns([
   }),
   helper.accessor('reason', {
     id: 'reason',
-    header: 'Reason',
+    header: t('Reason'),
     cell: (info) => (
       <span className="grid gap-0.5">
         <span className="break-words">{info.getValue()}</span>
         {info.row.original.grantedBy ? (
           <span className="text-sm text-fg-muted">
-            by <span translate="no">{info.row.original.grantedBy}</span>
+            {t('by')} <span translate="no">{info.row.original.grantedBy}</span>
           </span>
         ) : null}
       </span>
@@ -178,11 +202,11 @@ function nextDir(list: GrantList, sort: GrantSort): 'asc' | 'desc' {
 }
 
 /** Card mode only: the sort control the hidden header row would give (design-5, a11y-webview-4). */
-function SortBar({ list }: { list: GrantList }) {
+function SortBar({ list, t }: { list: GrantList; t: AdminT }) {
   return (
-    <nav aria-label="Sort grants" data-testid="grants-sort" className="hidden flex-wrap items-center gap-x-4 text-sm @max-[52rem]:flex">
-      <span className="text-fg-muted">Sort by</span>
-      {(Object.keys(SORT_LABELS) as GrantSort[]).map((sort) => {
+    <nav aria-label={t('Sort grants')} data-testid="grants-sort" className="hidden flex-wrap items-center gap-x-4 text-sm @max-[52rem]:flex">
+      <span className="text-fg-muted">{t('Sort by')}</span>
+      {SORT_KEYS.map((sort) => {
         const current = list.sort === sort;
         return (
           <Link
@@ -195,13 +219,13 @@ function SortBar({ list }: { list: GrantList }) {
               current ? 'font-semibold text-fg underline' : 'text-fg-muted',
             )}
           >
-            {SORT_LABELS[sort].replace(/^./, (c) => c.toUpperCase())}
+            {sortLabel(t, sort).replace(/^./, (c) => c.toUpperCase())}
             {current ? (
               <>
                 <span aria-hidden="true" className="text-xs">
                   {list.dir === 'asc' ? '▲' : '▼'}
                 </span>
-                <span className="sr-only"> ({directionWords(sort, list.dir)}; press for {directionWords(sort, nextDir(list, sort))})</span>
+                <span className="sr-only">{t(' ({current}; press for {next})', { current: directionWords(t, sort, list.dir), next: directionWords(t, sort, nextDir(list, sort)) })}</span>
               </>
             ) : null}
           </Link>
@@ -211,23 +235,24 @@ function SortBar({ list }: { list: GrantList }) {
   );
 }
 
-export function GrantsTable({ list, revoked }: { list: GrantList; revoked?: FormState | null }) {
+export function GrantsTable({ list, revoked, t }: { list: GrantList; revoked?: FormState | null; t: AdminT }) {
+  const columns = columnsFor(t);
   // Rows keyed by the grant, so a row keeps its revoke form (and its outcome) when the page refreshes.
   const table = constructTable({ features, columns, data: list.rows, getRowId: (row) => row.id });
-  const order = `Sorted by ${SORT_LABELS[list.sort]}, ${directionWords(list.sort, list.dir)}`;
+  const order = t('Sorted by {sort}, {direction}', { sort: sortLabel(t, list.sort), direction: directionWords(t, list.sort, list.dir) });
   const span = columns.length;
   return (
     <div className="@container grid gap-4">
       {list.rows.length === 0 ? (
         <p className="rounded-sm bg-surface-2 px-4 py-4 text-ui text-fg-muted">
-          {list.q ? 'No grant matches this address.' : 'No plan has been given yet. Use the form above to give a test plan.'}
+          {list.q ? t('No grant matches this address.') : t('No plan has been given yet. Use the form above to give a test plan.')}
         </p>
       ) : (
         <>
-          <SortBar list={list} />
+          <SortBar list={list} t={t} />
           <table role="table" data-testid="grants-table" className="w-full border-collapse text-left text-ui @max-[52rem]:grid @max-[52rem]:gap-3">
             <caption className="pb-2 text-left text-sm text-fg-muted @max-[52rem]:sr-only">
-              <span className="sr-only">Plan grants. </span>
+              <span className="sr-only">{t('Plan grants. ')}</span>
               {order}
             </caption>
             <thead role="rowgroup" className="@max-[52rem]:hidden">
@@ -254,7 +279,7 @@ export function GrantsTable({ list, revoked }: { list: GrantList; revoked?: Form
                             <span aria-hidden="true" className={cx('text-xs', current ? 'text-fg' : 'text-fg-subtle')}>
                               {current ? (list.dir === 'asc' ? '▲' : '▼') : '△'}
                             </span>
-                            <span className="sr-only"> (sort {nextDir(list, id as GrantSort) === 'asc' ? 'ascending' : 'descending'})</span>
+                            <span className="sr-only">{nextDir(list, id as GrantSort) === 'asc' ? t(' (sort ascending)') : t(' (sort descending)')}</span>
                           </Link>
                         ) : (
                           <span className="inline-flex min-h-11 items-center">{FlexRender({ header }) as ReactNode}</span>
@@ -304,23 +329,23 @@ export function GrantsTable({ list, revoked }: { list: GrantList; revoked?: Form
         </>
       )}
       {list.pages > 1 ? (
-        <nav aria-label="Pages of plan grants" className="flex flex-wrap items-center gap-x-5 text-ui">
+        <nav aria-label={t('Pages of plan grants')} className="flex flex-wrap items-center gap-x-5 text-ui">
           {list.page > 1 ? (
             <Link href={hrefWith(list, { page: list.page - 1 })} className="link inline-flex min-h-11 items-center">
-              Previous page
+              {t('Previous page')}
             </Link>
           ) : null}
           <span className="text-fg-muted">
-            Page {list.page} of {list.pages} ({list.total} grants)
+            {t('Page {page} of {pages} ({total} grants)', { page: list.page, pages: list.pages, total: list.total })}
           </span>
           {list.page < list.pages ? (
             <Link href={hrefWith(list, { page: list.page + 1 })} className="link inline-flex min-h-11 items-center">
-              Next page
+              {t('Next page')}
             </Link>
           ) : null}
         </nav>
       ) : (
-        <p className="text-sm text-fg-muted">{list.total === 1 ? '1 grant' : `${list.total} grants`}</p>
+        <p className="text-sm text-fg-muted">{t.n(list.total, '{n} grant', '{n} grants')}</p>
       )}
     </div>
   );
