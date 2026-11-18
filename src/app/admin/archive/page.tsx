@@ -25,6 +25,7 @@ import { LINEAGE_CREATE_FORM } from './form-ids';
 import { CreateLineageForm } from './forms';
 import { CardLabel, cell, Column, fieldClass, Figure, Header, Missing, rowClass, SortHeader, tableClass, theadClass } from './grid-parts';
 import { archiveLoadError } from './labels';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -75,7 +76,7 @@ export default async function ArchiveEditorPage({ searchParams }: { searchParams
   }
   const client = serverClient(await headers(), guard.principal);
   const data = await pageRead(client.archiveEditor.overview({ q: q || undefined, sort }));
-  if (!data) return <LoadError {...archiveLoadError(t)} retryHref="/admin/archive" />;
+  if (!data) return <LoadError words={loadErrorWords(t)} {...archiveLoadError(t)} retryHref="/admin/archive" />;
   const lineageResult = await readFormResult(LINEAGE_CREATE_FORM, query.outcome);
   const creating = one(query.new) === 'lineage' || lineageResult?.status === 'error';
   const sortLabel = { name: t('by name'), people: t('most people first'), links: t('most links first'), sourced: t('least sourced first'), edited: t('last edited first') }[sort];

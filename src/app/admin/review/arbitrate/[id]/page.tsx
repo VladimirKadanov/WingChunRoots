@@ -13,7 +13,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
+import { reviewLoadError } from '@/app/admin/review/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { getAdminT } from '@/components/admin/i18n/server';
 import type { AdminT } from '@/components/admin/i18n/translate';
@@ -25,6 +25,7 @@ import { serverClient } from '@/server/rpc/server';
 import { ARBITRATE_FORM } from '../../form-ids';
 import { ArbitrateForm } from '../../forms';
 import { translateState } from '../../text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -90,7 +91,7 @@ export default async function ArbitratePage({ params, searchParams }: { params: 
       </Frame>
     );
   }
-  if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...reviewLoadError(t)} retryHref={path} />;
   const read = await readFormResult(ARBITRATE_FORM, query.outcome);
   const initial = read ? translateState(t, read) : read;
   const arbiter = ARBITERS.has(guard.principal!.user.role);

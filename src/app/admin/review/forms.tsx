@@ -1,4 +1,5 @@
 'use client';
+'use no memo';
 
 // The forms of the review queue (milestone M10a, In scope 4 and 5): assign, the three decisions,
 // the internal note and the archival edit. Each is one thin Server Action over one procedure

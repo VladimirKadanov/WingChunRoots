@@ -42,6 +42,7 @@ import {
 } from '@/server/services/admin-reports';
 
 import { BarChart, bucketLabel, ChartLegend, type ChartSeries, CsvLink, FigureTable, ReportCard } from './report-parts';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -186,7 +187,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
   const client = serverClient(await headers(), guard.principal);
   const read: Promise<StaffReport | BillingReport> = report === 'billing' ? client.admin.billingReport({ period }) : client.admin.reports({ report, period });
   const data = await pageRead(read);
-  if (!data) return <LoadError {...loadError(t)} retryHref={reportsHref(report, period)} />;
+  if (!data) return <LoadError words={loadErrorWords(t)} {...loadError(t)} retryHref={reportsHref(report, period)} />;
   const current = reportText(t, report);
 
   return (

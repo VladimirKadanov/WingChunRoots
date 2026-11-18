@@ -14,7 +14,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { LoadError } from '@/components/account/load-error';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
+import { reviewLoadError } from '@/app/admin/review/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { getAdminT } from '@/components/admin/i18n/server';
 import type { AdminT } from '@/components/admin/i18n/translate';
@@ -27,6 +27,7 @@ import { serverClient } from '@/server/rpc/server';
 import type { ReviewList, ReviewListInput } from '@/server/services/review';
 import { queueHref, ReviewTable } from './review-table';
 import { withStrong } from './text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -147,7 +148,7 @@ export default async function ReviewQueuePage({ searchParams }: { searchParams: 
   } as ReviewListInput;
   const client = serverClient(await headers(), guard.principal);
   const list = await pageRead(client.review.list(input).catch(() => client.review.list({})));
-  if (!list) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={returnPath(query)} />;
+  if (!list) return <LoadError words={loadErrorWords(t)} {...reviewLoadError(t)} retryHref={returnPath(query)} />;
   const archivist = guard.principal?.user.role === 'archivist';
 
   const { counts } = list;

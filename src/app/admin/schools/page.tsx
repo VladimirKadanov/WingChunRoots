@@ -25,6 +25,7 @@ import { cx } from '@/lib/cx';
 import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -78,7 +79,7 @@ export default async function AdminSchoolsPage({ searchParams }: { searchParams:
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/admin" />;
   const view = await pageRead(serverClient(await headers(), guard.principal).schools.adminList({ stage, q: q || undefined, page: pageAsked }));
-  if (!view) return <LoadError
+  if (!view) return <LoadError words={loadErrorWords(t)}
         eyebrow={t('Administration')}
         title={t('School activity')}
         message={t("We couldn't load the schools. Nothing was changed.")}

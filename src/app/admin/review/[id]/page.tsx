@@ -21,7 +21,7 @@ import type { ReactNode } from 'react';
 import { getAdminT } from '@/components/admin/i18n/server';
 import type { AdminT } from '@/components/admin/i18n/translate';
 import { LoadError } from '@/components/account/load-error';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
+import { reviewLoadError } from '@/app/admin/review/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
@@ -36,6 +36,7 @@ import { lifeStatusChoice } from '../life-status-choice';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
 import { factValue, lifeStatusWord, reviewerLabel, roleName, translateState } from '../text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -145,7 +146,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
       </Frame>
     );
   }
-  if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...reviewLoadError(t)} retryHref={path} />;
   const results = await Promise.all([
     readFormResult(assignForm('self'), query.outcome),
     readFormResult(assignForm('none'), query.outcome),

@@ -23,6 +23,7 @@ import { TrialStatusTag } from '@/components/billing/status';
 import { GRANT_FORM, revokeForm, TRIAL_END_FORM, TRIAL_START_FORM } from '../form-ids';
 import { GrantForm, RevokeForm, TrialEndForm, TrialStartForm } from '../forms';
 import { grantLabel, organizationLoadError, planLabel, serviceLabel, serviceMessage, trialStatusLabel, trialSummary } from '../labels';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -78,7 +79,7 @@ export default async function AdminOrganizationPage({ params, searchParams }: Pr
   );
   if (read === 'missing') return <NotFound />;
   const org = read;
-  if (!org) return <LoadError {...organizationLoadError(t)} retryHref={page} />;
+  if (!org) return <LoadError words={loadErrorWords(t)} {...organizationLoadError(t)} retryHref={page} />;
   const grantResult = await readFormResult(GRANT_FORM, query.outcome);
   const trial = await pageRead(serverClient(await headers(), guard.principal).federationTrials.adminGet({ organizationId: id }));
   const [trialStartResult, trialEndResult] = await Promise.all([readFormResult(TRIAL_START_FORM, query.outcome), readFormResult(TRIAL_END_FORM, query.outcome)]);

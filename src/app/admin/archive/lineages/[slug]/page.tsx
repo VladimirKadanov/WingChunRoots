@@ -34,6 +34,7 @@ import { Column, fieldClass, LinkStatus, Missing, years } from '../../grid-parts
 import { archiveLoadError } from '../../labels';
 import { RecordLine, recordFacts } from '../../parts';
 import { WorkspaceHeader } from './workspace';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -198,7 +199,7 @@ export default async function ArchiveLineagePage({ params, searchParams }: { par
       </Frame>
     );
   }
-  if (!tree || !found || (person && panel === null)) return <LoadError {...archiveLoadError(t)} retryHref={path} />;
+  if (!tree || !found || (person && panel === null)) return <LoadError words={loadErrorWords(t)} {...archiveLoadError(t)} retryHref={path} />;
   const view = tree.lineage;
   const chosen = panel === 'missing' ? null : panel;
   const [editResult, addResult] = await Promise.all([readFormResult(LINEAGE_EDIT_FORM, query.outcome), readFormResult(LINK_ADD_FORM, query.outcome)]);

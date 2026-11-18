@@ -28,6 +28,7 @@ import { CreateRecordForm } from '../forms';
 import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, Missing, Pager, rowClass, tableClass, theadClass } from '../grid-parts';
 import { archiveLoadError, scriptLabel } from '../labels';
 import { recordFacts } from '../parts';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -112,7 +113,7 @@ export default async function ArchivePeoplePage({ searchParams }: { searchParams
     pageRead(client.archiveEditor.people({ q: filters.q || undefined, show: filters.show, lineage: filters.lineage || undefined, page: pageNo })),
     creating && draftName.length >= 2 ? pageRead(client.archiveEditor.search({ q: draftName })) : Promise.resolve({ records: [] }),
   ]);
-  if (!list || !similar) return <LoadError {...archiveLoadError(t)} retryHref="/admin/archive/people" />;
+  if (!list || !similar) return <LoadError words={loadErrorWords(t)} {...archiveLoadError(t)} retryHref="/admin/archive/people" />;
   const filtered = Boolean(filters.q || filters.show !== 'everyone' || filters.lineage);
   const newHref = `${peopleHref(filters)}${peopleHref(filters).includes('?') ? '&' : '?'}new=record${back ? `&back=${back}` : ''}#new-record`;
   const chip = (show: Show) => peopleHref({ ...filters, show }, 1, '#people');

@@ -17,7 +17,7 @@ import { NameText } from '@/components/account/person-names';
 import { getAdminT } from '@/components/admin/i18n/server';
 import type { AdminT } from '@/components/admin/i18n/translate';
 import { LoadError } from '@/components/account/load-error';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
+import { reviewLoadError } from '@/app/admin/review/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { OutcomeNote } from '@/components/relationships/parts';
 import { formatSize } from '@/lib/file-size';
@@ -28,6 +28,7 @@ import { serverClient } from '@/server/rpc/server';
 import { ARCHIVE_FORM, RESTORE_FORM, TAKEDOWN_FORM } from '../../form-ids';
 import { ArchiveForm, TakeDownForm } from '../../forms';
 import { translateState } from '../../text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -92,7 +93,7 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
       </Frame>
     );
   }
-  if (!record) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
+  if (!record) return <LoadError words={loadErrorWords(t)} {...reviewLoadError(t)} retryHref={path} />;
   const translated = (state: Awaited<ReturnType<typeof readFormResult>>) => (state ? translateState(t, state) : state);
   const initial = translated(await readFormResult(ARCHIVE_FORM, query.outcome));
   const takeDownResult = translated(await readFormResult(TAKEDOWN_FORM, query.outcome));

@@ -25,6 +25,7 @@ import { AccountsTable } from './accounts-table';
 import { ERASE_FORM } from './form-ids';
 import { EraseForm, SuspendedItem, SuspendForm } from './forms';
 import { accountsLoadError } from './load-error-text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -87,7 +88,7 @@ export default async function AdminAccountsPage({ searchParams }: { searchParams
   };
   const page = valid(field.page.safeParse(one(query.page))) ?? 1;
   const [suspended, list] = await Promise.all([pageRead(client.accounts.suspended()), pageRead(client.accounts.list({ ...filters, page }))]);
-  if (!suspended || !list) return <LoadError {...accountsLoadError(t)} retryHref={here} />;
+  if (!suspended || !list) return <LoadError words={loadErrorWords(t)} {...accountsLoadError(t)} retryHref={here} />;
   const prefillEmail = valid(z.string().email().max(320).safeParse(one(query.email)));
   // The account of an open deletion request, for the erase form; none when the case is not open any more.
   const overview = caseId ? await pageRead(client.admin.overview()) : null;

@@ -28,6 +28,7 @@ import { CLOSED_REQUEST_MESSAGE } from './form-ids';
 import { CreateGrantForm, GivePlanDisclosure, PilotRequestItem } from './forms';
 import { GrantsTable, hrefWith } from './grants-table';
 import { grantsLoadError } from './load-error-text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -103,7 +104,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
       request,
     }),
   );
-  if (!list) return <LoadError {...grantsLoadError(t)} retryHref={returnPath(query)} />;
+  if (!list) return <LoadError words={loadErrorWords(t)} {...grantsLoadError(t)} retryHref={returnPath(query)} />;
   const [created, revoked, closedRequest] = await Promise.all([
     readFormResult('create-grant', query.outcome),
     readFormResult('revoke-grant', query.outcome),

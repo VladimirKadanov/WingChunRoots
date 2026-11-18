@@ -7,11 +7,12 @@
 
 import { useAdminT } from '@/components/admin/i18n/client';
 import { LoadError } from '@/components/account/load-error';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export default function ArchiveEditorError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   const t = useAdminT();
   return (
-    <LoadError
+    <LoadError words={loadErrorWords(t)}
       eyebrow={t('Archive editor')}
       title={t('Archive editor')}
       message={t("We couldn't load the archive. Nothing was changed.")}

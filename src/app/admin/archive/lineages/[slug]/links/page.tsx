@@ -31,6 +31,7 @@ import { EndLinkForm } from '../../../forms';
 import { CardLabel, cell, Chip, Chips, Column, CountLine, fieldClass, Header, LinkStatus, Missing, Pager, rowClass, SortHeader, tableClass, theadClass, years } from '../../../grid-parts';
 import { archiveLoadError } from '../../../labels';
 import { WorkspaceHeader } from '../workspace';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -134,7 +135,7 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
       </Column>
     );
   }
-  if (!list) return <LoadError {...archiveLoadError(t)} retryHref={base} />;
+  if (!list) return <LoadError words={loadErrorWords(t)} {...archiveLoadError(t)} retryHref={base} />;
   const endResult = await readFormResult(LINK_END_FORM, query.outcome);
   const editResult = await readFormResult(LINK_EDIT_FORM, query.outcome);
   const selected = list.selected;

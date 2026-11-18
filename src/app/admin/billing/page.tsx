@@ -28,6 +28,7 @@ import { serverClient } from '@/server/rpc/server';
 import { BILLING_ADMIN_PAGE_SIZE, billingAdminListInput } from '@/server/services/billing';
 import { billingLoadError } from './load-error-text';
 import { providerLabel, subscriptionStatusLabel } from './labels';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -110,7 +111,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams:
   const view = await pageRead(
     serverClient(await headers(), guard.principal).billing.adminList({ ...(filter === 'all' ? {} : { status: filter }), ...(plan ? { plan } : {}), ...(q ? { q } : {}), page }),
   );
-  if (!view) return <LoadError {...billingLoadError(t)} retryHref={PAGE} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...billingLoadError(t)} retryHref={PAGE} />;
   const { summary } = view;
   const counts: Record<Filter, number> = {
     all: Object.values(summary.byStatus).reduce((a, b) => a + b, 0),

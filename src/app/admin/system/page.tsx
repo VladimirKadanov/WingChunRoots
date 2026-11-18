@@ -29,6 +29,7 @@ import { guardRoute } from '@/server/auth/web';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { SystemStatus } from '@/server/services/system';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -339,7 +340,7 @@ export default async function SystemPage() {
   const status = await pageRead(serverClient(await headers(), guard.principal).system.status());
   if (!status) {
     return (
-      <LoadError
+      <LoadError words={loadErrorWords(t)}
         eyebrow={t('Administration')}
         title={t('System status')}
         message={t("We couldn't read the system status. Nothing was changed.")}

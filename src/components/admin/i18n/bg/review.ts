@@ -551,4 +551,5 @@ export const BG_REVIEW: AdminDict = {
   'Say why the photo is removed: the reason is kept in the audit log.': 'Кажете защо снимката се премахва: причината се пази в одитния журнал.',
   'Your gallery changed in the meantime. Reload the page and try again.': 'Галерията се промени междувременно. Презаредете страницата и опитайте отново.',
   'The school’s photos changed in the meantime. Reload the page and try again.': 'Снимките на школата се промениха междувременно. Презаредете страницата и опитайте отново.',
+  "We couldn't load the review queue. Nothing was changed.": "Опашката за преглед не можа да се зареди. Нищо не е променено.",
 };

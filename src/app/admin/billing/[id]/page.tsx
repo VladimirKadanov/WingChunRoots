@@ -24,6 +24,7 @@ import { priceLabel, providerLabel, subscriptionStatusLabel } from '../labels';
 import { billingLoadError } from '../load-error-text';
 import { TEST_CLOCK_FORM } from './form-ids';
 import { TestClockForm } from './forms';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -96,7 +97,7 @@ export default async function AdminSubscriptionPage({ params, searchParams }: { 
   const read = await pageReadOne(serverClient(await headers(), guard.principal).billing.adminGet({ subscriptionId: id }));
   if (read.missing) notFound();
   const view = read.value;
-  if (!view) return <LoadError {...billingLoadError(t)} retryHref={page} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...billingLoadError(t)} retryHref={page} />;
   const query = await searchParams;
   const initial = await readFormResult(TEST_CLOCK_FORM, typeof query.outcome === 'string' ? query.outcome : '');
   const sub = view.subscription;

@@ -1,4 +1,5 @@
 'use client';
+'use no memo';
 
 // The forms of the archive editor (milestone M26, docs/adr/0034-archive-editor.md): a new lineage, a
 // lineage's name, description and root, a new historical record, a new link and ending a link. Each

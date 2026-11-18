@@ -12,8 +12,8 @@ import { BG_ADMIN, BG_ADMIN_CLIENT, BG_CLIENT_PARTS, BG_SERVER_PARTS } from './i
 
 const ROOT = join(__dirname, '..', '..', '..', '..', '..');
 const SCANNED = ['src/app/admin', 'src/components/admin'];
-/** Shared components that read the control panel's language (English everywhere else). */
-const SHARED = ['src/components/account/fields.tsx', 'src/components/account/load-error.tsx'];
+/** The text the site's shared components look up in the control panel (useAdminText, text-context.ts). */
+const SHARED_TEXT = ['{n} answer needs a look', '{n} answers need a look', '(optional)', 'Trying again…', 'Try again', 'This is usually brief: try again in a moment.'];
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -40,7 +40,11 @@ function literals(source: string): string[] {
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
 describe('the control panel in Bulgarian', () => {
-  const scanned = [...SCANNED.flatMap((dir) => files(join(ROOT, dir))), ...SHARED.map((path) => join(ROOT, path))];
+  const scanned = SCANNED.flatMap((dir) => files(join(ROOT, dir)));
+
+  it('has Bulgarian, in the client parts, for the text of the shared field and load-error components', () => {
+    expect(SHARED_TEXT.filter((text) => !(text in BG_ADMIN_CLIENT))).toEqual([]);
+  });
 
   it('finds the t() calls (the scan works)', () => {
     expect(literals(`t('A b') t("C") t(\`D\`) t.n(count, '{n} case', '{n} cases') t.x('verb', 'Open')`)).toEqual(['A b', 'C', 'D', '{n} case', '{n} cases', 'verb|Open']);

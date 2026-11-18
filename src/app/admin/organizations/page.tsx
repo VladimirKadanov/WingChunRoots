@@ -22,6 +22,7 @@ import { serverClient } from '@/server/rpc/server';
 import { type AdminOrganizationList, adminOrganizationsInput } from '@/server/services/organization-grants';
 
 import { organizationLoadError, serviceLabel } from './labels';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
@@ -73,7 +74,7 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
     page: valid(field.page.safeParse(asked.page)) ?? 1,
   };
   const view = await pageRead(serverClient(await headers(), guard.principal).organizations.adminList(input));
-  if (!view) return <LoadError {...organizationLoadError(t)} retryHref={PAGE} />;
+  if (!view) return <LoadError words={loadErrorWords(t)} {...organizationLoadError(t)} retryHref={PAGE} />;
   const { filters, counts } = view;
   const pages = Math.max(1, Math.ceil(view.total / view.pageSize));
   const filtered = Boolean(filters.q) || filters.status !== 'all' || filters.plan !== 'all';

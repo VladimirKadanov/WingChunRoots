@@ -7,8 +7,9 @@
 import { LoadError } from '@/components/account/load-error';
 import { useAdminT } from '@/components/admin/i18n/client';
 import { grantsLoadError } from './load-error-text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export default function AdminGrantsError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   const t = useAdminT();
-  return <LoadError {...grantsLoadError(t)} retry={retry} />;
+  return <LoadError words={loadErrorWords(t)} {...grantsLoadError(t)} retry={retry} />;
 }
