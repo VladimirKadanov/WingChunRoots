@@ -14,6 +14,7 @@
 import { type InputHTMLAttributes, type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useFormStatus } from 'react-dom';
 
+import { useAdminT } from '@/components/admin/i18n/client';
 import { AlertIcon, CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
@@ -95,6 +96,7 @@ export function FormMessage({
   labels?: Record<string, string>;
   single?: boolean;
 }) {
+  const t = useAdminT();
   if (state.status === 'idle') return null;
   const fields = state.status === 'error' ? Object.entries(state.fields ?? {}) : [];
   if (fields.length > 0) {
@@ -113,7 +115,7 @@ export function FormMessage({
       >
         <p id={`${summaryId(form)}-title`} className="flex items-start gap-2 font-semibold">
           <AlertIcon size={18} className="mt-px text-danger" />
-          {fields.length === 1 ? '1 answer needs a look' : `${fields.length} answers need a look`}
+          {t.n(fields.length, '{n} answer needs a look', '{n} answers need a look')}
         </p>
         <ul className="grid gap-0.5 pl-7">
           {fields.map(([name, error]) => (
@@ -183,10 +185,12 @@ export interface BaseFieldProps {
 }
 
 export function FieldLabel({ id, label, optional }: { id: string; label: ReactNode; optional?: boolean }) {
+  // English everywhere but in the control panel of a full administrator (docs/adr/0043-admin-bulgarian.md).
+  const t = useAdminT();
   return (
     <label htmlFor={id} className="text-sm font-semibold">
       {label}
-      {optional ? <span className="font-normal text-fg-muted"> (optional)</span> : null}
+      {optional ? <span className="font-normal text-fg-muted"> {t('(optional)')}</span> : null}
     </label>
   );
 }

@@ -138,7 +138,7 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
       </form>
 
       <div className="mt-5 grid gap-4">
-        <RangeLine noun="Organizations" total={view.total} page={view.page} pageSize={view.pageSize} testId="admin-organizations-count" extra={<span>{t('waiting first, then by name')}</span>} />
+        <RangeLine noun={t('Organizations')} total={view.total} page={view.page} pageSize={view.pageSize} testId="admin-organizations-count" extra={<span>{t('waiting first, then by name')}</span>} />
         {view.organizations.length === 0 ? (
           <EmptyState testId="admin-organizations-empty">{filtered ? t('No organization matches these filters. Change them, or clear them.') : t('No organization has applied.')}</EmptyState>
         ) : (

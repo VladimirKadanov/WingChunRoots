@@ -11,7 +11,7 @@ export const BG_ARCHIVE: AdminDict = {
   'People & records · Archive editor': 'Хора и записи · Редактор на архива',
 
   // Shared states
-  'Not available': 'Няма достъп',
+  'Not available': "Няма достъп",
   "You don't have access to the archive editor. It is available to archivists and administrators.":
     'Нямате достъп до редактора на архива. Той е достъпен за архивисти и администратори.',
   'No such lineage': 'Няма такава линия',
@@ -23,8 +23,8 @@ export const BG_ARCHIVE: AdminDict = {
   'Years not known': 'Годините не са известни',
   'From {year}': 'От {year}',
   Verified: 'Потвърдена',
-  'In arbitration': 'В арбитраж',
-  Ended: 'Прекратена',
+  'In arbitration': "На арбитраж",
+  Ended: 'Прекратено',
   '(sorted)': '(подредено)',
   ', sort by this column': ', подреди по тази колона',
   Previous: 'Предишна',
@@ -52,7 +52,7 @@ export const BG_ARCHIVE: AdminDict = {
   'Historical record': 'Исторически запис',
   'Record kept by the platform': 'Запис, поддържан от платформата',
   Public: 'Публично',
-  'Not public': 'Не е публично',
+  'Not public': "Не е публично",
   'Open the record': 'Отвори записа',
 
   // /admin/archive
@@ -95,7 +95,6 @@ export const BG_ARCHIVE: AdminDict = {
   Generations: 'Поколения',
   Completeness: 'Пълнота',
   'Last edited': 'Последна редакция',
-  Open: 'Отвори',
   'In the explorer': 'В изследователя на линиите',
   'Not in the explorer yet': 'Още не е в изследователя на линиите',
   'Root:': 'Корен:',
@@ -305,8 +304,8 @@ export const BG_ARCHIVE: AdminDict = {
   // The archive editor's refusals (src/server/services/archive-editor.ts and what it uses), as the actions return them
   'Use at most {max} characters.': 'Използвайте най-много {max} знака.',
   'Write a year from {from} to {to}, or leave it empty.': 'Напишете година от {from} до {to} или оставете полето празно.',
-  'This name is not written in {script}.': 'Това име не е изписано в писмеността „{script}“.',
-  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка при нас; нищо не е променено. Опитайте отново.',
+  'This name is not written in {script}.': "Това име не е написано с писмеността „{script}“.",
+  'Something went wrong on our side; nothing was changed. Try again.': "Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.",
   'Check the highlighted fields.': 'Проверете отбелязаните полета.',
   'Only an archivist or an administrator keeps the archive.': 'Архивът се поддържа само от архивист или администратор.',
   'This link belongs to a member: it involves a member’s own record or was approved by their teacher. Members’ own links change through their review flow (the member edits the request and their teacher confirms it, or they send a claim with evidence); they are not edited here.':
@@ -326,14 +325,14 @@ export const BG_ARCHIVE: AdminDict = {
   'A file sent with a claim stays with that claim. Upload the document again for this record.':
     'Файл, изпратен със заявка, остава към тази заявка. Качете документа отново за този запис.',
   'Enter the name in Latin letters.': 'Въведете името на латиница.',
-  'Use Latin letters here. Add the name in its own script below.': 'Тук използвайте латиница. Добавете името в собствената му писменост по-долу.',
+  'Use Latin letters here. Add the name in its own script below.': "Тук използвайте латиница. Добавете името в оригиналната му писменост по-долу.",
   'Choose the script of this name.': 'Изберете писмеността на това име.',
   'Write Jyutping in lower case, with optional tone numbers: sou1 zuk1 cing4.': 'Пишете Jyutping с малки букви, по желание с цифри за тоновете: sou1 zuk1 cing4.',
   'Write pinyin in Latin letters, with tone marks or tone numbers.': 'Пишете пинин на латиница, със знаци или цифри за тоновете.',
   'Choose the lineage.': 'Изберете линията.',
   'Choose the teacher.': 'Изберете учителя.',
   'Choose the student.': 'Изберете ученика.',
-  'A person can’t be their own teacher.': 'Едно лице не може да бъде свой собствен учител.',
+  'A person can’t be their own teacher.': "Човек не може да бъде свой собствен учител.",
   'Give the year the training started, or leave both years empty.': 'Посочете годината, в която е започнало обучението, или оставете двете години празни.',
   'The end can’t be before the start.': 'Краят не може да е преди началото.',
   'Write the source: where this training is recorded.': 'Напишете източника: къде е записано това обучение.',
@@ -352,6 +351,7 @@ export const BG_ARCHIVE: AdminDict = {
   'This request key was already used for another change. Reload the page and try again.': 'Този ключ на заявката вече е използван за друга промяна. Презаредете страницата и опитайте отново.',
   'Send a request key.': 'Изпратете ключ на заявката.',
   'Send a request key of 8 to 64 letters, digits, - or _.': 'Изпратете ключ на заявката от 8 до 64 букви, цифри, - или _.',
-  'Your account does not have access to this.': 'Вашият акаунт няма достъп до това.',
+  'Your account does not have access to this.': "Акаунтът ви няма достъп до това.",
   'Confirm this session with your authenticator app first.': 'Първо потвърдете тази сесия с приложението си за удостоверяване.',
+  "verb|Open": "Отвори",
 };

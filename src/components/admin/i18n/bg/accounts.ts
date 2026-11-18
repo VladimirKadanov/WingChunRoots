@@ -4,8 +4,8 @@
 import type { AdminDict } from '../translate';
 
 export const BG_ACCOUNTS: AdminDict = {
-  'Back to your account': 'Обратно към вашия акаунт',
-  'Not available': 'Няма достъп',
+  'Back to your account': "Обратно към вашия акаунт",
+  'Not available': "Няма достъп",
   "You don't have access to accounts. They are available to administrators.": 'Нямате достъп до акаунтите. Те са достъпни за администраторите.',
   'Find any account, suspend an account that must be stopped now, lift a suspension, or erase an account when its person asks. Each action needs a reason and is kept in the audit log. To take a profile off the public pages, use its record page in the review queue.': 'Намерете всеки акаунт, спрете акаунт, който трябва да бъде спрян веднага, отменете спиране или заличете акаунт, когато човекът му поиска. Всяко действие изисква причина и се пази в одитния журнал. За да свалите профил от публичните страници, използвайте страницата на записа му в опашката за преглед.',
   'All accounts': 'Всички акаунти',
@@ -52,7 +52,7 @@ export const BG_ACCOUNTS: AdminDict = {
   'Administrator': 'Администратор',
   'Sifu': 'Сифу',
   'Student': 'Ученик',
-  'Suspended': 'Спрян',
+  'Suspended': "Спряно",
   'Active': 'Активен',
   'Address confirmed': 'Адресът е потвърден',
   'Second factor on': 'Вторият фактор е включен',
@@ -77,7 +77,7 @@ export const BG_ACCOUNTS: AdminDict = {
   'Its profile stays as an unclaimed record (private).': 'Профилът му остава като запис без собственик (личен).',
   '{n} pending request was withdrawn.': 'Оттеглена е {n} чакаща заявка.',
   '{n} pending requests were withdrawn.': 'Оттеглени са {n} чакащи заявки.',
-  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.',
+  'Something went wrong on our side; nothing was changed. Try again.': "Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.",
   'Check the highlighted fields.': 'Проверете отбелязаните полета.',
   'Sign in to continue.': 'Влезте, за да продължите.',
   'Use at most 500 characters.': 'Използвайте най-много 500 знака.',

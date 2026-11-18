@@ -224,7 +224,7 @@ export function ReviewTable({ list, t }: { list: ReviewList; t: AdminT }) {
   return (
     <div className="@container grid gap-4">
       <RangeLine
-        noun="Cases"
+        noun={t('Cases')}
         total={list.total}
         page={list.page}
         pageSize={list.pageSize}

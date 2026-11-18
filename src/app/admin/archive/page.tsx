@@ -175,7 +175,7 @@ export default async function ArchiveEditorPage({ searchParams }: { searchParams
                   <Header label={t('Generations')} className="text-right" />
                   <SortHeader t={t} label={t('Completeness')} href={href(q, 'sourced', '#lineages')} current={sort === 'sourced'} />
                   <SortHeader t={t} label={t('Last edited')} href={href(q, 'edited', '#lineages')} current={sort === 'edited'} />
-                  <Header label={<span className="sr-only">{t('Open')}</span>} className="pr-0" />
+                  <Header label={<span className="sr-only">{t.x('verb', 'Open')}</span>} className="pr-0" />
                 </tr>
               </thead>
               <tbody role="rowgroup" className="@max-[52rem]:grid @max-[52rem]:gap-3">

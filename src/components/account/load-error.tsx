@@ -24,6 +24,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 
+import { useAdminT } from '@/components/admin/i18n/client';
 import { AlertIcon, ArrowLeftIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 
@@ -48,7 +49,9 @@ export function LoadError({
     if (pending) return;
     startRetry(() => (retry ? retry() : router.refresh()));
   };
-  const label = pending ? 'Trying again…' : 'Try again';
+  // English everywhere but in the control panel of a full administrator (docs/adr/0043-admin-bulgarian.md).
+  const t = useAdminT();
+  const label = pending ? t('Trying again…') : t('Try again');
   const retryClass = buttonVariants({ variant: 'secondary' });
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -62,7 +65,7 @@ export function LoadError({
             <AlertIcon size={18} className="mt-1 shrink-0 text-danger" />
             <span>{message}</span>
           </p>
-          <p className="max-w-[56ch] text-sm text-fg-muted">This is usually brief: try again in a moment.</p>
+          <p className="max-w-[56ch] text-sm text-fg-muted">{t('This is usually brief: try again in a moment.')}</p>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {retryHref ? (
               <a

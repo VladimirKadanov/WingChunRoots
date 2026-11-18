@@ -14,7 +14,7 @@ export const BG_ORGANIZATIONS: AdminDict = {
   'Plan': 'План',
   'Plan grants': 'Подарени планове',
   'Active': 'Активен',
-  'Ended': 'Приключил',
+  'Ended': "Прекратено",
   'Waiting for review': 'Чака преглед',
   'Approved': 'Одобрено',
 
@@ -53,7 +53,7 @@ export const BG_ORGANIZATIONS: AdminDict = {
   'Association': 'Асоциация',
   'Group of schools': 'Група школи',
   'Declined': 'Отказано',
-  'Suspended': 'Спряно',
+  'Suspended': "Спряно",
   'Payment': 'Плащане',
   'Starts later': 'Започва по-късно',
   'Revoked': 'Отменен',
@@ -101,7 +101,7 @@ export const BG_ORGANIZATIONS: AdminDict = {
   'The organization holds Federation already. A trial is for an organization without it.':
     'Организацията вече има Federation. Пробният период е за организация без него.',
   'This trial is not running.': 'Този пробен период не тече.',
-  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.',
+  'Something went wrong on our side; nothing was changed. Try again.': "Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.",
 
   // One organization
   'Organization not found': 'Организацията не е намерена',

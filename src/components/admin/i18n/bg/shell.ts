@@ -31,4 +31,5 @@ export const BG_SHELL: AdminDict = {
   "Previous": "Предишна",
   "Page {page} of {pages}": "Страница {page} от {pages}",
   "Next": "Следваща",
+  "Cases": "Случаи",
 };

@@ -157,7 +157,7 @@ export default async function AdminSchoolsPage({ searchParams }: { searchParams:
       </form>
 
       <div className="mt-5 grid gap-4">
-        <RangeLine noun="Schools" total={view.total} page={view.page} pageSize={view.pageSize} testId="admin-schools-count" extra={<span>{t('hidden first, then awaiting, the longest without activity first')}</span>} />
+        <RangeLine noun={t('Schools')} total={view.total} page={view.page} pageSize={view.pageSize} testId="admin-schools-count" extra={<span>{t('hidden first, then awaiting, the longest without activity first')}</span>} />
         {view.schools.length === 0 ? (
           <EmptyState testId="admin-schools-empty">
             {q

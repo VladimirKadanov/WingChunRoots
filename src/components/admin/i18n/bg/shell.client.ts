@@ -4,4 +4,10 @@
 import type { AdminDict } from '../translate';
 
 export const BG_SHELL_CLIENT: AdminDict = {
+  "{n} answer needs a look": "{n} отговор изисква внимание",
+  "{n} answers need a look": "{n} отговора изискват внимание",
+  "(optional)": "(по избор)",
+  "Trying again…": "Нов опит…",
+  "Try again": "Опитай отново",
+  "This is usually brief: try again in a moment.": "Обикновено е за кратко: опитайте отново след малко.",
 };

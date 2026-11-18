@@ -260,7 +260,7 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
                     <Header label={t('Status')} />
                     <Header label={t('Source')} />
                     <SortHeader t={t} label={t('Edited')} href={href({ ...filters, sort: 'edited' })} current={filters.sort === 'edited'} />
-                    <Header label={<span className="sr-only">{t('Open')}</span>} className="pr-0" />
+                    <Header label={<span className="sr-only">{t.x('verb', 'Open')}</span>} className="pr-0" />
                   </tr>
                 </thead>
                 <tbody role="rowgroup" className="@max-[52rem]:grid @max-[52rem]:gap-3">
@@ -304,7 +304,7 @@ export default async function ArchiveLinksPage({ params, searchParams }: { param
                       </td>
                       <td role="cell" className={`${cell} pr-0`}>
                         <Link href={href(filters, list.page, link.id, '#link-panel')} className="link inline-flex min-h-11 items-center whitespace-nowrap">
-                          {t('Open')}
+                          {t.x('verb', 'Open')}
                           <span className="sr-only">{t(' the link from {teacher} to {student}', { teacher: link.teacher.name.value, student: link.student.name.value })}</span>
                         </Link>
                       </td>

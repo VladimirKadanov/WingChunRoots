@@ -52,14 +52,14 @@ export const BG_REVIEW_CLIENT: AdminDict = {
 
   // The archival edit.
   'Name in Latin letters': 'Име на латиница',
-  'Name in its own script': 'Име в оригиналната писменост',
+  'Name in its own script': "Име в оригиналната писменост",
   'Script': 'Писменост',
-  'Life status': 'Жизнен статус',
+  'Life status': "Жив или починал",
   'Biography': 'Биография',
   'Evidence': 'Доказателства',
   'Script of that name': 'Писменост на това име',
   'Choose a script': 'Изберете писменост',
-  'Not known': 'Неизвестен',
+  'Not known': "Неизвестно",
   'Deceased': 'Починал',
   'Living': 'Жив',
   'Biography (English)': 'Биография (на английски)',

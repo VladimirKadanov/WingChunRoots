@@ -15,10 +15,10 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   'Root record': 'Запис в корена',
   Reason: 'Причина',
   'Name in Latin letters': 'Име на латиница',
-  'Name in its own script': 'Име в собствената му писменост',
+  'Name in its own script': "Име в оригиналната писменост",
   'Script of that name': 'Писменост на това име',
   Pinyin: 'Пинин',
-  'Life status': 'Жив или починал',
+  'Life status': "Жив или починал",
   'Biography (English)': 'Биография (на английски)',
   Evidence: 'Доказателства',
   Lineage: 'Линия',
@@ -40,7 +40,7 @@ export const BG_ARCHIVE_CLIENT: AdminDict = {
   'A person whose life status is not known is treated as living: the record and its links stay off the public pages until the evidence shows a death.':
     'Лице, за което не е известно дали е живо, се смята за живо: записът и връзките му остават извън публичните страници, докато доказателствата не покажат смърт.',
   Deceased: 'Починал',
-  'Not known': 'Неизвестно',
+  'Not known': "Неизвестно",
   'Optional. JPEG, PNG, WebP or PDF, up to 20 MB each. Linked files stay with the record; staff only.':
     'По желание. JPEG, PNG, WebP или PDF, до 20 MB всеки. Свързаните файлове остават към записа; само за екипа.',
   "The teacher's record address.": 'Адресът на записа на учителя.',

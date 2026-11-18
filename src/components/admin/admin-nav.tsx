@@ -8,7 +8,6 @@
 
 import Link from 'next/link';
 
-import { setAdminLanguage } from '@/app/admin/language';
 import type { AdminLang, AdminT } from '@/components/admin/i18n/translate';
 import { cx } from '@/lib/cx';
 
@@ -63,12 +62,13 @@ const LANGUAGES: readonly { lang: AdminLang; label: string }[] = [
 ];
 
 /**
- * The control panel's language (docs/adr/0043-admin-bulgarian.md), for full administrators only: a plain form, so it works with
+ * The control panel's language (docs/adr/0043-admin-bulgarian.md), for full administrators only: a plain form
+ * posting to /api/admin/language (src/app/api/admin/language/route.ts), so it works with
  * scripts off; the current language is pressed (aria-pressed, weight and an outline, not colour).
  */
 function LanguageSwitch({ t, pathname, className }: { t: AdminT; pathname: string; className?: string }) {
   return (
-    <form action={setAdminLanguage} className={cx('flex items-center gap-1', className)} aria-label={t('Language of the control panel')}>
+    <form method="post" action="/api/admin/language" className={cx('flex items-center gap-1', className)} aria-label={t('Language of the control panel')}>
       <input type="hidden" name="back" value={pathname} />
       {LANGUAGES.map(({ lang, label }) => (
         <button
