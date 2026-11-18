@@ -300,6 +300,8 @@ export const PASSPORT_NOTE_MAX = 1000;
 export const PASSPORT_TITLE_MAX = 200;
 /** DEFAULT M19 (question 4): at most this many certificates kept on one passport (removed ones apart). */
 export const PASSPORT_CERTIFICATES_MAX = 20;
+/** ADR 0046: at most this many photos of the student's own gallery on one rank (the grading history). */
+export const PASSPORT_RANK_PHOTOS_MAX = 3;
 
 // --- Governance (milestone M25; docs/adr/0028-governance.md) ---------------------------------------
 /**

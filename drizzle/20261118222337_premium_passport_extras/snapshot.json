@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "63fe7f96-720d-4ec5-9160-086f7120c470",
+  "id": "c4091efa-eb69-4bbc-adf5-a747acffe55f",
   "prevIds": [
     "6b9f73f0-267a-49cc-86cf-53cc0b528f4e"
   ],
@@ -279,6 +279,12 @@
     {
       "isRlsEnabled": false,
       "name": "passport_rank",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "passport_rank_photo",
       "entityType": "tables",
       "schema": "public"
     },
@@ -7680,6 +7686,58 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "rank_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "photo_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
       "default": "gen_random_uuid()",
       "generated": null,
       "identity": null,
@@ -15058,6 +15116,55 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "rank_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "position",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "passport_rank_photo_rank_position_key",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "photo_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "passport_rank_photo_photo_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "person_id",
           "isExpression": false,
           "asc": true,
@@ -19137,6 +19244,40 @@
     {
       "nameExplicit": false,
       "columns": [
+        "rank_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "passport_rank",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "passport_rank_photo_rank_id_passport_rank_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "photo_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "person_photo",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "passport_rank_photo_photo_id_person_photo_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "passport_rank_photo"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "person_id"
       ],
       "schemaTo": "public",
@@ -19869,6 +20010,17 @@
       "entityType": "pks",
       "schema": "public",
       "table": "lineage_membership"
+    },
+    {
+      "columns": [
+        "rank_id",
+        "photo_id"
+      ],
+      "nameExplicit": false,
+      "name": "passport_rank_photo_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "passport_rank_photo"
     },
     {
       "columns": [
@@ -21831,6 +21983,13 @@
       "entityType": "checks",
       "schema": "public",
       "table": "passport_rank"
+    },
+    {
+      "value": "\"position\" BETWEEN 0 AND 2",
+      "name": "passport_rank_photo_position_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "passport_rank_photo"
     },
     {
       "value": "char_length(\"name\") BETWEEN 1 AND 120",

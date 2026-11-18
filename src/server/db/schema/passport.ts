@@ -21,7 +21,7 @@
 // through v_public_passport (the migration), which only app_rw reads.
 
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
 import {
@@ -30,6 +30,7 @@ import {
   idColumn,
   inList,
   PASSPORT_NOTE_MAX,
+  PASSPORT_RANK_PHOTOS_MAX,
   PASSPORT_STATUSES,
   PASSPORT_TEXT_MAX,
   PASSPORT_TITLE_MAX,
@@ -40,7 +41,7 @@ import {
 } from './common';
 import { event } from './events';
 import { organization } from './organizations';
-import { person } from './persons';
+import { person, personPhoto } from './persons';
 
 /** The columns every entry has: whose passport, who sees it, its status, who wrote and changed it. */
 const entryColumns = () => ({
@@ -140,6 +141,33 @@ export const passportRank = pgTable(
     ...entryChecks('passport_rank', t),
     ...datedChecks('passport_rank', 'awarded_on'),
     ...correctionChecks('passport_rank'),
+  ],
+);
+
+/**
+ * ADR 0046 (owner decision 2026-11-18): up to 3 photos of the student's own gallery on a rank of
+ * their passport, chosen by the student (the grading history). A photo is shown only while it is
+ * in the gallery (active or gallery), the rank is public and the passport shows the full timeline;
+ * removing the photo from the gallery removes it here too.
+ */
+export const passportRankPhoto = pgTable(
+  'passport_rank_photo',
+  {
+    rankId: uuid('rank_id')
+      .notNull()
+      .references(() => passportRank.id, { onDelete: 'cascade' }),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => personPhoto.id, { onDelete: 'cascade' }),
+    /** 0, 1 or 2: the student's order. */
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.rankId, t.photoId] }),
+    uniqueIndex('passport_rank_photo_rank_position_key').on(t.rankId, t.position),
+    index('passport_rank_photo_photo_id_idx').on(t.photoId),
+    check('passport_rank_photo_position_check', sql`${t.position} BETWEEN 0 AND ${sql.raw(String(PASSPORT_RANK_PHOTOS_MAX - 1))}`),
   ],
 );
 
