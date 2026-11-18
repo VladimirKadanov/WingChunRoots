@@ -4,6 +4,8 @@
 import { headers } from 'next/headers';
 
 import { AdminNav, type AdminNavGroup } from '@/components/admin/admin-nav';
+import { getAdminT, mayChooseAdminLang } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { checkRoute, hasStaff2FA } from '@/server/auth/guards';
 import type { Principal } from '@/server/auth/principal';
 import { getRequestPrincipal } from '@/server/auth/web';
@@ -53,16 +55,47 @@ export const SECTIONS: readonly { label: string; sections: readonly Section[] }[
 
 const COUNT_LABELS = { openReview: 'open', systemProblems: 'problems' } as const;
 
-export function adminNavGroups(principal: Principal, counts: Record<'openReview' | 'systemProblems', number> | null): AdminNavGroup[] {
+/** The labels as t() calls, so the Bulgarian check (src/components/admin/i18n/bg/index.test.ts) sees them. */
+function label(t: AdminT, text: string): string {
+  switch (text) {
+    case 'Overview': return t('Overview');
+    case 'Dashboard': return t('Dashboard');
+    case 'Reports': return t('Reports');
+    case 'Queues': return t('Queues');
+    case 'Review requests': return t('Review requests');
+    case 'Directory': return t('Directory');
+    case 'Accounts': return t('Accounts');
+    case 'Schools': return t('Schools');
+    case 'Organizations': return t('Organizations');
+    case 'Archive': return t('Archive');
+    case 'Lineages': return t('Lineages');
+    case 'People & records': return t('People & records');
+    case 'Shared records': return t('Shared records');
+    case 'Money': return t('Money');
+    case 'Billing': return t('Billing');
+    case 'Plan grants': return t('Plan grants');
+    case 'System': return t('System');
+    case 'System status': return t('System status');
+    case 'open': return t('open');
+    case 'problems': return t('problems');
+    default: return t(text);
+  }
+}
+
+export function adminNavGroups(
+  principal: Principal,
+  counts: Record<'openReview' | 'systemProblems', number> | null,
+  t: AdminT,
+): AdminNavGroup[] {
   return SECTIONS.map((group) => ({
-    label: group.label,
+    label: label(t, group.label),
     links: group.sections
       .filter((section) => checkRoute(section.href, principal).ok)
       .map((section) => ({
         href: section.href,
-        label: section.label,
+        label: label(t, section.label),
         count: section.count && counts ? counts[section.count] : null,
-        countLabel: section.count ? COUNT_LABELS[section.count] : undefined,
+        countLabel: section.count ? label(t, COUNT_LABELS[section.count]) : undefined,
         alert: section.count === 'systemProblems',
       })),
   })).filter((group) => group.links.length > 0);
@@ -77,6 +110,7 @@ export async function AdminNavEntry({ pathname }: { pathname: string }) {
   const counts = await serverClient(await headers(), principal)
     .admin.navCounts()
     .catch(() => null);
-  return <AdminNav groups={adminNavGroups(principal, counts)} pathname={pathname} />;
+  const t = await getAdminT();
+  return <AdminNav groups={adminNavGroups(principal, counts, t)} pathname={pathname} t={t} canSwitch={await mayChooseAdminLang()} />;
 }
 
