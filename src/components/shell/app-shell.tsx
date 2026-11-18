@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Phone: top bar. */}
       <header className="sticky top-0 z-30 border-b border-border-subtle bg-bg pt-[env(safe-area-inset-top,0px)] md:hidden">
-        <div className="flex min-h-(--top-h) items-center justify-between gap-2 pr-[max(0.375rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))]">
+        <div className="flex min-h-(--top-h) items-center justify-between gap-1.5 pr-[max(0.375rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))]">
           {/* min-w-0: at 200 % text the wordmark is cut, never the theme switch or the page. */}
           <Link href="/" className="inline-flex min-h-11 min-w-0 shrink items-center" aria-label="WingChunRoots, home">
             <BrandMark className="min-w-0" />
