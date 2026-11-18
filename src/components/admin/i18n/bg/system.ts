@@ -81,7 +81,7 @@ export const BG_SYSTEM: AdminDict = {
   '; the administration guide explains it and the weekly restore drill.': '; ръководството за администратори го обяснява, както и седмичното упражнение по възстановяване.',
   'Until hosting is decided, everything since the last backup can be lost (the recovery point); a restore takes at most 4 hours.':
     'Докато не се реши хостингът, всичко след последното резервно копие може да се загуби (точката на възстановяване); възстановяването отнема най-много 4 часа.',
-  'Not available': 'Недостъпно',
+  'Not available': 'Няма достъп',
   "You don't have access to the system status. It is available to moderators, archivists and administrators.": 'Нямате достъп до състоянието на системата. То е достъпно за модератори, архивисти и администратори.',
   'Back to your account': 'Обратно към акаунта ви',
   "We couldn't read the system status. Nothing was changed.": 'Състоянието на системата не можа да се прочете. Нищо не е променено.',
