@@ -346,6 +346,35 @@ describe('review decisions write relationship_event and audit_log', () => {
     const assigned = await getReviewCase(moderator.principal, { id: caseId });
     expect(assigned.files.map((f) => [f.name, f.href])).toEqual([['demo-rv-queue.pdf', `/api/evidence/${file.id}`]]);
   });
+
+  it('the queue filters by group and by age, and counts its saved views under the status filter (control panel)', async () => {
+    const moderator = await staff('rv-views-mod', 'moderator');
+    const { caseId } = await claim('rv-views');
+    const fresh = await listReviewCases(moderator.principal, { group: 'claims', sort: 'newest' });
+    expect(fresh.rows.map((r) => r.id)).toContain(caseId);
+    expect(fresh.rows.every((r) => r.kind === 'historical_claim' || r.kind === 'person_claim')).toBe(true);
+    expect((await listReviewCases(moderator.principal, { group: 'disputes', sort: 'newest' })).rows.map((r) => r.id)).not.toContain(caseId);
+    // Opened today: not in "waiting over 3 days" until it is that old.
+    expect((await listReviewCases(moderator.principal, { age: '3d', sort: 'newest' })).rows.map((r) => r.id)).not.toContain(caseId);
+    const before = (await listReviewCases(moderator.principal, {})).counts;
+    await getDb().update(reviewCase).set({ createdAt: new Date(Date.now() - 4 * 86_400_000) }).where(eq(reviewCase.id, caseId));
+    const late = await listReviewCases(moderator.principal, { age: '3d', group: 'claims' });
+    expect(late.rows.map((r) => r.id)).toContain(caseId);
+    expect(late.rows.every((r) => Date.parse(r.openedAt) < Date.now() - 3 * 86_400_000)).toBe(true);
+    // The counts ignore the kind, group, assignee and age filters, and agree with the lists.
+    const { counts } = late;
+    expect(counts.late).toBe(before.late + 1);
+    expect(counts.all).toBe((await listReviewCases(moderator.principal, {})).total);
+    expect(counts.unassigned).toBe((await listReviewCases(moderator.principal, { assigned: 'none' })).total);
+    expect(counts.mine).toBe((await listReviewCases(moderator.principal, { assigned: 'me' })).total);
+    expect(counts.groups.find((g) => g.value === 'claims')!.count).toBe((await listReviewCases(moderator.principal, { group: 'claims' })).total);
+    expect(counts.groups.reduce((n, g) => n + g.count, 0)).toBe(counts.all);
+    expect(counts.kinds.historical_claim).toBe((await listReviewCases(moderator.principal, { kind: 'historical_claim' })).total);
+    // An unknown group or age falls back to the defaults.
+    const fallback = (await listReviewCases(moderator.principal, { group: 'nope' as never, age: '2d' as never })).filters;
+    expect(fallback.group ?? null).toBeNull();
+    expect(fallback.age).toBe('any');
+  });
 });
 
 describe('the archival edit (plan §6.6)', () => {
@@ -461,7 +490,7 @@ describe('the archival edit (plan §6.6)', () => {
     expect((await getArchiveRecord(admin.principal, { slug: record.slug })).files.map((f) => f.href)).toEqual([`/api/evidence/${mine.id}`]);
   });
 
-  it('requires a reason; a moderator and an administrator get 403; a record kept by its owner is refused', async () => {
+  it('requires a reason; a moderator gets 403 (M26: an administrator may edit); a record kept by its owner is refused', async () => {
     const archivist = await staff('rv-arch-rules', 'archivist');
     const moderator = await staff('rv-arch-rules-mod', 'moderator');
     const admin = await staff('rv-arch-rules-admin', 'admin');
@@ -470,7 +499,8 @@ describe('the archival edit (plan §6.6)', () => {
     const noReason = await updateArchiveRecord(archivist.principal, { ...base, reason: '   ' }, meta).catch((e: unknown) => e);
     expect(noReason).toMatchObject({ code: 'BAD_REQUEST', fields: { reason: 'Write the reason for this edit.' } });
     expect(await refusal(updateArchiveRecord(moderator.principal, base, meta))).toBe('FORBIDDEN');
-    expect(await refusal(updateArchiveRecord(admin.principal, base, meta))).toBe('FORBIDDEN');
+    // M26 (owner decision, docs/adr/0034-archive-editor.md): administrators keep the archive too.
+    expect((await getArchiveRecord(admin.principal, { slug: record.slug })).editable).toBe(true);
     expect((await getArchiveRecord(moderator.principal, { slug: record.slug })).editable).toBe(false);
 
     const owned = await member('rv-arch-owned');

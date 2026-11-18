@@ -19,7 +19,7 @@ import { auditLog, entitlementGrant, notification, organization, organizationSch
 import { PG, pgError } from '../db/test-support';
 import { createTestDatabase, type TestDatabase } from '../db/testing';
 import { createGrant } from './grants';
-import { grantOrganizationPlan, revokeOrganizationPlan } from './organization-grants';
+import { adminOrganizations, grantOrganizationPlan, revokeOrganizationPlan } from './organization-grants';
 import {
   addOrganizationAdmin,
   addOrganizationMember,
@@ -289,6 +289,29 @@ describe('members, the plan and revoking it (DEFAULT D03, D08, D12)', () => {
     await endSchoolLink(s.owner.principal, { linkId: link.linkId }, meta);
     expect((await organizationGet(null, { slug })).schools).toEqual([]);
     expect(await lineageState([shown.personId])).toBe(before);
+  });
+});
+
+describe('organizations.adminList (control panel)', () => {
+  it('searches by name, filters by approval and plan, counts by approval and pages', async () => {
+    const tag = randomBytes(3).toString('hex');
+    const waiting = await apply('org-list-wait', `Demo ${tag} Waiting Federation`);
+    const approved = await apply('org-list-ok', `Demo ${tag} Approved Federation`);
+    await approve(approved.caseId);
+    await federation(approved.organizationId);
+    const found = await adminOrganizations(admin.principal, { q: tag });
+    expect(found.organizations.map((o) => o.id)).toEqual([waiting.organizationId, approved.organizationId]);
+    expect(found.total).toBe(2);
+    expect(found.counts).toMatchObject({ all: 2, pending: 1, active: 1 });
+    expect((await adminOrganizations(admin.principal, { q: tag, status: 'pending' })).organizations.map((o) => o.id)).toEqual([waiting.organizationId]);
+    expect((await adminOrganizations(admin.principal, { q: tag, plan: 'federation' })).organizations.map((o) => o.id)).toEqual([approved.organizationId]);
+    expect((await adminOrganizations(admin.principal, { q: tag, plan: 'none' })).organizations.map((o) => o.id)).toEqual([waiting.organizationId]);
+    expect((await adminOrganizations(admin.principal, { q: tag, page: 2 })).organizations).toEqual([]);
+    expect((await adminOrganizations(admin.principal, { q: '%' })).total).toBe(0);
+    // A bad filter falls back to the defaults; only administrators read the list.
+    expect((await adminOrganizations(admin.principal, { status: 'nope' as never })).filters.status).toBe('all');
+    const archivist = await staff('org-list-arch', 'archivist');
+    await expect(adminOrganizations(archivist.principal)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
 

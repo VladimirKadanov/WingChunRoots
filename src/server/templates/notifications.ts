@@ -178,7 +178,7 @@ interface PlanGranted {
 }
 
 /** The plan notifications lead to the account's plan, not to the dashboard they are shown on. */
-const SEE_YOUR_PLAN = { label: 'See your plan', href: '/dashboard/settings' } as const;
+const SEE_YOUR_PLAN = { label: 'See your plan', href: '/account/plan' } as const;
 const SEE_YOUR_BILLING = { label: 'Open billing', href: '/dashboard/billing' } as const;
 
 /**
@@ -636,29 +636,38 @@ const CASE_PAGE = (caseId: string) => `/dashboard/cases/${caseId}`;
 /**
  * "claim.decided": to the teacher who accepted an invitation, when the reviewers approve the
  * profile claim, refuse it or ask for more information, or when the student withdraws the request
- * it answered (closed). The reviewers' words are on the case page.
+ * it answered (closed). The reviewers' words are on the case page. `self`: a claim asked from a
+ * public profile (ADR 0040), which answers no student's request; rows without it are invitations.
  */
-const claimDecided: NotificationTemplate<{ caseId: string; decision: 'approved' | 'rejected' | 'needs_info' | 'closed' }> = {
+const claimDecided: NotificationTemplate<{ caseId: string; decision: 'approved' | 'rejected' | 'needs_info' | 'closed'; self: boolean }> = {
   name: 'claim.decided',
   parse(payload) {
     const caseId = caseIdOf('claim.decided', payload);
-    const decision = payloadObject('claim.decided', payload).decision;
+    const object = payloadObject('claim.decided', payload);
+    const decision = object.decision;
     if (decision !== 'approved' && decision !== 'rejected' && decision !== 'needs_info' && decision !== 'closed') {
       throw new NotificationDataError('claim.decided', 'decision must be approved, rejected, needs_info or closed');
     }
-    return { caseId, decision };
+    if (object.self !== undefined && typeof object.self !== 'boolean') throw new NotificationDataError('claim.decided', 'self must be a boolean');
+    return { caseId, decision, self: object.self === true };
   },
-  render: ({ caseId, decision }) =>
+  render: ({ caseId, decision, self }) =>
     decision === 'approved'
-      ? {
-          title: 'Profile claim approved',
-          body: [{ text: 'The reviewers approved your claim: the profile is now yours. The student who invited you waits for your answer to their request.' }],
-          action: { label: 'Answer the request', href: STUDENT_QUEUE },
-        }
+      ? self
+        ? {
+            title: 'Profile claim approved',
+            body: [{ text: 'The reviewers approved your claim: the profile is now yours. You can edit it, and choose whether it is shown publicly, in Your profile.' }],
+            action: { label: 'Open your profile', href: '/dashboard/profile' },
+          }
+        : {
+            title: 'Profile claim approved',
+            body: [{ text: 'The reviewers approved your claim: the profile is now yours. The student who invited you waits for your answer to their request.' }],
+            action: { label: 'Answer the request', href: STUDENT_QUEUE },
+          }
       : decision === 'rejected'
         ? {
             title: 'Profile claim not approved',
-            body: [{ text: 'The reviewers could not confirm that the profile is yours. The profile stays private.' }],
+            body: [{ text: self ? 'The reviewers could not confirm that the profile is yours. The profile stays as it was.' : 'The reviewers could not confirm that the profile is yours. The profile stays private.' }],
             action: { label: 'Read their reason', href: CASE_PAGE(caseId) },
           }
         : decision === 'needs_info'
@@ -672,7 +681,7 @@ const claimDecided: NotificationTemplate<{ caseId: string; decision: 'approved' 
               body: [{ text: 'The student withdrew the request your claim answered, so the claim is closed. Nothing was published.' }],
               action: { label: 'See the case', href: CASE_PAGE(caseId) },
             },
-  sample: { caseId: '0190a5c0-0000-7000-8000-00000000000b', decision: 'approved' },
+  sample: { caseId: '0190a5c0-0000-7000-8000-00000000000b', decision: 'approved', self: false },
 };
 
 /**
@@ -1185,7 +1194,13 @@ const limitReached: NotificationTemplate<LimitReached> = {
         : '';
     return {
       title: `Plan limit reached: ${f.label}`,
-      body: [{ text: `${PLANS[planCode].name} includes ${own.charAt(0).toLowerCase()}${own.slice(1)}, and that limit is reached. Nothing you already have changes.${offer}` }],
+      // ADR 0044: a plan without any of it (Free Student's gallery: "Profile photo only") has no
+      // limit to reach, only what it includes.
+      body: [
+        {
+          text: `${PLANS[planCode].name} includes ${own.charAt(0).toLowerCase()}${own.slice(1)}${f.values[planCode].limit === 0 ? '' : ', and that limit is reached'}. Nothing you already have changes.${offer}`,
+        },
+      ],
       action: upgradeTo ? { label: 'Compare plans', href: '/plans' } : SEE_YOUR_PLAN,
     };
   },

@@ -10,25 +10,26 @@ import Link from 'next/link';
 import { type ReactNode, useActionState, useState } from 'react';
 
 import { FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { useAdminT } from '@/components/admin/i18n/client';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { CheckIcon, ChevronDownIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
-import { formatDay } from '@/lib/dates';
 import { IDLE, type FormState } from '@/lib/form-state';
 import { closeRequestAction, createGrantAction, revokeGrantAction } from './actions';
 import { closeRequestForm, CREATE_GRANT_FORM, revokeGrantForm } from './form-ids';
 
-const LABELS = {
-  email: 'Account e-mail',
-  planCode: 'Plan',
-  source: 'Kind',
-  reason: 'Reason',
-  startsOn: 'Starts',
-  endsOn: 'Ends',
-};
-
 /** What /admin/grants says for `?request=` of a request that is no longer open (final check, screens-4). */
-export const REQUEST_ANSWERED_TEXT = 'This pilot access request has already been answered. Nothing is waiting in it.';
+const REQUEST_ANSWERED_TEXT = 'This pilot access request has already been answered. Nothing is waiting in it.';
+
+const labels = (t: AdminT) => ({
+  email: t('Account e-mail'),
+  planCode: t('Plan'),
+  source: t('Kind'),
+  reason: t('Reason'),
+  startsOn: t('Starts'),
+  endsOn: t('Ends'),
+});
 
 /**
  * The "Give a test plan…" disclosure around the form (review round 1, design-6). Open when a pilot
@@ -41,13 +42,14 @@ export const REQUEST_ANSWERED_TEXT = 'This pilot access request has already been
  * form stays open with its success message, and nothing claims the request was answered before.
  */
 export function GivePlanDisclosure({ openAtFirst, answeredAtFirst, children }: { openAtFirst: boolean; answeredAtFirst: boolean; children: ReactNode }) {
+  const t = useAdminT();
   const [{ open, answered }] = useState({ open: openAtFirst, answered: answeredAtFirst });
   return (
     <>
       {answered ? (
         <p data-testid="request-answered" className="flex max-w-[46rem] items-start gap-2 rounded-sm bg-surface-2 px-4 py-3 text-ui">
           <CheckIcon size={18} className="mt-1 shrink-0" />
-          <span>{REQUEST_ANSWERED_TEXT}</span>
+          <span>{t(REQUEST_ANSWERED_TEXT)}</span>
         </p>
       ) : null}
       <details open={open || undefined} className="group max-w-[46rem]">
@@ -55,7 +57,7 @@ export function GivePlanDisclosure({ openAtFirst, answeredAtFirst, children }: {
           data-testid="give-plan-toggle"
           className={cx(buttonVariants({ variant: 'secondary', size: 'lg' }), 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
         >
-          Give a test plan…
+          {t('Give a test plan…')}
           <ChevronDownIcon size={18} className="transition-transform duration-(--duration-fast) group-open:rotate-180" />
         </summary>
         <div className="pt-4">{children}</div>
@@ -85,6 +87,8 @@ export function CreateGrantForm({
   horizon: string;
   initial?: FormState | null;
 }) {
+  const t = useAdminT();
+  const LABELS = labels(t);
   const [state, action, pending] = useActionState(createGrantAction, initial ?? IDLE);
   const generatedId = useFormId('create-grant');
   // The outcome of a post without JavaScript is opened at its message: a fixed id (./form-ids.ts).
@@ -111,7 +115,7 @@ export function CreateGrantForm({
         translate="no"
         maxLength={320}
         defaultValue={prefill?.email}
-        hint="The address the account signs in with."
+        hint={t('The address the account signs in with.')}
         state={state}
       />
       <div className="grid gap-5 sm:grid-cols-2">
@@ -124,23 +128,23 @@ export function CreateGrantForm({
           onValue={setPlanCode}
           hint={
             chosen && !chosen.pilotBenefits
-              ? `${chosen.name} unlocks nothing yet in the pilot: its features are planned. The account keeps it when they arrive.`
-              : 'A Sifu plan works only on a Sifu account, a Student plan only on a Student account.'
+              ? t('{plan} unlocks nothing yet in the pilot: its features are planned. The account keeps it when they arrive.', { plan: chosen.name })
+              : t('A Sifu plan works only on a Sifu account, a Student plan only on a Student account.')
           }
           state={state}
         >
           <option value="" disabled>
-            Choose a plan
+            {t('Choose a plan')}
           </option>
           {plans.map((plan) => (
             <option key={plan.code} value={plan.code}>
-              {plan.name} ({plan.audience === 'sifu' ? 'Sifu accounts' : 'Student accounts'})
+              {plan.audience === 'sifu' ? t('{plan} (Sifu accounts)', { plan: plan.name }) : t('{plan} (Student accounts)', { plan: plan.name })}
             </option>
           ))}
         </SelectField>
         <SelectField form={formId} name="source" label={LABELS.source} autoComplete="off" value={source} onValue={setSource} state={state}>
-          <option value="test_grant">Test plan</option>
-          <option value="complimentary">Complimentary</option>
+          <option value="test_grant">{t('Test plan')}</option>
+          <option value="complimentary">{t('Complimentary')}</option>
         </SelectField>
       </div>
       <TextField
@@ -154,7 +158,7 @@ export function CreateGrantForm({
         // client navigation mounts the field). A page loaded at #give-plan without JavaScript opens
         // at the form instead: the browser skips `autofocus` when the fragment names an element.
         autoFocus={(Boolean(prefill) && !initial) || undefined}
-        hint="Kept in the audit log with the grant."
+        hint={t('Kept in the audit log with the grant.')}
         state={state}
       />
       <div className="grid gap-5 sm:grid-cols-2">
@@ -167,7 +171,7 @@ export function CreateGrantForm({
           defaultValue={today}
           min={today}
           max={horizon}
-          hint="From 00:00 UTC that day: today or later."
+          hint={t('From 00:00 UTC that day: today or later.')}
           state={state}
         />
         <TextField
@@ -179,13 +183,13 @@ export function CreateGrantForm({
           autoComplete="off"
           min={today}
           max={horizon}
-          hint="The plan stops at 00:00 UTC that day, so the day before is its last full day. Leave empty for no end date."
+          hint={t('The plan stops at 00:00 UTC that day, so the day before is its last full day. Leave empty for no end date.')}
           state={state}
         />
       </div>
       <div>
-        <SubmitButton pending={pending} pendingLabel="Giving the plan…">
-          Give the plan
+        <SubmitButton pending={pending} pendingLabel={t('Giving the plan…')}>
+          {t('Give the plan')}
         </SubmitButton>
       </div>
     </form>
@@ -217,6 +221,7 @@ export function RevokeGrantForm({
   back: string;
   initial?: FormState | null;
 }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(revokeGrantAction, initial ?? IDLE);
   const generatedId = useFormId('revoke-grant');
   // The outcome of a post without JavaScript is opened at its reason or message (./form-ids.ts).
@@ -228,14 +233,15 @@ export function RevokeGrantForm({
   return (
     <details open={failed || undefined} className="group">
       <summary className="link inline-flex min-h-11 cursor-pointer list-none items-center text-sm [&::-webkit-details-marker]:hidden">
-        Revoke…<span className="sr-only"> {planName} of {email}</span>
+        {t('Revoke…')}
+        <span className="sr-only">{t(' {plan} of {email}', { plan: planName, email })}</span>
       </summary>
       <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid max-w-[34rem] gap-3 pt-1 pb-2">
         <FormMessage form={formId} state={state} single />
         <input type="hidden" name="grantId" value={grantId} />
         <input type="hidden" name="back" value={back} />
-        <TextField form={formId} name="reason" label="Reason for revoking" autoComplete="off" maxLength={500} autoFocus={failed} state={state} />
-        <p className="text-sm text-fg-muted">Confirmed links stay confirmed and public. New approvals above the remaining plan&apos;s limit wait.</p>
+        <TextField form={formId} name="reason" label={t('Reason for revoking')} autoComplete="off" maxLength={500} autoFocus={failed} state={state} />
+        <p className="text-sm text-fg-muted">{t("Confirmed links stay confirmed and public. New approvals above the remaining plan's limit wait.")}</p>
         <div>
           <button
             type="submit"
@@ -245,8 +251,8 @@ export function RevokeGrantForm({
             }}
             className={buttonVariants({ variant: 'danger' })}
           >
-            {pending ? 'Revoking…' : `Revoke ${planName}`}
-            <span className="sr-only"> of {email}</span>
+            {pending ? t('Revoking…') : t('Revoke {plan}', { plan: planName })}
+            <span className="sr-only">{t(' of {email}', { email })}</span>
           </button>
         </div>
       </form>
@@ -271,6 +277,7 @@ export function PilotRequestItem({
   back: string;
   initial?: FormState | null;
 }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(closeRequestAction, initial ?? IDLE);
   const generatedId = useFormId('close-request');
   // The outcome of a post without JavaScript is opened at its reason or message (./form-ids.ts).
@@ -291,16 +298,17 @@ export function PilotRequestItem({
           {request.email}
         </span>
         <span className="text-sm text-fg-muted">
-          {request.planName} · asked on {formatDay(request.createdAt)}
+          {t('{plan} · asked on {date}', { plan: request.planName, date: t.day(request.createdAt) })}
         </span>
       </span>
       <Link href={`/admin/grants?request=${request.id}#give-plan`} className="link inline-flex min-h-11 items-center text-ui">
-        Give {request.planName}
-        <span className="sr-only"> to {request.email}</span>
+        {t('Give {plan}', { plan: request.planName })}
+        <span className="sr-only">{t(' to {email}', { email: request.email })}</span>
       </Link>
       <details open={failed || undefined} className="group sm:col-span-2">
         <summary className="link inline-flex min-h-11 cursor-pointer list-none items-center text-sm [&::-webkit-details-marker]:hidden">
-          Close request…<span className="sr-only"> of {request.email}</span>
+          {t('Close request…')}
+          <span className="sr-only">{t(' of {email}', { email: request.email })}</span>
         </summary>
         <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid max-w-[34rem] gap-3 pt-1 pb-2">
           <FormMessage form={formId} state={state} single />
@@ -309,11 +317,11 @@ export function PilotRequestItem({
           <TextField
             form={formId}
             name="reason"
-            label="Reason for closing"
+            label={t('Reason for closing')}
             autoComplete="off"
             maxLength={500}
             autoFocus={failed}
-            hint="Kept in the audit log; the account is told that the request was closed, not why."
+            hint={t('Kept in the audit log; the account is told that the request was closed, not why.')}
             state={state}
           />
           <div>
@@ -325,8 +333,8 @@ export function PilotRequestItem({
               }}
               className={buttonVariants({ variant: 'secondary' })}
             >
-              {pending ? 'Closing…' : 'Close the request'}
-              <span className="sr-only"> of {request.email}</span>
+              {pending ? t('Closing…') : t('Close the request')}
+              <span className="sr-only">{t(' of {email}', { email: request.email })}</span>
             </button>
           </div>
         </form>

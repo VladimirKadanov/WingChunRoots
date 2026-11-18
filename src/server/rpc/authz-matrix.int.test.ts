@@ -47,6 +47,7 @@ import { inviteTeacher } from '../services/invitations';
 import { requestPilotAccess } from '../services/plans';
 import { approveRelationship, rejectRelationship, requestTeacher } from '../services/relationships';
 import { assignReviewCase, decideReviewCase } from '../services/review';
+import { addArchiveLink, createArchiveLineage, createArchiveRecord } from '../services/archive-editor';
 import { reportLineage } from '../services/disputes';
 import { answerNomination, nominateSuccessor } from '../services/succession';
 import { type Account, createUser, key, meta, newLineage, ongoingFrom, principalOf } from '../services/relationships.test-support';
@@ -239,6 +240,27 @@ async function historicalClaim(lifeStatus: 'deceased' | 'unknown' = 'deceased') 
   return { student, file, caseId: result.caseId, relationshipId: result.relationship.id, recordId: rel!.teacherPersonId, recordSlug: record!.slug };
 }
 
+/** M26: a lineage and two historical records of the archive editor, made by the world's archivist. */
+async function archivePair() {
+  const by = world.archivist.principal;
+  const teacher = await createArchiveRecord(by, { primaryName: 'Demo Matrix Archive Teacher', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)' }, meta);
+  const student = await createArchiveRecord(by, { primaryName: 'Demo Matrix Archive Student', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)' }, meta);
+  const l = await createArchiveLineage(by, { name: `Demo Matrix Archive Lineage ${letterTag()}`, reason: 'M26 matrix (fictional)' }, meta);
+  return { teacher, student, lineage: l };
+}
+
+let archiveTags = 0;
+/** A distinct tail of letters for each lineage name (names are unique; letters, not digits, for the slug). */
+function letterTag(): string {
+  let n = archiveTags++;
+  let out = '';
+  do {
+    out = String.fromCharCode(97 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return out;
+}
+
 /** An instructor verification: a review case of its Sifu, open for their replies. */
 async function instructorCase() {
   const owner = await actor('instructor-case', { sifu: true });
@@ -335,9 +357,12 @@ async function schoolWithPhoto(opts: { listed?: boolean } = {}) {
 /** M15: an organization's application by a new account (its owner); approved when `active`, with Federation when `federation`. */
 async function organizationOf(opts: { active?: boolean; federation?: boolean } = {}) {
   const owner = await actor('org-owner', { noPerson: true });
+  // A name of its own: the slug's random suffix is 3 bytes, and the many same-named organizations
+  // of this file met on one slug in CI (2026-11-17).
+  const tag = randomBytes(4).toString('hex').replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)]!);
   const applied = await applyOrganization(
     owner.principal,
-    { name: 'Demo Matrix Federation', kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
+    { name: `Demo Matrix Federation ${tag}`, kind: 'federation', leaderName: 'Demo Leader', leaderTitle: null, websiteUrl: null, countryCode: 'BG', schoolsEstimate: 3, evidenceIds: [], note: null, idempotencyKey: key() },
     meta,
   );
   if (opts.active || opts.federation) {
@@ -499,6 +524,24 @@ async function sharedRecord() {
   return { id, slug };
 }
 
+/** ADR 0040: a public, unclaimed record of a living person, as the demo records are. */
+async function claimableRecord() {
+  const id = uuidv7();
+  const slug = `demo-claimable-record-${randomBytes(4).toString('hex')}`;
+  await getDb().insert(person).values({ id, slug, kind: 'living', stewardship: 'unclaimed', visibility: 'public', lifeStatus: 'living' });
+  await getDb().insert(personName).values({ personId: id, value: 'Demo Claimable Record', script: 'Latn', lang: 'en', isPrimary: true });
+  return { id, slug };
+}
+
+/**
+ * ADR 0040: one waiting claim per account. The world's staff accept invitations in the rows above
+ * (invitations.accept), so their waiting claims are set aside before each call of a claim row.
+ */
+async function noWaitingClaim(who: Who): Promise<void> {
+  const actor = worldActor(who);
+  if (actor) await getDb().execute(sql`UPDATE person_claim SET status = 'withdrawn' WHERE user_id = ${actor.id}::uuid AND status = 'pending'`);
+}
+
 /** M25: a lineage dispute report by a new account (the `owner`), not upheld by the world's moderator. */
 async function refusedReport() {
   const r = await verifiedLink();
@@ -570,6 +613,7 @@ const noInput = () => ({ input: undefined });
 
 const ROWS: Row[] = [
   // account
+  { path: 'account.menu', make: noInput, expect: own() },
   { path: 'account.me', make: noInput, expect: own() },
   { path: 'account.landing', make: () => ({ input: { next: '/dashboard' } }), expect: own() },
   { path: 'account.twoFactor', make: noInput, expect: own() },
@@ -596,6 +640,11 @@ const ROWS: Row[] = [
   },
   { path: 'search.query', make: () => ({ input: { q: 'Demo' } }), expect: everyone },
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.navCounts', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.dashboard', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  // ADR 0041: the control panel's reports; the billing report for admins only.
+  { path: 'admin.reports', make: () => ({ input: { report: 'review', period: '30d' } }), expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
+  { path: 'admin.billingReport', make: () => ({ input: { period: '12m' } }), expect: staffOnly({ admin: 'ok' }) },
   // M12: /admin/system, any staff role with a verified second factor (requireStaff2FA).
   { path: 'system.status', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   {
@@ -772,6 +821,23 @@ const ROWS: Row[] = [
       return { owner: await actor('invitee', { sifu: true, noPerson: true }), party: r.student, input: { token: r.token, idempotencyKey: key() } };
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', party: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  // ADR 0040: a claim from a public profile's page. Any signed-in account reads whether it can claim
+  // (an account with a profile reads why not); an account without a profile of its own claims it (the
+  // world's staff accounts have none), an account with one cannot.
+  {
+    path: 'claims.get',
+    make: async () => ({ input: { slug: (await claimableRecord()).slug } }),
+    expect: own(),
+  },
+  {
+    path: 'claims.request',
+    make: async (who) => {
+      await noWaitingClaim(who);
+      const target = await claimableRecord();
+      return { owner: await actor('self-claimant', { noPerson: true }), input: { personId: target.id, note: 'A fictional note for the reviewers.', idempotencyKey: key() } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'CONFLICT', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
   },
   { path: 'instructor.mine', make: noInput, expect: own() },
   {
@@ -1083,7 +1149,8 @@ const ROWS: Row[] = [
       const c = await historicalClaim();
       return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
-    expect: staffOnly({ archivist: 'ok' }),
+    // M26 (owner decision): administrators keep the archive too.
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   {
     // Review 2026-11-14: an unknown record becomes deceased only with the evidence that shows it.
@@ -1092,7 +1159,83 @@ const ROWS: Row[] = [
       const c = await historicalClaim('unknown');
       return { input: { personId: c.recordId, primaryName: 'Demo Historical Teacher', lifeStatus: 'deceased', reason: 'A fictional correction.', evidenceIds: [], idempotencyKey: key() } };
     },
-    expect: staffOnly({ archivist: 'BAD_REQUEST' }),
+    expect: staffOnly({ archivist: 'BAD_REQUEST', admin: 'BAD_REQUEST' }),
+  },
+  // M26: the archive editor (an archivist or an administrator with a verified second factor).
+  { path: 'archiveEditor.lineages', make: noInput, expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.lineage',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.createLineage',
+    make: () => ({ input: { name: `Demo Matrix Created Lineage ${letterTag()}`, reason: 'M26 matrix (fictional)' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.updateLineage',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { lineageId: p.lineage.id, name: `Demo Matrix Renamed Lineage ${letterTag()}`, rootSlug: p.teacher.slug, reason: 'M26 matrix (fictional)' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  { path: 'archiveEditor.search', make: () => ({ input: { q: 'Demo Matrix' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  // Control panel 2026-11: the archive editor's working views.
+  { path: 'archiveEditor.overview', make: () => ({ input: { sort: 'people' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  { path: 'archiveEditor.people', make: () => ({ input: { q: 'Demo Matrix', show: 'historical' } }), expect: staffOnly({ archivist: 'ok', admin: 'ok' }) },
+  {
+    path: 'archiveEditor.links',
+    make: async () => ({ input: { slug: (await archivePair()).lineage.slug, show: 'no_source' } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.tree',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, open: [p.teacher.slug] } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.person',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { slug: p.lineage.slug, person: p.teacher.slug } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.createRecord',
+    make: () => ({ input: { primaryName: 'Demo Matrix Created Record', lifeStatus: 'deceased', reason: 'M26 matrix (fictional)', evidenceIds: [] } }),
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.addLink',
+    make: async () => {
+      const p = await archivePair();
+      return { input: { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, fromYear: 1901, source: 'A fictional register.', evidenceIds: [], idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.endLink',
+    make: async () => {
+      const p = await archivePair();
+      const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
+      return { input: { relationshipId: link.relationshipId, reason: 'M26 matrix (fictional)', idempotencyKey: key() } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
+  },
+  {
+    path: 'archiveEditor.editLink',
+    make: async () => {
+      const p = await archivePair();
+      const link = await addArchiveLink(world.archivist.principal, { lineageId: p.lineage.id, teacherSlug: p.teacher.slug, studentSlug: p.student.slug, source: 'A fictional register.', idempotencyKey: key() }, meta);
+      return { input: { relationshipId: link.relationshipId, fromYear: 1902, toYear: 1910, source: 'A fictional register, corrected.', reason: 'Matrix (fictional)' } };
+    },
+    expect: staffOnly({ archivist: 'ok', admin: 'ok' }),
   },
   // Review 2026-11: a staff take-down of a profile (moderator or administrator) and account suspension (administrator).
   {
@@ -1113,6 +1256,7 @@ const ROWS: Row[] = [
     expect: { ...staffOnly({ moderator: 'ok', admin: 'ok' }), owner: 'FORBIDDEN' },
   },
   { path: 'accounts.suspended', make: noInput, expect: staffOnly({ admin: 'ok' }) },
+  { path: 'accounts.list', make: noInput, expect: staffOnly({ admin: 'ok' }) },
   {
     path: 'accounts.suspend',
     make: async () => {
@@ -1449,6 +1593,7 @@ const ROWS: Row[] = [
   },
   { path: 'places.search', make: () => ({ input: { q: 'Sofia' } }), expect: everyone },
   { path: 'dashboard.overview', make: noInput, expect: own() },
+  { path: 'dashboard.nav', make: noInput, expect: own() },
   // M15: organizations. `party` is the owner of another organization: it reaches only its own
   // (404 here, the same answer as for none), as does every member and staff account.
   { path: 'organizations.list', make: noInput, expect: everyone },
@@ -2328,10 +2473,10 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     call: (fn, form) => fn(form),
   },
   // M18: an empty form switches off every category that can be (its procedure is the last call).
-  { action: 'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
+  { action: 'src/app/account/notifications/actions.ts#setNotificationEmailsAction', row: 'notifications.setPreference', form: () => ({}), roles: ['anonymous', 'member'] },
   { action: 'src/app/unsubscribe/actions.ts#unsubscribeAction', row: 'notifications.unsubscribe', form: same, roles: ['anonymous', 'member'], call: (fn, form) => fn(form) },
   { action: 'src/app/dashboard/actions.ts#requestPilotAccessAction', row: 'plans.requestPilotAccess', form: same, roles: ['anonymous', 'owner'] },
-  { action: 'src/app/dashboard/settings/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
+  { action: 'src/app/account/plan/actions.ts#setAccountTypeAction', row: 'account.setType', form: same, roles: ['anonymous', 'owner'] },
   { action: 'src/app/admin/grants/actions.ts#createGrantAction', row: 'grants.create', form: same, roles: ['anonymous', 'member', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#revokeGrantAction', row: 'grants.revoke', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
   { action: 'src/app/admin/grants/actions.ts#closeRequestAction', row: 'grants.closeRequest', form: same, roles: ['anonymous', 'member', 'party', 'adminNo2fa', 'admin'] },
@@ -2345,6 +2490,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   { action: 'src/app/dashboard/students/requests/actions.ts#rejectRequestAction', row: 'relationships.reject', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction', row: 'invitations.send', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/invite/[token]/actions.ts#acceptInvitationAction', row: 'invitations.accept', form: same, roles: ['anonymous', 'party', 'member'] },
+  { action: 'src/app/people/[slug]/claim/actions.ts#requestClaimAction', row: 'claims.request', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction', row: 'cases.reply', form: same, roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/people/[slug]/report/actions.ts#reportProfileAction', row: 'reports.create', form: same, roles: ['anonymous', 'member'] },
   {
@@ -2378,7 +2524,14 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: same,
     roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist'],
   },
-  { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist'] },
+  { action: 'src/app/admin/review/actions.ts#archiveUpdateAction', row: 'archive.update', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  // M26: the archive editor's forms post the procedures' fields (the files of a record or a link are uploaded first).
+  { action: 'src/app/admin/archive/actions.ts#createLineageAction', row: 'archiveEditor.createLineage', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#updateLineageAction', row: 'archiveEditor.updateLineage', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#createRecordAction', row: 'archiveEditor.createRecord', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#addLinkAction', row: 'archiveEditor.addLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#endLinkAction', row: 'archiveEditor.endLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
+  { action: 'src/app/admin/archive/actions.ts#editLinkAction', row: 'archiveEditor.editLink', form: same, roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   // Review 2026-11: the take-down and restore forms of the review pages post the procedures' fields.
   { action: 'src/app/admin/review/actions.ts#takeDownAction', row: 'moderation.takeDown', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },
   { action: 'src/app/admin/review/actions.ts#restoreAction', row: 'moderation.restore', form: same, roles: ['anonymous', 'member', 'owner', 'moderator', 'adminNo2fa', 'archivist', 'admin'] },

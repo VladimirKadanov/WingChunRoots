@@ -43,6 +43,10 @@ describe('policyFor', () => {
     expect(policyFor('/dashboard/settings')).toEqual({ kind: 'user' });
     expect(policyFor('/administrator')).toBeNull();
     expect(policyFor('/account/security')).toEqual({ kind: 'user' });
+    // Usability review 2026-11: the Settings sections are protected like the rest of /account.
+    expect(policyFor('/account/plan')).toEqual({ kind: 'user' });
+    expect(policyFor('/account/notifications')).toEqual({ kind: 'user' });
+    expect(policyFor('/account/privacy')).toEqual({ kind: 'user' });
     expect(policyFor('/')).toBeNull();
   });
 });

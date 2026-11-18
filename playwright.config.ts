@@ -18,7 +18,14 @@ const baseURL = external ?? `http://127.0.0.1:${port}`;
 // (`pnpm build:e2e`; a deployable build refuses to start with it, src/server/faults.ts).
 // M12: /admin/system reads the local archives of BACKUP_DIR; the E2E server gets a folder of its
 // own under test-results/, where e2e/ops.spec.ts writes a fictional archive name.
-const serverEnv = { APP_URL: baseURL, WCR_TEST_FAULTS: 'lineage-once,person-once', BACKUP_DIR: 'test-results/backups' };
+// The control panel in English for a full administrator without a choice, as the tests read it; the
+// Bulgarian tests choose Bulgarian with the language cookie (docs/adr/0043-admin-bulgarian.md).
+const serverEnv = {
+  APP_URL: baseURL,
+  WCR_TEST_FAULTS: 'lineage-once,person-once',
+  BACKUP_DIR: 'test-results/backups',
+  ADMIN_DEFAULT_LANGUAGE: 'en',
+};
 // So the run stops at once with "run `pnpm build:e2e` first" when the build in .next is missing or
 // deployable (`pnpm build`), instead of at the web server with a bare exit code (e2e/build-check.ts).
 // Listing the tests starts no server and needs no build.

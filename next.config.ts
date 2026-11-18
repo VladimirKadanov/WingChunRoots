@@ -51,6 +51,11 @@ const nextConfig: NextConfig = {
     },
   },
   headers: async () => [{ source: '/:path*', headers: securityHeaders() }],
+  // Usability review 2026-11: the account settings are one area under /account. "Account type and
+  // plan" was /dashboard/settings; links to it (old e-mails, bookmarks) keep working, with their
+  // query and, in the browser, their #fragment (/account/plan#notifications-heading points on to
+  // /account/notifications). 308: for good, and a POST stays a POST.
+  redirects: async () => [{ source: '/dashboard/settings', destination: '/account/plan', permanent: true }],
   experimental: {
     // DEFAULT (plan §10.2, row 10): agent feedback needs telemetry, so it stays off.
     // Telemetry itself is disabled with NEXT_TELEMETRY_DISABLED=1 (package.json scripts, CI, hook).

@@ -76,6 +76,10 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/onboarding': { kind: 'user' },
   '/account': { kind: 'user' },
   '/account/security': { kind: 'user' },
+  // Usability review 2026-11: the Settings sections that moved here from /dashboard/settings (the
+  // /account prefix covers them already; listed so the role × route matrix checks each one).
+  '/account/plan': { kind: 'user' },
+  '/account/notifications': { kind: 'user' },
   '/admin': { kind: 'staff2fa' },
   // M08: the dashboards and their settings; plan grants for admins only (plan §6.5).
   '/dashboard': { kind: 'user' },
@@ -84,6 +88,10 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   '/admin/accounts': { kind: 'staff2fa', roles: ['admin'] },
   // M10a: the review queue, for every staff role (the services narrow each action).
   '/admin/review': { kind: 'staff2fa' },
+  // M26: the archive editor, for the roles that keep the archive (archive-editor.ts ARCHIVE_EDITOR_ROLES).
+  '/admin/archive': { kind: 'staff2fa', roles: ['archivist', 'admin'] },
+  // Control panel 2026-11: the people and records grid of the archive editor, the same roles.
+  '/admin/archive/people': { kind: 'staff2fa', roles: ['archivist', 'admin'] },
   // M15: organizations and their plans, for admins only (as /admin/grants).
   '/admin/organizations': { kind: 'staff2fa', roles: ['admin'] },
   // M20: the activity check of the listed schools, for the roles that moderate listings (M11).
@@ -91,6 +99,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoutePolicy>> = {
   // M22: the test checkout page of a signed-in account; the subscriptions' history for admins only.
   '/billing': { kind: 'user' },
   '/admin/billing': { kind: 'staff2fa', roles: ['admin'] },
+  // ADR 0041: the reports, for every staff role (the billing report inside is for admins only).
+  '/admin/reports': { kind: 'staff2fa' },
 };
 
 export const SIGN_IN_PATH = '/sign-in';

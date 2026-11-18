@@ -53,7 +53,8 @@ accept() {
       count=$((count + 1))
     done < <(find "$source" -path '*-visual/*' -name '*-actual.png' | sort)
   elif [ -f "$source" ]; then
-    # GitHub prefixes each log line with a timestamp; the payload is the last field.
+    # GitHub prefixes each log line with a timestamp; the payload is the last field. A long log
+    # is stored in parts, and a part can start with a byte order mark before its timestamp.
     count="$(node - "$source" "$BASELINES" "$NAME_PATTERN" <<'JS'
 const fs = require('fs');
 const crypto = require('crypto');
@@ -61,7 +62,8 @@ const [log, out, namePattern] = process.argv.slice(2);
 let current = null;
 let written = 0;
 for (const raw of fs.readFileSync(log, 'utf8').split(/\r?\n/)) {
-  const line = raw.replace(/^\S*Z\s/, '').trim();
+  // A line can start with a byte-order mark (seen in a GitHub job log, 2026-11-17), which \s matches.
+  const line = raw.replace(/^\uFEFF/, '').replace(/^\S*Z\s/, '').trim();
   const begin = /^VISUAL-PNG-BEGIN (\S+) (\d+) ([0-9a-f]{64})$/.exec(line);
   if (begin) {
     if (!new RegExp(namePattern).test(begin[1])) {

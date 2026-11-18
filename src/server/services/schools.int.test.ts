@@ -687,3 +687,58 @@ describe('an instructor whose teaching link ends (M11 review, security-3)', () =
     expect(await inOtherFilter()).toBe(true);
   });
 });
+
+describe('the members of a school page (ADR 0044)', () => {
+  it('lists only members who chose it and are public, through a confirmed link; the plan decides the photo and rank', async () => {
+    const sifu = await sifuWithPlan('premium-members');
+    const premiumMember = await member('premium-members-premium');
+    const freeMember = await member('premium-members-free');
+    const notChosen = await member('premium-members-not-chosen');
+    const hiddenMember = await member('premium-members-hidden', { hidden: true });
+    const pendingMember = await member('premium-members-pending');
+    const lineageId = await newLineage('premiummembers');
+    const confirmed = [premiumMember, freeMember, notChosen, hiddenMember];
+    await getDb()
+      .insert(teachingRelationship)
+      .values([
+        ...confirmed.map((m) => ({ teacherPersonId: sifu.personId, studentPersonId: m.personId, lineageId, status: 'verified' as const, visibility: 'public' as const, confirmedAt: new Date() })),
+        { teacherPersonId: sifu.personId, studentPersonId: pendingMember.personId, lineageId, status: 'pending_teacher' as const, visibility: 'involved_only' as const },
+      ]);
+    await getDb()
+      .insert(entitlementGrant)
+      .values({ subjectUserId: premiumMember.account.id, planCode: 'premium_student', source: 'test_grant', startsAt: new Date(Date.now() - 60_000), reason: 'Demo: ADR 0044 test plan' });
+    const sofia = await cityOf('Sofia', 'BG');
+    const listed = await listedSchool(sifu, { name: 'Demo Members Hall', placeId: sofia.id, locationPrivacy: 'city_only' }, 'premium-members');
+    const members = async () => (await schoolGet(null, { slug: listed.slug })).members;
+    expect(await members()).toEqual([]);
+
+    // The member's own choice, through profile.update (off by default, kept when left out).
+    const choose = async (m: Awaited<ReturnType<typeof member>>) =>
+      profileUpdate(m.principal, { names: [{ value: 'Demo Member Name', script: 'Latn', lang: 'en', isPrimary: true }], showPublicly: m !== hiddenMember, listOnSchoolPage: true }, meta);
+    cache.revalidated.length = 0;
+    await choose(premiumMember);
+    expect(cache.revalidated).toContain('schools');
+    await choose(freeMember);
+    await choose(hiddenMember);
+    await getDb().update(person).set({ schoolListing: true }).where(eq(person.id, pendingMember.personId));
+
+    const listedNow = await members();
+    expect(listedNow.map((m) => [m.slug, m.full])).toEqual([
+      [premiumMember.slug, true],
+      [freeMember.slug, false],
+    ]);
+    // Name only on Free Student: no photo and no rank leave the server.
+    expect(listedNow[1]).toMatchObject({ photo: null, rank: null });
+    // The instructor is listed above, never as a member, even after choosing it.
+    await getDb().update(person).set({ schoolListing: true }).where(eq(person.id, sifu.personId));
+    expect((await members()).map((m) => m.slug)).not.toContain(sifu.slug);
+
+    // A saved profile that leaves the choice out keeps it.
+    await profileUpdate(freeMember.principal, { names: [{ value: 'Demo Member Name', script: 'Latn', lang: 'en', isPrimary: true }], showPublicly: true }, meta);
+    expect((await members()).map((m) => m.slug)).toContain(freeMember.slug);
+    // Unticking it takes the member off; the plan ending turns the full listing into the name.
+    await profileUpdate(freeMember.principal, { names: [{ value: 'Demo Member Name', script: 'Latn', lang: 'en', isPrimary: true }], showPublicly: true, listOnSchoolPage: false }, meta);
+    await getDb().update(entitlementGrant).set({ revokedAt: new Date(), revokeReason: 'Demo: ended' }).where(eq(entitlementGrant.subjectUserId, premiumMember.account.id));
+    expect((await members()).map((m) => [m.slug, m.full])).toEqual([[premiumMember.slug, false]]);
+  });
+});

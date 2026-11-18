@@ -438,7 +438,9 @@ test('@M08 /plans labels planned features as not yet available and states that p
       await disclosure.locator('summary').click();
       opened += 1;
     }
-    for (const f of FEATURES) {
+    // ADR 0044: a hidden row (the videos, not offered for now) is on no /plans table.
+    for (const f of FEATURES.filter((x) => x.hidden)) await expect(section.locator(`tr[data-feature="${f.key}"]`), f.key).toHaveCount(0);
+    for (const f of FEATURES.filter((x) => !x.hidden)) {
       const row = section.locator(`tbody[data-group="${f.availability}"] tr[data-feature="${f.key}"]`).filter({ visible: true });
       await expect(row, f.key).toHaveCount(1);
       await expect(row).toHaveAttribute('data-availability', f.availability);
@@ -460,13 +462,13 @@ test('@M08 /plans labels planned features as not yet available and states that p
   const federationFeatures = page.locator('section#organizations').getByTestId('federation-features');
   await expect(federationFeatures).not.toHaveAttribute('open');
   await expect(federationFeatures.locator('summary')).toContainText(PLANNED);
-  await expect(federationFeatures.locator('summary')).toContainText(`Federation, feature by feature (${FEATURES.length})`);
+  await expect(federationFeatures.locator('summary')).toContainText(`Federation, feature by feature (${FEATURES.filter((f) => !f.hidden).length})`);
   await federationFeatures.locator('summary').click();
   const federationTable = federationFeatures.getByRole('table', { name: `What Federation would include (${PLANNED})` });
   await expect(federationTable).toBeVisible();
   await expect(federationTable.getByRole('columnheader')).toHaveText(['Feature', 'Federation']);
-  await expect(federationTable.locator('tbody tr[data-feature]')).toHaveCount(FEATURES.length);
-  for (const f of FEATURES) {
+  await expect(federationTable.locator('tbody tr[data-feature]')).toHaveCount(FEATURES.filter((f) => !f.hidden).length);
+  for (const f of FEATURES.filter((x) => !x.hidden)) {
     const row = federationTable.locator(`tr[data-feature="${f.key}"]`);
     await expect(row.getByRole('rowheader'), f.key).toContainText(f.label);
     await expect(row.getByRole('cell'), f.key).toHaveText(f.values.federation.label);
@@ -634,7 +636,7 @@ test('@M08 "Request pilot access" notifies admins and creates no charge', async 
 
 test('@M08 switching the account type to Sifu sets the Free Sifu plan, shows "Instructor (unverified)" and is audited', async ({ page }) => {
   const account = await freshAccount(page, { name: 'Demo Switching Teacher' });
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/plan');
   await expect(page.getByTestId('settings-plan')).toContainText('Free Student');
   // The current type is the one selected; nothing else is ticked for the visitor.
   const student = page.getByRole('radio', { name: /^Student/ });
@@ -938,7 +940,7 @@ test.describe('at 390x844', () => {
     await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
     await expectNoHorizontalScroll(page, 'Sifu dashboard at 200 % text');
 
-    for (const path of ['/dashboard/settings', '/plans']) {
+    for (const path of ['/account/plan', '/plans']) {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expectNoHorizontalScroll(page, path);
@@ -970,7 +972,7 @@ test.describe('at 390x844', () => {
       await expect(other.getByTestId('requests').getByRole('listitem')).toHaveCount(1);
       await expectNoHorizontalScroll(other, 'student dashboard');
       // Its links are tall enough to tap.
-      for (const name of ['Account type and plan', 'Account and security', 'Compare plans']) {
+      for (const name of ['Plan and billing', 'Settings', 'Compare plans']) {
         expect((await other.getByRole('link', { name, exact: true }).boundingBox())!.height, name).toBeGreaterThanOrEqual(44);
       }
       await other.addStyleTag({ content: 'html { font-size: 200% !important; }' });
@@ -1118,7 +1120,7 @@ test('@M08 "Request pilot access" on a prompt left open after the account became
 test('@M08 in forced colours the chosen account type stays visible; a verified Sifu is not told they show as unverified', async ({ page }) => {
   // demo-free-sifu-5: a Sifu whose instructor status an archivist has verified (read only).
   await signInAs(page, 'demo-free-sifu-5');
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/plan');
   const option = (value: 'student' | 'sifu') => page.locator('label').filter({ has: page.locator(`input[value="${value}"]`) }).filter({ visible: true });
   // Review round 2, recheck-9: the Sifu option says what the dashboard says.
   await expect(option('sifu')).toContainText('Shown as “Instructor”: an archivist has checked your instructor status.');

@@ -61,9 +61,19 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/plans', name: 'plans', status: 200, milestone: 'M08', key: true },
   { path: '/dashboard', name: 'dashboard-sifu', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard', name: 'dashboard-student', status: 200, milestone: 'M08', key: true, signInAs: 'demo-pending' },
-  { path: '/dashboard/settings', name: 'dashboard-settings', status: 200, milestone: 'M08', key: true, signInAs: 'demo-free-sifu-5' },
+  // Settings (usability review 2026-11): one area under /account. "Plan and billing" was
+  // /dashboard/settings (a key screen since M08, for the same demo account; the old address
+  // redirects); its section of e-mail settings is a page of its own, for demo-two-lineages (its
+  // Plan e-mails are off; no test changes them).
+  { path: '/account/plan', name: 'account-plan', status: 200, milestone: 'usability-2026-11', key: true, signInAs: 'demo-free-sifu-5' },
+  { path: '/account/notifications', name: 'account-notifications', status: 200, milestone: 'usability-2026-11', signInAs: 'demo-two-lineages' },
   { path: '/admin/grants', name: 'admin-grants', status: 200, milestone: 'M08', signInAs: 'admin' },
   { path: '/admin/accounts', name: 'admin-accounts', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
+  // M26: the archive editor (an archivist or an administrator).
+  { path: '/admin/archive', name: 'archive-editor', status: 200, milestone: 'M26', signInAs: 'admin' },
+  { path: '/admin/archive/lineages/demo-lineage-c', name: 'archive-lineage', status: 200, milestone: 'M26', signInAs: 'demo-archivist' },
+  { path: '/admin/archive/people', name: 'archive-people', status: 200, milestone: 'M26', signInAs: 'admin' },
+  { path: '/admin/archive/lineages/demo-lineage-c/links', name: 'archive-links', status: 200, milestone: 'M26', signInAs: 'demo-archivist' },
   // The explorer (M05): its starting page. The three graph views and the list view need a demo
   // person's id, so they are screen states (e2e/screenshots.spec.ts, e2e/visual.spec.ts; axe in
   // e2e/m05-explorer.spec.ts).
@@ -212,6 +222,9 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/billing', name: 'dashboard-billing-ended', status: 200, milestone: 'M22', key: true, signInAs: 'demo-free-sifu-5' },
   { path: '/dashboard/billing?plan=premium_student', name: 'dashboard-billing-none', status: 200, milestone: 'M22', signInAs: 'demo-pending' },
   { path: '/admin/billing', name: 'admin-billing', status: 200, milestone: 'M22', signInAs: 'admin' },
+  // ADR 0041: the control panel's reports (growth by default; the billing report for admins).
+  { path: '/admin/reports', name: 'admin-reports', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
+  { path: '/admin/reports?report=billing', name: 'admin-reports-billing', status: 200, milestone: 'review-2026-11', signInAs: 'admin' },
   // Governance (M25, docs/adr/0028-governance.md): the digital successor page of demo-pro-sifu-8
   // (Professional Sifu, the nomination form with its verified student demo-premium-student) and of
   // demo-free-sifu-5 (the plan's limit, said once); "Report a lineage error" of a public profile with
@@ -225,6 +238,11 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/people/demo-a-005/dispute', name: 'lineage-dispute', status: 200, milestone: 'M25', signInAs: 'demo-pending' },
   { path: '/people/demo-a-005/record', name: 'record-history', status: 200, milestone: 'M25' },
   { path: '/people/demo-a-005/record', name: 'record-propose', status: 200, milestone: 'M25', signInAs: 'demo-pending' },
+  // ADR 0040: "Ask to claim this profile" of an unclaimed demo record, as an account without a
+  // profile (the form) and as one with a profile (the refusal). No test claims demo-a-005 (the
+  // claim spec makes records of its own, in the exclusive run).
+  { path: '/people/demo-a-005/claim', name: 'claim-profile', status: 200, milestone: 'usability-2026-11', signInAs: 'new' },
+  { path: '/people/demo-a-005/claim', name: 'claim-profile-refused', status: 200, milestone: 'usability-2026-11', signInAs: 'demo-pending' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

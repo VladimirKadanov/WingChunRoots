@@ -83,7 +83,7 @@ test('@M18 a password reset brings the "password changed" e-mail and notice, wit
 
 test('@M18 a category switched off in the settings stops its e-mail; the notice still comes', async ({ page }) => {
   const account = await freshAccount(page, { name: 'Demo Notice Pupil' });
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/notifications');
   const form = page.getByTestId('notification-emails-form');
   const plan = form.getByRole('checkbox', { name: /^Plan\b/ });
   await expect(plan).toBeChecked();
@@ -104,12 +104,30 @@ test('@M18 a category switched off in the settings stops its e-mail; the notice 
   await expect(page.getByTestId('notification')).toHaveCount(1);
 
   // On again: the next one is e-mailed.
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/notifications');
   await page.getByTestId('notification-emails-form').getByRole('checkbox', { name: /^Plan\b/ }).check();
   await page.getByTestId('notification-emails-form').getByRole('button', { name: 'Save e-mail settings' }).click();
   await expect.poll(() => planEmailChoice(account.userId)).toBe(true);
   expect(await planNotice(account.userId)).toEqual({ notified: true, emailed: true });
   await openMailbox().waitFor(account.email, { subject: /^Your pilot plan has an end date/, timeoutMs: 30_000 });
+});
+
+test('@M18 an old link to the e-mail settings (/dashboard/settings#notifications-heading) still leads to them', async ({ page }) => {
+  // Usability review 2026-11: the settings are one area under /account; /dashboard/settings
+  // redirects for good to /account/plan, and the browser keeps the fragment, which lands on the
+  // pointer to the notification settings.
+  await freshAccount(page, { name: 'Demo Old Settings Link' });
+  const response = await page.goto('/dashboard/settings#notifications-heading');
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(/\/account\/plan#notifications-heading$/);
+  const nav = page.getByRole('navigation', { name: 'Settings' });
+  await expect(nav.getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.locator('[aria-current]')).toHaveCount(1);
+  await page.locator('#notifications-heading').getByRole('link', { name: 'Notification settings' }).click();
+  await expect(page).toHaveURL(/\/account\/notifications$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Notification settings');
+  await expect(nav.getByRole('link', { name: 'Notifications' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('notification-emails-form')).toBeVisible();
 });
 
 test('@M18 the e-mail’s unsubscribe link switches its category off without signing in', async ({ page, browser }) => {
@@ -159,7 +177,7 @@ test('@M18 the e-mail’s unsubscribe link switches its category off without sig
   }
 
   // The settings say so, and the next plan notice comes to the dashboard only.
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/notifications');
   await expect(page.getByTestId('notification-emails-form').getByRole('checkbox', { name: /^Plan\b/ })).not.toBeChecked();
   expect(await planNotice(account.userId)).toEqual({ notified: true, emailed: false });
   // Switched on again, the old link no longer works.

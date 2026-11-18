@@ -119,7 +119,7 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
   expect(again.status(), await again.text()).toBe(409);
 
   // The plan, in the settings; the account type cannot change while the subscription renews.
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/plan');
   await expect(visible(page.getByTestId('settings-plan'))).toContainText('Professional Sifu');
   await expect(visible(page.getByTestId('settings-paid-plan'))).toBeVisible();
   const type = await apiPost(page, '/account/type', { accountType: 'student' });
@@ -163,7 +163,7 @@ test('@M22 a Sifu pays Professional Sifu in test mode, cancels, and keeps its re
   await expect(earlier.getByTestId('subscription-status')).toContainText('Ended');
   await expect(visible(page.getByTestId('payment-history'))).toContainText('$19.00');
   await axeBothThemes(page, '/dashboard/billing (ended)');
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/plan');
   await expect(visible(page.getByTestId('settings-plan'))).toContainText('Free Sifu');
 });
 

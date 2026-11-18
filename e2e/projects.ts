@@ -68,7 +68,7 @@ export const EXCLUSIVE_SPEC = '**/*.exclusive.spec.ts';
  * other specs and the visual regression compare, so they run
  * with the exclusive specs, after the ordinary run.
  */
-export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts', '**/m14-photos.spec.ts', '**/m15-organizations.spec.ts', '**/m16-galleries.spec.ts', '**/m17-events.spec.ts', '**/m19-passport.spec.ts', '**/m20-school-activity.spec.ts', '**/m21-trial-lessons.spec.ts', '**/m22-billing.spec.ts', '**/m23-federation-billing.spec.ts', '**/m25-governance.spec.ts'] as const;
+export const PUBLIC_WRITE_SPECS = ['**/m09-requests.spec.ts', '**/m10a-evidence.spec.ts', '**/m10b-claims.spec.ts', '**/m11-schools.spec.ts', '**/m14-photos.spec.ts', '**/m15-organizations.spec.ts', '**/m16-galleries.spec.ts', '**/m17-events.spec.ts', '**/m19-passport.spec.ts', '**/m20-school-activity.spec.ts', '**/m21-trial-lessons.spec.ts', '**/m22-billing.spec.ts', '**/m23-federation-billing.spec.ts', '**/m25-governance.spec.ts', '**/m26-archive-editor.spec.ts', '**/claim-request.spec.ts'] as const;
 /** Everything the `exclusive` project runs, and the ordinary projects leave out. */
 export const EXCLUSIVE_SPECS: string[] = [EXCLUSIVE_SPEC, ...PUBLIC_WRITE_SPECS];
 /** The pilot path of plan §2.2 (M13): only the pilot run (PW_PILOT=1) runs it. */
@@ -79,6 +79,14 @@ export const PILOT_SPEC = '**/pilot.spec.ts';
  */
 export const VITALS_TAG = '@vitals';
 const VITALS_GREP = new RegExp(`${VITALS_TAG}\\b`);
+
+/**
+ * The control panel's tests: tagged @admin, or naming an /admin address in their title (the route
+ * tests of e2e/routes.ts). mobile-webkit (the iPhone) leaves them out: staff work on desktop, the
+ * desktop and Pixel projects still run them, and the iPhone run was the slowest part of CI (owner
+ * request 2026-11-17, docs/adr/0035-control-panel.md). Member pages keep the iPhone run.
+ */
+export const ADMIN_GREP = /@admin\b|\s\/admin\b/;
 
 /**
  * Where a run's web server writes its log, and where its artifacts go: the exclusive run (`true`),
@@ -147,7 +155,8 @@ export function buildProjects({ ci, chromiumExecutable, visual = false, screensh
   ];
 
   if (ci) {
-    projects.push({ name: 'mobile-webkit', ...select, use: { ...devices['iPhone 15'] } });
+    const iphone = pilot || vitals ? select : { ...select, grepInvert: [VITALS_GREP, ADMIN_GREP] };
+    projects.push({ name: 'mobile-webkit', ...iphone, use: { ...devices['iPhone 15'] } });
   }
   if (pilot || vitals) return projects;
 

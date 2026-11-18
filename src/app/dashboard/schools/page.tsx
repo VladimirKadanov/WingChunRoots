@@ -74,8 +74,8 @@ export default async function SchoolsDashboardPage({ searchParams }: { searchPar
           {mine.accountType !== 'sifu' ? (
             <div data-testid="schools-needs-sifu" className="grid justify-items-start gap-3 rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-4">
               <p className="text-ui">Schools are listed from a Sifu account. Your account is a Student account.</p>
-              <Link href="/dashboard/settings" className={buttonVariants({ variant: 'secondary' })}>
-                Account type and plan
+              <Link href="/account/plan" className={buttonVariants({ variant: 'secondary' })}>
+                Plan and billing
                 <ArrowRightIcon />
               </Link>
             </div>

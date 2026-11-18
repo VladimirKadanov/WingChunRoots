@@ -8,6 +8,13 @@
 #                           # (CI and M13)
 #   scripts/verify.sh M13   # the same as all (pilot acceptance includes everything)
 #
+# CI splits `all` over several machines (owner request 2026-11-17, docs/adr/0036-ci-split.md) with
+# VERIFY_PART, unset locally (everything on one machine, as before):
+#   VERIFY_PART=checks          every step and check except E2E, which the jobs below run
+#   VERIFY_PART=e2e-shard       the steps E2E needs, then shard E2E_SHARD (e.g. 2/4) of the ordinary run
+#   VERIFY_PART=e2e-serial      the steps E2E needs, then the @vitals, exclusive and (VERIFY_PILOT=1) pilot runs
+# Together the parts run every step, every test and every check of `all`; none is left out.
+#
 # The screen shows one line per step, "STEP <name>: ok (<s>s)". On failure it shows the last
 # 80 lines of the failed step and ends with "VERIFY <target>: FAIL at <step>" (exit 1).
 # On success the last line is exactly "VERIFY <target>: PASS" (exit 0).
@@ -31,7 +38,7 @@ cd "$ROOT" || exit 2
 # shellcheck source=scripts/lib/psql.sh
 . scripts/lib/psql.sh
 
-MILESTONES=(M00 M00b M01 M01b M02 M03 M04 M05 M06 M07 M08 M09 M10a M10b M11 M12 M13 M14 M15 M16 M17 M18 M19 M20 M21 M22 M23 M24 M25)
+MILESTONES=(M00 M00b M01 M01b M02 M03 M04 M05 M06 M07 M08 M09 M10a M10b M11 M12 M13 M14 M15 M16 M17 M18 M19 M20 M21 M22 M23 M24 M25 M26)
 MIN_NODE="26.12.1"
 
 usage() {
@@ -50,6 +57,27 @@ target="${1:-}"
 if [ "$target" != "all" ] && ! is_milestone "$target"; then
   echo "verify: unknown milestone '$target'" >&2
   usage
+fi
+
+VERIFY_PART="${VERIFY_PART:-}"
+case "$VERIFY_PART" in
+  "" | checks | e2e-shard | e2e-serial) ;;
+  *) echo "verify: unknown VERIFY_PART '$VERIFY_PART' (checks, e2e-shard, e2e-serial)" >&2; exit 2 ;;
+esac
+if [ "$VERIFY_PART" = "e2e-shard" ] && ! [[ "${E2E_SHARD:-}" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]]; then
+  echo "verify: VERIFY_PART=e2e-shard needs E2E_SHARD=<n>/<total>" >&2
+  exit 2
+fi
+if [ -n "$VERIFY_PART" ] && [ "$target" != "all" ]; then
+  echo "verify: VERIFY_PART splits only 'all'" >&2
+  exit 2
+fi
+# A pull request that changes only documentation (scripts/ci-docs-only.sh) needs no browser test:
+# CI sets VERIFY_DOCS_ONLY=1 on its E2E machines then. The checks machine always runs everything.
+if [ "${VERIFY_DOCS_ONLY:-}" = "1" ] && { [ "$VERIFY_PART" = "e2e-shard" ] || [ "$VERIFY_PART" = "e2e-serial" ]; }; then
+  echo "STEP e2e: not needed, the pull request changes only documentation (scripts/ci-docs-only.sh)"
+  echo "VERIFY $target ($VERIFY_PART${E2E_SHARD:+ $E2E_SHARD}): PASS"
+  exit 0
 fi
 
 # Milestone checks to run, in milestone order.
@@ -327,6 +355,31 @@ run_e2e() {
   fi
 }
 
+# The parts of run_e2e on the E2E machines of CI (VERIFY_PART above): one shard of the ordinary run,
+# or the runs that must each have a machine to themselves, in run_e2e's order.
+run_e2e_shard() {
+  export DATABASE_URL="$TEST_DATABASE_URL"
+  pnpm e2e --shard="$E2E_SHARD" || return 1
+  # The check of scripts/verify.d/M04.sh that reads this machine's server log (proxy_log_clean).
+  local log=test-results/server.log
+  [ -s "$log" ] || { echo "no $log after the shard"; return 1; }
+  if grep -F '[proxy] the person check failed (' "$log" | grep -vE '\[proxy\] the person check failed \((timeout|57014)\);'; then
+    echo "the E2E server log has a failed person check in src/proxy.ts other than its deadline (M04)"
+    return 1
+  fi
+  echo "ok   the E2E server log has no failed person check in src/proxy.ts other than its deadline (M04)"
+}
+run_e2e_serial() {
+  export DATABASE_URL="$TEST_DATABASE_URL"
+  PW_VITALS=1 pnpm e2e --pass-with-no-tests || return 1
+  PW_EXCLUSIVE=1 pnpm e2e --pass-with-no-tests || return 1
+  if [ "${VERIFY_PILOT:-}" = "1" ]; then
+    PW_PILOT=1 pnpm e2e
+  else
+    echo "The pilot run (M13) runs on main, nightly and on request (VERIFY_PILOT=1), not on pull requests."
+  fi
+}
+
 run_checks() {
   local m="$1"
   if [ ! -f "scripts/verify.d/$m.sh" ]; then
@@ -363,12 +416,17 @@ step db-env-check scripts/db-env-check.sh
 if introduced M01; then
   step db-bootstrap bootstrap_test_db
 fi
-step lint pnpm lint
-step typecheck pnpm typecheck
-step test pnpm test
+# The E2E machines of CI skip what only the checks machine needs.
+if [ "$VERIFY_PART" != "e2e-shard" ] && [ "$VERIFY_PART" != "e2e-serial" ]; then
+  step lint pnpm lint
+  step typecheck pnpm typecheck
+  step test pnpm test
+fi
 if introduced M01; then
-  step test:int pnpm test:int
-  step db:check pnpm db:check
+  if [ "$VERIFY_PART" != "e2e-shard" ] && [ "$VERIFY_PART" != "e2e-serial" ]; then
+    step test:int pnpm test:int
+    step db:check pnpm db:check
+  fi
   step db:reset+migrate+seed reset_migrate_seed
 fi
 # From M04 the build that E2E runs against is the E2E build: it has the test fault switch, which a
@@ -378,10 +436,18 @@ if introduced M04; then
 else
   step build pnpm build
 fi
-step e2e run_e2e ${e2e_args[@]+"${e2e_args[@]}"}
+case "$VERIFY_PART" in
+  e2e-shard) step "e2e:shard-$E2E_SHARD" run_e2e_shard ;;
+  e2e-serial) step e2e:serial run_e2e_serial ;;
+  checks) echo "STEP e2e: on the E2E machines of this CI run (VERIFY_PART=checks)" ;;
+  *) step e2e run_e2e ${e2e_args[@]+"${e2e_args[@]}"} ;;
+esac
+if [ "$VERIFY_PART" = "e2e-shard" ] || [ "$VERIFY_PART" = "e2e-serial" ]; then
+  checks=()
+fi
 for m in ${checks[@]+"${checks[@]}"}; do
   step "checks:$m" run_checks "$m"
 done
 
 rm -f "$STEP_OUT"
-echo "VERIFY $target: PASS"
+echo "VERIFY $target${VERIFY_PART:+ ($VERIFY_PART${E2E_SHARD:+ $E2E_SHARD})}: PASS"

@@ -71,7 +71,7 @@ M08 въвежда петте плана от спецификация §3.1. В
 
 - **DEFAULT D04, D04/D13:** раздел 4.
 - **DEFAULT D06:**
-  - Free Sifu има до 5 одобрени ученици, броени като различни ученици с установена връзка; числото е `FREE_SIFU_STUDENT_LIMIT` в `plans.ts`, откъдето го четат и текстовете на `/plans` и `/dashboard/settings`;
+  - Free Sifu има до 5 одобрени ученици, броени като различни ученици с установена връзка; числото е `FREE_SIFU_STUDENT_LIMIT` в `plans.ts`, откъдето го четат и текстовете на `/plans` и `/account/plan` (до прегледа на използваемостта 2026-11 `/dashboard/settings`);
   - отнемането на право не сваля връзки (`downgrade.int.test.ts`).
 - **DEFAULT D07:** медийните квоти са записани в `photos` и `videos` и не се налагат.
 - **DEFAULT D08:** правилата за платено понижаване са записани в `DOWNGRADE_RULES` с `enforcedInPhase1: false`.

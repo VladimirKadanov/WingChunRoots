@@ -25,7 +25,7 @@
 //     (an administrator also on any other); needs_info: the assignee or an administrator;
 //   - nobody reviews a claim of their own, as the student or the teacher (403), is given one, or
 //     reads its internal notes;
-//   - the archival edit: an archivist only; an administrator or a moderator gets 403.
+//   - the archival edit: an archivist or (M26) an administrator; a moderator gets 403.
 // Verify runs in the order of an approval (plan §6.3): the global verify lock, then the rows (the
 // relationship before its case, the order withdraw takes them), the cycle, duplicate and self
 // checks, then the writes of relationships.ts markVerified. After the commit the public cache of
@@ -84,6 +84,7 @@ import { decideGovernanceKind, GOVERNANCE_KINDS } from './governance-review';
 import { successionFacts } from './succession';
 import { assignableRoles, caseById, caseColumns, type CaseRow, caseReplayOf, DECIDERS, isCaseKeyConflict, ownSide, partiesOf, recordCaseEvent } from './review-core';
 import { queueRecomputeForPerson } from './lineage-membership';
+import { ARCHIVE_EDITOR_ONLY, ARCHIVE_EDITOR_ROLES } from './archive-editor';
 import { notify } from './notify';
 import { bothPublic, publishIfEstablished, UNKNOWN_STATUS_MESSAGE } from './publication';
 import {
@@ -114,8 +115,11 @@ export const REVIEW_TEXT_MAX = 2000;
 export const QUEUE_KINDS = REVIEW_CASE_KINDS.filter((k) => k !== 'deletion_request') as Exclude<ReviewCaseKind, 'deletion_request'>[];
 /** The roles that verify or refuse a historical claim (plan §6.7); review-core.ts DECIDERS has every kind's. */
 const DECIDE_ROLES: readonly StaffRole[] = DECIDERS.historical_claim;
-/** The only role that edits archival records (plan §6.6). */
-const ARCHIVE_ROLES: readonly StaffRole[] = ['archivist'];
+/**
+ * The roles that edit archival records (plan §6.6): an archivist and, from M26 (the owner's decision,
+ * docs/adr/0034-archive-editor.md), an administrator, the same roles as the archive editor.
+ */
+const ARCHIVE_ROLES: readonly StaffRole[] = ARCHIVE_EDITOR_ROLES;
 
 const NO_CASE = 'No such case.';
 const notFound = () => new ServiceError('NOT_FOUND', NO_CASE);
@@ -135,8 +139,32 @@ const reviewText = (empty: string) =>
 
 // --- Input -------------------------------------------------------------------------------------
 
+/**
+ * Control panel (docs/adr/0035-control-panel.md): the queue's kinds in the groups a reviewer works
+ * through, each a saved view of /admin/review with its count. Every queue kind is in one group.
+ */
+export const REVIEW_GROUPS = {
+  // The same groups, keys and labels as the dashboard's (admin-dashboard.ts REVIEW_KIND_GROUPS), so
+  // a dashboard figure can open its view with ?group=<key>.
+  claims: { label: 'Historical and profile claims', kinds: ['historical_claim', 'person_claim'] },
+  instructors: { label: 'Instructor checks', kinds: ['instructor_verification'] },
+  schools: { label: 'School listings', kinds: ['school_listing'] },
+  organizations: { label: 'Organizations', kinds: ['organization_application'] },
+  records: { label: 'Record proposals', kinds: ['record_proposal'] },
+  disputes: { label: 'Disputes, reports and appeals', kinds: ['relationship_dispute', 'profile_report', 'lineage_report', 'decision_appeal', 'succession_request'] },
+} as const satisfies Record<string, { label: string; kinds: readonly Exclude<ReviewCaseKind, 'deletion_request'>[] }>;
+export type ReviewGroup = keyof typeof REVIEW_GROUPS;
+const REVIEW_GROUP_KEYS = Object.keys(REVIEW_GROUPS) as [ReviewGroup, ...ReviewGroup[]];
+/** How long a case has waited, at least (`any`: no limit); "over 3 days" is the queue's late mark. */
+export const REVIEW_AGES = { any: 0, '1d': 1, '3d': 3, '7d': 7 } as const;
+export const REVIEW_LATE_DAYS = 3;
+
 export const reviewListInput = z.object({
   kind: z.enum(QUEUE_KINDS as [string, ...string[]]).nullish(),
+  /** A group of kinds (REVIEW_GROUPS); with `kind`, both apply. */
+  group: z.enum(REVIEW_GROUP_KEYS).nullish(),
+  /** Cases opened at least this many days ago (REVIEW_AGES). */
+  age: z.enum(['any', '1d', '3d', '7d']).default('any'),
   /** `waiting`: open, in review or needing information (the default); `all`: every status. */
   status: z.enum(['waiting', 'all', ...REVIEW_CASE_STATUSES]).default('waiting'),
   assigned: z.enum(['any', 'me', 'none']).default('any'),
@@ -491,9 +519,23 @@ export interface ReviewListRow {
   files: number;
 }
 
+/** The counts of the queue's saved views, under the list's status filter (not its other filters). */
+export interface ReviewListCounts {
+  all: number;
+  mine: number;
+  unassigned: number;
+  /** Opened more than REVIEW_LATE_DAYS days ago. */
+  late: number;
+  kinds: Record<string, number>;
+  groups: { value: ReviewGroup; label: string; count: number }[];
+}
+
 export interface ReviewList {
   rows: ReviewListRow[];
   total: number;
+  counts: ReviewListCounts;
+  /** When the list was read (ISO): the waiting times are measured to it. */
+  asOf: string;
   page: number;
   pageSize: number;
   filters: z.output<typeof reviewListInput>;
@@ -566,11 +608,36 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
   const filters = parsed.success ? parsed.data : reviewListInput.parse({});
   const db = getDb();
   const where: SQL[] = [ne(reviewCase.kind, 'deletion_request')];
-  if (filters.kind) where.push(eq(reviewCase.kind, filters.kind as ReviewCaseKind));
   if (filters.status === 'waiting') where.push(inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES]));
   else if (filters.status !== 'all') where.push(eq(reviewCase.status, filters.status));
+  // The saved views' counts: the status filter only, one grouped read.
+  const lateBefore = sql`now() - make_interval(days => ${REVIEW_LATE_DAYS}::int)`;
+  const counted = await db
+    .select({
+      kind: reviewCase.kind,
+      all: count(),
+      mine: sql<number>`count(*) FILTER (WHERE ${reviewCase.assignedToUserId} = ${p.user.id})::int`,
+      unassigned: sql<number>`count(*) FILTER (WHERE ${reviewCase.assignedToUserId} IS NULL)::int`,
+      late: sql<number>`count(*) FILTER (WHERE ${reviewCase.createdAt} < ${lateBefore})::int`,
+    })
+    .from(reviewCase)
+    .where(and(...where))
+    .groupBy(reviewCase.kind);
+  const kindCounts = Object.fromEntries(QUEUE_KINDS.map((k) => [k, 0])) as Record<string, number>;
+  const counts: ReviewListCounts = { all: 0, mine: 0, unassigned: 0, late: 0, kinds: kindCounts, groups: [] };
+  for (const row of counted) {
+    kindCounts[row.kind] = row.all;
+    counts.all += row.all;
+    counts.mine += row.mine;
+    counts.unassigned += row.unassigned;
+    counts.late += row.late;
+  }
+  counts.groups = REVIEW_GROUP_KEYS.map((g) => ({ value: g, label: REVIEW_GROUPS[g].label, count: REVIEW_GROUPS[g].kinds.reduce((n, k) => n + (kindCounts[k] ?? 0), 0) }));
+  if (filters.kind) where.push(eq(reviewCase.kind, filters.kind as ReviewCaseKind));
+  if (filters.group) where.push(inArray(reviewCase.kind, [...REVIEW_GROUPS[filters.group].kinds]));
   if (filters.assigned === 'me') where.push(eq(reviewCase.assignedToUserId, p.user.id));
   else if (filters.assigned === 'none') where.push(isNull(reviewCase.assignedToUserId));
+  if (filters.age !== 'any') where.push(sql`${reviewCase.createdAt} < now() - make_interval(days => ${REVIEW_AGES[filters.age]}::int)`);
   const condition = and(...where);
   const [{ total } = { total: 0 }] = await db.select({ total: count() }).from(reviewCase).where(condition);
   const order = filters.sort === 'newest' ? [desc(reviewCase.createdAt), desc(reviewCase.id)] : [asc(reviewCase.createdAt), asc(reviewCase.id)];
@@ -626,6 +693,8 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
       files: partyView(r) ? r.ownFiles : r.files,
     })),
     total,
+    counts,
+    asOf: new Date().toISOString(),
     page: filters.page,
     pageSize: REVIEW_PAGE_SIZE,
     filters,
@@ -639,6 +708,20 @@ export async function listReviewCases(principal: Principal | null, raw: ReviewLi
 }
 
 // --- review.get --------------------------------------------------------------------------------
+
+/** ADR 0040: the decisions on a profile claim asked from the profile page, which answers no request. */
+const SELF_CLAIM_DECISIONS: ReviewCaseView['decisions'] = {
+  ...DECISION_TEXT.person_claim,
+  verify: {
+    ...DECISION_TEXT.person_claim.verify,
+    hint: 'Optional. The record becomes the claimant’s profile and keeps its visibility; they can then edit it and hide it.',
+    done: 'The claim is approved. The record is the claimant’s profile now.',
+  },
+  reject: {
+    ...DECISION_TEXT.person_claim.reject,
+    hint: 'Required. The claimant reads it on their case page. The record stays as it was.',
+  },
+};
 
 /** The relationship status each kind is decided in (null: a kind without a relationship). */
 const DECIDABLE_IN: Partial<Record<ReviewCaseKind, string>> = {
@@ -671,7 +754,8 @@ function abilities(p: Principal, c: CaseRow, subjectStatus: string | null, own: 
   const open = isOpen(c.status);
   const listing = kind === 'school_listing';
   const application = kind === 'organization_application';
-  const needed = DECIDABLE_IN[kind];
+  // A profile claim asked from the profile page (ADR 0040) answers no relationship.
+  const needed = kind === 'person_claim' && c.relationshipId === null ? undefined : DECIDABLE_IN[kind];
   // M11: a new listing (pending_review), or a listed school whose edit reopened the review (active).
   // M15: an application while its organization waits for review.
   const decidable = listing ? isDecidableListing(subjectStatus) : application ? isDecidableApplication(subjectStatus) : needed === undefined || subjectStatus === needed;
@@ -817,7 +901,7 @@ export async function getReviewCase(principal: Principal | null, raw: z.input<ty
       authorSide: n.author !== null && n.author !== p.user.id && parties.has(n.author) ? (sides.get(n.author) ?? null) : null,
     })),
     subject,
-    decisions: DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
+    decisions: c.kind === 'person_claim' && c.relationshipId === null ? SELF_CLAIM_DECISIONS : DECISION_TEXT[c.kind as Exclude<ReviewCaseKind, 'deletion_request'>],
     can,
     decideNote,
     reviewers,
@@ -871,25 +955,41 @@ async function subjectOf(db: Executor, c: CaseRow, viewerId: string): Promise<Re
           .limit(1)
       : [];
     const [own] = c.openedByUserId ? await db.select({ id: person.id }).from(person).where(and(eq(person.claimedByUserId, c.openedByUserId), isNull(person.deletedAt))) : [];
+    // ADR 0040: a claim asked from the record's public page, with no invitation and no student.
+    const self = c.relationshipId === null;
+    const [others] = self
+      ? await db
+          .select({ n: count() })
+          .from(reviewCase)
+          .where(and(eq(reviewCase.kind, 'person_claim'), eq(reviewCase.personId, c.personId), inArray(reviewCase.status, [...OPEN_REVIEW_CASE_STATUSES]), ne(reviewCase.id, c.id)))
+      : [];
     return {
       label: 'The record claimed',
       person: ref,
       facts: [
         {
           label: 'Record',
-          value: [record?.stewardship === 'unclaimed' ? 'Unclaimed record' : record?.stewardship === 'self' ? 'Claimed' : 'Kept by the archive', record?.lifeStatus === 'living' ? 'living' : null, record?.visibility === 'public' ? 'public' : 'not public', 'created by the student who invited the teacher']
+          value: [
+            record?.stewardship === 'unclaimed' ? 'Unclaimed record' : record?.stewardship === 'self' ? 'Claimed' : 'Kept by the archive',
+            record?.lifeStatus === 'living' ? 'living' : null,
+            record?.visibility === 'public' ? 'public' : 'not public',
+            self ? null : 'created by the student who invited the teacher',
+          ]
             .filter(Boolean)
             .join(' · '),
         },
-        {
-          label: 'Invitation',
-          value:
-            sent?.matches === true
-              ? 'Sent to the address the claimant signed up with'
-              : sent?.matches === false
-                ? 'Sent to another address than the one the claimant signed up with'
-                : 'The address it was sent to is no longer kept',
-        },
+        self
+          ? { label: 'Source', value: 'Asked from the profile’s public page, without an invitation: check who the claimant is from their note and their evidence' }
+          : {
+              label: 'Invitation',
+              value:
+                sent?.matches === true
+                  ? 'Sent to the address the claimant signed up with'
+                  : sent?.matches === false
+                    ? 'Sent to another address than the one the claimant signed up with'
+                    : 'The address it was sent to is no longer kept',
+            },
+        ...(self ? [{ label: 'Other open claims of this record', value: String(others?.n ?? 0) }] : []),
         { label: 'Claimant', value: own && own.id !== c.personId ? 'Has a profile of their own now' : 'An account without a profile of its own' },
       ],
     };
@@ -1437,7 +1537,7 @@ export interface ArchiveRecordView {
 }
 
 const SELF_KEPT = 'This record is kept by its owner. Only records kept by the platform or unclaimed are edited here.';
-const ARCHIVIST_ONLY = 'Only an archivist edits archival records.';
+const ARCHIVIST_ONLY = ARCHIVE_EDITOR_ONLY;
 
 async function recordOf(db: Executor, where: SQL, lock = false) {
   const query = db

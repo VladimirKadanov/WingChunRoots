@@ -1,5 +1,5 @@
 // /admin/review/records/<slug> (milestone M10a, In scope 5; plan §6.6): the archival edit of a
-// record kept by the platform or unclaimed. Only an archivist edits it (archive.update): the name
+// record kept by the platform or unclaimed. An archivist or (M26) an administrator edits it (archive.update): the name
 // in Latin letters, the name in its own script, the life status and the English biography, with a
 // required reason and optional evidence, kept in the audit row person.update (reason, evidence_ids).
 // Other reviewers read the record and are told who edits it; a record kept by its owner is never
@@ -14,8 +14,10 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { NameText } from '@/components/account/person-names';
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { LoadError } from '@/components/account/load-error';
-import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
+import { reviewLoadError } from '@/app/admin/review/load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { OutcomeNote } from '@/components/relationships/parts';
 import { formatSize } from '@/lib/file-size';
@@ -25,13 +27,15 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { ARCHIVE_FORM, RESTORE_FORM, TAKEDOWN_FORM } from '../../form-ids';
 import { ArchiveForm, TakeDownForm } from '../../forms';
+import { translateState } from '../../text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Archival record',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Archival record'), robots: { index: false } };
+}
 
 type Params = Promise<{ slug: string }>;
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -48,13 +52,13 @@ async function orMissing<T>(read: Promise<T>): Promise<T | 'missing'> {
 
 const SLUG = /^[a-z0-9-]{1,120}$/;
 
-function Frame({ children }: { children: ReactNode }) {
+function Frame({ t, children }: { t: AdminT; children: ReactNode }) {
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[46rem]">
         <p className="eyebrow">
           <Link href="/admin/review" className="link inline-flex min-h-11 items-center">
-            Review queue
+            {t('Review queue')}
           </Link>
         </p>
         {children}
@@ -68,13 +72,14 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
   const query = await searchParams;
   const path = SLUG.test(slug) ? `/admin/review/records/${slug}` : '/admin/review';
   const guard = await guardRoute('/admin/review', path);
+  const t = await getAdminT();
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) {
     return (
-      <Frame>
-        <h1 className="mt-2 font-display text-feature">Not available</h1>
+      <Frame t={t}>
+        <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted" data-testid="review-denied">
-          You don&apos;t have access to the review queue. It is available to archivists, moderators and administrators.
+          {t("You don't have access to the review queue. It is available to archivists, moderators and administrators.")}
         </p>
       </Frame>
     );
@@ -82,36 +87,37 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
   const record = await pageRead(orMissing(serverClient(await headers(), guard.principal).archive.get({ slug })));
   if (record === 'missing') {
     return (
-      <Frame>
-        <h1 className="mt-2 font-display text-feature">No such record</h1>
-        <p className="mt-3 max-w-[56ch] text-fg-muted">No record has this address. Check the part after /people/ in the profile&apos;s address.</p>
+      <Frame t={t}>
+        <h1 className="mt-2 font-display text-feature">{t('No such record')}</h1>
+        <p className="mt-3 max-w-[56ch] text-fg-muted">{t("No record has this address. Check the part after /people/ in the profile's address.")}</p>
       </Frame>
     );
   }
-  if (!record) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
-  const initial = await readFormResult(ARCHIVE_FORM, query.outcome);
-  const takeDownResult = await readFormResult(TAKEDOWN_FORM, query.outcome);
-  const restoreResult = await readFormResult(RESTORE_FORM, query.outcome);
+  if (!record) return <LoadError words={loadErrorWords(t)} {...reviewLoadError(t)} retryHref={path} />;
+  const translated = (state: Awaited<ReturnType<typeof readFormResult>>) => (state ? translateState(t, state) : state);
+  const initial = translated(await readFormResult(ARCHIVE_FORM, query.outcome));
+  const takeDownResult = translated(await readFormResult(TAKEDOWN_FORM, query.outcome));
+  const restoreResult = translated(await readFormResult(RESTORE_FORM, query.outcome));
   const done =
     query.done === 'saved'
-      ? 'The record is saved. The change and its reason are in the audit log.'
+      ? t('The record is saved. The change and its reason are in the audit log.')
       : query.done === 'unchanged'
-        ? 'Nothing changed, so nothing was saved.'
+        ? t('Nothing changed, so nothing was saved.')
         : query.done === 'taken-down'
-          ? 'The record is off the public pages. Your reason is in the audit log, and the owner, if there is one, was sent it.'
+          ? t('The record is off the public pages. Your reason is in the audit log, and the owner, if there is one, was sent it.')
           : query.done === 'restored'
-            ? 'The record is back. The change and your reason are in the audit log, and the owner, if there is one, was told.'
+            ? t('The record is back. The change and your reason are in the audit log, and the owner, if there is one, was told.')
             : null;
 
   return (
-    <Frame>
+    <Frame t={t}>
       <h1 className="mt-2 font-display text-feature">
         <NameText name={{ value: record.primaryName || record.slug, lang: 'und-Latn' }} />
       </h1>
       <p className="mt-3 flex flex-wrap gap-x-3 text-ui text-fg-muted" data-testid="record-facts">
-        <span>{record.kind === 'historical' ? 'Historical record' : 'Record'}</span>
-        <span>Kept by {record.stewardship === 'self' ? 'its owner' : record.stewardship === 'platform' ? 'the platform' : 'nobody (unclaimed)'}</span>
-        <span>{record.takeDown.held ? 'Taken down by staff' : record.visibility === 'public' ? 'Public' : 'Not public'}</span>
+        <span>{record.kind === 'historical' ? t('Historical record') : t('Record')}</span>
+        <span>{record.stewardship === 'self' ? t('Kept by its owner') : record.stewardship === 'platform' ? t('Kept by the platform') : t('Kept by nobody (unclaimed)')}</span>
+        <span>{record.takeDown.held ? t('Taken down by staff') : record.visibility === 'public' ? t('Public') : t('Not public')}</span>
       </p>
       {/* It takes the focus (OutcomeNote, the M09 pattern; M10a review, screens-5). Keyed by `n`, new
           for every save (actions.ts doneAt): a second save mounts a new note, which takes the focus. */}
@@ -124,16 +130,17 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
         {record.takeDown.allowed || record.takeDown.held ? (
           <section aria-labelledby="record-public" className="grid gap-2">
             <h2 id="record-public" className="font-display text-2xl">
-              Public pages
+              {t('Public pages')}
             </h2>
             <p className="max-w-[60ch] text-ui" data-testid="takedown-state">
               {record.takeDown.held ? (
                 <>
-                  <span className="font-semibold">Taken down by staff.</span> The record is off every public page; its owner and the people at the other end of its links still see it.
-                  {record.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">Reason: {record.takeDown.reason}</span> : null}
+                  <span className="font-semibold">{t('Taken down by staff.')}</span>{' '}
+                  {t('The record is off every public page; its owner and the people at the other end of its links still see it.')}
+                  {record.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">{t('Reason: {reason}', { reason: record.takeDown.reason })}</span> : null}
                 </>
               ) : (
-                <>The record is shown as its visibility says. A moderator or an administrator can take it off every public page, with a reason, and put it back.</>
+                <>{t('The record is shown as its visibility says. A moderator or an administrator can take it off every public page, with a reason, and put it back.')}</>
               )}
             </p>
             {record.takeDown.allowed ? (
@@ -146,20 +153,20 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
         {record.files.length > 0 ? (
           <section aria-labelledby="record-evidence" className="grid gap-2">
             <h2 id="record-evidence" className="font-display text-2xl">
-              Linked evidence
+              {t('Linked evidence')}
             </h2>
             <ul className="grid gap-1" data-testid="record-files">
               {record.files.map((file) => (
                 <li key={file.id} className="flex flex-wrap items-baseline gap-x-2">
                   {file.href ? (
                     <a href={file.href} className="link inline-flex min-h-11 items-center" translate="no">
-                      {file.name ?? `${file.kindLabel} file`}
+                      {file.name ?? t('{kind} file', { kind: t(file.kindLabel) })}
                     </a>
                   ) : (
-                    <span translate="no">{file.name ?? `${file.kindLabel} file`}</span>
+                    <span translate="no">{file.name ?? t('{kind} file', { kind: t(file.kindLabel) })}</span>
                   )}
                   <span className="text-sm text-fg-muted">
-                    {file.kindLabel} · {formatSize(file.sizeBytes)}
+                    {t(file.kindLabel)} · {formatSize(file.sizeBytes)}
                   </span>
                 </li>
               ))}
@@ -169,19 +176,19 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
         {record.relationships.length > 0 ? (
           <section aria-labelledby="record-links" className="grid gap-2">
             <h2 id="record-links" className="font-display text-2xl">
-              Established links
+              {t('Established links')}
             </h2>
             <ul className="grid gap-1" data-testid="record-links">
               {record.relationships.map((link) => (
                 <li key={link.id} data-relationship={link.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle py-2">
-                  <span className="text-sm text-fg-muted">{link.role === 'teacher' ? 'Student' : 'Teacher'}</span>
+                  <span className="text-sm text-fg-muted">{link.role === 'teacher' ? t('Student') : t('Teacher')}</span>
                   <NameText name={link.other.name} />
                   <span className="text-sm text-fg-muted">
-                    {link.lineageName} · {link.status === 'verified' ? 'Verified' : 'In arbitration'}
+                    {link.lineageName} · {link.status === 'verified' ? t('Verified') : t('In arbitration')}
                   </span>
                   {record.canArbitrate && link.status === 'verified' ? (
                     <Link href={`/admin/review/arbitrate/${link.id}`} className="link inline-flex min-h-11 items-center">
-                      Set in arbitration
+                      {t('Set in arbitration')}
                     </Link>
                   ) : null}
                 </li>
@@ -190,10 +197,10 @@ export default async function ArchiveRecordPage({ params, searchParams }: { para
           </section>
         ) : null}
         {record.editable ? (
-          <ArchiveForm record={record} initial={initial} />
+          <ArchiveForm record={{ ...record, scripts: record.scripts.map((script) => ({ ...script, label: t(script.label) })) }} initial={initial} />
         ) : (
           <p className="max-w-[60ch] rounded-sm bg-surface-2 px-4 py-4 text-ui" data-testid="archive-refusal">
-            {record.refusal}
+            {record.refusal ? t(record.refusal) : null}
           </p>
         )}
       </div>

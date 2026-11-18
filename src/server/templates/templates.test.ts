@@ -244,7 +244,7 @@ describe('notification templates', () => {
   it('the plan notifications promise no payment and keep confirmed links (M08)', () => {
     const granted = renderNotification('plan.granted', { planCode: 'pro_sifu', endsAt: '2026-12-31T00:00:00.000Z' });
     expect(granted.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('for the pilot, until 30 December 2026. No payment is involved.');
-    expect(granted.action).toEqual({ label: 'See your plan', href: '/dashboard/settings' });
+    expect(granted.action).toEqual({ label: 'See your plan', href: '/account/plan' });
     const revoked = renderNotification('plan.revoked', { planCode: 'pro_sifu' });
     expect(revoked.body.map((segment) => ('text' in segment ? segment.text : '')).join('')).toContain('Every confirmed link stays confirmed and public');
     // A Student plan approves nobody: its text does not speak of approvals.
@@ -356,6 +356,16 @@ describe('invitations, claims, instructors and arbitration (M10b)', () => {
     await expect(renderEmail('claim-decided', { ...sample, decision: 'rejected' })).rejects.toThrow(/dashboard\/cases/);
     await expect(renderEmail('claim-decided', { ...sample, url: casePage })).rejects.toThrow(/students\/requests/);
     await expect(renderEmail('claim-decided', { ...sample, decision: 'rejected', url: `${casePage}/x` })).rejects.toThrow(/dashboard\/cases/);
+  });
+
+  it('a claim asked from the profile page (ADR 0040) links an approval to Your profile and names no student', async () => {
+    const sample = EMAIL_TEMPLATES['claim-decided'].sample;
+    const approved = await renderEmail('claim-decided', { ...sample, self: true, url: 'http://localhost:3000/dashboard/profile' });
+    expect(approved.text).toContain('Your profile');
+    expect(approved.text).not.toContain('student');
+    expect(approved.html).toContain('http://localhost:3000/dashboard/profile');
+    await expect(renderEmail('claim-decided', { ...sample, self: true })).rejects.toThrow(/dashboard\/profile/);
+    await expect(renderEmail('claim-decided', { ...sample, self: 'yes' })).rejects.toThrow(/self/);
   });
 
   it('an arbitration e-mail carries the reason and the evidence link, and refuses an empty or very long reason', async () => {

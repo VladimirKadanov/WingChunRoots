@@ -174,7 +174,7 @@ test.describe('@M00b phone', () => {
     await expect(sheet.getByRole('button', { name: 'Expand' })).toBeInViewport();
     // The tab bar is drawn and tappable, not only in the viewport: nothing of the sheet is
     // painted over it (toBeInViewport checks geometry, not what is on top).
-    expect(await tabsHit(page)).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
+    expect(await tabsHit(page)).toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
 
     // At the peek the body is off screen and inert; the page behind takes taps.
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -186,7 +186,7 @@ test.describe('@M00b phone', () => {
     expect(barTop - top).toBeGreaterThan(Math.max(96, header) + 40);
     expect(top + (await sheet.boundingBox())!.height).toBeCloseTo(barTop, 0);
     await expect(sheet.locator('[inert]')).toHaveCount(0);
-    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
+    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
     await sheet.getByRole('button', { name: 'Collapse' }).click();
     expect(barTop - (await settledTop(sheet))).toBeLessThanOrEqual(Math.max(96, header) + 2);
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -403,7 +403,7 @@ test.describe('@M00b phone', () => {
 
   test('@M00b the tab bar keeps as much room under the current tab’s chop as above its icon, with no bottom inset', async ({ page }) => {
     await page.goto('/');
-    const explore = tabBar(page).getByRole('link', { name: 'Explore' }).filter({ visible: true });
+    const explore = tabBar(page).getByRole('link', { name: 'Home' }).filter({ visible: true });
     await expect(explore).toHaveAttribute('aria-current', 'page');
     // The chop is stamped in (a scale transition): wait until it rests.
     const room = () =>
@@ -436,7 +436,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size}`;
         }),
     );
-    expect(lines).toEqual(['Explore: 1', 'Lineage: 1', 'Schools: 1', 'Events: 1', 'Me: 1']);
+    expect(lines).toEqual(['Home: 1', 'Lineage: 1', 'Schools: 1', 'Events: 1', 'Me: 1']);
   });
 
   test('@M00b form controls use at least 16 px text, so iOS does not zoom into them', async ({ page }) => {
@@ -544,7 +544,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${a.contains(document.elementFromPoint(icon.x + icon.width / 2, icon.top + 1))}`;
         }),
     );
-    expect(icons).toEqual(['Explore: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
+    expect(icons).toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
     await peek.getByRole('button', { name: 'Close' }).click();
     await expect(peek).toBeHidden();
 
@@ -900,7 +900,7 @@ test('@M00b the Lineage tab is current on the explorer page once the page has hy
   expect(response?.status()).toBe(200);
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Lineage' })).toHaveAttribute('aria-current', 'page');
-  await expect(links.filter({ hasText: 'Explore' })).not.toHaveAttribute('aria-current', 'page');
+  await expect(links.filter({ hasText: 'Home' })).not.toHaveAttribute('aria-current', 'page');
 });
 
 // Until M11 /schools was the "not drawn yet" page (404); since M11 it is the school finder (200),
@@ -911,8 +911,8 @@ test('@M00b the Schools tab is current on the school finder once the page has hy
   await expect(page.getByRole('heading', { level: 1, name: 'Find a school' })).toBeVisible();
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Schools' })).toHaveAttribute('aria-current', 'page');
-  for (const other of ['Explore', 'Lineage', 'Me']) {
-    await expect(links.filter({ hasText: other })).not.toHaveAttribute('aria-current', 'page');
+  for (const other of ['Home', 'Lineage', 'Me']) {
+    await expect(links.filter({ hasText: new RegExp(`^\s*${other}\s*$`) })).not.toHaveAttribute('aria-current', 'page');
   }
 });
 

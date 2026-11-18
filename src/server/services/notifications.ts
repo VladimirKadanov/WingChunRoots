@@ -3,7 +3,7 @@
 // read is the small, reversible personal action the dashboard shows optimistically (useOptimistic).
 //
 // M18 (docs/adr/0021-notices.md): every notice by pages and by category (/dashboard/notifications),
-// "Mark all as read", the account's choice of e-mail per category (/dashboard/settings) and the
+// "Mark all as read", the account's choice of e-mail per category (/account/notifications) and the
 // unsubscribe link of an e-mail, which works without signing in (src/server/services/unsubscribe.ts).
 // Sending is src/server/services/notify.ts.
 
@@ -393,7 +393,7 @@ export interface UnsubscribeView {
   state: 'ready' | 'done';
 }
 
-const STALE_LINK = 'This unsubscribe link no longer works: your e-mail settings changed after it was sent. Sign in and choose your e-mails in Account type and plan.';
+const STALE_LINK = 'This unsubscribe link no longer works: your e-mail settings changed after it was sent. Sign in and choose your e-mails in Settings, under Notifications.';
 
 /** The claim of a token when it is still good for its account and category; else NOT_FOUND. */
 async function liveClaim(tx: Executor, raw: unknown, lock: boolean) {

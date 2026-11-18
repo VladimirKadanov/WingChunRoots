@@ -142,7 +142,11 @@ refute "governance logs carry no note, name or e-mail" grep -nE "logger\(\)\.(in
 for n in 1 2 3 4 5 6 7 8 9 10 11; do
   check "DEFAULT M25 (question $n) is marked in the code" bash -c "grep -rqE 'DEFAULT M25[ ,(]+questions? $n\\b' src"
 done
-check "the plan matrix: successor is available now, enforced" bash -c "grep -q \"PLAN_MATRIX_VERSION = '2026-11-11.1'\" src/server/entitlements/plans.ts && grep -q '2026-11-11.1' docs/entitlements.md"
+# The matrix version M25 set was 2026-11-11.1; later rows (ADR 0044: 2026-11-18.1) bump it, so the
+# check reads the current version and needs it in docs/entitlements.md, plus the successor row.
+check "the plan matrix: successor is available now, enforced" bash -c "
+  v=\$(grep -oE \"PLAN_MATRIX_VERSION = '[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[0-9]+'\" src/server/entitlements/plans.ts | grep -oE '[0-9]{4}-[0-9.-]+') && [ \"\$v\" \\> '2026-11-11.0' ] && grep -qF \"\$v\" docs/entitlements.md &&
+  grep -A12 \"key: 'successor',\" src/server/entitlements/plans.ts | grep -q \"availability: 'now'\" && grep -A12 \"key: 'successor',\" src/server/entitlements/plans.ts | grep -q 'enforced: true'"
 
 # 10. The pages (CLAUDE.md §10, §11) ----------------------------------------------------------------
 refute "no 'use cache' in the governance services or pages" grep -n "'use cache'" "$SUCCESSION" "$DISPUTES" "$STEWARDSHIP" "$DECIDE" "${PAGES[@]}"

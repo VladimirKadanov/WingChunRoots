@@ -37,12 +37,12 @@ async function tabTo(page: Page, testId: string, max = 120) {
   throw new Error(`Tab never reached ${testId}`);
 }
 
-test('@M16 an owner adds a photo with the keyboard, captions it, meets the Free Student limit, and removes it', async ({ page }) => {
+test('@M16 an owner adds a photo with the keyboard, captions it, meets the Free Student limit (the profile photo only, ADR 0044), and removes it', async ({ page }) => {
   test.setTimeout(120_000);
   await freshAccount(page, { name: 'Demo Gallery Owner' });
   await page.goto('/dashboard/photos');
   await expect(page.getByRole('heading', { level: 1, name: 'Your photos' })).toBeVisible();
-  await expect(page.getByTestId('gallery-manager-allowance')).toContainText('0 of 1');
+  await expect(page.getByTestId('gallery-manager-allowance')).toHaveText('Free Student includes your profile photo only. It is free and never counts.');
   await expect(page.getByTestId('upgrade-prompt')).toHaveCount(0);
   for (const theme of THEMES) {
     await switchColorScheme(page, theme);
@@ -62,8 +62,9 @@ test('@M16 an owner adds a photo with the keyboard, captions it, meets the Free 
   await expect(page.getByTestId('gallery-item')).toHaveCount(1);
   await expect(page.getByTestId('gallery-item-state')).toHaveText('Photo 1 of 1 · Profile photo');
 
-  // At the real limit: the picker says so in words, and the upgrade prompt appears.
-  await expect(page.getByTestId('gallery-manager-allowance')).toContainText('1 of 1');
+  // At the real limit (Free Student has no gallery besides the profile photo, which never counts):
+  // the picker says so in words, and the upgrade prompt appears.
+  await expect(page.getByTestId('gallery-manager-allowance')).toHaveText('Free Student includes your profile photo only. It is free and never counts.');
   await expect(page.getByTestId('upgrade-prompt')).toBeVisible();
   await expect(page.getByTestId('gallery-input')).toHaveAttribute('aria-disabled', 'true');
 
@@ -80,7 +81,7 @@ test('@M16 an owner adds a photo with the keyboard, captions it, meets the Free 
   await page.getByTestId('gallery-profile-link').click();
   const grid = page.getByTestId('profile-gallery').getByTestId('gallery-grid');
   await expect(grid.locator('img')).toHaveAttribute('alt', 'Demo morning class');
-  await expect(page.getByTestId('gallery-allowance')).toContainText('1 of 1');
+  await expect(page.getByTestId('gallery-allowance')).toContainText('profile photo only');
 
   // Removed: the gallery is empty and the picker free again.
   await page.goto('/dashboard/photos');

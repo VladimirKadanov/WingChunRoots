@@ -27,14 +27,14 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/account/security/actions.ts#verifySessionAction': { auth: ['/two-factor/verify-totp', '/two-factor/verify-backup-code'] },
   'src/app/account/security/actions.ts#newBackupCodesAction': { auth: ['/two-factor/generate-backup-codes'] },
   'src/app/account/security/actions.ts#disableTwoFactorAction': { auth: ['/two-factor/disable'] },
-  'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard'] },
+  'src/app/onboarding/actions.ts#onboardAction': { rpc: ['consent.record', 'account.onboard', 'account.setType'] },
   'src/app/onboarding/actions.ts#confirmConsentsAction': { rpc: ['consent.record'] },
   // M08: plans, test plans and notifications.
   'src/app/dashboard/actions.ts#markReadAction': { rpc: ['notifications.markRead', 'notifications.markAllRead'] },
   'src/app/dashboard/actions.ts#requestPilotAccessAction': { rpc: ['plans.requestPilotAccess'] },
-  'src/app/dashboard/settings/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
+  'src/app/account/plan/actions.ts#setAccountTypeAction': { rpc: ['account.setType'] },
   // M18: notice e-mail preferences and the one-press unsubscribe.
-  'src/app/dashboard/settings/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },
+  'src/app/account/notifications/actions.ts#setNotificationEmailsAction': { rpc: ['notifications.preferences', 'notifications.setPreference'] },
   'src/app/unsubscribe/actions.ts#unsubscribeAction': { rpc: ['notifications.unsubscribe'] },
   'src/app/admin/grants/actions.ts#createGrantAction': { rpc: ['grants.create'] },
   'src/app/admin/grants/actions.ts#revokeGrantAction': { rpc: ['grants.revoke'] },
@@ -57,6 +57,13 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/review/actions.ts#decideCaseAction': { rpc: ['review.decide'] },
   'src/app/admin/review/actions.ts#addNoteAction': { rpc: ['review.note'] },
   'src/app/admin/review/actions.ts#archiveUpdateAction': { rpc: ['archive.update'] },
+  // M26: the archive editor (docs/adr/0034-archive-editor.md).
+  'src/app/admin/archive/actions.ts#createLineageAction': { rpc: ['archiveEditor.createLineage'] },
+  'src/app/admin/archive/actions.ts#updateLineageAction': { rpc: ['archiveEditor.updateLineage'] },
+  'src/app/admin/archive/actions.ts#createRecordAction': { rpc: ['archiveEditor.createRecord'] },
+  'src/app/admin/archive/actions.ts#addLinkAction': { rpc: ['archiveEditor.addLink'] },
+  'src/app/admin/archive/actions.ts#endLinkAction': { rpc: ['archiveEditor.endLink'] },
+  'src/app/admin/archive/actions.ts#editLinkAction': { rpc: ['archiveEditor.editLink'] },
   // Review 2026-11: a staff take-down of a profile and its restore.
   'src/app/admin/review/actions.ts#takeDownAction': { rpc: ['moderation.takeDown'] },
   'src/app/admin/review/actions.ts#restoreAction': { rpc: ['moderation.restore'] },
@@ -73,6 +80,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/teachers/invite/actions.ts#inviteTeacherAction': { rpc: ['relationships.invite'] },
   'src/app/dashboard/teachers/invite/actions.ts#sendInvitationAction': { rpc: ['invitations.send'] },
   'src/app/invite/[token]/actions.ts#acceptInvitationAction': { rpc: ['invitations.accept'] },
+  // ADR 0040: "Ask to claim this profile" on a public record.
+  'src/app/people/[slug]/claim/actions.ts#requestClaimAction': { rpc: ['claims.request'] },
   'src/app/dashboard/instructor/actions.ts#requestInstructorAction': { rpc: ['instructor.request'] },
   'src/app/dashboard/cases/[id]/actions.ts#replyCaseAction': { rpc: ['cases.reply'] },
   'src/app/people/[slug]/report/actions.ts#reportProfileAction': { rpc: ['reports.create'] },

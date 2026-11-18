@@ -97,7 +97,9 @@ export async function staff(label: string, role: 'moderator' | 'archivist' | 'ad
 
 export async function newLineage(label = 'm09'): Promise<string> {
   const id = uuidv7();
-  await getDb().insert(lineage).values({ id, slug: `demo-${label}-${randomBytes(3).toString('hex')}`, name: `Demo ${label} Lineage` });
+  // 6 random bytes: the whole integration suite shares one database, and with 3 bytes two of its
+  // thousand-odd lineages met on the same slug (birthday bound, CI 2026-11-17).
+  await getDb().insert(lineage).values({ id, slug: `demo-${label}-${randomBytes(6).toString('hex')}`, name: `Demo ${label} Lineage` });
   return id;
 }
 

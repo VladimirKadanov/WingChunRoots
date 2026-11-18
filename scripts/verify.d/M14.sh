@@ -126,8 +126,12 @@ check "the report form says the photo can be reported" grep -q 'for example the 
 # 5. Decisions by default (In scope 4; CLAUDE.md §8) -----------------------------------------------
 check "DEFAULT D07 is marked at the size limit, the quota and the plan catalogue" bash -c "
   grep -q 'DEFAULT D07' src/server/db/schema/common.ts && grep -q 'DEFAULT D07' $SERVICE && grep -q 'DEFAULT D07' src/server/entitlements/plans.ts"
-check "the photo counts as 1 against 'photos'; a replacement adds nothing" bash -c "
-  f=src/server/entitlements/access.ts; grep -q \"if (key === 'photos') return activePhotos(db, subject);\" \"\$f\" && grep -q \"if (key === 'photos') return (await activePhotos(db, subject, unit)) > 0;\" \"\$f\""
+# ADR 0044 (owner decision 2026-11-18) replaces the M14 rule "the photo counts as 1": the profile
+# photo never counts on any plan, so 'photos' counts only gallery photos and the upload of a profile
+# photo (first or replacement) takes nothing from the quota.
+check "the profile photo never counts against 'photos'; only gallery photos do (ADR 0044)" bash -c "
+  f=src/server/entitlements/access.ts; grep -q \"if (key === 'photos') return galleryPhotos(db, subject);\" \"\$f\" && grep -q \"eq(personPhoto.status, 'gallery')\" \"\$f\" &&
+  ! grep -q 'withQuota' src/server/services/photos.ts"
 check "the demo photos are generated (D20), on demo- people only" bash -c "
   f=src/server/db/seed-photos.ts; grep -q 'demoPortrait' \"\$f\" && ! grep -oE \"'[a-z0-9-]+'\" <(grep 'DEMO_PHOTO_SLUGS =' \"\$f\") | grep -v \"^'demo-\""
 
@@ -159,7 +163,7 @@ check "the M14 spec runs in the exclusive run, after the others (PUBLIC_WRITE_SP
   grep -qE "^export const PUBLIC_WRITE_SPECS = \[.*'\*\*/m14-photos\.spec\.ts'.*\] as const;$" e2e/projects.ts
 int_titles=(
   'stores a square WebP at 96 and 512 px in the photo store, sets the person, audits, and leaves the evidence store alone'
-  'replacing the photo marks the old one replaced, deletes its files and still counts one photo (DEFAULT D07)'
+  'replacing the photo marks the old one replaced, deletes its files, and the profile photo never counts (ADR 0044)'
   "a hidden person's photo is 404 to everyone but the owner and staff with 2FA, and in no public DTO"
   'staff without 2FA: SECOND_FACTOR_REQUIRED; staff need a reason, which is audited'
 )

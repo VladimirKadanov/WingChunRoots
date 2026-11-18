@@ -15,8 +15,8 @@ import type { ReactNode } from 'react';
 
 import { FormMessage } from '@/components/account/fields';
 import { LoadError } from '@/components/account/load-error';
-import { GRANTS_LOAD_ERROR } from '@/components/account/load-errors/grants';
 import { PageRedirect } from '@/components/account/page-redirect';
+import { getAdminT } from '@/components/admin/i18n/server';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { isoDay } from '@/lib/dates';
 import { guardRoute } from '@/server/auth/web';
@@ -27,22 +27,24 @@ import { grantHorizon, listGrantsInput } from '@/server/services/grants';
 import { CLOSED_REQUEST_MESSAGE } from './form-ids';
 import { CreateGrantForm, GivePlanDisclosure, PilotRequestItem } from './forms';
 import { GrantsTable, hrefWith } from './grants-table';
+import { grantsLoadError } from './load-error-text';
+import { loadErrorWords } from '@/components/admin/i18n/load-error-words';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Plan grants',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Plan grants'), robots: { index: false } };
+}
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 const one = (value: string | string[] | undefined) => (typeof value === 'string' ? value : undefined);
 const valid = <T,>(result: { success: true; data: T } | { success: false }): T | undefined => (result.success ? result.data : undefined);
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({ id, title, children, className }: { id: string; title: string; children: ReactNode; className?: string }) {
   return (
-    <section id={id} aria-labelledby={`${id}-heading`} className="grid content-start gap-4 border-t border-border-subtle pt-6">
+    <section id={id} aria-labelledby={`${id}-heading`} className={`grid min-w-0 content-start gap-4 border-t border-border-subtle pt-6 ${className ?? ''}`}>
       <h2 id={`${id}-heading`} className="font-display text-2xl">
         {title}
       </h2>
@@ -69,16 +71,17 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
   const query = await searchParams;
   const guard = await guardRoute('/admin/grants', returnPath(query));
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
+  const t = await getAdminT();
   if (guard.forbidden) {
     return (
       <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
         <div className="max-w-[46rem]">
-          <p className="eyebrow">Administration</p>
-          <h1 className="mt-2 font-display text-feature">Not available</h1>
-          <p className="mt-3 max-w-[56ch] text-fg-muted">You don&apos;t have access to plan grants. They are available to administrators.</p>
+          <p className="eyebrow">{t('Administration')}</p>
+          <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
+          <p className="mt-3 max-w-[56ch] text-fg-muted">{t("You don't have access to plan grants. They are available to administrators.")}</p>
           <p className="mt-8 border-t border-border-subtle pt-5 text-ui">
             <Link href="/account" className="link inline-flex min-h-11 items-center">
-              Back to your account
+              {t('Back to your account')}
             </Link>
           </p>
         </div>
@@ -101,7 +104,7 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
       request,
     }),
   );
-  if (!list) return <LoadError {...GRANTS_LOAD_ERROR} retryHref={returnPath(query)} />;
+  if (!list) return <LoadError words={loadErrorWords(t)} {...grantsLoadError(t)} retryHref={returnPath(query)} />;
   const [created, revoked, closedRequest] = await Promise.all([
     readFormResult('create-grant', query.outcome),
     readFormResult('revoke-grant', query.outcome),
@@ -110,20 +113,38 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
   const now = new Date();
 
   return (
-    <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
-      <header className="max-w-[46rem]">
-        <p className="eyebrow">Administration</p>
-        <h1 className="mt-2 font-display text-feature">Plan grants</h1>
-        <p className="mt-3 max-w-[60ch] text-fg-muted">
-          Give a test plan of the pilot to an account, or revoke one. There are no payments in the pilot. Every grant and revocation is
-          kept in the audit log with its reason; confirmed links never change.
+    <div className="mx-auto max-w-[96rem] px-page pt-6 pb-10 md:pt-8 md:pb-14">
+      <header className="grid gap-2">
+        <p className="eyebrow">
+          <Link href="/admin" className="link inline-flex min-h-11 items-center">
+            {t('Control panel')}
+          </Link>
+        </p>
+        <h1 className="font-display text-feature">{t('Plan grants')}</h1>
+        <p className="text-ui" data-testid="grants-summary">
+          <strong>{list.requests.length}</strong>{' '}
+          {list.requests.length === 1 ? t('pilot request waits for an answer') : t('pilot requests wait for an answer')} · <strong>{list.total}</strong>{' '}
+          {list.q
+            ? list.total === 1
+              ? t('grant match the search')
+              : t('grants match the search')
+            : list.total === 1
+              ? t('grant in all')
+              : t('grants in all')}
+        </p>
+        <p className="max-w-[72ch] text-ui text-fg-muted">
+          {t(
+            'Give a test plan of the pilot to an account, or revoke one. There are no payments in the pilot. Every grant and revocation is kept in the audit log with its reason; confirmed links never change.',
+          )}
         </p>
       </header>
 
+      {/* Control panel: the page takes the desktop's width, so the table of grants stays a table;
+          the requests and the form keep a reading width. */}
       <div className="mt-8 grid gap-10">
         {/* Each open request has two answers: give the plan, or close it with a reason (review
             round 2, recheck-5). The section stays when none is open, to say so. */}
-        <Section id="pilot-requests" title="Pilot access requests">
+        <Section id="pilot-requests" title={t('Pilot access requests')}>
           {closedRequest?.status === 'done' ? <FormMessage form={CLOSED_REQUEST_MESSAGE} state={closedRequest} single /> : null}
           {list.requests.length > 0 ? (
             <ul data-testid="pilot-requests" className="grid max-w-[46rem]">
@@ -138,14 +159,14 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
             </ul>
           ) : (
             <p data-testid="no-pilot-requests" className="max-w-[56ch] text-ui text-fg-muted">
-              {list.q ? 'No open pilot access request matches this search.' : 'No pilot access request is waiting for an answer.'}
+              {list.q ? t('No open pilot access request matches this search.') : t('No pilot access request is waiting for an answer.')}
             </p>
           )}
         </Section>
 
-        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid content-start gap-4 border-t border-border-subtle pt-6">
+        <section id="give-plan" aria-labelledby="give-plan-heading" className="grid min-w-0 content-start gap-4 border-t border-border-subtle pt-6">
           <h2 id="give-plan-heading" className="sr-only">
-            Give a test plan
+            {t('Give a test plan')}
           </h2>
           {/* Open when an open pilot request is being answered, and to show the outcome of a post
               without JavaScript; otherwise closed until the admin opens it. A request that is no
@@ -167,11 +188,11 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
           </GivePlanDisclosure>
         </section>
 
-        <Section id="grants" title="Grants">
+        <Section id="grants" title={t('Grants')}>
           <form role="search" action="/admin/grants" method="get" className="flex max-w-[34rem] flex-wrap items-end gap-3">
             <div className="grid min-w-0 flex-1 gap-1.5">
               <label htmlFor="grants-q" className="text-sm font-semibold">
-                Find by e-mail
+                {t('Find by e-mail')}
               </label>
               <input
                 id="grants-q"
@@ -186,22 +207,17 @@ export default async function AdminGrantsPage({ searchParams }: { searchParams: 
               />
             </div>
             <button type="submit" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>
-              Search
+              {t('Search')}
             </button>
             {list.q ? (
               <Link href="/admin/grants" className="link inline-flex min-h-12 items-center text-ui">
-                Show all
+                {t('Show all')}
               </Link>
             ) : null}
           </form>
-          <GrantsTable list={list} revoked={revoked} />
+          <GrantsTable list={list} revoked={revoked} t={t} />
         </Section>
 
-        <p className="border-t border-border-subtle pt-5 text-ui">
-          <Link href="/admin" className="link inline-flex min-h-11 items-center">
-            Back to administration
-          </Link>
-        </p>
       </div>
     </div>
   );

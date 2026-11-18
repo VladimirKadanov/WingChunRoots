@@ -776,6 +776,8 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
         countryCode: null,
         birthDate: null,
         photoId: null,
+        // ADR 0044: the owner's choice to be listed on a school's page goes with the account.
+        schoolListing: false,
         updatedAt: now,
       })
       .where(eq(person.id, own.id));

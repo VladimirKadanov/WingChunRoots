@@ -112,6 +112,8 @@ function showValues(form: HTMLFormElement, values: ProfileFormValues) {
   for (const radio of form.querySelectorAll<HTMLInputElement>('input[type="radio"][name="primary"]')) radio.checked = radio.value === String(values.primary);
   const showPublicly = form.elements.namedItem('showPublicly');
   if (showPublicly instanceof HTMLInputElement) showPublicly.checked = values.showPublicly;
+  const listOnSchoolPage = form.elements.namedItem('listOnSchoolPage');
+  if (listOnSchoolPage instanceof HTMLInputElement) listOnSchoolPage.checked = values.listOnSchoolPage;
 }
 
 export interface ProfileEditorOptions {
@@ -238,7 +240,7 @@ export function ProfileEditor({
     const keys = keysOfSlots(rowKeys, slots);
     if (keys) setRowKeys(keys);
     if (!sameNames(shown.names, current.names)) form.setFieldValue('names', shown.names);
-    for (const key of ['primary', 'bio', 'trainingStartYear', 'showPublicly'] as const) {
+    for (const key of ['primary', 'bio', 'trainingStartYear', 'showPublicly', 'listOnSchoolPage'] as const) {
       if (shown[key] !== current[key]) form.setFieldValue(key, shown[key]);
     }
   };
@@ -324,6 +326,7 @@ export function ProfileEditor({
   const bioId = fieldId(FORM, 'bio');
   const yearId = fieldId(FORM, 'trainingStartYear');
   const publicId = fieldId(FORM, 'showPublicly');
+  const schoolListingId = fieldId(FORM, 'listOnSchoolPage');
   const selectState: FormState = shown;
 
   return (
@@ -680,6 +683,26 @@ export function ProfileEditor({
             <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block" />
           </span>
           <span className="min-w-0 pt-px">Show my profile publicly</span>
+        </label>
+        <p id={`${schoolListingId}-hint`} className="mt-2 max-w-[62ch] text-sm text-fg-muted">
+          Your school’s page can list its members. You appear there only if you tick this and your profile is public, at the schools where a
+          confirmed teacher of yours teaches or that your training names.
+        </p>
+        <label htmlFor={schoolListingId} className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 text-ui">
+          <span className="relative grid size-6 shrink-0 place-items-center">
+            <input
+              id={schoolListingId}
+              name="listOnSchoolPage"
+              type="checkbox"
+              value="on"
+              defaultChecked={values.listOnSchoolPage}
+              disabled={pending}
+              aria-describedby={`${schoolListingId}-hint`}
+              className="peer size-6 cursor-pointer appearance-none rounded-[3px] border-2 border-border-strong bg-surface-1 transition-colors duration-(--duration-fast) checked:border-fg checked:bg-fg hover:border-fg-muted"
+            />
+            <CheckIcon size={18} className="pointer-events-none absolute hidden text-fg-inverse peer-checked:block" />
+          </span>
+          <span className="min-w-0 pt-px">List me on my school’s page</span>
         </label>
         {publicSlug ? (
           <p className="text-sm">

@@ -1,4 +1,5 @@
 'use client';
+'use no memo';
 
 // The forms of the review queue (milestone M10a, In scope 4 and 5): assign, the three decisions,
 // the internal note and the archival edit. Each is one thin Server Action over one procedure
@@ -10,6 +11,8 @@
 import { useActionState, useState } from 'react';
 
 import { CheckboxField, FormMessage, SelectField, SubmitButton, TextField, useFocusOnError, useFormId } from '@/components/account/fields';
+import { useAdminT } from '@/components/admin/i18n/client';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { TextAreaField } from '@/components/account/textarea-field';
 import { EvidenceUploader } from '@/components/evidence/uploader';
 import { ChevronDownIcon } from '@/components/icons';
@@ -57,6 +60,7 @@ export function AssignForm({
   reviewers?: { id: string; label: string }[];
   initial?: FormState | null;
 }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(assignCaseAction, initial ?? IDLE);
   const fixedId = assignForm(mode.kind);
   const generatedId = useFormId(fixedId);
@@ -71,9 +75,9 @@ export function AssignForm({
       <input type="hidden" name="mode" value={mode.kind} />
       {mode.kind === 'self' ? <input type="hidden" name="assigneeId" value={mode.userId} /> : null}
       {mode.kind === 'choose' ? (
-        <SelectField form={formId} name="assigneeId" label="Give the case to" autoComplete="off" state={state} value={assignee} onValue={setAssignee}>
+        <SelectField form={formId} name="assigneeId" label={t('Give the case to')} autoComplete="off" state={state} value={assignee} onValue={setAssignee}>
           {/* Not disabled: the select always sends a value, and an empty one is refused by name. */}
-          <option value="">Choose a reviewer</option>
+          <option value="">{t('Choose a reviewer')}</option>
           {reviewers.map((reviewer) => (
             <option key={reviewer.id} value={reviewer.id}>
               {reviewer.label}
@@ -84,8 +88,8 @@ export function AssignForm({
       <div>
         <Button
           pending={pending}
-          label={mode.kind === 'self' ? 'Assign to me' : mode.kind === 'none' ? 'Unassign' : 'Assign'}
-          pendingLabel={mode.kind === 'none' ? 'Unassigning…' : 'Assigning…'}
+          label={mode.kind === 'self' ? t('Assign to me') : mode.kind === 'none' ? t('Unassign') : t('Assign')}
+          pendingLabel={mode.kind === 'none' ? t('Unassigning…') : t('Assigning…')}
           variant={mode.kind === 'self' ? 'ink' : 'secondary'}
         />
       </div>
@@ -93,32 +97,36 @@ export function AssignForm({
   );
 }
 
-const DECISIONS = {
-  verify: {
-    label: 'Verify the claim',
-    pending: 'Verifying…',
-    reason: 'Note on the decision',
-    hint: 'Optional. Kept with the case for the reviewers; the claimant is told the claim was confirmed.',
-    optional: true,
-    variant: 'primary',
-  },
-  reject: {
-    label: 'Refuse the claim',
-    pending: 'Refusing…',
-    reason: 'Reason',
-    hint: 'Required. The claimant reads it on Your teachers. Neutral and specific: what the evidence does not show.',
-    optional: false,
-    variant: 'danger',
-  },
-  needs_info: {
-    label: 'Ask for more information',
-    pending: 'Sending…',
-    reason: 'Question for the claimant',
-    hint: 'Required. The claimant reads it on Your teachers and can add evidence to the claim.',
-    optional: false,
-    variant: 'secondary',
-  },
-} as const;
+type Decision = 'verify' | 'reject' | 'needs_info';
+
+/** The claim's words of each decision: what the form says when the page sends none (`text`). */
+const decisionWords = (t: AdminT) =>
+  ({
+    verify: {
+      label: t('Verify the claim'),
+      pending: t('Verifying…'),
+      reason: t('Note on the decision'),
+      hint: t('Optional. Kept with the case for the reviewers; the claimant is told the claim was confirmed.'),
+      optional: true,
+      variant: 'primary',
+    },
+    reject: {
+      label: t('Refuse the claim'),
+      pending: t('Refusing…'),
+      reason: t('Reason'),
+      hint: t('Required. The claimant reads it on Your teachers. Neutral and specific: what the evidence does not show.'),
+      optional: false,
+      variant: 'danger',
+    },
+    needs_info: {
+      label: t('Ask for more information'),
+      pending: t('Sending…'),
+      reason: t('Question for the claimant'),
+      hint: t('Required. The claimant reads it on Your teachers and can add evidence to the claim.'),
+      optional: false,
+      variant: 'secondary',
+    },
+  }) as const satisfies Record<Decision, DecideText & { variant: 'primary' | 'danger' | 'secondary' }>;
 
 /** One decision on a case: verify, refuse with a reason, or ask for more information. */
 /** The words of a decision for the case's kind (M10b: review.get `decisions`); the claim's by default. */
@@ -142,7 +150,7 @@ export function DecideForm({
   lifeStatusChoice,
 }: {
   caseId: string;
-  decision: keyof typeof DECISIONS;
+  decision: Decision;
   idempotencyKey: string;
   initial?: FormState | null;
   text?: DecideText;
@@ -160,6 +168,7 @@ export function DecideForm({
    */
   lifeStatusChoice?: LifeStatusChoiceText;
 }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(decideCaseAction, initial ?? IDLE);
   const generatedId = useFormId(`${DECIDE_FORM}-${decision}`);
   const formId = initial ? `${DECIDE_FORM}-${decision}` : generatedId;
@@ -167,7 +176,8 @@ export function DecideForm({
   const choosing = lifeStatusChoice !== undefined && decision === 'verify';
   const [deceased, setDeceased] = useState(state.values?.deceased ?? '');
   const establishing = choosing && deceased === 'established';
-  const text = { ...DECISIONS[decision], ...given, variant: DECISIONS[decision].variant };
+  const words = decisionWords(t)[decision];
+  const text = { ...words, ...given, variant: words.variant };
   const reasonHint = establishing ? lifeStatusChoice!.reasonRequiredHint : choosing ? lifeStatusChoice!.reasonOptionalHint : text.hint;
   return (
     <details open={state.status === 'error' || undefined} className="group rounded-sm border border-border-strong" data-testid={`decide-${decision}`}>
@@ -189,8 +199,8 @@ export function DecideForm({
           <CheckboxField
             form={formId}
             name="takeDown"
-            label="Also take the profile down from the public pages"
-            hint="Not ticked unless you choose it. The note above is then required and is sent to the owner as the reason (never name the reporter). You can put the profile back from the record page."
+            label={t('Also take the profile down from the public pages')}
+            hint={t('Not ticked unless you choose it. The note above is then required and is sent to the owner as the reason (never name the reporter). You can put the profile back from the record page.')}
             state={state}
           />
         ) : null}
@@ -258,6 +268,7 @@ function LifeStatusChoice({ form, state, text, onValue }: { form: string; state:
 
 /** An internal note: for reviewers only, never shown to the parties. */
 export function NoteForm({ caseId, idempotencyKey, initial }: { caseId: string; idempotencyKey: string; initial?: FormState | null }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(addNoteAction, initial ?? IDLE);
   const generatedId = useFormId(NOTE_FORM);
   const formId = initial ? NOTE_FORM : generatedId;
@@ -267,9 +278,9 @@ export function NoteForm({ caseId, idempotencyKey, initial }: { caseId: string; 
       <FormMessage form={formId} state={state} single />
       <input type="hidden" name="caseId" value={caseId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
-      <TextAreaField form={formId} name="body" label="Internal note" maxLength={2000} hint="Only reviewers read internal notes." state={state} />
+      <TextAreaField form={formId} name="body" label={t('Internal note')} maxLength={2000} hint={t('Only reviewers read internal notes.')} state={state} />
       <div>
-        <Button pending={pending} label="Add the note" pendingLabel="Adding…" />
+        <Button pending={pending} label={t('Add the note')} pendingLabel={t('Adding…')} />
       </div>
     </form>
   );
@@ -280,6 +291,7 @@ export function NoteForm({ caseId, idempotencyKey, initial }: { caseId: string; 
  * read (a moderator or an administrator; review.arbitrate).
  */
 export function ArbitrateForm({ relationshipId, idempotencyKey, initial }: { relationshipId: string; idempotencyKey: string; initial?: FormState | null }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(arbitrateAction, initial ?? IDLE);
   const generatedId = useFormId(ARBITRATE_FORM);
   const formId = initial ? ARBITRATE_FORM : generatedId;
@@ -292,13 +304,13 @@ export function ArbitrateForm({ relationshipId, idempotencyKey, initial }: { rel
       <TextAreaField
         form={formId}
         name="reason"
-        label="Reason"
+        label={t('Reason')}
         maxLength={2000}
-        hint="Required. Both people read it in their notification, their e-mail and on their case page. Say what is disputed and what evidence would settle it."
+        hint={t('Required. Both people read it in their notification, their e-mail and on their case page. Say what is disputed and what evidence would settle it.')}
         state={state}
       />
       <div>
-        <Button pending={pending} label="Set in arbitration" pendingLabel="Setting…" variant="danger" />
+        <Button pending={pending} label={t('Set in arbitration')} pendingLabel={t('Setting…')} variant="danger" />
       </div>
     </form>
   );
@@ -309,6 +321,7 @@ export function ArbitrateForm({ relationshipId, idempotencyKey, initial }: { rel
  * (photos.remove; staff with the second factor). The owner can add a new photo afterwards.
  */
 export function RemovePhotoForm({ caseId, slug, initial }: { caseId: string; slug: string; initial?: FormState | null }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(removePhotoAction, initial ?? IDLE);
   const generatedId = useFormId(PHOTO_REMOVE_FORM);
   const formId = initial ? PHOTO_REMOVE_FORM : generatedId;
@@ -321,13 +334,13 @@ export function RemovePhotoForm({ caseId, slug, initial }: { caseId: string; slu
       <TextAreaField
         form={formId}
         name="reason"
-        label="Reason for removing the photo"
+        label={t('Reason for removing the photo')}
         maxLength={1000}
-        hint="Required. Kept in the audit log. The photo's files are deleted; the person can add another photo."
+        hint={t("Required. Kept in the audit log. The photo's files are deleted; the person can add another photo.")}
         state={state}
       />
       <div>
-        <Button pending={pending} label="Remove photo" pendingLabel="Removing…" variant="danger" />
+        <Button pending={pending} label={t('Remove photo')} pendingLabel={t('Removing…')} variant="danger" />
       </div>
     </form>
   );
@@ -348,6 +361,7 @@ export function RemoveGalleryPhotoForm({
   kind: 'person' | 'school';
   initial?: FormState | null;
 }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(kind === 'person' ? removeGalleryPhotoAction : removeSchoolPhotoAction, initial ?? IDLE);
   const fixed = kind === 'person' ? GALLERY_REMOVE_FORM : SCHOOL_PHOTO_REMOVE_FORM;
   const generatedId = useFormId(fixed);
@@ -361,27 +375,36 @@ export function RemoveGalleryPhotoForm({
       <TextAreaField
         form={formId}
         name="reason"
-        label="Reason for removing this photo"
+        label={t('Reason for removing this photo')}
         maxLength={1000}
-        hint="Required. Kept in the audit log. The photo's files are deleted."
+        hint={t("Required. Kept in the audit log. The photo's files are deleted.")}
         state={state}
       />
       <div>
-        <Button pending={pending} label="Remove photo" pendingLabel="Removing…" variant="danger" />
+        <Button pending={pending} label={t('Remove photo')} pendingLabel={t('Removing…')} variant="danger" />
       </div>
     </form>
   );
 }
 
-/** The archival edit of a record kept by the platform or unclaimed (an archivist only). */
+/** The archival edit of a record kept by the platform or unclaimed (an archivist or an administrator). */
 export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; initial?: FormState | null }) {
+  const t = useAdminT();
   const [state, action, pending] = useActionState(archiveUpdateAction, initial ?? IDLE);
   const generatedId = useFormId(ARCHIVE_FORM);
   const formId = initial ? ARCHIVE_FORM : generatedId;
   useFocusOnError(formId, state);
   const start = initial?.values;
   const [selects, setSelects] = useState({ lifeStatus: start?.lifeStatus ?? record.lifeStatus, originalLang: start?.originalLang ?? record.original?.lang ?? '' });
-  const labels = { primaryName: 'Name in Latin letters', originalName: 'Name in its own script', originalLang: 'Script', lifeStatus: 'Life status', bio: 'Biography', reason: 'Reason', evidenceIds: 'Evidence' };
+  const labels = {
+    primaryName: t('Name in Latin letters'),
+    originalName: t('Name in its own script'),
+    originalLang: t('Script'),
+    lifeStatus: t('Life status'),
+    bio: t('Biography'),
+    reason: t('Reason'),
+    evidenceIds: t('Evidence'),
+  };
   return (
     <form id={formId} action={action} noValidate aria-busy={pending || undefined} className="grid gap-6" data-testid="archive-form">
       <FormMessage form={formId} state={state} labels={labels} />
@@ -393,14 +416,14 @@ export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; in
         <SelectField
           form={formId}
           name="originalLang"
-          label="Script of that name"
+          label={t('Script of that name')}
           optional
           autoComplete="off"
           state={state}
           value={selects.originalLang}
           onValue={(value) => setSelects((current) => ({ ...current, originalLang: value }))}
         >
-          <option value="">Choose a script</option>
+          <option value="">{t('Choose a script')}</option>
           {record.scripts.map((script) => (
             <option key={script.lang} value={script.lang}>
               {script.label}
@@ -418,14 +441,14 @@ export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; in
         value={selects.lifeStatus}
         onValue={(value) => setSelects((current) => ({ ...current, lifeStatus: value as typeof current.lifeStatus }))}
       >
-        <option value="unknown">Not known</option>
-        <option value="deceased">Deceased</option>
-        <option value="living">Living</option>
+        <option value="unknown">{t('Not known')}</option>
+        <option value="deceased">{t('Deceased')}</option>
+        <option value="living">{t('Living')}</option>
       </SelectField>
-      <TextAreaField form={formId} name="bio" label="Biography (English)" optional maxLength={1000} rows={5} lang="en" defaultValue={record.bio ?? undefined} state={state} className="max-w-[40rem]" />
+      <TextAreaField form={formId} name="bio" label={t('Biography (English)')} optional maxLength={1000} rows={5} lang="en" defaultValue={record.bio ?? undefined} state={state} className="max-w-[40rem]" />
       <EvidenceUploader
-        label="Link evidence"
-        hint="Optional. JPEG, PNG, WebP or PDF, up to 20 MB each. Linked files stay with the record."
+        label={t('Link evidence')}
+        hint={t('Optional. JPEG, PNG, WebP or PDF, up to 20 MB each. Linked files stay with the record.')}
         discard={discardEvidenceAction}
         // The error summary's link and the focus after a refusal find the field by this id (screens-3).
         inputId={fieldId(formId, 'evidenceIds')}
@@ -436,13 +459,13 @@ export function ArchiveForm({ record, initial }: { record: ArchiveRecordView; in
         name="reason"
         label={labels.reason}
         maxLength={2000}
-        hint="Required. Why the record changes and on what basis; kept in the audit log with your name and role."
+        hint={t('Required. Why the record changes and on what basis; kept in the audit log with your name and role.')}
         state={state}
         className="max-w-[40rem]"
       />
       <div>
-        <SubmitButton pending={pending} pendingLabel="Saving…">
-          Save the record
+        <SubmitButton pending={pending} pendingLabel={t('Saving…')}>
+          {t('Save the record')}
         </SubmitButton>
       </div>
     </form>
@@ -468,6 +491,7 @@ export function TakeDownForm({
   initial?: FormState | null;
 }) {
   const fixed = held ? RESTORE_FORM : TAKEDOWN_FORM;
+  const t = useAdminT();
   const [state, action, pending] = useActionState(held ? restoreAction : takeDownAction, initial ?? IDLE);
   const generatedId = useFormId(fixed);
   const formId = initial ? fixed : generatedId;
@@ -481,17 +505,17 @@ export function TakeDownForm({
       <TextAreaField
         form={formId}
         name="reason"
-        label={held ? 'Reason for putting the record back' : 'Reason for taking the record down'}
+        label={held ? t('Reason for putting the record back') : t('Reason for taking the record down')}
         maxLength={500}
         hint={
           held
-            ? 'Required. Kept in the audit log. The owner is told the record is back, and it returns to what the owner chose.'
-            : 'Required. Kept in the audit log and sent to the owner, if the record has one. Write it for the owner to read, and never name a reporter. The record can be put back at any time.'
+            ? t('Required. Kept in the audit log. The owner is told the record is back, and it returns to what the owner chose.')
+            : t('Required. Kept in the audit log and sent to the owner, if the record has one. Write it for the owner to read, and never name a reporter. The record can be put back at any time.')
         }
         state={state}
       />
       <div>
-        <Button pending={pending} label={held ? 'Restore record' : 'Take record down'} pendingLabel={held ? 'Restoring…' : 'Taking down…'} variant={held ? 'secondary' : 'danger'} />
+        <Button pending={pending} label={held ? t('Restore record') : t('Take record down')} pendingLabel={held ? t('Restoring…') : t('Taking down…')} variant={held ? 'secondary' : 'danger'} />
       </div>
     </form>
   );

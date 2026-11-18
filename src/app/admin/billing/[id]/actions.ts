@@ -8,6 +8,7 @@ import { refresh } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
+import { getAdminT } from '@/components/admin/i18n/server';
 import { textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
@@ -22,19 +23,26 @@ export async function moveTestClockAction(_previous: FormState, form: FormData):
   const subscriptionId = textValue(form, 'subscriptionId', 64);
   const step = textValue(form, 'step', 16) as 'period_end' | 'grace_end';
   const page = UUID.test(subscriptionId) ? `/admin/billing/${subscriptionId}` : '/admin/billing';
+  const t = await getAdminT();
   let state: FormState;
   try {
     await serverClient(await headers(), await getRequestPrincipal()).billing.testClock({ subscriptionId, step });
     refresh();
     state = {
       status: 'done',
-      message: 'The test clock moved. The provider events are on their way; refresh in a few seconds to see them applied.',
+      message: t('The test clock moved. The provider events are on their way; refresh in a few seconds to see them applied.'),
     };
   } catch (error) {
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect(`/sign-in?next=${encodeURIComponent(page)}`);
     if (rpcErrorCode(error) === 'SECOND_FACTOR_REQUIRED') redirect(`/account/security?next=${encodeURIComponent(page)}`);
-    state = formStateFromFailure(error);
+    const failed = formStateFromFailure(error);
+    // The refusal in the control panel's language (docs/adr/0043-admin-bulgarian.md): the service's English is the key.
+    state = {
+      ...failed,
+      ...(failed.message ? { message: t(failed.message) } : {}),
+      ...(failed.fields ? { fields: Object.fromEntries(Object.entries(failed.fields).map(([name, text]) => [name, t(text)])) } : {}),
+    };
   }
   return formResult({ form: TEST_CLOCK_FORM, page, anchor: outcomeTarget(TEST_CLOCK_FORM, state, false) }, state);
 }

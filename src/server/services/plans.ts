@@ -107,7 +107,7 @@ export function planCatalog(): PlanCatalog {
     banner: PLANS_BANNER,
     plannedLabel: PLANNED_LABEL,
     plans: PLAN_ORDER.map(planSummary),
-    features: FEATURES.map((f) => ({
+    features: FEATURES.filter((f) => !f.hidden).map((f) => ({
       key: f.key,
       label: f.label,
       availability: f.availability,

@@ -491,3 +491,33 @@
   visibility: hidden;
 }
 /* end M06 touch and motion (D) */
+
+/* The account menu (docs/adr/0035-control-panel.md): a popover placed against its button with CSS
+   anchor positioning (flipped when there is no room), fixed corners where the browser has none.
+   It scrolls inside itself when the screen is short (a landscape phone, 200 % text). */
+.account-popover {
+  inset: auto;
+  margin: 0;
+  max-height: calc(100dvh - 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position-try-fallbacks: flip-block, flip-inline;
+}
+.account-popover[data-variant='bar'] {
+  position-area: bottom span-left;
+  margin-top: 0.375rem;
+}
+.account-popover[data-variant='rail'] {
+  position-area: top span-right;
+  margin-bottom: 0.375rem;
+}
+@supports not (anchor-name: --a) {
+  .account-popover[data-variant='bar'] {
+    top: calc(var(--top-h) + env(safe-area-inset-top, 0px));
+    right: max(0.5rem, env(safe-area-inset-right, 0px));
+  }
+  .account-popover[data-variant='rail'] {
+    left: max(0.875rem, env(safe-area-inset-left, 0px));
+    bottom: max(5.5rem, env(safe-area-inset-bottom, 0px));
+  }
+}

@@ -65,8 +65,8 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         <h1 className="mt-2 font-display text-feature">Notifications</h1>
         <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
           Every notice of your account, newest first. Choose which of them also come by e-mail in{' '}
-          <Link href="/dashboard/settings#notifications-heading" className="link">
-            Account type and plan
+          <Link href="/account/notifications" className="link">
+            Notification settings
           </Link>
           .
         </p>
