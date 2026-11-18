@@ -4,18 +4,17 @@
 // layout (src/app/admin/layout.tsx) puts the language and only the Bulgarian text that client
 // components use (bg/*.client.ts) in this context, so the pages' scripts carry no dictionary.
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 
 import { type AdminDict, type AdminLang, type AdminT, makeAdminT } from './translate';
 
 const Ctx = createContext<{ lang: AdminLang; dict: AdminDict }>({ lang: 'en', dict: {} });
 
 export function AdminTProvider({ lang, dict, children }: { lang: AdminLang; dict: AdminDict; children: ReactNode }) {
-  const value = useMemo(() => ({ lang, dict }), [lang, dict]);
-  return <Ctx value={value}>{children}</Ctx>;
+  return <Ctx value={{ lang, dict }}>{children}</Ctx>;
 }
 
 export function useAdminT(): AdminT {
   const { lang, dict } = useContext(Ctx);
-  return useMemo(() => makeAdminT(lang, dict), [lang, dict]);
+  return makeAdminT(lang, dict);
 }

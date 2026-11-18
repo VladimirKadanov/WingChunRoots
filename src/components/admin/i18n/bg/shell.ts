@@ -26,4 +26,9 @@ export const BG_SHELL: AdminDict = {
   'System status': 'Състояние на системата',
   'open': 'отворени',
   'problems': 'проблема',
+  "Nothing matches.": "Няма съвпадения.",
+  "{noun} {first} to {last} of {total}": "{noun} {first} до {last} от {total}",
+  "Previous": "Предишна",
+  "Page {page} of {pages}": "Страница {page} от {pages}",
+  "Next": "Следваща",
 };
