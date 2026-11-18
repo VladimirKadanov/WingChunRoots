@@ -1570,7 +1570,7 @@ pnpm erasures:replay --apply --include-unconfirmed   # и записите бе�
 
 ## 34. Тестов сървър със защита с парола (staging, 17.11.2026)
 
-Хостнатият тестов сайт е на един сървър Hetzner CPX22 зад обща парола (Caddy, HTTPS на `<IP>.sslip.io`). Писмата остават в Mailpit на `https://mail.<адрес>`. Подробностите стъпка по стъпка са в [`docs/operations/staging.md`](../operations/staging.md), а решението е в [ADR 0033](../adr/0033-staging.md). Всичко се прави с `deploy/staging/staging.sh` като потребителя `deploy`:
+Хостнатият тестов сайт е на един сървър Hetzner CX23 (Хелзинки, Ubuntu 26.04) зад обща парола (Caddy, HTTPS на `<IP>.sslip.io`). Писмата остават в Mailpit на `https://mail.<адрес>`. Подробностите стъпка по стъпка са в [`docs/operations/staging.md`](../operations/staging.md), а решението е в [ADR 0033](../adr/0033-staging.md). Всичко се прави с `deploy/staging/staging.sh` като потребителя `deploy`:
 
 | Етап | Команди |
 |---|---|
