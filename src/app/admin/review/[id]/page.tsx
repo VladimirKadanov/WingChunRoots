@@ -18,12 +18,13 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { getAdminT } from '@/components/admin/i18n/server';
+import type { AdminT } from '@/components/admin/i18n/translate';
 import { LoadError } from '@/components/account/load-error';
 import { REVIEW_LOAD_ERRORS } from '@/components/account/review-load-error-text';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { OutcomeNote, PeriodLines, PersonName, RelationshipBadge } from '@/components/relationships/parts';
-import { formatDay } from '@/lib/dates';
 import { formatSize } from '@/lib/file-size';
 import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
@@ -31,16 +32,17 @@ import { pageRead, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from '../form-ids';
 import { AssignForm, DecideForm, NoteForm, RemoveGalleryPhotoForm, RemovePhotoForm, TakeDownForm } from '../forms';
-import { LIFE_STATUS_CHOICE } from '../life-status-choice';
+import { lifeStatusChoice } from '../life-status-choice';
 import { ListingSection } from '../listing';
 import { OrganizationSection } from '../organization';
+import { factValue, lifeStatusWord, reviewerLabel, roleName, translateState } from '../text';
 
 export const instant = false;
 
-export const metadata: Metadata = {
-  title: 'Review case',
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getAdminT();
+  return { title: t('Review case'), robots: { index: false } };
+}
 
 type Params = Promise<{ id: string }>;
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -57,37 +59,43 @@ async function orMissing<T>(read: Promise<T>): Promise<T | 'missing'> {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const DONE: Record<string, string> = {
-  assigned: 'The case is assigned. You can open its evidence and decide it.',
-  unassigned: 'The case is unassigned and back in the queue.',
-  noted: 'The note is added.',
+const doneText = (t: AdminT): Record<string, string> => ({
+  assigned: t('The case is assigned. You can open its evidence and decide it.'),
+  unassigned: t('The case is unassigned and back in the queue.'),
+  noted: t('The note is added.'),
   // M14: photos.remove from the case of a reported profile.
-  'photo-removed': 'The profile photo is removed. The removal and your reason are in the audit log.',
+  'photo-removed': t('The profile photo is removed. The removal and your reason are in the audit log.'),
   // M16: gallery.remove and schoolPhotos.remove from the case.
-  'gallery-photo-removed': 'The photo is removed from the gallery. The removal and your reason are in the audit log.',
-  'school-photo-removed': 'The school photo is removed. The removal and your reason are in the audit log.',
+  'gallery-photo-removed': t('The photo is removed from the gallery. The removal and your reason are in the audit log.'),
+  'school-photo-removed': t('The school photo is removed. The removal and your reason are in the audit log.'),
   // Review 2026-11: moderation.takeDown and moderation.restore from the case of a reported profile.
-  'taken-down': 'The record is off the public pages. Your reason is in the audit log and on this case, and the owner, if there is one, was sent it.',
-  restored: 'The record is back. The change and your reason are in the audit log and on this case, and the owner, if there is one, was told.',
+  'taken-down': t('The record is off the public pages. Your reason is in the audit log and on this case, and the owner, if there is one, was sent it.'),
+  restored: t('The record is back. The change and your reason are in the audit log and on this case, and the owner, if there is one, was told.'),
   // M10b: review.arbitrate opens the dispute here.
-  arbitrated: 'The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.',
-};
+  arbitrated: t('The relationship is in arbitration. Public pages show it as “Disputed”, and both people were sent your reason and asked for evidence.'),
+});
 /** What a decision did, in the words of the case's kind (review.get `decisions`). */
 const DECIDED = { verified: 'verify', refused: 'reject', asked: 'needs_info' } as const;
 
 /** M10b: the heading of a case's relationship, by kind. */
-const RELATIONSHIP_HEADING: Record<string, string> = {
-  person_claim: 'The request it answers',
-  relationship_dispute: 'The relationship',
-};
+function relationshipHeading(t: AdminT, kind: string): string {
+  if (kind === 'person_claim') return t('The request it answers');
+  if (kind === 'relationship_dispute') return t('The relationship');
+  return t('The claim');
+}
 
-function Frame({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+/** The words of a decision from review.get, in the language. */
+function decisionText<T extends { label: string; pending: string; reason: string; hint: string; done: string }>(t: AdminT, text: T): T {
+  return { ...text, label: t(text.label), pending: t(text.pending), reason: t(text.reason), hint: t(text.hint), done: t(text.done) };
+}
+
+function Frame({ t, children, wide = false }: { t: AdminT; children: ReactNode; wide?: boolean }) {
   return (
     <div className={`mx-auto px-page pt-6 pb-10 md:pt-8 md:pb-14 ${wide ? 'max-w-[96rem]' : 'max-w-content'}`}>
       <div className={wide ? undefined : 'max-w-[52rem]'}>
         <p className="eyebrow">
           <Link href="/admin/review" className="link inline-flex min-h-11 items-center">
-            Review queue
+            {t('Review queue')}
           </Link>
         </p>
         {children}
@@ -116,13 +124,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
   const query = await searchParams;
   const path = `/admin/review/${UUID.test(id) ? id : ''}`;
   const guard = await guardRoute('/admin/review', path);
+  const t = await getAdminT();
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) {
     return (
-      <Frame>
-        <h1 className="mt-2 font-display text-feature">Not available</h1>
+      <Frame t={t}>
+        <h1 className="mt-2 font-display text-feature">{t('Not available')}</h1>
         <p className="mt-3 max-w-[56ch] text-fg-muted" data-testid="review-denied">
-          You don&apos;t have access to the review queue. It is available to archivists, moderators and administrators.
+          {t("You don't have access to the review queue. It is available to archivists, moderators and administrators.")}
         </p>
       </Frame>
     );
@@ -130,14 +139,14 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
   const view = await pageRead(orMissing(serverClient(await headers(), guard.principal).review.get({ id })));
   if (view === 'missing') {
     return (
-      <Frame>
-        <h1 className="mt-2 font-display text-feature">No such case</h1>
-        <p className="mt-3 max-w-[56ch] text-fg-muted">This case does not exist, or it is not in the review queue.</p>
+      <Frame t={t}>
+        <h1 className="mt-2 font-display text-feature">{t('No such case')}</h1>
+        <p className="mt-3 max-w-[56ch] text-fg-muted">{t('This case does not exist, or it is not in the review queue.')}</p>
       </Frame>
     );
   }
   if (!view) return <LoadError {...REVIEW_LOAD_ERRORS.review} retryHref={path} />;
-  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult, takeDownResult, restoreResult] = await Promise.all([
+  const results = await Promise.all([
     readFormResult(assignForm('self'), query.outcome),
     readFormResult(assignForm('none'), query.outcome),
     readFormResult(assignForm('choose'), query.outcome),
@@ -151,14 +160,18 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
     readFormResult(TAKEDOWN_FORM, query.outcome),
     readFormResult(RESTORE_FORM, query.outcome),
   ]);
+  const [assignResult, unassignResult, chooseResult, noteResult, verifyResult, rejectResult, askResult, photoResult, galleryResult, schoolPhotoResult, takeDownResult, restoreResult] = results.map((state) =>
+    state ? translateState(t, state) : state,
+  );
+  const decisions = { verify: decisionText(t, view.decisions.verify), reject: decisionText(t, view.decisions.reject), needs_info: decisionText(t, view.decisions.needs_info) };
   const decided = typeof query.done === 'string' && Object.hasOwn(DECIDED, query.done) ? DECIDED[query.done as keyof typeof DECIDED] : null;
-  const done = decided ? view.decisions[decided].done : typeof query.done === 'string' ? DONE[query.done] : undefined;
+  const done = decided ? decisions[decided].done : typeof query.done === 'string' ? doneText(t)[query.done] : undefined;
   // In a dispute both people are parties; elsewhere the one who opened the case is the claimant.
   // A reviewer's note in a dispute reaches both people; a party's reply only the reviewers (DEFAULT D19).
   const party =
     view.kind === 'relationship_dispute'
-      ? { author: 'A party', shown: 'shown to both people', reply: 'not shown to the other person' }
-      : { author: 'The claimant', shown: 'shown to the claimant', reply: 'shown to the claimant' };
+      ? { author: t('A party'), shown: t('shown to both people'), reply: t('not shown to the other person') }
+      : { author: t('The claimant'), shown: t('shown to the claimant'), reply: t('shown to the claimant') };
   // New for every change (actions.ts doneAt): a new note mounts, so it takes the focus again.
   const doneKey = `${String(query.done)}-${String(query.n)}`;
   const rel = view.relationship;
@@ -183,32 +196,38 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         .schoolPhotos.get({ schoolId: view.school.id })
         .catch(() => null)
     : null;
-  const schoolItems = schoolPhotos && schoolPhotos.canModerate ? [...(schoolPhotos.logo ? [{ id: schoolPhotos.logo.id, src: schoolPhotos.logo.large, label: 'Logo' }] : []), ...schoolPhotos.rooms.map((r, i) => ({ id: r.id, src: r.large, label: r.caption ?? `Room photo ${i + 1}` }))] : [];
+  const schoolItems = schoolPhotos && schoolPhotos.canModerate ? [...(schoolPhotos.logo ? [{ id: schoolPhotos.logo.id, src: schoolPhotos.logo.large, label: t('Logo') }] : []), ...schoolPhotos.rooms.map((r, i) => ({ id: r.id, src: r.large, label: r.caption ?? t('Room photo {n}', { n: i + 1 }) }))] : [];
   const initialFor = (result: typeof galleryResult, photoId: string) => (result?.values?.photoId === photoId ? result : null);
 
   return (
-    <Frame wide>
-      <h1 className="mt-2 font-display text-feature">{view.kindLabel}</h1>
+    <Frame t={t} wide>
+      <h1 className="mt-2 font-display text-feature">{t(view.kindLabel)}</h1>
       <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3 text-ui" data-testid="case-summary">
         <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
-          <dt className="text-sm text-fg-muted">Status</dt>
+          <dt className="text-sm text-fg-muted">{t('Status')}</dt>
           <dd data-testid="case-status" data-status={view.status} className="font-semibold text-fg">
-            {view.statusLabel}
+            {t(view.statusLabel)}
           </dd>
         </div>
         <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
-          <dt className="text-sm text-fg-muted">Opened</dt>
-          <dd>{formatDay(view.openedAt)}</dd>
+          <dt className="text-sm text-fg-muted">{t('Opened')}</dt>
+          <dd>{t.day(view.openedAt)}</dd>
         </div>
         <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
-          <dt className="text-sm text-fg-muted">Assigned</dt>
+          <dt className="text-sm text-fg-muted">{t('Assigned')}</dt>
           <dd className={view.assignee?.me ? 'font-semibold' : undefined}>
-            {view.assignee ? (view.assignee.me ? 'Assigned to you' : `Assigned to another reviewer${view.assignee.role ? ` (${view.assignee.role})` : ''}`) : 'Not assigned'}
+            {view.assignee
+              ? view.assignee.me
+                ? t('Assigned to you')
+                : view.assignee.role
+                  ? t('Assigned to another reviewer ({role})', { role: roleName(t, view.assignee.role) })
+                  : t('Assigned to another reviewer')
+              : t('Not assigned')}
           </dd>
         </div>
         <div className="grid gap-0.5 rounded-md border border-border-subtle bg-surface-1 px-4 py-3">
-          <dt className="text-sm text-fg-muted">Last change</dt>
-          <dd>{formatDay(view.updatedAt)}</dd>
+          <dt className="text-sm text-fg-muted">{t('Last change')}</dt>
+          <dd>{t.day(view.updatedAt)}</dd>
         </div>
       </dl>
       {/* What a change did takes the focus (OutcomeNote, the M09 pattern; M10a review, screens-5).
@@ -224,21 +243,21 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)] lg:items-start">
         <div className="grid min-w-0 gap-10 lg:col-start-1 lg:row-start-1">
         {view.subject ? (
-          <Section id="subject" title={view.subject.label}>
+          <Section id="subject" title={t(view.subject.label)}>
             {view.subject.person ? <PersonName person={view.subject.person} /> : null}
             {view.subject.facts.length > 0 ? (
               <dl className="grid gap-2 text-ui sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]" data-testid="subject-facts">
                 {view.subject.facts.map((fact) => (
                   <div key={fact.label} className="contents">
-                    <dt className="text-fg-muted">{fact.label}</dt>
-                    <dd className="whitespace-pre-line">{fact.value}</dd>
+                    <dt className="text-fg-muted">{t(fact.label)}</dt>
+                    <dd className="whitespace-pre-line">{factValue(t, fact.value)}</dd>
                   </div>
                 ))}
               </dl>
             ) : null}
             {!rel && view.resolutionReason ? (
               <p className="max-w-[60ch] text-sm whitespace-pre-line">
-                <span className="font-semibold">Decision note: </span>
+                <span className="font-semibold">{t('Decision note:')} </span>
                 {view.resolutionReason}
               </p>
             ) : null}
@@ -246,7 +265,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         ) : null}
 
         {photo && photo.photo && photo.canModerate && subjectSlug ? (
-          <Section id="photo" title="Profile photo">
+          <Section id="photo" title={t('Profile photo')}>
             <PersonAvatar name={view.subject!.person!.name.value} photo={photo.photo} size="lg" />
             <div className="max-w-[40rem]">
               <RemovePhotoForm caseId={view.id} slug={subjectSlug} initial={photoResult} />
@@ -255,12 +274,12 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         ) : null}
 
         {galleryOthers.length > 0 ? (
-          <Section id="gallery" title="Other photos of the gallery">
+          <Section id="gallery" title={t('Other photos of the gallery')}>
             <ul className="grid gap-6">
               {galleryOthers.map((p, i) => (
                 <li key={p.id} className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]" data-testid="case-gallery-photo">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.large} alt={p.caption ?? `Gallery photo ${i + 1}`} width={128} height={128} className="size-32 rounded-sm border border-border-strong object-cover" />
+                  <img src={p.large} alt={p.caption ?? t('Gallery photo {n}', { n: i + 1 })} width={128} height={128} className="size-32 rounded-sm border border-border-strong object-cover" />
                   <div className="max-w-[40rem]">
                     <RemoveGalleryPhotoForm caseId={view.id} photoId={p.id} kind="person" initial={initialFor(galleryResult, p.id)} />
                   </div>
@@ -271,7 +290,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         ) : null}
 
         {schoolItems.length > 0 ? (
-          <Section id="school-photos" title="The school's logo and photos">
+          <Section id="school-photos" title={t("The school's logo and photos")}>
             <ul className="grid gap-6">
               {schoolItems.map((p) => (
                 <li key={p.id} className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]" data-testid="case-school-photo">
@@ -287,26 +306,26 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         ) : null}
 
         {rel ? (
-          <Section id="claim" title={RELATIONSHIP_HEADING[view.kind] ?? 'The claim'}>
+          <Section id="claim" title={relationshipHeading(t, view.kind)}>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid content-start gap-1">
-                <span className="text-sm text-fg-muted">Teacher</span>
+                <span className="text-sm text-fg-muted">{t('Teacher')}</span>
                 <PersonName person={rel.teacher} />
                 {view.teacherRecord ? (
                   <span className="text-sm text-fg-muted" data-testid="teacher-record">
-                    {view.teacherRecord.kind === 'historical' ? 'Historical record' : 'Record'} · life status {view.teacherRecord.lifeStatus} ·{' '}
-                    {view.teacherRecord.visibility === 'public' ? 'public' : 'not public'}
-                    {view.teacherRecord.createdWithClaim ? ' · created with this claim' : ''}
+                    {view.teacherRecord.kind === 'historical' ? t('Historical record') : t('Record')} · {t('life status {status}', { status: lifeStatusWord(t, view.teacherRecord.lifeStatus) })} ·{' '}
+                    {view.teacherRecord.visibility === 'public' ? t('public') : t('not public')}
+                    {view.teacherRecord.createdWithClaim ? ` · ${t('created with this claim')}` : ''}
                   </span>
                 ) : null}
               </div>
               <div className="grid content-start gap-1">
-                <span className="text-sm text-fg-muted">Student</span>
+                <span className="text-sm text-fg-muted">{t('Student')}</span>
                 <PersonName person={rel.student} />
               </div>
             </div>
             <p className="text-ui">
-              <span className="text-fg-muted">Lineage </span>
+              <span className="text-fg-muted">{t('Lineage')} </span>
               {rel.lineage.name}
             </p>
             <div className="text-ui">
@@ -317,62 +336,66 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
             </div>
             {view.resolutionReason ? (
               <p className="max-w-[60ch] text-sm whitespace-pre-line">
-                <span className="font-semibold">Decision note: </span>
+                <span className="font-semibold">{t('Decision note:')} </span>
                 {view.resolutionReason}
               </p>
             ) : null}
           </Section>
         ) : null}
 
-        {view.school ? <ListingSection school={view.school} reason={view.resolutionReason} /> : null}
-        {view.organization ? <OrganizationSection organization={view.organization} /> : null}
+        {view.school ? <ListingSection school={view.school} reason={view.resolutionReason} t={t} /> : null}
+        {view.organization ? <OrganizationSection organization={view.organization} t={t} /> : null}
 
         {view.school ? null : (
-        <Section id="evidence" title="Evidence">
+        <Section id="evidence" title={t('Evidence')}>
           {view.files.length === 0 ? (
-            <p className="text-ui text-fg-muted">No files.</p>
+            <p className="text-ui text-fg-muted">{t('No files.')}</p>
           ) : (
             <ul className="grid gap-1" data-testid="case-files">
               {view.files.map((file) => (
                 <li key={file.id} data-testid="case-file" className="flex flex-wrap items-baseline gap-x-2">
                   {file.href ? (
                     <a href={file.href} className="link inline-flex min-h-11 items-center font-semibold" translate="no">
-                      {file.name ?? `${file.kindLabel} file`}
+                      {file.name ?? t('{kind} file', { kind: t(file.kindLabel) })}
                     </a>
                   ) : (
                     <span className="inline-flex min-h-11 items-center font-semibold" translate="no">
-                      {file.name ?? `${file.kindLabel} file`}
+                      {file.name ?? t('{kind} file', { kind: t(file.kindLabel) })}
                     </span>
                   )}
                   <span className="text-sm text-fg-muted">
-                    {file.kindLabel} · {formatSize(file.sizeBytes)} · uploaded {formatDay(file.createdAt)}
+                    {t(file.kindLabel)} · {formatSize(file.sizeBytes)} · {t('uploaded {day}', { day: t.day(file.createdAt) })}
                   </span>
                 </li>
               ))}
             </ul>
           )}
           {view.files.some((file) => !file.href) ? (
-            <p className="max-w-[60ch] text-sm text-fg-muted">The files open for the reviewer the case is assigned to and for the administrators.</p>
+            <p className="max-w-[60ch] text-sm text-fg-muted">{t('The files open for the reviewer the case is assigned to and for the administrators.')}</p>
           ) : null}
         </Section>
         )}
 
-        <Section id="notes" title="Notes">
+        <Section id="notes" title={t('Notes')}>
           {view.notes.length === 0 ? (
-            <p className="text-ui text-fg-muted">No notes yet.</p>
+            <p className="text-ui text-fg-muted">{t('No notes yet.')}</p>
           ) : (
             <ul className="grid gap-3" data-testid="case-notes">
               {view.notes.map((note) => (
                 <li key={note.id} data-testid="case-note" data-internal={note.internal ? 'yes' : 'no'} className="grid gap-1 rounded-sm bg-surface-2 px-4 py-3">
                   <span className="text-sm text-fg-muted">
                     {note.author === 'claimant'
-                      ? note.authorSide
-                        ? `The ${note.authorSide}`
-                        : party.author
+                      ? note.authorSide === 'teacher'
+                        ? t('The teacher')
+                        : note.authorSide === 'student'
+                          ? t('The student')
+                          : party.author
                       : note.author === 'you'
-                        ? 'You'
-                        : `A reviewer${note.authorRole ? ` (${note.authorRole})` : ''}`}{' '}
-                    · {note.internal ? 'internal, reviewers only' : note.author === 'claimant' ? party.reply : party.shown} · {formatDay(note.createdAt)}
+                        ? t('You')
+                        : note.authorRole
+                          ? t('A reviewer ({role})', { role: roleName(t, note.authorRole) })
+                          : t('A reviewer')}{' '}
+                    · {note.internal ? t('internal, reviewers only') : note.author === 'claimant' ? party.reply : party.shown} · {t.day(note.createdAt)}
                   </span>
                   <span className="text-ui whitespace-pre-line">{note.body}</span>
                 </li>
@@ -392,11 +415,11 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         </Section>
         </div>
 
-        <aside aria-label="What you can do on this case" className="grid min-w-0 content-start gap-6 lg:row-start-1 lg:col-start-2">
-        <Section id="actions" title="Decision" boxed>
+        <aside aria-label={t('What you can do on this case')} className="grid min-w-0 content-start gap-6 lg:row-start-1 lg:col-start-2">
+        <Section id="actions" title={t('Decision')} boxed>
           {view.decideNote ? (
             <p className="max-w-[60ch] text-ui text-fg-muted" data-testid="decide-note">
-              {view.decideNote}
+              {t(view.decideNote)}
             </p>
           ) : null}
           {/* On a phone each form takes the full width, so its button does too (screens-10). */}
@@ -406,29 +429,30 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
           </div>
           {view.can.assignOthers ? (
             <div className="max-w-[34rem]">
-              <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'choose' }} reviewers={view.reviewers} initial={chooseResult} />
+              <AssignForm caseId={view.id} idempotencyKey={randomUUID()} mode={{ kind: 'choose' }} reviewers={view.reviewers.map((reviewer) => ({ ...reviewer, label: reviewerLabel(t, reviewer.label) }))} initial={chooseResult} />
             </div>
           ) : null}
           <div className="grid max-w-[40rem] gap-3">
-            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={view.decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? LIFE_STATUS_CHOICE : undefined} /> : null}
-            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={view.decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
-            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={view.decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
+            {view.can.verify ? <DecideForm caseId={view.id} decision="verify" idempotencyKey={randomUUID()} initial={verifyResult} text={decisions.verify} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} takeDownOption={view.kind === 'profile_report' && view.subject?.takeDown?.allowed === true && !view.subject.takeDown.held} lifeStatusChoice={view.kind === 'historical_claim' && view.teacherRecord?.lifeStatus === 'unknown' ? lifeStatusChoice(t) : undefined} /> : null}
+            {view.can.reject ? <DecideForm caseId={view.id} decision="reject" idempotencyKey={randomUUID()} initial={rejectResult} text={decisions.reject} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
+            {view.can.needsInfo ? <DecideForm caseId={view.id} decision="needs_info" idempotencyKey={randomUUID()} initial={askResult} text={decisions.needs_info} schoolVersion={view.school?.version ?? null} organizationVersion={view.organization?.version ?? null} /> : null}
           </div>
           {!view.can.verify && !view.can.reject && !view.can.needsInfo && !view.can.assignSelf && !view.decideNote ? (
-            <p className="text-ui text-fg-muted">This case is closed.</p>
+            <p className="text-ui text-fg-muted">{t('This case is closed.')}</p>
           ) : null}
         </Section>
 
         {view.subject?.takeDown?.allowed && view.subject.person && subjectSlug ? (
-          <Section id="takedown" title="Public pages" boxed>
+          <Section id="takedown" title={t('Public pages')} boxed>
             <p className="max-w-[60ch] text-ui" data-testid="takedown-state">
               {view.subject.takeDown.held ? (
                 <>
-                  <span className="font-semibold">Taken down by staff.</span> The profile is off every public page; its owner and the people at the other end of its links still see it.
-                  {view.subject.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">Reason: {view.subject.takeDown.reason}</span> : null}
+                  <span className="font-semibold">{t('Taken down by staff.')}</span>{' '}
+                  {t('The profile is off every public page; its owner and the people at the other end of its links still see it.')}
+                  {view.subject.takeDown.reason ? <span className="block whitespace-pre-line text-fg-muted">{t('Reason: {reason}', { reason: view.subject.takeDown.reason })}</span> : null}
                 </>
               ) : (
-                <>Upholding the report hides nothing by itself. You can take the profile down here, or tick the box when you uphold the report.</>
+                <>{t('Upholding the report hides nothing by itself. You can take the profile down here, or tick the box when you uphold the report.')}</>
               )}
             </p>
             <div className="max-w-[40rem]">

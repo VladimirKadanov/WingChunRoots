@@ -15,14 +15,16 @@ import { randomBytes } from 'node:crypto';
 import { headers } from 'next/headers';
 import { redirect, unstable_rethrow } from 'next/navigation';
 
+import { getAdminT } from '@/components/admin/i18n/server';
 import { atOutcome } from '@/components/relationships/outcome-id';
 import { textValue } from '@/lib/form-data';
 import { type FormState, outcomeTarget } from '@/lib/form-state';
 import { getRequestPrincipal } from '@/server/auth/web';
-import { formResult } from '@/server/forms/flash';
+import { type FormPlace, formResult, postedByReact } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import { ARBITRATE_FORM, ARCHIVE_FORM, type AssignMode, assignForm, DECIDE_FORM, GALLERY_REMOVE_FORM, NOTE_FORM, PHOTO_REMOVE_FORM, RESTORE_FORM, SCHOOL_PHOTO_REMOVE_FORM, TAKEDOWN_FORM } from './form-ids';
+import { translateState } from './text';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -43,6 +45,16 @@ const doneAt = (page: string, done: string) => atOutcome(`${page}?done=${done}&n
 
 async function client() {
   return serverClient(await headers(), await getRequestPrincipal());
+}
+
+/**
+ * A refusal back to its form, in the control panel's language (docs/adr/0043-admin-bulgarian.md):
+ * translated here for React, which renders the returned state; a plain form post keeps the English
+ * state for the page, which translates it when it reads it back (readFormResult), so the kept
+ * cookie stays small.
+ */
+async function refused(place: FormPlace, state: FormState): Promise<FormState> {
+  return formResult(place, (await postedByReact()) ? translateState(await getAdminT(), state) : state);
 }
 
 function signInAgain(page: string): never {
@@ -67,7 +79,7 @@ export async function assignCaseAction(_previous: FormState, form: FormData): Pr
     // "Assign to me" has no field of its own: its message says it.
     const state: FormState =
       mode === 'choose' ? { status: 'error', message: 'Check the highlighted fields.', fields: { assigneeId: message }, values: { caseId } } : { status: 'error', message, values: { caseId } };
-    return formResult({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
+    return refused({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
   }
   try {
     await (await client()).review.assign({ caseId, assigneeId: mode === 'none' ? null : assignee, idempotencyKey: key(form) });
@@ -75,7 +87,7 @@ export async function assignCaseAction(_previous: FormState, form: FormData): Pr
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, ...(mode === 'choose' ? { assigneeId: assignee } : {}) });
-    return formResult({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
+    return refused({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
   }
   redirect(doneAt(page, mode === 'none' ? 'unassigned' : 'assigned'));
 }
@@ -111,7 +123,7 @@ export async function decideCaseAction(_previous: FormState, form: FormData): Pr
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, decision, reason, ...(takeDown ? { takeDown: 'on' } : {}), ...(deceased ? { deceased } : {}) });
-    return formResult({ form: `${DECIDE_FORM}-${decision}`, page, anchor: outcomeTarget(`${DECIDE_FORM}-${decision}`, state, true) }, state);
+    return refused({ form: `${DECIDE_FORM}-${decision}`, page, anchor: outcomeTarget(`${DECIDE_FORM}-${decision}`, state, true) }, state);
   }
   redirect(doneAt(page, decision === 'verify' ? 'verified' : decision === 'reject' ? 'refused' : 'asked'));
 }
@@ -127,7 +139,7 @@ export async function addNoteAction(_previous: FormState, form: FormData): Promi
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, body });
-    return formResult({ form: NOTE_FORM, page, anchor: outcomeTarget(NOTE_FORM, state, true) }, state);
+    return refused({ form: NOTE_FORM, page, anchor: outcomeTarget(NOTE_FORM, state, true) }, state);
   }
   // The note's confirmation sits in the Notes section, under the new note (screens-5).
   redirect(doneAt(page, 'noted'));
@@ -163,7 +175,7 @@ export async function archiveUpdateAction(_previous: FormState, form: FormData):
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, values);
-    return formResult({ form: ARCHIVE_FORM, page, anchor: outcomeTarget(ARCHIVE_FORM, state, false) }, state);
+    return refused({ form: ARCHIVE_FORM, page, anchor: outcomeTarget(ARCHIVE_FORM, state, false) }, state);
   }
   redirect(doneAt(page, changed ? 'saved' : 'unchanged'));
 }
@@ -184,7 +196,7 @@ export async function arbitrateAction(_previous: FormState, form: FormData): Pro
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { relationshipId, reason });
-    return formResult({ form: ARBITRATE_FORM, page, anchor: outcomeTarget(ARBITRATE_FORM, state, true) }, state);
+    return refused({ form: ARBITRATE_FORM, page, anchor: outcomeTarget(ARBITRATE_FORM, state, true) }, state);
   }
   redirect(doneAt(casePage(caseId), 'arbitrated'));
 }
@@ -205,7 +217,7 @@ export async function removePhotoAction(_previous: FormState, form: FormData): P
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, slug, reason });
-    return formResult({ form: PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(PHOTO_REMOVE_FORM, state, true) }, state);
+    return refused({ form: PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(PHOTO_REMOVE_FORM, state, true) }, state);
   }
   redirect(doneAt(page, 'photo-removed'));
 }
@@ -225,7 +237,7 @@ export async function removeGalleryPhotoAction(_previous: FormState, form: FormD
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, photoId, reason });
-    return formResult({ form: GALLERY_REMOVE_FORM, page, anchor: outcomeTarget(GALLERY_REMOVE_FORM, state, true) }, state);
+    return refused({ form: GALLERY_REMOVE_FORM, page, anchor: outcomeTarget(GALLERY_REMOVE_FORM, state, true) }, state);
   }
   redirect(doneAt(page, 'gallery-photo-removed'));
 }
@@ -245,7 +257,7 @@ export async function removeSchoolPhotoAction(_previous: FormState, form: FormDa
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, photoId, reason });
-    return formResult({ form: SCHOOL_PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(SCHOOL_PHOTO_REMOVE_FORM, state, true) }, state);
+    return refused({ form: SCHOOL_PHOTO_REMOVE_FORM, page, anchor: outcomeTarget(SCHOOL_PHOTO_REMOVE_FORM, state, true) }, state);
   }
   redirect(doneAt(page, 'school-photo-removed'));
 }
@@ -268,7 +280,7 @@ async function moderationAction(form: FormData, formName: string, run: (c: Await
     unstable_rethrow(error);
     if (rpcErrorCode(error) === 'UNAUTHORIZED') signInAgain(page);
     const state = formStateFromFailure(error, { caseId, personId, slug, reason });
-    return formResult({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
+    return refused({ form: formName, page, anchor: outcomeTarget(formName, state, true) }, state);
   }
   redirect(doneAt(page, done));
 }
