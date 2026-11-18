@@ -92,7 +92,7 @@ export const BG_BILLING: AdminDict = {
   'Paid (test)': 'Платено (тест)',
   'Failed (test)': 'Неуспешно (тест)',
   'The test clock moved. The provider events are on their way; refresh in a few seconds to see them applied.': 'Тестовият часовник се премести. Събитията от доставчика са на път; презаредете след няколко секунди, за да ги видите приложени.',
-  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка при нас; нищо не е променено. Опитайте отново.',
+  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.',
   'Check the highlighted fields.': 'Проверете отбелязаните полета.',
   'Sign in to continue.': 'Влезте, за да продължите.',
   'Choose what the test clock moves to.': 'Изберете докъде да се премести тестовият часовник.',

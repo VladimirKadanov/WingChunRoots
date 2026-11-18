@@ -4,7 +4,7 @@
 import type { AdminDict } from '../translate';
 
 export const BG_GRANTS: AdminDict = {
-  'Not available': 'Не е достъпно',
+  'Not available': 'Няма достъп',
   "You don't have access to plan grants. They are available to administrators.": 'Нямате достъп до подарените планове. Те са достъпни за администраторите.',
   'Back to your account': 'Обратно към вашия акаунт',
   'pilot request waits for an answer': 'заявка за пилотен достъп чака отговор',
@@ -67,7 +67,7 @@ export const BG_GRANTS: AdminDict = {
   '{plan} given to {email} from {start}, with no end date.': '{plan} е даден на {email} от {start}, без крайна дата.',
   '{plan} of {email} revoked. Confirmed links stay confirmed.': '{plan} на {email} е отменен. Потвърдените връзки остават потвърдени.',
   'The request of {email} for {plan} is closed. The account was told; its plan has not changed.': 'Заявката на {email} за {plan} е затворена. Акаунтът е уведомен; планът му не е променен.',
-  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка при нас; нищо не е променено. Опитайте отново.',
+  'Something went wrong on our side; nothing was changed. Try again.': 'Нещо се обърка от наша страна; нищо не е променено. Опитайте отново.',
   'Check the highlighted fields.': 'Проверете отбелязаните полета.',
   'Sign in to continue.': 'Влезте, за да продължите.',
   'Enter the e-mail address of the account.': 'Въведете имейл адреса на акаунта.',
