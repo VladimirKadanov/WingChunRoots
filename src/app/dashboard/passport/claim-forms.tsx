@@ -1,11 +1,9 @@
-'use client';
-
 // The attendance requests of /dashboard/passport (owner decision 2026-11-18, docs/adr/0046-passport-extras.md):
 // "Ask the organizer to confirm" a past event the student attended (passport.claimAttendance) and
 // "Take back the request" while it waits (passport.withdrawEntry). Thin Server Actions that also
 // work without JavaScript; outcomes are words, never colour alone; every target is at least 44 px.
-
-import { useActionState, useId } from 'react';
+// Server Components (no client module, so the page's JavaScript stays within its budget): the
+// outcome comes back through the page (keepFormResult).
 
 import { fieldClassName } from '@/components/account/fields';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -16,12 +14,12 @@ import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM } from './form-ids';
 
 /** "Which event did you attend?" and the request to its organizer. */
 export function ClaimForm({ events, pending, limit, initial }: { events: readonly ClaimableEvent[]; pending: number; limit: number; initial: FormState | null }) {
-  const id = useId();
-  const [state, action, busy] = useActionState(claimAttendanceAction, initial ?? IDLE);
+  const id = PASSPORT_CLAIM_FORM;
+  const state = initial ?? IDLE;
   const full = pending >= limit;
   const error = state.status === 'error' ? (state.fields?.eventId ?? state.message) : null;
   return (
-    <form action={action} noValidate className="grid gap-3" data-testid="passport-claim-form">
+    <form action={claimAttendanceAction.bind(null, IDLE)} noValidate className="grid gap-3" data-testid="passport-claim-form">
       <p className="text-sm text-fg-muted" data-testid="passport-claims-waiting">
         {pending} of {limit} requests waiting for organizers.
       </p>
@@ -64,14 +62,11 @@ export function ClaimForm({ events, pending, limit, initial }: { events: readonl
           <div>
             <button
               type="submit"
-              aria-disabled={busy || full || undefined}
-              onClick={(event) => {
-                if (busy || full) event.preventDefault();
-              }}
+              disabled={full}
               className={buttonVariants({ variant: 'secondary', size: 'lg' })}
               data-testid="passport-claim-submit"
             >
-              {busy ? 'Sending…' : 'Ask the organizer to confirm'}
+              Ask the organizer to confirm
             </button>
           </div>
         </>
@@ -87,21 +82,17 @@ export function ClaimForm({ events, pending, limit, initial }: { events: readonl
 
 /** "Take back the request" of one claim that waits. */
 export function WithdrawClaimForm({ id, title, initial }: { id: string; title: string; initial: FormState | null }) {
-  const [state, action, busy] = useActionState(withdrawClaimAction, initial ?? IDLE);
+  const state = initial ?? IDLE;
   return (
-    <form action={action} className="grid gap-1" data-testid="passport-claim-withdraw-form">
+    <form action={withdrawClaimAction.bind(null, IDLE)} className="grid gap-1" data-testid="passport-claim-withdraw-form">
       <input type="hidden" name="id" value={id} />
       <div>
         <button
           type="submit"
-          aria-disabled={busy || undefined}
-          onClick={(event) => {
-            if (busy) event.preventDefault();
-          }}
           className={buttonVariants({ variant: 'secondary' })}
           data-testid="passport-claim-withdraw"
         >
-          {busy ? 'Taking back…' : 'Take back the request'}
+          Take back the request
           <span className="sr-only"> for “{title}”</span>
         </button>
       </div>
