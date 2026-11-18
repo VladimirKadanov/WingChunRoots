@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time preparation of a fresh Ubuntu 24.04 server for the password-protected staging site
+# One-time preparation of a fresh Ubuntu server (26.04 or 24.04) for the password-protected staging site
 # (docs/operations/staging.md, ADR 0033). Run as root, once, right after the server is created:
 #
 #   ssh root@<server-ip>
@@ -31,7 +31,7 @@ die() { printf 'setup-server: error: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root (ssh root@<server-ip>)"
 . /etc/os-release
-[ "${ID:-}" = ubuntu ] || die "made for Ubuntu 24.04; this is ${PRETTY_NAME:-unknown}"
+[ "${ID:-}" = ubuntu ] || die "made for Ubuntu 26.04 or 24.04; this is ${PRETTY_NAME:-unknown}"
 [ "$(uname -m)" = x86_64 ] || die "needs an x86_64 server: the PostGIS image is published for linux/amd64 only"
 [ -f "${SRC_DIR}/.nvmrc" ] && [ -f "${SRC_DIR}/package.json" ] || die "run it from a clone of the repository"
 
