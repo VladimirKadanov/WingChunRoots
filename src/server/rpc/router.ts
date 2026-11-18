@@ -166,6 +166,8 @@ import {
   createArchiveRecord,
   createLineageInput,
   createRecordInput,
+  editArchiveLink,
+  editLinkInput,
   endArchiveLink,
   endLinkInput,
   getArchiveLineage,
@@ -966,6 +968,15 @@ export const router = {
       .route({ method: 'POST', path: '/archive-editor/links/end', summary: 'End a link entered in the archive by mistake (revoked, never deleted), with a reason; audited' })
       .input(endLinkInput)
       .handler(({ context, input }) => endArchiveLink(context.principal, input, context.meta)),
+    // Control panel 2026-11 (docs/adr/0042-archive-link-edit.md): correct a link in place.
+    editLink: staffWithSecondFactor
+      .route({
+        method: 'POST',
+        path: '/archive-editor/links/edit',
+        summary: 'Correct the years or the source of a verified link the archive keeps, in place, with a reason (a member’s own link is refused); the status stays; audited',
+      })
+      .input(editLinkInput)
+      .handler(({ context, input }) => editArchiveLink(context.principal, input, context.meta)),
     // Control panel 2026-11 (docs/adr/0035-control-panel.md): the editor's working views, for thousands of records.
     overview: staffWithSecondFactor
       .route({ method: 'GET', path: '/archive-editor/overview', summary: 'Every lineage with its people, generations, sourced share and last edit, searched and sorted, and the archive figures (an archivist or an administrator)' })

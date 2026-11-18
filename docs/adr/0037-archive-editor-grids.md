@@ -12,4 +12,4 @@
 - Generations are counted from the lineage's root along active links (a recursive query over `teaching_relationship`, not `lineage_membership`, which follows public edges only). A person not connected to the root has no generation.
 - "Possible duplicates": another non-deleted record has the same primary name (case and diacritics folded with `unaccent`). Cheap and explainable; a fuzzier match can come later.
 - The search of the people and links grids matches a stored name containing the text, a search key (src/server/search/keys.ts) starting with any form of the query or with a later word of it, or the record's address, over every record, public or not.
-- No bulk actions: ending a link needs its own reason, and no service changes the years or the source of a link yet. Correcting them means ending the link and adding it again.
+- No bulk actions: ending a link needs its own reason. (The years and the source of a link are now corrected in place: ADR 0042.)

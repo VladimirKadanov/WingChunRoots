@@ -12,6 +12,7 @@
 //   archiveEditor.createRecord   a historical record: names in every script, life status, biography
 //   archiveEditor.addLink        teacher → student in a lineage, verified on the archivist's source
 //   archiveEditor.endLink        end a link entered here by mistake (revoked, with a reason)
+//   archiveEditor.editLink       correct a link's years or source in place, with a reason
 //
 // Who: an archivist or an administrator whose session proved the second factor (ARCHIVE_EDITOR_ROLES;
 // the owner's decision for M26, which also opens the archival edit of review.ts to administrators).
@@ -55,7 +56,7 @@ import { ServiceError } from './errors';
 import { cleanName, isJyutping, isLatinName, isPinyin, matchesScript, NAME_MAX_LENGTH, ORIGINAL_SCRIPTS, originalScript, slugFromName } from './names';
 import { BIO_MAX_LENGTH } from './profile';
 import { bothPublic } from './publication';
-import { closesCycle, CYCLE_MESSAGE, idempotencyKey, isKeyConflict, keyReused, markVerified, publicTags, recordEvent, replayOf, rowById, VERIFY_LOCK } from './relationships';
+import { closesCycle, CYCLE_MESSAGE, idempotencyKey, isKeyConflict, keyReused, markVerified, publicTags, recordEvent, replayOf, rowById, VERIFY_LOCK, writePeriods } from './relationships';
 
 /** M26 (owner decision): the roles that keep the archive: create, link and edit records. */
 export const ARCHIVE_EDITOR_ROLES: readonly StaffRole[] = ['archivist', 'admin'];
@@ -69,6 +70,11 @@ export const ARCHIVE_REASON_MAX = 2000;
 export const ARCHIVE_EARLIEST_YEAR = 1600;
 const SEARCH_LIMIT = 20;
 const LINKS_LIMIT = 500;
+
+/** editLink on a link that is not the archive's own (see archiveKeepsLink). */
+export const MEMBER_LINK_EDIT =
+  'This link belongs to a member: it involves a member’s own record or was approved by their teacher. Members’ own links change through their review flow (the member edits the request and their teacher confirms it, or they send a claim with evidence); they are not edited here.';
+export const NOT_VERIFIED_EDIT = 'Only a verified link is edited here. A link in arbitration is decided there first, and an ended link keeps its record as it was.';
 
 const MEMBER_LINK = 'This is a member’s own record. Their teachers confirm their links, or they send a claim with evidence; links are not entered for them here.';
 const NO_LINEAGE = 'No such lineage.';
@@ -211,20 +217,42 @@ export const addLinkInput = z
     if (!input.teacherSlug) issue('teacherSlug', 'Choose the teacher.');
     if (!input.studentSlug) issue('studentSlug', 'Choose the student.');
     if (input.teacherSlug && input.teacherSlug === input.studentSlug) issue('studentSlug', 'A person can’t be their own teacher.');
-    const thisYear = new Date().getUTCFullYear();
-    for (const [field, value] of [
-      ['fromYear', input.fromYear],
-      ['toYear', input.toYear],
-    ] as const) {
-      if (value === null) continue;
-      if (!Number.isInteger(value) || value < ARCHIVE_EARLIEST_YEAR || value > thisYear) issue(field, `Write a year from ${ARCHIVE_EARLIEST_YEAR} to ${thisYear}, or leave it empty.`);
-    }
-    if (input.fromYear === null && input.toYear !== null) issue('fromYear', 'Give the year the training started, or leave both years empty.');
-    if (input.fromYear !== null && input.toYear !== null && input.toYear < input.fromYear) issue('toYear', 'The end can’t be before the start.');
-    if (!input.source) issue('source', 'Write the source: where this training is recorded.');
-    else if (input.source.length > SOURCE_MAX) issue('source', `Use at most ${SOURCE_MAX} characters.`);
+    checkYearsAndSource(input, issue);
   });
 export type AddLinkInput = z.input<typeof addLinkInput>;
+
+/** The years and the source of a link, as addLink and editLink take them. */
+function checkYearsAndSource(input: { fromYear: number | null; toYear: number | null; source: string | null }, issue: (path: string, message: string) => void) {
+  const thisYear = new Date().getUTCFullYear();
+  for (const [field, value] of [
+    ['fromYear', input.fromYear],
+    ['toYear', input.toYear],
+  ] as const) {
+    if (value === null) continue;
+    if (!Number.isInteger(value) || value < ARCHIVE_EARLIEST_YEAR || value > thisYear) issue(field, `Write a year from ${ARCHIVE_EARLIEST_YEAR} to ${thisYear}, or leave it empty.`);
+  }
+  if (input.fromYear === null && input.toYear !== null) issue('fromYear', 'Give the year the training started, or leave both years empty.');
+  if (input.fromYear !== null && input.toYear !== null && input.toYear < input.fromYear) issue('toYear', 'The end can’t be before the start.');
+  if (!input.source) issue('source', 'Write the source: where this training is recorded.');
+  else if (input.source.length > SOURCE_MAX) issue('source', `Use at most ${SOURCE_MAX} characters.`);
+}
+
+export const editLinkInput = z
+  .object({
+    relationshipId: z.uuid({ error: 'Choose a link.' }),
+    /** The years of the training, when known; both empty: the dates are not known. */
+    fromYear: year,
+    toYear: year,
+    /** Required, as for a new link. Staff only. */
+    source: text(SOURCE_MAX),
+    reason: text(ARCHIVE_REASON_MAX),
+  })
+  .superRefine((input, ctx) => {
+    const issue = issues(ctx);
+    checkYearsAndSource(input, issue);
+    checkReason(input.reason, issue);
+  });
+export type EditLinkInput = z.input<typeof editLinkInput>;
 
 export const endLinkInput = z
   .object({
@@ -274,6 +302,15 @@ export interface ArchiveLinkView {
   path: 'committee_review' | 'teacher_approval';
   /** This staff member may end it here (a verified link between two records kept by the platform). */
   endable: boolean;
+}
+
+/**
+ * Whether the archive editor may end or edit a link: verified, established by staff, and neither end
+ * a member's own record. Any other link changes through its own flow (the member's request and their
+ * teacher's approval, a claim with evidence, or arbitration).
+ */
+export function archiveKeepsLink(link: { status: string; path: string; teacher: { stewardship: string }; student: { stewardship: string } }): boolean {
+  return link.status === 'verified' && link.path === 'committee_review' && link.teacher.stewardship !== 'self' && link.student.stewardship !== 'self';
 }
 
 export interface ArchiveLineageView {
@@ -507,7 +544,7 @@ export async function getArchiveLineage(principal: Principal | null, raw: z.inpu
           toYear: yearOf(l.endsOn),
           source: l.source,
           path: l.path,
-          endable: status === 'verified' && l.path === 'committee_review' && teacher.stewardship !== 'self' && student.stewardship !== 'self',
+          endable: archiveKeepsLink({ status, path: l.path, teacher, student }),
         };
       }),
     options: archiveEditorOptions(),
@@ -837,4 +874,74 @@ export async function endArchiveLink(principal: Principal | null, raw: EndLinkIn
     if (isKeyConflict(error)) throw keyReused();
     throw error;
   }
+}
+
+/**
+ * archiveEditor.editLink: the years or the source of a link the archive keeps (archiveKeepsLink),
+ * corrected in place with a reason instead of ending the link and adding it again. The status, the
+ * confirmation and the history stay; no relationship_event is written, since those record changes
+ * of status. Changed years replace the link's training periods with one period in years (keeping
+ * the school of the first one); unchanged years leave the periods as they are. Nothing changed:
+ * nothing written. A member's link is refused (MEMBER_LINK_EDIT), never edited silently.
+ */
+export async function editArchiveLink(principal: Principal | null, raw: EditLinkInput, meta: RequestMeta): Promise<{ changed: boolean }> {
+  const p = editor(principal);
+  const parsed = editLinkInput.safeParse(raw);
+  if (!parsed.success) throw fieldErrors(parsed.error);
+  const input = parsed.data;
+  const outcome = await getDb().transaction(async (tx) => {
+    const row = await rowById(tx, input.relationshipId, true);
+    if (!row) throw new ServiceError('NOT_FOUND', 'No such link.');
+    const ends = await tx
+      .select({ id: person.id, stewardship: person.stewardship })
+      .from(person)
+      .where(inArray(person.id, [row.teacherPersonId, row.studentPersonId]));
+    const stewardship = (id: string) => ends.find((e) => e.id === id)?.stewardship ?? 'self';
+    const link = { status: row.status, path: row.verificationPath, teacher: { stewardship: stewardship(row.teacherPersonId) }, student: { stewardship: stewardship(row.studentPersonId) } };
+    if (link.path !== 'committee_review' || link.teacher.stewardship === 'self' || link.student.stewardship === 'self') throw new ServiceError('CONFLICT', MEMBER_LINK_EDIT);
+    if (!archiveKeepsLink(link)) throw new ServiceError('CONFLICT', NOT_VERIFIED_EDIT);
+    const [{ sourceNote } = { sourceNote: null }] = await tx.select({ sourceNote: teachingRelationship.sourceNote }).from(teachingRelationship).where(eq(teachingRelationship.id, row.id));
+
+    const periods = await tx
+      .select({ startsOn: trainingPeriod.startsOn, endsOn: trainingPeriod.endsOn, schoolId: trainingPeriod.schoolId })
+      .from(trainingPeriod)
+      .where(eq(trainingPeriod.relationshipId, row.id))
+      .orderBy(asc(trainingPeriod.sortOrder), asc(trainingPeriod.id));
+    const starts = periods.map((x) => x.startsOn).filter((d): d is string => d !== null).sort();
+    const endsOn = periods.map((x) => x.endsOn).filter((d): d is string => d !== null).sort();
+    const before = { from: yearOf(starts[0] ?? null), to: yearOf(endsOn.at(-1) ?? null) };
+    const after = { from: input.fromYear, to: input.toYear };
+    const changed = { years: before.from !== after.from || before.to !== after.to, source: sourceNote !== input.source };
+    if (!changed.years && !changed.source) return { changed: false, tags: [] as string[] };
+
+    const now = new Date();
+    if (changed.years) {
+      const schoolId = periods.find((x) => x.schoolId !== null)?.schoolId ?? null;
+      await writePeriods(tx, row.id, [
+        after.from === null
+          ? { startsOn: null, endsOn: null, precision: 'unknown', ongoing: false, schoolId, sortOrder: 0 }
+          : { startsOn: `${after.from}-01-01`, endsOn: after.to === null ? null : `${after.to}-01-01`, precision: 'year', ongoing: false, schoolId, sortOrder: 0 },
+      ]);
+    }
+    await tx.update(teachingRelationship).set({ sourceNote: input.source, updatedAt: now }).where(eq(teachingRelationship.id, row.id));
+    // Only the lengths of the source go to the audit row, never its text.
+    const sourceLength = input.source?.length ?? 0;
+    await writeAudit(tx, {
+      action: 'relationship.edit',
+      actorUserId: p.user.id,
+      actorRole: p.user.role,
+      subjectType: 'teaching_relationship',
+      subjectId: row.id,
+      before: { years: before, periods: periods.length, source: sourceNote ? { length: sourceNote.length } : null },
+      after: { archiveEditor: true, status: row.status, lineageId: row.lineageId, changed, years: after, source: { length: sourceLength } },
+      reason: input.reason,
+      requestId: meta.requestId,
+      ipHmac: meta.ipHmac,
+    });
+    // The years show on the public profiles and in the lineage's outline; the source is staff only,
+    // but the same tags as addLink and endLink are dropped so every view reads the link afresh.
+    return { changed: true, tags: [...(await publicTags(tx, row)), lineageTag(row.lineageId), EXPLORE_START_TAG] };
+  });
+  if (outcome.tags.length > 0) invalidatePublic(outcome.tags, 'procedure');
+  return { changed: outcome.changed };
 }
