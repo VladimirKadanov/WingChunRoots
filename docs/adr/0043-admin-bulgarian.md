@@ -1,0 +1,20 @@
+# ADR 0043: The control panel in Bulgarian for full administrators
+
+- Status: accepted (owner decisions 2026-11-18)
+- Context: the owner asked for a full Bulgarian version of the control panel (/admin) with a switch to English, only for the control panel, and then only for full administrators: "this is only for full admins, federation/organization/archivist admins and moderators get English only". CLAUDE.md §2 made the whole UI English only, permanently; this is an explicit, narrow exception by the owner. The public site and the members' pages stay English only.
+
+## Decision
+
+- Who: a session whose role is `admin` reads every /admin page in Bulgarian by default and has a language switch (Български / English) in the control panel's navigation. Moderators, archivists and every other role always read the control panel in English, with no switch; a language cookie in their browser is ignored (`getAdminLang`, `src/components/admin/i18n/server.ts`).
+- Default: `ADMIN_DEFAULT_LANGUAGE` (`bg` or `en`, default `bg`) is the language of an administrator who has not chosen. The E2E server sets `en`, so the existing tests read the control panel as before; the Bulgarian tests (`e2e/control-panel-bulgarian.spec.ts`) choose Bulgarian with the cookie, as the switch does.
+- The choice: a cookie `wcr.admin_lang` (`bg` or `en`, path `/admin`, one year, SameSite Lax, Secure on https), set by a Server Action (`src/app/admin/language.ts`) from a plain form, so it works without scripts and returns to the same page (only an /admin address is accepted as the way back). It is a display preference, not data: no service, no oRPC procedure, no audit entry (CLAUDE.md §15 concerns business mutations). It is kept per browser, not on the account.
+- No translation library (the forbidden packages of CLAUDE.md §14 stay forbidden): the English text in the components is the key, `t('…')` looks up its Bulgarian in plain maps (`src/components/admin/i18n/bg/<area>.ts`), and text without an entry shows in English. `t.n(count, one, other)` picks the form for a count (Bulgarian, like English, has one form for 1 and another for every other count); `t.day`, `t.shortDay` and `t.num` format dates and numbers for the language (UTC, as everywhere). English output is byte for byte what it was.
+- Size: client components get only the Bulgarian they use (`bg/<area>.client.ts`), through a context the admin layout fills; it travels in the page's server payload, not in a script, so no route's script budget grows. Server components, metadata and Server Actions read the language themselves (`getAdminT()`); a Server Action translates the messages it returns to a form, including service errors.
+- Data keeps its own language: names, slugs, e-mail addresses, codes, plan names, CSV downloads and audit values stay as stored. The control panel's frame carries `lang="bg"` or `lang="en"`.
+- Checks: `src/components/admin/i18n/bg/index.test.ts` fails for every literal passed to `t()` under /admin without a Bulgarian entry (client files against the client parts), for a lost `{placeholder}` and for an entry translated differently in two parts. The E2E spec runs axe on every /admin page of `e2e/routes.ts` in Bulgarian in both themes and looks for common English words left outside data.
+
+## Consequences
+
+- New or changed text on an /admin page needs its Bulgarian entry in the same change (the unit test enforces it).
+- The UI typeface (Schibsted Grotesk) has no Cyrillic: Bulgarian running text uses the size-matched system fallback of the text stack; headings use Noto Serif Display Cyrillic, as Bulgarian names already do. A Cyrillic grotesk can be added later without code changes.
+- E-mails and notifications stay English (they are not the control panel).
