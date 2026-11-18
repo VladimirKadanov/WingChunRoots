@@ -229,7 +229,8 @@ async function allowanceOf(db: Executor, userId: string, hasProfilePhoto: boolea
     upgrade = {
       feature: 'photos',
       heading: text.heading,
-      allowance: { current: used, limit, sentence: text.sentence },
+      // The plan with the profile photo only says so, as the allowance does (never "0 of 0").
+      allowance: { current: used, limit, sentence: limit === 0 ? sentence : text.sentence },
       from,
       to,
       benefits: upgradeBenefits(decision.plan, decision.grantedBy, 'photos'),

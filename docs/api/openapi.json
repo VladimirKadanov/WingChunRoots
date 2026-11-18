@@ -11735,6 +11735,11 @@
                         "additionalProperties": false
                       }
                     },
+                    "memberCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "schedule": {
                       "type": "array",
                       "items": {
@@ -11802,6 +11807,7 @@
                     "logo",
                     "photos",
                     "members",
+                    "memberCount",
                     "schedule",
                     "timezone",
                     "fees",

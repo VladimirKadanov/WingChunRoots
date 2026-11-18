@@ -285,7 +285,7 @@ function SchoolMembers({ school }: { school: SchoolPageDto }) {
   if (school.members.length === 0) return null;
   const full = school.members.filter((m) => m.full);
   const names = school.members.filter((m) => !m.full);
-  const count = school.members.length;
+  const count = school.memberCount;
   return (
     <section aria-labelledby="school-members" data-testid="school-members">
       <h2 id="school-members" className="font-display text-xl">

@@ -312,8 +312,10 @@ async function instructorsOf(db: Executor, schoolIds: readonly string[]): Promis
   return out;
 }
 
-/** DEFAULT (ADR 0044): at most this many members on a school's page. */
+/** DEFAULT (ADR 0044): at most this many members on a school's page; the count says how many chose it. */
 export const SCHOOL_MEMBERS_MAX = 200;
+/** How many candidates are read before the plans sort them (the fuller listings are kept first). */
+const SCHOOL_MEMBERS_READ_MAX = 2_000;
 
 interface MemberRow extends Record<string, unknown> {
   id: string;
@@ -328,43 +330,48 @@ interface MemberRow extends Record<string, unknown> {
  * ADR 0044 (owner decision 2026-11-18): the members a school's public page lists. A member is a
  * person who chose "List me on my school's page" (person.school_listing), is public
  * (v_public_person) and has a confirmed, public link (v_public_edge, both ends public) whose
- * training names this school, or whose teacher is one of its instructors. The school's own
- * instructors are left out (they are listed above). The plan of the member's account decides
+ * training names this school, or whose teacher is one of its public instructors
+ * (v_public_school.instructor_person_ids: the head instructor and those whose link to the head is
+ * confirmed, the rule of instructorsOf). The school's public instructors are left out (they are
+ * listed above). The plan of the member's account decides
  * whether the photo and the current public rank show (the matrix row `school_members`).
  */
-async function membersOf(db: Executor, schoolId: string): Promise<{ members: SchoolMemberDto[]; ids: string[] }> {
+async function membersOf(db: Executor, schoolId: string): Promise<{ members: SchoolMemberDto[]; total: number; ids: string[] }> {
   const result = await db.execute<MemberRow>(sql`
+    WITH s AS (SELECT v.instructor_person_ids AS instructors FROM v_public_school v WHERE v.id = ${schoolId}::uuid)
     SELECT p.id, p.slug, p.display_name, pn.lang, pe.claimed_by_user_id AS user_id, pe.training_start_year AS start_year
-      FROM v_public_person p
+      FROM s, v_public_person p
       JOIN person pe ON pe.id = p.id AND pe.school_listing AND pe.claimed_by_user_id IS NOT NULL AND pe.deleted_at IS NULL
       LEFT JOIN person_name pn ON pn.person_id = p.id AND pn.is_primary
      WHERE EXISTS (
              SELECT 1 FROM v_public_edge e
               WHERE e.student_person_id = p.id
                 AND (EXISTS (SELECT 1 FROM training_period tp WHERE tp.relationship_id = e.id AND tp.school_id = ${schoolId}::uuid)
-                  OR EXISTS (SELECT 1 FROM school_instructor si WHERE si.school_id = ${schoolId}::uuid AND si.person_id = e.teacher_person_id)))
-       AND NOT EXISTS (SELECT 1 FROM school_instructor si WHERE si.school_id = ${schoolId}::uuid AND si.person_id = p.id)
+                  OR e.teacher_person_id = ANY (s.instructors)))
+       AND NOT (p.id = ANY (s.instructors))
      ORDER BY pe.training_start_year NULLS LAST, p.display_name, p.id
-     LIMIT ${SCHOOL_MEMBERS_MAX}`);
+     LIMIT ${SCHOOL_MEMBERS_READ_MAX}`);
   const rows = result.rows;
-  if (rows.length === 0) return { members: [], ids: [] };
-  const ids = rows.map((r) => r.id);
-  const idArray = sql`ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}]`;
+  if (rows.length === 0) return { members: [], total: 0, ids: [] };
   const plans = await effectivePlansOf(
     db,
     rows.map((r) => r.user_id),
     new Date(),
   );
-  const fullIds = ids.filter((_, i) => {
-    const plan = plans.get(rows[i]!.user_id);
+  const isFull = (row: MemberRow) => {
+    const plan = plans.get(row.user_id);
     return plan !== undefined && feature('school_members').values[plan].included;
-  });
+  };
+  // The fuller listings first, each group in the order of the read (start year, then name); at most SCHOOL_MEMBERS_MAX.
+  const shown = [...rows.filter(isFull), ...rows.filter((r) => !isFull(r))].slice(0, SCHOOL_MEMBERS_MAX);
+  const shownIds = shown.map((r) => r.id);
+  const fullIds = shown.filter(isFull).map((r) => r.id);
   const [originals, ranks, photos] = await Promise.all([
     db
       .execute<{ person_id: string; value: string; lang: string; script: string }>(sql`
         SELECT DISTINCT ON (pn.person_id) pn.person_id, pn.value, pn.lang, pn.script
           FROM person_name pn
-         WHERE pn.person_id = ANY (${idArray}) AND NOT pn.is_primary AND pn.kind = 'name' AND pn.script <> 'Latn'
+         WHERE pn.person_id = ANY (${sql`ARRAY[${sql.join(shownIds.map((id) => sql`${id}::uuid`), sql`, `)}]`}) AND NOT pn.is_primary AND pn.kind = 'name' AND pn.script <> 'Latn'
          ORDER BY pn.person_id, pn.sort_order, pn.id`)
       .then((r) => r.rows),
     fullIds.length === 0
@@ -378,7 +385,7 @@ async function membersOf(db: Executor, schoolId: string): Promise<{ members: Sch
           .then((r) => r.rows),
     publicPhotoRefs(db, fullIds),
   ]);
-  const members = rows.map((r) => {
+  const members = shown.map((r) => {
     const full = fullIds.includes(r.id);
     const original = originals.find((o) => o.person_id === r.id);
     return {
@@ -390,8 +397,7 @@ async function membersOf(db: Executor, schoolId: string): Promise<{ members: Sch
       rank: full ? (ranks.find((k) => k.person_id === r.id)?.title ?? null) : null,
     };
   });
-  // The fuller listings first, each group in the order of the read (start year, then name).
-  return { members: [...members.filter((m) => m.full), ...members.filter((m) => !m.full)], ids };
+  return { members, total: rows.length, ids: shownIds };
 }
 
 /** Every instructor of these schools, public or not: for the cache tags only (an id never leaves). */
@@ -637,6 +643,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     logo: gallery.logo,
     photos: gallery.rooms,
     members: listed.members,
+    memberCount: listed.total,
     schedule: timetable.schedule,
     timezone: timetable.timezone,
     fees: timetable.fees,

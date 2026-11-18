@@ -25,11 +25,16 @@ export function limitMonth(now: Date): string {
   return now.toISOString().slice(0, 7);
 }
 
-/** The refusal behind an ENTITLEMENT_REQUIRED error, when it is a used-up allowance. */
-function quotaRefusal(error: unknown): Refusal | null {
+/**
+ * The refusal behind an ENTITLEMENT_REQUIRED error, when it is a used-up allowance. ADR 0044: Free
+ * Student's gallery is a limit of 0 (the profile photo only), refused as `plan`; it is still the
+ * photo allowance, so it counts as one.
+ */
+function quotaRefusal(error: unknown, feature: LimitFeature): Refusal | null {
   if (!isServiceError(error) || error.code !== 'ENTITLEMENT_REQUIRED') return null;
   const decision = error.details.entitlement as Partial<Refusal> | undefined;
-  if (!decision || decision.ok !== false || decision.code !== 'quota' || typeof decision.plan !== 'string' || typeof decision.limit !== 'number') return null;
+  const allowance = decision?.code === 'quota' || (feature === 'photos' && decision?.code === 'plan' && decision.limit === 0);
+  if (!decision || decision.ok !== false || !allowance || typeof decision.plan !== 'string' || typeof decision.limit !== 'number') return null;
   return decision as Refusal;
 }
 
@@ -38,7 +43,7 @@ function quotaRefusal(error: unknown): Refusal | null {
  * any other error. Never throws.
  */
 export async function tellLimitReached(userId: string, feature: LimitFeature, error: unknown, now = new Date()): Promise<void> {
-  const refusal = quotaRefusal(error);
+  const refusal = quotaRefusal(error, feature);
   if (!refusal || refusal.limit === null) return;
   const month = limitMonth(now);
   try {

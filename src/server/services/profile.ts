@@ -467,8 +467,9 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
       ipHmac: meta.ipHmac,
     });
     const tags = await neighbourTags(tx, own.id, { ancestors: visibilityChanged });
-    // A new member of a school's page is not on that page's tags yet (ADR 0044): drop the schools.
-    if (schoolListing !== own.schoolListing || visibilityChanged) tags.push(SCHOOLS_TAG);
+    // A new member of a school's page is not on that page's tags yet (ADR 0044): drop the schools
+    // when the choice changes, or the profile's publicity changes while it is chosen.
+    if (schoolListing !== own.schoolListing || (visibilityChanged && schoolListing)) tags.push(SCHOOLS_TAG);
     return { personId: own.id, visibilityChanged, tags };
   });
 

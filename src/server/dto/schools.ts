@@ -122,6 +122,8 @@ export const schoolPageSchema = z.object({
   photos: z.array(galleryPhotoSchema),
   /** ADR 0044: the members listed on the page, the fuller listings first. */
   members: z.array(schoolMemberSchema),
+  /** How many members chose to be listed (the list holds at most 200 of them). */
+  memberCount: z.number().int(),
   /**
    * M21 (docs/adr/0024-trial-lessons.md): the weekly schedule, by day and time, as wall-clock times
    * ("HH:MM") in `timezone`, the zone of the school's city; the fees as the school wrote them, and
