@@ -896,7 +896,7 @@ test('@M02 two-factor setup survives a reload and asks to save the backup codes 
   // section row marks it as the current page.
   await expect(page.getByRole('heading', { level: 1, name: 'Sign-in and security' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Sign-in & security' })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByText(account.email, { exact: true })).toBeVisible();
+  await expect(page.getByRole('main').getByText(account.email, { exact: true })).toBeVisible();
   await expectSecurityPageClean(page, 'off');
   await field(page, 'Your password').fill(account.password);
   await page.getByRole('button', { name: 'Set up two-factor authentication' }).click();
