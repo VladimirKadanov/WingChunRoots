@@ -84,7 +84,15 @@ export default async function ExplorePage({ searchParams }: Props) {
               </a>
             </ErrorPanel>
           ) : starts.lineages.length === 0 ? (
-            <p className="mt-8 border-t border-border-subtle pt-5 text-ui text-fg-muted">No lineage with a public root is on the record yet.</p>
+            <div className="mt-8 grid gap-1 border-t border-border-subtle pt-5" data-testid="explore-empty">
+              <p className="text-ui text-fg-muted">No lineage with a public root is on the record yet.</p>
+              <p className="text-sm text-fg-muted">
+                A lineage grows from confirmed links between teachers and students.{' '}
+                <Link href="/dashboard/teachers/new" prefetch={false} className="link inline-flex min-h-11 items-center">
+                  Name your teacher
+                </Link>
+              </p>
+            </div>
           ) : (
             <ul className="mt-8 grid border-t border-border-subtle">
               {starts.lineages.map((l) => (

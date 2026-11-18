@@ -1,5 +1,7 @@
 // /account/security (milestone M02, In scope 2 and 7; fix round 1, findings H3, H4 and H5):
 // two-factor authentication with TOTP, as a register of its state and the one step that follows.
+// Since the usability review of 2026-11 it is "Sign-in and security", a section of Settings with
+// the settings' section row (SettingsNav); the register also names the address signed in.
 //
 // - Off: set it up with the password.
 // - Setup not finished: the key, rendered here on the server for the browser that started the
@@ -26,6 +28,7 @@ import { CopyButton } from '@/components/account/copy-button';
 import { CheckboxField } from '@/components/account/fields';
 import { PageRedirect } from '@/components/account/page-redirect';
 import { QrCode } from '@/components/account/qr-code';
+import { SettingsNav } from '@/components/account/settings-nav';
 import { TwoFactorState, type TwoFactorStateKind } from '@/components/account/two-factor-state';
 import { DownloadIcon, ExternalAppIcon } from '@/components/icons';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -49,7 +52,7 @@ import {
 export const instant = false;
 
 export const metadata: Metadata = {
-  title: 'Two-factor authentication',
+  title: 'Sign-in and security',
   robots: { index: false },
 };
 
@@ -339,8 +342,9 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
 
   return (
     <AuthFrame
-      eyebrow="Account · security"
-      title="Two-factor authentication"
+      eyebrow="Settings"
+      title="Sign-in and security"
+      nav={<SettingsNav current="security" />}
       notes={notesFor(tf.status, tf.staff, setup !== null)}
       notesLabel="About two-factor authentication"
     >
@@ -349,10 +353,17 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
         {/* On phones a rule between rows, none under the last: the section after it draws its own
             (screens-8: two rules with an empty band between them looked like a seam). */}
         <dl
-          aria-label="Two-factor authentication"
+          aria-label="Sign-in and two-factor authentication"
           className="mb-8 grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)] [&>div:last-child>dd]:border-b-0"
         >
-          <RegisterRow label="Status">
+          {user ? (
+            <RegisterRow label="Signed in as">
+              <span translate="no" className="[overflow-wrap:anywhere]">
+                {user.email}
+              </span>
+            </RegisterRow>
+          ) : null}
+          <RegisterRow label="Two-factor">
             <TwoFactorState state={state.kind} className="font-semibold">
               {state.text}
             </TwoFactorState>
@@ -374,7 +385,7 @@ export default async function SecurityPage({ searchParams }: { searchParams: Sea
         {body}
         <p className="mt-10 border-t border-border-subtle pt-5 text-ui">
           <Link href="/account" className="link inline-flex min-h-11 items-center">
-            Back to your account
+            Back to settings
           </Link>
         </p>
       </ArrivalFocus>

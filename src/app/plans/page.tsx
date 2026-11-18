@@ -100,7 +100,16 @@ function Value({ value, planned }: { value: Feature['values'][PlanCode]; planned
   );
 }
 
+/**
+ * Plain words for a feature whose name is a term of the archive (usability round, ADR 0040), on
+ * this page only: the plan matrix and its pinned version stay as they are.
+ */
+const FEATURE_HINTS: Partial<Record<string, string>> = {
+  successor: 'A student you name, who can ask to look after your profile if you die or stop using your account.',
+};
+
 function FeatureName({ feature, plannedLabel }: { feature: Feature; plannedLabel: string }) {
+  const hint = FEATURE_HINTS[feature.key];
   return (
     <span className="grid gap-1">
       <span className="font-semibold">
@@ -114,6 +123,11 @@ function FeatureName({ feature, plannedLabel }: { feature: Feature; plannedLabel
         </span>
       ) : null}
       {feature.note ? <span className="max-w-[60ch] text-sm font-normal text-fg-muted">{feature.note}</span> : null}
+      {hint ? (
+        <span className="max-w-[60ch] text-sm font-normal text-fg-muted" data-testid="feature-hint">
+          {hint}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -373,8 +387,8 @@ export default function PlansPage() {
 
         <p className="mt-12 border-t border-border-subtle pt-5 text-ui text-fg-muted">
           Student or Sifu is your choice in{' '}
-          <Link href="/dashboard/settings" className="link text-fg">
-            Account type and plan
+          <Link href="/account/plan" className="link text-fg">
+            Plan and billing
           </Link>
           . Choosing Sifu sets the Free Sifu plan; it doesn&apos;t verify you as an instructor, an archivist does that separately.
         </p>

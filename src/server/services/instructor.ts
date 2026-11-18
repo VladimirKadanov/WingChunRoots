@@ -114,7 +114,7 @@ export async function instructorOverview(principal: Principal | null): Promise<I
   }
   const refusal =
     plan.accountType !== 'sifu'
-      ? 'Instructor verification is for Sifu accounts. Choose the Sifu account type in Account type and plan first.'
+      ? 'Instructor verification is for Sifu accounts. Choose the Sifu account type in Settings, under Plan and billing, first.'
       : !viewer.personId
         ? 'Set up your profile first.'
         : status === 'verified'
@@ -160,7 +160,7 @@ export async function requestInstructorVerification(principal: Principal | null,
         return { caseId: replay.caseId, replayed: true };
       }
       const plan = await effectivePlan({ kind: 'user', userId: p.user.id }, { db: tx });
-      if (plan.accountType !== 'sifu') throw new ServiceError('CONFLICT', 'Instructor verification is for Sifu accounts. Choose the Sifu account type in Account type and plan first.');
+      if (plan.accountType !== 'sifu') throw new ServiceError('CONFLICT', 'Instructor verification is for Sifu accounts. Choose the Sifu account type in Settings, under Plan and billing, first.');
       if ((await instructorStatus(tx, p.user.id, plan.accountType)) === 'verified') throw new ServiceError('CONFLICT', 'You are a verified instructor already.');
       const [waiting] = await tx
         .select({ id: reviewCase.id })

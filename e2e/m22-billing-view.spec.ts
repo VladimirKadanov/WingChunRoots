@@ -69,10 +69,13 @@ test('@M22 the active demo subscription: its state, what happens next and its pa
   await axeBothThemes(page, '/dashboard/billing (active)');
   if (testInfo.project.name.startsWith('mobile')) await expectTouchTargets(page, '[data-testid="billing-subscription"] button');
 
-  // The settings name the paid plan and link to billing.
-  await page.goto('/dashboard/settings');
+  // The settings name the paid plan and link to billing, once (usability review 2026-11: no
+  // second "Billing" link beside "Manage billing").
+  await page.goto('/account/plan');
   await expect(shown(page.getByTestId('settings-paid-plan'))).toContainText('Premium Student');
-  await expect(shown(page.getByTestId('settings-paid-plan')).getByRole('link', { name: 'Manage billing' })).toHaveAttribute('href', '/dashboard/billing');
+  await expect(shown(page.getByTestId('billing-link'))).toHaveText('Billing and invoices');
+  await expect(shown(page.getByTestId('billing-link'))).toHaveAttribute('href', '/dashboard/billing');
+  await expect(page.locator('main a[href="/dashboard/billing"]').filter({ visible: true })).toHaveCount(1);
 });
 
 test('@M22 the ended demo subscription keeps its records; the account is back on its free plan', async ({ page }) => {
@@ -87,7 +90,7 @@ test('@M22 the ended demo subscription keeps its records; the account is back on
   await expect(shown(page.getByTestId('payment-history'))).toContainText('$19.00');
   await expect(shown(page.getByTestId('offer-pro_sifu'))).toBeVisible();
   await axeBothThemes(page, '/dashboard/billing (ended)');
-  await page.goto('/dashboard/settings');
+  await page.goto('/account/plan');
   await expect(page.getByTestId('settings-paid-plan')).toHaveCount(0);
 });
 

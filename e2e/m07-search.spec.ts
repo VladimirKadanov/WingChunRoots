@@ -307,8 +307,10 @@ test('@M07 every opening starts with an empty field, and sign-out leaves no quer
   await openPalette(page);
   await expect(searchInput(page)).toHaveValue('');
   await expect(option(page, 'So Ching Laam')).toHaveCount(1);
-  await search(page, 'Your account');
-  await option(page, 'Your account').click();
+  // "Settings" (the account's overview since the usability review of 2026-11); "Notification
+  // settings" matches the query too, so the option is picked by its whole text, label and path.
+  await search(page, 'Settings');
+  await option(page, /^Settings\/account$/).click();
   await page.waitForURL((url) => url.pathname === '/account');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.waitForURL((url) => url.pathname === '/sign-in');

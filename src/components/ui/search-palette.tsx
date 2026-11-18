@@ -98,7 +98,7 @@ const SHEET_QUERY = '(min-width: 40rem) and (min-height: 32rem)';
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 /** Pages of the app the palette offers by their title (plan §5.6: the Pages group). */
 const PAGES: readonly { label: string; href: string }[] = [
-  { label: 'Explore', href: '/' },
+  { label: 'Home', href: '/' },
   { label: 'Plans', href: '/plans' },
   { label: 'Your dashboard', href: '/dashboard' },
   // M09: teacher requests.
@@ -106,10 +106,12 @@ const PAGES: readonly { label: string; href: string }[] = [
   { label: 'Name a teacher', href: '/dashboard/teachers/new' },
   { label: 'Student requests', href: '/dashboard/students/requests' },
   { label: 'Your profile', href: '/dashboard/profile' },
-  { label: 'Account type and plan', href: '/dashboard/settings' },
-  { label: 'Your account', href: '/account' },
-  { label: 'Security settings', href: '/account/security' },
-  { label: 'Privacy and consents', href: '/account/privacy' },
+  // Usability review 2026-11: the account settings are one area under /account.
+  { label: 'Settings', href: '/account' },
+  { label: 'Sign-in and security', href: '/account/security' },
+  { label: 'Plan and billing', href: '/account/plan' },
+  { label: 'Notification settings', href: '/account/notifications' },
+  { label: 'Privacy', href: '/account/privacy' },
   { label: 'Terms of use', href: '/legal/terms' },
   { label: 'Privacy notice', href: '/legal/privacy' },
   { label: 'Licenses', href: '/legal/licenses' },

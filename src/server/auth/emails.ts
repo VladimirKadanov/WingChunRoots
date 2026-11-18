@@ -21,7 +21,7 @@ import { createHash } from 'node:crypto';
 import { generateRandomString } from 'better-auth/crypto';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 
-import { isInvitationPath } from '../../lib/invitation-path';
+import { ridesInConfirmationLink } from '../../lib/invitation-path';
 import { getDb } from '../db';
 import { authAccount, person, personName } from '../db/schema';
 import { getProducer } from '../jobs/boss';
@@ -112,32 +112,33 @@ export async function hasPassword(userId: string): Promise<boolean> {
 }
 
 /**
- * The invitation a sign-up started from (M10b review, requirements-2): Better Auth puts the
- * request's `callbackURL` (the sign-up, sign-in or new-link form's `next`) into the URL it hands to
- * sendVerificationEmail. Only the path of an invitation link is kept; anything else, and Better
- * Auth's default "/", gives "".
+ * The invitation or trial lesson page a sign-up started from (M10b review, requirements-2): Better
+ * Auth puts the request's `callbackURL` (the sign-up, sign-in or new-link form's `next`) into the
+ * URL it hands to sendVerificationEmail. Only a path that rides in the confirmation link is kept
+ * (src/lib/invitation-path.ts); anything else, and Better Auth's default "/", gives "".
  */
-export function invitationFromCallback(url: string | undefined): string {
+export function nextFromCallback(url: string | undefined): string {
   if (!url) return '';
   try {
     const next = new URL(url).searchParams.get('callbackURL');
-    return isInvitationPath(next) ? next : '';
+    return ridesInConfirmationLink(next) ? next : '';
   } catch {
     return '';
   }
 }
 
 /**
- * The confirmation e-mail. `next`, the path of an invitation link (invitationFromCallback), rides
- * in the link: /verify-email hands it to the sign-in after the confirmation, and the sign-in goes
- * back to the invitation (account.landing), on whatever device the e-mail is opened.
+ * The confirmation e-mail. `next`, the path of an invitation link or of a trial lesson page
+ * (nextFromCallback), rides in the link: /verify-email hands it to the sign-in after the
+ * confirmation, and the sign-in goes back to it (account.landing, through onboarding when the
+ * account has no profile yet), on whatever device the e-mail is opened.
  */
 export async function sendVerificationEmail(user: Recipient, token: string, next = ''): Promise<void> {
   // An unconfirmed account without a password (its password was wiped by a later sign-up) is
   // finished by choosing a password, never by confirming the address alone.
   if (!(await hasPassword(user.id))) return sendFinishSignUpEmail(user);
-  const invitation = isInvitationPath(next) ? `&next=${encodeURIComponent(next)}` : '';
-  const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}${invitation}`;
+  const back = ridesInConfirmationLink(next) ? `&next=${encodeURIComponent(next)}` : '';
+  const url = `${appUrl()}/verify-email?token=${encodeURIComponent(token)}${back}`;
   const names = await recipientNames(user.id);
   await withinHourlyCap(user.id, 'verify-email', (tx, boss) =>
     queueEmail(tx, {
