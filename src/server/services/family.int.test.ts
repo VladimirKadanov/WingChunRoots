@@ -157,7 +157,8 @@ describe('the weekly digest (ADR 0048)', () => {
     await getDb().insert(personFollow).values({ followerUserId: me.account.id, personId: followed.personId });
     await getDb().insert(passportRank).values({ personId: followed.personId, rank: 'Demo digest level', on: '2026-02-01', precision: 'month', visibility: 'public' });
 
-    const now = new Date();
+    // A second later: created_at comes from the database clock, which may run a few ms ahead of this one.
+    const now = new Date(Date.now() + 1_000);
     const first = await runFamilyDigest(getDb(), now);
     expect(first.notices).toBeGreaterThanOrEqual(1);
     const mine = await getDb()
