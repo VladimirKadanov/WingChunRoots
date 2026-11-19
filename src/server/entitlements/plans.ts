@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-19.2';
+export const PLAN_MATRIX_VERSION = '2026-11-19.4';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -132,6 +132,7 @@ export const FEATURE_KEYS = [
   'lineage_card',
   'featured_profile',
   'kung_fu_family',
+  'supporter_badge',
   'school_business',
   'passport',
   'successor',
@@ -284,14 +285,15 @@ export const FEATURES: readonly FeatureDefinition[] = [
     key: 'videos',
     source: 'Video allowance',
     label: 'Videos',
-    availability: 'planned',
-    phase: 2,
-    enforced: false,
+    // Owner decision 2026-11-18 (docs/adr/0044-premium-student.md, docs/adr/0050-video-embeds.md):
+    // embedded YouTube or Vimeo links only, never uploads; the player loads only when a visitor
+    // asks for it (src/server/services/videos.ts). DEFAULT D07: the quotas of the specification.
+    availability: 'now',
+    phase: null,
+    enforced: true,
     unit: { one: 'video', many: 'videos', verb: 'added' },
-    // Owner decision 2026-11-18 (docs/adr/0044-premium-student.md): not offered for now, so the row
-    // is kept but hidden; videos will later be embedded links only, never uploads.
-    hidden: true,
-    // DEFAULT D07: recorded here, enforced with the media of Phase 2.
+    upgradeHeading: 'Videos on your profile with {plan}',
+    note: 'Links to your YouTube or Vimeo videos, shown on your profile. Nothing is uploaded, and a video plays only when a visitor asks for it.',
     values: {
       free_student: quota('0', 'No videos', 0),
       premium_student: quota('2', '2 videos', 2),
@@ -433,6 +435,27 @@ export const FEATURES: readonly FeatureDefinition[] = [
       premium_student: text('Family page, follows and weekly digest', 'Family page, follows and weekly digest'),
       free_sifu: { source: 'Classmates on the lineage graph', label: 'Classmates on the lineage graph', included: false },
       pro_sifu: text('Family page, follows and weekly digest', 'Family page, follows and weekly digest'),
+      federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
+    },
+  },
+  {
+    key: 'supporter_badge',
+    source: 'Supporter badge',
+    label: 'Supporter badge',
+    // Owner decision 2026-11-18 (docs/adr/0049-supporter-badge.md): an optional "Supporter" badge
+    // on the public profile of a member whose plan includes it, off until the member switches it on
+    // (DEFAULT ADR 0049). A shape of its own, never the verification seal; it changes nothing in
+    // search, the lineage or any review (src/server/services/supporter.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'The Supporter badge with {plan}',
+    note: 'An optional Supporter badge on your profile, shown only if you switch it on. It says you support WingChunRoots and changes nothing else.',
+    values: {
+      free_student: no(),
+      premium_student: text('Optional badge on your profile', 'Optional badge on your profile'),
+      free_sifu: no(),
+      pro_sifu: text('Optional badge on your profile', 'Optional badge on your profile'),
       federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
     },
   },
@@ -737,7 +760,7 @@ export interface Benefit {
  * their benefits after the ones the pilot had before, which keep the matrix's order. M25: the
  * digital successor comes last of all.
  */
-const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'events', 'passport', 'school_business'];
+const JOINED_PILOT_LATER: readonly FeatureKey[] = ['photos', 'videos', 'events', 'passport', 'school_business'];
 const JOINED_PHASE_3: readonly FeatureKey[] = ['successor'];
 
 /**

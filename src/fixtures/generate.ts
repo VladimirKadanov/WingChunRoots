@@ -352,6 +352,7 @@ class Builder {
       takenDownReason: null,
       takenDownVisibility: null,
       schoolListing: false,
+      supporterBadge: false,
       createdAt: at,
       updatedAt: at,
       deletedAt: null,

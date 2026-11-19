@@ -280,7 +280,7 @@ import {
   testPayInput,
 } from '../services/billing';
 import { adminFederationTrial, adminTrialInput, endFederationTrial, endTrialInput, startFederationTrial, startTrialInput } from '../services/federation-trials';
-import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfileSchema, profileLinksSchema, studentsPageSchema } from '../dto/public';
+import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfileSchema, profileLinksSchema, studentsPageSchema, supporterSchema, profileVideosSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
 import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
@@ -341,6 +341,8 @@ import {
 } from '../services/lineage';
 import { lineageCard, lineageCardInput } from '../services/lineage-card';
 import { myProfileLinks, profileLinks, profileLinksInput, removeProfileLink, removeProfileLinkInput, setProfileLinks, setProfileLinksInput } from '../services/featured-profile';
+import { myProfileVideos, profileVideos, profileVideosInput, removeProfileVideo, removeProfileVideoInput, setProfileVideos, setProfileVideosInput } from '../services/videos';
+import { mySupporter, profileSupporter, setSupporter, setSupporterInput, supporterSlugInput } from '../services/supporter';
 import { familyGet, familyGetInput, followAdd, followInput, followRemove, followsList } from '../services/family';
 
 import {
@@ -479,6 +481,26 @@ export const router = {
       .route({ method: 'POST', path: '/profile/links/remove', summary: 'Remove one profile link with a reason its owner is sent (staff with a verified second factor); audited' })
       .input(removeProfileLinkInput)
       .handler(({ context, input }) => removeProfileLink(context.principal, input, context.meta)),
+    // ADR 0050: videos of a profile (YouTube or Vimeo links only), as many as the plan includes.
+    videos: signedIn
+      .route({ method: 'GET', path: '/profile/videos', summary: "The account's own profile videos and how many its plan shows" })
+      .handler(({ context }) => myProfileVideos(context.principal)),
+    setVideos: signedIn
+      .route({ method: 'POST', path: '/profile/videos/set', summary: "Replace the account's own profile videos: each a title and a YouTube or Vimeo address, in order, up to the plan's quota; audited" })
+      .input(setProfileVideosInput)
+      .handler(({ context, input }) => setProfileVideos(context.principal, input, context.meta)),
+    removeVideo: staffWithSecondFactor
+      .route({ method: 'POST', path: '/profile/videos/remove', summary: 'Remove one profile video with a reason its owner is sent (staff with a verified second factor); audited' })
+      .input(removeProfileVideoInput)
+      .handler(({ context, input }) => removeProfileVideo(context.principal, input, context.meta)),
+    // ADR 0049: the Supporter badge, off until the member switches it on.
+    supporter: signedIn
+      .route({ method: 'GET', path: '/profile/supporter', summary: "The account's own choice to show the Supporter badge, and whether its plan includes it" })
+      .handler(({ context }) => mySupporter(context.principal)),
+    setSupporter: signedIn
+      .route({ method: 'POST', path: '/profile/supporter/set', summary: 'Show or hide the Supporter badge on the own profile (showing needs Premium Student or Professional Sifu); audited' })
+      .input(setSupporterInput)
+      .handler(({ context, input }) => setSupporter(context.principal, input, context.meta)),
   },
   // ADR 0048: the kung fu family and its private follows (Premium Student, Professional Sifu).
   family: {
@@ -586,6 +608,18 @@ export const router = {
       .input(profileLinksInput)
       .output(profileLinksSchema)
       .handler(({ context, input }) => profileLinks(context.principal, input)),
+    // ADR 0050: a member's videos (YouTube or Vimeo ids), as many as their plan includes.
+    videos: base
+      .route({ method: 'GET', path: '/people/{slug}/videos', summary: "A member's profile videos (as many as their plan includes; 404 unless public)" })
+      .input(profileVideosInput)
+      .output(profileVideosSchema)
+      .handler(({ context, input }) => profileVideos(context.principal, input)),
+    // ADR 0049: whether a member shows the Supporter badge (their choice, on a plan that includes it).
+    supporter: base
+      .route({ method: 'GET', path: '/people/{slug}/supporter', summary: "Whether a member shows the Supporter badge (their own choice, on a plan that includes it; 404 unless public)" })
+      .input(supporterSlugInput)
+      .output(supporterSchema)
+      .handler(({ context, input }) => profileSupporter(context.principal, input)),
   },
   // M08: plans, test plans, notifications and the dashboard (plan §5.6, §6.5).
   plans: {

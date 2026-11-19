@@ -18,7 +18,7 @@ import { invalidatePublic, personTag } from '@/server/cache';
 import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { PROFILE_LINKS_FORM } from './form-ids';
+import { PROFILE_LINKS_FORM, PROFILE_SUPPORTER_FORM, PROFILE_VIDEOS_FORM } from './form-ids';
 
 const LINK_ROWS = 5;
 
@@ -92,6 +92,62 @@ export async function saveProfileLinksAction(_previous: FormState, form: FormDat
           const match = /^links\.(\d+)\.(label|url)$/.exec(key);
           const row = match ? rows[Number(match[1])]?.row : undefined;
           return [row === undefined ? key : `links.${row}.${match![2]}`, message];
+        }),
+      );
+    }
+  }
+  await keepFormResult(place, state);
+}
+
+/** "Save" of the Supporter badge (profile.setSupporter; bound to IDLE by its Server Component form). ADR 0049. */
+export async function saveSupporterAction(_previous: FormState, form: FormData): Promise<void> {
+  const show = form.get('show') === 'on';
+  const place = { form: PROFILE_SUPPORTER_FORM, page: '/dashboard/profile', anchor: `${PROFILE_SUPPORTER_FORM}-message` };
+  let state: FormState;
+  try {
+    const result = await serverClient(await headers(), await getRequestPrincipal()).profile.setSupporter({ show });
+    refresh();
+    state = { status: 'done', message: result.show ? 'Your profile shows the Supporter badge.' : 'Your profile does not show the Supporter badge.' };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fdashboard%2Fprofile');
+    if (rpcErrorCode(error) === 'NOT_FOUND') redirect('/onboarding');
+    state = formStateFromFailure(error, { show: show ? 'on' : '' });
+  }
+  await keepFormResult(place, state);
+}
+
+const VIDEO_ROWS = 20;
+
+/** "Save videos" (profile.setVideos; bound to IDLE by its Server Component form). ADR 0050. */
+export async function saveProfileVideosAction(_previous: FormState, form: FormData): Promise<void> {
+  const values: Record<string, string> = {};
+  const rows: { title: string; url: string; row: number }[] = [];
+  for (let i = 0; i < VIDEO_ROWS; i++) {
+    const title = String(form.get(`videos.${i}.title`) ?? '').slice(0, 400);
+    const url = String(form.get(`videos.${i}.url`) ?? '').slice(0, 1000);
+    values[`videos.${i}.title`] = title;
+    values[`videos.${i}.url`] = url;
+    if (title.trim() || url.trim()) rows.push({ title, url, row: i });
+  }
+  const place = { form: PROFILE_VIDEOS_FORM, page: '/dashboard/profile', anchor: `${PROFILE_VIDEOS_FORM}-message` };
+  let state: FormState;
+  try {
+    const result = await serverClient(await headers(), await getRequestPrincipal()).profile.setVideos({ videos: rows.map(({ title, url }) => ({ title, url })) });
+    refresh();
+    state = { status: 'done', message: result.videos.length === 0 ? 'Your profile has no videos now.' : 'Your videos are saved.' };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fdashboard%2Fprofile');
+    if (rpcErrorCode(error) === 'NOT_FOUND') redirect('/onboarding');
+    state = formStateFromFailure(error, values);
+    // The service names the rows it was sent; the form names the rows on the page.
+    if (state.fields) {
+      state.fields = Object.fromEntries(
+        Object.entries(state.fields).map(([key, message]) => {
+          const match = /^videos\.(\d+)\.(title|url)$/.exec(key);
+          const row = match ? rows[Number(match[1])]?.row : undefined;
+          return [row === undefined ? key : `videos.${row}.${match![2]}`, message];
         }),
       );
     }

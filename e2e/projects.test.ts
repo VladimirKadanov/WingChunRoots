@@ -120,6 +120,8 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/claim-request.spec.ts',
         '**/premium-passport-extras.spec.ts',
         '**/premium-featured-profile.spec.ts',
+        '**/premium-supporter-badge.spec.ts',
+        '**/premium-video-embeds.spec.ts',
       ]);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);

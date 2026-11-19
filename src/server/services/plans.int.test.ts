@@ -145,8 +145,9 @@ describe('plans.catalog and plans.mine', () => {
     // M25 (docs/adr/0028-governance.md): and the digital successor.
     // ADR 0044 (owner decision 2026-11-18): and the school members page; the videos row is hidden.
     // ADR 0045 (owner decision 2026-11-18): and the lineage card.
-    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'claim_teachers', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'school_business', 'passport', 'successor', 'events']);
-    expect(features.map((f) => f.key)).not.toContain('videos');
+    // ADR 0050 (owner decision 2026-11-19): the videos row is shown again, as embedded YouTube and Vimeo links.
+    expect(features.filter((f) => f.availability === 'now').map((f) => f.key)).toEqual(['identity', 'photos', 'videos', 'claim_teachers', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'school_business', 'passport', 'successor', 'events']);
+    expect(features.filter((f) => f.key === 'videos')).toEqual([expect.objectContaining({ availability: 'now' })]);
   });
 
   it('plans.mine needs a session; a new account is a Student on Free Student', async () => {

@@ -136,6 +136,10 @@ export const PHOTO_CAPTION_MAX = 200;
 export const PROFILE_LINKS_MAX = 5;
 export const PROFILE_LINK_LABEL_MAX = 60;
 export const PROFILE_LINK_URL_MAX = 500;
+/** ADR 0050: the providers of an embedded video, and the most videos any plan may show. */
+export const VIDEO_PROVIDERS = ['youtube', 'vimeo'] as const;
+export const PROFILE_VIDEOS_MAX = 20;
+export const PROFILE_VIDEO_TITLE_MAX = 100;
 /**
  * M16: the longest side of the `full` rendition of a gallery or school room photo, the one the
  * viewer shows (the whole photo, never cropped; never enlarged). DEFAULT, no D number.

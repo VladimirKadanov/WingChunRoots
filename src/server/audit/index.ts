@@ -27,6 +27,9 @@ export type AuditAction =
   // ADR 0047: the links of a featured profile, set by the owner or removed by staff with a reason.
   | 'person.links'
   | 'person.link_remove'
+  | 'person.supporter_badge'
+  | 'person.videos'
+  | 'person.video_remove'
   | 'consent.withdraw'
   | 'account.deletion_request'
   // pnpm account:delete (M07, until the review tool of M10a).

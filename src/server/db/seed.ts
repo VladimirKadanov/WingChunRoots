@@ -78,6 +78,7 @@ import {
   personName,
   personNameKey,
   personPhoto,
+  personVideo,
   pilotAccessRequest,
   place,
   recordProposal,
@@ -158,6 +159,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   personName,
   personNameKey,
   personPhoto,
+  // ADR 0050: the videos of a profile (no demo rows).
+  personVideo,
   pilotAccessRequest,
   place,
   recordProposal,

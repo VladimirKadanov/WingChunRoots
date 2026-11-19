@@ -25,7 +25,7 @@ import type { Principal } from '../auth/principal';
 import { startAuthTestDatabase, stopAuthTestDatabase, TEST_APP_URL } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authSession, authUser, notification, person, personLink, personName, personPhoto, teachingRelationship } from '../db/schema';
+import { authSession, authUser, notification, person, personLink, personName, personPhoto, personVideo, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleEvidenceDownload, handleEvidenceUpload } from '../evidence-http';
 import { handlePhotoRequest } from '../photo-http';
@@ -669,6 +669,40 @@ const ROWS: Row[] = [
   },
   // ADR 0048: the kung fu family. Every account with a profile reads its own (without the plan the
   // answer says so); following needs the plan; unfollowing and the list work on any plan.
+  // ADR 0050: profile videos. Own videos for every account with a profile; saving needs a plan with
+  // videos; staff remove one with a reason.
+  { path: 'profile.videos', make: async () => ({ owner: await actor('videos-own'), input: undefined }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
+  {
+    path: 'profile.setVideos',
+    make: async () => {
+      const owner = await actor('videos-set');
+      await createGrant(world.admin.principal, { email: owner.email, planCode: 'premium_student', reason: 'ADR 0050 authorization matrix (fictional)' }, meta);
+      return { owner, input: { videos: [{ title: 'Demo video', url: 'https://youtu.be/abcDEF12345' }] } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'ENTITLEMENT_REQUIRED' },
+  },
+  {
+    path: 'profile.removeVideo',
+    make: async () => {
+      const owner = await actor('videos-removed');
+      const [row] = await getDb().insert(personVideo).values({ personId: owner.personId!, position: 0, title: 'Demo video', provider: 'youtube', videoId: 'abcDEF12345' }).returning({ id: personVideo.id });
+      return { input: { id: row!.id, reason: 'ADR 0050 authorization matrix (fictional)' } };
+    },
+    expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }),
+  },
+  { path: 'people.videos', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug! } }), expect: everyone },
+  // ADR 0049: the Supporter badge. The own choice for every account with a profile; showing it needs the plan.
+  { path: 'profile.supporter', make: async () => ({ owner: await actor('supporter-own'), input: undefined }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
+  {
+    path: 'profile.setSupporter',
+    make: async () => {
+      const owner = await actor('supporter-set');
+      await createGrant(world.admin.principal, { email: owner.email, planCode: 'premium_student', reason: 'ADR 0049 authorization matrix (fictional)' }, meta);
+      return { owner, input: { show: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'ENTITLEMENT_REQUIRED' },
+  },
+  { path: 'people.supporter', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug! } }), expect: everyone },
   { path: 'family.get', make: async () => ({ owner: await actor('family-own'), input: {} }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
   { path: 'follows.list', make: noInput, expect: own() },
   {
@@ -2719,6 +2753,19 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: (i) => ({ 'links.0.label': (i.links as { label: string }[])[0]!.label, 'links.0.url': (i.links as { url: string }[])[0]!.url }),
     roles: ['anonymous', 'member', 'owner'],
   },
+  {
+    action: 'src/app/dashboard/profile/actions.ts#saveProfileVideosAction',
+    row: 'profile.setVideos',
+    form: (i) => ({ 'videos.0.title': (i.videos as { title: string }[])[0]!.title, 'videos.0.url': (i.videos as { url: string }[])[0]!.url }),
+    roles: ['anonymous', 'member', 'owner'],
+  },
+  {
+    action: 'src/app/people/[slug]/video-actions.ts#removeProfileVideoAction',
+    row: 'profile.removeVideo',
+    form: (i) => ({ id: String(i.id), reason: String(i.reason), slug: 'demo-matrix' }),
+    roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'admin'],
+  },
+  { action: 'src/app/dashboard/profile/actions.ts#saveSupporterAction', row: 'profile.setSupporter', form: () => ({ show: 'on' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/family/actions.ts#followAction', row: 'follows.add', form: (i) => ({ slug: String(i.slug) }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/family/actions.ts#unfollowAction', row: 'follows.remove', form: (i) => ({ slug: String(i.slug) }), roles: ['anonymous', 'member'] },
   {
