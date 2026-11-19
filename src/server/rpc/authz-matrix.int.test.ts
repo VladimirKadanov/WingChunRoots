@@ -667,6 +667,20 @@ const ROWS: Row[] = [
     },
     expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }),
   },
+  // ADR 0048: the kung fu family. Every account with a profile reads its own (without the plan the
+  // answer says so); following needs the plan; unfollowing and the list work on any plan.
+  { path: 'family.get', make: async () => ({ owner: await actor('family-own'), input: {} }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
+  { path: 'follows.list', make: noInput, expect: own() },
+  {
+    path: 'follows.add',
+    make: async () => {
+      const owner = await actor('follows-add');
+      await createGrant(world.admin.principal, { email: owner.email, planCode: 'premium_student', reason: 'ADR 0048 authorization matrix (fictional)' }, meta);
+      return { owner, input: { slug: (await verifiedLink()).teacher.slug! } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'ENTITLEMENT_REQUIRED' },
+  },
+  { path: 'follows.remove', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug! } }), expect: own() },
   { path: 'search.query', make: () => ({ input: { q: 'Demo' } }), expect: everyone },
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   { path: 'admin.navCounts', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
@@ -2705,6 +2719,8 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: (i) => ({ 'links.0.label': (i.links as { label: string }[])[0]!.label, 'links.0.url': (i.links as { url: string }[])[0]!.url }),
     roles: ['anonymous', 'member', 'owner'],
   },
+  { action: 'src/app/dashboard/family/actions.ts#followAction', row: 'follows.add', form: (i) => ({ slug: String(i.slug) }), roles: ['anonymous', 'member', 'owner'] },
+  { action: 'src/app/dashboard/family/actions.ts#unfollowAction', row: 'follows.remove', form: (i) => ({ slug: String(i.slug) }), roles: ['anonymous', 'member'] },
   {
     action: 'src/app/people/[slug]/link-actions.ts#removeProfileLinkAction',
     row: 'profile.removeLink',

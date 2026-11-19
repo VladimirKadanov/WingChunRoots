@@ -426,7 +426,7 @@ export const EMAIL_STATUSES = ['queued', 'sent', 'failed'] as const;
  * (src/server/templates/catalog.ts). The account chooses e-mail per category; `security` and
  * `account` (the legal notices) cannot be switched off.
  */
-export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing'] as const;
+export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing', 'family'] as const;
 /**
  * The categories whose e-mail is never switched off: security, the legal notices of the account and
  * (M22, DEFAULT M22 question 6) billing, whose notices say what happens to a payment and to access.

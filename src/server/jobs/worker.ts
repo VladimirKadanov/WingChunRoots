@@ -22,6 +22,7 @@ import { lineageRecomputeHandler } from './lineage-recompute';
 import { billingEventHandler, billingGraceHandler } from './billing';
 import { planExpiryHandler } from './plan-expiry';
 import { schoolActivityHandler } from './school-activity';
+import { familyDigestHandler } from './family-digest';
 import { jobTemplateData, jobUnsubscribe } from './outbox';
 import { type EmailSendJob, ensureQueues, type JobData, QUEUE, type QueueName, type QueueOptions, SCHEDULES } from './queues';
 
@@ -244,6 +245,8 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
   // M22: the provider events of a subscription in test mode, and the end of a grace period.
   await boss.work(QUEUE.billingEvent, work, billingEventHandler(db, log, boss));
   await boss.work(QUEUE.billingGrace, work, billingGraceHandler(db, log, boss));
+  // ADR 0048: the weekly digest of the kung fu family.
+  await boss.work(QUEUE.familyDigest, work, familyDigestHandler(db, log, boss));
 
   if (schedules) {
     for (const { queue, cron } of SCHEDULES) await boss.schedule(queue, cron, null, { tz: 'UTC', missed: 'once' });

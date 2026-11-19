@@ -13,6 +13,7 @@ const student: DashboardNav = {
   organizations: [],
   unreadNotifications: 0,
   waitingStudentRequests: 0,
+  family: false,
 };
 
 const labels = (nav: DashboardNav) => dashboardNavGroups(nav).map((g) => g.label);
@@ -30,6 +31,12 @@ describe('dashboardNavGroups', () => {
     expect(teaching.links.find((l) => l.href === '/dashboard/students/requests')?.count).toBe(2);
     const verified = dashboardNavGroups({ ...sifu, instructor: 'verified' }).find((g) => g.label === 'Teaching')!;
     expect(verified.links.map((l) => l.href)).not.toContain('/dashboard/instructor');
+  });
+
+  it('lists the kung fu family only on a plan that includes it (ADR 0048)', () => {
+    const learning = (nav: DashboardNav) => dashboardNavGroups(nav).find((g) => g.label === 'Learning')!.links.map((l) => l.href);
+    expect(learning(student)).not.toContain('/dashboard/family');
+    expect(learning({ ...student, family: true })).toEqual(['/dashboard/teachers', '/dashboard/passport', '/dashboard/family', '/dashboard/trial-lessons']);
   });
 
   it('lists each organization an account administers', () => {

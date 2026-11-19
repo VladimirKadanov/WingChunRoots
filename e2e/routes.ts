@@ -191,6 +191,9 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/passport/print', name: 'dashboard-passport-print', status: 200, milestone: 'M19', signInAs: 'demo-premium-student' },
   { path: '/dashboard/passport/print', name: 'dashboard-passport-print-basic', status: 200, milestone: 'M19', signInAs: 'demo-two-lineages' },
   { path: '/dashboard/events/attendance', name: 'dashboard-events-attendance', status: 200, milestone: 'M17', signInAs: 'demo-pro-sifu-8' },
+  // ADR 0048: the kung fu family, on the plan and without it.
+  { path: '/dashboard/family', name: 'dashboard-family', status: 200, milestone: 'M19', signInAs: 'demo-premium-student' },
+  { path: '/dashboard/family', name: 'dashboard-family-basic', status: 200, milestone: 'M19', signInAs: 'demo-two-lineages' },
   { path: '/dashboard/students', name: 'dashboard-students', status: 200, milestone: 'M19', key: true, signInAs: 'demo-pro-sifu-8' },
   { path: '/dashboard/students', name: 'dashboard-students-none', status: 200, milestone: 'M19', signInAs: 'demo-pending' },
   // The activity check of the listed schools (M20; DEFAULT D17): the owner's list of demo-pro-sifu-8

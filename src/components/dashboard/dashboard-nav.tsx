@@ -43,6 +43,7 @@ const TEST_IDS: Record<string, string> = {
   '/dashboard/passport': 'dashboard-passport',
   '/dashboard/trial-lessons': 'dashboard-trial-lessons',
   '/dashboard/succession': 'dashboard-succession',
+  '/dashboard/family': 'dashboard-family',
 };
 
 const link = (href: string, label: string, count: number | null = null, countLabel?: string): DashboardNavLink => ({ href, label, count, countLabel, testId: TEST_IDS[href] });
@@ -52,10 +53,11 @@ export function dashboardNavGroups(nav: NavData): DashboardNavGroup[] {
   const groups: DashboardNavGroup[] = [{ label: 'Overview', links: [link('/dashboard', 'Overview')] }];
   const sifu = nav.accountType === 'sifu';
   if (!nav.staffOnly) {
-    groups.push({
-      label: 'Learning',
-      links: [link('/dashboard/teachers', 'My teachers'), link('/dashboard/passport', 'Training passport'), link('/dashboard/trial-lessons', 'Trial lessons')],
-    });
+    const learning = [link('/dashboard/teachers', 'My teachers'), link('/dashboard/passport', 'Training passport')];
+    // ADR 0048: only on a plan that includes it (no menu entry offers what the plan does not have).
+    if (nav.family) learning.push(link('/dashboard/family', 'Kung fu family'));
+    learning.push(link('/dashboard/trial-lessons', 'Trial lessons'));
+    groups.push({ label: 'Learning', links: learning });
   }
   if (sifu && !nav.staffOnly) {
     const teaching = [

@@ -295,6 +295,27 @@ export const personLink = pgTable(
   ],
 );
 
+/**
+ * ADR 0048: the private follows of the kung fu family (Premium Student, Professional Sifu). An
+ * account follows a public person to hear of their new public ranks in the weekly digest. Follows
+ * are never shown to anyone, not even the person followed; kept on a lower plan, but the digest
+ * stops (DEFAULT D08).
+ */
+export const personFollow = pgTable(
+  'person_follow',
+  {
+    id: idColumn(),
+    followerUserId: uuid('follower_user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('person_follow_follower_person_key').on(t.followerUserId, t.personId), index('person_follow_person_idx').on(t.personId)],
+);
+
 /** A request by an account to take over a record (D04, D12; reviewed in M10b). */
 export const personClaim = pgTable(
   'person_claim',

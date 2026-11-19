@@ -82,6 +82,14 @@ export const CATEGORIES: Readonly<Record<NotificationCategory, CategoryDefinitio
     optOut: false,
     emailDefault: true,
   },
+  // ADR 0048: the weekly digest of the kung fu family (Premium Student, Professional Sifu); e-mail on
+  // by default, which the account may switch off. DEFAULT ADR 0048: on, since the account chose to follow.
+  family: {
+    label: 'Kung fu family',
+    description: 'The weekly digest of who joined under your teachers and the new ranks of the people you follow (Premium Student).',
+    optOut: true,
+    emailDefault: true,
+  },
 };
 
 export type EmailChannel = null | 'notice' | EmailTemplateName;
@@ -204,6 +212,8 @@ export const NOTIFICATION_CATALOG = {
   'appeal.decided': mailed('review', 'notice'),
   'proposal.decided': mailed('review', 'notice'),
   'case.question': mailed('review', 'notice'),
+  // ADR 0048: the weekly digest of the kung fu family.
+  'family.digest': mailed('family', 'notice'),
 } as const satisfies Record<NotificationTemplateName, CatalogEntry>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_CATALOG;

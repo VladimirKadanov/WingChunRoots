@@ -12,6 +12,7 @@ import { getDb } from '../db';
 import { notification, organization, organizationAdmin, person } from '../db/schema';
 import { effectivePlan } from '../entitlements/access';
 import { waitingRequests } from './dashboard';
+import { familyIncluded } from './family';
 import { instructorStatus } from './plans';
 
 export interface DashboardNavOrganization {
@@ -33,6 +34,8 @@ export interface DashboardNav {
   unreadNotifications: number;
   /** Student requests waiting for this Sifu's answer (pending_teacher); 0 for a student. */
   waitingStudentRequests: number;
+  /** ADR 0048: the account has a profile and its plan includes the kung fu family page. */
+  family: boolean;
 }
 
 export async function dashboardNav(principal: Principal | null): Promise<DashboardNav> {
@@ -67,5 +70,6 @@ export async function dashboardNav(principal: Principal | null): Promise<Dashboa
     organizations: organizations.map((o) => ({ id: o.id, name: o.name, role: o.role })),
     unreadNotifications: unread?.n ?? 0,
     waitingStudentRequests,
+    family: Boolean(own) && familyIncluded(effective.plan),
   };
 }
