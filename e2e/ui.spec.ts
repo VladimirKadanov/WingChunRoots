@@ -436,7 +436,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size}`;
         }),
     );
-    expect(lines).toEqual(['Home: 1', 'Lineage: 1', 'Schools: 1', 'Events: 1', 'Me: 1']);
+    expect(lines).toEqual(['Home: 1', 'Lineage: 1', 'Schools: 1', 'Orgs: 1', 'Events: 1']);
   });
 
   test('@M00b form controls use at least 16 px text, so iOS does not zoom into them', async ({ page }) => {
