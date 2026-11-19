@@ -1,12 +1,13 @@
 // The featured profile (owner decision 2026-11-18, docs/adr/0047-featured-profile.md): what the
 // plans with `featured_profile` (Premium Student, Professional Sifu) add to a profile. This file
-// holds its links; the longer biography is in profile.ts, the training timeline in passport.ts and
-// the search card in search.ts, each asking featuredIncluded() below.
+// holds its links and the search card; the longer biography is in profile.ts and the training
+// timeline in passport.ts, each asking featuredIncluded() below.
 //
 //   people.links            public: the links of a public person whose plan includes them
 //   profile.links           the account's own links, and whether the plan lets it change them
 //   profile.setLinks        up to 5 links (a label and an https address), in order; audited
 //   profile.removeLink      staff with a verified second factor, with a reason; the owner is told
+//   featuredSearchCards()   the rank and school a search result shows (search.ts); never the order
 //
 // Paying never shows anyone: the links are read only for a person in v_public_person (consent to
 // publication, ADR 0031; not taken down). On a lower plan they are kept and not shown (DEFAULT D08).
