@@ -3,3 +3,6 @@
 
 /** Staff's "Remove a passport entry". */
 export const PASSPORT_REMOVE_FORM = 'passport-remove';
+
+/** Staff's "Remove a link" of a featured profile (docs/adr/0047-featured-profile.md). */
+export const PROFILE_LINK_REMOVE_FORM = 'profile-link-remove';

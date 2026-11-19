@@ -2,7 +2,8 @@
 // own person: names in any script, a short biography, country, city, the year training started and
 // whether the profile is public. Data from profile.get; saved through the profile.update procedure
 // by a thin Server Action (./actions.ts). Records kept by the archive are corrected by archivists
-// (M10a). Reads the session: rendered per request.
+// (M10a). ADR 0047: the links of a featured profile (profile.links, profile.setLinks) below the
+// editor. Reads the session: rendered per request.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -17,6 +18,8 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
+import { PROFILE_LINKS_FORM } from './form-ids';
+import { LinksForm } from './links-form';
 import { ProfileEditor } from './profile-editor';
 
 export const instant = false;
@@ -33,7 +36,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
   if (guard.redirectTo) return <PageRedirect to={guard.redirectTo} />;
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
-  const view = await pageRead(serverClient(await headers(), guard.principal).profile.get());
+  const client = serverClient(await headers(), guard.principal);
+  const view = await pageRead(client.profile.get());
   if (!view) return <LoadError {...PROFILE_LOAD_ERROR} retryHref="/dashboard/profile" />;
 
   if (!view.profile) {
@@ -54,6 +58,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
   }
 
   const { profile, options } = view;
+  const [links, linksResult] = await Promise.all([pageRead(client.profile.links()), readFormResult(PROFILE_LINKS_FORM, query.outcome)]);
   const initialValues: ProfileFormValues = {
     names: profile.names.map((n) => ({
       value: n.value,
@@ -94,6 +99,11 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
             initial={await readFormResult('profile', query.outcome)}
           />
         </div>
+        {links ? (
+          <div className="mt-10 border-t border-border-subtle pt-8">
+            <LinksForm links={links.links} allowed={links.allowed} limit={links.limit} initial={linksResult} />
+          </div>
+        ) : null}
         <p className="mt-10 flex flex-wrap gap-x-5 border-t border-border-subtle pt-5 text-ui">
           <Link href="/account/privacy" className="link inline-flex min-h-11 items-center">
             Privacy and consents

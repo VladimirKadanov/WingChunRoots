@@ -246,6 +246,19 @@ export function toPublicGraph(value: LineageGraphDto): LineageGraphDto {
   return lineageGraphSchema.parse(value);
 }
 
+/**
+ * ADR 0047: the links of a featured profile, as people.links answers: the label and the https
+ * address the owner gave, in their order; nothing else of the row (no dates, no person id).
+ */
+export const profileLinksSchema = z.object({
+  links: z.array(z.object({ id: z.uuid(), label: z.string(), url: z.string() })),
+});
+export type ProfileLinksDto = z.infer<typeof profileLinksSchema>;
+
+export function toPublicProfileLinks(value: ProfileLinksDto): ProfileLinksDto {
+  return profileLinksSchema.parse(value);
+}
+
 export function toPublicLineageCard(value: LineageCardDto): LineageCardDto {
   return lineageCardSchema.parse(value);
 }

@@ -73,6 +73,7 @@ import {
   person,
   personBio,
   personClaim,
+  personLink,
   personName,
   personNameKey,
   personPhoto,
@@ -149,6 +150,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   person,
   personBio,
   personClaim,
+  // ADR 0047: the links of a featured profile (no demo rows).
+  personLink,
   personName,
   personNameKey,
   personPhoto,

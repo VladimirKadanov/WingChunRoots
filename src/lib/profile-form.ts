@@ -7,6 +7,8 @@ import { displayNameRefusal, NAME_WRITINGS } from '@/server/services/names';
 
 export const PROFILE_MAX_NAMES = 10;
 export const PROFILE_BIO_MAX_LENGTH = 1000;
+/** The biography of a featured profile (Premium Student, Professional Sifu; docs/adr/0047-featured-profile.md). */
+export const PROFILE_BIO_FEATURED_MAX_LENGTH = 2000;
 /** Rows a page without JavaScript offers below the saved names, for new names (left empty, they are ignored). */
 export const SPARE_ROWS = 2;
 
@@ -89,7 +91,7 @@ export function profileFormFromData(form: FormData): ProfileFormValues {
   return {
     names,
     primary,
-    bio: text('bio', PROFILE_BIO_MAX_LENGTH * 2),
+    bio: text('bio', PROFILE_BIO_FEATURED_MAX_LENGTH * 2),
     bioLang: text('bioLang', 35) || 'en',
     countryCode: text('countryCode', 2),
     placeId: text('placeId', 40),

@@ -280,7 +280,7 @@ import {
   testPayInput,
 } from '../services/billing';
 import { adminFederationTrial, adminTrialInput, endFederationTrial, endTrialInput, startFederationTrial, startTrialInput } from '../services/federation-trials';
-import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfileSchema, studentsPageSchema } from '../dto/public';
+import { lineageCardSchema, lineageGraphSchema, lineagePathsSchema, personProfileSchema, profileLinksSchema, studentsPageSchema } from '../dto/public';
 import { organizationListSchema, organizationPageSchema } from '../dto/organizations';
 import { commitImport, discardImport, getImport, importIdInput, importListInput, importPreviewInput, listImports, previewImport } from '../services/organization-import';
 import { insightsInput, organizationAnalytics, organizationHeatmap } from '../services/organization-insights';
@@ -340,6 +340,7 @@ import {
   subtreeInput,
 } from '../services/lineage';
 import { lineageCard, lineageCardInput } from '../services/lineage-card';
+import { myProfileLinks, profileLinks, profileLinksInput, removeProfileLink, removeProfileLinkInput, setProfileLinks, setProfileLinksInput } from '../services/featured-profile';
 
 import {
   answerNomination,
@@ -465,6 +466,18 @@ export const router = {
       .route({ method: 'POST', path: '/profile/update', summary: "Save the account's own profile: names (a Latin-script display name is required), biography, place, public or not; audited" })
       .input(profileUpdateInput)
       .handler(({ context, input }) => profileUpdate(context.principal, input, context.meta)),
+    // ADR 0047: the links of a featured profile (Premium Student, Professional Sifu).
+    links: signedIn
+      .route({ method: 'GET', path: '/profile/links', summary: "The account's own profile links and whether its plan lets it change them" })
+      .handler(({ context }) => myProfileLinks(context.principal)),
+    setLinks: signedIn
+      .route({ method: 'POST', path: '/profile/links/set', summary: "Replace the account's own profile links: up to 5, each a name and an https address, in order (Premium Student or Professional Sifu); audited" })
+      .input(setProfileLinksInput)
+      .handler(({ context, input }) => setProfileLinks(context.principal, input, context.meta)),
+    removeLink: staffWithSecondFactor
+      .route({ method: 'POST', path: '/profile/links/remove', summary: 'Remove one profile link with a reason its owner is sent (staff with a verified second factor); audited' })
+      .input(removeProfileLinkInput)
+      .handler(({ context, input }) => removeProfileLink(context.principal, input, context.meta)),
   },
   // M07: people, schools and lineages by any spelling; public records only, the same for everyone.
   search: {
@@ -546,6 +559,12 @@ export const router = {
       .input(lineageCardInput)
       .output(lineageCardSchema)
       .handler(({ context, input }) => lineageCard(context.principal, input, context.meta)),
+    // ADR 0047: the links of a featured profile; none unless the person's plan includes them.
+    links: base
+      .route({ method: 'GET', path: '/people/{slug}/links', summary: "A member's profile links (none unless their plan includes the featured profile; 404 unless public)" })
+      .input(profileLinksInput)
+      .output(profileLinksSchema)
+      .handler(({ context, input }) => profileLinks(context.principal, input)),
   },
   // M08: plans, test plans, notifications and the dashboard (plan §5.6, §6.5).
   plans: {

@@ -35,7 +35,7 @@ function fitMessage(writing: Writing): string {
  * the script it says, no name twice, a biography within its length and a year from 1900 to this
  * year. Issues carry the service's field names (`names.0.value`, `names`, `bio`, ...).
  */
-export function profileFormSchema(latestStartYear: number) {
+export function profileFormSchema(latestStartYear: number, bioMaxLength: number = PROFILE_BIO_MAX_LENGTH) {
   return z
     .object({
       names: z.array(z.object({ value: z.string(), writing: z.string(), kind: z.enum(['name', 'alias']), spare: z.optional(z.boolean()) })),
@@ -71,7 +71,7 @@ export function profileFormSchema(latestStartYear: number) {
           // The same reason as the note under the radio (and the service's error).
           issue(nameField(v.primary, 'isPrimary'), primaryRefusal(primary.writing, primary.kind) ?? 'Your display name must be written in Latin letters.');
         }
-        if (v.bio.trim().length > PROFILE_BIO_MAX_LENGTH) issue('bio', `Use at most ${PROFILE_BIO_MAX_LENGTH} characters.`);
+        if (v.bio.trim().length > bioMaxLength) issue('bio', `Use at most ${bioMaxLength} characters.`);
         if (v.trainingStartYear) {
           const year = Number(v.trainingStartYear);
           if (!/^\d{4}$/.test(v.trainingStartYear)) issue('trainingStartYear', 'Enter the year as four digits, for example 2009.');
@@ -83,8 +83,8 @@ export function profileFormSchema(latestStartYear: number) {
 }
 
 /** The field errors of `values` under the schema, by field name; {} when there are none. */
-export function profileFormErrors(values: ProfileFormValues, latestStartYear: number): Record<string, string> {
-  const parsed = profileFormSchema(latestStartYear).safeParse(values);
+export function profileFormErrors(values: ProfileFormValues, latestStartYear: number, bioMaxLength: number = PROFILE_BIO_MAX_LENGTH): Record<string, string> {
+  const parsed = profileFormSchema(latestStartYear, bioMaxLength).safeParse(values);
   if (parsed.success) return {};
   const fields: Record<string, string> = {};
   for (const issue of parsed.error.issues) fields[String(issue.path[0] ?? 'names')] ??= issue.message;

@@ -77,6 +77,7 @@ import {
   passportSkill,
   person,
   personBio,
+  personLink,
   personName,
   personPhoto,
   relationshipEvent,
@@ -724,6 +725,8 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
     invitationIds.push(...withdrawn.invitations);
     counts.namesRemoved = rowCount(await tx.delete(personName).where(and(eq(personName.personId, own.id), eq(personName.isPrimary, false))));
     counts.biosRemoved = rowCount(await tx.delete(personBio).where(eq(personBio.personId, own.id)));
+    // ADR 0047: the links of the featured profile are the account's own words, so they go with the biography.
+    await tx.delete(personLink).where(eq(personLink.personId, own.id));
     // M14/M16: every photo of the gallery, the profile photo among them: marked removed, files deleted
     // after the commit; no row keeps the hash of the file the account uploaded.
     const photos = await tx

@@ -63,10 +63,11 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
-import { PASSPORT_REMOVE_FORM } from './form-ids';
+import { PASSPORT_REMOVE_FORM, PROFILE_LINK_REMOVE_FORM } from './form-ids';
 import { trainedWithHref } from './trained-with';
 import { claimProfileHref } from './claim-href';
 import { PassportRemoveForm } from './passport-remove-form';
+import { ProfileLinks, type PublicProfileLink } from './profile-links';
 
 export const instant = false;
 
@@ -350,6 +351,20 @@ async function readHasCard(profile: PersonProfileDto): Promise<boolean> {
   }
 }
 
+/**
+ * ADR 0047: the links of a featured profile (people.links: a public person whose plan includes
+ * them). Any failure only leaves them out.
+ */
+async function readLinks(profile: PersonProfileDto): Promise<PublicProfileLink[]> {
+  if (profile.limited || profile.visibility !== 'public') return [];
+  try {
+    return (await (await lineageClient()).people.links({ slug: profile.slug })).links;
+  } catch (error) {
+    if (failure(error) !== 'NOT_FOUND') console.error(`[person-page] the links could not be loaded: ${failure(error)}`);
+    return [];
+  }
+}
+
 /** The entries staff can remove: those the profile shows. */
 function removableEntries(passport: PassportDto): { value: string; label: string }[] {
   const all = [...(passport.currentRank ? [passport.currentRank] : []), ...passport.timeline.flatMap((y) => y.items)];
@@ -438,7 +453,14 @@ export default async function PersonPage({ params, searchParams }: Props) {
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const [relations, gallery, events, passport, hasCard] = await Promise.all([readRelations(profile), readGallery(profile), readEvents(profile), readPassport(profile), readHasCard(profile)]);
+  const [relations, gallery, events, passport, hasCard, links] = await Promise.all([
+    readRelations(profile),
+    readGallery(profile),
+    readEvents(profile),
+    readPassport(profile),
+    readHasCard(profile),
+    readLinks(profile),
+  ]);
   const here = `/people/${profile.slug}`;
   const query = await searchParams;
   const principal = await getRequestPrincipal();
@@ -447,6 +469,8 @@ export default async function PersonPage({ params, searchParams }: Props) {
   const claimHref = claimProfileHref(profile);
   const removable = passportStaff ? removableEntries(passport) : [];
   const removeOutcome = removable.length > 0 ? await readFormResult(PASSPORT_REMOVE_FORM, query.outcome) : null;
+  const linksStaff = hasStaff2FA(principal);
+  const linkOutcome = linksStaff && links.length > 0 ? await readFormResult(PROFILE_LINK_REMOVE_FORM, query.outcome) : null;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
   // cross-lineage curve.
   const shownEdges = relations.ok
@@ -529,6 +553,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
         )}
       </LineageBoundary>
       {profile.bio ? <About bio={profile.bio} /> : null}
+      <ProfileLinks slug={profile.slug} links={links} staff={linksStaff} removed={linksStaff && query['link-removed'] === '1'} initial={linkOutcome} />
       {passport ? (
         <PassportView
           passport={passport}

@@ -41,6 +41,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/admin/grants/actions.ts#closeRequestAction': { rpc: ['grants.closeRequest'] },
   // M07: the profile editor, consents and account deletion.
   'src/app/dashboard/profile/actions.ts#saveProfileAction': { rpc: ['profile.update'] },
+  'src/app/dashboard/profile/actions.ts#saveProfileLinksAction': { rpc: ['profile.setLinks'] },
   'src/app/account/privacy/actions.ts#withdrawConsentAction': { rpc: ['consent.withdraw'] },
   'src/app/account/privacy/actions.ts#requestDeletionAction': { rpc: ['account.requestDeletion'] },
   // M09: teacher requests and independent approvals.
@@ -146,6 +147,7 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/students/actions.ts#withdrawEntryAction': { rpc: ['passport.withdrawEntry'] },
   'src/app/dashboard/students/actions.ts#markAttendanceAction': { rpc: ['passport.markAttendance'] },
   'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction': { rpc: ['passport.remove'] },
+  'src/app/people/[slug]/link-actions.ts#removeProfileLinkAction': { rpc: ['profile.removeLink'] },
   // M25: succession, lineage dispute reports, appeals and archival record proposals.
   'src/app/dashboard/succession/actions.ts#nominateSuccessorAction': { rpc: ['succession.nominate'] },
   'src/app/dashboard/succession/actions.ts#answerNominationAction': { rpc: ['succession.answer'] },

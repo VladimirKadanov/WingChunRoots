@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-18.3';
+export const PLAN_MATRIX_VERSION = '2026-11-19.1';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -130,6 +130,7 @@ export const FEATURE_KEYS = [
   'school_map',
   'school_members',
   'lineage_card',
+  'featured_profile',
   'school_business',
   'passport',
   'successor',
@@ -387,6 +388,28 @@ export const FEATURES: readonly FeatureDefinition[] = [
       premium_student: text('Card, share image, print and PDF', 'Card, share image, print and PDF'),
       free_sifu: { source: 'Lineage view only', label: 'Lineage view only', included: false },
       pro_sifu: text('Card, share image, print and PDF', 'Card, share image, print and PDF'),
+      federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
+    },
+  },
+  {
+    key: 'featured_profile',
+    source: 'Featured profile',
+    label: 'Your featured profile',
+    // Owner decision 2026-11-18 (docs/adr/0047-featured-profile.md): a biography of up to 2,000
+    // characters instead of 1,000, up to 5 links, the training timeline (when the training with
+    // each public teacher began, and where) in the passport, and the current rank and school in
+    // search results. Search order never depends on the plan. Paying never shows anyone: every
+    // part needs a public profile (src/server/services/featured-profile.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'A featured profile with {plan}',
+    note: 'A longer biography, links, a training timeline and your rank and school in search results. Search order is the same on every plan.',
+    values: {
+      free_student: { source: 'Biography up to 1,000 characters', label: 'Biography up to 1,000 characters', included: false },
+      premium_student: text('Longer biography, links, timeline and search card', 'Longer biography, links, training timeline and search card'),
+      free_sifu: { source: 'Biography up to 1,000 characters', label: 'Biography up to 1,000 characters', included: false },
+      pro_sifu: text('Longer biography, links, timeline and search card', 'Longer biography, links, training timeline and search card'),
       federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
     },
   },

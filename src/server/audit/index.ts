@@ -24,6 +24,9 @@ export type AuditAction =
   | 'pilot_access.close'
   // M07: profiles, consents and account deletion (plan §6.6).
   | 'person.update'
+  // ADR 0047: the links of a featured profile, set by the owner or removed by staff with a reason.
+  | 'person.links'
+  | 'person.link_remove'
   | 'consent.withdraw'
   | 'account.deletion_request'
   // pnpm account:delete (M07, until the review tool of M10a).
