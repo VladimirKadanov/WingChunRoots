@@ -25,8 +25,8 @@ test('@nav the menu leads to the organizations, which become the current item; n
   const item = nav.getByRole('link', { name: phone ? 'Orgs' : 'Organizations', exact: true }).filter({ visible: true });
   await expect(item).toHaveAttribute('href', '/organizations');
   await expect(nav.getByRole('link', { name: 'Me', exact: true }).filter({ visible: true })).toHaveCount(0);
-  // Five items, in this order, on either form of the menu.
-  await expect(nav.getByRole('link').filter({ visible: true }).filter({ has: page.locator('svg') })).toHaveText(
+  // Five items, in this order, on either form of the menu (the list's links: not the brand link).
+  await expect(nav.locator('li > a').filter({ visible: true })).toHaveText(
     phone ? ['Home', 'Lineage', 'Schools', 'Orgs', 'Events'] : ['Home', 'Lineage', 'Schools', 'Organizations', 'Events'],
   );
 

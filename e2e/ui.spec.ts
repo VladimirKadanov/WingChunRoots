@@ -911,7 +911,8 @@ test('@M00b the Schools tab is current on the school finder once the page has hy
   await expect(page.getByRole('heading', { level: 1, name: 'Find a school' })).toBeVisible();
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Schools' })).toHaveAttribute('aria-current', 'page');
-  for (const other of ['Home', 'Lineage', 'Orgs', 'Events']) {
+  // The organizations item reads Orgs on the phone tabs and Organizations on the rail (ADR 0051).
+  for (const other of ['Home', 'Lineage', '(?:Orgs|Organizations)', 'Events']) {
     await expect(links.filter({ hasText: new RegExp(`^\s*${other}\s*$`) })).not.toHaveAttribute('aria-current', 'page');
   }
 });
