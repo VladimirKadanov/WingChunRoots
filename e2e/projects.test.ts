@@ -119,6 +119,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/m26-archive-editor.spec.ts',
         '**/claim-request.spec.ts',
         '**/premium-passport-extras.spec.ts',
+        '**/premium-featured-profile.spec.ts',
       ]);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);
