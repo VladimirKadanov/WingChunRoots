@@ -35,6 +35,13 @@ export function KindMark({ kind, className }: { kind: PassportEntryDto['kind']; 
         <path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" />
       </>
     ),
+    // ADR 0047: a training period of a featured profile (a path that starts at a point).
+    training: (
+      <>
+        <circle cx="3.5" cy="12.5" r="1.5" />
+        <path d="M5 11.5c2-1 2.5-4 4.5-5.5S13 4 13.5 3" />
+      </>
+    ),
   };
   return (
     <span className={cx('inline-flex items-center gap-1.5 text-label font-semibold uppercase text-fg-muted', className)} data-kind={kind}>
@@ -75,7 +82,7 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
   if (entry.teacher && entry.kind !== 'certificate') {
     parts.push(
       <span key="teacher">
-        {entry.kind === 'attendance' ? 'Marked by ' : 'Recorded by '}
+        {entry.kind === 'training' ? 'Teacher: ' : entry.kind === 'attendance' ? 'Marked by ' : 'Recorded by '}
         <Link href={`/people/${entry.teacher.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
           <NameText name={entry.teacher.name} />
         </Link>
@@ -88,6 +95,16 @@ export function EntryDetails({ entry }: { entry: PassportEntryDto }) {
         {entry.kind === 'attendance' ? '' : 'Organization: '}
         <Link href={`/organizations/${entry.organization.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
           {entry.organization.name}
+        </Link>
+      </span>,
+    );
+  }
+  if (entry.school) {
+    parts.push(
+      <span key="school">
+        School:{' '}
+        <Link href={`/schools/${entry.school.slug}`} prefetch={false} className="link inline-flex min-h-11 items-center">
+          {entry.school.name}
         </Link>
       </span>,
     );

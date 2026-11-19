@@ -62,7 +62,6 @@ import {
   type CertificateImageDto,
   type PassportDto,
   type PassportEntryDto,
-  type PassportKind,
   type PassportPersonDto,
   type PassportRankPhotoDto,
   type PassportTeacherDto,
@@ -79,6 +78,7 @@ import { readObjectBytes } from '../storage/read';
 import type { RequestMeta } from './context';
 import type { UpgradeOffer } from './dashboard';
 import { ServiceError } from './errors';
+import { featuredIncluded } from './featured-profile';
 import { notify } from './notify';
 import { PHOTO_HASH_LENGTH, photoUrl } from './photo-refs';
 import {
@@ -96,6 +96,9 @@ import {
   sha256,
 } from './photos';
 import { openPilotRequest, planSummary } from './plans';
+
+/** A stored entry's kind (the timeline's `training` is none: ADR 0047). */
+type PassportKind = (typeof PASSPORT_ENTRY_KINDS)[number];
 
 // --- Words -------------------------------------------------------------------------------------------
 
@@ -430,6 +433,7 @@ function entryOf(r: EntrySource): PassportEntryDto {
     event: r.event_slug ? { slug: r.event_slug, kindLabel: EVENT_KIND_LABELS[(r.event_kind ?? 'other') as EventKind] ?? 'Event' } : null,
     image: r.kind === 'certificate' ? certificateImage(r.id, r.certificate_sha256, r.certificate_width, r.certificate_height) : null,
     photos: [],
+    school: null,
     createdAt: iso(r.created_at),
   };
 }
@@ -527,6 +531,58 @@ function experienceOf(teachers: readonly PassportTeacherDto[], startYear: number
   return { text: level === 'full' ? found.text : `since ${found.startYear}`, startYear: found.startYear };
 }
 
+// --- The training periods of a featured profile (ADR 0047) ----------------------------------------
+
+interface TrainingRow extends Record<string, unknown> {
+  id: string;
+  starts_on: string | Date | null;
+  precision: string;
+  created_at: string | Date;
+  teacher_slug: string;
+  teacher_name: string;
+  teacher_lang: string | null;
+  school_slug: string | null;
+  school_name: string | null;
+}
+
+/**
+ * The start of each training period of the person's public relationships, as entries of the
+ * timeline: "Began training with <teacher>", at the school when the period names a public one. Only
+ * periods with a recorded start; a school that is not public is left out, the period stays.
+ */
+async function trainingEntries(db: Executor, personId: string): Promise<PassportEntryDto[]> {
+  const result = await db.execute<TrainingRow>(sql`
+    SELECT tp.id, tp.starts_on, tp.precision, tp.created_at, t.slug AS teacher_slug, t.display_name AS teacher_name,
+           (SELECT n.lang FROM person_name n WHERE n.person_id = t.id AND n.is_primary LIMIT 1) AS teacher_lang,
+           s.slug AS school_slug, s.name AS school_name
+      FROM v_public_edge e
+      JOIN v_public_person t ON t.id = e.teacher_person_id
+      JOIN training_period tp ON tp.relationship_id = e.id
+      LEFT JOIN v_public_school s ON s.id = tp.school_id
+     WHERE e.student_person_id = ${personId}::uuid AND tp.starts_on IS NOT NULL AND tp.precision <> 'unknown'
+     ORDER BY tp.starts_on, tp.id`);
+  return result.rows.map((r) => {
+    const date = storedPrefix(dayOf(r.starts_on), r.precision);
+    return {
+      kind: 'training' as const,
+      id: r.id,
+      date,
+      dateText: entryDate(date),
+      title: `Began training with ${r.teacher_name}`,
+      progress: null,
+      progressLabel: null,
+      organization: null,
+      examiner: null,
+      teacher: personRef(r.teacher_slug, r.teacher_name, r.teacher_lang),
+      event: null,
+      school: r.school_slug && r.school_name ? { slug: r.school_slug, name: r.school_name } : null,
+      image: null,
+      photos: [],
+      createdAt: iso(r.created_at),
+    };
+  });
+}
+
 // --- passport.get ----------------------------------------------------------------------------------
 
 const PUBLIC_ENTRY_COLUMNS = sql.raw(`kind, id, on_date, precision, title, progress, organization_slug, organization_name, examiner_slug, examiner_name, examiner_lang,
@@ -546,8 +602,8 @@ export async function passportGet(_principal: Principal | null, raw: z.input<typ
   const found = await db.execute<{ id: string; slug: string }>(sql`SELECT id, slug FROM v_public_person WHERE slug = ${wanted}`);
   const row = found.rows[0];
   if (!row) throw notFound(NO_PASSPORT);
-  const { level } = await planOf(db, row.id);
-  const [entries, teachers, startYear] = await Promise.all([
+  const { plan, level } = await planOf(db, row.id);
+  const [entries, teachers, startYear, training] = await Promise.all([
     db
       .execute<EntrySource>(sql`SELECT ${PUBLIC_ENTRY_COLUMNS} FROM v_public_passport WHERE person_id = ${row.id}::uuid`)
       // ADR 0046: grading photos are part of the full passport; the basic one shows none.
@@ -555,6 +611,8 @@ export async function passportGet(_principal: Principal | null, raw: z.input<typ
       .then((list) => (level === 'full' ? withRankPhotos(db, list) : list)),
     publicTeachers(db, row.id),
     startYearOf(db, row.id),
+    // ADR 0047: the training periods join the timeline of a featured profile.
+    level === 'full' && featuredIncluded(plan) ? trainingEntries(db, row.id) : Promise.resolve([]),
   ]);
   const currentRank = currentOf(entries.filter((e) => e.kind === 'rank'));
   return toPublicPassport({
@@ -565,7 +623,7 @@ export async function passportGet(_principal: Principal | null, raw: z.input<typ
     teachers,
     // DEFAULT M19 (question 3): the basic passport is the current rank, the teachers and the start
     // year; the examinations, skills, certificates and events wait, kept, for a plan that shows them.
-    timeline: level === 'full' ? timelineByYear(entries) : [],
+    timeline: level === 'full' ? timelineByYear([...entries, ...training]) : [],
   });
 }
 

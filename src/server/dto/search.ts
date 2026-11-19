@@ -35,6 +35,12 @@ export const personHitSchema = z.object({
   verified: z.boolean(),
   /** M14: the public profile photo (the 96 px thumbnail and the 512 px image), or null. */
   photo: photoSchema.nullable().optional(),
+  /**
+   * ADR 0047: the richer card of a featured profile (Premium Student, Professional Sifu): the latest
+   * public rank and a public school; null for everyone else. The order of results never depends on it.
+   */
+  rank: z.string().nullable().optional(),
+  school: z.object({ slug: z.string(), name: z.string() }).nullable().optional(),
 });
 export type PersonHitDto = z.infer<typeof personHitSchema>;
 

@@ -1006,6 +1006,35 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "rank": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "school": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "slug",
+                                  "name"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -18157,7 +18186,8 @@
                                 "exam",
                                 "skill",
                                 "certificate",
-                                "attendance"
+                                "attendance",
+                                "training"
                               ]
                             },
                             "id": {
@@ -18321,6 +18351,29 @@
                                 }
                               ]
                             },
+                            "school": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "slug": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "slug",
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "image": {
                               "anyOf": [
                                 {
@@ -18406,6 +18459,7 @@
                             "examiner",
                             "teacher",
                             "event",
+                            "school",
                             "image",
                             "photos",
                             "createdAt"
@@ -18529,7 +18583,8 @@
                                     "exam",
                                     "skill",
                                     "certificate",
-                                    "attendance"
+                                    "attendance",
+                                    "training"
                                   ]
                                 },
                                 "id": {
@@ -18693,6 +18748,29 @@
                                     }
                                   ]
                                 },
+                                "school": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "slug",
+                                        "name"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "image": {
                                   "anyOf": [
                                     {
@@ -18778,6 +18856,7 @@
                                 "examiner",
                                 "teacher",
                                 "event",
+                                "school",
                                 "image",
                                 "photos",
                                 "createdAt"

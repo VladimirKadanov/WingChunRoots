@@ -220,6 +220,12 @@ function ItemBody({ item }: { item: Item }) {
             ) : null}
             {where ? <span className="[overflow-wrap:anywhere]">{where}</span> : null}
           </span>
+          {/* ADR 0047: the rank and school of a featured profile, in words. */}
+          {hit.rank || hit.school ? (
+            <span className="text-sm text-fg-muted [overflow-wrap:anywhere]" data-testid="search-person-card">
+              {[hit.rank, hit.school ? `at ${hit.school.name}` : null].filter(Boolean).join(' · ')}
+            </span>
+          ) : null}
         </span>
       </span>
     );

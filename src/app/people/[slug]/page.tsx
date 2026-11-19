@@ -365,9 +365,9 @@ async function readLinks(profile: PersonProfileDto): Promise<PublicProfileLink[]
   }
 }
 
-/** The entries staff can remove: those the profile shows. */
+/** The entries staff can remove: those the profile shows (a training period is a relationship's, not an entry: ADR 0047). */
 function removableEntries(passport: PassportDto): { value: string; label: string }[] {
-  const all = [...(passport.currentRank ? [passport.currentRank] : []), ...passport.timeline.flatMap((y) => y.items)];
+  const all = [...(passport.currentRank ? [passport.currentRank] : []), ...passport.timeline.flatMap((y) => y.items)].filter((e) => e.kind !== 'training');
   const seen = new Set<string>();
   return all
     .filter((e) => {

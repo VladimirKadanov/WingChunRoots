@@ -241,3 +241,74 @@ export async function removeProfileLink(principal: Principal | null, raw: z.inpu
   invalidatePublic([personTag(outcome)], 'procedure');
   return { id: parsed.data.id, removed: true };
 }
+
+// --- The search card (ADR 0047) --------------------------------------------------------------------
+
+export interface FeaturedSearchCard {
+  /** The latest public rank of the passport, or null. */
+  rank: string | null;
+  /** A public school: the one the person teaches at, else the one of their latest training period. */
+  school: { slug: string; name: string } | null;
+}
+
+interface CardRow extends Record<string, unknown> {
+  id: string;
+  user_id: string | null;
+  rank: string | null;
+  school_slug: string | null;
+  school_name: string | null;
+}
+
+/**
+ * The richer search card of the people among `personIds` whose plan includes the featured profile:
+ * their current rank and school, from public records only (v_public_person, v_public_passport,
+ * v_public_school, v_public_edge). The search order is not touched; anyone else gets nothing here.
+ */
+export async function featuredSearchCards(db: Executor, personIds: readonly string[]): Promise<Map<string, FeaturedSearchCard>> {
+  const out = new Map<string, FeaturedSearchCard>();
+  if (personIds.length === 0) return out;
+  const ids = sql.join(
+    [...new Set(personIds)].map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const people = await db.execute<{ id: string; user_id: string | null }>(sql`
+    SELECT p.id, pe.claimed_by_user_id AS user_id
+      FROM v_public_person p JOIN person pe ON pe.id = p.id AND pe.deleted_at IS NULL
+     WHERE p.id IN (${ids}) AND pe.claimed_by_user_id IS NOT NULL`);
+  const owners = people.rows.filter((r): r is { id: string; user_id: string } => r.user_id !== null);
+  const plans = await effectivePlansOf(
+    db,
+    owners.map((r) => r.user_id),
+    new Date(),
+  );
+  const featured = owners.filter((r) => featuredIncluded(plans.get(r.user_id))).map((r) => r.id);
+  if (featured.length === 0) return out;
+  const wanted = sql.join(
+    featured.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const rows = await db.execute<CardRow>(sql`
+    SELECT p.id, NULL AS user_id,
+           (SELECT r.title FROM v_public_passport r
+             WHERE r.person_id = p.id AND r.kind = 'rank'
+             ORDER BY r.on_date DESC NULLS LAST, r.created_at DESC LIMIT 1) AS rank,
+           s.slug AS school_slug, s.name AS school_name
+      FROM v_public_person p
+      LEFT JOIN LATERAL (
+        SELECT x.slug, x.name FROM (
+          SELECT sc.slug, sc.name, 0 AS pick, NULL::date AS starts_on
+            FROM v_public_school sc WHERE p.id = ANY (sc.instructor_person_ids)
+          UNION ALL
+          SELECT sc.slug, sc.name, CASE WHEN tp.ongoing THEN 1 ELSE 2 END, tp.starts_on
+            FROM v_public_edge e
+            JOIN training_period tp ON tp.relationship_id = e.id
+            JOIN v_public_school sc ON sc.id = tp.school_id
+           WHERE e.student_person_id = p.id
+        ) x ORDER BY x.pick, x.starts_on DESC NULLS LAST, x.name LIMIT 1
+      ) s ON true
+     WHERE p.id IN (${wanted})`);
+  for (const r of rows.rows) {
+    out.set(r.id, { rank: r.rank, school: r.school_slug && r.school_name ? { slug: r.school_slug, name: r.school_name } : null });
+  }
+  return out;
+}
