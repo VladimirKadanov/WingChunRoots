@@ -75,7 +75,22 @@ for (const size of SCREEN_SIZES) {
             // Visible, not only attached: streamed content waits in a hidden node before it is swapped in.
             await expect(page.getByTestId('dashboard-nav').getByRole('link').filter({ visible: true }).first()).toBeVisible();
           }
+          // The review queue: its Waiting cells must be on the page and visible (not in a hidden node of
+          // streamed content) before fixVisualDates writes the fixed text, or the screenshot shows the
+          // real, daily changing one (it did in about one capture in four, CI on PR #74).
+          if (route.path === '/admin/review') {
+            await expect(page.locator('[data-visual-waited]').filter({ visible: true }).first()).toBeVisible();
+          }
           await fixVisualDates(page);
+          if (route.path === '/admin/review') {
+            // The fixed text must stay: a later render of the page (a refresh of its server content)
+            // writes the real one back. Fix again until a look 500 ms later still reads it everywhere.
+            await expect(async () => {
+              await fixVisualDates(page);
+              await page.waitForTimeout(500);
+              expect(new Set(await page.locator('[data-visual-waited]').allTextContents())).toEqual(new Set(['9 days']));
+            }).toPass({ timeout: 15_000 });
+          }
           await expect(page).toHaveScreenshot(`${route.name}-${size.name}-${theme}.png`, {
             stylePath: resolve('e2e/visual.css'),
           });
