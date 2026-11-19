@@ -6,3 +6,6 @@ export const PROFILE_LINKS_FORM = 'profile-links';
 
 /** "Save" of the Supporter badge choice (docs/adr/0049-supporter-badge.md). */
 export const PROFILE_SUPPORTER_FORM = 'profile-supporter';
+
+/** "Save videos" of a profile (docs/adr/0050-video-embeds.md). */
+export const PROFILE_VIDEOS_FORM = 'profile-videos';

@@ -104,6 +104,8 @@ export const PERSON_OWNED_TABLES: readonly string[] = [
   'person_link',
   'person_name',
   'person_name_key',
+  // ADR 0050: the videos of a profile (cascade).
+  'person_video',
   'record_revision',
   // Set to NULL when the record goes; the case itself is history.
   'review_case',

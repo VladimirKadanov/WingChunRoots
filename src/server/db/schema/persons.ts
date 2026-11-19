@@ -30,6 +30,9 @@ import {
   PROFILE_LINK_LABEL_MAX,
   PROFILE_LINK_URL_MAX,
   PROFILE_LINKS_MAX,
+  PROFILE_VIDEO_TITLE_MAX,
+  PROFILE_VIDEOS_MAX,
+  VIDEO_PROVIDERS,
 } from './common';
 
 /** `demo-root-a`, `demo-hub-a`: lowercase ASCII words joined by single hyphens. */
@@ -296,6 +299,34 @@ export const personLink = pgTable(
     check('person_link_position_range', sql`${t.position} BETWEEN 0 AND ${sql.raw(String(PROFILE_LINKS_MAX - 1))}`),
     check('person_link_label_length', sql`char_length(${t.label}) BETWEEN 1 AND ${sql.raw(String(PROFILE_LINK_LABEL_MAX))}`),
     check('person_link_url_https', sql`${t.url} ~ '^https://' AND char_length(${t.url}) <= ${sql.raw(String(PROFILE_LINK_URL_MAX))}`),
+  ],
+);
+
+/**
+ * ADR 0050: the videos of a profile (Premium Student 2, Professional Sifu 20): a link to a YouTube
+ * or Vimeo video, stored as the provider and its id only (never a free address), with a title, in
+ * order. Shown only while the person is public and only as many as the plan includes; kept on a
+ * lower plan (DEFAULT D08). Staff remove one with a reason (audited, the owner is told).
+ */
+export const personVideo = pgTable(
+  'person_video',
+  {
+    id: idColumn(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    provider: text('provider', { enum: VIDEO_PROVIDERS }).notNull(),
+    videoId: text('video_id').notNull(),
+    title: text('title').notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('person_video_person_position_key').on(t.personId, t.position),
+    check('person_video_position_range', sql`${t.position} BETWEEN 0 AND ${sql.raw(String(PROFILE_VIDEOS_MAX - 1))}`),
+    check('person_video_provider_check', inList(t.provider.name, VIDEO_PROVIDERS)),
+    check('person_video_id_format', sql`(${t.provider} = 'youtube' AND ${t.videoId} ~ '^[A-Za-z0-9_-]{11}$') OR (${t.provider} = 'vimeo' AND ${t.videoId} ~ '^[0-9]{6,12}$')`),
+    check('person_video_title_length', sql`char_length(${t.title}) BETWEEN 1 AND ${sql.raw(String(PROFILE_VIDEO_TITLE_MAX))}`),
   ],
 );
 

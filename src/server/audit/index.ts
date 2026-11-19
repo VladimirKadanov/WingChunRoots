@@ -28,6 +28,8 @@ export type AuditAction =
   | 'person.links'
   | 'person.link_remove'
   | 'person.supporter_badge'
+  | 'person.videos'
+  | 'person.video_remove'
   | 'consent.withdraw'
   | 'account.deletion_request'
   // pnpm account:delete (M07, until the review tool of M10a).

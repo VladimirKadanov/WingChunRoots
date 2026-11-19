@@ -3,7 +3,7 @@
 // whether the profile is public. Data from profile.get; saved through the profile.update procedure
 // by a thin Server Action (./actions.ts). Records kept by the archive are corrected by archivists
 // (M10a). ADR 0047: the links of a featured profile (profile.links, profile.setLinks) below the
-// editor; ADR 0049: the Supporter badge choice (profile.supporter, profile.setSupporter) below them. Reads the session: rendered per request.
+// editor; ADR 0050: the videos (profile.videos, profile.setVideos); ADR 0049: the Supporter badge choice (profile.supporter, profile.setSupporter) below them. Reads the session: rendered per request.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
@@ -18,10 +18,11 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { PROFILE_LINKS_FORM, PROFILE_SUPPORTER_FORM } from './form-ids';
+import { PROFILE_LINKS_FORM, PROFILE_SUPPORTER_FORM, PROFILE_VIDEOS_FORM } from './form-ids';
 import { LinksForm } from './links-form';
 import { ProfileEditor } from './profile-editor';
 import { SupporterForm } from './supporter-form';
+import { VideosForm } from './videos-form';
 
 export const instant = false;
 
@@ -59,11 +60,13 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
   }
 
   const { profile, options } = view;
-  const [links, linksResult, supporter, supporterResult] = await Promise.all([
+  const [links, linksResult, supporter, supporterResult, videos, videosResult] = await Promise.all([
     pageRead(client.profile.links()),
     readFormResult(PROFILE_LINKS_FORM, query.outcome),
     pageRead(client.profile.supporter()),
     readFormResult(PROFILE_SUPPORTER_FORM, query.outcome),
+    pageRead(client.profile.videos()),
+    readFormResult(PROFILE_VIDEOS_FORM, query.outcome),
   ]);
   const initialValues: ProfileFormValues = {
     names: profile.names.map((n) => ({
@@ -108,6 +111,11 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         {links ? (
           <div className="mt-10 border-t border-border-subtle pt-8">
             <LinksForm links={links.links} allowed={links.allowed} limit={links.limit} initial={linksResult} />
+          </div>
+        ) : null}
+        {videos && (videos.limit > 0 || videos.videos.length > 0) ? (
+          <div className="mt-10 border-t border-border-subtle pt-8">
+            <VideosForm videos={videos.videos} limit={videos.limit} initial={videosResult} />
           </div>
         ) : null}
         {supporter && (supporter.allowed || supporter.show) ? (

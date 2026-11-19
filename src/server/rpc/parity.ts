@@ -148,6 +148,8 @@ export const SERVER_ACTION_TARGETS: Readonly<Record<string, ActionTarget>> = {
   'src/app/dashboard/students/actions.ts#markAttendanceAction': { rpc: ['passport.markAttendance'] },
   'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction': { rpc: ['passport.remove'] },
   'src/app/dashboard/profile/actions.ts#saveSupporterAction': { rpc: ['profile.setSupporter'] },
+  'src/app/dashboard/profile/actions.ts#saveProfileVideosAction': { rpc: ['profile.setVideos'] },
+  'src/app/people/[slug]/video-actions.ts#removeProfileVideoAction': { rpc: ['profile.removeVideo'] },
   'src/app/people/[slug]/link-actions.ts#removeProfileLinkAction': { rpc: ['profile.removeLink'] },
   // ADR 0048: private follows from the kung fu family page.
   'src/app/dashboard/family/actions.ts#followAction': { rpc: ['follows.add'] },

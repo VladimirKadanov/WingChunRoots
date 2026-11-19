@@ -259,6 +259,16 @@ export function toPublicProfileLinks(value: ProfileLinksDto): ProfileLinksDto {
   return profileLinksSchema.parse(value);
 }
 
+/** ADR 0050: the videos of a public person, as many as their plan includes; the provider and id only. */
+export const profileVideosSchema = z.object({
+  videos: z.array(z.object({ id: z.uuid(), title: z.string(), provider: z.enum(['youtube', 'vimeo']), videoId: z.string() })),
+});
+export type ProfileVideosDto = z.infer<typeof profileVideosSchema>;
+
+export function toPublicProfileVideos(value: ProfileVideosDto): ProfileVideosDto {
+  return profileVideosSchema.parse(value);
+}
+
 /** ADR 0049: whether a public person shows the Supporter badge. */
 export const supporterSchema = z.object({ supporter: z.boolean() });
 export type SupporterDto = z.infer<typeof supporterSchema>;

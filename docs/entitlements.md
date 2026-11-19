@@ -15,7 +15,7 @@
 
 ## 1. Матрицата
 
-Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-19.3`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
+Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-19.4`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
 
 | Код | Ниво (спецификация) | Име | За кого | Наличност | Предложена цена (DEFAULT D09) | Показва се като |
 |---|---|---|---|---|---|---|
@@ -296,6 +296,7 @@
 | `2026-11-19.1` | Решение на собственика от 18.11.2026 ([ADR 0047](adr/0047-featured-profile.md)): нов ред `featured_profile` („Your featured profile“, `now`, `enforced: true`) след `lineage_card`: Free Student и Free Sifu „Biography up to 1,000 characters“, Premium Student и Professional Sifu „Longer biography, links, training timeline and search card“ (биография до 2 000 знака, до 5 връзки, периодите на обучение в хронологията, степен и школа в търсенето; подредбата на търсенето не зависи от плана), Federation „Not applicable“ (`neutral`). Подканата го изрежда с функциите отпреди. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 | `2026-11-19.2` | Решение на собственика от 18.11.2026 ([ADR 0048](adr/0048-kung-fu-family.md)): нов ред `kung_fu_family` („Your kung fu family“, `now`, `enforced: true`) след `featured_profile`: Free Student и Free Sifu „Classmates on the lineage graph“, Premium Student и Professional Sifu „Family page, follows and weekly digest“ (страница на семейството със съученици и братовчеди от публичната линия, лично следване до 500 души, седмичен обзор само с бройки), Federation „Not applicable“ (`neutral`). Подканата го изрежда с функциите отпреди. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 | `2026-11-19.3` | Решение на собственика от 18.11.2026 ([ADR 0049](adr/0049-supporter-badge.md)): нов ред `supporter_badge` („Supporter badge“, `now`, `enforced: true`) след `kung_fu_family`: Free Student и Free Sifu „No“ („Not included“), Premium Student и Professional Sifu „Optional badge on your profile“ (изключена, докато членът не я включи; не променя търсенето, линията и прегледите), Federation „Not applicable“ (`neutral`). Ранният достъп от плана не е в матрицата, защото засега няма такава функция. Спецификацията §3.1 (EN и BG) е обновена с бележка |
+| `2026-11-19.4` | Решение на собственика от 18.11.2026 ([ADR 0050](adr/0050-video-embeds.md)): редът `videos` („Videos“) е `now` (без фаза), `enforced: true` и вече не е скрит: Free Student и Free Sifu „No videos“, Premium Student „2 videos“, Professional Sifu „20 videos“, Federation „Unlimited, with limits still to be defined“ (в приложението до 20). Само вградени връзки към YouTube и Vimeo, без качване; плейърът се зарежда едва при **Play**. Подканата го изрежда след снимките. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 
 ## 13. Тестове
 

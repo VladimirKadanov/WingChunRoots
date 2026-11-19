@@ -79,6 +79,7 @@ import {
   personBio,
   personFollow,
   personLink,
+  personVideo,
   personName,
   personPhoto,
   relationshipEvent,
@@ -730,6 +731,8 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
     counts.biosRemoved = rowCount(await tx.delete(personBio).where(eq(personBio.personId, own.id)));
     // ADR 0047: the links of the featured profile are the account's own words, so they go with the biography.
     await tx.delete(personLink).where(eq(personLink.personId, own.id));
+    // ADR 0050: the videos the account chose go with its links.
+    await tx.delete(personVideo).where(eq(personVideo.personId, own.id));
     // ADR 0048: nobody follows an erased profile any more.
     await tx.delete(personFollow).where(eq(personFollow.personId, own.id));
     // M14/M16: every photo of the gallery, the profile photo among them: marked removed, files deleted

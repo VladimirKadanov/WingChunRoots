@@ -63,11 +63,12 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import type { GalleryView } from '@/server/services/gallery';
 import { failure, lineageClient, profileFor } from './data';
-import { PASSPORT_REMOVE_FORM, PROFILE_LINK_REMOVE_FORM } from './form-ids';
+import { PASSPORT_REMOVE_FORM, PROFILE_LINK_REMOVE_FORM, PROFILE_VIDEO_REMOVE_FORM } from './form-ids';
 import { trainedWithHref } from './trained-with';
 import { claimProfileHref } from './claim-href';
 import { PassportRemoveForm } from './passport-remove-form';
 import { ProfileLinks, type PublicProfileLink } from './profile-links';
+import { ProfileVideos, type PublicProfileVideo } from './profile-videos';
 import { SupporterBadge } from '@/components/lineage/supporter-badge';
 
 export const instant = false;
@@ -367,6 +368,20 @@ async function readLinks(profile: PersonProfileDto): Promise<PublicProfileLink[]
 }
 
 /**
+ * ADR 0050: the videos of a profile (people.videos: a public person, as many as their plan
+ * includes). Any failure only leaves them out.
+ */
+async function readVideos(profile: PersonProfileDto): Promise<PublicProfileVideo[]> {
+  if (profile.limited || profile.visibility !== 'public') return [];
+  try {
+    return (await (await lineageClient()).people.videos({ slug: profile.slug })).videos;
+  } catch (error) {
+    if (failure(error) !== 'NOT_FOUND') console.error(`[person-page] the videos could not be loaded: ${failure(error)}`);
+    return [];
+  }
+}
+
+/**
  * ADR 0049: whether the person shows the Supporter badge (people.supporter: their own choice, on a
  * plan that includes it). Any failure only leaves it out.
  */
@@ -468,7 +483,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const [relations, gallery, events, passport, hasCard, links, supporter] = await Promise.all([
+  const [relations, gallery, events, passport, hasCard, links, supporter, videos] = await Promise.all([
     readRelations(profile),
     readGallery(profile),
     readEvents(profile),
@@ -476,6 +491,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
     readHasCard(profile),
     readLinks(profile),
     readSupporter(profile),
+    readVideos(profile),
   ]);
   const here = `/people/${profile.slug}`;
   const query = await searchParams;
@@ -487,6 +503,8 @@ export default async function PersonPage({ params, searchParams }: Props) {
   const removeOutcome = removable.length > 0 ? await readFormResult(PASSPORT_REMOVE_FORM, query.outcome) : null;
   const linksStaff = hasStaff2FA(principal);
   const linkOutcome = linksStaff && links.length > 0 ? await readFormResult(PROFILE_LINK_REMOVE_FORM, query.outcome) : null;
+  const videoOutcome = linksStaff && videos.length > 0 ? await readFormResult(PROFILE_VIDEO_REMOVE_FORM, query.outcome) : null;
+  const playing = typeof query.play === 'string' && videos.some((v) => v.id === query.play) ? query.play : null;
   // The key lists what the rows draw: the teachers' strokes, and the students' without the
   // cross-lineage curve.
   const shownEdges = relations.ok
@@ -575,6 +593,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
       </LineageBoundary>
       {profile.bio ? <About bio={profile.bio} /> : null}
       <ProfileLinks slug={profile.slug} links={links} staff={linksStaff} removed={linksStaff && query['link-removed'] === '1'} initial={linkOutcome} />
+      <ProfileVideos slug={profile.slug} videos={videos} playing={playing} staff={linksStaff} removed={linksStaff && query['video-removed'] === '1'} initial={videoOutcome} />
       {passport ? (
         <PassportView
           passport={passport}
