@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-19.1';
+export const PLAN_MATRIX_VERSION = '2026-11-19.2';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -131,6 +131,7 @@ export const FEATURE_KEYS = [
   'school_members',
   'lineage_card',
   'featured_profile',
+  'kung_fu_family',
   'school_business',
   'passport',
   'successor',
@@ -410,6 +411,28 @@ export const FEATURES: readonly FeatureDefinition[] = [
       premium_student: text('Longer biography, links, timeline and search card', 'Longer biography, links, training timeline and search card'),
       free_sifu: { source: 'Biography up to 1,000 characters', label: 'Biography up to 1,000 characters', included: false },
       pro_sifu: text('Longer biography, links, timeline and search card', 'Longer biography, links, training timeline and search card'),
+      federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
+    },
+  },
+  {
+    key: 'kung_fu_family',
+    source: 'Kung fu family',
+    label: 'Your kung fu family',
+    // Owner decision 2026-11-18 (docs/adr/0048-kung-fu-family.md): the family page (classmates,
+    // seniors and juniors, cousins), private follows of public people, and a weekly digest of who
+    // joined under your teachers and the new ranks of the people you follow. Free accounts keep
+    // seeing everyone on the public lineage graph. Only public people and public changes
+    // (src/server/services/family.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'Your kung fu family with {plan}',
+    note: 'Your classmates and cousins on one page, private follows, and a weekly digest of who joined under your teachers. Follows are never shown to anyone.',
+    values: {
+      free_student: { source: 'Classmates on the lineage graph', label: 'Classmates on the lineage graph', included: false },
+      premium_student: text('Family page, follows and weekly digest', 'Family page, follows and weekly digest'),
+      free_sifu: { source: 'Classmates on the lineage graph', label: 'Classmates on the lineage graph', included: false },
+      pro_sifu: text('Family page, follows and weekly digest', 'Family page, follows and weekly digest'),
       federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
     },
   },

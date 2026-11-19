@@ -341,6 +341,7 @@ import {
 } from '../services/lineage';
 import { lineageCard, lineageCardInput } from '../services/lineage-card';
 import { myProfileLinks, profileLinks, profileLinksInput, removeProfileLink, removeProfileLinkInput, setProfileLinks, setProfileLinksInput } from '../services/featured-profile';
+import { familyGet, familyGetInput, followAdd, followInput, followRemove, followsList } from '../services/family';
 
 import {
   answerNomination,
@@ -478,6 +479,26 @@ export const router = {
       .route({ method: 'POST', path: '/profile/links/remove', summary: 'Remove one profile link with a reason its owner is sent (staff with a verified second factor); audited' })
       .input(removeProfileLinkInput)
       .handler(({ context, input }) => removeProfileLink(context.principal, input, context.meta)),
+  },
+  // ADR 0048: the kung fu family and its private follows (Premium Student, Professional Sifu).
+  family: {
+    get: signedIn
+      .route({ method: 'GET', path: '/family', summary: "The account's own kung fu family: its teachers, classmates and cousins on the public lineage, optionally in one country" })
+      .input(familyGetInput)
+      .handler(({ context, input }) => familyGet(context.principal, input)),
+  },
+  follows: {
+    list: signedIn
+      .route({ method: 'GET', path: '/follows', summary: 'The public people the account follows, with their current rank; follows are private' })
+      .handler(({ context }) => followsList(context.principal)),
+    add: signedIn
+      .route({ method: 'POST', path: '/follows/add', summary: 'Follow a public person, privately (Premium Student or Professional Sifu; at most 500)' })
+      .input(followInput)
+      .handler(({ context, input }) => followAdd(context.principal, input)),
+    remove: signedIn
+      .route({ method: 'POST', path: '/follows/remove', summary: 'Stop following a person, on any plan' })
+      .input(followInput)
+      .handler(({ context, input }) => followRemove(context.principal, input)),
   },
   // M07: people, schools and lineages by any spelling; public records only, the same for everyone.
   search: {

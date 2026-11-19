@@ -44,6 +44,11 @@ export const QUEUE = {
    * grace of BILLING_GRACE_DAYS has run out (src/server/jobs/billing.ts).
    */
   billingGrace: 'billing.grace',
+  /**
+   * ADR 0048: once a week, the digest of the kung fu family: counts of who joined under the
+   * account's teachers and of new ranks of the people it follows (src/server/jobs/family-digest.ts).
+   */
+  familyDigest: 'family.digest',
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -94,6 +99,7 @@ export interface JobData {
   [QUEUE.schoolsActivity]: Record<string, never>;
   [QUEUE.billingEvent]: BillingEventJob;
   [QUEUE.billingGrace]: Record<string, never>;
+  [QUEUE.familyDigest]: Record<string, never>;
 }
 
 /** Options of a queue; policy and partition stay at their defaults (standard, shared job table). */
@@ -140,6 +146,8 @@ export const QUEUE_OPTIONS: ReadonlyArray<readonly [QueueName, QueueOptions]> = 
   [QUEUE.billingEvent, { retryLimit: 6, retryDelay: 5, retryBackoff: true, retryDelayMax: 600, expireInSeconds: 120, deleteAfterSeconds: 7 * DAY }],
   // M22: a daily pass over the past-due subscriptions; idempotent by their status.
   [QUEUE.billingGrace, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
+  // ADR 0048: a weekly pass over the accounts; idempotent by the notice key of the week.
+  [QUEUE.familyDigest, { retryLimit: 3, retryDelay: 60, retryBackoff: true, retryDelayMax: 900, expireInSeconds: 600, deleteAfterSeconds: 7 * DAY }],
 ];
 
 /** Recurring jobs: cron in UTC. */
@@ -152,6 +160,8 @@ export const SCHEDULES: ReadonlyArray<{ queue: QueueName; cron: string }> = [
   { queue: QUEUE.schoolsActivity, cron: '23 5 * * *' },
   // M22: hourly at :37, the end of the grace of unpaid renewals (an hour late at most).
   { queue: QUEUE.billingGrace, cron: '37 * * * *' },
+  // ADR 0048: Mondays at 07:13 UTC, the weekly digest of the kung fu family.
+  { queue: QUEUE.familyDigest, cron: '13 7 * * 1' },
 ];
 
 /**

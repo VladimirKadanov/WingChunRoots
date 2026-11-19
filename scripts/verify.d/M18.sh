@@ -106,8 +106,9 @@ check "the existing senders go through notify()" bash -c "
 # 4. The catalog (In scope 1, 3, 9; DEFAULT M18 questions 1, 2, 4) ------------------------------------
 check "the catalog has an entry for every notification template (satisfies Record)" grep -q 'satisfies Record<NotificationTemplateName, CatalogEntry>' "$CATALOG"
 if [ -f scripts/verify.d/M22.sh ]; then
-  # M22 (docs/adr/0025-billing.md) adds exactly one category, billing, after the eight of M18.
-  check "the eight categories, and billing from M22" grep -qF "export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing'] as const;" src/server/db/schema/common.ts
+  # M22 (docs/adr/0025-billing.md) adds exactly one category, billing, after the eight of M18;
+  # ADR 0048 (kung fu family) adds family after billing.
+  check "the eight categories, billing from M22 and family from ADR 0048" grep -qF "export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing', 'family'] as const;" src/server/db/schema/common.ts
 else
   check "the eight categories" grep -qF "export const NOTIFICATION_CATEGORIES = ['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events'] as const;" src/server/db/schema/common.ts
 fi

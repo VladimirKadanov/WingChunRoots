@@ -30,8 +30,8 @@ describe('notification catalog', () => {
     expect(isNotificationKind('no.such-kind')).toBe(false);
   });
 
-  it('puts every kind in one of the nine categories, and every category has a kind', () => {
-    expect(NOTIFICATION_CATEGORIES).toEqual(['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing']);
+  it('puts every kind in one of the ten categories, and every category has a kind', () => {
+    expect(NOTIFICATION_CATEGORIES).toEqual(['security', 'account', 'plan', 'teaching', 'review', 'schools', 'organizations', 'events', 'billing', 'family']);
     for (const kind of KINDS) expect(isNotificationCategory(catalogEntry(kind).category), kind).toBe(true);
     for (const category of NOTIFICATION_CATEGORIES) expect(kindsOf(category).length, category).toBeGreaterThan(0);
   });

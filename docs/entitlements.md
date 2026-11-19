@@ -15,7 +15,7 @@
 
 ## 1. Матрицата
 
-Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-19.1`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
+Матрицата е по спецификация §3.1 (сводната таблица) и има версия: `PLAN_MATRIX_VERSION` (сега `2026-11-19.2`, виж „Версии на матрицата“). API-то я връща (`plans.catalog.version`); `/plans` не я показва, защото на посетителя не казва нищо.
 
 | Код | Ниво (спецификация) | Име | За кого | Наличност | Предложена цена (DEFAULT D09) | Показва се като |
 |---|---|---|---|---|---|---|
@@ -294,6 +294,7 @@
 | `2026-11-18.2` | Решение на собственика от 18.11.2026 ([ADR 0045](adr/0045-lineage-card.md)): нов ред `lineage_card` („Lineage card“, `now`, `enforced: true`) след `school_members`: Free Student и Free Sifu „Lineage view only“, Premium Student и Professional Sifu „Card, share image, print and PDF“, Federation „Not applicable“ (`neutral`). Картата е на `/people/<адрес>/card` само за публичен човек, чийто акаунт има плана; подканата го изрежда с функциите отпреди. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 | `2026-11-18.3` | Решение на собственика от 18.11.2026 ([ADR 0046](adr/0046-passport-extras.md)): клетките на `passport` са както в спецификацията; надписите на пълния паспорт казват и новото: Premium Student „Full timeline, event confirmations, rank photos and PDF“, Professional Sifu „Full timeline with confirmations, photos and PDF, and you record for your students“ (заявка за присъствие, потвърдена от организатора; до 3 снимки от галерията на степен; печат и PDF) |
 | `2026-11-19.1` | Решение на собственика от 18.11.2026 ([ADR 0047](adr/0047-featured-profile.md)): нов ред `featured_profile` („Your featured profile“, `now`, `enforced: true`) след `lineage_card`: Free Student и Free Sifu „Biography up to 1,000 characters“, Premium Student и Professional Sifu „Longer biography, links, training timeline and search card“ (биография до 2 000 знака, до 5 връзки, периодите на обучение в хронологията, степен и школа в търсенето; подредбата на търсенето не зависи от плана), Federation „Not applicable“ (`neutral`). Подканата го изрежда с функциите отпреди. Спецификацията §3.1 (EN и BG) е обновена с бележка |
+| `2026-11-19.2` | Решение на собственика от 18.11.2026 ([ADR 0048](adr/0048-kung-fu-family.md)): нов ред `kung_fu_family` („Your kung fu family“, `now`, `enforced: true`) след `featured_profile`: Free Student и Free Sifu „Classmates on the lineage graph“, Premium Student и Professional Sifu „Family page, follows and weekly digest“ (страница на семейството със съученици и братовчеди от публичната линия, лично следване до 500 души, седмичен обзор само с бройки), Federation „Not applicable“ (`neutral`). Подканата го изрежда с функциите отпреди. Спецификацията §3.1 (EN и BG) е обновена с бележка |
 
 ## 13. Тестове
 

@@ -1400,6 +1400,51 @@ const passportAttendanceDecided: NotificationTemplate<{ title: string; approved:
   sample: { title: 'Demo seminar: Chum Kiu in Sofia', approved: true },
 };
 
+// --- The kung fu family (ADR 0048) -----------------------------------------------------------------
+
+interface FamilyDigest {
+  /** The ISO week, "2026-W47". */
+  week: string;
+  /** Public students who joined under the account's teachers in the last 7 days. */
+  joined: number;
+  /** People the account follows who have a new public rank. */
+  ranks: number;
+}
+
+function countOf(template: string, key: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100_000) throw new NotificationDataError(template, `${key} must be a count`);
+  return value;
+}
+
+const classmates = (n: number) => (n === 1 ? 'A new classmate' : `${n} new classmates`);
+const followed = (n: number) => (n === 1 ? '1 person you follow has' : `${n} people you follow have`);
+
+/**
+ * "family.digest" (ADR 0048): the weekly digest of the kung fu family. Counts only, never a name:
+ * the family page names them when it is opened, so someone who has since become private is never
+ * named in a stored notice or an e-mail.
+ */
+const familyDigest: NotificationTemplate<FamilyDigest> = {
+  name: 'family.digest',
+  parse(payload) {
+    const data = payloadObject('family.digest', payload);
+    if (typeof data.week !== 'string' || !/^\d{4}-W\d{2}$/.test(data.week)) throw new NotificationDataError('family.digest', 'week must be an ISO week');
+    return { week: data.week, joined: countOf('family.digest', 'joined', data.joined), ranks: countOf('family.digest', 'ranks', data.ranks) };
+  },
+  render: ({ joined, ranks }) => {
+    const parts: string[] = [];
+    if (joined > 0) parts.push(`${classmates(joined)} joined under your teachers this week.`);
+    if (ranks > 0) parts.push(`${followed(ranks)} a new rank.`);
+    if (parts.length === 0) parts.push('Nothing new in your kung fu family this week.');
+    return {
+      title: 'This week in your kung fu family',
+      body: [{ text: `${parts.join(' ')} See who on your family page.` }],
+      action: { label: 'Open your kung fu family', href: '/dashboard/family' },
+    };
+  },
+  sample: { week: '2026-W47', joined: 2, ranks: 1 },
+};
+
 // --- School activity checks (M20; docs/adr/0023-school-activity.md) -------------------------------
 
 /** What a school activity notice carries: the school by id and name, and its dates (no point, no contact). */
@@ -2071,6 +2116,8 @@ export const NOTIFICATION_TEMPLATES = {
   'appeal.decided': appealDecided,
   'proposal.decided': proposalDecided,
   'case.question': caseQuestion,
+  // ADR 0048.
+  'family.digest': familyDigest,
 } as const;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

@@ -77,6 +77,7 @@ import {
   passportSkill,
   person,
   personBio,
+  personFollow,
   personLink,
   personName,
   personPhoto,
@@ -156,6 +157,8 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'consent_record', column: 'user_id', action: 'delete', why: 'consents (the M07 default: deleted with the account)' },
   { table: 'person_claim', column: 'user_id', action: 'delete', why: 'claims of a record by the account' },
   { table: 'person_claim', column: 'decided_by_user_id', action: 'clear', why: 'a claim the account decided stays decided' },
+  // ADR 0048.
+  { table: 'person_follow', column: 'follower_user_id', action: 'delete', why: 'the private follows of the account' },
   { table: 'pilot_access_request', column: 'user_id', action: 'delete', why: 'plan requests' },
   { table: 'pilot_access_request', column: 'closed_by_user_id', action: 'clear', why: 'a request the account closed stays closed' },
   { table: 'trial_inquiry', column: 'sender_user_id', action: 'delete', why: 'trial-lesson inquiries the account sent (its name and contact detail)' },
@@ -727,6 +730,8 @@ async function eraseInTransaction(tx: Transaction, request: ErasureRequest, file
     counts.biosRemoved = rowCount(await tx.delete(personBio).where(eq(personBio.personId, own.id)));
     // ADR 0047: the links of the featured profile are the account's own words, so they go with the biography.
     await tx.delete(personLink).where(eq(personLink.personId, own.id));
+    // ADR 0048: nobody follows an erased profile any more.
+    await tx.delete(personFollow).where(eq(personFollow.personId, own.id));
     // M14/M16: every photo of the gallery, the profile photo among them: marked removed, files deleted
     // after the commit; no row keeps the hash of the file the account uploaded.
     const photos = await tx
