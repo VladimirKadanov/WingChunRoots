@@ -14,7 +14,7 @@ export function SupporterForm({ show, allowed, publicProfile, initial }: { show:
   const form = PROFILE_SUPPORTER_FORM;
   const state = initial ?? IDLE;
   if (!allowed && !show) return null;
-  const checked = state.status === 'error' ? state.values?.show === 'on' : show;
+  const chosen = state.status === 'error' ? state.values?.show === 'on' : show;
   return (
     <section aria-labelledby={`${form}-heading`} className="grid gap-3" data-testid="profile-supporter">
       <h2 id={`${form}-heading`} className="font-display text-section">
@@ -31,7 +31,7 @@ export function SupporterForm({ show, allowed, publicProfile, initial }: { show:
       </p>
       <form id={form} action={saveSupporterAction.bind(null, IDLE)} className="grid gap-3" data-testid="profile-supporter-form">
         <label className="flex min-h-11 items-center gap-3 text-ui">
-          <input type="checkbox" name="show" defaultChecked={checked} className="size-5 accent-fg" data-testid="profile-supporter-show" />
+          <input type="checkbox" name="show" defaultChecked={chosen} className="size-5 accent-fg" data-testid="profile-supporter-show" />
           Show the Supporter badge on my profile
         </label>
         <div>
