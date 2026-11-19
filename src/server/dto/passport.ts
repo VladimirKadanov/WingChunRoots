@@ -43,6 +43,10 @@ export const certificateImageSchema = z.object({
 });
 export type CertificateImageDto = z.infer<typeof certificateImageSchema>;
 
+/** A grading photo on a rank (ADR 0046): one of the student's own gallery photos, by the app's address. */
+export const passportRankPhotoSchema = z.object({ id: z.string(), small: z.string(), large: z.string(), caption: z.string().nullable() });
+export type PassportRankPhotoDto = z.infer<typeof passportRankPhotoSchema>;
+
 export const passportEntrySchema = z.object({
   kind: passportKindSchema,
   id: z.string(),
@@ -60,6 +64,8 @@ export const passportEntrySchema = z.object({
   teacher: passportPersonSchema.nullable(),
   event: z.object({ slug: z.string(), kindLabel: z.string() }).nullable(),
   image: certificateImageSchema.nullable(),
+  /** A rank's grading photos, up to three, in order (ADR 0046): only on the full passport; empty otherwise. */
+  photos: z.array(passportRankPhotoSchema),
   /** When the entry was written (ISO 8601): the order of entries of the same date. */
   createdAt: z.string(),
 });

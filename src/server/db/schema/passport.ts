@@ -21,14 +21,16 @@
 // through v_public_passport (the migration), which only app_rw reads.
 
 import { sql } from 'drizzle-orm';
-import { check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { authUser } from './auth';
 import {
+  ATTENDANCE_STATUSES,
   DATE_PRECISIONS,
   idColumn,
   inList,
   PASSPORT_NOTE_MAX,
+  PASSPORT_RANK_PHOTOS_MAX,
   PASSPORT_STATUSES,
   PASSPORT_TEXT_MAX,
   PASSPORT_TITLE_MAX,
@@ -39,7 +41,7 @@ import {
 } from './common';
 import { event } from './events';
 import { organization } from './organizations';
-import { person } from './persons';
+import { person, personPhoto } from './persons';
 
 /** The columns every entry has: whose passport, who sees it, its status, who wrote and changed it. */
 const entryColumns = () => ({
@@ -65,10 +67,11 @@ const entryColumns = () => ({
 function entryChecks(
   name: string,
   t: { visibility: { name: string }; status: { name: string }; withdrawnAt: unknown; removedAt: unknown; removalReason: unknown },
+  statuses: readonly string[] = PASSPORT_STATUSES,
 ) {
   return [
     check(`${name}_visibility_check`, inList(t.visibility.name, PASSPORT_VISIBILITIES)),
-    check(`${name}_status_check`, inList(t.status.name, PASSPORT_STATUSES)),
+    check(`${name}_status_check`, inList(t.status.name, statuses)),
     check(`${name}_withdrawn_has_time`, sql`${sql.identifier(t.status.name)} <> 'withdrawn' OR ${sql.identifier('withdrawn_at')} IS NOT NULL`),
     check(`${name}_removed_has_time`, sql`${sql.identifier(t.status.name)} <> 'removed' OR ${sql.identifier('removed_at')} IS NOT NULL`),
     check(
@@ -138,6 +141,33 @@ export const passportRank = pgTable(
     ...entryChecks('passport_rank', t),
     ...datedChecks('passport_rank', 'awarded_on'),
     ...correctionChecks('passport_rank'),
+  ],
+);
+
+/**
+ * ADR 0046 (owner decision 2026-11-18): up to 3 photos of the student's own gallery on a rank of
+ * their passport, chosen by the student (the grading history). A photo is shown only while it is
+ * in the gallery (active or gallery), the rank is public and the passport shows the full timeline;
+ * removing the photo from the gallery removes it here too.
+ */
+export const passportRankPhoto = pgTable(
+  'passport_rank_photo',
+  {
+    rankId: uuid('rank_id')
+      .notNull()
+      .references(() => passportRank.id, { onDelete: 'cascade' }),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => personPhoto.id, { onDelete: 'cascade' }),
+    /** 0, 1 or 2: the student's order. */
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.rankId, t.photoId] }),
+    uniqueIndex('passport_rank_photo_rank_position_key').on(t.rankId, t.position),
+    index('passport_rank_photo_photo_id_idx').on(t.photoId),
+    check('passport_rank_photo_position_check', sql`${t.position} BETWEEN 0 AND ${sql.raw(String(PASSPORT_RANK_PHOTOS_MAX - 1))}`),
   ],
 );
 
@@ -237,25 +267,43 @@ export const passportCertificate = pgTable(
 
 /**
  * M19: attendance at a past event (M17), marked by its organizer or one of its instructors for
- * their own established students. One active row per event and person.
+ * their own established students. One row per event and person that is not withdrawn or removed.
+ *
+ * Owner decision 2026-11-18 (docs/adr/0046-passport-extras.md): a student on a plan with the full
+ * passport may claim attendance (`claimed`, status `pending`, written by the student). It shows
+ * nowhere but in the student's own passport until the organizer, an instructor or an admin of the
+ * organizing organization approves it (`active`, "Confirmed by the organizer") or refuses it
+ * (`refused`, kept, shown to nobody; the student cannot claim the same event again).
  */
 export const eventAttendance = pgTable(
   'event_attendance',
   {
     ...entryColumns(),
+    status: text('status', { enum: ATTENDANCE_STATUSES }).notNull().default('active'),
     eventId: uuid('event_id')
       .notNull()
       .references(() => event.id, { onDelete: 'cascade' }),
-    /** The teacher who marked it (the organizer or an instructor). */
+    /** The teacher who marked or approved it (the organizer or an instructor); null when an organization's admin approved. */
     teacherPersonId: uuid('teacher_person_id').references(() => person.id, { onDelete: 'set null' }),
+    /** The student claimed it (ADR 0046) rather than the organizer marking it. */
+    claimed: boolean('claimed').notNull().default(false),
+    /** When and by whom a claim was approved or refused. */
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedByUserId: uuid('decided_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
   },
   (t) => [
-    uniqueIndex('event_attendance_active_key').on(t.eventId, t.personId).where(sql`${t.status} = 'active'`),
+    uniqueIndex('event_attendance_open_key').on(t.eventId, t.personId).where(sql`${t.status} IN ('active', 'pending', 'refused')`),
+    index('event_attendance_event_pending_idx').on(t.eventId).where(sql`${t.status} = 'pending'`),
+    index('event_attendance_decided_by_user_id_idx').on(t.decidedByUserId),
+    check('event_attendance_claim_status', sql`${t.claimed} OR ${t.status} NOT IN ('pending', 'refused')`),
+    // A claim waits undecided; a refusal says when it was decided.
+    check('event_attendance_pending_undecided', sql`${t.status} <> 'pending' OR ${t.decidedAt} IS NULL`),
+    check('event_attendance_refused_decided', sql`${t.status} <> 'refused' OR ${t.decidedAt} IS NOT NULL`),
     index('event_attendance_person_id_idx').on(t.personId),
     index('event_attendance_teacher_person_id_idx').on(t.teacherPersonId),
     index('event_attendance_created_by_user_id_idx').on(t.createdByUserId),
     index('event_attendance_withdrawn_by_user_id_idx').on(t.withdrawnByUserId),
     index('event_attendance_removed_by_user_id_idx').on(t.removedByUserId),
-    ...entryChecks('event_attendance', t),
+    ...entryChecks('event_attendance', t, ATTENDANCE_STATUSES),
   ],
 );

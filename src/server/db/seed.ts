@@ -68,6 +68,7 @@ import {
   passportCertificate,
   passportExam,
   passportRank,
+  passportRankPhoto,
   passportSkill,
   person,
   personBio,
@@ -142,6 +143,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   passportCertificate,
   passportExam,
   passportRank,
+  // ADR 0046: grading photos on ranks (no demo rows).
+  passportRankPhoto,
   passportSkill,
   person,
   personBio,

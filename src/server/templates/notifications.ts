@@ -1351,6 +1351,53 @@ const passportCorrection: NotificationTemplate<PassportNoticeData> = {
   sample: { kind: 'exam', title: 'Demo first level' },
 };
 
+/** An event's title, as written (any script; quoted in the text). */
+function eventTitleOf(template: string, value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '' || value.length > 200) throw new NotificationDataError(template, 'title must be a short text');
+  return value.trim();
+}
+
+/**
+ * "passport.attendance-claimed" (ADR 0046): to the Sifu who organized an event, or the admins of the
+ * organizing organization, when a student says they attended it. The student is named only in the
+ * dashboard, never in the notice or its e-mail.
+ */
+const passportAttendanceClaimed: NotificationTemplate<{ title: string }> = {
+  name: 'passport.attendance-claimed',
+  parse: (payload) => ({ title: eventTitleOf('passport.attendance-claimed', payloadObject('passport.attendance-claimed', payload).title) }),
+  render: ({ title }) => ({
+    title: 'A student says they attended your event',
+    body: [{ text: `A student asks you to confirm they attended “${title}”. It shows in their passport only once you confirm it.` }],
+    action: { label: 'Open attendance requests', href: '/dashboard/events/attendance' },
+  }),
+  sample: { title: 'Demo seminar: Chum Kiu in Sofia' },
+};
+
+/**
+ * "passport.attendance-decided" (ADR 0046): to the student, when the organizer confirms or refuses
+ * the attendance they claimed.
+ */
+const passportAttendanceDecided: NotificationTemplate<{ title: string; approved: boolean }> = {
+  name: 'passport.attendance-decided',
+  parse: (payload) => {
+    const data = payloadObject('passport.attendance-decided', payload);
+    if (typeof data.approved !== 'boolean') throw new NotificationDataError('passport.attendance-decided', 'approved must be true or false');
+    return { title: eventTitleOf('passport.attendance-decided', data.title), approved: data.approved };
+  },
+  render: ({ title, approved }) => ({
+    title: approved ? 'Your attendance is confirmed' : 'Your attendance was not confirmed',
+    body: [
+      {
+        text: approved
+          ? `The organizer confirmed you attended “${title}”. It is in your training passport now, and you choose whether it shows on your profile.`
+          : `The organizer did not confirm you attended “${title}”, so it is not in your passport. If you think this is a mistake, ask the organizer directly.`,
+      },
+    ],
+    action: { label: 'Open your passport', href: '/dashboard/passport' },
+  }),
+  sample: { title: 'Demo seminar: Chum Kiu in Sofia', approved: true },
+};
+
 // --- School activity checks (M20; docs/adr/0023-school-activity.md) -------------------------------
 
 /** What a school activity notice carries: the school by id and name, and its dates (no point, no contact). */
@@ -1989,6 +2036,9 @@ export const NOTIFICATION_TEMPLATES = {
   // M19.
   'passport.entry-added': passportEntryAdded,
   'passport.correction': passportCorrection,
+  // ADR 0046.
+  'passport.attendance-claimed': passportAttendanceClaimed,
+  'passport.attendance-decided': passportAttendanceDecided,
   // M20.
   'school.activity-awaiting': schoolActivityAwaiting,
   'school.activity-hidden': schoolActivityHidden,

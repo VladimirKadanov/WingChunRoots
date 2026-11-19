@@ -130,6 +130,27 @@ export function EntryLine({ entry, children }: { entry: PassportEntryDto; childr
         <p className="font-display text-lg [overflow-wrap:anywhere]">{entry.title}</p>
         {entry.progress && entry.progressLabel ? <ProgressMark progress={entry.progress} label={entry.progressLabel} /> : null}
         <EntryDetails entry={entry} />
+        {entry.photos.length > 0 ? (
+          // ADR 0046: the grading photos of a rank, from the student's own gallery.
+          <ul className="flex flex-wrap gap-2 pt-1" aria-label={`Photos of the rank “${entry.title}”`} data-testid="rank-photos">
+            {entry.photos.map((photo, index) => (
+              <li key={photo.id}>
+                <a href={photo.large} className="block rounded-sm outline-offset-2" data-testid="rank-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.small}
+                    alt={photo.caption ?? `Photo ${index + 1} of the rank “${entry.title}”`}
+                    width={96}
+                    height={96}
+                    loading="lazy"
+                    decoding="async"
+                    className="size-16 rounded-sm border border-border-subtle object-cover"
+                  />
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {children}
       </div>
     </div>

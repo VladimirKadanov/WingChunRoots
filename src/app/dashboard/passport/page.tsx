@@ -21,11 +21,13 @@ import { guardRoute } from '@/server/auth/web';
 import { readFormResult } from '@/server/forms/flash';
 import { rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import type { MyPassport, OwnPassportEntry } from '@/server/services/passport';
+import type { AttendanceClaimOptions, MyPassport, OwnPassportEntry } from '@/server/services/passport';
 import { requestPilotAccessAction } from '../actions';
+import { ClaimForm, WithdrawClaimForm } from './claim-forms';
 import { CertificateUpload, RemoveCertificateButton, VisibilityForm } from './controls';
 import { CorrectionForm } from './correction-form';
-import { PASSPORT_CORRECTION_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
+import { PASSPORT_CLAIM_FORM, PASSPORT_CLAIM_WITHDRAW_FORM, PASSPORT_CORRECTION_FORM, PASSPORT_RANK_PHOTOS_FORM, PASSPORT_VISIBILITY_FORM } from './form-ids';
+import { type RankPhotoChoice, RankPhotosForm } from './rank-photos-form';
 
 export const instant = false;
 
@@ -41,6 +43,17 @@ const one = (value: string | string[] | undefined) => (Array.isArray(value) ? va
 
 /** Who sees the entry, in words and a shape (never colour alone). */
 function VisibilityState({ entry, plan }: { entry: OwnPassportEntry; plan: string }) {
+  if (entry.waitingForOrganizer) {
+    // ADR 0046: a request to the organizer, seen by nobody else until they confirm it.
+    return (
+      <p className="inline-flex items-center gap-1.5 text-sm font-semibold" data-testid="passport-entry-visibility" data-visibility="waiting" data-shown="false">
+        <svg aria-hidden="true" viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 1.5h8M4 14.5h8M4.5 1.5c0 3 3.5 4.5 3.5 6.5S4.5 11.5 4.5 14.5M11.5 1.5c0 3-3.5 4.5-3.5 6.5s3.5 3.5 3.5 6.5" />
+        </svg>
+        Waiting for the organizer to confirm: only you see it
+      </p>
+    );
+  }
   const [text, shape] =
     entry.visibility === 'private'
       ? ['Private: only you and your teachers', <path key="p" d="M4.5 7.5V5.5a3.5 3.5 0 0 1 7 0v2M3.5 7.5h9v6h-9z" />]
@@ -100,8 +113,10 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
   if (guard.forbidden) return <PageRedirect to="/sign-in" />;
   const query = await searchParams;
   let view: MyPassport | 'no-profile' | null;
+  let claims: AttendanceClaimOptions | null = null;
   try {
-    view = await serverClient(await headers(), guard.principal).passport.mine();
+    const client = serverClient(await headers(), guard.principal);
+    [view, claims] = await Promise.all([client.passport.mine(), client.passport.claimable()]);
   } catch (error) {
     if (rpcErrorCode(error) === 'NOT_FOUND') view = 'no-profile';
     else if (rpcErrorCode(error) === null || rpcErrorCode(error) === 'INTERNAL_SERVER_ERROR') view = null;
@@ -118,12 +133,34 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
       />
     );
   }
-  const [visibilityOutcome, correctionOutcome] = await Promise.all([
+  const [visibilityOutcome, correctionOutcome, claimOutcome, withdrawOutcome, photosOutcome] = await Promise.all([
     readFormResult(PASSPORT_VISIBILITY_FORM, query.outcome),
     readFormResult(PASSPORT_CORRECTION_FORM, query.outcome),
+    readFormResult(PASSPORT_CLAIM_FORM, query.outcome),
+    readFormResult(PASSPORT_CLAIM_WITHDRAW_FORM, query.outcome),
+    readFormResult(PASSPORT_RANK_PHOTOS_FORM, query.outcome),
   ]);
   const correcting = correctionOutcome?.values?.id ?? one(query.correct) ?? null;
-  const notice = query.published === '1' ? 'The entry is public now.' : query.hidden === '1' ? 'The entry is private now: only you and your teachers see it.' : query.corrected === '1' ? 'Your correction was sent to whoever recorded the entry.' : null;
+  // ADR 0046: the rank whose photos are being chosen, and the own gallery to choose from.
+  const choosingPhotos = view !== 'no-profile' && view.rankPhotos.allowed ? (photosOutcome?.values?.id ?? one(query.photos) ?? null) : null;
+  let gallery: RankPhotoChoice[] = [];
+  if (choosingPhotos) {
+    try {
+      const own = await serverClient(await headers(), guard.principal).gallery.mine();
+      gallery = own.photos.map((photo) => ({ id: photo.id, small: photo.small, caption: photo.caption }));
+    } catch {
+      gallery = [];
+    }
+  }
+  const notice = query.published === '1' ? 'The entry is public now.' : query.hidden === '1' ? 'The entry is private now: only you and your teachers see it.' : query.corrected === '1'
+          ? 'Your correction was sent to whoever recorded the entry.'
+          : query.claimed === '1'
+            ? 'Your request was sent to the organizer. It shows only here until they confirm it.'
+            : query.claimWithdrawn === '1'
+              ? 'Your request was taken back.'
+              : query.photosSaved === '1'
+                ? 'The photos of the rank were saved.'
+                : null;
 
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
@@ -153,6 +190,11 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
               <Link href={`/people/${view.person.slug}#passport-heading`} className="link inline-flex min-h-11 items-center" data-testid="passport-profile-link">
                 See your profile
               </Link>
+              {view.level === 'full' ? (
+                <Link href={`${PAGE}/print`} className="link inline-flex min-h-11 items-center" data-testid="passport-print-link">
+                  Print or save as PDF
+                </Link>
+              ) : null}
             </p>
             {notice ? (
               <p role="status" className="mt-4 text-ui font-semibold" data-testid="passport-notice">
@@ -199,7 +241,11 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
                         ) : null}
                       </EntryLine>
                       <div className="flex flex-wrap items-start gap-2">
-                        <VisibilityForm kind={entry.kind} id={entry.id} visibility={entry.visibility} initial={visibilityOutcome?.values?.id === entry.id ? visibilityOutcome : null} />
+                        {entry.waitingForOrganizer ? (
+                          <WithdrawClaimForm id={entry.id} title={entry.title} initial={withdrawOutcome?.values?.id === entry.id ? withdrawOutcome : null} />
+                        ) : (
+                          <VisibilityForm kind={entry.kind} id={entry.id} visibility={entry.visibility} initial={visibilityOutcome?.values?.id === entry.id ? visibilityOutcome : null} />
+                        )}
                         {entry.kind === 'rank' || entry.kind === 'exam' || entry.kind === 'skill' ? (
                           correcting === entry.id ? null : (
                             <Link href={`${PAGE}?correct=${entry.id}#entry-${entry.id}`} className="link inline-flex min-h-11 items-center px-2" data-testid="passport-propose-correction">
@@ -208,7 +254,23 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
                           )
                         ) : null}
                         {entry.kind === 'certificate' ? <RemoveCertificateButton id={entry.id} title={entry.title} /> : null}
+                        {entry.kind === 'rank' && view.rankPhotos.allowed && choosingPhotos !== entry.id ? (
+                          <Link href={`${PAGE}?photos=${entry.id}#entry-${entry.id}`} className="link inline-flex min-h-11 items-center px-2" data-testid="passport-rank-photos-link">
+                            {entry.photos.length > 0 ? 'Change photos' : 'Add photos'}
+                            <span className="sr-only"> of “{entry.title}”</span>
+                          </Link>
+                        ) : null}
                       </div>
+                      {entry.kind === 'rank' && choosingPhotos === entry.id ? (
+                        <RankPhotosForm
+                          id={entry.id}
+                          title={entry.title}
+                          gallery={gallery}
+                          chosen={entry.photos.map((photo) => photo.id)}
+                          limit={view.rankPhotos.limit}
+                          initial={photosOutcome?.values?.id === entry.id ? photosOutcome : null}
+                        />
+                      ) : null}
                       {correcting === entry.id && (entry.kind === 'rank' || entry.kind === 'exam' || entry.kind === 'skill') ? (
                         <CorrectionForm kind={entry.kind} id={entry.id} initial={correctionOutcome} />
                       ) : null}
@@ -217,6 +279,18 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
                 </ol>
               )}
             </section>
+
+            {claims?.allowed ? (
+              <section aria-labelledby="passport-claims-heading" id="passport-claims" className="mt-10 grid scroll-mt-24 gap-3">
+                <h2 id="passport-claims-heading" className="font-display text-2xl">
+                  Add an event you attended
+                </h2>
+                <p className="max-w-[60ch] text-ui text-fg-muted">
+                  A seminar, camp or grading day you took part in. Its organizer confirms it before it joins your passport; your teacher can also mark it for you.
+                </p>
+                <ClaimForm events={claims.events} pending={claims.pending} limit={claims.limit} initial={claimOutcome} />
+              </section>
+            ) : null}
 
             <section aria-labelledby="passport-certificates" className="mt-10 grid gap-3">
               <h2 id="passport-certificates" className="font-display text-2xl">

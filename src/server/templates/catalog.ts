@@ -161,6 +161,9 @@ export const NOTIFICATION_CATALOG = {
   // M19: the training passport, between teachers and students (docs/adr/0022-passport.md).
   'passport.entry-added': mailed('teaching', 'notice'),
   'passport.correction': mailed('teaching', 'notice'),
+  // ADR 0046: a student's claim of attendance, to the organizer; the decision, to the student.
+  'passport.attendance-claimed': mailed('teaching', 'notice'),
+  'passport.attendance-decided': mailed('teaching', 'notice'),
   // M20: the activity check of a listed school (docs/adr/0023-school-activity.md; DEFAULT D17):
   // e-mailed by default in the Schools category, which the account may switch off.
   'school.activity-awaiting': mailed('schools', 'notice'),

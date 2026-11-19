@@ -2100,6 +2100,6 @@ function demoPassport(
     on: c.on,
     precision: c.precision,
   }));
-  const eventAttendances: EventAttendanceRow[] = [{ ...shared(r.premium, sifu, 12), eventId: r.pastEvent, teacherPersonId: r.premiumTeacher }];
+  const eventAttendances: EventAttendanceRow[] = [{ ...shared(r.premium, sifu, 12), eventId: r.pastEvent, teacherPersonId: r.premiumTeacher, claimed: false, decidedAt: null, decidedByUserId: null }];
   return { passportRanks, passportExams, passportSkills, passportCertificates, eventAttendances };
 }
