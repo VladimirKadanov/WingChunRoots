@@ -27,6 +27,9 @@ import {
   STEWARDSHIPS,
   timestamps,
   VISIBILITIES,
+  PROFILE_LINK_LABEL_MAX,
+  PROFILE_LINK_URL_MAX,
+  PROFILE_LINKS_MAX,
 } from './common';
 
 /** `demo-root-a`, `demo-hub-a`: lowercase ASCII words joined by single hyphens. */
@@ -264,6 +267,31 @@ export const personBio = pgTable(
   (t) => [
     uniqueIndex('person_bio_person_lang_key').on(t.personId, t.lang),
     check('person_bio_lang_format', sql`${t.lang} ~ '^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$'`),
+  ],
+);
+
+/**
+ * ADR 0047: the links of a featured profile (Premium Student, Professional Sifu), in order: a label
+ * and an https address. Shown on the public profile only while the plan includes them; kept on a
+ * lower plan (DEFAULT D08). Staff remove one with a reason (audited, the owner is told).
+ */
+export const personLink = pgTable(
+  'person_link',
+  {
+    id: idColumn(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    label: text('label').notNull(),
+    url: text('url').notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('person_link_person_position_key').on(t.personId, t.position),
+    check('person_link_position_range', sql`${t.position} BETWEEN 0 AND ${sql.raw(String(PROFILE_LINKS_MAX - 1))}`),
+    check('person_link_label_length', sql`char_length(${t.label}) BETWEEN 1 AND ${sql.raw(String(PROFILE_LINK_LABEL_MAX))}`),
+    check('person_link_url_https', sql`${t.url} ~ '^https://' AND char_length(${t.url}) <= ${sql.raw(String(PROFILE_LINK_URL_MAX))}`),
   ],
 );
 

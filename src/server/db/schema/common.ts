@@ -132,6 +132,10 @@ export const PHOTO_STATUSES = ['active', 'replaced', 'removed', 'gallery'] as co
 export const GALLERY_PHOTO_STATUSES = ['active', 'gallery'] as const;
 /** M16: the longest caption of a gallery or school photo (the viewer's alt text and its caption). */
 export const PHOTO_CAPTION_MAX = 200;
+/** ADR 0047: the links of a featured profile: how many, and the longest label and address. */
+export const PROFILE_LINKS_MAX = 5;
+export const PROFILE_LINK_LABEL_MAX = 60;
+export const PROFILE_LINK_URL_MAX = 500;
 /**
  * M16: the longest side of the `full` rendition of a gallery or school room photo, the one the
  * viewer shows (the whole photo, never cropped; never enlarged). DEFAULT, no D number.

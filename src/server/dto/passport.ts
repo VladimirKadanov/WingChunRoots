@@ -13,7 +13,13 @@ import * as z from 'zod';
 import { PASSPORT_ENTRY_KINDS, PASSPORT_VISIBILITIES, SKILL_PROGRESSES } from '../db/schema/common';
 import { searchNameSchema } from './search';
 
-export const passportKindSchema = z.enum(PASSPORT_ENTRY_KINDS);
+/**
+ * The kinds of entries. `training` is no stored entry (ADR 0047): a training period of a public
+ * relationship ("Began training with …", at a public school when one is named), which the full
+ * timeline of a featured profile shows among the others. It is never removed or edited as an entry.
+ */
+export const PASSPORT_TIMELINE_KINDS = [...PASSPORT_ENTRY_KINDS, 'training'] as const;
+export const passportKindSchema = z.enum(PASSPORT_TIMELINE_KINDS);
 export type PassportKind = z.infer<typeof passportKindSchema>;
 
 export const PASSPORT_KIND_LABELS: Record<PassportKind, string> = {
@@ -22,6 +28,7 @@ export const PASSPORT_KIND_LABELS: Record<PassportKind, string> = {
   skill: 'Form or skill',
   certificate: 'Certificate',
   attendance: 'Event',
+  training: 'Training',
 };
 
 export const SKILL_PROGRESS_LABELS: Record<(typeof SKILL_PROGRESSES)[number], string> = {
@@ -63,6 +70,8 @@ export const passportEntrySchema = z.object({
   examiner: passportPersonSchema.nullable(),
   teacher: passportPersonSchema.nullable(),
   event: z.object({ slug: z.string(), kindLabel: z.string() }).nullable(),
+  /** A training period: the public school where it took place, when one is named (ADR 0047). */
+  school: z.object({ slug: z.string(), name: z.string() }).nullable(),
   image: certificateImageSchema.nullable(),
   /** A rank's grading photos, up to three, in order (ADR 0046): only on the full passport; empty otherwise. */
   photos: z.array(passportRankPhotoSchema),

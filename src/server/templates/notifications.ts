@@ -1209,15 +1209,17 @@ const limitReached: NotificationTemplate<LimitReached> = {
 
 /**
  * What staff can remove with a reason (M18, In scope 5): an event, a profile or gallery photo, a
- * school's photo; M19: an entry of a training passport.
+ * school's photo; M19: an entry of a training passport; ADR 0047: a link of a featured profile.
  */
-export const REMOVED_CONTENT = ['event', 'photo', 'school_photo', 'passport_entry'] as const;
+export const REMOVED_CONTENT = ['event', 'photo', 'school_photo', 'passport_entry', 'profile_link'] as const;
 type RemovedContent = (typeof REMOVED_CONTENT)[number];
 const REMOVED_LABEL: Record<RemovedContent, { what: string; action: { label: string; href: string } }> = {
   event: { what: 'One of your events', action: { label: 'See your events', href: '/dashboard/events' } },
   photo: { what: 'One of your photos', action: { label: 'See your photos', href: '/dashboard/photos' } },
   school_photo: { what: 'A photo of your school', action: { label: 'See your schools', href: '/dashboard/schools' } },
   passport_entry: { what: 'An entry of your training passport', action: { label: 'Open your passport', href: '/dashboard/passport' } },
+  // ADR 0047: a link of a featured profile.
+  profile_link: { what: 'A link on your profile', action: { label: 'Edit your profile', href: '/dashboard/profile' } },
 };
 
 /**

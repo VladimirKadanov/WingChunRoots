@@ -62,6 +62,9 @@ interface SearchAnswer {
     verified: boolean;
     /** M14: the profile photo (a public person only; null without one). */
     photo?: { small: string; large: string } | null;
+    /** ADR 0047: the latest public rank and a public school of a featured profile; null otherwise. */
+    rank?: string | null;
+    school?: { slug: string; name: string } | null;
   }[];
   schools: { id: string; slug: string; name: string; city: string; countryCode: string; instructor: { slug: string; displayName: SearchName } | null }[];
   lineages: { id: string; slug: string; name: string; root: { slug: string; displayName: SearchName } }[];
@@ -220,6 +223,12 @@ function ItemBody({ item }: { item: Item }) {
             ) : null}
             {where ? <span className="[overflow-wrap:anywhere]">{where}</span> : null}
           </span>
+          {/* ADR 0047: the rank and school of a featured profile, in words. */}
+          {hit.rank || hit.school ? (
+            <span className="text-sm text-fg-muted [overflow-wrap:anywhere]" data-testid="search-person-card">
+              {[hit.rank, hit.school ? `at ${hit.school.name}` : null].filter(Boolean).join(' · ')}
+            </span>
+          ) : null}
         </span>
       </span>
     );

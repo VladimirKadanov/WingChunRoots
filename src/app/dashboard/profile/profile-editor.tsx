@@ -38,7 +38,6 @@ import {
   nameField,
   parseWriting,
   primaryRefusal,
-  PROFILE_BIO_MAX_LENGTH,
   PROFILE_MAX_NAMES,
   type ProfileFormValues,
   sameNames,
@@ -122,6 +121,8 @@ export interface ProfileEditorOptions {
   writings: readonly { id: string; label: string; script: string; lang: string; romanization: string | null }[];
   bioLanguages: readonly { lang: string; label: string }[];
   latestStartYear: number;
+  /** 1,000 characters, or 2,000 on a featured profile (ADR 0047). */
+  bioMaxLength: number;
 }
 
 /** The labels of the fields in the error summary, in the order of the form. */
@@ -193,7 +194,7 @@ export function ProfileEditor({
     defaultValues: drawn,
     validators: {
       onSubmit: ({ value }) => {
-        const fields = rules.current?.profileFormErrors(value, options.latestStartYear) ?? {};
+        const fields = rules.current?.profileFormErrors(value, options.latestStartYear, options.bioMaxLength) ?? {};
         return Object.keys(fields).length > 0 ? fields : undefined;
       },
     },
@@ -540,7 +541,7 @@ export function ProfileEditor({
             name="bio"
             defaultValue={values.bio}
             rows={5}
-            maxLength={PROFILE_BIO_MAX_LENGTH}
+            maxLength={options.bioMaxLength}
             readOnly={pending}
             lang={values.bioLang}
             aria-invalid={error('bio') ? true : undefined}
@@ -551,7 +552,7 @@ export function ProfileEditor({
           <p id={`${bioId}-hint`} className="flex flex-wrap justify-between gap-x-4 text-sm text-fg-muted">
             <span>A few sentences about your training, for your public profile. Write it in English for now.</span>
             <span className="tabular-nums">
-              {values.bio.length} of {PROFILE_BIO_MAX_LENGTH}
+              {values.bio.length} of {options.bioMaxLength}
             </span>
           </p>
           <FieldError id={`${bioId}-error`} error={error('bio')} />

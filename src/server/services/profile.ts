@@ -28,11 +28,22 @@ import { type Country, COUNTRIES, fieldErrors, isCountryCode, type PlaceOption }
 import { currentConsents, grantConsents, withdrawConsents } from './consent';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { accountFeatured } from './featured-profile';
 import { queueRecomputeForPerson } from './lineage-membership';
 import { cleanName, displayNameRefusal, LANG_TAG, NAME_MAX_LENGTH, NAME_WRITINGS, nameFitsWriting, type NameWriting } from './names';
 
 export const MAX_NAMES = 10;
 export const BIO_MAX_LENGTH = 1000;
+/**
+ * The biography of a featured profile (Premium Student, Professional Sifu; docs/adr/0047-featured-profile.md).
+ * On a lower plan a longer one is kept as written and may stay as long as it is, never longer.
+ */
+export const BIO_FEATURED_MAX_LENGTH = 2000;
+
+/** How long the account's biography may be: 2,000 on a featured plan, else 1,000 or the saved length. */
+export function bioLimit(featured: boolean, savedLength: number): number {
+  return featured ? BIO_FEATURED_MAX_LENGTH : Math.min(BIO_FEATURED_MAX_LENGTH, Math.max(BIO_MAX_LENGTH, savedLength));
+}
 
 /**
  * The languages the biography may be written in: English for now (milestone M07, In scope 1). The
@@ -63,7 +74,7 @@ export const profileUpdateInput = z.object({
   personId: z.uuid().optional(),
   names: z.array(nameInput).min(1, { error: MISSING_PRIMARY_MESSAGE }).max(MAX_NAMES, { error: `Add at most ${MAX_NAMES} names.` }),
   /** The biography; null removes it, and leaving it out keeps the one saved (an API client that sends only names). */
-  bio: z.object({ body: z.string().max(BIO_MAX_LENGTH * 2), lang: z.string().max(35) }).nullable().optional(),
+  bio: z.object({ body: z.string().max(BIO_FEATURED_MAX_LENGTH * 2), lang: z.string().max(35) }).nullable().optional(),
   // Country, city and year: left out keeps the saved value; null (or '') clears it.
   countryCode: z
     .string()
@@ -244,7 +255,10 @@ export async function profileGet(principal: Principal | null): Promise<ProfileVi
   const p = requireUser(principal);
   const db = getDb();
   const profile = await ownProfile(db, p.user.id);
-  return { profile, options: await profileOptions(db, profile?.placeId ?? null) };
+  const options = await profileOptions(db, profile?.placeId ?? null);
+  // ADR 0047: a featured profile has the longer biography.
+  if (profile) options.bioMaxLength = bioLimit(await accountFeatured(db, p.user.id), profile.bio?.body.length ?? 0);
+  return { profile, options };
 }
 
 // --- Update --------------------------------------------------------------------------------------
@@ -369,7 +383,16 @@ export async function profileUpdate(principal: Principal | null, raw: unknown, m
   const fields: Record<string, string> = {};
   const bioBody = input.bio ? input.bio.body.normalize('NFC').replace(/\r\n?/g, '\n').trim() : '';
   const bioLang = input.bio?.lang ?? 'en';
-  if (bioBody.length > BIO_MAX_LENGTH) fields['bio.body'] = `Use at most ${BIO_MAX_LENGTH} characters.`;
+  if (bioBody.length > BIO_MAX_LENGTH) {
+    // ADR 0047: longer only on a featured plan, or as long as the biography already saved.
+    const saved = await db
+      .select({ length: sql<number>`max(char_length(${personBio.body}))::int` })
+      .from(personBio)
+      .innerJoin(person, eq(person.id, personBio.personId))
+      .where(and(eq(person.claimedByUserId, p.user.id), isNull(person.deletedAt)));
+    const limit = bioLimit(await accountFeatured(db, p.user.id), saved[0]?.length ?? 0);
+    if (bioBody.length > limit) fields['bio.body'] = `Use at most ${limit} characters.`;
+  }
   if (bioBody && !BIO_LANGUAGES.some((l) => l.lang === bioLang)) fields['bio.lang'] = 'Choose the language of your biography.';
   if (input.countryCode && !isCountryCode(input.countryCode)) fields.countryCode = 'Choose a country from the list.';
   const thisYear = new Date().getUTCFullYear();

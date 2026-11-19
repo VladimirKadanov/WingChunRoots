@@ -13,6 +13,7 @@ import { searchLineages, searchPeople, searchSchools, setThresholds } from '../s
 import { isCountryCode } from './account';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
+import { featuredSearchCards } from './featured-profile';
 import { photoOf, publicPhotoRefs } from './photo-refs';
 
 export const searchInput = z.object({
@@ -72,7 +73,15 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
     const lineages = await searchLineages(tx, forms, filters);
     // M14: each person's public photo (v_public_person: public people only, active photos only).
     const photos = await publicPhotoRefs(tx, people.people.map((p) => p.id));
-    return { query, people: people.people.map((p) => ({ ...p, photo: photoOf(photos.get(p.id)) })), morePeople: people.more, schools, lineages };
+    // ADR 0047: the rank and school of a featured profile, added after the order is set.
+    const cards = await featuredSearchCards(tx, people.people.map((p) => p.id));
+    return {
+      query,
+      people: people.people.map((p) => ({ ...p, photo: photoOf(photos.get(p.id)), rank: cards.get(p.id)?.rank ?? null, school: cards.get(p.id)?.school ?? null })),
+      morePeople: people.more,
+      schools,
+      lineages,
+    };
   });
   return toPublicSearchResult(result);
 }
