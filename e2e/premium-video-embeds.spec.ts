@@ -24,6 +24,9 @@ test.afterAll(closeHelpers);
 
 test.beforeEach(async ({ context }) => {
   await giveOwnAddress(context);
+  // The test never reaches YouTube or Vimeo: the player frame stays empty, so the run does not
+  // depend on a third-party site, and axe checks this page rather than the provider's player.
+  await context.route(/^https:\/\/(www\.youtube-nocookie\.com|player\.vimeo\.com)\//, (route) => route.abort());
 });
 
 async function axeBothThemes(page: Page, label: string) {
