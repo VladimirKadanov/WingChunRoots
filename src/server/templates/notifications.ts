@@ -1416,7 +1416,7 @@ function countOf(template: string, key: string, value: unknown): number {
   return value;
 }
 
-const people = (n: number) => (n === 1 ? '1 student' : `${n} students`);
+const classmates = (n: number) => (n === 1 ? 'A new classmate' : `${n} new classmates`);
 const followed = (n: number) => (n === 1 ? '1 person you follow has' : `${n} people you follow have`);
 
 /**
@@ -1433,7 +1433,7 @@ const familyDigest: NotificationTemplate<FamilyDigest> = {
   },
   render: ({ joined, ranks }) => {
     const parts: string[] = [];
-    if (joined > 0) parts.push(`${people(joined)} joined under your teachers this week.`);
+    if (joined > 0) parts.push(`${classmates(joined)} joined under your teachers this week.`);
     if (ranks > 0) parts.push(`${followed(ranks)} a new rank.`);
     if (parts.length === 0) parts.push('Nothing new in your kung fu family this week.');
     return {
