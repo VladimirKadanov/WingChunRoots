@@ -25,7 +25,7 @@ import type { Principal } from '../auth/principal';
 import { startAuthTestDatabase, stopAuthTestDatabase, TEST_APP_URL } from '../auth/test-support';
 import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
-import { authSession, authUser, notification, person, personName, personPhoto, teachingRelationship } from '../db/schema';
+import { authSession, authUser, notification, person, personLink, personName, personPhoto, teachingRelationship } from '../db/schema';
 import type { TestDatabase } from '../db/testing';
 import { handleEvidenceDownload, handleEvidenceUpload } from '../evidence-http';
 import { handlePhotoRequest } from '../photo-http';
@@ -646,6 +646,27 @@ const ROWS: Row[] = [
     },
     expect: { ...signedInOnly, owner: 'ok', member: 'FORBIDDEN', moderator: 'FORBIDDEN', archivist: 'FORBIDDEN', admin: 'FORBIDDEN', adminNo2fa: 'FORBIDDEN' },
   },
+  // ADR 0047: the links of a featured profile. Own links for every account with a profile; saving
+  // needs the plan (a member without it is refused at the plan); staff remove one with a reason.
+  { path: 'profile.links', make: async () => ({ owner: await actor('links-own'), input: undefined }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
+  {
+    path: 'profile.setLinks',
+    make: async () => {
+      const owner = await actor('links-set');
+      await createGrant(world.admin.principal, { email: owner.email, planCode: 'premium_student', reason: 'ADR 0047 authorization matrix (fictional)' }, meta);
+      return { owner, input: { links: [{ label: 'Demo link', url: 'https://example.test/demo' }] } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'ENTITLEMENT_REQUIRED' },
+  },
+  {
+    path: 'profile.removeLink',
+    make: async () => {
+      const owner = await actor('links-removed');
+      const [row] = await getDb().insert(personLink).values({ personId: owner.personId!, position: 0, label: 'Demo link', url: 'https://example.test/demo' }).returning({ id: personLink.id });
+      return { input: { id: row!.id, reason: 'ADR 0047 authorization matrix (fictional)' } };
+    },
+    expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }),
+  },
   { path: 'search.query', make: () => ({ input: { q: 'Demo' } }), expect: everyone },
   { path: 'admin.overview', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
   { path: 'admin.navCounts', make: noInput, expect: staffOnly({ moderator: 'ok', archivist: 'ok', admin: 'ok' }) },
@@ -685,6 +706,7 @@ const ROWS: Row[] = [
     make: async () => ({ input: { slug: (await verifiedLink()).student.slug! } }),
     expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
   },
+  { path: 'people.links', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug! } }), expect: everyone },
   {
     // A person who is not public is 404 for every visitor and member; its own account and the
     // reviewers (staff with a verified second factor) see it (plan §6.4, DEFAULT D03).
@@ -2677,6 +2699,18 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
   },
   { action: 'src/app/dashboard/passport/actions.ts#withdrawClaimAction', row: 'passport.withdrawEntry (a waiting claim)', form: (i) => ({ id: String(i.id) }), roles: ['anonymous', 'member', 'party', 'owner'] },
   { action: 'src/app/dashboard/events/attendance/actions.ts#decideAttendanceAction', row: 'passport.decideAttendance', form: same, roles: ['anonymous', 'member', 'party', 'owner'] },
+  {
+    action: 'src/app/dashboard/profile/actions.ts#saveProfileLinksAction',
+    row: 'profile.setLinks',
+    form: (i) => ({ 'links.0.label': (i.links as { label: string }[])[0]!.label, 'links.0.url': (i.links as { url: string }[])[0]!.url }),
+    roles: ['anonymous', 'member', 'owner'],
+  },
+  {
+    action: 'src/app/people/[slug]/link-actions.ts#removeProfileLinkAction',
+    row: 'profile.removeLink',
+    form: (i) => ({ id: String(i.id), reason: String(i.reason), slug: 'demo-matrix' }),
+    roles: ['anonymous', 'member', 'moderator', 'adminNo2fa', 'admin'],
+  },
   {
     action: 'src/app/people/[slug]/passport-actions.ts#removePassportEntryAction',
     row: 'passport.remove',
