@@ -526,7 +526,7 @@ export const router = {
   search: {
     query: base
       // POST, so the names people type stay out of URLs and the access logs of any proxy (plan §6.4).
-      .route({ method: 'POST', path: '/search', summary: 'Search people, schools and lineages by any spelling of a name (public records only)' })
+      .route({ method: 'POST', path: '/search', summary: 'Search people, schools, organizations and lineages by any spelling of a name (public records only)' })
       .input(searchInput)
       .output(searchResultSchema)
       .handler(({ context, input }) => searchQuery(context.principal, input, context.meta)),

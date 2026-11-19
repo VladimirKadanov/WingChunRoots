@@ -174,9 +174,9 @@ check "JSON-LD names the city only (a Place with its locality), never the venue"
   grep -q \"'@type': 'Place', name: event.city\" '$EVENT_PAGE' && ! awk '/function jsonLd/{f=1} f{print} f && /^}/{exit}' '$EVENT_PAGE' | grep -q 'venue'"
 
 # 9. The interface (In scope 6; CLAUDE.md §10, §11) ------------------------------------------------
-check "Events is the fifth tab, between Schools and Me (DEFAULT M17 question 4)" bash -c "
+check "Events is the fifth tab, after Schools and Organizations (DEFAULT M17 question 4, ADR 0051)" bash -c "
   grep -q 'DEFAULT M17 (question 4)' $NAV && grep -q \"href: '/events', label: 'Events'\" $NAV &&
-  awk '/label: .Schools./{s=NR} /label: .Events./{e=NR} /label: .Me./{m=NR} END{exit !(s && e && m && s < e && e < m)}' $NAV"
+  awk '/label: .Schools./{s=NR} /label: .Organizations./{o=NR} /label: .Events./{e=NR} END{exit !(s && o && e && s < o && o < e)}' $NAV"
 check "/events is a plain GET form (works without JavaScript), its state in the address" bash -c "grep -q 'method=\"get\" action=\"/events\"' $LIST_PAGE && grep -q 'role=\"search\"' $LIST_PAGE"
 check "the organizer's link opens in the same window" bash -c "grep -q 'rel=\"nofollow noopener\"' '$EVENT_PAGE' && ! grep -q 'target=\"_blank\"' '$EVENT_PAGE'"
 refute "no window.open, no 100vh, no hover-only behaviour, no target=_blank in the M17 pages" grep -nE "window\.open|100vh|group-hover:|onMouseEnter|target=\"_blank\"" \

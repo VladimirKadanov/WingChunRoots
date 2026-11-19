@@ -56,7 +56,7 @@ import * as z from 'zod';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
 import type { Principal } from '../auth/principal';
-import { invalidatePublic, lineageMembershipTag, personTag, SCHOOLS_TAG, tagCacheEntry } from '../cache';
+import { invalidatePublic, lineageMembershipTag, ORGANIZATIONS_TAG, personTag, SCHOOLS_TAG, tagCacheEntry } from '../cache';
 import { getDb } from '../db';
 import { auditLog, authUser, person, place, reviewCase, school, schoolInstructor, schoolPrivateLocation } from '../db/schema';
 import { LOCATION_PRIVACIES, OPEN_REVIEW_CASE_STATUSES, PUBLIC_RELATIONSHIP_STATUSES, SCHOOL_FORMS, SCHOOL_INSTRUCTOR_ROLES, SCHOOL_STATUSES } from '../db/schema/common';
@@ -82,6 +82,7 @@ import type { UpgradeOffer } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
 import { cleanName } from './names';
 import { photoOf, publicPhotoRefs } from './photo-refs';
+import { ORGANIZATION_KIND_LABELS } from './organizations';
 import { schoolPhotosOf } from './school-photos';
 import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
@@ -612,7 +613,16 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
   // ADR 0044: the members who chose to be listed; a member's plan ends by its date without a tag,
   // so the page lives minutes (cacheLife above), as the finder's pins do.
   const listed = await membersOf(db, row.id);
-  tagCacheEntry([SCHOOLS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag), ...listed.ids.map(personTag)]);
+  // ADR 0051: "Member of", the approved organizations whose link the school accepted (the links
+  // organizations.get lists; accepting or ending one invalidates ORGANIZATIONS_TAG).
+  const memberOf = await db.execute<{ slug: string; name: string; kind: keyof typeof ORGANIZATION_KIND_LABELS }>(sql`
+    SELECT o.slug, o.name, o.kind
+      FROM organization_school l
+      JOIN v_public_organization o ON o.id = l.organization_id
+     WHERE l.school_id = ${row.id}::uuid AND l.status = 'accepted'
+     ORDER BY o.name, o.slug
+     LIMIT 50`);
+  tagCacheEntry([SCHOOLS_TAG, ORGANIZATIONS_TAG, ...(await allInstructorIds(db, [row.id])).map(personTag), ...ids.map(personTag), ...listed.ids.map(personTag)]);
   const last = row.last_activity_at instanceof Date ? row.last_activity_at : new Date(row.last_activity_at);
   return toPublicSchoolPage({
     id: row.id,
@@ -648,6 +658,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
     timezone: timetable.timezone,
     fees: timetable.fees,
     firstTrialFree: timetable.firstTrialFree,
+    organizations: memberOf.rows.map((o) => ({ slug: o.slug, name: o.name, kindLabel: ORGANIZATION_KIND_LABELS[o.kind] })),
   });
 }
 

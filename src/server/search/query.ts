@@ -5,14 +5,15 @@
 //
 // Privacy (plan §6.4): the keys come only through v_public_person_key (the keys of public people;
 // migration m07_public_person_key), every person through v_public_person, every school through
-// v_public_school and every lineage through v_public_edge, so a record that is not public cannot
+// v_public_school, every organization through v_public_organization (approved ones only; ADR 0051)
+// and every lineage through v_public_edge, so a record that is not public cannot
 // match, whatever its keys say. The keys themselves never leave this file: a person is answered
 // with its display name and the stored name (person_name) whose key matched.
 
 import { sql } from 'drizzle-orm';
 
 import type { Executor } from '../entitlements/access';
-import type { LineageHitDto, PersonHitDto, SchoolHitDto, SearchNameDto } from '../dto/search';
+import type { LineageHitDto, OrganizationHitDto, PersonHitDto, SchoolHitDto, SearchNameDto } from '../dto/search';
 import type { QueryForm } from './keys';
 
 /** pg_trgm `%`: trigram similarity of a whole key (docs/search.md). */
@@ -30,7 +31,7 @@ export const MIN_TRIGRAM_LENGTH = 3;
 export const RANK = { exact: 3, prefix: 2, wordPrefix: 1.5, hanContains: 1.5, primary: 0.15, verified: 0.1, asWritten: 0.01 } as const;
 
 /** At most this many results per group: a common surname (13 demo "Testov"s) still fits in one answer. */
-export const LIMITS = { people: 20, schools: 5, lineages: 5 } as const;
+export const LIMITS = { people: 20, schools: 5, organizations: 5, lineages: 5 } as const;
 
 export interface SearchFilters {
   countryCode: string | null;
@@ -277,4 +278,36 @@ export async function searchLineages(tx: Executor, forms: readonly QueryForm[], 
     name: row.name,
     root: { slug: row.root_slug, displayName: { value: row.root_name, lang: row.root_lang, script: 'Latn' } },
   }));
+}
+
+interface OrganizationRow extends Record<string, unknown> {
+  id: string;
+  slug: string;
+  name: string;
+  kind: OrganizationHitDto['kind'];
+  country_code: string | null;
+}
+
+/**
+ * ADR 0051: approved organizations by their name, as schools are. An organization belongs to no
+ * lineage, so a search inside a lineage lists none; the country filter is the organization's own.
+ */
+export async function searchOrganizations(tx: Executor, forms: readonly QueryForm[], filters: SearchFilters): Promise<Omit<OrganizationHitDto, 'kindLabel'>[]> {
+  const latin = forms.filter((f) => !f.han);
+  if (latin.length === 0 || filters.lineageId !== null) return [];
+  const name = sql.raw('o.name');
+  const result = await tx.execute<OrganizationRow>(sql`
+    WITH f AS (${formsTable(latin)}),
+    hits AS (
+      SELECT o.id, ${nameScore(name)} AS score
+        FROM f JOIN v_public_organization o ON ${nameMatches(name)}
+       WHERE (${filters.countryCode}::text IS NULL OR o.country_code = ${filters.countryCode})
+       GROUP BY o.id
+    )
+    SELECT o.id, o.slug, o.name, o.kind, o.country_code
+      FROM hits h
+      JOIN v_public_organization o ON o.id = h.id
+     ORDER BY h.score DESC, o.name, o.id
+     LIMIT ${LIMITS.organizations}`);
+  return result.rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name, kind: row.kind, countryCode: row.country_code }));
 }

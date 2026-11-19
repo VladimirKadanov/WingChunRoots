@@ -1,5 +1,5 @@
 // The public DTO of search.query (milestone M07, In scope 3; plan §5.6, §6.4). Results are grouped
-// People, Schools and Lineages, and carry only what a public profile already shows: no account,
+// People, Schools, Organizations (ADR 0051) and Lineages, and carry only what a public profile already shows: no account,
 // no birth date, no school point, never a generated search key. `matched` is the stored name
 // (person_name) that the query matched, shown only when it is not the display name; a match on a
 // generated pinyin or Jyutping key shows the stored name the key was made from.
@@ -55,6 +55,18 @@ export const schoolHitSchema = z.object({
 });
 export type SchoolHitDto = z.infer<typeof schoolHitSchema>;
 
+/** ADR 0051: an approved organization (federation, association or group of schools), by its name. */
+export const organizationHitSchema = z.object({
+  id: z.uuid(),
+  slug: z.string(),
+  name: z.string(),
+  kind: z.enum(['federation', 'association', 'school_group']),
+  /** The kind in words ("Federation"). */
+  kindLabel: z.string(),
+  countryCode: z.string().nullable(),
+});
+export type OrganizationHitDto = z.infer<typeof organizationHitSchema>;
+
 export const lineageHitSchema = z.object({
   id: z.uuid(),
   slug: z.string(),
@@ -71,6 +83,8 @@ export const searchResultSchema = z.object({
   /** True when more people match than `people` lists (at most 20): the query should be longer. */
   morePeople: z.boolean(),
   schools: z.array(schoolHitSchema),
+  /** ADR 0051: approved organizations (none for a search inside a lineage). */
+  organizations: z.array(organizationHitSchema),
   lineages: z.array(lineageHitSchema),
 });
 export type SearchResultDto = z.infer<typeof searchResultSchema>;

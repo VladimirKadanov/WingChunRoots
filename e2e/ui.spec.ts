@@ -174,7 +174,7 @@ test.describe('@M00b phone', () => {
     await expect(sheet.getByRole('button', { name: 'Expand' })).toBeInViewport();
     // The tab bar is drawn and tappable, not only in the viewport: nothing of the sheet is
     // painted over it (toBeInViewport checks geometry, not what is on top).
-    expect(await tabsHit(page)).toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
+    expect(await tabsHit(page)).toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Orgs: true', 'Events: true']);
 
     // At the peek the body is off screen and inert; the page behind takes taps.
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -186,7 +186,7 @@ test.describe('@M00b phone', () => {
     expect(barTop - top).toBeGreaterThan(Math.max(96, header) + 40);
     expect(top + (await sheet.boundingBox())!.height).toBeCloseTo(barTop, 0);
     await expect(sheet.locator('[inert]')).toHaveCount(0);
-    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
+    expect(await tabsHit(page), 'expanded, the sheet stays above the tabs').toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Orgs: true', 'Events: true']);
     await sheet.getByRole('button', { name: 'Collapse' }).click();
     expect(barTop - (await settledTop(sheet))).toBeLessThanOrEqual(Math.max(96, header) + 2);
     await expect(sheet.locator('[inert]')).toHaveCount(1);
@@ -436,7 +436,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size}`;
         }),
     );
-    expect(lines).toEqual(['Home: 1', 'Lineage: 1', 'Schools: 1', 'Events: 1', 'Me: 1']);
+    expect(lines).toEqual(['Home: 1', 'Lineage: 1', 'Schools: 1', 'Orgs: 1', 'Events: 1']);
   });
 
   test('@M00b form controls use at least 16 px text, so iOS does not zoom into them', async ({ page }) => {
@@ -544,7 +544,7 @@ test.describe('@M00b phone', () => {
           return `${a.textContent}: ${a.contains(document.elementFromPoint(icon.x + icon.width / 2, icon.top + 1))}`;
         }),
     );
-    expect(icons).toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Events: true', 'Me: true']);
+    expect(icons).toEqual(['Home: true', 'Lineage: true', 'Schools: true', 'Orgs: true', 'Events: true']);
     await peek.getByRole('button', { name: 'Close' }).click();
     await expect(peek).toBeHidden();
 
@@ -911,7 +911,8 @@ test('@M00b the Schools tab is current on the school finder once the page has hy
   await expect(page.getByRole('heading', { level: 1, name: 'Find a school' })).toBeVisible();
   const links = tabBar(page).getByRole('link').filter({ visible: true });
   await expect(links.filter({ hasText: 'Schools' })).toHaveAttribute('aria-current', 'page');
-  for (const other of ['Home', 'Lineage', 'Me']) {
+  // The organizations item reads Orgs on the phone tabs and Organizations on the rail (ADR 0051).
+  for (const other of ['Home', 'Lineage', '(?:Orgs|Organizations)', 'Events']) {
     await expect(links.filter({ hasText: new RegExp(`^\s*${other}\s*$`) })).not.toHaveAttribute('aria-current', 'page');
   }
 });

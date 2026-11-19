@@ -154,6 +154,23 @@ export default async function SchoolPage({ params }: Props) {
             {exact ? 'Show on the map' : 'Show the city on the map'}
           </Link>
         </div>
+        {/* ADR 0051: the approved organizations whose link the school accepted. A link names a
+            membership; it verifies no teacher or relationship (DEFAULT D04). */}
+        {school.organizations.length > 0 ? (
+          <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-sm text-fg-muted" data-testid="school-member-of">
+            <span>Member of</span>
+            {school.organizations.map((org, i) => (
+              <span key={org.slug} className="inline-flex items-center">
+                <Link href={`/organizations/${org.slug}`} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" data-testid="school-organization">
+                  {org.name}
+                </Link>
+                <span className="ml-1">
+                  ({org.kindLabel.toLowerCase()}){i < school.organizations.length - 1 ? ',' : ''}
+                </span>
+              </span>
+            ))}
+          </p>
+        ) : null}
         {!exact ? (
           <p className="mt-2 max-w-[56ch] text-sm text-fg-muted">
             A private club: its address is not public. The map shows it at the centre of {school.city}; ask the instructors for the address.

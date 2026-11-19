@@ -308,7 +308,24 @@ describe('search.query', () => {
   it('refuses a query that is too long or a country that is not one, and answers an empty query with nothing', async () => {
     await expect(searchQuery(null, { q: 'x'.repeat(101) })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(searchQuery(null, { q: 'so', country: 'XX' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], morePeople: false, schools: [], lineages: [] });
+    expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], morePeople: false, schools: [], organizations: [], lineages: [] });
+  });
+
+  it('finds approved organizations by name, in their own country only, and none inside a lineage (ADR 0051)', async () => {
+    const found = await searchQuery(null, { q: 'federation north' });
+    expect(found.organizations).toEqual([{ id: expect.any(String), slug: 'demo-federation-north', name: 'Demo Federation North', kind: 'federation', kindLabel: 'Federation', countryCode: 'DE' }]);
+    expect((await searchQuery(null, { q: 'federaton' })).organizations.map((o) => o.slug)).toContain('demo-federation-north');
+    expect((await searchQuery(null, { q: 'federation north', country: 'DE' })).organizations).toHaveLength(1);
+    expect((await searchQuery(null, { q: 'federation north', country: 'BG' })).organizations).toEqual([]);
+    const [someLineage] = await getDb().select({ id: lineage.id }).from(lineage).limit(1);
+    expect((await searchQuery(null, { q: 'federation north', lineageId: someLineage!.id })).organizations).toEqual([]);
+    // An organization that is not approved (pending) is not in v_public_organization, so never found.
+    await getDb().execute(sql`UPDATE organization SET status = 'pending' WHERE slug = 'demo-association-south'`);
+    try {
+      expect((await searchQuery(null, { q: 'association south' })).organizations).toEqual([]);
+    } finally {
+      await getDb().execute(sql`UPDATE organization SET status = 'active' WHERE slug = 'demo-association-south'`);
+    }
   });
 
   it('is served at POST /api/v1/search to anonymous callers (the query never in a URL)', async () => {
