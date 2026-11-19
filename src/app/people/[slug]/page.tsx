@@ -68,6 +68,7 @@ import { trainedWithHref } from './trained-with';
 import { claimProfileHref } from './claim-href';
 import { PassportRemoveForm } from './passport-remove-form';
 import { ProfileLinks, type PublicProfileLink } from './profile-links';
+import { SupporterBadge } from '@/components/lineage/supporter-badge';
 
 export const instant = false;
 
@@ -365,6 +366,20 @@ async function readLinks(profile: PersonProfileDto): Promise<PublicProfileLink[]
   }
 }
 
+/**
+ * ADR 0049: whether the person shows the Supporter badge (people.supporter: their own choice, on a
+ * plan that includes it). Any failure only leaves it out.
+ */
+async function readSupporter(profile: PersonProfileDto): Promise<boolean> {
+  if (profile.limited || profile.visibility !== 'public') return false;
+  try {
+    return (await (await lineageClient()).people.supporter({ slug: profile.slug })).supporter;
+  } catch (error) {
+    if (failure(error) !== 'NOT_FOUND') console.error(`[person-page] the supporter badge could not be loaded: ${failure(error)}`);
+    return false;
+  }
+}
+
 /** The entries staff can remove: those the profile shows (a training period is a relationship's, not an entry: ADR 0047). */
 function removableEntries(passport: PassportDto): { value: string; label: string }[] {
   const all = [...(passport.currentRank ? [passport.currentRank] : []), ...passport.timeline.flatMap((y) => y.items)].filter((e) => e.kind !== 'training');
@@ -453,13 +468,14 @@ export default async function PersonPage({ params, searchParams }: Props) {
   if (read.state === 'none') return <PersonNotFound />;
   if (read.state === 'failed') return <ProfileError retryHref={`/people/${encodeURIComponent(read.slug)}`} />;
   const { profile } = read;
-  const [relations, gallery, events, passport, hasCard, links] = await Promise.all([
+  const [relations, gallery, events, passport, hasCard, links, supporter] = await Promise.all([
     readRelations(profile),
     readGallery(profile),
     readEvents(profile),
     readPassport(profile),
     readHasCard(profile),
     readLinks(profile),
+    readSupporter(profile),
   ]);
   const here = `/people/${profile.slug}`;
   const query = await searchParams;
@@ -497,6 +513,11 @@ export default async function PersonPage({ params, searchParams }: Props) {
             <PersonHeading profile={profile} />
             <PersonReadings profile={profile} />
             <FactStrip profile={profile} />
+            {supporter ? (
+              <p>
+                <SupporterBadge testId="supporter-badge" />
+              </p>
+            ) : null}
             {!profile.limited ? <KeeperHint claimState={profile.claimState} /> : null}
           </PersonIdentity>
           {/* M14: the owner's photo controls (their own record only, never a limited view). */}

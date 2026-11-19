@@ -71,6 +71,7 @@ Prices are source proposals in USD, not approved launch prices. Quotas are the l
 | Lineage card | Lineage view only | Card, share image, print and PDF | Lineage view only | Card, share image, print and PDF | Not applicable |
 | Featured profile | Biography up to 1,000 characters | Longer biography, links, timeline and search card | Biography up to 1,000 characters | Longer biography, links, timeline and search card | Not applicable |
 | Kung fu family | Classmates on the lineage graph | Family page, follows and weekly digest | Classmates on the lineage graph | Family page, follows and weekly digest | Not applicable |
+| Supporter badge | No | Optional badge on your profile | No | Optional badge on your profile | Not applicable |
 | School schedule and business profile | No | No | No | Yes | Yes |
 | Digital passport | Basic | Full timeline | Basic instructor record | Full instructor record | Administrative dashboard |
 | Digital successor | No | No | No | Yes | Yes |
@@ -81,7 +82,7 @@ Prices are source proposals in USD, not approved launch prices. Quotas are the l
 
 The Tier 3 Events cell was “Up to 2 events per month” in the source; the owner raised it to 3 on 2026-11-05.
 
-The Tier 1 Photo allowance cell was “1” in the source. On 2026-11-18 the owner decided that the profile photo never counts toward the photo allowance on any plan, so the allowance counts gallery photos besides it, and Tier 1 Free Student has the profile photo only. The same day the owner decided not to offer the video allowance for now (videos will later be embedded links only); its row is kept here. The School members page row was added by the owner on 2026-11-18: a member chooses to be listed and must have a public profile. The Lineage card row was added by the owner the same day: a designed card of the member's public route of descent. The Featured profile row was added by the owner the same day: search order never depends on the plan. The Kung fu family row was added by the owner the same day: follows are private and the digest tells only public changes.
+The Tier 1 Photo allowance cell was “1” in the source. On 2026-11-18 the owner decided that the profile photo never counts toward the photo allowance on any plan, so the allowance counts gallery photos besides it, and Tier 1 Free Student has the profile photo only. The same day the owner decided not to offer the video allowance for now (videos will later be embedded links only); its row is kept here. The School members page row was added by the owner on 2026-11-18: a member chooses to be listed and must have a public profile. The Lineage card row was added by the owner the same day: a designed card of the member's public route of descent. The Featured profile row was added by the owner the same day: search order never depends on the plan. The Kung fu family row was added by the owner the same day: follows are private and the digest tells only public changes. The Supporter badge row was added by the owner the same day: the badge is off until the member switches it on and changes nothing else.
 
 Almanac inclusion also requires consent and the appropriate verification. Tier 4 includes bulk CSV/Excel import, digital certificate issuance, organization analytics by country and city, and administration of affiliated schools.
 

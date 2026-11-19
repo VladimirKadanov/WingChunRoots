@@ -1,0 +1,1 @@
+ALTER TABLE "person" ADD COLUMN "supporter_badge" boolean DEFAULT false NOT NULL;

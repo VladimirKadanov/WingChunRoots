@@ -860,6 +860,80 @@
         }
       }
     },
+    "/profile/supporter": {
+      "get": {
+        "operationId": "profile.supporter",
+        "summary": "The account's own choice to show the Supporter badge, and whether its plan includes it",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profile/supporter/set": {
+      "post": {
+        "operationId": "profile.setSupporter",
+        "summary": "Show or hide the Supporter badge on the own profile (showing needs Premium Student or Professional Sifu); audited",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "show": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "show"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family": {
       "get": {
         "operationId": "family.get",
@@ -5401,6 +5475,66 @@
                   },
                   "required": [
                     "links"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such person: missing, or not public and not visible to this session (one answer for both).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/{slug}/supporter": {
+      "get": {
+        "operationId": "people.supporter",
+        "summary": "Whether a member shows the Supporter badge (their own choice, on a plan that includes it; 404 unless public)",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "supporter": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "supporter"
                   ],
                   "additionalProperties": false
                 }

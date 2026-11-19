@@ -73,6 +73,10 @@ export const person = pgTable(
     // my school's page", off by default. It lists the person on a school's public members page
     // only while the person is public (v_public_person) and a confirmed link ties them to the school.
     schoolListing: boolean('school_listing').notNull().default(false),
+    // Owner decision 2026-11-18 (docs/adr/0049-supporter-badge.md): the owner's choice "Show the
+    // Supporter badge on my profile", off by default (DEFAULT ADR 0049). Shown only while the
+    // person is public and the account's plan includes supporter_badge.
+    supporterBadge: boolean('supporter_badge').notNull().default(false),
     ...timestamps(),
     deletedAt: deletedAt(),
   },

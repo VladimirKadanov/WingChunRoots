@@ -669,6 +669,18 @@ const ROWS: Row[] = [
   },
   // ADR 0048: the kung fu family. Every account with a profile reads its own (without the plan the
   // answer says so); following needs the plan; unfollowing and the list work on any plan.
+  // ADR 0049: the Supporter badge. The own choice for every account with a profile; showing it needs the plan.
+  { path: 'profile.supporter', make: async () => ({ owner: await actor('supporter-own'), input: undefined }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
+  {
+    path: 'profile.setSupporter',
+    make: async () => {
+      const owner = await actor('supporter-set');
+      await createGrant(world.admin.principal, { email: owner.email, planCode: 'premium_student', reason: 'ADR 0049 authorization matrix (fictional)' }, meta);
+      return { owner, input: { show: true } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'ENTITLEMENT_REQUIRED' },
+  },
+  { path: 'people.supporter', make: async () => ({ input: { slug: (await verifiedLink()).teacher.slug! } }), expect: everyone },
   { path: 'family.get', make: async () => ({ owner: await actor('family-own'), input: {} }), expect: { ...signedInOnly, owner: 'ok', member: 'ok' } },
   { path: 'follows.list', make: noInput, expect: own() },
   {
@@ -2719,6 +2731,7 @@ const ACTIONS: { action: string; row: string; form: FormFrom; roles: Who[]; call
     form: (i) => ({ 'links.0.label': (i.links as { label: string }[])[0]!.label, 'links.0.url': (i.links as { url: string }[])[0]!.url }),
     roles: ['anonymous', 'member', 'owner'],
   },
+  { action: 'src/app/dashboard/profile/actions.ts#saveSupporterAction', row: 'profile.setSupporter', form: () => ({ show: 'on' }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/family/actions.ts#followAction', row: 'follows.add', form: (i) => ({ slug: String(i.slug) }), roles: ['anonymous', 'member', 'owner'] },
   { action: 'src/app/dashboard/family/actions.ts#unfollowAction', row: 'follows.remove', form: (i) => ({ slug: String(i.slug) }), roles: ['anonymous', 'member'] },
   {

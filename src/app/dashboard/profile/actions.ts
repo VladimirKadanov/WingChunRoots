@@ -18,7 +18,7 @@ import { invalidatePublic, personTag } from '@/server/cache';
 import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { PROFILE_LINKS_FORM } from './form-ids';
+import { PROFILE_LINKS_FORM, PROFILE_SUPPORTER_FORM } from './form-ids';
 
 const LINK_ROWS = 5;
 
@@ -95,6 +95,24 @@ export async function saveProfileLinksAction(_previous: FormState, form: FormDat
         }),
       );
     }
+  }
+  await keepFormResult(place, state);
+}
+
+/** "Save" of the Supporter badge (profile.setSupporter; bound to IDLE by its Server Component form). ADR 0049. */
+export async function saveSupporterAction(_previous: FormState, form: FormData): Promise<void> {
+  const show = form.get('show') === 'on';
+  const place = { form: PROFILE_SUPPORTER_FORM, page: '/dashboard/profile', anchor: `${PROFILE_SUPPORTER_FORM}-message` };
+  let state: FormState;
+  try {
+    const result = await serverClient(await headers(), await getRequestPrincipal()).profile.setSupporter({ show });
+    refresh();
+    state = { status: 'done', message: result.show ? 'Your profile shows the Supporter badge.' : 'Your profile does not show the Supporter badge.' };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (rpcErrorCode(error) === 'UNAUTHORIZED') redirect('/sign-in?next=%2Fdashboard%2Fprofile');
+    if (rpcErrorCode(error) === 'NOT_FOUND') redirect('/onboarding');
+    state = formStateFromFailure(error, { show: show ? 'on' : '' });
   }
   await keepFormResult(place, state);
 }

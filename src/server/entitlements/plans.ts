@@ -20,7 +20,7 @@ export type AccountType = 'student' | 'sifu';
  * Bump on every change of a plan, a price, a value or an availability, and say what changed in
  * docs/entitlements.md. Returned by the API (plans.catalog.version); /plans does not show it.
  */
-export const PLAN_MATRIX_VERSION = '2026-11-19.2';
+export const PLAN_MATRIX_VERSION = '2026-11-19.3';
 export const PLAN_MATRIX_SOURCE = 'Project specification §3.1, consolidated source matrix';
 
 export interface PlanPrice {
@@ -132,6 +132,7 @@ export const FEATURE_KEYS = [
   'lineage_card',
   'featured_profile',
   'kung_fu_family',
+  'supporter_badge',
   'school_business',
   'passport',
   'successor',
@@ -433,6 +434,27 @@ export const FEATURES: readonly FeatureDefinition[] = [
       premium_student: text('Family page, follows and weekly digest', 'Family page, follows and weekly digest'),
       free_sifu: { source: 'Classmates on the lineage graph', label: 'Classmates on the lineage graph', included: false },
       pro_sifu: text('Family page, follows and weekly digest', 'Family page, follows and weekly digest'),
+      federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
+    },
+  },
+  {
+    key: 'supporter_badge',
+    source: 'Supporter badge',
+    label: 'Supporter badge',
+    // Owner decision 2026-11-18 (docs/adr/0049-supporter-badge.md): an optional "Supporter" badge
+    // on the public profile of a member whose plan includes it, off until the member switches it on
+    // (DEFAULT ADR 0049). A shape of its own, never the verification seal; it changes nothing in
+    // search, the lineage or any review (src/server/services/supporter.ts).
+    availability: 'now',
+    phase: null,
+    enforced: true,
+    upgradeHeading: 'The Supporter badge with {plan}',
+    note: 'An optional Supporter badge on your profile, shown only if you switch it on. It says you support WingChunRoots and changes nothing else.',
+    values: {
+      free_student: no(),
+      premium_student: text('Optional badge on your profile', 'Optional badge on your profile'),
+      free_sifu: no(),
+      pro_sifu: text('Optional badge on your profile', 'Optional badge on your profile'),
       federation: { source: 'Not applicable', label: 'Not applicable', included: false, neutral: true },
     },
   },

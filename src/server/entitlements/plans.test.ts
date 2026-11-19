@@ -119,7 +119,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
   });
 
   it('enforces exactly the rules of Phase 1: the photo allowance (D07, M16), approved students (D06), the school pin, the school members page (ADR 0044), the school statistics (M21), the events a month (M17), the passport (M19) and the digital successor (M25)', () => {
-    expect(FEATURES.filter((f) => f.enforced).map((f) => f.key)).toEqual(['photos', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'school_business', 'passport', 'successor', 'events']);
+    expect(FEATURES.filter((f) => f.enforced).map((f) => f.key)).toEqual(['photos', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'school_business', 'passport', 'successor', 'events']);
     for (const f of FEATURES.filter((x) => x.enforced)) expect(f.availability).toBe('now');
   });
 
@@ -171,7 +171,7 @@ describe('availability, quotas and enforcement (plan §6.5)', () => {
     const digest = createHash('sha256')
       .update(JSON.stringify({ PLANS, FEATURES, GRANTABLE_PLANS, FEDERATION_EXTRAS, DOWNGRADE_RULES }))
       .digest('hex');
-    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-19.2', digest: 'eb4d3fa14e9108e7dbd8e901cee68739b4c59f4a47713ad579522fd8d3902c2d' });
+    expect({ version: PLAN_MATRIX_VERSION, digest }).toEqual({ version: '2026-11-19.3', digest: '34362689439782c06d9df82f2f68e26a7e9eea1923db69a95b9b4e72dabd86a3' });
   });
 });
 
@@ -203,7 +203,7 @@ describe('features of the pilot that are not built yet (review round 1, requirem
   });
 
   it('every benefit of an upgrade carries its opening note', () => {
-    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, null, null, null, null, null, null, null, null, null, null]);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu').map((b) => b.opens)).toEqual([null, null, null, null, null, null, null, null, null, null, null, null]);
   });
 
   it('Premium Student gives the school members page (ADR 0044), the photo gallery (M16) and the full passport (M19) of the pilot over Free Student, and only those', () => {
@@ -212,6 +212,7 @@ describe('features of the pilot that are not built yet (review round 1, requirem
       { feature: 'lineage_card', label: 'Your lineage card', from: 'Lineage view only', to: 'Card, share image, print and PDF', opens: null },
       { feature: 'featured_profile', label: 'Your featured profile', from: 'Biography up to 1,000 characters', to: 'Longer biography, links, training timeline and search card', opens: null },
       { feature: 'kung_fu_family', label: 'Your kung fu family', from: 'Classmates on the lineage graph', to: 'Family page, follows and weekly digest', opens: null },
+      { feature: 'supporter_badge', label: 'Supporter badge', from: 'Not included', to: 'Optional badge on your profile', opens: null },
       { feature: 'photos', label: 'Photos', from: 'Profile photo only', to: '10 gallery photos', opens: null },
       { feature: 'passport', label: 'Training passport', from: 'Basic: rank, teachers and start year', to: 'Full timeline, event confirmations, rank photos and PDF', opens: null },
     ]);
@@ -224,28 +225,29 @@ describe('upgradeBenefits() lists only real benefits (plan §5.6)', () => {
     const benefits = upgradeBenefits('free_sifu', 'pro_sifu');
     // The benefits the pilot had before M16 first, in the matrix's order; the photos, school statistics, events and passport after them.
     // ADR 0044: the school members page sits with the benefits of the pilot before M16, in the matrix's order.
-    expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'photos', 'school_business', 'passport', 'events', 'successor']);
+    expect(benefits.map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'photos', 'school_business', 'passport', 'events', 'successor']);
     expect(benefits[0]).toMatchObject({ from: 'Up to 5 students', to: 'No limit', opens: null });
     expect(benefits[2]).toMatchObject({ from: 'Your name', to: 'Your name, photo and rank', opens: null });
     expect(benefits[3]).toMatchObject({ feature: 'lineage_card', from: 'Lineage view only', to: 'Card, share image, print and PDF', opens: null });
     expect(benefits[4]).toMatchObject({ feature: 'featured_profile', from: 'Biography up to 1,000 characters', to: 'Longer biography, links, training timeline and search card', opens: null });
     expect(benefits[5]).toMatchObject({ feature: 'kung_fu_family', from: 'Classmates on the lineage graph', to: 'Family page, follows and weekly digest', opens: null });
-    expect(benefits[6]).toMatchObject({ from: '2 gallery photos', to: '100 gallery photos', opens: null });
-    expect(benefits[7]).toMatchObject({ from: 'Schedule and fees, no statistics', to: 'Schedule, fees and weekly statistics', opens: null });
-    expect(benefits[8]).toMatchObject({ from: 'Basic, and you record for your students', to: 'Full timeline with confirmations, photos and PDF, and you record for your students', opens: null });
-    expect(benefits[9]).toMatchObject({ from: 'No publishing', to: 'Up to 3 events a month', opens: null });
+    expect(benefits[6]).toMatchObject({ feature: 'supporter_badge', from: 'Not included', to: 'Optional badge on your profile', opens: null });
+    expect(benefits[7]).toMatchObject({ from: '2 gallery photos', to: '100 gallery photos', opens: null });
+    expect(benefits[8]).toMatchObject({ from: 'Schedule and fees, no statistics', to: 'Schedule, fees and weekly statistics', opens: null });
+    expect(benefits[9]).toMatchObject({ from: 'Basic, and you record for your students', to: 'Full timeline with confirmations, photos and PDF, and you record for your students', opens: null });
+    expect(benefits[10]).toMatchObject({ from: 'No publishing', to: 'Up to 3 events a month', opens: null });
   });
 
   it('leads with the benefit of the limit that was hit, the rest in the same order', () => {
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'approve_students').map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'photos', 'school_business', 'passport', 'events', 'successor']);
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_map').map((b) => b.feature)).toEqual(['school_map', 'approve_students', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'photos', 'school_business', 'passport', 'events', 'successor']);
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'photos').map((b) => b.feature)).toEqual(['photos', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'school_business', 'passport', 'events', 'successor']);
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'events').map((b) => b.feature)).toEqual(['events', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'photos', 'school_business', 'passport', 'successor']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'approve_students').map((b) => b.feature)).toEqual(['approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'photos', 'school_business', 'passport', 'events', 'successor']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_map').map((b) => b.feature)).toEqual(['school_map', 'approve_students', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'photos', 'school_business', 'passport', 'events', 'successor']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'photos').map((b) => b.feature)).toEqual(['photos', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'school_business', 'passport', 'events', 'successor']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'events').map((b) => b.feature)).toEqual(['events', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'photos', 'school_business', 'passport', 'successor']);
     // M21: at the statistics' real limit (a Free Sifu's school), its benefit comes first.
-    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_business').map((b) => b.feature)).toEqual(['school_business', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'photos', 'passport', 'events', 'successor']);
-    expect(upgradeBenefits('free_student', 'premium_student', 'photos').map((b) => b.feature)).toEqual(['photos', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'passport']);
+    expect(upgradeBenefits('free_sifu', 'pro_sifu', 'school_business').map((b) => b.feature)).toEqual(['school_business', 'approve_students', 'school_map', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'photos', 'passport', 'events', 'successor']);
+    expect(upgradeBenefits('free_student', 'premium_student', 'photos').map((b) => b.feature)).toEqual(['photos', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'passport']);
     // M19: at the passport's real limit (entries kept but hidden), its benefit comes first.
-    expect(upgradeBenefits('free_student', 'premium_student', 'passport').map((b) => b.feature)).toEqual(['passport', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'photos']);
+    expect(upgradeBenefits('free_student', 'premium_student', 'passport').map((b) => b.feature)).toEqual(['passport', 'school_members', 'lineage_card', 'featured_profile', 'kung_fu_family', 'supporter_badge', 'photos']);
   });
 
   it('never lists a planned feature, for any pair of plans', () => {
