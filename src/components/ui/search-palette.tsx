@@ -67,6 +67,8 @@ interface SearchAnswer {
     school?: { slug: string; name: string } | null;
   }[];
   schools: { id: string; slug: string; name: string; city: string; countryCode: string; instructor: { slug: string; displayName: SearchName } | null }[];
+  /** ADR 0051: approved organizations. Optional: an answer cached before it had them still reads. */
+  organizations?: { id: string; slug: string; name: string; kindLabel: string; countryCode: string | null }[];
   lineages: { id: string; slug: string; name: string; root: { slug: string; displayName: SearchName } }[];
 }
 
@@ -76,6 +78,7 @@ export type PersonHit = SearchAnswer['people'][number];
 type Item =
   | { kind: 'person'; key: string; label: string; href: string; explore: string; hit: PersonHit }
   | { kind: 'school'; key: string; label: string; href: string; hit: SearchAnswer['schools'][number] }
+  | { kind: 'organization'; key: string; label: string; href: string; hit: NonNullable<SearchAnswer['organizations']>[number] }
   | { kind: 'lineage'; key: string; label: string; href: string; hit: SearchAnswer['lineages'][number] }
   | { kind: 'page'; key: string; label: string; href: string }
   | { kind: 'recent'; key: string; label: string };
@@ -103,6 +106,8 @@ const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.us
 const PAGES: readonly { label: string; href: string }[] = [
   { label: 'Home', href: '/' },
   { label: 'Plans', href: '/plans' },
+  // ADR 0051: the list of organizations.
+  { label: 'Organizations', href: '/organizations' },
   { label: 'Your dashboard', href: '/dashboard' },
   // M09: teacher requests.
   { label: 'Your teachers', href: '/dashboard/teachers' },
@@ -168,6 +173,12 @@ function groupsOf(answer: SearchAnswer | null, query: string, select = false): G
       items: answer.schools
         .filter((hit) => hit.instructor)
         .map((hit) => ({ kind: 'school' as const, key: `school:${hit.id}`, label: hit.name, href: `/people/${hit.instructor!.slug}`, hit })),
+    });
+  }
+  if (!select && answer.organizations && answer.organizations.length > 0) {
+    groups.push({
+      value: 'Organizations',
+      items: answer.organizations.map((hit) => ({ kind: 'organization' as const, key: `organization:${hit.id}`, label: hit.name, href: `/organizations/${hit.slug}`, hit })),
     });
   }
   if (!select && answer.lineages.length > 0) {
@@ -247,6 +258,15 @@ function ItemBody({ item }: { item: Item }) {
             </>
           ) : null}
         </span>
+      </span>
+    );
+  }
+  if (item.kind === 'organization') {
+    const { hit } = item;
+    return (
+      <span className="grid min-w-0 gap-0.5">
+        <span className="font-display text-lg leading-snug [overflow-wrap:anywhere]">{hit.name}</span>
+        <span className="text-sm text-fg-subtle">{[hit.kindLabel, countryName(hit.countryCode)].filter(Boolean).join(' · ')}</span>
       </span>
     );
   }

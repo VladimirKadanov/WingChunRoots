@@ -133,6 +133,11 @@ export const schoolPageSchema = z.object({
   timezone: z.string(),
   fees: z.string().nullable(),
   firstTrialFree: z.boolean(),
+  /**
+   * ADR 0051: the approved organizations whose link this school accepted ("Member of"), by name.
+   * The same links the organization's own page lists; a link verifies no teacher (DEFAULT D04).
+   */
+  organizations: z.array(z.object({ slug: z.string(), name: z.string(), kindLabel: z.string() })),
 });
 export type SchoolPageDto = z.infer<typeof schoolPageSchema>;
 

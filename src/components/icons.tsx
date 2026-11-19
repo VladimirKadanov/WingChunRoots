@@ -67,11 +67,12 @@ export const CalendarIcon = icon(
     <path d="M8 14h2M14 14h2M8 17h2" />
   </>,
 );
-export const MeIcon = icon(
-  'Me',
+/** ADR 0051: the Organizations tab, a banner (a federation's or an association's flag). */
+export const OrganizationsIcon = icon(
+  'Organizations',
   <>
-    <circle cx="12" cy="8.2" r="3.6" />
-    <path d="M4.8 20c.8-3.9 3.6-6 7.2-6s6.4 2.1 7.2 6" />
+    <path d="M6 21V3.5" />
+    <path d="M6 4.5h11.5l-2.7 4.2 2.7 4.3H6" />
   </>,
 );
 export const SunIcon = icon(

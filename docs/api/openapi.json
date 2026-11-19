@@ -1263,7 +1263,7 @@
     "/search": {
       "post": {
         "operationId": "search.query",
-        "summary": "Search people, schools and lineages by any spelling of a name (public records only)",
+        "summary": "Search people, schools, organizations and lineages by any spelling of a name (public records only)",
         "requestBody": {
           "required": true,
           "content": {
@@ -1527,6 +1527,51 @@
                         "additionalProperties": false
                       }
                     },
+                    "organizations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "federation",
+                              "association",
+                              "school_group"
+                            ]
+                          },
+                          "kindLabel": {
+                            "type": "string"
+                          },
+                          "countryCode": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "slug",
+                          "name",
+                          "kind",
+                          "kindLabel",
+                          "countryCode"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "lineages": {
                       "type": "array",
                       "items": {
@@ -1592,6 +1637,7 @@
                     "people",
                     "morePeople",
                     "schools",
+                    "organizations",
                     "lineages"
                   ],
                   "additionalProperties": false
@@ -13149,6 +13195,29 @@
                     },
                     "firstTrialFree": {
                       "type": "boolean"
+                    },
+                    "organizations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "kindLabel": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "name",
+                          "kindLabel"
+                        ],
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "required": [
@@ -13173,7 +13242,8 @@
                     "schedule",
                     "timezone",
                     "fees",
-                    "firstTrialFree"
+                    "firstTrialFree",
+                    "organizations"
                   ],
                   "additionalProperties": false
                 }

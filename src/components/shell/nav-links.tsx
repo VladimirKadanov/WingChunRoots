@@ -3,7 +3,7 @@
 // Navigation links of the shell: bottom tabs on phones, a side rail from 768 px. The current
 // tab is marked with aria-current, ink colour, weight and a small ink chop, never colour alone.
 // On the tabs the chop sits under the label: the top-right corner of an icon is where phones
-// draw notification badges, and a count badge on "Me" will need it (M08).
+// draw notification badges.
 //
 // usePathname() suspends while prerendering a route whose dynamic params are not known at build
 // time (/people/[slug] from M04), so the shell renders NavLinks inside <Suspense> with
@@ -13,12 +13,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
-import { CalendarIcon, LineageIcon, MeIcon, PinIcon, SchoolsIcon } from '@/components/icons';
+import { CalendarIcon, LineageIcon, OrganizationsIcon, PinIcon, SchoolsIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import { NAV_ITEMS } from './nav';
 
-// The house drawing serves Home; the school finder is a map pin (docs/adr/0039).
-const ICONS = { home: SchoolsIcon, lineage: LineageIcon, schools: PinIcon, events: CalendarIcon, me: MeIcon } as const;
+// The house drawing serves Home; the school finder is a map pin (docs/adr/0039); Organizations is
+// a banner (docs/adr/0051).
+const ICONS = { home: SchoolsIcon, lineage: LineageIcon, schools: PinIcon, organizations: OrganizationsIcon, events: CalendarIcon } as const;
 
 const subscribeNever = () => () => {};
 
@@ -65,7 +66,7 @@ export function NavList({ variant, pathname }: { variant: NavVariant; pathname: 
                     'max-w-full text-center [overflow-wrap:anywhere] @max-[5.75em]/tab:tracking-[0.03em] @max-[5em]/tab:tracking-normal @max-[5em]/tab:normal-case @max-[3.8em]/tab:text-[0.875em]',
                 )}
               >
-                {item.label}
+                {variant === 'tabs' ? (item.tabLabel ?? item.label) : item.label}
               </span>
               <span
                 aria-hidden="true"

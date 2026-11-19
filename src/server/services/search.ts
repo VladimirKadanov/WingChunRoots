@@ -1,4 +1,4 @@
-// search.query (milestone M07, In scope 3; plan §5.6): people, schools and lineages by any
+// search.query (milestone M07, In scope 3; plan §5.6): people, schools, organizations (ADR 0051) and lineages by any
 // spelling of a name. Open to everyone, signed in or not, and the answer is the same for both:
 // only public records (src/server/search/query.ts reads them through the public views) and only
 // the public DTO (src/server/dto/search.ts). The query itself is never logged (plan §6.4).
@@ -9,11 +9,12 @@ import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { type SearchResultDto, toPublicSearchResult } from '../dto/search';
 import { MAX_QUERY_LENGTH, queryForms } from '../search/keys';
-import { searchLineages, searchPeople, searchSchools, setThresholds } from '../search/query';
+import { searchLineages, searchOrganizations, searchPeople, searchSchools, setThresholds } from '../search/query';
 import { isCountryCode } from './account';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
 import { featuredSearchCards } from './featured-profile';
+import { ORGANIZATION_KIND_LABELS } from './organizations';
 import { photoOf, publicPhotoRefs } from './photo-refs';
 
 export const searchInput = z.object({
@@ -64,12 +65,13 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
   const query = parsed.data.q.normalize('NFC').trim();
   const forms = queryForms(query);
   if (forms.length > 0) checkSearchRate(meta);
-  if (forms.length === 0) return toPublicSearchResult({ query, people: [], morePeople: false, schools: [], lineages: [] });
+  if (forms.length === 0) return toPublicSearchResult({ query, people: [], morePeople: false, schools: [], organizations: [], lineages: [] });
   const filters = { countryCode: parsed.data.country ?? null, lineageId: parsed.data.lineageId ?? null };
   const result = await getDb().transaction(async (tx) => {
     await setThresholds(tx);
     const people = await searchPeople(tx, forms, filters, query);
     const schools = await searchSchools(tx, forms, filters);
+    const organizations = await searchOrganizations(tx, forms, filters);
     const lineages = await searchLineages(tx, forms, filters);
     // M14: each person's public photo (v_public_person: public people only, active photos only).
     const photos = await publicPhotoRefs(tx, people.people.map((p) => p.id));
@@ -80,6 +82,7 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
       people: people.people.map((p) => ({ ...p, photo: photoOf(photos.get(p.id)), rank: cards.get(p.id)?.rank ?? null, school: cards.get(p.id)?.school ?? null })),
       morePeople: people.more,
       schools,
+      organizations: organizations.map((o) => ({ ...o, kindLabel: ORGANIZATION_KIND_LABELS[o.kind] })),
       lineages,
     };
   });

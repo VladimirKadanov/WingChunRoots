@@ -38,7 +38,7 @@ import {
 } from './organizations';
 import { createUser, key, member, meta, principalOf, staff } from './relationships.test-support';
 import { assignReviewCase, decideReviewCase, getReviewCase } from './review';
-import { createSchool } from './schools';
+import { createSchool, schoolGet } from './schools';
 
 vi.mock('next/cache', () => ({
   cacheTag: () => undefined,
@@ -338,7 +338,10 @@ describe('school links (the school decides; the school never changes)', () => {
     const page = await organizationGet(null, { slug: await slugOf(a.organizationId) });
     expect(page.schools).toEqual([{ slug: s.slug, name: 'Demo Linked Hall', city: 'Plovdiv', countryCode: 'BG' }]);
     expect(JSON.stringify(page)).not.toMatch(/"(lat|lng|point)"/);
+    // ADR 0051: the school's page names the organization it accepted ("Member of"), until the link ends.
+    expect((await schoolGet(null, { slug: s.slug })).organizations).toEqual([{ slug: page.slug, name: page.name, kindLabel: page.kindLabel }]);
     await endSchoolLink(a.principal, { linkId: second.linkId }, meta);
+    expect((await schoolGet(null, { slug: s.slug })).organizations).toEqual([]);
     const [ended] = await getDb().select().from(organizationSchool).where(eq(organizationSchool.id, second.linkId));
     expect(ended).toMatchObject({ status: 'ended', endedByUserId: a.account.id });
     expect(await snapshot()).toEqual(before);
