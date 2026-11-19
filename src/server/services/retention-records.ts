@@ -98,6 +98,8 @@ export const PERSON_OWNED_TABLES: readonly string[] = [
   'lineage_membership',
   'person_bio',
   'person_claim',
+  // ADR 0047: the links of a featured profile (cascade).
+  'person_link',
   'person_name',
   'person_name_key',
   'record_revision',
