@@ -397,11 +397,14 @@ const SQL_IDS = (ids: readonly string[]) => sql`ARRAY[${sql.join(ids.map((id) =>
 async function cachedOrganizationList(): Promise<OrganizationListDto> {
   'use cache';
   cacheLife('minutes');
-  tagCacheEntry([ORGANIZATIONS_TAG]);
   const db = getDb();
   // ADR 0052: the counts follow the page's rules: current members who are public people (DEFAULT
-  // D03) and public schools that accepted the link. The list lives minutes (cacheLife above): a
-  // profile made public or hidden shows within them.
+  // D03) and public schools that accepted the link. Tagged like the pages: a school shown or hidden
+  // (SCHOOLS_TAG) and a member who makes their profile public or hides it (their person's tag)
+  // change the counts at once.
+  const everyMember = await db.execute<{ person_id: string }>(sql`
+    SELECT DISTINCT m.person_id FROM organization_membership m JOIN v_public_organization v ON v.id = m.organization_id`);
+  tagCacheEntry([ORGANIZATIONS_TAG, SCHOOLS_TAG, ...everyMember.rows.map((m) => personTag(m.person_id))]);
   const result = await db.execute<{ id: string; slug: string; name: string; kind: OrganizationKind; country_code: string | null; members: number; schools: number }>(sql`
     SELECT v.id, v.slug, v.name, v.kind, v.country_code,
            (SELECT count(DISTINCT m.person_id)::int FROM organization_membership m JOIN v_public_person p ON p.id = m.person_id
@@ -481,28 +484,35 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
              ORDER BY pn.person_id, pn.sort_order, pn.id`)
         ).rows;
   const photos = await publicPhotoRefs(db, ids);
-  // Plan §6.4: a school by its name and city, never a point; only while it is public.
-  // ADR 0052: with the city's own centre from the GeoNames extract (public data), never the
-  // school's point, for the diagram of cities (only its place in the drawing leaves this function);
-  // and the school's logo for its card.
-  const schools = await db.execute<{ id: string; slug: string; name: string; city_name: string; country_code: string; place_id: string; lat: number; lng: number }>(sql`
-    SELECT s.id, s.slug, s.name, s.city_name, s.country_code, s.place_id,
-           round(ST_Y(pl.centroid::geometry)::numeric, 2)::float8 AS lat,
-           round(ST_X(pl.centroid::geometry)::numeric, 2)::float8 AS lng
+  // Plan §6.4: a school by its name and city, never a point; only while it is public. ADR 0052:
+  // with the school's logo for its card.
+  const schools = await db.execute<{ id: string; slug: string; name: string; city_name: string; country_code: string }>(sql`
+    SELECT s.id, s.slug, s.name, s.city_name, s.country_code
       FROM organization_school l
       JOIN v_public_school s ON s.id = l.school_id
-      JOIN place pl ON pl.id = s.place_id
      WHERE l.organization_id = ${row.id}::uuid AND l.status = 'accepted'
      ORDER BY s.name, s.slug
      LIMIT ${ORGANIZATION_LIST_LIMIT}`);
   const logos = await schoolLogosOf(db, schools.rows.map((s) => s.id));
-  const byPlace = new Map<string, { name: string; countryCode: string; centre: { lat: number; lng: number }; schools: number }>();
-  for (const s of schools.rows) {
-    const city = byPlace.get(s.place_id) ?? { name: s.city_name, countryCode: s.country_code, centre: { lat: Number(s.lat), lng: Number(s.lng) }, schools: 0 };
-    city.schools++;
-    byPlace.set(s.place_id, city);
-  }
-  const sortedCities = [...byPlace.values()].sort((a, b) => b.schools - a.schools || a.name.localeCompare(b.name, 'en'));
+  // ADR 0052: every city of those schools (not only the listed ones), with the city's own centre
+  // from the GeoNames extract (public data), never a school's point, for the diagram of cities:
+  // only its place in the drawing leaves this function. And the numbers, counted like the list's.
+  const places = await db.execute<{ name: string; country_code: string; lat: number; lng: number; schools: number }>(sql`
+    SELECT min(s.city_name) AS name, min(s.country_code) AS country_code,
+           round(ST_Y(pl.centroid::geometry)::numeric, 2)::float8 AS lat,
+           round(ST_X(pl.centroid::geometry)::numeric, 2)::float8 AS lng,
+           count(*)::int AS schools
+      FROM organization_school l
+      JOIN v_public_school s ON s.id = l.school_id
+      JOIN place pl ON pl.id = s.place_id
+     WHERE l.organization_id = ${row.id}::uuid AND l.status = 'accepted'
+     GROUP BY pl.id, pl.centroid`);
+  const counted = await db.execute<{ members: number }>(sql`
+    SELECT count(DISTINCT m.person_id)::int AS members FROM organization_membership m JOIN v_public_person p ON p.id = m.person_id
+     WHERE m.organization_id = ${row.id}::uuid AND (m.starts_on IS NULL OR m.starts_on <= current_date) AND (m.ends_on IS NULL OR m.ends_on > current_date)`);
+  const sortedCities = places.rows
+    .map((c) => ({ name: c.name, countryCode: c.country_code, centre: { lat: Number(c.lat), lng: Number(c.lng) }, schools: Number(c.schools) }))
+    .sort((a, b) => b.schools - a.schools || a.name.localeCompare(b.name, 'en'));
   const positions = cityDiagramPositions(sortedCities.map((c) => c.centre));
   const cities = sortedCities.map((c, i) => ({ name: c.name, countryCode: c.countryCode, schools: c.schools, x: positions[i]!.x, y: positions[i]!.y }));
   const images = (await organizationImagesOf(db, [row.id])).get(row.id) ?? { logo: null, banner: null };
@@ -535,8 +545,8 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
       };
     }),
     schools: schools.rows.map((s) => ({ slug: s.slug, name: s.name, city: s.city_name, countryCode: s.country_code, logo: logos.get(s.id) ?? null })),
-    memberCount: members.rows.length,
-    schoolCount: schools.rows.length,
+    memberCount: Number(counted.rows[0]?.members ?? 0),
+    schoolCount: sortedCities.reduce((sum, c) => sum + c.schools, 0),
     cities,
   });
 }

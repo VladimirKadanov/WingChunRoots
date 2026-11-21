@@ -21,7 +21,10 @@ export function cityDiagramPositions(cities: readonly CityCentre[]): { x: number
   if (cities.length === 0) return [];
   const midLat = cities.reduce((sum, c) => sum + c.lat, 0) / cities.length;
   const k = Math.cos((midLat * Math.PI) / 180);
-  const xs = cities.map((c) => c.lng * k);
+  // Cities on both sides of the 180° meridian: measure east of it, so they stay neighbours.
+  const lngs = cities.map((c) => c.lng);
+  const wraps = Math.max(...lngs) - Math.min(...lngs) > 180;
+  const xs = lngs.map((lng) => (wraps && lng < 0 ? lng + 360 : lng) * k);
   const ys = cities.map((c) => -c.lat);
   const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
   const span = Math.max(maxX - minX, maxY - minY, MIN_SPAN_DEGREES);

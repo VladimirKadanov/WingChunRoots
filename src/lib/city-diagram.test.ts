@@ -34,6 +34,17 @@ describe('cityDiagramPositions (ADR 0052)', () => {
     expect(Math.abs(a!.y - b!.y)).toBeLessThan(0.05);
   });
 
+  it('keeps cities on both sides of the 180° meridian next to each other', () => {
+    const [, west, east] = cityDiagramPositions([
+      { lat: -17, lng: 170 },
+      { lat: -17, lng: 179.5 },
+      { lat: -17, lng: -179.5 },
+    ]);
+    // 1° apart out of the 10.5° of the three: next to each other, not at opposite edges.
+    expect(east!.x - west!.x).toBeGreaterThan(0);
+    expect(east!.x - west!.x).toBeLessThan(0.2);
+  });
+
   it('answers positions in the unit square only, never a coordinate', () => {
     for (const p of cityDiagramPositions([
       { lat: 51.5, lng: -0.12 },

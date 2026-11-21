@@ -386,6 +386,8 @@ describe('the redesigned page (ADR 0052)', () => {
     const listed = (await organizationsList()).organizations.find((o) => o.slug === 'demo-association-south')!;
     expect(listed.schoolCount).toBe(3);
     expect(listed.memberCount).toBe(page.members.length);
+    // The page counts the same way as the list (not the length of its capped lists).
+    expect([page.schoolCount, page.memberCount]).toEqual([listed.schoolCount, listed.memberCount]);
     expect((await organizationGet(null, { slug: 'demo-federation-north' })).about).toMatch(/^Fictional demo record/);
   });
 });

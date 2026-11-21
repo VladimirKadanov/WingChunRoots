@@ -326,6 +326,8 @@ export async function removeOrganizationPhoto(
   if (reason.length > PHOTO_REASON_MAX) throw new ServiceError('BAD_REQUEST', `At most ${PHOTO_REASON_MAX} characters.`, { reason: `At most ${PHOTO_REASON_MAX} characters.` });
   const removed = await db.transaction(async (tx) => {
     await tx.select({ id: organization.id }).from(organization).where(eq(organization.id, row.organizationId)).for('update');
+    // An admin's removal: the role again, under the lock (it may have been taken away meanwhile).
+    if (!asStaff && (await adminRoleOf(tx, row.organizationId, p.user.id)) === null) throw new ServiceError('NOT_FOUND', NO_PHOTO_MESSAGE);
     const [current] = await tx
       .select({ id: organizationPhoto.id, storageKey: organizationPhoto.storageKey, kind: organizationPhoto.kind })
       .from(organizationPhoto)

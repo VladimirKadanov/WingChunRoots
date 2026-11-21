@@ -39,16 +39,16 @@ export function CityMap({ cities, className }: { cities: readonly City[]; classN
         {[1, 2, 3, 4, 5].map((i) => (
           <line key={`v${i}`} y1="0" y2={H} x1={(W / 6) * i} x2={(W / 6) * i} stroke="var(--art-far)" strokeWidth="1" />
         ))}
-        {placed.map(({ city, x, y, r }) => (
-          <g key={`${city.countryCode}-${city.name}`}>
+        {placed.map(({ x, y, r }, i) => (
+          <g key={i}>
             <circle cx={x} cy={y} r={r + 4} fill="none" stroke="var(--art-line)" strokeWidth="1" />
             <circle cx={x} cy={y} r={r} fill="var(--art-ink)" />
           </g>
         ))}
       </svg>
       <ul className="grid gap-1 text-sm">
-        {placed.map(({ city }) => (
-          <li key={`${city.countryCode}-${city.name}`} className="flex items-baseline justify-between gap-3 border-b border-border-subtle py-1.5" data-testid="organization-city">
+        {placed.map(({ city }, i) => (
+          <li key={i} className="flex items-baseline justify-between gap-3 border-b border-border-subtle py-1.5" data-testid="organization-city">
             <span>
               {city.name}, {city.countryCode}
             </span>
