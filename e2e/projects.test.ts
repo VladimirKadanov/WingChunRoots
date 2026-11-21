@@ -122,6 +122,7 @@ describe('buildProjects: exclusive (M08 final check)', () => {
         '**/premium-featured-profile.spec.ts',
         '**/premium-supporter-badge.spec.ts',
         '**/premium-video-embeds.spec.ts',
+        '**/schools-orgs-redesign.spec.ts',
       ]);
       expect(exclusive?.fullyParallel).toBe(false);
       expect(exclusive?.workers).toBe(1);
