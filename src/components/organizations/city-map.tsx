@@ -1,7 +1,8 @@
-// The cities of an organization's schools (ADR 0052): a small ink map of dots, one per city at the
-// city's own centre (GeoNames, public data; never a school's point), sized by how many schools are
-// there, with the cities named in a list beside it, so nothing depends on the drawing. Server-
-// rendered SVG, no map library and no JavaScript.
+// The cities of an organization's schools (ADR 0052): a small ink diagram of dots, one per city,
+// sized by how many schools are there, with the cities named in a list beside it, so nothing
+// depends on the drawing. The server places each dot from the city's own centre (GeoNames, public
+// data; never a school's point) and sends only its place in the diagram (src/lib/city-diagram.ts).
+// Server-rendered SVG, no map library and no JavaScript.
 
 import { cx } from '@/lib/cx';
 import type { OrganizationPageDto } from '@/server/dto/organizations';
@@ -12,24 +13,15 @@ const PAD = 28;
 
 type City = OrganizationPageDto['cities'][number];
 
-/** Each city's place in the box: an equirectangular projection fitted to the cities, north up. */
+/** Each city's dot in the box: the unit square of the diagram, centred, its side the shorter side of the box. */
 export function placeCities(cities: readonly City[]): { city: City; x: number; y: number; r: number }[] {
   if (cities.length === 0) return [];
-  const midLat = cities.reduce((sum, c) => sum + c.lat, 0) / cities.length;
-  const k = Math.cos((midLat * Math.PI) / 180);
-  const xs = cities.map((c) => c.lng * k);
-  const ys = cities.map((c) => -c.lat);
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  // A span too small to scale (one city, or cities a few km apart) sits in the middle.
-  const span = Math.max(maxX - minX, maxY - minY, 0.5);
-  const scale = Math.min((W - 2 * PAD) / span, (H - 2 * PAD) / span);
-  const cx0 = (minX + maxX) / 2;
-  const cy0 = (minY + maxY) / 2;
+  const side = Math.min(W - 2 * PAD, H - 2 * PAD);
   const most = Math.max(...cities.map((c) => c.schools));
-  return cities.map((city, i) => ({
+  return cities.map((city) => ({
     city,
-    x: Math.round((W / 2 + (xs[i]! - cx0) * scale) * 10) / 10,
-    y: Math.round((H / 2 + (ys[i]! - cy0) * scale) * 10) / 10,
+    x: Math.round((W / 2 + (city.x - 0.5) * side) * 10) / 10,
+    y: Math.round((H / 2 + (city.y - 0.5) * side) * 10) / 10,
     r: 4 + Math.round((6 * city.schools) / most),
   }));
 }

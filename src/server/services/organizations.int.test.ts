@@ -338,10 +338,9 @@ describe('school links (the school decides; the school never changes)', () => {
     const page = await organizationGet(null, { slug: await slugOf(a.organizationId) });
     expect(page.schools).toEqual([{ slug: s.slug, name: 'Demo Linked Hall', city: 'Plovdiv', countryCode: 'BG', logo: null }]);
     expect(JSON.stringify(page.schools)).not.toMatch(/"(lat|lng|point)"/);
-    // ADR 0052: the city map places the city at its own GeoNames centre (rounded), never the school's point.
-    const [centre] = (await getDb().execute<{ lat: number; lng: number }>(sql`SELECT round(ST_Y(p.centroid::geometry)::numeric, 2)::float8 AS lat, round(ST_X(p.centroid::geometry)::numeric, 2)::float8 AS lng FROM school s JOIN place p ON p.id = s.place_id WHERE s.id = ${s.schoolId}::uuid`)).rows;
-    expect(page.cities).toEqual([{ name: 'Plovdiv', countryCode: 'BG', lat: centre!.lat, lng: centre!.lng, schools: 1 }]);
-    expect(JSON.stringify(page)).not.toMatch(/"point"/);
+    // ADR 0052: the diagram of cities: one city, in the middle; no coordinate anywhere in the page.
+    expect(page.cities).toEqual([{ name: 'Plovdiv', countryCode: 'BG', schools: 1, x: 0.5, y: 0.5 }]);
+    expect(JSON.stringify(page)).not.toMatch(/"(lat|lng|point)"/);
     expect((await organizationsList()).organizations.find((o) => o.slug === page.slug)).toMatchObject({ schoolCount: 1, memberCount: 0, logo: null, banner: null });
     // ADR 0051: the school's page names the organization it accepted ("Member of"), until the link ends.
     expect((await schoolGet(null, { slug: s.slug })).organizations).toEqual([{ slug: page.slug, name: page.name, kindLabel: page.kindLabel }]);
@@ -378,12 +377,12 @@ describe('the redesigned page (ADR 0052)', () => {
     const page = await organizationGet(null, { slug: 'demo-association-south' });
     expect(page.schools.map((s) => s.slug).sort()).toEqual(['demo-school-athens', 'demo-school-city-only', 'demo-school-sofia']);
     expect(page.cities).toHaveLength(3);
-    for (const c of page.cities) {
-      expect(c.schools).toBe(1);
-      // Rounded to two decimals: a city's centre, never a hall's point.
-      expect(Math.round(c.lat * 100) / 100).toBe(c.lat);
-      expect(Math.round(c.lng * 100) / 100).toBe(c.lng);
-    }
+    // Athens is south of Sofia and Plovdiv, Sofia west of Plovdiv: north up, west left.
+    const at = (name: string) => page.cities.find((c) => c.name === name)!;
+    expect(page.cities.every((c) => c.schools === 1)).toBe(true);
+    expect(at('Athens').y).toBeGreaterThan(at('Sofia').y);
+    expect(at('Sofia').x).toBeLessThan(at('Plovdiv').x);
+    expect(JSON.stringify(page)).not.toMatch(/"(lat|lng|point)"/);
     const listed = (await organizationsList()).organizations.find((o) => o.slug === 'demo-association-south')!;
     expect(listed.schoolCount).toBe(3);
     expect(listed.memberCount).toBe(page.members.length);

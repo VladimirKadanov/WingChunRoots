@@ -16529,24 +16529,28 @@
                           "countryCode": {
                             "type": "string"
                           },
-                          "lat": {
-                            "type": "number"
-                          },
-                          "lng": {
-                            "type": "number"
-                          },
                           "schools": {
                             "type": "integer",
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
+                          },
+                          "x": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
                           }
                         },
                         "required": [
                           "name",
                           "countryCode",
-                          "lat",
-                          "lng",
-                          "schools"
+                          "schools",
+                          "x",
+                          "y"
                         ],
                         "additionalProperties": false
                       }

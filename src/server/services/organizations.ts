@@ -53,6 +53,7 @@ import { and, asc, count, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle
 import { cacheLife } from 'next/cache';
 import * as z from 'zod';
 
+import { cityDiagramPositions } from '../../lib/city-diagram';
 import { isoDay, parseIsoDay } from '../../lib/dates';
 import { writeAudit } from '../audit';
 import { requireUser } from '../auth/guards';
@@ -482,7 +483,8 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
   const photos = await publicPhotoRefs(db, ids);
   // Plan §6.4: a school by its name and city, never a point; only while it is public.
   // ADR 0052: with the city's own centre from the GeoNames extract (public data), never the
-  // school's point, for the map of cities; and the school's logo for its card.
+  // school's point, for the diagram of cities (only its place in the drawing leaves this function);
+  // and the school's logo for its card.
   const schools = await db.execute<{ id: string; slug: string; name: string; city_name: string; country_code: string; place_id: string; lat: number; lng: number }>(sql`
     SELECT s.id, s.slug, s.name, s.city_name, s.country_code, s.place_id,
            round(ST_Y(pl.centroid::geometry)::numeric, 2)::float8 AS lat,
@@ -494,12 +496,15 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
      ORDER BY s.name, s.slug
      LIMIT ${ORGANIZATION_LIST_LIMIT}`);
   const logos = await schoolLogosOf(db, schools.rows.map((s) => s.id));
-  const cities = new Map<string, { name: string; countryCode: string; lat: number; lng: number; schools: number }>();
+  const byPlace = new Map<string, { name: string; countryCode: string; centre: { lat: number; lng: number }; schools: number }>();
   for (const s of schools.rows) {
-    const city = cities.get(s.place_id) ?? { name: s.city_name, countryCode: s.country_code, lat: Number(s.lat), lng: Number(s.lng), schools: 0 };
+    const city = byPlace.get(s.place_id) ?? { name: s.city_name, countryCode: s.country_code, centre: { lat: Number(s.lat), lng: Number(s.lng) }, schools: 0 };
     city.schools++;
-    cities.set(s.place_id, city);
+    byPlace.set(s.place_id, city);
   }
+  const sortedCities = [...byPlace.values()].sort((a, b) => b.schools - a.schools || a.name.localeCompare(b.name, 'en'));
+  const positions = cityDiagramPositions(sortedCities.map((c) => c.centre));
+  const cities = sortedCities.map((c, i) => ({ name: c.name, countryCode: c.countryCode, schools: c.schools, x: positions[i]!.x, y: positions[i]!.y }));
   const images = (await organizationImagesOf(db, [row.id])).get(row.id) ?? { logo: null, banner: null };
   // Every member's tag, the hidden ones too: a member who makes their profile public (or hides it)
   // changes this page, and that person's tag is what the profile change invalidates.
@@ -532,7 +537,7 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
     schools: schools.rows.map((s) => ({ slug: s.slug, name: s.name, city: s.city_name, countryCode: s.country_code, logo: logos.get(s.id) ?? null })),
     memberCount: members.rows.length,
     schoolCount: schools.rows.length,
-    cities: [...cities.values()].sort((a, b) => b.schools - a.schools || a.name.localeCompare(b.name, 'en')),
+    cities,
   });
 }
 

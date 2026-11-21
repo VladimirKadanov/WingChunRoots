@@ -57,13 +57,17 @@ export const organizationSchoolSchema = z.object({
   logo: schoolLogoSchema.nullable(),
 });
 
-/** ADR 0052: a city where schools of the organization are, at the city's own centre (GeoNames, public), never a school's point. */
+/**
+ * ADR 0052: a city where schools of the organization are, with its dot's place in the page's small
+ * diagram (`x` west to east, `y` north to south, 0 to 1, fitted to these cities from the cities' own
+ * centres; src/lib/city-diagram.ts). No coordinate: never a school's point, nor a city's.
+ */
 export const organizationCitySchema = z.object({
   name: z.string(),
   countryCode: z.string(),
-  lat: z.number(),
-  lng: z.number(),
   schools: z.number().int(),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
 });
 
 export const organizationPageSchema = organizationSummarySchema.extend({
