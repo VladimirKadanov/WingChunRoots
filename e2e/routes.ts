@@ -254,6 +254,11 @@ export const ROUTES: readonly AppRoute[] = [
   // and "Not on the record" for a person whose plan has no card (inline: the page streams).
   { path: '/people/demo-b-166/card', name: 'lineage-card', status: 200, milestone: 'premium-2026-11', key: true },
   { path: '/people/demo-two-lineages/card', name: 'lineage-card-none', status: 200, milestone: 'premium-2026-11' },
+  // ADR 0052: the Month view of the calendar (March 2027 with its seeded events; a chosen day), the
+  // organizer filter from an organization's page, and an online event's page with its drawn banner.
+  { path: '/events?view=month&month=2027-03', name: 'events-month', status: 200, milestone: 'redesign-2026-11' },
+  { path: '/events?view=month&month=2027-03&day=2027-03-13', name: 'events-month-day', status: 200, milestone: 'redesign-2026-11' },
+  { path: '/events?organization=demo-federation-north', name: 'events-organization', status: 200, milestone: 'redesign-2026-11' },
 ];
 
 /** The two viewports of the visual regression and the screenshots (plan §5.8 (d)). */

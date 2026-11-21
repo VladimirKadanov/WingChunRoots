@@ -62,14 +62,8 @@ export function foldLine(line: string): string {
   return out.join('\r\n ');
 }
 
-/** The whole VCALENDAR with one VEVENT, CRLF line ends. */
-export function buildIcs(event: IcsEvent): string {
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//WingChunRoots//Events//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
+function veventLines(event: IcsEvent): string[] {
+  return [
     'BEGIN:VEVENT',
     `UID:${icsText(event.uid)}`,
     `DTSTAMP:${icsUtc(event.stamp)}`,
@@ -84,6 +78,30 @@ export function buildIcs(event: IcsEvent): string {
     `STATUS:${event.cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
     'TRANSP:OPAQUE',
     'END:VEVENT',
+  ];
+}
+
+/** The whole VCALENDAR with one VEVENT, CRLF line ends. */
+export function buildIcs(event: IcsEvent): string {
+  return buildIcsFeed([event]);
+}
+
+/**
+ * ADR 0052, the calendar feed: one VCALENDAR with a VEVENT per event, for a calendar app that
+ * subscribes to the address and reads it again from time to time. `name` is the calendar's name
+ * in apps that show it (X-WR-CALNAME, a widely read extension), `refreshHours` the hint how often
+ * to read it again (REFRESH-INTERVAL of RFC 7986).
+ */
+export function buildIcsFeed(events: readonly IcsEvent[], options: { name?: string; refreshHours?: number } = {}): string {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//WingChunRoots//Events//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    ...(options.name ? [`NAME:${icsText(options.name)}`, `X-WR-CALNAME:${icsText(options.name)}`] : []),
+    ...(options.refreshHours ? [`REFRESH-INTERVAL;VALUE=DURATION:PT${Math.max(1, Math.floor(options.refreshHours))}H`] : []),
+    ...events.flatMap(veventLines),
     'END:VCALENDAR',
   ];
   return `${lines.map(foldLine).join('\r\n')}\r\n`;

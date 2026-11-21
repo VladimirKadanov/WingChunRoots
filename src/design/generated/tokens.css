@@ -55,6 +55,12 @@
   --cross-lineage: oklch(79.31% 0.1145 207.31); /* #4DD0E1 */
   --focus: oklch(83.41% 0.1410 85.43); /* #F2C14E */
   --danger: oklch(77.36% 0.1496 356.23); /* #FF8AB8 */
+  --art-ground: oklch(23.67% 0.0076 285.81); /* #1E1E22 */
+  --art-far: oklch(28.70% 0.0090 285.82); /* #2A2A2F */
+  --art-mid: oklch(32.74% 0.0105 285.81); /* #34343A */
+  --art-near: oklch(37.03% 0.0119 285.81); /* #3F3F46 */
+  --art-line: oklch(68.37% 0.0094 84.58); /* #9C9993 */
+  --art-ink: oklch(82.73% 0.0089 84.58); /* #C9C6C0 */
   --scrim: rgb(4 4 6 / 0.64);
   --elevation-pop: 0 28px 70px -18px rgb(0 0 0 / 0.72);
   --elevation-sheet: 0 -20px 50px -12px rgb(0 0 0 / 0.5);
@@ -88,6 +94,12 @@
     --cross-lineage: oklch(47.47% 0.0791 209.08); /* #0B6874 */
     --focus: oklch(54.83% 0.1171 72.51); /* #9A6400 */
     --danger: oklch(46.19% 0.1692 356.90); /* #9B1B5A */
+    --art-ground: oklch(95.50% 0.0083 91.48); /* #F2F0EA */
+    --art-far: oklch(90.63% 0.0097 93.58); /* #E2E0D9 */
+    --art-mid: oklch(87.54% 0.0111 95.18); /* #D8D6CE */
+    --art-near: oklch(83.27% 0.0128 91.54); /* #CBC8BF */
+    --art-line: oklch(57.97% 0.0125 89.78); /* #7D7A72 */
+    --art-ink: oklch(41.71% 0.0070 84.59); /* #4E4C48 */
     --scrim: rgb(24 22 20 / 0.36);
     --elevation-pop: 0 28px 70px -20px rgb(40 32 24 / 0.32);
     --elevation-sheet: 0 -10px 34px -16px rgb(40 32 24 / 0.24);
@@ -121,6 +133,12 @@
   --cross-lineage: oklch(47.47% 0.0791 209.08); /* #0B6874 */
   --focus: oklch(54.83% 0.1171 72.51); /* #9A6400 */
   --danger: oklch(46.19% 0.1692 356.90); /* #9B1B5A */
+  --art-ground: oklch(95.50% 0.0083 91.48); /* #F2F0EA */
+  --art-far: oklch(90.63% 0.0097 93.58); /* #E2E0D9 */
+  --art-mid: oklch(87.54% 0.0111 95.18); /* #D8D6CE */
+  --art-near: oklch(83.27% 0.0128 91.54); /* #CBC8BF */
+  --art-line: oklch(57.97% 0.0125 89.78); /* #7D7A72 */
+  --art-ink: oklch(41.71% 0.0070 84.59); /* #4E4C48 */
   --scrim: rgb(24 22 20 / 0.36);
   --elevation-pop: 0 28px 70px -20px rgb(40 32 24 / 0.32);
   --elevation-sheet: 0 -10px 34px -16px rgb(40 32 24 / 0.24);
@@ -154,6 +172,12 @@
   --cross-lineage: oklch(79.31% 0.1145 207.31); /* #4DD0E1 */
   --focus: oklch(83.41% 0.1410 85.43); /* #F2C14E */
   --danger: oklch(77.36% 0.1496 356.23); /* #FF8AB8 */
+  --art-ground: oklch(23.67% 0.0076 285.81); /* #1E1E22 */
+  --art-far: oklch(28.70% 0.0090 285.82); /* #2A2A2F */
+  --art-mid: oklch(32.74% 0.0105 285.81); /* #34343A */
+  --art-near: oklch(37.03% 0.0119 285.81); /* #3F3F46 */
+  --art-line: oklch(68.37% 0.0094 84.58); /* #9C9993 */
+  --art-ink: oklch(82.73% 0.0089 84.58); /* #C9C6C0 */
   --scrim: rgb(4 4 6 / 0.64);
   --elevation-pop: 0 28px 70px -18px rgb(0 0 0 / 0.72);
   --elevation-sheet: 0 -20px 50px -12px rgb(0 0 0 / 0.5);
@@ -186,6 +210,12 @@
   --cross-lineage: oklch(47.47% 0.0791 209.08); /* #0B6874 */
   --focus: oklch(54.83% 0.1171 72.51); /* #9A6400 */
   --danger: oklch(46.19% 0.1692 356.90); /* #9B1B5A */
+  --art-ground: oklch(95.50% 0.0083 91.48); /* #F2F0EA */
+  --art-far: oklch(90.63% 0.0097 93.58); /* #E2E0D9 */
+  --art-mid: oklch(87.54% 0.0111 95.18); /* #D8D6CE */
+  --art-near: oklch(83.27% 0.0128 91.54); /* #CBC8BF */
+  --art-line: oklch(57.97% 0.0125 89.78); /* #7D7A72 */
+  --art-ink: oklch(41.71% 0.0070 84.59); /* #4E4C48 */
   --scrim: rgb(24 22 20 / 0.36);
   --elevation-pop: 0 28px 70px -20px rgb(40 32 24 / 0.32);
   --elevation-sheet: 0 -10px 34px -16px rgb(40 32 24 / 0.24);
@@ -224,6 +254,12 @@
     --cross-lineage: oklch(47.47% 0.0791 209.08); /* #0B6874 */
     --focus: oklch(54.83% 0.1171 72.51); /* #9A6400 */
     --danger: oklch(46.19% 0.1692 356.90); /* #9B1B5A */
+    --art-ground: oklch(95.50% 0.0083 91.48); /* #F2F0EA */
+    --art-far: oklch(90.63% 0.0097 93.58); /* #E2E0D9 */
+    --art-mid: oklch(87.54% 0.0111 95.18); /* #D8D6CE */
+    --art-near: oklch(83.27% 0.0128 91.54); /* #CBC8BF */
+    --art-line: oklch(57.97% 0.0125 89.78); /* #7D7A72 */
+    --art-ink: oklch(41.71% 0.0070 84.59); /* #4E4C48 */
     --bg: var(--print-paper);
     --surface-1: var(--print-paper);
     --surface-2: var(--print-paper);
@@ -366,6 +402,12 @@
   --color-cross-lineage: var(--cross-lineage);
   --color-focus: var(--focus);
   --color-danger: var(--danger);
+  --color-art-ground: var(--art-ground);
+  --color-art-far: var(--art-far);
+  --color-art-mid: var(--art-mid);
+  --color-art-near: var(--art-near);
+  --color-art-line: var(--art-line);
+  --color-art-ink: var(--art-ink);
   --color-scrim: var(--scrim);
   --color-transparent: transparent;
   --color-current: currentColor;

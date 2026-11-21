@@ -159,6 +159,18 @@ export const eventsListInput = z.object({
   person: slug.optional(),
   /** The events at a public school (its page's "Upcoming events"). */
   school: slug.optional(),
+  /** The events an approved organization organizes (its page's "Upcoming events"; ADR 0052). */
+  organization: slug.optional(),
+  /**
+   * ADR 0052, the month view: the events that start in this calendar month ("2027-03"), past and
+   * upcoming alike (`when` is not applied). The window is the month in UTC widened by 14 hours on
+   * each side, so it holds every event whose month in its own zone is this one; the page keeps
+   * those whose monthKey() matches.
+   */
+  month: z
+    .string()
+    .regex(/^(19|20)\d{2}-(0[1-9]|1[0-2])$/)
+    .optional(),
   page: z.coerce.number().int().min(1).max(1000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(EVENTS_PAGE_SIZE),
 });
@@ -351,14 +363,25 @@ const COLUMNS = sql.raw(`v.id, v.slug, v.title, v.kind, v.description, v.starts_
   v.organizer_person_lang, v.organization_id, v.organization_slug, v.organization_name, v.school_slug, v.school_name, v.school_city,
   v.instructors, v.poster_sha256, v.poster_width, v.poster_height, v.revision, v.updated_at`);
 
+const MONTH_MARGIN_MS = 14 * 3_600_000;
+
+/** The UTC window of a month widened by 14 hours each side (the largest zone offsets). */
+export function monthWindow(month: string): { from: string; to: string } {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  const start = Date.UTC(y, m - 1, 1) - MONTH_MARGIN_MS;
+  const end = Date.UTC(y, m, 1) + MONTH_MARGIN_MS;
+  return { from: new Date(start).toISOString(), to: new Date(end).toISOString() };
+}
+
 async function cachedEventList(input: EventsListInput): Promise<EventListDto> {
   'use cache';
   // "Upcoming" moves with the clock: a short life, as the school pages (ADR 0020).
   cacheLife('minutes');
   const db = getPublicDb();
-  const upcoming = input.when === 'upcoming';
+  const upcoming = input.when === 'upcoming' || input.month !== undefined;
+  const window = input.month ? monthWindow(input.month) : null;
   const filters = [
-    upcoming ? sql`v.ends_at > now()` : sql`v.ends_at <= now()`,
+    window ? sql`v.starts_at >= ${window.from} AND v.starts_at < ${window.to}` : input.when === 'upcoming' ? sql`v.ends_at > now()` : sql`v.ends_at <= now()`,
     input.country ? sql`NOT v.online AND v.country_code = ${input.country}` : undefined,
     input.kind ? sql`v.kind = ${input.kind}` : undefined,
     input.format === 'online' ? sql`v.online` : input.format === 'in_person' ? sql`NOT v.online` : undefined,
@@ -366,6 +389,7 @@ async function cachedEventList(input: EventsListInput): Promise<EventListDto> {
       ? sql`(v.organizer_person_slug = ${input.person} OR v.instructors @> ${JSON.stringify([{ slug: input.person }])}::jsonb)`
       : undefined,
     input.school ? sql`v.school_slug = ${input.school}` : undefined,
+    input.organization ? sql`v.organization_slug = ${input.organization}` : undefined,
   ].filter((f) => f !== undefined);
   const where = sql.join(filters, sql` AND `);
   const order = upcoming ? sql`v.starts_at ASC, v.slug ASC` : sql`v.starts_at DESC, v.slug ASC`;

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildIcs, foldLine, icsText, icsUtc } from './ics';
+import { buildIcs, buildIcsFeed, foldLine, icsText, icsUtc } from './ics';
 
 const event = {
   uid: '0190a5c0-0000-7000-8000-0000000000e1@wingchunroots.local',
@@ -51,4 +51,21 @@ describe('the parts', () => {
   it('icsUtc', () => expect(icsUtc(new Date('2027-10-31T00:30:00.000Z'))).toBe('20271031T003000Z'));
   it('icsText drops control characters', () => expect(icsText('a\u0007b\r\nc')).toBe('ab\\nc'));
   it('foldLine keeps short lines', () => expect(foldLine('SUMMARY:short')).toBe('SUMMARY:short'));
+});
+
+describe('ADR 0052 buildIcsFeed', () => {
+  const event = (n: number) => ({ uid: `e${n}@example.test`, start: new Date('2027-03-13T08:00:00Z'), end: new Date('2027-03-13T15:00:00Z'), stamp: new Date('2027-01-01T00:00:00Z'), summary: `Event ${n}` });
+  it('writes one VCALENDAR with a VEVENT per event, a name and a refresh hint', () => {
+    const body = buildIcsFeed([event(1), event(2)], { name: 'WingChunRoots events', refreshHours: 12 });
+    expect(body.match(/BEGIN:VCALENDAR/g)).toHaveLength(1);
+    expect(body.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(body).toContain('\r\nX-WR-CALNAME:WingChunRoots events\r\n');
+    expect(body).toContain('\r\nREFRESH-INTERVAL;VALUE=DURATION:PT12H\r\n');
+    expect(body.endsWith('END:VCALENDAR\r\n')).toBe(true);
+  });
+  it('writes a valid empty calendar', () => {
+    const body = buildIcsFeed([]);
+    expect(body).not.toContain('VEVENT');
+    expect(body.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true);
+  });
 });

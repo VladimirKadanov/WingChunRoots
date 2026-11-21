@@ -56,6 +56,13 @@ export const COLOR_ROLES = [
   // Interaction
   'focus', // focus ring, 2 px with a 2 px offset; gold, never red or green
   'danger', // form errors and destructive actions: a rouge at least 25° of hue away from the brand red
+  // Drawn banner art (ADR 0052): decorative ink-and-paper tones, never text, never a state
+  'art-ground', // the sky of a drawn banner
+  'art-far', // the farthest layer (far hills, lattice lines)
+  'art-mid', // the middle layer
+  'art-near', // the nearest layer
+  'art-line', // thin strokes: the sun ring, roots
+  'art-ink', // the brush: ensō, the wooden dummy's arms
 ] as const;
 export type ColorRole = (typeof COLOR_ROLES)[number];
 
@@ -87,6 +94,12 @@ export const colors: Record<ThemeName, Record<ColorRole, string>> = {
     'cross-lineage': '#4DD0E1',
     focus: '#F2C14E',
     danger: '#FF8AB8',
+    'art-ground': '#1E1E22',
+    'art-far': '#2A2A2F',
+    'art-mid': '#34343A',
+    'art-near': '#3F3F46',
+    'art-line': '#9C9993',
+    'art-ink': '#C9C6C0',
   },
   // Paper: warm rice paper with lamp-black ink.
   light: {
@@ -115,6 +128,12 @@ export const colors: Record<ThemeName, Record<ColorRole, string>> = {
     'cross-lineage': '#0B6874',
     focus: '#9A6400',
     danger: '#9B1B5A',
+    'art-ground': '#F2F0EA',
+    'art-far': '#E2E0D9',
+    'art-mid': '#D8D6CE',
+    'art-near': '#CBC8BF',
+    'art-line': '#7D7A72',
+    'art-ink': '#4E4C48',
   },
 };
 
