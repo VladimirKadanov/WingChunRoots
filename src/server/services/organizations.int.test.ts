@@ -336,8 +336,13 @@ describe('school links (the school decides; the school never changes)', () => {
     const second = await requestOrganizationSchool(a.principal, { organizationId: a.organizationId, schoolSlug: s.slug }, meta);
     await answerSchoolLink(s.owner.principal, { linkId: second.linkId, accept: true }, meta);
     const page = await organizationGet(null, { slug: await slugOf(a.organizationId) });
-    expect(page.schools).toEqual([{ slug: s.slug, name: 'Demo Linked Hall', city: 'Plovdiv', countryCode: 'BG' }]);
-    expect(JSON.stringify(page)).not.toMatch(/"(lat|lng|point)"/);
+    expect(page.schools).toEqual([{ slug: s.slug, name: 'Demo Linked Hall', city: 'Plovdiv', countryCode: 'BG', logo: null }]);
+    expect(JSON.stringify(page.schools)).not.toMatch(/"(lat|lng|point)"/);
+    // ADR 0052: the city map places the city at its own GeoNames centre (rounded), never the school's point.
+    const [centre] = (await getDb().execute<{ lat: number; lng: number }>(sql`SELECT round(ST_Y(p.centroid::geometry)::numeric, 2)::float8 AS lat, round(ST_X(p.centroid::geometry)::numeric, 2)::float8 AS lng FROM school s JOIN place p ON p.id = s.place_id WHERE s.id = ${s.schoolId}::uuid`)).rows;
+    expect(page.cities).toEqual([{ name: 'Plovdiv', countryCode: 'BG', lat: centre!.lat, lng: centre!.lng, schools: 1 }]);
+    expect(JSON.stringify(page)).not.toMatch(/"point"/);
+    expect((await organizationsList()).organizations.find((o) => o.slug === page.slug)).toMatchObject({ schoolCount: 1, memberCount: 0, logo: null, banner: null });
     // ADR 0051: the school's page names the organization it accepted ("Member of"), until the link ends.
     expect((await schoolGet(null, { slug: s.slug })).organizations).toEqual([{ slug: page.slug, name: page.name, kindLabel: page.kindLabel }]);
     await endSchoolLink(a.principal, { linkId: second.linkId }, meta);
@@ -345,6 +350,44 @@ describe('school links (the school decides; the school never changes)', () => {
     const [ended] = await getDb().select().from(organizationSchool).where(eq(organizationSchool.id, second.linkId));
     expect(ended).toMatchObject({ status: 'ended', endedByUserId: a.account.id });
     expect(await snapshot()).toEqual(before);
+  });
+});
+
+describe('the redesigned page (ADR 0052)', () => {
+  it('saves the About text (trimmed, NFC; empty clears it), shows it once approved, and refuses one past the limit', async () => {
+    const a = await apply();
+    await approve(a.caseId);
+    const slug = await slugOf(a.organizationId);
+    expect((await organizationGet(null, { slug })).about).toBeNull();
+    const saved = await updateOrganization(a.principal, { organizationId: a.organizationId, ...FIELDS, name: a.name, about: '  A fictional federation of demo schools.  ' }, meta);
+    expect(saved.changed).toEqual(['about']);
+    expect((await organizationGet(null, { slug })).about).toBe('A fictional federation of demo schools.');
+    expect((await manageOrganization(a.principal, { organizationId: a.organizationId })).about).toBe('A fictional federation of demo schools.');
+    // Left out, it stays; empty, it is cleared.
+    await updateOrganization(a.principal, { organizationId: a.organizationId, ...FIELDS, name: a.name, websiteUrl: 'https://example.test/other' }, meta);
+    expect((await organizationGet(null, { slug })).about).toBe('A fictional federation of demo schools.');
+    await updateOrganization(a.principal, { organizationId: a.organizationId, ...FIELDS, name: a.name, websiteUrl: 'https://example.test/other', about: '' }, meta);
+    expect((await organizationGet(null, { slug })).about).toBeNull();
+    await expect(updateOrganization(a.principal, { organizationId: a.organizationId, ...FIELDS, name: a.name, about: 'x'.repeat(2001) }, meta)).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+      fields: { about: expect.any(String) },
+    });
+  });
+
+  it('the seeded demo-association-south lists three schools in three cities, and its counts on the list', async () => {
+    const page = await organizationGet(null, { slug: 'demo-association-south' });
+    expect(page.schools.map((s) => s.slug).sort()).toEqual(['demo-school-athens', 'demo-school-city-only', 'demo-school-sofia']);
+    expect(page.cities).toHaveLength(3);
+    for (const c of page.cities) {
+      expect(c.schools).toBe(1);
+      // Rounded to two decimals: a city's centre, never a hall's point.
+      expect(Math.round(c.lat * 100) / 100).toBe(c.lat);
+      expect(Math.round(c.lng * 100) / 100).toBe(c.lng);
+    }
+    const listed = (await organizationsList()).organizations.find((o) => o.slug === 'demo-association-south')!;
+    expect(listed.schoolCount).toBe(3);
+    expect(listed.memberCount).toBe(page.members.length);
+    expect((await organizationGet(null, { slug: 'demo-federation-north' })).about).toMatch(/^Fictional demo record/);
   });
 });
 

@@ -14,7 +14,7 @@ export type StoreName = 'evidence' | 'media';
 
 export interface ObjectFamily {
   /** Short, stable name: the first field of a row line and the label in the drill's summary. */
-  id: 'evidence' | 'certificate' | 'person_photo' | 'school_photo' | 'event_poster';
+  id: 'evidence' | 'certificate' | 'person_photo' | 'school_photo' | 'organization_photo' | 'event_poster';
   /** The table and column that hold the storage key (scripts/lib/object-families.test.ts matches them against the schema). */
   table: string;
   column: string;
@@ -83,6 +83,15 @@ export const OBJECT_FAMILIES: readonly ObjectFamily[] = [
     hashed: '512',
     prefix: 'photos',
     select: `SELECT 'school_photo|' || id || '|' || storage_key || '|' || sha256 || '|${WEBP}|' || (${RENDITIONS}) AS line FROM school_photo WHERE status = 'active'`,
+  },
+  {
+    id: 'organization_photo',
+    table: 'organization_photo',
+    column: 'storage_key',
+    store: 'media',
+    hashed: '512',
+    prefix: 'photos',
+    select: `SELECT 'organization_photo|' || id || '|' || storage_key || '|' || sha256 || '|${WEBP}|' || (${RENDITIONS}) AS line FROM organization_photo WHERE status = 'active'`,
   },
   {
     id: 'event_poster',
