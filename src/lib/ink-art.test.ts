@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ART_MOTIFS, drawArt, eventMotif, monogram, organizationMotif, seedOf } from './ink-art';
+import { ART_MOTIFS, drawArt, eventMotif, monogram, organizationMotif, schoolMotif, seedOf } from './ink-art';
 
 describe('drawArt', () => {
   it('draws the same picture for the same slug and motif', () => {
@@ -54,5 +54,14 @@ describe('seedOf and monogram', () => {
     expect(monogram('Kwoon')).toBe('K');
     expect(monogram('Demo Hall Hamburg (draft)')).toBe('HH');
     expect(monogram('---')).toBe('?');
+  });
+});
+
+describe('schoolMotif', () => {
+  it('is hills or peaks, the same for the same slug', () => {
+    expect(['hills', 'peaks']).toContain(schoolMotif('demo-school-sofia'));
+    expect(schoolMotif('demo-school-sofia')).toBe(schoolMotif('demo-school-sofia'));
+    const seen = new Set(Array.from({ length: 40 }, (_, i) => schoolMotif(`demo-school-${i}`)));
+    expect(seen.size).toBeGreaterThan(1);
   });
 });

@@ -238,6 +238,35 @@ export function documentPhotos(document: Record<string, unknown>): Record<string
         },
       },
     },
+    // ADR 0052: an organization's logo and banner.
+    '/organization-photos/{id}/{hash}/{file}': {
+      servers: [{ url: '/api' }],
+      get: {
+        operationId: 'organizationPhotos.image',
+        summary:
+          "One rendition of an organization's logo or banner (WebP, no metadata, no location): everyone for an approved organization; for one that is not approved only its admins and staff; 404 otherwise",
+        parameters: [
+          { name: 'id', in: 'path', required: true, description: 'The image id (`logo` or `banner` of organizations.get or organizations.list, or organizationPhotos.get).', schema: { type: 'string', format: 'uuid' } },
+          { name: 'hash', in: 'path', required: true, description: "The first 16 hex digits of the image's content hash.", schema: { type: 'string', pattern: '^[0-9a-f]{16}$' } },
+          {
+            name: 'file',
+            in: 'path',
+            required: true,
+            description: 'The 96 px or 512 px square (a logo whole on a transparent square), or the whole banner.',
+            schema: { type: 'string', enum: ['96.webp', '512.webp', 'full.webp'] },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'The image (Content-Type: image/webp; ETag: the content hash; Cache-Control: public, no-cache for an approved organization, private, no-store otherwise).',
+            content: { 'image/webp': { schema: { type: 'string', contentMediaType: 'image/webp' } } },
+          },
+          '304': { description: 'Not modified (If-None-Match matched the ETag).' },
+          '404': errorResponse('No such image, a replaced or removed one, or an organization this session may not see (one answer for all).'),
+          '503': errorResponse('The photo store did not deliver the image in time (5 s) or failed; Cache-Control: no-store. Try again later.'),
+        },
+      },
+    },
     // M17 (docs/adr/0020-events.md): an event's poster and its calendar file.
     '/event-posters/{id}/{hash}/{file}': {
       servers: [{ url: '/api' }],

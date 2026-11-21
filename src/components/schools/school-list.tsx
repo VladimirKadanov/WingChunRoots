@@ -6,16 +6,35 @@
 //
 // Location is never told by colour alone (CLAUDE.md §10): an exact location has a solid pin and
 // the words "Exact location"; a city-only school a hollow ring and "Private club, by invitation".
+//
+// ADR 0052: each row also shows the school's logo (or its monogram seal), the days it trains and
+// "First lesson free" when the school says so, in words.
 
 import Link from 'next/link';
 
 import { NameText } from '@/components/account/person-names';
+import { Emblem } from '@/components/ink/ink-art';
 import { cx } from '@/lib/cx';
 import type { SchoolPinDto } from '@/server/dto/schools';
 import { CityRingMark, ExactPinMark } from './marks';
 
 export const EXACT_LABEL = 'Exact location';
 export const CITY_ONLY_LABEL = 'Private club, by invitation';
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_NAMES_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** ADR 0052: "Trains Mon · Wed · Sat", with the whole names for a screen reader. */
+function TrainingDays({ days }: { days: readonly number[] }) {
+  if (days.length === 0) return null;
+  return (
+    <p className="text-sm" data-testid="school-days">
+      <span className="text-fg-muted">Trains </span>
+      <span aria-hidden="true">{days.map((d) => DAY_NAMES[d - 1]).join(' · ')}</span>
+      <span className="sr-only">{days.map((d) => DAY_NAMES_LONG[d - 1]).join(', ')}</span>
+    </p>
+  );
+}
 
 /** The words of a school's location: exact, or city only. */
 export function locationText(school: Pick<SchoolPinDto, 'precision' | 'city'>): string {
@@ -67,7 +86,9 @@ export function SchoolList({ schools, selectedId = null, onShow, className }: Sc
               selected ? 'border-l-4 border-l-fg pl-3' : 'pl-4',
             )}
           >
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <div className="flex items-center gap-3">
+              <Emblem logo={school.logo ? { large: school.logo } : null} name={school.name} shape="seal" className="size-11" />
+              <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
               <Link href={`/schools/${school.slug}`} className={cx('link inline-flex min-h-11 items-center font-display text-lg [overflow-wrap:anywhere]', selected && 'font-bold')}>
                 {school.name}
               </Link>
@@ -76,11 +97,20 @@ export function SchoolList({ schools, selectedId = null, onShow, className }: Sc
                   {school.distanceKm.toLocaleString('en')} km
                 </span>
               ) : null}
+              </div>
             </div>
             <p className="text-sm text-fg-muted">
               {school.city}, {school.countryCode}
             </p>
-            <LocationTag precision={school.precision} />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <LocationTag precision={school.precision} />
+              {school.firstTrialFree ? (
+                <span className="rounded-xs border border-border-strong px-2 py-0.5 text-label uppercase" data-testid="school-first-free">
+                  First lesson free
+                </span>
+              ) : null}
+            </div>
+            <TrainingDays days={school.days} />
             {school.instructors.length > 0 ? (
               <p className="text-sm">
                 <span className="text-fg-muted">{school.instructors.length === 1 ? 'Instructor ' : 'Instructors '}</span>

@@ -92,6 +92,8 @@ export type AuditAction =
   | 'gallery.reorder'
   | 'gallery.profile'
   | 'school_photo.upload'
+  | 'organization_photo.upload'
+  | 'organization_photo.remove'
   | 'school_photo.remove'
   | 'school_photo.update'
   | 'school_photo.reorder'

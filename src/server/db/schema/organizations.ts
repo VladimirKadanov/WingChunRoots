@@ -17,12 +17,17 @@ import {
   deletedAt,
   idColumn,
   inList,
+  ORGANIZATION_ABOUT_MAX,
   ORGANIZATION_ADMIN_ROLES,
   ORGANIZATION_KINDS,
+  ORGANIZATION_PHOTO_KINDS,
   ORGANIZATION_ROLES,
   ORGANIZATION_SCHOOL_STATUSES,
   ORGANIZATION_SCHOOLS_ESTIMATE_MAX,
   ORGANIZATION_STATUSES,
+  PHOTO_FULL_MAX_SIDE,
+  PHOTO_REASON_MAX,
+  SCHOOL_PHOTO_STATUSES,
   timestamps,
 } from './common';
 import { person, SLUG_PATTERN } from './persons';
@@ -46,6 +51,8 @@ export const organization = pgTable(
     leaderName: text('leader_name'),
     leaderTitle: text('leader_title'),
     schoolsEstimate: integer('schools_estimate'),
+    /** ADR 0052: what the organization says about itself on its public page (plain text, ORGANIZATION_ABOUT_MAX). */
+    about: text('about'),
     /** The account that applied (the first owner); kept when that account is deleted (SET NULL). */
     createdByUserId: uuid('created_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
@@ -66,6 +73,7 @@ export const organization = pgTable(
       sql`${t.schoolsEstimate} IS NULL OR ${t.schoolsEstimate} BETWEEN 0 AND ${sql.raw(String(ORGANIZATION_SCHOOLS_ESTIMATE_MAX))}`,
     ),
     check('organization_name_not_blank', sql`btrim(${t.name}) <> ''`),
+    check('organization_about_length', sql`${t.about} IS NULL OR char_length(${t.about}) BETWEEN 1 AND ${sql.raw(String(ORGANIZATION_ABOUT_MAX))}`),
   ],
 );
 
@@ -155,5 +163,59 @@ export const organizationSchool = pgTable(
     check('organization_school_status_check', inList(t.status.name, ORGANIZATION_SCHOOL_STATUSES)),
     check('organization_school_answered_has_time', sql`${t.status} NOT IN ('accepted', 'refused') OR ${t.answeredAt} IS NOT NULL`),
     check('organization_school_ended_has_time', sql`${t.status} <> 'ended' OR ${t.endedAt} IS NOT NULL`),
+  ],
+);
+
+/**
+ * ADR 0052: an organization's logo and banner, at most one active of each, shown on its public
+ * page and its card while it is approved (v_public_organization). Stored like a school's photos
+ * (src/server/storage/photo.ts): decoded, turned upright, every metadata block (EXIF with its GPS
+ * position) dropped and encoded again as WebP under `<storage_key>/<rendition>` in the photo store.
+ * The logo is fitted whole into a transparent square (96 and 512 px); the banner is a centred
+ * square (96 and 512 px) and the whole image (`full`, at most PHOTO_FULL_MAX_SIDE), which the
+ * pages crop to their frame. A replaced or removed image keeps its row (who and why) while its
+ * files are deleted. app_public_ro has no right on the table.
+ */
+export const organizationPhoto = pgTable(
+  'organization_photo',
+  {
+    id: idColumn(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ORGANIZATION_PHOTO_KINDS }).notNull(),
+    storageKey: text('storage_key').notNull(),
+    sha256: text('sha256').notNull(),
+    originalSha256: text('original_sha256'),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    fullWidth: integer('full_width'),
+    fullHeight: integer('full_height'),
+    sizeBytes: integer('size_bytes').notNull(),
+    status: text('status', { enum: SCHOOL_PHOTO_STATUSES }).notNull().default('active'),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    removedByUserId: uuid('removed_by_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    removalReason: text('removal_reason'),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('organization_photo_storage_key_key').on(t.storageKey),
+    uniqueIndex('organization_photo_one_of_kind_key').on(t.organizationId, t.kind).where(sql`${t.status} = 'active'`),
+    index('organization_photo_uploaded_by_user_id_idx').on(t.uploadedByUserId),
+    index('organization_photo_removed_by_user_id_idx').on(t.removedByUserId),
+    check('organization_photo_kind_check', inList(t.kind.name, ORGANIZATION_PHOTO_KINDS)),
+    check('organization_photo_status_check', inList(t.status.name, SCHOOL_PHOTO_STATUSES)),
+    check('organization_photo_storage_key_format', sql`${t.storageKey} ~ '^photos/[0-9a-f]{48}$'`),
+    check('organization_photo_sha256_format', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+    check('organization_photo_original_sha256_format', sql`${t.originalSha256} IS NULL OR ${t.originalSha256} ~ '^[0-9a-f]{64}$'`),
+    check('organization_photo_square', sql`${t.width} = ${t.height} AND ${t.width} BETWEEN 96 AND 512`),
+    check(
+      'organization_photo_full_size',
+      sql`(${t.fullWidth} IS NULL AND ${t.fullHeight} IS NULL) OR (${t.fullWidth} BETWEEN 1 AND ${sql.raw(String(PHOTO_FULL_MAX_SIDE))} AND ${t.fullHeight} BETWEEN 1 AND ${sql.raw(String(PHOTO_FULL_MAX_SIDE))})`,
+    ),
+    check('organization_photo_size_check', sql`${t.sizeBytes} > 0`),
+    check('organization_photo_removed_has_time', sql`${t.status} <> 'removed' OR ${t.removedAt} IS NOT NULL`),
+    check('organization_photo_reason_length', sql`${t.removalReason} IS NULL OR char_length(${t.removalReason}) BETWEEN 1 AND ${sql.raw(String(PHOTO_REASON_MAX))}`),
   ],
 );

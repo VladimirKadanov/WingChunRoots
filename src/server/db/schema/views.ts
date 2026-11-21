@@ -116,6 +116,8 @@ export const vPublicOrganization = pgView('v_public_organization', {
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  /** ADR 0052: the organization's own words for its public page. */
+  about: text('about'),
 }).existing();
 
 /** M17: a public person or organization named on an event (the organizer, an instructor). */

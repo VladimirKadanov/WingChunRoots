@@ -147,8 +147,12 @@ export const PROFILE_VIDEO_TITLE_MAX = 100;
 export const PHOTO_FULL_MAX_SIDE = 1280;
 /** M14: the largest rendition the photo routes send (a larger object in the store is refused); M16: the whole photo is encoded to fit it. */
 export const PHOTO_RENDITION_MAX_BYTES = 1024 * 1024;
-/** M16: a school's photos: its logo (at most one) and the photos of its training rooms. */
-export const SCHOOL_PHOTO_KINDS = ['logo', 'room'] as const;
+/** M16: a school's photos: its logo (at most one) and the photos of its training rooms; ADR 0052: its banner (at most one). */
+export const SCHOOL_PHOTO_KINDS = ['logo', 'room', 'banner'] as const;
+/** ADR 0052: an organization's images: its logo and its banner, at most one of each. */
+export const ORGANIZATION_PHOTO_KINDS = ['logo', 'banner'] as const;
+/** ADR 0052: the longest "About" an organization writes for its public page. */
+export const ORGANIZATION_ABOUT_MAX = 2000;
 /** M16: a school photo is shown (`active`), was replaced by a newer logo (`replaced`) or was removed. */
 export const SCHOOL_PHOTO_STATUSES = ['active', 'replaced', 'removed'] as const;
 /**

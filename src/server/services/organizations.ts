@@ -64,6 +64,7 @@ import { authUser, organization, organizationAdmin, organizationMembership, orga
 import {
   EVIDENCE_MAX_FILES_PER_CASE,
   OPEN_REVIEW_CASE_STATUSES,
+  ORGANIZATION_ABOUT_MAX,
   type ORGANIZATION_ADMIN_ROLES,
   ORGANIZATION_KINDS,
   ORGANIZATION_ROLES,
@@ -83,7 +84,9 @@ import { peopleRefs, type PersonRef } from './dashboard';
 import { pgErrorOf, ServiceError } from './errors';
 import { type EvidenceFileView, fileView, filesOfCases, linkOptionalFilesToCase } from './evidence';
 import { cleanName } from './names';
+import { organizationImagesOf } from './organization-photos';
 import { photoOf, publicPhotoRefs } from './photo-refs';
+import { schoolLogosOf } from './school-photos';
 import { idempotencyKey, keyReused } from './relationships';
 import { caseReplayOf, isCaseKeyConflict, lockAccountCases, recordCaseEvent, tellStaff } from './review-core';
 import { notify, notifyEach } from './notify';
@@ -201,7 +204,19 @@ export type OrganizationApplyInput = z.input<typeof organizationApplyInput>;
 
 export const organizationIdInput = z.object({ organizationId: z.uuid({ error: NO_ORGANIZATION }) });
 export const organizationSlugInput = z.object({ slug: z.string().trim().min(1).max(160).regex(/^[a-z0-9-]+$/, { error: NO_ORGANIZATION }) });
-export const organizationUpdateInput = organizationFieldsInput.extend({ organizationId: z.uuid({ error: NO_ORGANIZATION }) });
+export const organizationUpdateInput = organizationFieldsInput.extend({
+  organizationId: z.uuid({ error: NO_ORGANIZATION }),
+  /**
+   * ADR 0052: what the organization says about itself on its public page, plain text (null or empty
+   * clears it; left out keeps it as it is).
+   */
+  about: z
+    .string()
+    .max(ORGANIZATION_ABOUT_MAX * 2, { error: `Use at most ${ORGANIZATION_ABOUT_MAX} characters.` })
+    .transform((s) => s.normalize('NFC').replace(/\r\n?/g, '\n').trim())
+    .refine((s) => s.length <= ORGANIZATION_ABOUT_MAX, { error: `Use at most ${ORGANIZATION_ABOUT_MAX} characters.` })
+    .nullish(),
+});
 
 export const addAdminInput = z.object({
   organizationId: z.uuid({ error: NO_ORGANIZATION }),
@@ -280,6 +295,7 @@ interface OrgRow {
   leaderName: string | null;
   leaderTitle: string | null;
   schoolsEstimate: number | null;
+  about: string | null;
   createdByUserId: string | null;
   approvedAt: Date | null;
   updatedAt: Date;
@@ -296,6 +312,7 @@ const orgColumns = {
   leaderName: organization.leaderName,
   leaderTitle: organization.leaderTitle,
   schoolsEstimate: organization.schoolsEstimate,
+  about: organization.about,
   createdByUserId: organization.createdByUserId,
   approvedAt: organization.approvedAt,
   updatedAt: organization.updatedAt,
@@ -380,10 +397,30 @@ async function cachedOrganizationList(): Promise<OrganizationListDto> {
   'use cache';
   cacheLife('minutes');
   tagCacheEntry([ORGANIZATIONS_TAG]);
-  const result = await getDb().execute<{ slug: string; name: string; kind: OrganizationKind; country_code: string | null }>(sql`
-    SELECT v.slug, v.name, v.kind, v.country_code FROM v_public_organization v ORDER BY v.name, v.slug LIMIT 500`);
+  const db = getDb();
+  // ADR 0052: the counts follow the page's rules: current members who are public people (DEFAULT
+  // D03) and public schools that accepted the link. The list lives minutes (cacheLife above): a
+  // profile made public or hidden shows within them.
+  const result = await db.execute<{ id: string; slug: string; name: string; kind: OrganizationKind; country_code: string | null; members: number; schools: number }>(sql`
+    SELECT v.id, v.slug, v.name, v.kind, v.country_code,
+           (SELECT count(DISTINCT m.person_id)::int FROM organization_membership m JOIN v_public_person p ON p.id = m.person_id
+             WHERE m.organization_id = v.id AND (m.starts_on IS NULL OR m.starts_on <= current_date) AND (m.ends_on IS NULL OR m.ends_on > current_date)) AS members,
+           (SELECT count(*)::int FROM organization_school l JOIN v_public_school s ON s.id = l.school_id
+             WHERE l.organization_id = v.id AND l.status = 'accepted') AS schools
+      FROM v_public_organization v ORDER BY v.name, v.slug LIMIT 500`);
+  const images = await organizationImagesOf(db, result.rows.map((r) => r.id));
   return toPublicOrganizationList({
-    organizations: result.rows.map((r) => ({ slug: r.slug, name: r.name, kind: r.kind, kindLabel: ORGANIZATION_KIND_LABELS[r.kind], countryCode: r.country_code })),
+    organizations: result.rows.map((r) => ({
+      slug: r.slug,
+      name: r.name,
+      kind: r.kind,
+      kindLabel: ORGANIZATION_KIND_LABELS[r.kind],
+      countryCode: r.country_code,
+      logo: images.get(r.id)?.logo ?? null,
+      banner: images.get(r.id)?.banner ?? null,
+      memberCount: Number(r.members),
+      schoolCount: Number(r.schools),
+    })),
   });
 }
 
@@ -404,8 +441,17 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
   'use cache';
   cacheLife('minutes');
   const db = getDb();
-  const found = await db.execute<{ id: string; slug: string; name: string; kind: OrganizationKind; country_code: string | null; website_url: string | null; approved_at: Date | string | null }>(sql`
-    SELECT v.id, v.slug, v.name, v.kind, v.country_code, v.website_url, v.approved_at FROM v_public_organization v WHERE v.slug = ${slug}`);
+  const found = await db.execute<{
+    id: string;
+    slug: string;
+    name: string;
+    kind: OrganizationKind;
+    country_code: string | null;
+    website_url: string | null;
+    approved_at: Date | string | null;
+    about: string | null;
+  }>(sql`
+    SELECT v.id, v.slug, v.name, v.kind, v.country_code, v.website_url, v.approved_at, v.about FROM v_public_organization v WHERE v.slug = ${slug}`);
   const row = found.rows[0];
   if (!row) {
     tagCacheEntry([ORGANIZATIONS_TAG]);
@@ -435,13 +481,26 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
         ).rows;
   const photos = await publicPhotoRefs(db, ids);
   // Plan §6.4: a school by its name and city, never a point; only while it is public.
-  const schools = await db.execute<{ slug: string; name: string; city_name: string; country_code: string }>(sql`
-    SELECT s.slug, s.name, s.city_name, s.country_code
+  // ADR 0052: with the city's own centre from the GeoNames extract (public data), never the
+  // school's point, for the map of cities; and the school's logo for its card.
+  const schools = await db.execute<{ id: string; slug: string; name: string; city_name: string; country_code: string; place_id: string; lat: number; lng: number }>(sql`
+    SELECT s.id, s.slug, s.name, s.city_name, s.country_code, s.place_id,
+           round(ST_Y(pl.centroid::geometry)::numeric, 2)::float8 AS lat,
+           round(ST_X(pl.centroid::geometry)::numeric, 2)::float8 AS lng
       FROM organization_school l
       JOIN v_public_school s ON s.id = l.school_id
+      JOIN place pl ON pl.id = s.place_id
      WHERE l.organization_id = ${row.id}::uuid AND l.status = 'accepted'
      ORDER BY s.name, s.slug
      LIMIT ${ORGANIZATION_LIST_LIMIT}`);
+  const logos = await schoolLogosOf(db, schools.rows.map((s) => s.id));
+  const cities = new Map<string, { name: string; countryCode: string; lat: number; lng: number; schools: number }>();
+  for (const s of schools.rows) {
+    const city = cities.get(s.place_id) ?? { name: s.city_name, countryCode: s.country_code, lat: Number(s.lat), lng: Number(s.lng), schools: 0 };
+    city.schools++;
+    cities.set(s.place_id, city);
+  }
+  const images = (await organizationImagesOf(db, [row.id])).get(row.id) ?? { logo: null, banner: null };
   // Every member's tag, the hidden ones too: a member who makes their profile public (or hides it)
   // changes this page, and that person's tag is what the profile change invalidates.
   const everyMember = await db.execute<{ person_id: string }>(sql`
@@ -454,8 +513,11 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
     kind: row.kind,
     kindLabel: ORGANIZATION_KIND_LABELS[row.kind],
     countryCode: row.country_code,
+    logo: images.logo,
+    banner: images.banner,
     websiteUrl: row.website_url,
     approvedOn: approved ? isoDay(approved) : null,
+    about: row.about,
     members: members.rows.map((m) => {
       const original = originals.find((o) => o.person_id === m.id);
       return {
@@ -467,7 +529,10 @@ async function cachedOrganizationPage(slug: string): Promise<OrganizationPageDto
         photo: photoOf(photos.get(m.id)),
       };
     }),
-    schools: schools.rows.map((s) => ({ slug: s.slug, name: s.name, city: s.city_name, countryCode: s.country_code })),
+    schools: schools.rows.map((s) => ({ slug: s.slug, name: s.name, city: s.city_name, countryCode: s.country_code, logo: logos.get(s.id) ?? null })),
+    memberCount: members.rows.length,
+    schoolCount: schools.rows.length,
+    cities: [...cities.values()].sort((a, b) => b.schools - a.schools || a.name.localeCompare(b.name, 'en')),
   });
 }
 
@@ -569,6 +634,8 @@ export interface ManagedOrganization {
   leaderName: string | null;
   leaderTitle: string | null;
   schoolsEstimate: number | null;
+  /** ADR 0052: the organization's own words on its public page. */
+  about: string | null;
   /** DEFAULT D04: the approval, the plan and (elsewhere) a person's verification are separate states. */
   approval: { status: OrganizationStatus; label: string; approvedAt: string | null };
   plan: PlanView;
@@ -662,6 +729,7 @@ export async function manageOrganization(principal: Principal | null, raw: z.inp
     leaderName: org.leaderName,
     leaderTitle: org.leaderTitle,
     schoolsEstimate: org.schoolsEstimate,
+    about: org.about,
     approval: { status: org.status, label: APPROVAL_LABELS[org.status], approvedAt: org.approvedAt?.toISOString() ?? null },
     plan,
     you: { role, roleLabel: ADMIN_ROLE_LABELS[role] },
@@ -796,6 +864,7 @@ export async function updateOrganization(principal: Principal | null, raw: z.inp
       leaderName: input.leaderName,
       leaderTitle: input.leaderTitle,
       schoolsEstimate: input.schoolsEstimate,
+      about: input.about === undefined ? org.about : input.about || null,
     };
     const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => next[k] !== org[k]);
     // DEFAULT (ADR 0018): once approved, the official name, kind and country stay as the reviewers saw them.

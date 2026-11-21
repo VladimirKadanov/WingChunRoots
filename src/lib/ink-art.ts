@@ -188,6 +188,12 @@ export function organizationMotif(kind: 'federation' | 'association' | 'school_g
   return kind === 'school_group' ? 'roots' : 'lattice';
 }
 
+/** The motif of a school: hills or peaks, chosen by its slug (both read well cropped to a wide band). */
+export function schoolMotif(slug: string): ArtMotif {
+  const motifs = ['hills', 'peaks'] as const;
+  return motifs[seedOf(`school:${slug}`) % motifs.length]!;
+}
+
 /** Up to two initials of a name for a monogram crest ("Demo Wing Chun Hall Sofia" → "WS"). */
 export function monogram(name: string): string {
   const words = name

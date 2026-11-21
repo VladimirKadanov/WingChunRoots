@@ -63,6 +63,7 @@ import {
   organizationImportRow,
   organizationMemberRecord,
   organizationMembership,
+  organizationPhoto,
   organizationSchool,
   organizationTeacherClaim,
   passportCertificate,
@@ -141,6 +142,8 @@ export const RESETTABLE_TABLES: readonly PgTable[] = [
   organizationImportRow,
   organizationMemberRecord,
   organizationMembership,
+  // ADR 0052: an organization's logo and banner (no demo rows).
+  organizationPhoto,
   organizationSchool,
   organizationTeacherClaim,
   passportCertificate,
@@ -348,6 +351,8 @@ async function load(
   await insert(organization, f.organizations);
   await insert(organizationMembership, f.organizationMemberships);
   await insert(organizationAdmin, f.organizationAdmins);
+  // ADR 0052: the demo schools linked to a demo organization.
+  await insert(organizationSchool, f.organizationSchools);
   await insert(reviewCase, f.reviewCases);
   await insert(reviewNote, f.reviewNotes);
   await insert(invitation, f.invitations);

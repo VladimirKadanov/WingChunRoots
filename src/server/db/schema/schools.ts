@@ -206,6 +206,8 @@ export const schoolPhoto = pgTable(
     uniqueIndex('school_photo_storage_key_key').on(t.storageKey),
     // One logo per school.
     uniqueIndex('school_photo_one_logo_key').on(t.schoolId).where(sql`${t.kind} = 'logo' AND ${t.status} = 'active'`),
+    // ADR 0052: one banner per school.
+    uniqueIndex('school_photo_one_banner_key').on(t.schoolId).where(sql`${t.kind} = 'banner' AND ${t.status} = 'active'`),
     index('school_photo_school_idx').on(t.schoolId, t.kind, t.position).where(sql`${t.status} = 'active'`),
     index('school_photo_uploaded_by_user_id_idx').on(t.uploadedByUserId),
     index('school_photo_removed_by_user_id_idx').on(t.removedByUserId),

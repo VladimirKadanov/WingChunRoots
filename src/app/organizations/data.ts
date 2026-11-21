@@ -4,6 +4,7 @@
 
 import { cache } from 'react';
 
+import type { EventListDto } from '@/server/dto/events';
 import type { OrganizationListDto, OrganizationPageDto } from '@/server/dto/organizations';
 import { ORPCError } from '@/server/rpc/server';
 import { failure, lineageClient } from '../people/[slug]/data';
@@ -27,6 +28,17 @@ export const loadOrganizations = cache(async (): Promise<OrganizationListDto | n
     return await client.organizations.list();
   } catch (error) {
     console.error(`[organizations] the list could not be loaded: ${failure(error)}`);
+    return null;
+  }
+});
+
+/** ADR 0052: the upcoming events an organization organizes (events.list); null when the read fails (the page leaves the section out). */
+export const loadOrganizationEvents = cache(async (slug: string): Promise<EventListDto | null> => {
+  const client = await lineageClient();
+  try {
+    return await client.events.list({ when: 'upcoming', organization: slug, limit: 3 });
+  } catch (error) {
+    console.error(`[organization-page] the events could not be loaded: ${failure(error)}`);
     return null;
   }
 });

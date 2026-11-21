@@ -4,7 +4,7 @@
 // heading next to it names the page.
 
 import { cx } from '@/lib/cx';
-import { ART_HEIGHT, ART_WIDTH, type ArtMotif, type ArtShape, type ArtTone, drawArt, seedOf } from '@/lib/ink-art';
+import { ART_HEIGHT, ART_WIDTH, type ArtMotif, type ArtShape, type ArtTone, drawArt, monogram, seedOf } from '@/lib/ink-art';
 
 const tone = (t: ArtTone | undefined) => (t ? `var(--art-${t})` : 'none');
 
@@ -44,7 +44,7 @@ export function InkArt({ slug, motif, className, testId }: { slug: string; motif
         <defs>
           <pattern id={tileId} width={art.tile.size} height={art.tile.size} patternUnits="userSpaceOnUse">
             <rect width={art.tile.size} height={art.tile.size} fill="var(--art-ground)" />
-            <path d={art.tile.d} fill="none" stroke="var(--art-mid)" strokeWidth={3} />
+            <path d={art.tile.d} fill="none" stroke="var(--art-mid)" strokeWidth={2} />
           </pattern>
         </defs>
       ) : null}
@@ -72,5 +72,52 @@ export function Crest({ text, shape, className }: { text: string; shape: 'seal' 
         {text}
       </text>
     </svg>
+  );
+}
+
+/**
+ * ADR 0052: the banner of a school's or an organization's page or card: its own image, cropped to
+ * the frame (decorative: the heading names the page, and the whole image is never needed), or the
+ * drawn motif of its slug.
+ */
+export function Banner({
+  image,
+  slug,
+  motif,
+  className,
+  testId,
+  sizes = 'full',
+}: {
+  image: { full: string; large: string; width: number; height: number } | null;
+  slug: string;
+  motif: ArtMotif;
+  className?: string;
+  testId?: string;
+  /** `card`: the 512 px square is enough for a small card; `full`: the whole image. */
+  sizes?: 'full' | 'card';
+}) {
+  return (
+    <div className={cx('relative overflow-hidden bg-surface-2', className)} data-testid={testId} data-drawn={image ? undefined : 'true'}>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={sizes === 'card' ? image.large : image.full} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+      ) : (
+        <InkArt slug={slug} motif={motif} />
+      )}
+    </div>
+  );
+}
+
+/** ADR 0052: the logo of a school or an organization, whole on its square, or its monogram crest. */
+export function Emblem({ logo, name, shape, className }: { logo: { large: string } | null; name: string; shape: 'seal' | 'shield'; className?: string }) {
+  return (
+    <span className={cx('inline-flex shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border-strong bg-bg text-fg', className)} aria-hidden="true">
+      {logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logo.large} alt="" className="size-full object-contain" />
+      ) : (
+        <Crest text={monogram(name)} shape={shape} className="size-3/4" />
+      )}
+    </span>
   );
 }

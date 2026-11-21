@@ -1,7 +1,8 @@
 'use client';
 
 // A school's logo and room photos for the account that listed it (milestone M16;
-// docs/adr/0019-galleries.md): "Add logo"/"Change logo" and "Remove logo"; "Add a room photo" (up
+// docs/adr/0019-galleries.md): "Add logo"/"Change logo" and "Remove logo"; ADR 0052: "Add banner"/
+// "Change banner" and "Remove banner"; "Add a room photo" (up
 // to the room gallery's limit, DEFAULT D07), each room photo's caption, "Move up"/"Move down" and
 // "Remove". The calls go to the schoolPhotos.* procedures through /api/rpc (plan §6.8), as the
 // person gallery's controls (./gallery-manager.tsx), with the same keyboard, touch and status rules.
@@ -18,7 +19,7 @@ import { CaptionForm } from './gallery-manager';
 import { photoAlt } from './gallery-grid';
 import { callRpc, MAX_BYTES, MAX_MB, messageOf, type Status, StatusLine, uploadRpc } from './rpc';
 
-function FilePicker({
+export function FilePicker({
   id,
   label,
   disabled,
@@ -78,6 +79,7 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
   const id = useId();
   const router = useRouter();
   const logoPicker = useRef<HTMLInputElement>(null);
+  const bannerPicker = useRef<HTMLInputElement>(null);
   const roomPicker = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
   // The order shown: the server's, or the one just chosen while it saves (adjusted while rendering).
@@ -115,14 +117,14 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
     router.refresh();
   }
 
-  function upload(kind: 'logo' | 'room', file: File) {
+  function upload(kind: 'logo' | 'banner' | 'room', file: File) {
     if (file.size > MAX_BYTES) {
       setStatus({ kind: 'refused', text: `This file is larger than ${MAX_MB} MB. Choose a smaller copy.` });
       return;
     }
     void run(
-      kind === 'logo' ? 'Uploading the logo…' : 'Uploading the photo…',
-      kind === 'logo' ? (view.logo ? 'Logo changed.' : 'Logo added.') : 'Photo added.',
+      kind === 'logo' ? 'Uploading the logo…' : kind === 'banner' ? 'Uploading the banner…' : 'Uploading the photo…',
+      kind === 'logo' ? (view.logo ? 'Logo changed.' : 'Logo added.') : kind === 'banner' ? (view.banner ? 'Banner changed.' : 'Banner added.') : 'Photo added.',
       () => uploadRpc('/api/rpc/schoolPhotos/upload', { schoolId: view.schoolId, kind }, file),
     );
   }
@@ -186,6 +188,49 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
               }
             >
               Remove logo
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <section aria-labelledby={`${id}-banner`} className="grid gap-3">
+        <h2 id={`${id}-banner`} className="font-display text-xl">
+          Banner
+        </h2>
+        {view.banner ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={view.banner.full}
+            alt={`Banner of ${schoolName}`}
+            width={view.banner.width}
+            height={view.banner.height}
+            className="aspect-[16/5] w-full max-w-xl rounded-sm border border-border-subtle bg-surface-1 object-cover"
+            data-testid="school-banner-preview"
+          />
+        ) : (
+          <p className="text-fg-muted">No banner yet: the page shows a drawing made from the school’s address.</p>
+        )}
+        <FilePicker
+          id={`${id}-banner-file`}
+          inputRef={bannerPicker}
+          label={view.banner ? 'Change banner' : 'Add banner'}
+          disabled={busy}
+          hint={`JPEG, PNG or WebP, up to ${MAX_MB} MB. A wide photo works best: the page crops it to a band across the top, so keep what matters in the middle.`}
+          onFile={(file) => upload('banner', file)}
+          testId="school-banner-input"
+        />
+        {view.banner ? (
+          <div>
+            <button
+              type="button"
+              aria-disabled={busy || undefined}
+              className={buttonVariants({ variant: 'ghost' })}
+              data-testid="school-banner-remove"
+              onClick={() =>
+                void run('Removing the banner…', 'Banner removed.', () => callRpc('/api/rpc/schoolPhotos/remove', { photoId: view.banner!.id }), () => bannerPicker.current?.focus())
+              }
+            >
+              Remove banner
             </button>
           </div>
         ) : null}

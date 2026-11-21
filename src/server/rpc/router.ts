@@ -123,6 +123,14 @@ import {
   updateGalleryPhoto,
 } from '../services/gallery';
 import {
+  getOrganizationPhotos,
+  organizationPhotoRemoveInput,
+  organizationPhotosGetInput,
+  organizationPhotoUploadInput,
+  removeOrganizationPhoto,
+  uploadOrganizationPhoto,
+} from '../services/organization-photos';
+import {
   getSchoolPhotos,
   removeSchoolPhoto,
   reorderSchoolPhotos,
@@ -902,7 +910,7 @@ export const router = {
         method: 'POST',
         path: '/schools/photos/upload',
         summary:
-          'Upload the logo of your school (replacing the old one) or one more room photo (multipart `schoolId`, `kind` logo|room, `file`, optional `caption`): metadata and location removed, stored as WebP; at most 12 room photos (D07, CONFLICT past it); audited',
+          'Upload the logo or the banner of your school (replacing the old one) or one more room photo (multipart `schoolId`, `kind` logo|banner|room, `file`, optional `caption`): metadata and location removed, stored as WebP; at most 12 room photos (D07, CONFLICT past it); audited',
       })
       .input(schoolPhotoUploadInput)
       .handler(({ context, input }) => uploadSchoolPhoto(context.principal, input, context.meta)),
@@ -918,6 +926,27 @@ export const router = {
       .route({ method: 'POST', path: '/schools/photos/reorder', summary: "Put your school's room photos in a new order (every photo once; CONFLICT when they changed); audited" })
       .input(schoolPhotoReorderInput)
       .handler(({ context, input }) => reorderSchoolPhotos(context.principal, input, context.meta)),
+  },
+  // ADR 0052: an organization's logo and banner, for its admins; shown on its public page and card
+  // through organizations.get and organizations.list.
+  organizationPhotos: {
+    get: signedIn
+      .route({ method: 'GET', path: '/organizations/mine/{organizationId}/photos', summary: 'The logo and banner of an organization you administer (or staff with a verified second factor); 404 for any other organization' })
+      .input(organizationPhotosGetInput)
+      .handler(({ context, input }) => getOrganizationPhotos(context.principal, input)),
+    upload: signedIn
+      .route({
+        method: 'POST',
+        path: '/organizations/photos/upload',
+        summary:
+          'Upload the logo or the banner of an organization you administer, replacing the old one (multipart `organizationId`, `kind` logo|banner, `file`): metadata and location removed, stored as WebP; audited',
+      })
+      .input(organizationPhotoUploadInput)
+      .handler(({ context, input }) => uploadOrganizationPhoto(context.principal, input, context.meta)),
+    remove: signedIn
+      .route({ method: 'POST', path: '/organizations/photos/remove', summary: "Remove the logo or the banner of an organization you administer, or as staff with a verified second factor any organization's, with a reason kept in the audit log (its admins are told); audited" })
+      .input(organizationPhotoRemoveInput)
+      .handler(({ context, input }) => removeOrganizationPhoto(context.principal, input, context.meta)),
   },
   // M10a: the review queue (staff with a verified second factor; plan §5.6, §6.7).
   review: {
