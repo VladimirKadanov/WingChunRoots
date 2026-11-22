@@ -75,7 +75,7 @@ describe('what the archive lists in the seeded database', () => {
     );
   });
 
-  it('lists rows of every family (the seed holds photos, logos, posters and certificates)', async () => {
+  it('lists rows of every family (the seed holds photos, logos, organization logos, posters and certificates)', async () => {
     const list = await listed();
     for (const family of OBJECT_FAMILIES) expect(count(list, family.id), family.id).toBeGreaterThan(0);
   });
@@ -108,6 +108,7 @@ describe('what the archive lists in the seeded database', () => {
     await withClient(db.url, async (c) => {
       await c.query("UPDATE person_photo SET status = 'removed', removed_at = now() WHERE id = (SELECT id FROM person_photo WHERE status = 'active' ORDER BY id LIMIT 1)");
       await c.query("UPDATE school_photo SET status = 'replaced' WHERE id = (SELECT id FROM school_photo WHERE status = 'active' ORDER BY id LIMIT 1)");
+      await c.query("UPDATE organization_photo SET status = 'removed', removed_at = now() WHERE id = (SELECT id FROM organization_photo WHERE status = 'active' ORDER BY id LIMIT 1)");
       await c.query("UPDATE passport_certificate SET status = 'withdrawn', withdrawn_at = now() WHERE id = (SELECT id FROM passport_certificate WHERE status = 'active' ORDER BY id LIMIT 1)");
       await c.query(
         "UPDATE event SET poster_storage_key = NULL, poster_sha256 = NULL, poster_width = NULL, poster_height = NULL, poster_size_bytes = NULL WHERE id = (SELECT id FROM event WHERE poster_storage_key IS NOT NULL ORDER BY id LIMIT 1)",

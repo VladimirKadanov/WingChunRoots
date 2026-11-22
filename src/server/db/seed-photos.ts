@@ -38,9 +38,10 @@ export interface DemoPhoto {
   caption: string | null;
   /**
    * M16: `profile` (the M14 photo), `gallery` (another photo of the person), `logo` or `room` (a
-   * school's); M17: `poster` (an event's, by the event's slug; sha256 and sizeBytes of the whole image).
+   * school's); M17: `poster` (an event's, by the event's slug; sha256 and sizeBytes of the whole image);
+   * ADR 0052: `organization_logo` (an organization's, by its slug).
    */
-  role: 'profile' | 'gallery' | 'logo' | 'room' | 'poster';
+  role: 'profile' | 'gallery' | 'logo' | 'room' | 'poster' | 'organization_logo';
 }
 
 /**
@@ -64,6 +65,13 @@ export const DEMO_SCHOOL_PHOTOS: readonly { slug: string; logo: boolean; rooms: 
   { slug: 'demo-school-sofia', logo: true, rooms: ['Demo main training room', 'Demo wooden dummy corner'] },
 ];
 
+/**
+ * ADR 0052 (D20): the demo organizations with a generated logo, so the list and the pages show both
+ * a logo and the drawn initials. demo-federation-north stays without one: the end-to-end spec of
+ * the uploads starts there from none.
+ */
+export const DEMO_ORGANIZATION_LOGOS: readonly string[] = ['demo-association-south'];
+
 /** M17 (D20): the demo events with a generated poster (an abstract room, never a photograph). */
 export const DEMO_EVENT_POSTERS: readonly string[] = ['demo-seminar-chum-kiu-sofia', 'demo-federation-summer-camp'];
 
@@ -84,12 +92,13 @@ async function demoPhoto(
   caption: string | null,
 ): Promise<DemoPhoto> {
   const seed = digest(key);
-  const original = role === 'logo' ? await demoLogo(seed.readUInt32BE(0)) : role === 'profile' ? await demoPortrait(seed.readUInt32BE(0)) : await demoRoom(seed.readUInt32BE(0));
+  const isLogo = role === 'logo' || role === 'organization_logo';
+  const original = isLogo ? await demoLogo(seed.readUInt32BE(0)) : role === 'profile' ? await demoPortrait(seed.readUInt32BE(0)) : await demoRoom(seed.readUInt32BE(0));
   const storageKey = `photos/${seed.subarray(4, 28).toString('hex')}`;
   let side: number;
   let large: Uint8Array;
   let full: { width: number; height: number; bytes: Uint8Array } | null = null;
-  if (role === 'logo') {
+  if (isLogo) {
     const rendered = await renderSchoolLogo(original);
     await putAll(store, storageKey, rendered.renditions);
     side = rendered.side;
@@ -123,7 +132,7 @@ async function demoPhoto(
 /**
  * Renders the demo photos and writes their files to the photo store; returns their rows' values:
  * the profile photos of M14, then (M16) the other gallery photos and the schools' logos and rooms,
- * then (M17) the events' posters.
+ * then (M17) the events' posters and (ADR 0052) the organizations' logos.
  */
 export async function writeDemoPhotos(store: ObjectStore = getPhotoStore()): Promise<DemoPhoto[]> {
   const out: DemoPhoto[] = [];
@@ -141,5 +150,7 @@ export async function writeDemoPhotos(store: ObjectStore = getPhotoStore()): Pro
   }
   index = 300;
   for (const slug of DEMO_EVENT_POSTERS) out.push(await demoPhoto(store, `wingchunroots:demo-event-poster:v1:${slug}`, index++, 'poster', slug, 0, null));
+  index = 400;
+  for (const slug of DEMO_ORGANIZATION_LOGOS) out.push(await demoPhoto(store, `wingchunroots:demo-organization-logo:v1:${slug}`, index++, 'organization_logo', slug, 0, null));
   return out;
 }

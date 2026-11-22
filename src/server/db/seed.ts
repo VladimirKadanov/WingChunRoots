@@ -351,6 +351,33 @@ async function load(
   await insert(organization, f.organizations);
   await insert(organizationMembership, f.organizationMemberships);
   await insert(organizationAdmin, f.organizationAdmins);
+  // ADR 0052: the demo organizations' generated logos (seed-photos.ts).
+  const organizationIds = new Map(f.organizations.map((o) => [o.slug, o.id]));
+  await insert(
+    organizationPhoto,
+    photos
+      .filter((ph) => ph.role === 'organization_logo' && organizationIds.has(ph.slug))
+      .map((ph) => ({
+        id: ph.id,
+        organizationId: organizationIds.get(ph.slug)!,
+        kind: 'logo' as const,
+        storageKey: ph.storageKey,
+        sha256: ph.sha256,
+        originalSha256: ph.originalSha256,
+        width: ph.side,
+        height: ph.side,
+        fullWidth: null,
+        fullHeight: null,
+        sizeBytes: ph.sizeBytes,
+        status: 'active' as const,
+        uploadedByUserId: null,
+        removedByUserId: null,
+        removedAt: null,
+        removalReason: null,
+        createdAt: ph.createdAt,
+        updatedAt: ph.createdAt,
+      })),
+  );
   // ADR 0052: the demo schools linked to a demo organization.
   await insert(organizationSchool, f.organizationSchools);
   await insert(reviewCase, f.reviewCases);
