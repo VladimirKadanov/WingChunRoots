@@ -1,4 +1,4 @@
-// TEMPORARY probe (PR #77): WebKit selection timing with variants of the explorer's legend. Removed before merge.
+// TEMPORARY probe (PR #77): WebKit selection timing, named to run before the M05 test (cold browser). Removed before merge.
 import { test } from '@playwright/test';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { edgesInto, openExplorer, personIdOf } from './helpers/explorer';
