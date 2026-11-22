@@ -1,6 +1,6 @@
 /**
- * The phone layout (docs/adr/0053-phone-layout.md): on a phone the filters, the explorer's options
- * and key, the dashboard's menu and the profile's key fold behind one button each, so the content
+ * The phone layout (docs/adr/0053-phone-layout.md): on a phone the filters, the explorer's options,
+ * the dashboard's menu and the profile's key fold behind one button each, so the content
  * comes first; the map's attribution folds to its ⓘ button after five seconds; the legal pages are
  * one line (Terms · Privacy · Licenses) and the style guide is not linked; an empty search shows
  * quick links. The seeded demo records only (D20). Desktop and phone projects.
@@ -40,7 +40,7 @@ test('@phone an empty search offers quick links, and none to the licences', asyn
   await expect(page).toHaveURL(/\/events$/);
 });
 
-test('@phone the explorer keeps its controls in one row on a phone: Options and the key are folded', async ({ page }) => {
+test('@phone the explorer keeps its controls in one row on a phone: Options is folded, the key stays', async ({ page }) => {
   await openExplorer(page, { focus: await personIdOf('demo-two-lineages'), up: 1, down: 1 });
   const options = page.getByTestId('explorer-options');
   const summary = options.locator(':scope > summary');
@@ -62,9 +62,7 @@ test('@phone the explorer keeps its controls in one row on a phone: Options and 
   await expect(teachers).toBeVisible();
   await summary.click();
   await expect(teachers).toBeHidden();
-  // The key is folded to its button on a phone and opens from it.
-  await expect(keyList).toBeHidden();
-  await page.getByTestId('explorer-legend').locator(':scope > details > summary').click();
+  // The key stays shown (plan M05: always visible), compact.
   await expect(keyList).toBeVisible();
 });
 

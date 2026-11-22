@@ -18,6 +18,7 @@ import { notification } from '../src/server/db/schema';
 import { FEATURES, formatPrice, PLANS, upgradeBenefits } from '../src/server/entitlements/plans';
 import { UNEXPECTED_FAILURE_MESSAGE } from '../src/server/rpc/form';
 import { BASE_URL, closeHelpers, giveOwnAddress, loadTestEnv, signInAs, submitStaffCode, userIdOf, type SignInTarget } from './helpers/auth';
+import { openDashboardMenu } from './helpers/phone-layout';
 import { apiPost, freshAccount, giveStudents, signInSeededAdmin } from './helpers/plans';
 
 test.beforeAll(loadTestEnv);
@@ -971,7 +972,8 @@ test.describe('at 390x844', () => {
       await expect(other.getByRole('heading', { level: 2, name: 'My requests' })).toBeVisible();
       await expect(other.getByTestId('requests').getByRole('listitem')).toHaveCount(1);
       await expectNoHorizontalScroll(other, 'student dashboard');
-      // Its links are tall enough to tap.
+      // Its links are tall enough to tap (the dashboard's own in its menu on a phone, ADR 0053).
+      await openDashboardMenu(other);
       for (const name of ['Plan and billing', 'Settings', 'Compare plans']) {
         expect((await other.getByRole('link', { name, exact: true }).boundingBox())!.height, name).toBeGreaterThanOrEqual(44);
       }

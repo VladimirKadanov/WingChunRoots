@@ -14,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import { getDb } from '../src/server/db';
 import { demoAccountEmail } from '../src/fixtures/generate';
 import { authPost, BASE_URL, clientAddress, closeHelpers, demoPassword, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
+import { openLineageKey } from './helpers/phone-layout';
 import { expectNoAxeViolations, openInTheme } from './helpers/ui';
 import { THEMES } from './routes';
 
@@ -199,7 +200,8 @@ test('@M04 a route counts the generations its gutter numbers, reads without "·"
         if (mark === 'founder') expect(text).toContain(', as recorded');
       }
     }
-    // The key explains exactly the marks the routes draw.
+    // The key explains exactly the marks the routes draw (folded below 1280 px, ADR 0053).
+    await openLineageKey(page);
     const drawn = new Set(await routes.locator('[data-mark]').evaluateAll((marks) => marks.map((m) => m.getAttribute('data-mark'))));
     const key = page.getByRole('list', { name: 'Marks on a route' });
     const labels = { founder: 'Founder, as recorded', living: 'Living', other: 'Not recorded as living' } as const;
@@ -823,6 +825,7 @@ test('@M04 no axe violations on the private record and the own request, signed i
     for (const theme of THEMES) {
       const response = await openInTheme(page, path, theme);
       expect(response?.status()).toBe(200);
+      await openLineageKey(page);
       await expect(page.getByText('Pending', { exact: true }).first()).toBeVisible();
       await expectNoAxeViolations(page, `${path} signed in (${theme})`);
     }

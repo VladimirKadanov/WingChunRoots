@@ -1,5 +1,5 @@
 // The phone layout (docs/adr/0053-phone-layout.md): below a breakpoint, filters, the explorer's
-// options and key, the dashboard menu and the lineage key fold behind a button (a <details>).
+// options, the dashboard menu and the profile's lineage key fold behind a button (a <details>).
 // These open one when it is folded and leave it as it is otherwise (a desktop shows them open),
 // so a test reaches the same controls at every size.
 
@@ -37,8 +37,9 @@ export const openExplorerOptions = (page: Page) => unfold(page.getByTestId('expl
 /** Folds the Options again: on a phone their panel lies over the top of the graph. */
 export const closeExplorerOptions = (page: Page) => fold(page.getByTestId('explorer-options'));
 
-/** The explorer's key, in the corner of the graph. */
-export const openExplorerKey = (page: Page) => unfold(page.getByTestId('explorer-legend').locator(':scope > details'));
+
+/** The lineage key of a person's page and their lineage list ("What the lines mean", folded below 1280 px). */
+export const openLineageKey = (page: Page) => unfold(page.getByTestId('lineage-key'));
 
 /** The dashboard's menu (one button below 1024 px). */
 export const openDashboardMenu = (page: Page) => unfold(page.getByTestId('dashboard-menu'));

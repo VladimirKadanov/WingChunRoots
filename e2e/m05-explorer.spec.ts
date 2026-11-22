@@ -7,7 +7,7 @@ import { expect, type Page, test, type Worker } from '@playwright/test';
 
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
-import { closeExplorerOptions, openExplorerKey, openExplorerOptions } from './helpers/phone-layout';
+import { closeExplorerOptions, openExplorerOptions } from './helpers/phone-layout';
 import { visibleBox } from './helpers/explorer-a11y';
 import {
   captureScenes,
@@ -277,7 +277,6 @@ test('@M05 the explorer shows a shape-matched loading skeleton while the layout 
 
 test('@M05 legend shows an icon, a stroke sample and text for every status in view', async ({ page }) => {
   await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
-  await openExplorerKey(page);
   const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
   await expect(legend).toBeVisible();
   const items = legend.getByRole('listitem');
@@ -716,7 +715,6 @@ test.describe('Ink restyle (owner decision 2026-10-31)', () => {
     expect(count).toBeGreaterThan(3);
     await expect(page.locator('[data-person-node] [data-mark]')).toHaveCount(count);
     expect(await page.locator('[data-person-node] [data-mark="founder"]').count()).toBeGreaterThanOrEqual(2);
-    await openExplorerKey(page);
     const key = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: people' });
     await expect(key.getByText('Founder, as recorded')).toBeVisible();
     // The generations beside the columns, from the founders (generation 1) down to the focus's row.
@@ -775,7 +773,6 @@ test.describe('M05 fixes a2', () => {
         );
         // Ink from the compact cards up, plain strokes at the dots: nothing else.
         expect(drawn.every((d) => d.ink === (level === 'ink')), `${slug}: drawn as ${level}`).toBe(true);
-        await openExplorerKey(page);
         const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
         for (const { kind, stroke } of new Map(drawn.map((d) => [d.kind, d])).values()) {
           const item = legend.getByRole('listitem').filter({ hasText: words[kind]! });
@@ -987,7 +984,6 @@ test.describe('M05 fixes C', () => {
 test.describe('M05 fixes B', () => {
   /** The legend, each of its items and the three zoom buttons are what a tap at their centre reaches. */
   const expectLegendAndZoomUncovered = async (page: import('@playwright/test').Page) => {
-    await openExplorerKey(page);
     const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
     for (const control of [
       legend,
@@ -1116,7 +1112,6 @@ test.describe('M05 fixes B', () => {
     await openExplorer(page, { focus: id });
     await expect(edgesInto(page, id).and(page.locator('[data-stroke="unconfirmed"]'))).toHaveCount(1);
     await expect(nodeOf(page, id)).toContainText('Pending');
-    await openExplorerKey(page);
     const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
     await expect(legend.getByRole('listitem').filter({ hasText: 'Pending' })).toHaveCount(1);
     await expect(legend).not.toContainText('Unconfirmed');

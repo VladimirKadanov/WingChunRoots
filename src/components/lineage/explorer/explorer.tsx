@@ -23,7 +23,7 @@ import { createParser, parseAsString, parseAsStringLiteral, useQueryStates } fro
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Activity, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-import { ChevronDownIcon, FilterIcon, MinusIcon, PlusIcon } from '@/components/icons';
+import { MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -36,6 +36,7 @@ import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageEdgeDto, LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
 import { MarkKey, markKinds } from '../route-mark';
+import { OptionsDisclosure } from './options-disclosure';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -417,49 +418,6 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
   );
 }
 
-/**
- * The view's options (phone review 2026-11, ADR 0053). From md they sit in the toolbar's row as
- * before (.filter-disclosure-md in globals.css: the details and its content as display: contents).
- * Under md one Options button (a <details>, no script: /explore is at its script budget) opens
- * them in a panel below the row, over the top of the graph; a dot (and "changed" for screen
- * readers) says when an option is not at its default.
- */
-function OptionsDisclosure({ changed, children }: { changed: boolean; children: ReactNode }) {
-  return (
-    <details className="filter-disclosure filter-disclosure-md group/options" data-testid="explorer-options">
-      <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-sm border border-border-strong px-2.5 text-sm font-semibold select-none hover:bg-surface-3 group-open/options:bg-surface-3">
-        <FilterIcon size={18} />
-        Options
-        {changed ? (
-          <>
-            <span aria-hidden="true" className="size-2 rounded-full bg-fg" />
-            <span className="sr-only">(changed)</span>
-          </>
-        ) : null}
-      </summary>
-      <div className="absolute inset-x-0 top-full z-20 flex flex-wrap items-center gap-2 border-b border-border-subtle bg-surface-1 py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] shadow-lg">
-        {children}
-      </div>
-    </details>
-  );
-}
-
-/**
- * The legend (phone review 2026-11, ADR 0053): always open from md (.filter-disclosure-md); under
- * md folded to a Key button in the corner of the graph (a <details>, no script), which opens it.
- */
-function KeyDisclosure({ children }: { children: ReactNode }) {
-  return (
-    <details className="filter-disclosure filter-disclosure-md group/key">
-      <summary className="inline-flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 px-3 text-sm font-semibold select-none">
-        Key
-        <ChevronDownIcon size={16} className="rotate-180 transition-transform group-open/key:rotate-0 motion-reduce:transition-none" />
-      </summary>
-      <div className="px-3 pb-2">{children}</div>
-    </details>
-  );
-}
-
 function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly { value: T; label: ReactNode }[]; onChange: (value: T) => void }) {
   return (
     <div role="group" aria-label={label} className="inline-flex shrink-0 rounded-sm border border-border-strong p-0.5">
@@ -802,13 +760,16 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     // The first view keeps the people it shows clear of it (largeViewStart, wholeViewStart).
                     data-canvas-overlay
                     // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
-                    className="explorer-legend pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3 md:px-3 md:py-2"
+                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-2 py-1.5 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3 md:px-3 md:py-2"
                   >
-                    <KeyDisclosure>
-                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
-                      {/* The marks on the cards (not on the dots: globals.css, Ink restyle). */}
-                      <MarkKey marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))} className="mt-2" />
-                    </KeyDisclosure>
+                    {/* Always shown (plan M05: the legend is permanently visible); compact under md
+                        (ADR 0053): smaller words and gaps, so it takes less of a phone's graph. */}
+                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" className="max-md:gap-x-3 max-md:gap-y-1 max-md:[&_.text-sm]:text-xs" />
+                    {/* The marks on the cards (not on the dots: globals.css, Ink restyle). */}
+                    <MarkKey
+                      marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))}
+                      className="mt-2 max-md:mt-1 max-md:gap-x-3 max-md:gap-y-1 max-md:[&_li]:text-xs"
+                    />
                   </div>
                 </ExplorerCanvas>
               ) : null}
