@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { PHOTO_ACCEPT } from '@/components/lineage/photo-control';
-import { LOGO_GROUND } from '@/components/ink/ink-art';
+import { LOGO_GROUND } from '@/components/ink/logo-ground';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import type { GalleryPhotoDto } from '@/server/dto/gallery';

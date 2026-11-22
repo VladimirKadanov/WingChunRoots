@@ -4,6 +4,8 @@
 // heading next to it names the page.
 
 import { cx } from '@/lib/cx';
+
+import { LOGO_GROUND } from './logo-ground';
 import { ART_HEIGHT, ART_WIDTH, type ArtMotif, type ArtShape, type ArtTone, drawArt, monogram, seedOf } from '@/lib/ink-art';
 
 const tone = (t: ArtTone | undefined) => (t ? `var(--art-${t})` : 'none');
@@ -107,12 +109,6 @@ export function Banner({
     </div>
   );
 }
-
-/**
- * A logo is kept whole on a transparent square and is usually drawn for a light ground: it sits on
- * paper in every theme, or a dark logo would vanish in the dark one.
- */
-export const LOGO_GROUND = { backgroundColor: 'var(--print-paper)' } as const;
 
 /** ADR 0052: the logo of a school or an organization, whole on its square, or its monogram crest. */
 export function Emblem({ logo, name, shape, className }: { logo: { large: string } | null; name: string; shape: 'seal' | 'shield'; className?: string }) {

@@ -7,7 +7,7 @@
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 
-import { LOGO_GROUND } from '@/components/ink/ink-art';
+import { LOGO_GROUND } from '@/components/ink/logo-ground';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { OrganizationPhotosView } from '@/server/services/organization-photos';
 import { callRpc, MAX_BYTES, MAX_MB, messageOf, type Status, StatusLine, uploadRpc } from './rpc';
