@@ -16,6 +16,7 @@ import { HomeSearch } from '@/components/home/home-search';
 import { LivingLine } from '@/components/home/living-line';
 import { TraceLineButton } from '@/components/home/trace-line';
 import { Legend } from '@/components/ink/legend';
+import { LegalLinks } from '@/components/legal/legal-links';
 import { LinkStroke, type LinkKind } from '@/components/ink/link-stroke';
 import { Seal } from '@/components/ink/seal';
 import { DEMO_NOTICE } from '@/components/shell/demo-notice';
@@ -277,14 +278,7 @@ export default function HomePage() {
       <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border-subtle pt-4 text-sm text-fg-subtle">
         {/* The desktop rail says it already. */}
         <span className="md:hidden">{DEMO_NOTICE}</span>
-        <nav aria-label="Footer" className="flex flex-wrap gap-x-1 md:ml-auto">
-          <Link href="/styleguide" prefetch={false} className="link inline-flex min-h-11 items-center px-1.5">
-            Style guide
-          </Link>
-          <Link href="/legal/licenses" prefetch={false} className="link inline-flex min-h-11 items-center px-1.5">
-            Licenses
-          </Link>
-        </nav>
+        <LegalLinks className="md:ml-auto" />
       </footer>
     </div>
   );

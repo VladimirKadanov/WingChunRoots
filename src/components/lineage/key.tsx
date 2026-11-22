@@ -6,9 +6,12 @@
 // states with their descriptions in the sticky side column from 1280 px, so it is always in view.
 // Where routes of descent are drawn, it also explains the marks on a route (`marks`, final check,
 // screens-4): the founder's square, the filled dot of the living and the ring.
+// Phone review 2026-11 (ADR 0053): below 1280 px it folds behind "What the lines mean" (a
+// <details>, no script); each row says its state in words as well, so nothing needs it open.
 
 import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
+import { ChevronDownIcon } from '@/components/icons';
 import { cx } from '@/lib/cx';
 import { ROUTE_MARK_LABELS, RouteMark, type RouteMarkKind } from './routes-of-descent';
 
@@ -29,7 +32,12 @@ export function LineageKey({
   const list = legendKinds(kinds);
   if (list.length === 0 && marks.length === 0) return null;
   return (
-    <section aria-labelledby="key-heading" className={cx('grid gap-2 xl:gap-3', className)}>
+    <details className={cx('key-disclosure group/key', className)} data-testid="lineage-key">
+      <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-semibold select-none [&::-webkit-details-marker]:hidden">
+        What the lines mean
+        <ChevronDownIcon size={16} className="transition-transform group-open/key:rotate-180 motion-reduce:transition-none" />
+      </summary>
+    <section aria-labelledby="key-heading" className="grid gap-2 max-xl:mt-2 xl:gap-3">
       <h2 id="key-heading" className="eyebrow">
         Key
       </h2>
@@ -52,5 +60,6 @@ export function LineageKey({
         </div>
       ) : null}
     </section>
+    </details>
   );
 }

@@ -21,8 +21,8 @@
 //   attribution) that reaches under the sheet is hidden until the sheet comes down (WCAG 2.4.11:
 //   the sheet never covers the focused element, plan §5.6).
 // - The compact attribution opens as MapLibre opens it, as wide as a phone's map. MapLibre folds it
-//   to its button on a drag only; here any move of the reader's (keys, a wheel, the zoom buttons)
-//   and the choice of a school fold it too, so it never covers the selected pin or "Search this
+//   to its button on a drag only; here any move of the reader's (keys, a wheel, the zoom buttons),
+//   the choice of a school and five seconds after the map loads (ADR 0053) fold it too, so it never covers the selected pin or "Search this
 //   area" (both sit in the middle of the map, clear of the control column). Its button opens it again.
 // - data-moving says whether the view is moving (the tests wait for it to settle).
 // - Coordinates arrive only through the public DTO: a city-only school is at its city's centre.
@@ -97,6 +97,9 @@ function reducedMotion(): boolean {
 
 const padding = (bottom: number) => ({ top: 0, left: 0, right: 0, bottom });
 
+/** How long the attribution stays open after the map loads (the OpenStreetMap guidelines' five seconds). */
+const ATTRIBUTION_SHOWN_MS = 5000;
+
 /** Air between a control's focus ring and the sheet's top edge (the Drawer's FOCUS_AIR). */
 const FOCUS_AIR = 8;
 
@@ -157,6 +160,27 @@ export default function SchoolMap({ schools, selectedId, focus, onSelect, styles
     const container = selectedId ? map.current?.getMap().getContainer() : null;
     if (container) foldAttribution(container);
   }, [selectedId]);
+  // Phone review 2026-11 (ADR 0053): the attribution opens in full when the map loads and folds to
+  // its button after ATTRIBUTION_SHOWN_MS, as the OpenStreetMap attribution guidelines allow
+  // ("automatically after five seconds"); its button opens it again. Once per map.
+  // A reader who opens it themselves (its button) keeps it open.
+  const mapLoaded = loadedStyle !== null;
+  useEffect(() => {
+    const container = mapLoaded ? map.current?.getMap().getContainer() : null;
+    if (!container) return;
+    let opened = false;
+    const onClick = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('.maplibregl-ctrl-attrib-button')) opened = true;
+    };
+    container.addEventListener('click', onClick);
+    const timer = window.setTimeout(() => {
+      if (!opened) foldAttribution(container);
+    }, ATTRIBUTION_SHOWN_MS);
+    return () => {
+      window.clearTimeout(timer);
+      container.removeEventListener('click', onClick);
+    };
+  }, [mapLoaded]);
 
   // A control that reaches under the sheet (the zoom buttons each on their own, the attribution
   // whole) is hidden, out of the tab order and out of reach, until the sheet comes down. Checked

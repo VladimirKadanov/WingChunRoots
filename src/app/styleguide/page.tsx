@@ -2,6 +2,7 @@
 // themes side by side. Not indexed. All names are fictional demo content (DEFAULT D20).
 
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { contrastRatio, formatOklch } from '@/design/color';
 import { COLOR_ROLES, THEMES, colors, linkStyles, motion, radius, typeScale, type ThemeName } from '@/design/tokens';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { styleguideShown } from '@/lib/styleguide';
 import { cn } from '@/lib/utils';
 import { OverlayDemos, TabsDemo } from './demos';
 
@@ -122,6 +124,8 @@ function Specimens() {
 }
 
 export default function StyleguidePage() {
+  // Not on the live site (src/lib/styleguide.ts).
+  if (!styleguideShown()) notFound();
   return (
     // A size container: the sections lay out by the page's own width, which a docked side panel
     // (a non-modal sheet from 1024 px) narrows, not by the window's.

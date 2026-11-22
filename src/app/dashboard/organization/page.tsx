@@ -46,7 +46,7 @@ export default async function OrganizationsDashboardPage({ searchParams }: { sea
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[46rem]">
-        <p className="eyebrow">
+        <p className="eyebrow max-lg:hidden">
           <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
             Dashboard
           </Link>

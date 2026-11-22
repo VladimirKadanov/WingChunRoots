@@ -27,12 +27,13 @@ import { SchoolBeacon } from '@/components/schools/school-beacon';
 import { LocationTag } from '@/components/schools/school-list';
 import { ScheduleAndFees, TrialAction } from '@/components/schools/school-schedule';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { cx } from '@/lib/cx';
 import { formatDay } from '@/lib/dates';
 import { schoolMotif } from '@/lib/ink-art';
 import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
 import type { SchoolPageDto } from '@/server/dto/schools';
-import { loadSchool, loadSchoolEvents, loadTrialOptions, locationLine } from './data';
+import { loadSchool, loadSchoolEvents, loadTrialOptions } from './data';
 
 export const instant = false;
 
@@ -132,14 +133,16 @@ export default async function SchoolPage({ params }: Props) {
     { label: school.memberCount === 1 ? 'listed member' : 'listed members', value: school.memberCount },
     { label: school.schedule.length === 1 ? 'class a week' : 'classes a week', value: school.schedule.length },
     { label: school.forms.length === 1 ? 'form taught' : 'forms taught', value: school.forms.length },
-  ];
+    // Phone review 2026-11 (ADR 0053): a number that is zero says nothing worth the room.
+  ].filter((stat) => stat.value > 0);
+  const statColumns = ['', 'sm:grid-cols-1', 'sm:grid-cols-2', 'sm:grid-cols-3', 'sm:grid-cols-4'][stats.length];
 
   return (
     <article className="pb-10 md:pb-14" data-testid="school-page" data-precision={school.precision}>
       <SchoolBeacon schoolId={school.id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(school)).replace(/</g, '\\u003c') }} />
       {/* ADR 0052: the school's banner, or the drawn motif of its slug; decorative. */}
-      <div className="relative h-40 border-b border-border-subtle sm:h-56 lg:h-72">
+      <div className={cx('relative border-b border-border-subtle sm:h-56 lg:h-72', school.banner ? 'h-40' : 'h-24')}>
         <Banner image={school.banner} slug={school.slug} motif={schoolMotif(school.slug)} className="size-full" testId="school-banner" />
         <div className="absolute top-3 left-4 sm:left-6 md:top-6 lg:left-10">
           <Link href="/schools" className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong bg-bg px-3.5 text-sm font-semibold hover:bg-surface-3">
@@ -167,7 +170,10 @@ export default async function SchoolPage({ params }: Props) {
           <Emblem logo={null} name={school.name} shape="seal" className="relative z-10 -mt-10 size-20 shadow-sm md:-mt-14 md:size-28" />
         )}
         <h1 className="min-w-0 font-display text-feature [overflow-wrap:anywhere] md:text-hero">{school.name}</h1>
-        <p className="text-fg-muted">{locationLine(school)}</p>
+        {/* The location tag below says how precise it is (phone review 2026-11: not twice). */}
+        <p className="text-fg-muted">
+          {school.city}, {school.countryCode}
+        </p>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <LocationTag precision={school.precision} />
           <Link href={mapHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-map-link">
@@ -212,7 +218,14 @@ export default async function SchoolPage({ params }: Props) {
           ) : null}
         </nav>
         {/* ADR 0052: the school at a glance; each number in words. */}
-        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle sm:grid-cols-4" data-testid="school-stats">
+        {stats.length > 0 ? (
+        <dl
+          className={cx(
+            'mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1',
+            statColumns,
+          )}
+          data-testid="school-stats"
+        >
           {stats.map((stat) => (
             <div key={stat.label} className="flex flex-col-reverse gap-0.5 bg-surface-1 px-4 py-3">
               <dt className="text-sm text-fg-muted">{stat.label}</dt>
@@ -220,6 +233,7 @@ export default async function SchoolPage({ params }: Props) {
             </div>
           ))}
         </dl>
+        ) : null}
       </header>
 
       <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">

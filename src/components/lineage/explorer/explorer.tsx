@@ -23,7 +23,7 @@ import { createParser, parseAsString, parseAsStringLiteral, useQueryStates } fro
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Activity, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-import { MinusIcon, PlusIcon } from '@/components/icons';
+import { ChevronDownIcon, FilterIcon, MinusIcon, PlusIcon } from '@/components/icons';
 import { Legend, legendKinds, type LegendWording } from '@/components/ink/legend';
 import type { LinkKind } from '@/components/ink/link-stroke';
 import { buttonVariants } from '@/components/ui/button-variants';
@@ -417,6 +417,114 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
   );
 }
 
+/**
+ * The view's options (phone review 2026-11, ADR 0053). From md they sit in the toolbar's row as
+ * before (`md:contents`). Under md one Options button opens them in a panel below the row, over the
+ * top of the graph; a dot (and the words "changed" for screen readers) says when an option is not
+ * at its default. Escape or a tap outside closes it, and Escape returns focus to the button.
+ */
+function OptionsDisclosure({ changed, children }: { changed: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!panel.current?.contains(target) && !button.current?.contains(target)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      button.current?.focus();
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={open}
+        aria-controls="explorer-options"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong px-3 text-sm font-semibold hover:bg-surface-3 aria-expanded:bg-surface-3 md:hidden"
+      >
+        <FilterIcon size={18} />
+        Options
+        {changed ? (
+          <>
+            <span aria-hidden="true" className="size-2 rounded-full bg-fg" />
+            <span className="sr-only">(changed)</span>
+          </>
+        ) : null}
+        <ChevronDownIcon size={16} className={cx('transition-transform motion-reduce:transition-none', open && 'rotate-180')} />
+      </button>
+      <div
+        ref={panel}
+        id="explorer-options"
+        data-testid="explorer-options"
+        className={cx(
+          'flex-wrap items-center gap-2 md:contents',
+          open
+            ? 'absolute inset-x-0 top-full z-20 flex border-b border-border-subtle bg-surface-1 py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] shadow-lg'
+            : 'hidden',
+        )}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
+const KEY_STORAGE = 'wcr.explorer.key';
+
+/**
+ * The legend (phone review 2026-11, ADR 0053): always open from md; under md folded to a Key button
+ * in the corner of the graph, which opens it and remembers that it is open (this browser only; a
+ * storage that refuses only forgets it).
+ */
+function KeyDisclosure({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && window.localStorage.getItem(KEY_STORAGE) === 'open';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setOpen((was) => {
+      try {
+        window.localStorage.setItem(KEY_STORAGE, was ? 'closed' : 'open');
+      } catch {
+        // Not remembered: the key still opens and closes.
+      }
+      return !was;
+    });
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="explorer-key"
+        onClick={toggle}
+        className="inline-flex min-h-11 w-full items-center justify-between gap-2 px-3 text-sm font-semibold md:hidden"
+      >
+        Key
+        <ChevronDownIcon size={16} className={cx('transition-transform motion-reduce:transition-none', open ? 'rotate-0' : 'rotate-180')} />
+      </button>
+      <div id="explorer-key" className={cx('max-md:px-3 max-md:pb-2', open ? '' : 'max-md:hidden')}>
+        {children}
+      </div>
+    </>
+  );
+}
+
 function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly { value: T; label: ReactNode }[]; onChange: (value: T) => void }) {
   return (
     <div role="group" aria-label={label} className="inline-flex shrink-0 rounded-sm border border-border-strong p-0.5">
@@ -632,7 +740,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
       {/* Inside the side safe areas at every width: from md the rail has the left one, the explorer the right. */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
         <div className="min-w-0">
-          <p className="eyebrow">Explorer · {VIEW_LABELS[kind]}</p>
+          <p className="eyebrow max-md:sr-only">Explorer · {VIEW_LABELS[kind]}</p>
           {params.view === 'graph' ? (
             <h1 className="truncate font-display text-xl leading-tight md:text-2xl">
               {focusNode ? (
@@ -661,7 +769,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
       <Activity mode={params.view === 'graph' ? 'visible' : 'hidden'}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
+          {/* Phone review 2026-11 (ADR 0053): under md the view's options (the steppers, the lineage
+              picker, "Show ended training") fold behind one Options button, so the graph keeps the
+              screen; from md they stay in the row as before. */}
+          <div className="relative flex flex-wrap items-center gap-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
             <Segmented
               label="View"
               value={kind}
@@ -672,30 +783,32 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
               ]}
               onChange={setKind}
             />
-            {kind === 'generations' ? (
-              <>
-                <Stepper label="Teachers" value={currentUp} min={0} max={MAX_UP} onChange={(up) => void setUrl({ up })} />
-                <Stepper label="Students" value={currentDown} min={0} max={MAX_DOWN} onChange={(down) => void setUrl({ down })} />
-              </>
-            ) : null}
-            {kind === 'lineage' && focusLineages.length > 1 ? (
-              <Segmented
-                label="Lineage"
-                value={params.lineage ?? ''}
-                options={focusLineages.map((l) => ({ value: l.id, label: <span translate="no">{l.name}</span> }))}
-                onChange={(lineage) => void setUrl({ lineage })}
-              />
-            ) : null}
-            <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 px-1 text-sm">
-              <input
-                type="checkbox"
-                defaultChecked={params.show === 'historical'}
-                key={params.show ?? 'none'}
-                onChange={(e) => void setUrl({ show: e.currentTarget.checked ? 'historical' : null })}
-                className="size-5 cursor-pointer accent-[var(--fg)]"
-              />
-              Show ended training
-            </label>
+            <OptionsDisclosure changed={params.show === 'historical'}>
+              {kind === 'generations' ? (
+                <>
+                  <Stepper label="Teachers" value={currentUp} min={0} max={MAX_UP} onChange={(up) => void setUrl({ up })} />
+                  <Stepper label="Students" value={currentDown} min={0} max={MAX_DOWN} onChange={(down) => void setUrl({ down })} />
+                </>
+              ) : null}
+              {kind === 'lineage' && focusLineages.length > 1 ? (
+                <Segmented
+                  label="Lineage"
+                  value={params.lineage ?? ''}
+                  options={focusLineages.map((l) => ({ value: l.id, label: <span translate="no">{l.name}</span> }))}
+                  onChange={(lineage) => void setUrl({ lineage })}
+                />
+              ) : null}
+              <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 px-1 text-sm">
+                <input
+                  type="checkbox"
+                  defaultChecked={params.show === 'historical'}
+                  key={params.show ?? 'none'}
+                  onChange={(e) => void setUrl({ show: e.currentTarget.checked ? 'historical' : null })}
+                  className="size-5 cursor-pointer accent-[var(--fg)]"
+                />
+                Show ended training
+              </label>
+            </OptionsDisclosure>
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -754,11 +867,13 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     // The first view keeps the people it shows clear of it (largeViewStart, wholeViewStart).
                     data-canvas-overlay
                     // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
-                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
+                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3 md:px-3 md:py-2"
                   >
-                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
-                    {/* The marks on the cards (not on the dots: globals.css, Ink restyle). */}
-                    <MarkKey marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))} className="mt-2" />
+                    <KeyDisclosure>
+                      <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
+                      {/* The marks on the cards (not on the dots: globals.css, Ink restyle). */}
+                      <MarkKey marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))} className="mt-2" />
+                    </KeyDisclosure>
                   </div>
                 </ExplorerCanvas>
               ) : null}

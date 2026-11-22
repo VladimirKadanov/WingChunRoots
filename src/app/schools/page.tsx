@@ -22,6 +22,7 @@ import { Finder } from '@/components/schools/finder';
 import { SchoolEmpty } from '@/components/schools/school-empty';
 import { SchoolList, summaryText } from '@/components/schools/school-list';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { FilterDisclosure } from '@/components/ui/filter-disclosure';
 import { cx } from '@/lib/cx';
 import { circleBounds, DEFAULT_RADIUS_KM, finderHref, finderParams, type FinderParams, RADIUS_CHOICES_KM, searchCenterOf } from '@/lib/school-finder';
 import type { PlaceSearchDto, SchoolSearchDto } from '@/server/dto/schools';
@@ -68,19 +69,18 @@ function lineageOptions(lineages: { name: string; root: { id: string } }[]): Lin
 }
 
 function Filters({ params, lineages, compact, distanceNote }: { params: FinderParams; lineages: LineageOption[]; compact: boolean; distanceNote?: string }) {
-  // Distance and Lineage sit side by side from a width of 21rem (in rem, so it follows the text
-  // size: each select then has room for "Within 250 km"); narrower, or with larger text, they stack
-  // one per row, so no value is cut (review screens-3). Below 1024 px in the map view, while they
-  // sit side by side, their labels are for screen readers only (their options say "Within 50 km"
-  // and "All lineages"): the map keeps its room. Stacked, the labels show. The place field always
-  // keeps its label.
-  const selectLabel = compact ? 'max-lg:@min-[21rem]/filters:sr-only' : '';
+  // Phone review 2026-11 (ADR 0053): below 1024 px the place field, its search button and a
+  // Filters button share one row; Distance and Lineage open from that button in a panel over the
+  // map or the list (a <details>, no script: the form works without JavaScript). From 1024 px they
+  // sit in the form's row as before. In the map view the place field's label is for screen readers
+  // only below 1024 px (its placeholder says "City or town"): the map keeps its room.
+  const active = (params.radius !== null ? 1 : 0) + (params.lineage ? 1 : 0);
   return (
     <div className="@container/filters">
-      <form method="get" action="/schools" role="search" aria-label="Find a school" className="grid grid-cols-1 items-end gap-x-3 gap-y-2 @min-[21rem]/filters:grid-cols-2 lg:flex lg:flex-wrap">
+      <form method="get" action="/schools" role="search" aria-label="Find a school" className="relative grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-2 lg:flex lg:flex-wrap lg:gap-x-3">
         {params.view === 'list' ? <input type="hidden" name="view" value="list" /> : null}
-        <div className="col-span-full grid gap-1.5 lg:w-72">
-          <label htmlFor="school-near" className="text-sm font-semibold">
+        <div className="grid min-w-0 gap-1.5 lg:w-72">
+          <label htmlFor="school-near" className={cx('text-sm font-semibold', compact && 'max-lg:sr-only')}>
             Near
           </label>
           <div className="flex gap-2">
@@ -101,42 +101,49 @@ function Filters({ params, lineages, compact, distanceNote }: { params: FinderPa
             </button>
           </div>
         </div>
-        <div className="grid gap-1.5 lg:w-44">
-          <label htmlFor="school-radius" className={cx('text-sm font-semibold', selectLabel)}>
-            Distance
-          </label>
-          <div className="relative">
-            <select id="school-radius" name="radius" defaultValue={String(params.radius ?? DEFAULT_RADIUS_KM)} aria-describedby={distanceNote} className={selectClass}>
-              {RADIUS_CHOICES_KM.map((km) => (
-                <option key={km} value={km}>
-                  Within {km} km
-                </option>
-              ))}
-              {params.radius !== null && !(RADIUS_CHOICES_KM as readonly number[]).includes(params.radius) ? <option value={params.radius}>Within {params.radius} km</option> : null}
-            </select>
-            <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+        <FilterDisclosure
+          active={active}
+          from="lg"
+          panelClassName="grid gap-3 max-lg:absolute max-lg:inset-x-0 max-lg:top-[calc(100%+0.5rem)] max-lg:z-30 max-lg:rounded-sm max-lg:border max-lg:border-border-strong max-lg:bg-surface-1 max-lg:p-4 max-lg:shadow-lg @min-[21rem]/filters:grid-cols-2"
+        >
+          <div className="grid gap-1.5 lg:w-44">
+            <label htmlFor="school-radius" className="text-sm font-semibold">
+              Distance
+            </label>
+            <div className="relative">
+              <select id="school-radius" name="radius" defaultValue={String(params.radius ?? DEFAULT_RADIUS_KM)} aria-describedby={distanceNote} className={selectClass}>
+                {RADIUS_CHOICES_KM.map((km) => (
+                  <option key={km} value={km}>
+                    Within {km} km
+                  </option>
+                ))}
+                {params.radius !== null && !(RADIUS_CHOICES_KM as readonly number[]).includes(params.radius) ? <option value={params.radius}>Within {params.radius} km</option> : null}
+              </select>
+              <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+            </div>
           </div>
-        </div>
-        <div className="grid gap-1.5 lg:w-64">
-          <label htmlFor="school-lineage" className={cx('text-sm font-semibold', selectLabel)}>
-            Lineage
-          </label>
-          <div className="relative">
-            <select id="school-lineage" name="lineage" defaultValue={params.lineage ?? ''} className={selectClass}>
-              <option value="">All lineages</option>
-              {lineages.map((l) => (
-                <option key={l.rootId} value={l.rootId}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+          <div className="grid gap-1.5 lg:w-64">
+            <label htmlFor="school-lineage" className="text-sm font-semibold">
+              Lineage
+            </label>
+            <div className="relative">
+              <select id="school-lineage" name="lineage" defaultValue={params.lineage ?? ''} className={selectClass}>
+                <option value="">All lineages</option>
+                {lineages.map((l) => (
+                  <option key={l.rootId} value={l.rootId}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon size={20} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-fg-muted" />
+            </div>
           </div>
-        </div>
-        <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12 max-lg:hidden')}>
-          <SearchIcon size={18} />
-          Search
-        </button>
+          <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12 max-lg:col-span-full')}>
+            <SearchIcon size={18} />
+            <span className="lg:hidden">Show schools</span>
+            <span className="max-lg:hidden">Search</span>
+          </button>
+        </FilterDisclosure>
       </form>
     </div>
   );

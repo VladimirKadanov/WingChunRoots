@@ -165,7 +165,7 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[52rem]">
-        <p className="eyebrow">
+        <p className="eyebrow max-lg:hidden">
           <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
             Dashboard
           </Link>
@@ -178,8 +178,11 @@ export default async function PassportPage({ searchParams }: { searchParams: Sea
         ) : (
           <>
             <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
-              Your teachers and the organizations that awarded them record your ranks, examinations, forms and skills, and mark the events you attended. You decide
-              what your profile shows, propose a correction, and add scanned certificates.
+              Your teachers and the organizations that awarded them record your ranks, examinations, forms and skills.{' '}
+              {/* Phone review 2026-11 (ADR 0053): one sentence on a phone. */}
+              <span className="max-md:hidden">
+                They also mark the events you attended. You decide what your profile shows, propose a correction, and add scanned certificates.
+              </span>
             </p>
             <p className="mt-3 max-w-[60ch] text-ui" data-testid="passport-level" data-level={view.level}>
               {view.level === 'full'
