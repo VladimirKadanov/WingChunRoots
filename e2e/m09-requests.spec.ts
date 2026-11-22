@@ -556,7 +556,8 @@ test("@M09 on a phone each change's note has the focus on screen, and the rows' 
   // Declined, on the teacher's queue.
   const queue = declining.page;
   await queue.goto('/dashboard/students/requests');
-  await expectTouchTarget(queue.getByRole('main').getByRole('link', { name: 'Dashboard', exact: true }), 'Dashboard (back link)');
+  // ADR 0053: on a phone the way back is the dashboard menu's button (the eyebrow link is for wider screens).
+  await expectTouchTarget(queue.getByTestId('dashboard-menu').locator(':scope > summary'), 'Dashboard menu');
   const row = requestRow(queue, declined);
   await row.getByText('Decline…').click();
   await row.getByLabel('Reason').selectOption({ label: 'The training dates need correcting.' });
@@ -572,7 +573,7 @@ test("@M09 on a phone each change's note has the focus on screen, and the rows' 
   // On the student's side: the teacher's name, then "Mark training as ended" and "Withdraw".
   const own = student.page;
   await own.goto('/dashboard/teachers');
-  await expectTouchTarget(own.getByRole('main').getByRole('link', { name: 'Dashboard', exact: true }), 'Dashboard (back link)');
+  await expectTouchTarget(own.getByTestId('dashboard-menu').locator(':scope > summary'), 'Dashboard menu');
   const teacherRow = visible(own.locator(`li[data-testid="teacher"][data-relationship="${confirmed}"]`));
   await expectTouchTarget(teacherRow.getByRole('link', { name: approving.name }), 'teacher name');
   await teacherRow.getByText('Mark training as ended…').click();

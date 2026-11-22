@@ -419,42 +419,15 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
 
 /**
  * The view's options (phone review 2026-11, ADR 0053). From md they sit in the toolbar's row as
- * before (`md:contents`). Under md one Options button opens them in a panel below the row, over the
- * top of the graph; a dot (and the words "changed" for screen readers) says when an option is not
- * at its default. Escape or a tap outside closes it, and Escape returns focus to the button.
+ * before (.filter-disclosure-md in globals.css: the details and its content as display: contents).
+ * Under md one Options button (a <details>, no script: /explore is at its script budget) opens
+ * them in a panel below the row, over the top of the graph; a dot (and "changed" for screen
+ * readers) says when an option is not at its default.
  */
 function OptionsDisclosure({ changed, children }: { changed: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!panel.current?.contains(target) && !button.current?.contains(target)) setOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      button.current?.focus();
-    };
-    document.addEventListener('pointerdown', away);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', away);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [open]);
   return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        aria-expanded={open}
-        aria-controls="explorer-options"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong px-3 text-sm font-semibold hover:bg-surface-3 aria-expanded:bg-surface-3 md:hidden"
-      >
+    <details className="filter-disclosure filter-disclosure-md group/options" data-testid="explorer-options">
+      <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-sm border border-border-strong px-2.5 text-sm font-semibold select-none hover:bg-surface-3 group-open/options:bg-surface-3">
         <FilterIcon size={18} />
         Options
         {changed ? (
@@ -463,65 +436,27 @@ function OptionsDisclosure({ changed, children }: { changed: boolean; children: 
             <span className="sr-only">(changed)</span>
           </>
         ) : null}
-        <ChevronDownIcon size={16} className={cx('transition-transform motion-reduce:transition-none', open && 'rotate-180')} />
-      </button>
-      <div
-        ref={panel}
-        id="explorer-options"
-        data-testid="explorer-options"
-        className={cx(
-          'flex-wrap items-center gap-2 md:contents',
-          open
-            ? 'absolute inset-x-0 top-full z-20 flex border-b border-border-subtle bg-surface-1 py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] shadow-lg'
-            : 'hidden',
-        )}
-      >
+      </summary>
+      <div className="absolute inset-x-0 top-full z-20 flex flex-wrap items-center gap-2 border-b border-border-subtle bg-surface-1 py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] shadow-lg">
         {children}
       </div>
-    </>
+    </details>
   );
 }
 
-const KEY_STORAGE = 'wcr.explorer.key';
-
 /**
- * The legend (phone review 2026-11, ADR 0053): always open from md; under md folded to a Key button
- * in the corner of the graph, which opens it and remembers that it is open (this browser only; a
- * storage that refuses only forgets it).
+ * The legend (phone review 2026-11, ADR 0053): always open from md (.filter-disclosure-md); under
+ * md folded to a Key button in the corner of the graph (a <details>, no script), which opens it.
  */
 function KeyDisclosure({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(() => {
-    try {
-      return typeof window !== 'undefined' && window.localStorage.getItem(KEY_STORAGE) === 'open';
-    } catch {
-      return false;
-    }
-  });
-  const toggle = () =>
-    setOpen((was) => {
-      try {
-        window.localStorage.setItem(KEY_STORAGE, was ? 'closed' : 'open');
-      } catch {
-        // Not remembered: the key still opens and closes.
-      }
-      return !was;
-    });
   return (
-    <>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls="explorer-key"
-        onClick={toggle}
-        className="inline-flex min-h-11 w-full items-center justify-between gap-2 px-3 text-sm font-semibold md:hidden"
-      >
+    <details className="filter-disclosure filter-disclosure-md group/key">
+      <summary className="inline-flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 px-3 text-sm font-semibold select-none">
         Key
-        <ChevronDownIcon size={16} className={cx('transition-transform motion-reduce:transition-none', open ? 'rotate-0' : 'rotate-180')} />
-      </button>
-      <div id="explorer-key" className={cx('max-md:px-3 max-md:pb-2', open ? '' : 'max-md:hidden')}>
-        {children}
-      </div>
-    </>
+        <ChevronDownIcon size={16} className="rotate-180 transition-transform group-open/key:rotate-0 motion-reduce:transition-none" />
+      </summary>
+      <div className="px-3 pb-2">{children}</div>
+    </details>
   );
 }
 
@@ -534,7 +469,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
           type="button"
           aria-pressed={option.value === value}
           onClick={() => onChange(option.value)}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xs px-3 text-sm font-semibold text-fg-muted hover:bg-surface-3 hover:text-fg aria-pressed:bg-fg aria-pressed:text-fg-inverse"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xs px-2.5 text-sm font-semibold text-fg-muted md:px-3 hover:bg-surface-3 hover:text-fg aria-pressed:bg-fg aria-pressed:text-fg-inverse"
         >
           {option.label}
         </button>
@@ -867,7 +802,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     // The first view keeps the people it shows clear of it (largeViewStart, wholeViewStart).
                     data-canvas-overlay
                     // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
-                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3 md:px-3 md:py-2"
+                    className="explorer-legend pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3 md:px-3 md:py-2"
                   >
                     <KeyDisclosure>
                       <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />

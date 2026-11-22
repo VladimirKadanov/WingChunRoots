@@ -9,6 +9,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { closeHelpers, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
 import { expectNoAxeViolations } from './helpers/ui';
+import { openDashboardMenu } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -17,13 +18,17 @@ test.beforeEach(async ({ context }) => {
   await giveOwnAddress(context);
 });
 
-/** Only what is on screen: the phone row and the desktop sidebar are both in the page, one hidden. */
+/** Only what is on screen: the phone menu and the desktop sidebar are both in the page, one hidden. */
 const shown = (locator: Locator) => locator.filter({ visible: true });
 const menu = (page: Page) => page.getByRole('navigation', { name: 'Dashboard' });
+const isPhone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 1024;
 
 test('@nav a student sees learning and their own pages, never teaching or organizations', async ({ page }) => {
   await signInAs(page, 'demo-premium-student');
   await page.goto('/dashboard');
+  // ADR 0053: below 1024 px one button names the page and opens the menu.
+  if (isPhone(page)) await expect(page.getByTestId('dashboard-menu').filter({ visible: true }).locator(':scope > summary')).toContainText('Dashboard · Overview');
+  await openDashboardMenu(page);
   const nav = menu(page);
   await expect(shown(nav.getByRole('link', { name: 'Overview' }))).toHaveAttribute('aria-current', 'page');
   for (const name of ['My teachers', 'Training passport', 'Trial lessons', 'Profile', 'Plan and billing', 'Settings']) {
@@ -35,6 +40,8 @@ test('@nav a student sees learning and their own pages, never teaching or organi
   // The menu follows the page: the passport is current there.
   await shown(nav.getByRole('link', { name: 'Training passport' })).click();
   await expect(page).toHaveURL(/\/dashboard\/passport$/);
+  if (isPhone(page)) await expect(page.getByTestId('dashboard-menu').filter({ visible: true }).locator(':scope > summary')).toContainText('Dashboard · Training passport');
+  await openDashboardMenu(page);
   await expect(shown(menu(page).getByRole('link', { name: 'Training passport' }))).toHaveAttribute('aria-current', 'page');
   await expectNoAxeViolations(page, 'dashboard menu (student)');
 });
@@ -42,18 +49,21 @@ test('@nav a student sees learning and their own pages, never teaching or organi
 test('@nav an organization owner reaches their organization from the dashboard menu', async ({ page }) => {
   await signInAs(page, 'demo-federation-owner');
   await page.goto('/dashboard');
+  await openDashboardMenu(page);
   const link = shown(menu(page).getByRole('link', { name: 'All your organizations' }));
   await expect(link).toHaveAttribute('href', '/dashboard/organization');
   const own = shown(menu(page).locator('a[href^="/dashboard/organization/"]')).first();
   await expect(own).toBeVisible();
   await own.click();
   await expect(page).toHaveURL(/\/dashboard\/organization\/[0-9a-f-]+$/);
+  await openDashboardMenu(page);
   await expect(shown(menu(page).locator('a[aria-current="page"]'))).toHaveCount(1);
 });
 
 test('@nav a Sifu gets teaching tools, and a new member gets next steps that start with the profile', async ({ page, browser }) => {
   await signInAs(page, 'demo-pro-sifu-8');
   await page.goto('/dashboard');
+  await openDashboardMenu(page);
   for (const name of ['Student requests', 'My schools', 'Events']) {
     await expect(shown(menu(page).getByRole('link', { name, exact: true }))).toHaveCount(1);
   }

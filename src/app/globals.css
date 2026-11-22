@@ -487,7 +487,9 @@
 /* Under a sheet that covers the canvas (data-sheet-covered on the frame: canvas.tsx
    useControlsPlace), the attribution is hidden, so the keyboard never reaches a link under the
    sheet (WCAG 2.4.11); it comes back with the canvas. */
-[data-sheet-covered] .explorer-canvas .react-flow__attribution {
+[data-sheet-covered] .explorer-canvas .react-flow__attribution,
+[data-sheet-covered] .explorer-legend {
+  /* The legend too, since its Key button (ADR 0053) can take the focus. */
   visibility: hidden;
 }
 /* end M06 touch and motion (D) */

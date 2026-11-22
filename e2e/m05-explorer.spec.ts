@@ -7,6 +7,7 @@ import { expect, type Page, test, type Worker } from '@playwright/test';
 
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
+import { closeExplorerOptions, openExplorerKey, openExplorerOptions } from './helpers/phone-layout';
 import { visibleBox } from './helpers/explorer-a11y';
 import {
   captureScenes,
@@ -211,12 +212,14 @@ test('@M05 reload keeps focus, depth and view from the URL', async ({ page }) =>
   const id = await personIdOf('demo-two-lineages');
   await openExplorer(page, { focus: id, up: 1, down: 1 });
   const check = async (down: number) => {
+    await openExplorerOptions(page);
     await expect(page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Generations' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('group', { name: 'Teachers' })).toContainText('Teachers: 1');
     await expect(page.getByRole('group', { name: 'Students' })).toContainText(`Students: ${down}`);
     await expect(nodeOf(page, id)).toBeVisible();
   };
   await check(1);
+  await openExplorerOptions(page);
   await page.getByRole('button', { name: 'More generations of students' }).click();
   await expect(page).toHaveURL(/down=2/);
   await page.reload();
@@ -274,6 +277,7 @@ test('@M05 the explorer shows a shape-matched loading skeleton while the layout 
 
 test('@M05 legend shows an icon, a stroke sample and text for every status in view', async ({ page }) => {
   await openExplorer(page, { focus: await personIdOf('demo-two-lineages') });
+  await openExplorerKey(page);
   const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
   await expect(legend).toBeVisible();
   const items = legend.getByRole('listitem');
@@ -335,7 +339,8 @@ test.describe('on a phone', () => {
         page.getByRole('button', { name: 'Fit the whole view' }),
         page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'List' }),
         page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Lineage' }),
-        page.locator('label').filter({ hasText: 'Show ended training' }),
+        // ADR 0053: on a phone the view's options ("Show ended training") fold behind Options.
+        page.getByTestId('explorer-options').locator(':scope > summary'),
       ];
       for (const item of [...controls, page.getByTestId('explorer-legend')]) {
         const box = (await item.boundingBox())!;
@@ -500,6 +505,7 @@ test('@M05 no axe violations on /explore in dark and light themes', async ({ pag
     await expectNoAxeViolations(page, `/explore (lineage view), ${theme} theme`);
   }
   await openExplorer(page, await EXPLORER_VIEWS.find((v) => v.name === 'generations')!.params());
+  await openExplorerOptions(page);
   await expect(page.getByRole('group', { name: 'Students' })).toBeVisible();
   for (const theme of THEMES) {
     await switchColorScheme(page, theme);
@@ -602,6 +608,7 @@ test.describe('M05 fixes a1', () => {
       });
       const nodes = await personNodes(page).count();
       // demo-converging has no students: one more generation of teachers brings new people.
+      await openExplorerOptions(page);
       await page.getByRole('button', { name: 'More generations of teachers' }).click();
       await expect.poll(() => personNodes(page).count()).toBeGreaterThan(nodes);
       await expect(canvas).not.toHaveAttribute('data-moving');
@@ -630,6 +637,7 @@ test.describe('M05 fixes a1', () => {
     await expect(nodeOf(page, student).locator('[data-arbitration-banner]')).toHaveCount(0);
     // Fewer generations of students (demo-converging has none): the same people, read in the browser.
     const read = page.waitForResponse('**/api/rpc/lineage/ego**');
+    await openExplorerOptions(page);
     await page.getByRole('button', { name: 'Fewer generations of students' }).click();
     await read;
     expect(disputed, 'the read has a second teacher of demo-converging').not.toBeNull();
@@ -708,6 +716,7 @@ test.describe('Ink restyle (owner decision 2026-10-31)', () => {
     expect(count).toBeGreaterThan(3);
     await expect(page.locator('[data-person-node] [data-mark]')).toHaveCount(count);
     expect(await page.locator('[data-person-node] [data-mark="founder"]').count()).toBeGreaterThanOrEqual(2);
+    await openExplorerKey(page);
     const key = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: people' });
     await expect(key.getByText('Founder, as recorded')).toBeVisible();
     // The generations beside the columns, from the founders (generation 1) down to the focus's row.
@@ -766,6 +775,7 @@ test.describe('M05 fixes a2', () => {
         );
         // Ink from the compact cards up, plain strokes at the dots: nothing else.
         expect(drawn.every((d) => d.ink === (level === 'ink')), `${slug}: drawn as ${level}`).toBe(true);
+        await openExplorerKey(page);
         const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
         for (const { kind, stroke } of new Map(drawn.map((d) => [d.kind, d])).values()) {
           const item = legend.getByRole('listitem').filter({ hasText: words[kind]! });
@@ -927,6 +937,7 @@ test.describe('M05 fixes C', () => {
     expect(addressOf(await previous.getAttribute('href'))).toEqual({ path: '/explore', query: { focus: hub, up: '1', down: '2', view: 'list' } });
     // Graph is the same view again: the generations view with its steps.
     await page.getByRole('group', { name: 'Show as' }).getByRole('button', { name: 'Graph' }).click();
+    await openExplorerOptions(page);
     await expect(page.getByRole('group', { name: 'Teachers', exact: true })).toContainText('Teachers: 1');
     await expect(page.getByRole('group', { name: 'Students', exact: true })).toContainText('Students: 2');
   });
@@ -976,6 +987,7 @@ test.describe('M05 fixes C', () => {
 test.describe('M05 fixes B', () => {
   /** The legend, each of its items and the three zoom buttons are what a tap at their centre reaches. */
   const expectLegendAndZoomUncovered = async (page: import('@playwright/test').Page) => {
+    await openExplorerKey(page);
     const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
     for (const control of [
       legend,
@@ -1104,6 +1116,7 @@ test.describe('M05 fixes B', () => {
     await openExplorer(page, { focus: id });
     await expect(edgesInto(page, id).and(page.locator('[data-stroke="unconfirmed"]'))).toHaveCount(1);
     await expect(nodeOf(page, id)).toContainText('Pending');
+    await openExplorerKey(page);
     const legend = page.getByTestId('explorer-legend').getByRole('list', { name: 'Legend: link states' });
     await expect(legend.getByRole('listitem').filter({ hasText: 'Pending' })).toHaveCount(1);
     await expect(legend).not.toContainText('Unconfirmed');
@@ -1111,6 +1124,7 @@ test.describe('M05 fixes B', () => {
 
   test('@M05 the steppers read "Teachers: 1", tabular figures on the number only', async ({ page }) => {
     await openExplorer(page, { focus: await personIdOf('demo-two-lineages'), up: 1, down: 1 });
+    await openExplorerOptions(page);
     for (const name of ['Teachers', 'Students']) {
       const label = page.getByRole('group', { name }).locator('span', { hasText: `${name}:` });
       await expect(label).toHaveText(`${name}: 1`);
@@ -1122,12 +1136,14 @@ test.describe('M05 fixes B', () => {
   test('@M05 lineage names are not translated: the Lineage picker, and a new focus drops the list\'s page and routes', async ({ page }) => {
     const id = await personIdOf('demo-two-lineages');
     await openExplorer(page, { focus: id, lineage: await lineageIdOf('demo-lineage-a'), page: 2, routes: 'all' });
+    await openExplorerOptions(page);
     const picker = page.getByRole('group', { name: 'Lineage' });
     await expect(picker.getByRole('button')).toHaveCount(2);
     for (const option of await picker.getByRole('button').all()) await expect(option.locator('[translate="no"]')).toHaveText(/^Demo Lineage [A-C]$/);
     // Centring on someone else (the lineage's root, where this view opens): the students page and
     // "all routes" were the person before's.
     const other = await personIdOf('demo-root-a');
+    await closeExplorerOptions(page);
     await nodeOf(page, other).click();
     await page.getByTestId('explorer-panel').getByRole('button', { name: 'Center on this person' }).click();
     await expect(page).toHaveURL(new RegExp(`focus=${other}`));

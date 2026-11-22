@@ -30,6 +30,7 @@ import { plainImage } from '../src/server/storage/test-images';
 import { openPalette, option, search, searchInput } from './helpers/search';
 import { runPaths } from './projects';
 import { ROUTES } from './routes';
+import { openFilters } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -166,6 +167,8 @@ async function schoolsFound(page: Page, options: { near?: string; radius?: strin
   await page.goto('/schools?view=list');
   const form = page.getByRole('search', { name: 'Find a school' });
   if (options.near) await visible(form.getByLabel('Near')).fill(options.near);
+  // ADR 0053: below 1024 px Distance and Lineage fold behind the Filters button.
+  await openFilters(form);
   if (options.radius) await visible(form.getByLabel('Distance')).selectOption(options.radius);
   await visible(form.getByLabel('Lineage')).selectOption(options.rootId);
   await visible(form.getByRole('button', { name: 'Search' })).click();

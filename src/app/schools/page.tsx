@@ -70,13 +70,15 @@ function lineageOptions(lineages: { name: string; root: { id: string } }[]): Lin
 
 function Filters({ params, lineages, compact, distanceNote }: { params: FinderParams; lineages: LineageOption[]; compact: boolean; distanceNote?: string }) {
   // Phone review 2026-11 (ADR 0053): below 1024 px the place field, its search button and a
-  // Filters button share one row; Distance and Lineage open from that button in a panel over the
-  // map or the list (a <details>, no script: the form works without JavaScript). From 1024 px they
+  // Filters button share one row; Distance and Lineage open from that button in a panel the width
+  // of the screen (the fields keep the page's width, so larger text still fits) over the map or the list (a <details>, no script: the form works without JavaScript). From 1024 px they
   // sit in the form's row as before. In the map view the place field's label is for screen readers
-  // only below 1024 px (its placeholder says "City or town"): the map keeps its room.
+  // only below 1024 px (its placeholder says "City or town"): the map keeps its room. The panel has
+  // two columns while two 11rem fields fit, so larger text gets one column (a container query's rem
+  // does not follow the page's text size).
   const active = (params.radius !== null ? 1 : 0) + (params.lineage ? 1 : 0);
   return (
-    <div className="@container/filters">
+    <div>
       <form method="get" action="/schools" role="search" aria-label="Find a school" className="relative grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-2 lg:flex lg:flex-wrap lg:gap-x-3">
         {params.view === 'list' ? <input type="hidden" name="view" value="list" /> : null}
         <div className="grid min-w-0 gap-1.5 lg:w-72">
@@ -104,7 +106,7 @@ function Filters({ params, lineages, compact, distanceNote }: { params: FinderPa
         <FilterDisclosure
           active={active}
           from="lg"
-          panelClassName="grid gap-3 max-lg:absolute max-lg:inset-x-0 max-lg:top-[calc(100%+0.5rem)] max-lg:z-30 max-lg:rounded-sm max-lg:border max-lg:border-border-strong max-lg:bg-surface-1 max-lg:p-4 max-lg:shadow-lg @min-[21rem]/filters:grid-cols-2"
+          panelClassName="grid gap-3 max-lg:absolute max-lg:-inset-x-(--gutter-phone) max-lg:top-[calc(100%+0.5rem)] max-lg:z-30 max-lg:border-y max-lg:border-border-strong max-lg:bg-surface-1 max-lg:px-(--gutter-phone) max-lg:py-4 max-lg:shadow-lg grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))]"
         >
           <div className="grid gap-1.5 lg:w-44">
             <label htmlFor="school-radius" className="text-sm font-semibold">

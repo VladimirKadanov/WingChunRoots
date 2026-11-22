@@ -13,6 +13,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { closeHelpers, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
+import { openDashboardMenu } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -44,6 +45,7 @@ const pick = (name: string, count: number) => [...name].reduce((n, c) => n + c.c
 test('@premium a student sees their kung fu family, follows a classmate privately and unfollows', async ({ page }, testInfo) => {
   await signInAs(page, 'demo-premium-student');
   await page.goto('/dashboard');
+  await openDashboardMenu(page);
   await page.getByTestId('dashboard-family').filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/\/dashboard\/family$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Your kung fu family' })).toBeVisible();

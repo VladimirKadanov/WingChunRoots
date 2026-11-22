@@ -118,7 +118,7 @@ function FilterForm({ filters, countries }: { filters: Filters; countries: strin
       action="/events"
       role="search"
       aria-label="Filter events"
-      className="mt-6 max-md:has-[details[open]]:basis-full md:grid md:basis-full md:grid-cols-2 md:items-end md:gap-3 lg:grid-cols-[repeat(3,minmax(0,12rem))_auto]"
+      className="max-md:has-[details[open]]:basis-full md:mt-4 md:grid md:basis-full md:grid-cols-2 md:items-end md:gap-3 lg:grid-cols-[repeat(3,minmax(0,12rem))_auto]"
     >
       {filters.view === 'month' ? <input type="hidden" name="view" value="month" /> : null}
       {filters.view === 'month' && filters.month ? <input type="hidden" name="month" value={filters.month} /> : null}
@@ -349,7 +349,9 @@ async function MonthView({ filters }: { filters: Filters }) {
   const weekday = day ? LONG_WEEKDAYS[new Date(`${day}T12:00:00Z`).getUTCDay()] : null;
   return (
     <>
-      <FilterForm filters={shown} countries={list.countries} />
+      <div className="mt-6 md:mt-2">
+        <FilterForm filters={shown} countries={list.countries} />
+      </div>
       <ActiveFilterChips filters={shown} />
       <Scope filters={shown} />
       <div className="mt-8 grid gap-8 2xl:grid-cols-[minmax(0,1fr)_22rem]">

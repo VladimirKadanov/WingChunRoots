@@ -18,6 +18,7 @@ import { freshAccount } from './helpers/plans';
 import { mapSettled, visible } from './helpers/schools';
 import { expectNoAxeViolations } from './helpers/ui';
 import { THEMES } from './routes';
+import { openFilters } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -119,6 +120,9 @@ test('@M11 with text at 150% and 200% the map view of /schools keeps every filte
       await mapSettled(tab);
       const form = finderSearch(tab);
       const at = `at ${size} text`;
+      // ADR 0053: below 1024 px Distance and Lineage are behind the Filters button: opened for the
+      // checks of the selects, folded again for the checks of the map.
+      await openFilters(form);
 
       // Each select shows its whole value, under a label that is shown (not for screen readers only).
       for (const name of ['Distance', 'Lineage']) {
@@ -138,9 +142,20 @@ test('@M11 with text at 150% and 200% the map view of /schools keeps every filte
         ['Distance', form.getByLabel('Distance')],
         ['Lineage', form.getByLabel('Lineage')],
       ];
-      if (await narrow(tab)) controls.push(['Show the list', tab.getByTestId('show-list')]);
       for (const [name, control] of controls) {
         expect(await reachable(control), `"${name}" is reachable and uncovered ${at}`).toBe(true);
+      }
+
+      const filtersButton = form.getByTestId('filters').locator(':scope > summary');
+      if (await filtersButton.isVisible()) {
+        expect(await reachable(filtersButton), `"Filters" is reachable and uncovered ${at}`).toBe(true);
+        await filtersButton.click();
+        await expect(form.getByLabel('Distance')).toBeHidden();
+      }
+      // The open Filters panel lies over the map, the summary button with it (the reader opened it);
+      // folded, the summary button is reachable and uncovered.
+      if (await narrow(tab)) {
+        expect(await reachable(tab.getByTestId('show-list')), `"Show the list" is reachable and uncovered ${at}`).toBe(true);
       }
 
       // The map keeps a usable height; the page never scrolls sideways.
@@ -158,8 +173,8 @@ test('@M11 with text at 150% and 200% the map view of /schools keeps every filte
         const map = (await tab.getByTestId('school-map-frame').boundingBox())!;
         expect(inside(button, map), `the summary button lies within the map ${at}`).toBe(true);
         expect(inside((await showList.getByText('Show the list').boundingBox())!, button), `"Show the list" is whole ${at}`).toBe(true);
-        for (const name of ['Distance', 'Lineage']) {
-          expect(overlaps(button, (await form.getByLabel(name).boundingBox())!), `the summary button is clear of ${name} ${at}`).toBe(false);
+        for (const [name, control] of [['Near', form.getByLabel('Near')], ['Filters', filtersButton]] as const) {
+          expect(overlaps(button, (await control.boundingBox())!), `the summary button is clear of ${name} ${at}`).toBe(false);
         }
         await expect(showList).toContainText('1 school within 50 km of Sofia');
       }
@@ -176,6 +191,7 @@ test('@M11 a distance chosen without a place says that it limits nothing, in the
     await expect(note).toHaveCount(0);
     const form = finderSearch(page);
     await expect(form.getByLabel('Near')).toHaveValue('');
+    await openFilters(form);
     await form.getByLabel('Distance').selectOption('10');
     await visible(form.getByRole('button', { name: 'Search' })).click();
     await page.waitForURL(/radius=10/);

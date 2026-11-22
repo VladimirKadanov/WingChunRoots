@@ -142,7 +142,7 @@ export default async function SchoolPage({ params }: Props) {
       <SchoolBeacon schoolId={school.id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(school)).replace(/</g, '\\u003c') }} />
       {/* ADR 0052: the school's banner, or the drawn motif of its slug; decorative. */}
-      <div className={cx('relative border-b border-border-subtle sm:h-56 lg:h-72', school.banner ? 'h-40' : 'h-24')}>
+      <div className={cx('relative border-b border-border-subtle sm:h-56 lg:h-72', school.banner ? 'h-40' : 'h-28')}>
         <Banner image={school.banner} slug={school.slug} motif={schoolMotif(school.slug)} className="size-full" testId="school-banner" />
         <div className="absolute top-3 left-4 sm:left-6 md:top-6 lg:left-10">
           <Link href="/schools" className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong bg-bg px-3.5 text-sm font-semibold hover:bg-surface-3">
