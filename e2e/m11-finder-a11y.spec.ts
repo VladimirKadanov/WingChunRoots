@@ -120,8 +120,18 @@ test('@M11 with text at 150% and 200% the map view of /schools keeps every filte
       await mapSettled(tab);
       const form = finderSearch(tab);
       const at = `at ${size} text`;
-      // ADR 0053: below 1024 px Distance and Lineage are behind the Filters button: opened for the
-      // checks of the selects, folded again for the checks of the map.
+      // Every control is reachable: scrolled into view, nothing covers it. First the row's (the
+      // Filters panel folded); then, ADR 0053, Distance and Lineage, which are behind the Filters
+      // button below 1024 px: opened for their checks, folded again for the checks of the map.
+      const rowControls: [string, Locator][] = [
+        ['Map', visible(tab.getByTestId('view-map'))],
+        ['List', visible(tab.getByTestId('view-list'))],
+        ['Near', form.getByLabel('Near')],
+        ['Search', visible(form.getByRole('button', { name: 'Search' }))],
+      ];
+      for (const [name, control] of rowControls) {
+        expect(await reachable(control), `"${name}" is reachable and uncovered ${at}`).toBe(true);
+      }
       await openFilters(form);
 
       // Each select shows its whole value, under a label that is shown (not for screen readers only).
@@ -131,19 +141,7 @@ test('@M11 with text at 150% and 200% the map view of /schools keeps every filte
         expect(shown.fits, `${name} ("${shown.text}") is not cut ${at}`).toBe(true);
         const label = (await form.locator('label', { hasText: name }).boundingBox())!;
         expect(label.width > 20 && label.height > 10, `the label "${name}" is shown ${at}`).toBe(true);
-      }
-
-      // Every control is reachable: scrolled into view, nothing covers it.
-      const controls: [string, Locator][] = [
-        ['Map', visible(tab.getByTestId('view-map'))],
-        ['List', visible(tab.getByTestId('view-list'))],
-        ['Near', form.getByLabel('Near')],
-        ['Search', visible(form.getByRole('button', { name: 'Search' }))],
-        ['Distance', form.getByLabel('Distance')],
-        ['Lineage', form.getByLabel('Lineage')],
-      ];
-      for (const [name, control] of controls) {
-        expect(await reachable(control), `"${name}" is reachable and uncovered ${at}`).toBe(true);
+        expect(await reachable(select), `"${name}" is reachable and uncovered ${at}`).toBe(true);
       }
 
       const filtersButton = form.getByTestId('filters').locator(':scope > summary');

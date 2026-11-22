@@ -557,7 +557,10 @@ test("@M09 on a phone each change's note has the focus on screen, and the rows' 
   const queue = declining.page;
   await queue.goto('/dashboard/students/requests');
   // ADR 0053: on a phone the way back is the dashboard menu's button (the eyebrow link is for wider screens).
-  await expectTouchTarget(queue.getByTestId('dashboard-menu').locator(':scope > summary'), 'Dashboard menu');
+  // The menu streams in (a hidden copy first): the one shown.
+  const menuButton = queue.getByTestId('dashboard-menu').filter({ visible: true }).locator(':scope > summary');
+  await expect(menuButton).toBeVisible();
+  await expectTouchTarget(menuButton, 'Dashboard menu');
   const row = requestRow(queue, declined);
   await row.getByText('Decline…').click();
   await row.getByLabel('Reason').selectOption({ label: 'The training dates need correcting.' });
