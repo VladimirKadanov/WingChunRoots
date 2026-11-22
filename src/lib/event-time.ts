@@ -228,3 +228,36 @@ export function isoInZone(instant: Date, zone: string): string {
   const abs = Math.abs(offset);
   return `${p.year}-${two(p.month)}-${two(p.day)}T${two(p.hour)}:${two(p.minute)}:${two(p.second)}${sign}${two(Math.floor(abs / 60))}:${two(abs % 60)}`;
 }
+
+/** "Mar" for 3 (1–12). */
+export function shortMonthName(month: number): string {
+  return SHORT_MONTHS[month - 1] ?? '';
+}
+
+/** "Sat" for 6 (0 = Sunday). */
+export function shortWeekdayName(weekday: number): string {
+  return SHORT_WEEKDAYS[weekday] ?? '';
+}
+
+/** The month after (+1) or before (-1) "2027-03": "2027-04" / "2027-02". */
+export function shiftMonth(key: string, by: number): string {
+  const [y, m] = key.split('-').map(Number) as [number, number];
+  const index = y * 12 + (m - 1) + by;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+}
+
+/**
+ * The weeks of a month for a calendar grid that starts on Monday: each cell is a day of the month
+ * ("2027-03-13") or null before the 1st and after the last day.
+ */
+export function monthWeeks(key: string): (string | null)[][] {
+  const [y, m] = key.split('-').map(Number) as [number, number];
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const cells: (string | null)[] = [...Array<null>(lead).fill(null)];
+  for (let d = 1; d <= days; d++) cells.push(`${key}-${String(d).padStart(2, '0')}`);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}

@@ -13,6 +13,10 @@ import {
   parseWallTime,
   toWallTime,
   wallTimeToInstant,
+  monthWeeks,
+  shiftMonth,
+  shortMonthName,
+  shortWeekdayName,
   zoneOffsetMinutes,
 } from './event-time';
 
@@ -133,5 +137,26 @@ describe('formatEventWhen', () => {
   it('the ISO time with the zone’s offset, for JSON-LD', () => {
     expect(isoInZone(at('2027-07-01T07:00:00Z'), 'Europe/Sofia')).toBe('2027-07-01T10:00:00+03:00');
     expect(isoInZone(at('2027-01-15T14:00:00Z'), 'America/New_York')).toBe('2027-01-15T09:00:00-05:00');
+  });
+});
+
+describe('ADR 0052 month helpers', () => {
+  it('shifts months across years', () => {
+    expect(shiftMonth('2027-03', 1)).toBe('2027-04');
+    expect(shiftMonth('2027-12', 1)).toBe('2028-01');
+    expect(shiftMonth('2027-01', -1)).toBe('2026-12');
+  });
+  it('lays a month out from Monday', () => {
+    const weeks = monthWeeks('2027-03'); // 1 March 2027 is a Monday
+    expect(weeks).toHaveLength(5);
+    expect(weeks[0]![0]).toBe('2027-03-01');
+    expect(weeks[4]!.filter(Boolean)).toEqual(['2027-03-29', '2027-03-30', '2027-03-31']);
+    const feb = monthWeeks('2026-02'); // 1 February 2026 is a Sunday
+    expect(feb[0]!.slice(0, 6)).toEqual([null, null, null, null, null, null]);
+    expect(feb[0]![6]).toBe('2026-02-01');
+  });
+  it('names short months and weekdays', () => {
+    expect(shortMonthName(3)).toBe('Mar');
+    expect(shortWeekdayName(6)).toBe('Sat');
   });
 });

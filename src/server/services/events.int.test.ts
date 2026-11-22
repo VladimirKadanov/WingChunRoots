@@ -29,6 +29,7 @@ import {
   eventEditor,
   eventGet,
   eventsList,
+  monthWindow,
   myEvents,
   removeEvent,
   updateEvent,
@@ -444,5 +445,26 @@ describe('the demo events (D20)', () => {
     expect((await eventsList(null, { when: 'upcoming', kind: 'camp' })).items.every((e) => e.kind === 'camp')).toBe(true);
     const [notice] = await getDb().select({ template: notification.template }).from(notification).where(eq(notification.template, 'event.published'));
     expect(notice?.template).toBe('event.published');
+  });
+});
+
+describe('ADR 0052: the Month view and the organizer filter', () => {
+  it('a month lists the events that start in it, past ones too, with a margin for the zones', async () => {
+    const march = await eventsList(null, { when: 'upcoming', month: '2027-03', limit: 50 });
+    const slugs = march.items.map((e) => e.slug);
+    expect(slugs).toEqual(expect.arrayContaining(['demo-seminar-chum-kiu-sofia', 'demo-grading-day-sofia', 'demo-spring-camp-london']));
+    expect(slugs).not.toContain('demo-online-theory-evening');
+    // A month that is over still lists its events (the grid can go back).
+    const past = await eventsList(null, { when: 'upcoming', month: '2026-05', limit: 50 });
+    expect(past.items.map((e) => e.slug)).toContain('demo-past-seminar-athens');
+    // The window reaches 14 hours into the months around it, for the zones far from UTC.
+    expect(monthWindow('2027-03')).toEqual({ from: '2027-02-28T10:00:00.000Z', to: '2027-04-01T14:00:00.000Z' });
+  });
+
+  it('an organization lists only the events it organizes; a malformed month is refused', async () => {
+    const own = await eventsList(null, { when: 'upcoming', organization: 'demo-federation-north', limit: 50 });
+    expect(own.items.map((e) => e.slug)).toEqual(['demo-federation-summer-camp']);
+    expect((await eventsList(null, { when: 'upcoming', organization: 'demo-no-such-organization' })).items).toEqual([]);
+    await expect(eventsList(null, { when: 'upcoming', month: '2027-13' })).rejects.toThrow();
   });
 });

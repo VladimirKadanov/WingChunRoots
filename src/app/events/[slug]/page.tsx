@@ -10,31 +10,47 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { NameText } from '@/components/account/person-names';
-import { CancelledMark, placeLine } from '@/components/events/event-list';
+import { DateSeal, KindShape } from '@/components/events/event-card';
+import { CancelledMark, EventRow, placeLine } from '@/components/events/event-list';
+import { InkArt } from '@/components/ink/ink-art';
 import { ArrowLeftIcon, CalendarIcon } from '@/components/icons';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
 import { formatEventWhen, isoInZone } from '@/lib/event-time';
+import { eventMotif } from '@/lib/ink-art';
 import { countryName } from '@/lib/regions';
 import { appUrl } from '@/server/auth/env';
 import { getRequestPrincipal } from '@/server/auth/web';
-import type { EventPageDto } from '@/server/dto/events';
+import type { EventPageDto, EventSummaryDto } from '@/server/dto/events';
+import type { SearchNameDto } from '@/server/dto/search';
 import { readFormResult } from '@/server/forms/flash';
 import { canModerateEvents } from '@/server/services/events';
+import { failure, lineageClient } from '../../people/[slug]/data';
 import { loadEvent } from './data';
 import { EVENT_REMOVE_FORM } from './form-ids';
 import { RemoveEventForm } from './remove-form';
 
 export const instant = false;
 
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const read = await loadEvent((await params).slug);
-  if (read.state === 'none') return { title: 'Event not listed', robots: { index: false, follow: false } };
-  if (read.state === 'failed') return { title: 'Event not loaded', robots: { index: false, follow: false } };
+  if (read.state === 'none')
+    return {
+      title: 'Event not listed',
+      robots: { index: false, follow: false },
+    };
+  if (read.state === 'failed')
+    return {
+      title: 'Event not loaded',
+      robots: { index: false, follow: false },
+    };
   const { event } = read;
   const when = formatEventWhen(new Date(event.startsAt), new Date(event.endsAt), event.timezone);
   const description = `${event.kindLabel}${event.status === 'cancelled' ? ' (cancelled)' : ''}: ${when.short}, ${placeLine(event)}.`;
@@ -43,7 +59,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: event.title,
     description,
     alternates: { canonical: `/events/${event.slug}` },
-    openGraph: { type: 'website', title: event.title, description, url: `/events/${event.slug}`, ...(event.poster ? { images: [{ url: event.poster.large, width: 512, height: 512 }] } : {}) },
+    openGraph: {
+      type: 'website',
+      title: event.title,
+      description,
+      url: `/events/${event.slug}`,
+      ...(event.poster ? { images: [{ url: event.poster.large, width: 512, height: 512 }] } : {}),
+    },
   };
 }
 
@@ -73,13 +95,51 @@ function jsonLd(event: EventPageDto): Record<string, unknown> {
           },
         }
       : {}),
-    ...(event.instructors.length > 0 ? { performer: event.instructors.map((i) => ({ '@type': 'Person', name: i.name.value, url: `${appUrl()}/people/${i.slug}` })) } : {}),
+    ...(event.instructors.length > 0
+      ? {
+          performer: event.instructors.map((i) => ({
+            '@type': 'Person',
+            name: i.name.value,
+            url: `${appUrl()}/people/${i.slug}`,
+          })),
+        }
+      : {}),
   };
 }
 
 /** Whether the event is over (read once per request; the page renders per request). */
 function hasEnded(endsAt: string): boolean {
   return new Date(endsAt).getTime() <= Date.now();
+}
+
+/**
+ * ADR 0052: the organizer's other upcoming events (at most three), or null when there is no
+ * organizer or the read fails (the section is left out; the page itself stands).
+ */
+async function loadMore(event: EventPageDto): Promise<{
+  organizer: SearchNameDto;
+  items: EventSummaryDto[];
+  allHref: string;
+} | null> {
+  const organizer = event.organizer;
+  if (!organizer) return null;
+  const client = await lineageClient();
+  try {
+    const list = await client.events.list({
+      when: 'upcoming',
+      limit: 4,
+      ...(organizer.kind === 'person' ? { person: organizer.slug } : { organization: organizer.slug }),
+    });
+    const allHref = organizer.kind === 'person' ? `/events?person=${organizer.slug}` : `/events?organization=${organizer.slug}`;
+    return {
+      organizer: organizer.name,
+      items: list.items.filter((e) => e.slug !== event.slug).slice(0, 3),
+      allHref,
+    };
+  } catch (error) {
+    console.error(`[event-page] the organizer's other events could not be loaded: ${failure(error)}`);
+    return null;
+  }
 }
 
 function Back() {
@@ -129,133 +189,190 @@ export default async function EventPage({ params, searchParams }: Props) {
   const moderator = canModerateEvents(await getRequestPrincipal());
   const removeOutcome = moderator ? await readFormResult(EVENT_REMOVE_FORM, (await searchParams).outcome) : null;
 
+  const more = await loadMore(event);
+
   return (
-    <article className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14" data-testid="event-page" data-status={event.status}>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(event)).replace(/</g, '\\u003c') }} />
-      <div className="grid max-w-[60rem] gap-8 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <header className="min-w-0">
-          <Back />
-          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-label uppercase text-fg-muted">
-            <span>{event.kindLabel}</span>
+    <article className="pb-10 md:pb-14" data-testid="event-page" data-status={event.status}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd(event)).replace(/</g, '\\u003c'),
+        }}
+      />
+      {/* ADR 0052: the banner is the motif of the event's kind drawn from its slug; the poster, the
+          organizer's own words, is shown whole beside the details. */}
+      <div className="relative h-44 border-b border-border-subtle sm:h-64 lg:h-80" data-testid="event-banner">
+        <InkArt slug={event.slug} motif={eventMotif(event.kind, event.online)} testId="event-banner-art" />
+        <div className="absolute top-3 left-4 sm:left-6 lg:left-10 md:top-6">
+          <Link href="/events" className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong bg-bg px-3.5 text-sm font-semibold hover:bg-surface-3">
+            <ArrowLeftIcon size={16} />
+            Events
+          </Link>
+        </div>
+      </div>
+      <div className="mx-auto grid max-w-content gap-8 px-page md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-12">
+        <header className="grid min-w-0 content-start gap-3 pt-6 md:col-start-1 md:row-start-1 md:pt-8">
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label uppercase text-fg-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <KindShape kind={event.kind} online={event.online} />
+              {event.kindLabel}
+            </span>
+            <span>{event.online ? 'Online' : 'In person'}</span>
             {past ? <span>Past event</span> : null}
             {cancelled ? <CancelledMark /> : null}
           </p>
-          <h1 className="mt-2 font-display text-feature [overflow-wrap:anywhere]">{event.title}</h1>
+          <h1 className="font-display text-feature [overflow-wrap:anywhere] md:text-hero">{event.title}</h1>
           {cancelled ? (
-            <div className="mt-4 grid gap-1 rounded-sm border-l-4 border-danger bg-surface-2 px-4 py-3 text-ui" data-testid="event-cancelled-note">
-              <p className="font-semibold">This event was cancelled{event.cancelledAt ? ` on ${formatDay(event.cancelledAt.slice(0, 10))}` : ''}.</p>
+            <div className="grid gap-1 rounded-sm border-l-4 border-danger bg-surface-2 px-4 py-3 text-ui" data-testid="event-cancelled-note">
+              <p className="font-semibold">
+                This event was cancelled
+                {event.cancelledAt ? ` on ${formatDay(event.cancelledAt.slice(0, 10))}` : ''}.
+              </p>
               {event.cancellationNote ? <p className="whitespace-pre-line text-fg-muted">{event.cancellationNote}</p> : null}
             </div>
           ) : null}
-          <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-3">
-            <dt className="text-sm text-fg-muted">When</dt>
-            <dd className="min-w-0">
-              <time dateTime={isoInZone(new Date(event.startsAt), event.timezone)} data-testid="event-when">
-                {when.text}
-              </time>
-              <p className="text-sm text-fg-muted" data-testid="event-zone">
-                {when.zone}
-              </p>
-            </dd>
-            <dt className="text-sm text-fg-muted">Where</dt>
-            <dd className="min-w-0" data-testid="event-where">
-              {event.online ? 'Online' : `${event.city}, ${countryName(event.countryCode) ?? event.countryCode}`}
-              {event.venue ? <p className="text-sm text-fg-muted">{event.venue}</p> : null}
-            </dd>
-            {event.organizer ? (
-              <>
-                <dt className="text-sm text-fg-muted">Organizer</dt>
-                <dd className="min-w-0">
-                  <Link
-                    href={event.organizer.kind === 'organization' ? `/organizations/${event.organizer.slug}` : `/people/${event.organizer.slug}`}
-                    className="link inline-flex min-h-11 items-center"
-                    data-testid="event-organizer"
-                  >
-                    <NameText name={event.organizer.name} />
-                  </Link>
-                </dd>
-              </>
-            ) : null}
-            {event.school ? (
-              <>
-                <dt className="text-sm text-fg-muted">School</dt>
-                <dd className="min-w-0">
-                  <Link href={`/schools/${event.school.slug}`} className="link inline-flex min-h-11 items-center" data-testid="event-school">
-                    {event.school.name}, {event.school.city}
-                  </Link>
-                </dd>
-              </>
-            ) : null}
-          </dl>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <a href={`/events/${event.slug}/calendar.ics`} download={`${event.slug}.ics`} className={buttonVariants({ variant: 'primary' })} data-testid="event-ics">
-              <CalendarIcon />
-              Add to calendar
-            </a>
-            {event.externalUrl ? (
-              <a href={event.externalUrl} rel="nofollow noopener" className={buttonVariants({ variant: 'secondary' })} data-testid="event-external">
-                Organizer’s page
-              </a>
-            ) : null}
-          </div>
-          {event.externalUrl ? <p className="mt-2 text-sm text-fg-muted">The organizer’s page is on another site: {new URL(event.externalUrl).host}.</p> : null}
         </header>
-        {event.poster ? (
-          <figure className="md:pt-14">
-            {/* The heading names the event; the poster's words are the organizer's and may say more. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={event.poster.full}
-              alt={`Poster of ${event.title}`}
-              width={event.poster.width}
-              height={event.poster.height}
-              className="h-auto w-full rounded-sm border border-border-subtle bg-surface-1"
-              data-testid="event-poster"
-            />
-          </figure>
-        ) : null}
-      </div>
+        <aside aria-label="When and where" className="relative z-10 grid content-start gap-4 md:col-start-2 md:row-span-2 md:row-start-1 md:-mt-24">
+          <div className="overflow-hidden rounded-lg border border-border-strong bg-surface-1">
+            <div className="flex items-center gap-4 border-b border-dashed border-border-strong p-4 md:p-5">
+              <DateSeal startsAt={event.startsAt} timezone={event.timezone} size="lg" />
+              <div className="grid min-w-0 gap-0.5">
+                <time dateTime={isoInZone(new Date(event.startsAt), event.timezone)} className="font-semibold" data-testid="event-when">
+                  {when.text}
+                </time>
+                <p className="text-sm text-fg-muted" data-testid="event-zone">
+                  {when.zone}
+                </p>
+              </div>
+            </div>
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 p-4 md:px-5">
+              <dt className="pt-0.5 text-sm text-fg-subtle">Where</dt>
+              <dd className="min-w-0" data-testid="event-where">
+                {event.online ? 'Online' : `${event.city}, ${countryName(event.countryCode) ?? event.countryCode}`}
+                {event.venue ? <p className="text-sm text-fg-muted">{event.venue}</p> : null}
+              </dd>
+              {event.organizer ? (
+                <>
+                  <dt className="pt-3 text-sm text-fg-subtle">Organizer</dt>
+                  <dd className="min-w-0">
+                    <Link
+                      href={event.organizer.kind === 'organization' ? `/organizations/${event.organizer.slug}` : `/people/${event.organizer.slug}`}
+                      className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]"
+                      data-testid="event-organizer"
+                    >
+                      <NameText name={event.organizer.name} />
+                    </Link>
+                  </dd>
+                </>
+              ) : null}
+              {event.school ? (
+                <>
+                  <dt className="pt-3 text-sm text-fg-subtle">School</dt>
+                  <dd className="min-w-0">
+                    <Link href={`/schools/${event.school.slug}`} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" data-testid="event-school">
+                      {event.school.name}, {event.school.city}
+                    </Link>
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+            <div className="grid gap-2.5 px-4 pb-4 md:px-5 md:pb-5">
+              <a href={`/events/${event.slug}/calendar.ics`} download={`${event.slug}.ics`} className={buttonVariants({ variant: 'primary' })} data-testid="event-ics">
+                <CalendarIcon />
+                Add to calendar
+              </a>
+              {event.externalUrl ? (
+                <>
+                  <a href={event.externalUrl} rel="nofollow noopener" className={buttonVariants({ variant: 'secondary' })} data-testid="event-external">
+                    Organizer’s page
+                  </a>
+                  <p className="text-sm text-fg-muted">On another site: {new URL(event.externalUrl).host}.</p>
+                </>
+              ) : null}
+            </div>
+          </div>
+          {event.poster ? (
+            <figure>
+              {/* The heading names the event; the poster's words are the organizer's and may say more. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={event.poster.full}
+                alt={`Poster of ${event.title}`}
+                width={event.poster.width}
+                height={event.poster.height}
+                className="h-auto w-full rounded-md border border-border-subtle bg-surface-1"
+                data-testid="event-poster"
+              />
+            </figure>
+          ) : null}
+        </aside>
+        <div className="grid min-w-0 content-start gap-10 md:col-start-1 md:row-start-2">
+          {event.description ? (
+            <section aria-labelledby="event-about">
+              <h2 id="event-about" className="font-display text-2xl">
+                About
+              </h2>
+              <p className="mt-2 max-w-[64ch] whitespace-pre-line">{event.description}</p>
+            </section>
+          ) : null}
 
-      <div className="mt-10 grid max-w-[46rem] gap-10">
-        {event.description ? (
-          <section aria-labelledby="event-about">
-            <h2 id="event-about" className="font-display text-xl">
-              About
-            </h2>
-            <p className="mt-2 whitespace-pre-line">{event.description}</p>
-          </section>
-        ) : null}
+          {event.instructors.length > 0 ? (
+            <section aria-labelledby="event-instructors">
+              <h2 id="event-instructors" className="font-display text-2xl">
+                Instructors
+              </h2>
+              <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+                {event.instructors.map((i) => (
+                  <li
+                    key={i.slug}
+                    className="relative flex items-center gap-4 rounded-md border border-border-subtle bg-surface-1 p-4 hover:border-border-strong"
+                    data-testid="event-instructor"
+                    data-slug={i.slug}
+                  >
+                    <PersonAvatar name={i.name.value} photo={i.photo} size="md" decorative />
+                    <Link
+                      href={`/people/${i.slug}`}
+                      className="inline-flex min-h-11 min-w-0 items-center font-display text-xl [overflow-wrap:anywhere] after:absolute after:inset-0 after:content-['']"
+                    >
+                      <NameText name={i.name} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
-        {event.instructors.length > 0 ? (
-          <section aria-labelledby="event-instructors">
-            <h2 id="event-instructors" className="font-display text-xl">
-              Instructors
-            </h2>
-            <ul className="mt-3 grid gap-2">
-              {event.instructors.map((i) => (
-                <li key={i.slug} data-testid="event-instructor" data-slug={i.slug}>
-                  <Link href={`/people/${i.slug}`} className="link inline-flex min-h-11 items-center gap-3 font-display text-lg">
-                    <PersonAvatar name={i.name.value} photo={i.photo} size="sm" decorative />
-                    <NameText name={i.name} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+          {more && more.items.length > 0 ? (
+            <section aria-labelledby="event-more" data-testid="event-more">
+              <h2 id="event-more" className="font-display text-2xl">
+                More from <NameText name={more.organizer} />
+              </h2>
+              <ul className="mt-3 grid">
+                {more.items.map((e) => (
+                  <EventRow key={e.slug} event={e} />
+                ))}
+              </ul>
+              <p className="mt-2 text-sm">
+                <Link href={more.allHref} className="link inline-flex min-h-11 items-center">
+                  Every event of this organizer
+                </Link>
+              </p>
+            </section>
+          ) : null}
 
-        <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">
-          Published by its organizer without a review; last changed on {formatDay(event.updatedAt.slice(0, 10))}. An event says nothing about who taught whom.
-        </p>
+          <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">
+            Published by its organizer without a review; last changed on {formatDay(event.updatedAt.slice(0, 10))}. An event says nothing about who taught whom.
+          </p>
 
-        {moderator ? (
-          <section aria-labelledby="event-moderation" className="grid gap-3 rounded-sm border border-border-strong p-4" data-testid="event-moderation">
-            <h2 id="event-moderation" className="font-display text-lg">
-              Moderation
-            </h2>
-            <RemoveEventForm id={event.id} slug={event.slug} initial={removeOutcome} />
-          </section>
-        ) : null}
+          {moderator ? (
+            <section aria-labelledby="event-moderation" className="grid gap-3 rounded-sm border border-border-strong p-4" data-testid="event-moderation">
+              <h2 id="event-moderation" className="font-display text-lg">
+                Moderation
+              </h2>
+              <RemoveEventForm id={event.id} slug={event.slug} initial={removeOutcome} />
+            </section>
+          ) : null}
+        </div>
       </div>
     </article>
   );
