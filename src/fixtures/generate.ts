@@ -1965,8 +1965,10 @@ const ORGANIZATION_SCHOOLS_AT = new Date(Date.UTC(2026, 10, 21));
 
 /**
  * ADR 0052: demo-association-south lists three demo schools (Athens, Sofia, and the city-only club
- * in Plovdiv), so its page shows schools and the map of their cities. demo-federation-north lists
- * none: its specs add schools of their own. Ids from a stream of their own.
+ * in London), so its page shows schools and the map of their cities. Never demo-school-city-only:
+ * the M11 privacy check compares its public page with a twin that copies only its columns and
+ * instructors. demo-federation-north lists none: its specs add schools of their own. Ids from a
+ * stream of their own.
  */
 function demoOrganizationSchools(seed: number, organizations: OrganizationRow[], schools: SchoolRow[]): OrganizationSchoolRow[] {
   const idRng = createRandom((seed ^ 0x0e7e_0052) >>> 0);
@@ -1974,7 +1976,7 @@ function demoOrganizationSchools(seed: number, organizations: OrganizationRow[],
   const id = () => uuidv7FromParts(ORGANIZATION_SCHOOLS_AT.getTime() + seq++, 0, idRng.bytes(8));
   const at = ORGANIZATION_SCHOOLS_AT;
   const association = organizations.find((o) => o.slug === 'demo-association-south')!;
-  return ['demo-school-athens', 'demo-school-sofia', 'demo-school-city-only'].map((slug) => ({
+  return ['demo-school-athens', 'demo-school-sofia', 'demo-school-london'].map((slug) => ({
     id: id(),
     organizationId: association.id,
     schoolId: schools.find((sc) => sc.slug === slug)!.id,

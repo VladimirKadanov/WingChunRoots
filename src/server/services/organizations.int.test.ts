@@ -375,13 +375,13 @@ describe('the redesigned page (ADR 0052)', () => {
 
   it('the seeded demo-association-south lists three schools in three cities, and its counts on the list', async () => {
     const page = await organizationGet(null, { slug: 'demo-association-south' });
-    expect(page.schools.map((s) => s.slug).sort()).toEqual(['demo-school-athens', 'demo-school-city-only', 'demo-school-sofia']);
+    expect(page.schools.map((s) => s.slug).sort()).toEqual(['demo-school-athens', 'demo-school-london', 'demo-school-sofia']);
     expect(page.cities).toHaveLength(3);
-    // Athens is south of Sofia and Plovdiv, Sofia west of Plovdiv: north up, west left.
+    // Athens is south of Sofia and London, London west of Sofia: north up, west left.
     const at = (name: string) => page.cities.find((c) => c.name === name)!;
     expect(page.cities.every((c) => c.schools === 1)).toBe(true);
     expect(at('Athens').y).toBeGreaterThan(at('Sofia').y);
-    expect(at('Sofia').x).toBeLessThan(at('Plovdiv').x);
+    expect(at('London').x).toBeLessThan(at('Sofia').x);
     expect(JSON.stringify(page)).not.toMatch(/"(lat|lng|point)"/);
     const listed = (await organizationsList()).organizations.find((o) => o.slug === 'demo-association-south')!;
     expect(listed.schoolCount).toBe(3);

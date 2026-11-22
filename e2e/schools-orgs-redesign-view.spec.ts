@@ -60,7 +60,7 @@ test('@redesign an organization page: banner, numbers, school cards and the citi
   await expect(cities.locator('svg')).toHaveAttribute('aria-hidden', 'true');
   await expect(cities.locator('svg circle')).toHaveCount(6);
   const named = await page.getByTestId('organization-city').allInnerTexts();
-  expect(named.map((t) => t.replace(/\s+/g, ' ').trim()).sort()).toEqual(['Athens, GR 1 school', 'Plovdiv, BG 1 school', 'Sofia, BG 1 school']);
+  expect(named.map((t) => t.replace(/\s+/g, ' ').trim()).sort()).toEqual(['Athens, GR 1 school', 'London, GB 1 school', 'Sofia, BG 1 school']);
   // No school's point is in the page: the cities are at their centres.
   const html = await page.content();
   expect(html).not.toMatch(/"(lat|lng)":\s*-?\d+\.\d{3,}/);
