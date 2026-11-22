@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { PHOTO_ACCEPT } from '@/components/lineage/photo-control';
+import { LOGO_GROUND } from '@/components/ink/ink-art';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import type { GalleryPhotoDto } from '@/server/dto/gallery';
@@ -162,6 +163,7 @@ export function SchoolPhotosManager({ view, schoolName }: { view: SchoolPhotosVi
             width={96}
             height={96}
             className="size-24 rounded-sm border border-border-subtle bg-surface-1 object-contain"
+            style={LOGO_GROUND}
             data-testid="school-logo-preview"
           />
         ) : (

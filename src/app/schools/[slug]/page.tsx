@@ -18,7 +18,7 @@ import Link from 'next/link';
 import { UpcomingEvents } from '@/components/events/event-list';
 import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { ArrowLeftIcon } from '@/components/icons';
-import { Banner, Emblem } from '@/components/ink/ink-art';
+import { Banner, Emblem, LOGO_GROUND } from '@/components/ink/ink-art';
 import { NameText } from '@/components/account/person-names';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
@@ -159,6 +159,7 @@ export default async function SchoolPage({ params }: Props) {
             width={112}
             height={112}
             data-testid="school-logo"
+            style={LOGO_GROUND}
             className="relative z-10 -mt-10 size-20 shrink-0 rounded-sm border border-border-strong bg-bg object-contain shadow-sm md:-mt-14 md:size-28"
           />
         ) : (

@@ -108,10 +108,20 @@ export function Banner({
   );
 }
 
+/**
+ * A logo is kept whole on a transparent square and is usually drawn for a light ground: it sits on
+ * paper in every theme, or a dark logo would vanish in the dark one.
+ */
+export const LOGO_GROUND = { backgroundColor: 'var(--print-paper)' } as const;
+
 /** ADR 0052: the logo of a school or an organization, whole on its square, or its monogram crest. */
 export function Emblem({ logo, name, shape, className }: { logo: { large: string } | null; name: string; shape: 'seal' | 'shield'; className?: string }) {
   return (
-    <span className={cx('inline-flex shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border-strong bg-bg text-fg', className)} aria-hidden="true">
+    <span
+      className={cx('inline-flex shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border-strong bg-bg text-fg', className)}
+      style={logo ? LOGO_GROUND : undefined}
+      aria-hidden="true"
+    >
       {logo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logo.large} alt="" className="size-full object-contain" />

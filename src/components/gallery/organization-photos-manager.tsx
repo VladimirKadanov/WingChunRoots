@@ -7,6 +7,7 @@
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 
+import { LOGO_GROUND } from '@/components/ink/ink-art';
 import { buttonVariants } from '@/components/ui/button-variants';
 import type { OrganizationPhotosView } from '@/server/services/organization-photos';
 import { callRpc, MAX_BYTES, MAX_MB, messageOf, type Status, StatusLine, uploadRpc } from './rpc';
@@ -64,6 +65,7 @@ export function OrganizationPhotosManager({ view, organizationName }: { view: Or
             width={96}
             height={96}
             className="size-24 rounded-sm border border-border-subtle bg-surface-1 object-contain"
+            style={LOGO_GROUND}
             data-testid="organization-logo-preview"
           />
         ) : (
