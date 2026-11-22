@@ -28,6 +28,14 @@ export type PersonGalleryPhotoDto = z.infer<typeof personGalleryPhotoSchema>;
 export const schoolLogoSchema = z.object({ id: z.uuid(), small: z.string(), large: z.string() });
 export type SchoolLogoDto = z.infer<typeof schoolLogoSchema>;
 
+/**
+ * ADR 0052: a banner of a school or an organization: the whole image (`full`, at most
+ * PHOTO_FULL_MAX_SIDE, without metadata) with its size, which a page crops to its frame, and the
+ * centred square (`large`) for a small card.
+ */
+export const bannerSchema = z.object({ id: z.uuid(), large: z.string(), full: z.string(), width: z.number().int(), height: z.number().int() });
+export type BannerDto = z.infer<typeof bannerSchema>;
+
 /** The public part of a person's gallery (what every viewer of a public person sees). */
 export const publicGallerySchema = z.object({
   personId: z.uuid(),

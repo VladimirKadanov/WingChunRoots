@@ -18,7 +18,7 @@
 // reaches the store, a response or a log. Logs and audit rows carry ids, sizes and hashes, never a
 // caption, a storage key or a file name.
 
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -29,7 +29,7 @@ import { getDb } from '../db';
 import { uuidv7 } from '../db/ids';
 import { school, schoolPhoto } from '../db/schema';
 import { PHOTO_CAPTION_MAX, PHOTO_REASON_MAX, SCHOOL_PHOTO_KINDS, SCHOOL_ROOM_PHOTOS_MAX } from '../db/schema/common';
-import type { GalleryPhotoDto, SchoolLogoDto } from '../dto/gallery';
+import type { BannerDto, GalleryPhotoDto, SchoolLogoDto } from '../dto/gallery';
 import type { Executor } from '../entitlements/access';
 import { getPhotoStore, newStorageKey, type ObjectStore } from '../storage';
 import { PhotoRefused, renderGalleryPhoto, renderSchoolLogo } from '../storage/photo';
@@ -68,10 +68,10 @@ const caption = z
 /** schoolPhotos.get: the photos of one of the account's schools, for its editor. */
 export const schoolPhotosGetInput = z.object({ schoolId: z.uuid({ error: 'No such school.' }) });
 
-/** schoolPhotos.upload: the logo (replacing the old one) or one more room photo, multipart. */
+/** schoolPhotos.upload: the logo or the banner (replacing the old one, ADR 0052) or one more room photo, multipart. */
 export const schoolPhotoUploadInput = z.object({
   schoolId: z.uuid({ error: 'No such school.' }),
-  kind: z.enum(SCHOOL_PHOTO_KINDS, { error: 'Choose the logo or a room photo.' }),
+  kind: z.enum(SCHOOL_PHOTO_KINDS, { error: 'Choose the logo, the banner or a room photo.' }),
   file: z.file({ error: 'Choose a photo.' }),
   caption: caption.optional(),
 });
@@ -96,6 +96,8 @@ export const schoolPhotoReorderInput = z.object({
 export interface SchoolPhotosView {
   schoolId: string;
   logo: SchoolLogoDto | null;
+  /** ADR 0052: the banner across the top of the public page. */
+  banner: BannerDto | null;
   rooms: GalleryPhotoDto[];
   /** DEFAULT D07 (M16): the room gallery's limit. */
   limit: number;
@@ -130,8 +132,18 @@ function roomDto(r: Row): GalleryPhotoDto {
   };
 }
 
-/** The shown photos of these schools: the logo and the room photos in their order. */
-export async function schoolPhotosOf(db: Executor, schoolId: string): Promise<{ logo: SchoolLogoDto | null; rooms: GalleryPhotoDto[] }> {
+function bannerDto(r: Row): BannerDto {
+  return {
+    id: r.id,
+    large: schoolPhotoUrl(r.id, r.sha256, 512),
+    full: schoolPhotoUrl(r.id, r.sha256, 'full'),
+    width: r.fullWidth ?? r.width,
+    height: r.fullHeight ?? r.width,
+  };
+}
+
+/** The shown photos of these schools: the logo, the banner and the room photos in their order. */
+export async function schoolPhotosOf(db: Executor, schoolId: string): Promise<{ logo: SchoolLogoDto | null; banner: BannerDto | null; rooms: GalleryPhotoDto[] }> {
   const rows = await db
     .select({
       id: schoolPhoto.id,
@@ -146,7 +158,20 @@ export async function schoolPhotosOf(db: Executor, schoolId: string): Promise<{ 
     .where(and(eq(schoolPhoto.schoolId, schoolId), eq(schoolPhoto.status, 'active')))
     .orderBy(asc(schoolPhoto.position), asc(schoolPhoto.createdAt), asc(schoolPhoto.id));
   const logo = rows.find((r) => r.kind === 'logo');
-  return { logo: logo ? logoDto(logo) : null, rooms: rows.filter((r) => r.kind === 'room').map(roomDto) };
+  const banner = rows.find((r) => r.kind === 'banner');
+  return { logo: logo ? logoDto(logo) : null, banner: banner ? bannerDto(banner) : null, rooms: rows.filter((r) => r.kind === 'room').map(roomDto) };
+}
+
+/** ADR 0052: the shown logos of these schools, by school id (no visibility check: the caller's). */
+export async function schoolLogosOf(db: Executor, schoolIds: readonly string[]): Promise<Map<string, SchoolLogoDto>> {
+  const logos = new Map<string, SchoolLogoDto>();
+  if (schoolIds.length === 0) return logos;
+  const rows = await db
+    .select({ id: schoolPhoto.id, schoolId: schoolPhoto.schoolId, kind: schoolPhoto.kind, sha256: schoolPhoto.sha256, width: schoolPhoto.width, fullWidth: schoolPhoto.fullWidth, fullHeight: schoolPhoto.fullHeight, caption: schoolPhoto.caption })
+    .from(schoolPhoto)
+    .where(and(inArray(schoolPhoto.schoolId, [...schoolIds]), eq(schoolPhoto.kind, 'logo'), eq(schoolPhoto.status, 'active')));
+  for (const r of rows) logos.set(r.schoolId, logoDto(r));
+  return logos;
 }
 
 function cleanCaption(raw: string | null | undefined): string | null {
@@ -161,7 +186,7 @@ function fieldErrors(error: z.ZodError): ServiceError {
     const key = String(issue.path[0] ?? 'form');
     if (key === 'caption') fields.caption = `At most ${PHOTO_CAPTION_MAX} characters.`;
     else if (key === 'reason') fields.reason = `At most ${PHOTO_REASON_MAX} characters.`;
-    else if (key === 'kind') fields.kind = 'Choose the logo or a room photo.';
+    else if (key === 'kind') fields.kind = 'Choose the logo, the banner or a room photo.';
     else if (key === 'file') fields.file = 'Choose a photo.';
     else fields[key] = issue.message;
   }
@@ -210,7 +235,7 @@ export async function getSchoolPhotos(principal: Principal | null, raw: z.input<
     ...photos,
     limit: SCHOOL_ROOM_PHOTOS_MAX,
     canChange: own,
-    canModerate: staff && (photos.logo !== null || photos.rooms.length > 0),
+    canModerate: staff && (photos.logo !== null || photos.banner !== null || photos.rooms.length > 0),
   };
 }
 
@@ -226,7 +251,7 @@ export async function uploadSchoolPhoto(
   raw: z.input<typeof schoolPhotoUploadInput>,
   meta: RequestMeta,
   store: ObjectStore = getPhotoStore(),
-): Promise<{ schoolId: string; logo: SchoolLogoDto | null; room: GalleryPhotoDto | null; replaced: boolean }> {
+): Promise<{ schoolId: string; logo: SchoolLogoDto | null; banner: BannerDto | null; room: GalleryPhotoDto | null; replaced: boolean }> {
   const p = requireUser(principal);
   const parsed = schoolPhotoUploadInput.safeParse(raw);
   if (!parsed.success) {
@@ -262,11 +287,11 @@ export async function uploadSchoolPhoto(
       const now = new Date();
       let old: { id: string; storageKey: string } | null = null;
       let position = 0;
-      if (kind === 'logo') {
+      if (kind === 'logo' || kind === 'banner') {
         const [current] = await tx
           .select({ id: schoolPhoto.id, storageKey: schoolPhoto.storageKey })
           .from(schoolPhoto)
-          .where(and(eq(schoolPhoto.schoolId, schoolId), eq(schoolPhoto.kind, 'logo'), eq(schoolPhoto.status, 'active')));
+          .where(and(eq(schoolPhoto.schoolId, schoolId), eq(schoolPhoto.kind, kind), eq(schoolPhoto.status, 'active')));
         if (current) {
           await tx.update(schoolPhoto).set({ status: 'replaced', updatedAt: now }).where(eq(schoolPhoto.id, current.id));
           old = current;
@@ -318,7 +343,13 @@ export async function uploadSchoolPhoto(
   }
   if (previous) await deleteFiles(store, previous.storageKey, previous.id);
   changed();
-  return { schoolId, logo: kind === 'logo' ? logoDto(row) : null, room: kind === 'room' ? roomDto(row) : null, replaced: previous !== null };
+  return {
+    schoolId,
+    logo: kind === 'logo' ? logoDto(row) : null,
+    banner: kind === 'banner' ? bannerDto(row) : null,
+    room: kind === 'room' ? roomDto(row) : null,
+    replaced: previous !== null,
+  };
 }
 
 // --- Remove, caption, order --------------------------------------------------------------------

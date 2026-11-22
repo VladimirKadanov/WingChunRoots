@@ -179,6 +179,22 @@ describe('schoolPhotos.upload', () => {
     expect(await openSchoolPhoto(null, addressOf(first.large))).toBeNull();
   });
 
+  it('ADR 0052: a banner shows on the school page; a new one replaces the old; it is not a room photo', async () => {
+    const { sifu, id, slug } = await sifuSchool('photos-banner');
+    const first = (await uploadSchoolPhoto(sifu.principal, { schoolId: id, kind: 'banner', file: await image(640, 200) }, meta)).banner!;
+    expect(first).toMatchObject({ width: 640, height: 200 });
+    expect((await schoolGet(null, { slug })).banner).toEqual(first);
+    const second = await uploadSchoolPhoto(sifu.principal, { schoolId: id, kind: 'banner', file: await image(800, 250) }, meta);
+    expect(second.replaced).toBe(true);
+    const page = await schoolGet(null, { slug });
+    expect(page.banner).toEqual(second.banner);
+    expect(page.photos).toEqual([]);
+    expect(await openSchoolPhoto(null, addressOf(first.full))).toBeNull();
+    expect((await getSchoolPhotos(sifu.principal, { schoolId: id })).banner).toEqual(second.banner);
+    await removeSchoolPhoto(sifu.principal, { photoId: second.banner!.id }, meta);
+    expect((await schoolGet(null, { slug })).banner).toBeNull();
+  });
+
   it(`holds at most ${SCHOOL_ROOM_PHOTOS_MAX} room photos (DEFAULT D07): CONFLICT past it, nothing stored; the logo is not one of them`, async () => {
     const { sifu, id } = await sifuSchool('photos-limit');
     await uploadSchoolPhoto(sifu.principal, { schoolId: id, kind: 'logo', file: await image() }, meta);

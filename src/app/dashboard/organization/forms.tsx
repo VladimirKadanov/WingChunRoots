@@ -35,6 +35,7 @@ const LABELS = {
   websiteUrl: 'Website',
   countryCode: 'Country of the headquarters',
   schoolsEstimate: 'Approximate number of schools',
+  about: 'About the organization',
   evidenceIds: 'Supporting document',
   note: 'Note for the reviewers',
 };
@@ -47,6 +48,8 @@ export interface OrganizationValues {
   websiteUrl: string;
   countryCode: string;
   schoolsEstimate: string;
+  /** ADR 0052: the details form only (the application has its note for the reviewers). */
+  about?: string;
 }
 
 /** The application's fields. `locked`: an approved organization keeps its name, kind and country (a new review would change them). */
@@ -182,6 +185,19 @@ export function DetailsForm({
       <FormMessage form={formId} state={state} labels={LABELS} />
       <input type="hidden" name="organizationId" value={organizationId} />
       <OrganizationFields formId={formId} state={state} defaults={defaults} countries={countries} kinds={kinds} locked={locked} />
+      {/* ADR 0052: the organization's own words, on its public page once it is approved. */}
+      <TextAreaField
+        form={formId}
+        name="about"
+        label={LABELS.about}
+        optional
+        rows={6}
+        maxLength={2000}
+        hint="Shown on the organization’s public page: its history, what it teaches, how to join. Plain text."
+        state={state}
+        defaultValue={state.values?.about ?? defaults.about ?? ''}
+        className="max-w-[40rem]"
+      />
       <div>
         <SubmitButton pending={pending} pendingLabel="Saving…" variant="secondary">
           {locked ? 'Save details' : 'Save the application'}

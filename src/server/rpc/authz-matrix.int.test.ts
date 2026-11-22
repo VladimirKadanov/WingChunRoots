@@ -37,6 +37,7 @@ import { uploadEvidence } from '../services/evidence';
 import { createEvent, uploadEventPoster } from '../services/events';
 import { addGalleryPhoto } from '../services/gallery';
 import { uploadPhoto } from '../services/photos';
+import { uploadOrganizationPhoto } from '../services/organization-photos';
 import { uploadSchoolPhoto } from '../services/school-photos';
 import { plainImage } from '../storage/test-images';
 import { createGrant } from '../services/grants';
@@ -376,6 +377,13 @@ async function organizationOf(opts: { active?: boolean; federation?: boolean } =
   }
   const [row] = await getDb().execute<{ slug: string }>(sql`SELECT slug FROM organization WHERE id = ${applied.organizationId}::uuid`).then((r) => r.rows);
   return { owner, organizationId: applied.organizationId, caseId: applied.caseId, slug: row!.slug, grantId };
+}
+
+/** ADR 0052: an organization (approved when `active`) whose logo its owner uploaded. */
+async function organizationWithLogo(opts: { active?: boolean } = {}) {
+  const o = await organizationOf(opts);
+  const up = await uploadOrganizationPhoto(o.owner.principal, { organizationId: o.organizationId, kind: 'logo', file: await photoFile() }, meta);
+  return { ...o, photoId: up.logo!.id, address: addressOf(up.logo!.large) };
 }
 
 /** M15: the owner of another approved organization: it administers that one, never this one. */
@@ -1145,6 +1153,51 @@ const ROWS: Row[] = [
     make: async () => {
       const s = await schoolWithPhoto();
       return { owner: s.owner, input: s.address };
+    },
+    expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizationPhotos.get',
+    make: async () => {
+      const o = await organizationWithLogo();
+      return { owner: o.owner, input: { organizationId: o.organizationId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: 'organizationPhotos.upload',
+    make: async () => {
+      const o = await organizationOf();
+      return { owner: o.owner, input: { organizationId: o.organizationId, kind: 'banner' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'NOT_FOUND', archivist: 'NOT_FOUND', admin: 'NOT_FOUND', adminNo2fa: 'NOT_FOUND' },
+  },
+  {
+    path: 'organizationPhotos.remove',
+    make: async () => {
+      const o = await organizationWithLogo();
+      return { owner: o.owner, input: { photoId: o.photoId } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'BAD_REQUEST', archivist: 'BAD_REQUEST', admin: 'BAD_REQUEST', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: "organizationPhotos.remove (another account's image, with a reason)",
+    make: async () => {
+      const o = await organizationWithLogo();
+      return { owner: o.owner, input: { photoId: o.photoId, reason: 'A fictional moderation reason.' } };
+    },
+    expect: { ...signedInOnly, owner: 'ok', member: 'NOT_FOUND', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'SECOND_FACTOR_REQUIRED' },
+  },
+  {
+    path: 'GET /api/organization-photos/{id}/{hash}/{file}',
+    make: async () => ({ input: (await organizationWithLogo({ active: true })).address }),
+    expect: { anonymous: 'ok', member: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'ok' },
+  },
+  {
+    path: 'GET /api/organization-photos/{id}/{hash}/{file} (organization not approved)',
+    make: async () => {
+      const o = await organizationWithLogo();
+      return { owner: o.owner, input: o.address };
     },
     expect: { anonymous: 'NOT_FOUND', member: 'NOT_FOUND', owner: 'ok', moderator: 'ok', archivist: 'ok', admin: 'ok', adminNo2fa: 'NOT_FOUND' },
   },
@@ -2306,10 +2359,10 @@ async function viaEvidenceRoute(token: string | null, row: Row, input: unknown):
 }
 
 /** M14: GET /api/photos/<id>/<hash>/<file> with this session. */
-async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' | 'event' | 'certificate' = 'person'): Promise<string> {
+async function viaPhotoRoute(token: string | null, address: { id: string; hash: string; file: string }, kind: 'person' | 'school' | 'organization' | 'event' | 'certificate' = 'person'): Promise<string> {
   const headers = new Headers();
   if (token) headers.set('authorization', `Bearer ${token}`);
-  const base = kind === 'school' ? 'school-photos' : kind === 'event' ? 'event-posters' : kind === 'certificate' ? 'certificates' : 'photos';
+  const base = kind === 'school' ? 'school-photos' : kind === 'organization' ? 'organization-photos' : kind === 'event' ? 'event-posters' : kind === 'certificate' ? 'certificates' : 'photos';
   const response = await handlePhotoRequest(new Request(`${TEST_APP_URL}/api/${base}/${address.id}/${address.hash}/${address.file}`, { headers }), address, { kind });
   await response.arrayBuffer();
   return response.ok ? 'ok' : (STATUS_CODES[response.status] ?? `HTTP ${response.status}`);
@@ -2405,11 +2458,11 @@ describe('the authorization matrix (M13)', () => {
         if (caller === undefined) throw new Error(`${row.path}: no ${who} in the fixture`);
         actual[who] = row.path.includes('/api/evidence')
           ? await viaEvidenceRoute(caller?.token ?? null, row, made.input)
-          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos') || row.path.includes('/api/event-posters') || row.path.includes('/api/certificates')
+          : row.path.includes('/api/photos') || row.path.includes('/api/school-photos') || row.path.includes('/api/organization-photos') || row.path.includes('/api/event-posters') || row.path.includes('/api/certificates')
             ? await viaPhotoRoute(
                 caller?.token ?? null,
                 made.input as { id: string; hash: string; file: string },
-                row.path.includes('/api/school-photos') ? 'school' : row.path.includes('/api/event-posters') ? 'event' : row.path.includes('/api/certificates') ? 'certificate' : 'person',
+                row.path.includes('/api/school-photos') ? 'school' : row.path.includes('/api/organization-photos') ? 'organization' : row.path.includes('/api/event-posters') ? 'event' : row.path.includes('/api/certificates') ? 'certificate' : 'person',
               )
             : row.path === 'photos.upload'
               ? await viaPhotoUpload(caller?.token ?? null)
@@ -2417,8 +2470,10 @@ describe('the authorization matrix (M13)', () => {
                 ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/gallery/add')
                 : row.path === 'schoolPhotos.upload'
                   ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/schools/photos/upload', made.input as Record<string, string>)
-                  : row.path === 'events.uploadPoster'
-                    ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/events/poster/upload', made.input as Record<string, string>)
+                  : row.path === 'organizationPhotos.upload'
+                    ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/organizations/photos/upload', made.input as Record<string, string>)
+                    : row.path === 'events.uploadPoster'
+                      ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/events/poster/upload', made.input as Record<string, string>)
                     : row.path === 'passport.uploadCertificate'
                       ? await viaPhotoUpload(caller?.token ?? null, '/api/v1/passport/certificate/upload', made.input as Record<string, string>)
                       : await viaRpc(caller?.token ?? null, row.path, made.input);

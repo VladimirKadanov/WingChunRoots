@@ -230,6 +230,8 @@ export const USER_REFERENCES: readonly UserReference[] = [
   { table: 'person_photo', column: 'removed_by_user_id', action: 'clear', why: 'photos the account removed' },
   { table: 'school_photo', column: 'uploaded_by_user_id', action: 'clear', why: 'as above' },
   { table: 'school_photo', column: 'removed_by_user_id', action: 'clear', why: 'as above' },
+  { table: 'organization_photo', column: 'uploaded_by_user_id', action: 'clear', why: 'images an organization’s admin uploaded (the organization keeps them)' },
+  { table: 'organization_photo', column: 'removed_by_user_id', action: 'clear', why: 'as above' },
 ];
 
 /** Columns of other tables that hold an account id without a foreign key (the audit log is append-only). */

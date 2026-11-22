@@ -18,6 +18,8 @@ import Link from 'next/link';
 import { UpcomingEvents } from '@/components/events/event-list';
 import { GalleryGrid } from '@/components/gallery/gallery-grid';
 import { ArrowLeftIcon } from '@/components/icons';
+import { Banner, Emblem } from '@/components/ink/ink-art';
+import { LOGO_GROUND } from '@/components/ink/logo-ground';
 import { NameText } from '@/components/account/person-names';
 import { PersonAvatar } from '@/components/lineage/person-avatar';
 import { ErrorPanel } from '@/components/lineage/states';
@@ -26,6 +28,7 @@ import { LocationTag } from '@/components/schools/school-list';
 import { ScheduleAndFees, TrialAction } from '@/components/schools/school-schedule';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { formatDay } from '@/lib/dates';
+import { schoolMotif } from '@/lib/ink-art';
 import { finderHref, SCHOOL_ZOOM } from '@/lib/school-finder';
 import { appUrl } from '@/server/auth/env';
 import type { SchoolPageDto } from '@/server/dto/schools';
@@ -124,31 +127,48 @@ export default async function SchoolPage({ params }: Props) {
     school.contactEmail ? { label: 'E-mail', value: school.contactEmail, href: `mailto:${school.contactEmail}`, testid: 'school-email' } : null,
     school.contactPhone ? { label: 'Phone', value: school.contactPhone, href: `tel:${school.contactPhone.replace(/[^\d+]/g, '')}`, testid: 'school-phone' } : null,
   ].filter((c) => c !== null);
+  const stats = [
+    { label: school.instructors.length === 1 ? 'instructor' : 'instructors', value: school.instructors.length },
+    { label: school.memberCount === 1 ? 'listed member' : 'listed members', value: school.memberCount },
+    { label: school.schedule.length === 1 ? 'class a week' : 'classes a week', value: school.schedule.length },
+    { label: school.forms.length === 1 ? 'form taught' : 'forms taught', value: school.forms.length },
+  ];
 
   return (
-    <article className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14" data-testid="school-page" data-precision={school.precision}>
+    <article className="pb-10 md:pb-14" data-testid="school-page" data-precision={school.precision}>
       <SchoolBeacon schoolId={school.id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(school)).replace(/</g, '\\u003c') }} />
-      <header className="max-w-[46rem]">
-        <Back />
-        <div className="mt-2 flex items-center gap-4">
-          {/* M16: the school's logo, whole on its transparent square; the heading names the school,
-              so it is decorative. */}
-          {school.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={school.logo.large}
-              alt=""
-              width={72}
-              height={72}
-              data-testid="school-logo"
-              className="size-18 shrink-0 rounded-sm border border-border-subtle bg-surface-1 object-contain"
-            />
-          ) : null}
-          <h1 className="min-w-0 font-display text-feature [overflow-wrap:anywhere]">{school.name}</h1>
+      {/* ADR 0052: the school's banner, or the drawn motif of its slug; decorative. */}
+      <div className="relative h-40 border-b border-border-subtle sm:h-56 lg:h-72">
+        <Banner image={school.banner} slug={school.slug} motif={schoolMotif(school.slug)} className="size-full" testId="school-banner" />
+        <div className="absolute top-3 left-4 sm:left-6 md:top-6 lg:left-10">
+          <Link href="/schools" className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong bg-bg px-3.5 text-sm font-semibold hover:bg-surface-3">
+            <ArrowLeftIcon size={16} />
+            Schools
+          </Link>
         </div>
-        <p className="mt-3 text-fg-muted">{locationLine(school)}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+      </div>
+      <div className="mx-auto max-w-content px-page">
+      <header className="grid gap-3">
+        {/* M16: the school's logo, whole on its transparent square, or (ADR 0052) its monogram seal;
+            the heading names the school, so it is decorative. */}
+        {school.logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={school.logo.large}
+            alt=""
+            width={112}
+            height={112}
+            data-testid="school-logo"
+            style={LOGO_GROUND}
+            className="relative z-10 -mt-10 size-20 shrink-0 rounded-sm border border-border-strong bg-bg object-contain shadow-sm md:-mt-14 md:size-28"
+          />
+        ) : (
+          <Emblem logo={null} name={school.name} shape="seal" className="relative z-10 -mt-10 size-20 shadow-sm md:-mt-14 md:size-28" />
+        )}
+        <h1 className="min-w-0 font-display text-feature [overflow-wrap:anywhere] md:text-hero">{school.name}</h1>
+        <p className="text-fg-muted">{locationLine(school)}</p>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <LocationTag precision={school.precision} />
           <Link href={mapHref} className="link inline-flex min-h-11 items-center text-sm" data-testid="school-map-link">
             {exact ? 'Show on the map' : 'Show the city on the map'}
@@ -157,7 +177,7 @@ export default async function SchoolPage({ params }: Props) {
         {/* ADR 0051: the approved organizations whose link the school accepted. A link names a
             membership; it verifies no teacher or relationship (DEFAULT D04). */}
         {school.organizations.length > 0 ? (
-          <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-sm text-fg-muted" data-testid="school-member-of">
+          <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-fg-muted" data-testid="school-member-of">
             <span>Member of</span>
             {school.organizations.map((org, i) => (
               <span key={org.slug} className="inline-flex items-center">
@@ -172,13 +192,38 @@ export default async function SchoolPage({ params }: Props) {
           </p>
         ) : null}
         {!exact ? (
-          <p className="mt-2 max-w-[56ch] text-sm text-fg-muted">
+          <p className="max-w-[56ch] text-sm text-fg-muted">
             A private club: its address is not public. The map shows it at the centre of {school.city}; ask the instructors for the address.
           </p>
         ) : null}
+        {/* ADR 0052: on a phone the trial lesson and the contact are at the end of the page; these
+            jump there. From 1024 px they sit beside the page. */}
+        <nav aria-label="On this page" className="flex flex-wrap gap-2 lg:hidden" data-testid="school-quick-actions">
+          <a href="#school-trial" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+            Trial lesson
+          </a>
+          <a href="#school-contact" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+            Contact
+          </a>
+          {school.schedule.length > 0 ? (
+            <a href="#school-schedule" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
+              Timetable
+            </a>
+          ) : null}
+        </nav>
+        {/* ADR 0052: the school at a glance; each number in words. */}
+        <dl className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle sm:grid-cols-4" data-testid="school-stats">
+          {stats.map((stat) => (
+            <div key={stat.label} className="flex flex-col-reverse gap-0.5 bg-surface-1 px-4 py-3">
+              <dt className="text-sm text-fg-muted">{stat.label}</dt>
+              <dd className="font-display text-2xl">{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
       </header>
 
-      <div className="mt-8 grid max-w-[46rem] gap-10">
+      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
+      <div className="grid min-w-0 content-start gap-10">
         {/* M16: the photos of the school's rooms, a gallery of their own (every rendition without
             metadata, so no photo says where it was taken). */}
         {school.photos.length > 0 ? (
@@ -274,34 +319,39 @@ export default async function SchoolPage({ params }: Props) {
 
         <ScheduleAndFees school={school} />
 
-        <TrialAction slug={school.slug} options={trial} />
-
-        <section aria-labelledby="school-contact">
-          <h2 id="school-contact" className="font-display text-xl">
-            Contact
-          </h2>
-          {contacts.length > 0 ? (
-            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-              {contacts.map((c) => (
-                <div key={c.label} className="contents">
-                  <dt className="py-2.5 text-sm text-fg-muted">{c.label}</dt>
-                  <dd className="min-w-0">
-                    <a href={c.href} rel={c.label === 'Website' ? 'nofollow noopener' : undefined} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" data-testid={c.testid} data-school-contact>
-                      {c.value}
-                    </a>
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : (
-            <p className="mt-2 text-fg-muted">This school lists no contact yet. Its instructors&apos; profiles may help.</p>
-          )}
-        </section>
-
         {/* M17: the school's upcoming events (an event names a school its organizer chose). */}
         {events && events.items.length > 0 ? <UpcomingEvents items={events.items} total={events.total} allHref={`/events?school=${school.slug}`} /> : null}
 
         <p className="border-t border-border-subtle pt-4 text-sm text-fg-muted">Listing last edited or confirmed on {formatDay(school.lastActivityOn)}.</p>
+      </div>
+      {/* ADR 0052: what a visitor acts on, beside the page from 1024 px (under the header before). */}
+      <aside aria-label="Visit the school" className="grid content-start gap-8 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1">
+        <div className="grid gap-8 rounded-md border border-border-subtle bg-surface-1 p-5">
+          <TrialAction slug={school.slug} options={trial} />
+          <section aria-labelledby="school-contact">
+            <h2 id="school-contact" className="font-display text-xl">
+              Contact
+            </h2>
+            {contacts.length > 0 ? (
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                {contacts.map((c) => (
+                  <div key={c.label} className="contents">
+                    <dt className="py-2.5 text-sm text-fg-muted">{c.label}</dt>
+                    <dd className="min-w-0">
+                      <a href={c.href} rel={c.label === 'Website' ? 'nofollow noopener' : undefined} className="link inline-flex min-h-11 items-center [overflow-wrap:anywhere]" data-testid={c.testid} data-school-contact>
+                        {c.value}
+                      </a>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-2 text-fg-muted">This school lists no contact yet. Its instructors&apos; profiles may help.</p>
+            )}
+          </section>
+        </div>
+      </aside>
+      </div>
       </div>
     </article>
   );

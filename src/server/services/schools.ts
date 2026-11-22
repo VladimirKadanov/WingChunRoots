@@ -83,7 +83,7 @@ import { pgErrorOf, ServiceError } from './errors';
 import { cleanName } from './names';
 import { photoOf, publicPhotoRefs } from './photo-refs';
 import { ORGANIZATION_KIND_LABELS } from './organizations';
-import { schoolPhotosOf } from './school-photos';
+import { schoolLogosOf, schoolPhotosOf } from './school-photos';
 import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
@@ -410,11 +410,25 @@ async function allInstructorIds(db: Executor, schoolIds: readonly string[]): Pro
 
 const nameOf = (row: Pick<InstructorRow, 'display_name' | 'lang'>) => ({ value: row.display_name, lang: row.lang ?? 'und-Latn', script: 'Latn' });
 
+/**
+ * ADR 0052: what a finder card shows beside the pin: the school's logo, the weekdays it trains (its
+ * public schedule) and whether the first trial lesson is free. Plain listing content of public schools.
+ */
+async function pinExtrasOf(db: Executor, schoolIds: readonly string[]): Promise<Map<string, { days: number[]; firstTrialFree: boolean }>> {
+  const out = new Map<string, { days: number[]; firstTrialFree: boolean }>();
+  if (schoolIds.length === 0) return out;
+  const result = await db.execute<{ id: string; first_trial_free: boolean; days: number[] | null }>(sql`
+    SELECT s.id, s.first_trial_free,
+           (SELECT array_agg(DISTINCT sl.weekday ORDER BY sl.weekday) FROM school_schedule_slot sl WHERE sl.school_id = s.id) AS days
+      FROM school s
+     WHERE s.id = ANY (${sql`ARRAY[${sql.join(schoolIds.map((id) => sql`${id}::uuid`), sql`, `)}]`})`);
+  for (const r of result.rows) out.set(r.id, { days: (r.days ?? []).map(Number), firstTrialFree: r.first_trial_free });
+  return out;
+}
+
 async function pinsFrom(db: Executor, rows: readonly PinRow[]): Promise<SchoolPinDto[]> {
-  const instructors = await instructorsOf(
-    db,
-    rows.map((r) => r.id),
-  );
+  const ids = rows.map((r) => r.id);
+  const [instructors, extras, logos] = await Promise.all([instructorsOf(db, ids), pinExtrasOf(db, ids), schoolLogosOf(db, ids)]);
   return rows.map((r) => ({
     id: r.id,
     slug: r.slug,
@@ -425,6 +439,9 @@ async function pinsFrom(db: Executor, rows: readonly PinRow[]): Promise<SchoolPi
     countryCode: r.country_code,
     instructors: (instructors.get(r.id) ?? []).map((i) => ({ id: i.id, slug: i.slug, displayName: nameOf(i) })),
     distanceKm: r.distance_km,
+    logo: logos.get(r.id)?.small ?? null,
+    days: extras.get(r.id)?.days ?? [],
+    firstTrialFree: extras.get(r.id)?.firstTrialFree ?? false,
   }));
 }
 
@@ -651,6 +668,7 @@ async function cachedSchoolPage(slug: string): Promise<SchoolPageDto | null> {
       };
     }),
     logo: gallery.logo,
+    banner: gallery.banner,
     photos: gallery.rooms,
     members: listed.members,
     memberCount: listed.total,

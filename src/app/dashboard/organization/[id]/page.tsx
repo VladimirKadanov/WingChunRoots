@@ -116,6 +116,7 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
     websiteUrl: org.websiteUrl ?? '',
     countryCode: org.countryCode ?? '',
     schoolsEstimate: org.schoolsEstimate === null ? '' : String(org.schoolsEstimate),
+    about: org.about ?? '',
   };
 
   return (
@@ -151,13 +152,17 @@ export default async function ManageOrganizationPage({ params, searchParams }: P
         <p className="mt-3 max-w-[60ch] text-sm text-fg-muted">
           Approval is not a verification: it says the organization exists, not who taught whom. Each person’s teachers and students are verified by those people alone.
         </p>
-        {org.approval.status === 'active' ? (
-          <p className="mt-3">
+        <p className="mt-3 flex flex-wrap gap-x-6">
+          {org.approval.status === 'active' ? (
             <Link href={`/organizations/${org.slug}`} className="link inline-flex min-h-11 items-center" data-testid="organization-public-link">
               Open the public page
             </Link>
-          </p>
-        ) : null}
+          ) : null}
+          {/* ADR 0052: the logo and the banner of the public page and the card. */}
+          <Link href={`/dashboard/organization/${org.id}/photos`} className="link inline-flex min-h-11 items-center" data-testid="organization-photos-link">
+            Logo and banner
+          </Link>
+        </p>
 
         <div className="mt-8 grid gap-10">
           {done ? <OutcomeNote testId="organization-done">{done}</OutcomeNote> : null}

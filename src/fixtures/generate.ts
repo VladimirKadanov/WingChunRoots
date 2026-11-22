@@ -33,6 +33,7 @@ import type {
   notificationPreference,
   organization,
   organizationAdmin,
+  organizationSchool,
   organizationMembership,
   passportCertificate,
   passportExam,
@@ -175,6 +176,7 @@ export type SchoolStatDayRow = Row<typeof schoolStatDay>;
 export type OrganizationRow = Row<typeof organization>;
 export type OrganizationMembershipRow = Row<typeof organizationMembership>;
 export type OrganizationAdminRow = Row<typeof organizationAdmin>;
+export type OrganizationSchoolRow = Row<typeof organizationSchool>;
 export type ReviewCaseRow = Row<typeof reviewCase>;
 export type ReviewNoteRow = Row<typeof reviewNote>;
 export type InvitationRow = Row<typeof invitation>;
@@ -213,6 +215,8 @@ export interface Fixtures {
   organizationMemberships: OrganizationMembershipRow[];
   /** The authority of the demo organization accounts (owner request of 2026-11-06). */
   organizationAdmins: OrganizationAdminRow[];
+  /** ADR 0052: the demo schools that accepted a demo organization's link (its page lists them by city). */
+  organizationSchools: OrganizationSchoolRow[];
   reviewCases: ReviewCaseRow[];
   reviewNotes: ReviewNoteRow[];
   invitations: InvitationRow[];
@@ -932,8 +936,8 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
   // --- Organizations (skeleton, DEFAULT D12) -----------------------------------------------------
   const orgAt = b.tick();
   const organizations: OrganizationRow[] = [
-    { id: b.id(), slug: 'demo-federation-north', name: 'Demo Federation North', kind: 'federation', status: 'active', countryCode: 'DE', websiteUrl: null, leaderName: null, leaderTitle: null, schoolsEstimate: null, createdByUserId: null, approvedAt: null, approvedByUserId: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
-    { id: b.id(), slug: 'demo-association-south', name: 'Demo Association South', kind: 'association', status: 'active', countryCode: 'GR', websiteUrl: null, leaderName: null, leaderTitle: null, schoolsEstimate: null, createdByUserId: null, approvedAt: null, approvedByUserId: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
+    { id: b.id(), slug: 'demo-federation-north', name: 'Demo Federation North', kind: 'federation', status: 'active', countryCode: 'DE', websiteUrl: null, leaderName: null, leaderTitle: null, schoolsEstimate: null, about: `${FICTIONAL_MARK}. A demo federation of schools in the north, for testing the public pages.`, createdByUserId: null, approvedAt: null, approvedByUserId: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
+    { id: b.id(), slug: 'demo-association-south', name: 'Demo Association South', kind: 'association', status: 'active', countryCode: 'GR', websiteUrl: null, leaderName: null, leaderTitle: null, schoolsEstimate: null, about: null, createdByUserId: null, approvedAt: null, approvedByUserId: null, createdAt: orgAt, updatedAt: orgAt, deletedAt: null },
   ];
   const membership = (org: OrganizationRow, p: P, role: OrganizationMembershipRow['role']): OrganizationMembershipRow => ({
     id: b.id(),
@@ -1067,6 +1071,7 @@ export function generateFixtures(seed: number = FIXTURE_SEED): Fixtures {
     organizations,
     organizationMemberships,
     organizationAdmins: organizationAccess.organizationAdmins,
+    organizationSchools: demoOrganizationSchools(seed, organizations, schools),
     reviewCases: [...reviewCases, ...instructorCases],
     reviewNotes,
     invitations,
@@ -1955,6 +1960,36 @@ export function serializeLineageExport(e: LineageExport): string {
 export const LINEAGE_EXPORT_PATH = 'fixtures/lineage-600.json';
 
 const ORGANIZATION_ACCESS_AT = new Date(Date.UTC(2026, 10, 6));
+
+const ORGANIZATION_SCHOOLS_AT = new Date(Date.UTC(2026, 10, 21));
+
+/**
+ * ADR 0052: demo-association-south lists three demo schools (Athens, Sofia, and the city-only club
+ * in London), so its page shows schools and the map of their cities. Never demo-school-city-only:
+ * the M11 privacy check compares its public page with a twin that copies only its columns and
+ * instructors. demo-federation-north lists none: its specs add schools of their own. Ids from a
+ * stream of their own.
+ */
+function demoOrganizationSchools(seed: number, organizations: OrganizationRow[], schools: SchoolRow[]): OrganizationSchoolRow[] {
+  const idRng = createRandom((seed ^ 0x0e7e_0052) >>> 0);
+  let seq = 0;
+  const id = () => uuidv7FromParts(ORGANIZATION_SCHOOLS_AT.getTime() + seq++, 0, idRng.bytes(8));
+  const at = ORGANIZATION_SCHOOLS_AT;
+  const association = organizations.find((o) => o.slug === 'demo-association-south')!;
+  return ['demo-school-athens', 'demo-school-sofia', 'demo-school-london'].map((slug) => ({
+    id: id(),
+    organizationId: association.id,
+    schoolId: schools.find((sc) => sc.slug === slug)!.id,
+    status: 'accepted' as const,
+    requestedByUserId: null,
+    answeredByUserId: null,
+    answeredAt: at,
+    endedByUserId: null,
+    endedAt: null,
+    createdAt: at,
+    updatedAt: at,
+  }));
+}
 
 /**
  * Owner request of 2026-11-06: demo-federation-owner owns demo-federation-north, which holds a

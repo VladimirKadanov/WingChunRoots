@@ -34,6 +34,7 @@ import { sessionHeaders } from './rpc/handler';
 import { requestMeta } from './services/context';
 import { openEventPoster } from './services/events';
 import { openCertificate } from './services/passport';
+import { openOrganizationPhoto } from './services/organization-photos';
 import { openPhoto, photoEtag } from './services/photos';
 import { openSchoolPhoto } from './services/school-photos';
 import { type ObjectStore, StorageError } from './storage';
@@ -69,9 +70,10 @@ export interface PhotoRequestOptions {
    * M16: which photos the address names: a person's (profile and gallery, GET /api/photos/...,
    * the default) or a school's (logo and room photos, GET /api/school-photos/...). Both follow
    * the same headers and read rules. M17: an event's poster (GET /api/event-posters/...). M19: a
-   * passport's certificate (GET /api/certificates/...), from the private store.
+   * passport's certificate (GET /api/certificates/...), from the private store. ADR 0052: an
+   * organization's logo or banner (GET /api/organization-photos/...).
    */
-  kind?: 'person' | 'school' | 'event' | 'certificate';
+  kind?: 'person' | 'school' | 'event' | 'certificate' | 'organization';
 }
 
 export async function handlePhotoRequest(
@@ -83,7 +85,15 @@ export async function handlePhotoRequest(
   try {
     const principal = await principalFromHeaders(sessionHeaders(request));
     const open =
-      options.kind === 'school' ? openSchoolPhoto : options.kind === 'event' ? openEventPoster : options.kind === 'certificate' ? openCertificate : openPhoto;
+      options.kind === 'school'
+        ? openSchoolPhoto
+        : options.kind === 'organization'
+          ? openOrganizationPhoto
+          : options.kind === 'event'
+            ? openEventPoster
+            : options.kind === 'certificate'
+              ? openCertificate
+              : openPhoto;
     const photo = await open(principal, address, options.store, {
       ifNoneMatch: request.headers.get('if-none-match'),
       timeoutMs: options.timeoutMs,

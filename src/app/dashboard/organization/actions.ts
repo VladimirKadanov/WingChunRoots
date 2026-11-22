@@ -107,8 +107,11 @@ export async function updateOrganizationAction(_previous: FormState, form: FormD
   const organizationId = textValue(form, 'organizationId', 40);
   const page = pageOf(organizationId);
   const { input, values } = readFields(form);
+  // ADR 0052: the organization's own words for its public page (empty clears them).
+  const about = textValue(form, 'about', 4000);
+  values.about = about;
   try {
-    await (await client()).organizations.update({ ...input, organizationId });
+    await (await client()).organizations.update({ ...input, organizationId, about: about || null });
   } catch (error) {
     return failed(error, DETAILS_FORM, page, values);
   }

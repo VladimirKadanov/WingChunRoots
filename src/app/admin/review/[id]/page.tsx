@@ -197,7 +197,7 @@ export default async function ReviewCasePage({ params, searchParams }: { params:
         .schoolPhotos.get({ schoolId: view.school.id })
         .catch(() => null)
     : null;
-  const schoolItems = schoolPhotos && schoolPhotos.canModerate ? [...(schoolPhotos.logo ? [{ id: schoolPhotos.logo.id, src: schoolPhotos.logo.large, label: t('Logo') }] : []), ...schoolPhotos.rooms.map((r, i) => ({ id: r.id, src: r.large, label: r.caption ?? t('Room photo {n}', { n: i + 1 }) }))] : [];
+  const schoolItems = schoolPhotos && schoolPhotos.canModerate ? [...(schoolPhotos.logo ? [{ id: schoolPhotos.logo.id, src: schoolPhotos.logo.large, label: t('Logo') }] : []), ...(schoolPhotos.banner ? [{ id: schoolPhotos.banner.id, src: schoolPhotos.banner.large, label: t('Banner') }] : []), ...schoolPhotos.rooms.map((r, i) => ({ id: r.id, src: r.large, label: r.caption ?? t('Room photo {n}', { n: i + 1 }) }))] : [];
   const initialFor = (result: typeof galleryResult, photoId: string) => (result?.values?.photoId === photoId ? result : null);
 
   return (

@@ -11,7 +11,7 @@
 
 import * as z from 'zod';
 
-import { galleryPhotoSchema, schoolLogoSchema } from './gallery';
+import { bannerSchema, galleryPhotoSchema, schoolLogoSchema } from './gallery';
 
 import { photoSchema } from './public';
 import { searchNameSchema } from './search';
@@ -42,6 +42,10 @@ export const schoolPinSchema = z.object({
   instructors: z.array(schoolInstructorRefSchema),
   /** Whole kilometres from the search centre to the public point; null without a centre. */
   distanceKm: z.number().int().nullable(),
+  /** ADR 0052: the 96 px logo (the app's own address), the ISO weekdays of its public schedule (1 is Monday), and a free first trial lesson. */
+  logo: z.string().nullable(),
+  days: z.array(z.number().int().min(1).max(7)),
+  firstTrialFree: z.boolean(),
 });
 export type SchoolPinDto = z.infer<typeof schoolPinSchema>;
 
@@ -119,6 +123,8 @@ export const schoolPageSchema = z.object({
    * own addresses (GET /api/school-photos/...), every rendition without metadata (no GPS position).
    */
   logo: schoolLogoSchema.nullable(),
+  /** ADR 0052: the banner across the top of the page (the whole image, cropped by the page). */
+  banner: bannerSchema.nullable(),
   photos: z.array(galleryPhotoSchema),
   /** ADR 0044: the members listed on the page, the fuller listings first. */
   members: z.array(schoolMemberSchema),

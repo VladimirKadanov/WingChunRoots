@@ -41,6 +41,7 @@ export const BG_REVIEW: AdminDict = {
   'A reviewer': 'Проверяващ',
   'internal, reviewers only': 'вътрешна, само за проверяващите',
   'Logo': 'Лого',
+  'Banner': 'Банер',
   'Room photo {n}': 'Снимка на залата {n}',
   'Gallery photo {n}': 'Снимка от галерията {n}',
   'Profile photo': 'Профилна снимка',
