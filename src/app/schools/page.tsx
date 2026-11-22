@@ -72,7 +72,7 @@ function Filters({ params, lineages, compact, distanceNote }: { params: FinderPa
   // Phone review 2026-11 (ADR 0053): below 1024 px the place field, its search button and a
   // Filters button share one row; Distance and Lineage open from that button in a panel the width
   // of the screen (the fields keep the page's width, so larger text still fits) over the map or the list (a <details>, no script: the form works without JavaScript). From 1024 px they
-  // sit in the form's row as before. The place field takes at least 14rem (it grows with the text
+  // sit in the form's row as before. The place field takes at least 11rem (it grows with the text
   // size), so with large text Filters moves to a line of its own instead of covering the search button. In the map view the place field's label is for screen readers
   // only below 1024 px (its placeholder says "City or town"): the map keeps its room. The panel has
   // two columns while two 11rem fields fit, so larger text gets one column (a container query's rem
@@ -82,7 +82,7 @@ function Filters({ params, lineages, compact, distanceNote }: { params: FinderPa
     <div>
       <form method="get" action="/schools" role="search" aria-label="Find a school" className="relative flex flex-wrap items-end gap-2 lg:gap-x-3">
         {params.view === 'list' ? <input type="hidden" name="view" value="list" /> : null}
-        <div className="grid min-w-0 flex-[1_1_14rem] gap-1.5 lg:w-72 lg:flex-none">
+        <div className="grid min-w-0 flex-[1_1_11rem] gap-1.5 lg:w-72 lg:flex-none">
           <label htmlFor="school-near" className={cx('text-sm font-semibold', compact && 'max-lg:sr-only')}>
             Near
           </label>
