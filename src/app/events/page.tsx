@@ -113,11 +113,7 @@ function FilterForm({ filters, countries }: { filters: Filters; countries: strin
   if (filters.country && !countries.includes(filters.country)) countryOptions.push([filters.country, countryName(filters.country) ?? filters.country]);
   return (
     // Phone review 2026-11 (ADR 0053): under md the three selects fold behind a Filters button.
-    <form
-      method="get"
-      action="/events"
-      role="search"
-      aria-label="Filter events"
+    <form method="get" action="/events" role="search" aria-label="Filter events"
       className="max-md:has-[details[open]]:basis-full md:mt-4 md:grid md:basis-full md:grid-cols-2 md:items-end md:gap-3 lg:grid-cols-[repeat(3,minmax(0,12rem))_auto]"
     >
       {filters.view === 'month' ? <input type="hidden" name="view" value="month" /> : null}
