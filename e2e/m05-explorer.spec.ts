@@ -1611,7 +1611,7 @@ test.describe('focus and selection (ADR 0054)', () => {
     await nodeOf(page, chosen).click();
     const panel = page.getByTestId('explorer-panel');
     await expect(panel).toBeVisible();
-    const name = (await panel.getByRole('heading', { level: 2 }).textContent())!.trim();
+    const name = (await nodeOf(page, chosen).locator('[lang="und-Latn"]').first().textContent())!.trim();
     // Offered for anyone in the Lineage view; "Open profile" is the second action beside it.
     await expect(panel.getByRole('button', { name: 'Show their tree' })).toBeVisible();
     const before = (await nodeOf(page, chosen).boundingBox())!;
