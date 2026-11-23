@@ -23,6 +23,7 @@ import { NameLine, NameList } from '@/components/account/person-names';
 import { SETTINGS_SECTIONS, SettingsNav, type SettingsSection } from '@/components/account/settings-nav';
 import { TwoFactorState, type TwoFactorStateKind } from '@/components/account/two-factor-state';
 import { AlertIcon, ArrowRightIcon, LockIcon } from '@/components/icons';
+import { LegalLinks } from '@/components/legal/legal-links';
 import { buttonVariants } from '@/components/ui/button-variants';
 import { cx } from '@/lib/cx';
 import { isStaffRole } from '@/server/auth/principal';
@@ -244,6 +245,7 @@ export default async function AccountPage() {
           <div className="border-t border-border-subtle pt-6">
             <SignOutForm action={signOutAction} />
           </div>
+          <LegalLinks className="-mx-1.5" />
         </div>
       </div>
     </div>

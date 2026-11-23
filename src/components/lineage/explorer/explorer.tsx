@@ -36,6 +36,7 @@ import type { ExploreStartDto } from '@/server/dto/explore';
 import type { LineageEdgeDto, LineageGraphDto } from '@/server/dto/public';
 import { chainEdge, generationLabels, generationText } from '../generation';
 import { MarkKey, markKinds } from '../route-mark';
+import { OptionsDisclosure } from './options-disclosure';
 import { isHistoricalRelation, periodText, relationStatus, strokeOf } from '../status';
 import { useLayoutWorker } from '../useLayoutWorker';
 import type { LineageEdge, PersonNode } from './canvas';
@@ -426,7 +427,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
           type="button"
           aria-pressed={option.value === value}
           onClick={() => onChange(option.value)}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xs px-3 text-sm font-semibold text-fg-muted hover:bg-surface-3 hover:text-fg aria-pressed:bg-fg aria-pressed:text-fg-inverse"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xs px-2.5 text-sm font-semibold text-fg-muted md:px-3 hover:bg-surface-3 hover:text-fg aria-pressed:bg-fg aria-pressed:text-fg-inverse"
         >
           {option.label}
         </button>
@@ -632,7 +633,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
       {/* Inside the side safe areas at every width: from md the rail has the left one, the explorer the right. */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
         <div className="min-w-0">
-          <p className="eyebrow">Explorer · {VIEW_LABELS[kind]}</p>
+          <p className="eyebrow max-md:sr-only">Explorer · {VIEW_LABELS[kind]}</p>
           {params.view === 'graph' ? (
             <h1 className="truncate font-display text-xl leading-tight md:text-2xl">
               {focusNode ? (
@@ -661,7 +662,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
       <Activity mode={params.view === 'graph' ? 'visible' : 'hidden'}>
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
+          {/* Phone review 2026-11 (ADR 0053): under md the view's options (the steppers, the lineage
+              picker, "Show ended training") fold behind one Options button, so the graph keeps the
+              screen; from md they stay in the row as before. */}
+          <div className="relative flex flex-wrap items-center gap-2 border-b border-border-subtle py-2 pr-[max(1rem,env(safe-area-inset-right,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] md:pr-[max(1.5rem,env(safe-area-inset-right,0px))] md:pl-6">
             <Segmented
               label="View"
               value={kind}
@@ -672,30 +676,32 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
               ]}
               onChange={setKind}
             />
-            {kind === 'generations' ? (
-              <>
-                <Stepper label="Teachers" value={currentUp} min={0} max={MAX_UP} onChange={(up) => void setUrl({ up })} />
-                <Stepper label="Students" value={currentDown} min={0} max={MAX_DOWN} onChange={(down) => void setUrl({ down })} />
-              </>
-            ) : null}
-            {kind === 'lineage' && focusLineages.length > 1 ? (
-              <Segmented
-                label="Lineage"
-                value={params.lineage ?? ''}
-                options={focusLineages.map((l) => ({ value: l.id, label: <span translate="no">{l.name}</span> }))}
-                onChange={(lineage) => void setUrl({ lineage })}
-              />
-            ) : null}
-            <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 px-1 text-sm">
-              <input
-                type="checkbox"
-                defaultChecked={params.show === 'historical'}
-                key={params.show ?? 'none'}
-                onChange={(e) => void setUrl({ show: e.currentTarget.checked ? 'historical' : null })}
-                className="size-5 cursor-pointer accent-[var(--fg)]"
-              />
-              Show ended training
-            </label>
+            <OptionsDisclosure changed={params.show === 'historical'}>
+              {kind === 'generations' ? (
+                <>
+                  <Stepper label="Teachers" value={currentUp} min={0} max={MAX_UP} onChange={(up) => void setUrl({ up })} />
+                  <Stepper label="Students" value={currentDown} min={0} max={MAX_DOWN} onChange={(down) => void setUrl({ down })} />
+                </>
+              ) : null}
+              {kind === 'lineage' && focusLineages.length > 1 ? (
+                <Segmented
+                  label="Lineage"
+                  value={params.lineage ?? ''}
+                  options={focusLineages.map((l) => ({ value: l.id, label: <span translate="no">{l.name}</span> }))}
+                  onChange={(lineage) => void setUrl({ lineage })}
+                />
+              ) : null}
+              <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 px-1 text-sm">
+                <input
+                  type="checkbox"
+                  defaultChecked={params.show === 'historical'}
+                  key={params.show ?? 'none'}
+                  onChange={(e) => void setUrl({ show: e.currentTarget.checked ? 'historical' : null })}
+                  className="size-5 cursor-pointer accent-[var(--fg)]"
+                />
+                Show ended training
+              </label>
+            </OptionsDisclosure>
           </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -754,11 +760,16 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                     // The first view keeps the people it shows clear of it (largeViewStart, wholeViewStart).
                     data-canvas-overlay
                     // Clear of the zoom buttons on the right; from md the frame reaches the screen's bottom edge, so above the home indicator.
-                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-3 py-2 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3"
+                    className="pointer-events-auto absolute bottom-3 left-[max(0.75rem,env(safe-area-inset-left,0px))] max-w-[calc(100%-4.75rem-max(0.75rem,env(safe-area-inset-right,0px)))] rounded-sm border border-border-subtle bg-surface-1 px-2 py-1.5 [--seal-ground:var(--surface-1)] md:bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] md:left-3 md:px-3 md:py-2"
                   >
-                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" />
+                    {/* Always shown (plan M05: the legend is permanently visible); compact under md
+                        (ADR 0053): smaller words and gaps, so it takes less of a phone's graph. */}
+                    <Legend kinds={drawnKinds(laidOut.graph, flow.edges)} labels={LEGEND_WORDING} layout="wrap" strokes="canvas" className="max-md:gap-x-3 max-md:gap-y-1 max-md:[&_.text-sm]:text-xs" />
                     {/* The marks on the cards (not on the dots: globals.css, Ink restyle). */}
-                    <MarkKey marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))} className="mt-2" />
+                    <MarkKey
+                      marks={markKinds(flow.nodes.filter((n) => !n.hidden).map((n) => n.data.mark))}
+                      className="mt-2 max-md:mt-1 max-md:gap-x-3 max-md:gap-y-1 max-md:[&_li]:text-xs"
+                    />
                   </div>
                 </ExplorerCanvas>
               ) : null}

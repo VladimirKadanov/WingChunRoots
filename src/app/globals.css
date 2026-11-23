@@ -521,3 +521,51 @@
     bottom: max(5.5rem, env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Filters that fold on a phone (src/components/ui/filter-disclosure.tsx, ADR 0053): the summary is
+   the "Filters" button; from the breakpoint, where the browser has ::details-content, the button
+   goes and the fields join the form's own layout (the details and its content as display:
+   contents), open or not. A browser without it keeps the button, which opens them. */
+.filter-disclosure > summary {
+  list-style: none;
+}
+.filter-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+@supports selector(::details-content) {
+  @media (width >= 48rem) {
+    .filter-disclosure-md,
+    .filter-disclosure-md::details-content,
+    .filter-disclosure-md > div {
+      display: contents;
+      content-visibility: visible;
+    }
+    .filter-disclosure-md > summary {
+      display: none;
+    }
+  }
+  @media (width >= 64rem) {
+    .filter-disclosure-lg,
+    .filter-disclosure-lg::details-content,
+    .filter-disclosure-lg > div {
+      display: contents;
+      content-visibility: visible;
+    }
+    .filter-disclosure-lg > summary {
+      display: none;
+    }
+  }
+}
+/* The lineage key (src/components/lineage/key.tsx): folded below 1280 px, always open in the side
+   column from there (where the browser has ::details-content; elsewhere its summary opens it). */
+@supports selector(::details-content) {
+  @media (width >= 80rem) {
+    .key-disclosure::details-content {
+      display: contents;
+      content-visibility: visible;
+    }
+    .key-disclosure > summary {
+      display: none;
+    }
+  }
+}

@@ -73,7 +73,8 @@ for (const size of SCREEN_SIZES) {
           // docs/adr/0039-member-navigation.md); a screenshot taken before that shows an empty row.
           if (route.path === '/dashboard' || route.path.startsWith('/dashboard/')) {
             // Visible, not only attached: streamed content waits in a hidden node before it is swapped in.
-            await expect(page.getByTestId('dashboard-nav').getByRole('link').filter({ visible: true }).first()).toBeVisible();
+            // Below 1024 px the menu is one button (ADR 0053): its summary, else a link of the sidebar.
+            await expect(page.getByTestId('dashboard-nav').locator('a, summary').filter({ visible: true }).first()).toBeVisible();
           }
           // The review queue: its Waiting cells must be on the page and visible (not in a hidden node of
           // streamed content) before fixVisualDates writes the fixed text, or the screenshot shows the

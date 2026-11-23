@@ -40,6 +40,7 @@ import { personIdOf } from './helpers/search';
 import { expectNoAxeViolations, openInTheme, resolvedTheme, switchColorScheme } from './helpers/ui';
 import { runPaths } from './projects';
 import { THEMES } from './routes';
+import { openFilters } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -63,6 +64,8 @@ const finderSearch = (page: Page) => page.getByRole('search', { name: 'Find a sc
 async function searchSchools(page: Page, options: { near?: string; radius?: string; lineage?: string }) {
   const form = finderSearch(page);
   if (options.near !== undefined) await form.getByLabel('Near').fill(options.near);
+  // ADR 0053: below 1024 px Distance and Lineage fold behind the Filters button.
+  if (options.radius !== undefined || options.lineage !== undefined) await openFilters(form);
   if (options.radius !== undefined) await form.getByLabel('Distance').selectOption(options.radius);
   if (options.lineage !== undefined) await form.getByLabel('Lineage').selectOption({ label: options.lineage });
   await visible(form.getByRole('button', { name: 'Search' })).click();

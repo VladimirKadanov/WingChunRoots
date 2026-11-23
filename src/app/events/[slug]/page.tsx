@@ -201,7 +201,7 @@ export default async function EventPage({ params, searchParams }: Props) {
       />
       {/* ADR 0052: the banner is the motif of the event's kind drawn from its slug; the poster, the
           organizer's own words, is shown whole beside the details. */}
-      <div className="relative h-44 border-b border-border-subtle sm:h-64 lg:h-80" data-testid="event-banner">
+      <div className="relative h-28 border-b border-border-subtle sm:h-64 lg:h-80" data-testid="event-banner">
         <InkArt slug={event.slug} motif={eventMotif(event.kind, event.online)} testId="event-banner-art" />
         <div className="absolute top-3 left-4 sm:left-6 lg:left-10 md:top-6">
           <Link href="/events" className="inline-flex min-h-11 items-center gap-1.5 rounded-sm border border-border-strong bg-bg px-3.5 text-sm font-semibold hover:bg-surface-3">

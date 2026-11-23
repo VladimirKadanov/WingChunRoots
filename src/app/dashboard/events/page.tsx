@@ -82,14 +82,16 @@ export default async function EventsDashboardPage({ searchParams }: { searchPara
   return (
     <div className="mx-auto max-w-content px-page pt-6 pb-10 md:pt-11 md:pb-14">
       <div className="max-w-[46rem]">
-        <p className="eyebrow">
+        <p className="eyebrow max-lg:hidden">
           <Link href="/dashboard" className="link inline-flex min-h-11 items-center">
             Dashboard
           </Link>
         </p>
         <h1 className="mt-2 font-display text-feature">Your events</h1>
         <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
-          Seminars, camps, exam sessions and other events. An event is public as soon as you publish it; you can change or cancel it later.
+          Seminars, camps, exam sessions and other events.{' '}
+          {/* Phone review 2026-11 (ADR 0053): one sentence on a phone. */}
+          <span className="max-md:hidden">An event is public as soon as you publish it; you can change or cancel it later.</span>
         </p>
         {mine.accountType === 'sifu' || mine.publishAs.length > 0 ? (
           <p className="mt-3 text-ui">

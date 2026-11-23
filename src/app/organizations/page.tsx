@@ -32,8 +32,12 @@ export default async function OrganizationsPage() {
       <div>
         <h1 className="font-display text-feature">Organizations</h1>
         <p className="mt-3 max-w-[60ch] text-ui text-fg-muted">
-          Federations, associations and groups of schools whose application the reviewers approved. An organization lists its public members and the schools that
-          accepted its link; it never decides who taught whom.
+          Federations, associations and groups of schools.{' '}
+          {/* Phone review 2026-11 (ADR 0053): one sentence on a phone, the rest from md. */}
+          <span className="max-md:hidden">
+            Each one’s application was approved by the reviewers. An organization lists its public members and the schools that accepted its link; it never
+            decides who taught whom.
+          </span>
         </p>
         {list === null ? (
           <ErrorPanel title="The organizations could not be loaded." className="mt-6">
@@ -82,7 +86,7 @@ function OrganizationCard({ org }: { org: OrganizationSummaryDto }) {
       data-testid="organization-row"
       data-slug={org.slug}
     >
-      <Banner image={org.banner} slug={org.slug} motif={organizationMotif(org.kind)} sizes="card" className="aspect-[16/7]" testId="organization-card-banner" />
+      <Banner image={org.banner} slug={org.slug} motif={organizationMotif(org.kind)} sizes="card" className="aspect-[4/1] sm:aspect-[16/7]" testId="organization-card-banner" />
       <div className="flex flex-1 flex-col gap-2 p-4 pt-0">
         <Emblem logo={org.logo} name={org.name} shape="shield" className="relative z-10 -mt-7 size-14 shadow-sm" />
         <p className="text-label uppercase text-fg-muted">

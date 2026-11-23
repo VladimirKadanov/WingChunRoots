@@ -102,6 +102,13 @@ const SHEET_QUERY = '(min-width: 40rem) and (min-height: 32rem)';
  * method's Latin letters being searched too, is in docs/search.md.
  */
 const ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+/** The empty palette's links (phone review 2026-11, ADR 0053). */
+const QUICK_LINKS: readonly { label: string; href: string }[] = [
+  { label: 'Find a school near you', href: '/schools' },
+  { label: 'Upcoming events', href: '/events' },
+  { label: 'Explore a lineage', href: '/explore' },
+];
+
 /** Pages of the app the palette offers by their title (plan §5.6: the Pages group). */
 const PAGES: readonly { label: string; href: string }[] = [
   { label: 'Home', href: '/' },
@@ -122,7 +129,7 @@ const PAGES: readonly { label: string; href: string }[] = [
   { label: 'Privacy', href: '/account/privacy' },
   { label: 'Terms of use', href: '/legal/terms' },
   { label: 'Privacy notice', href: '/legal/privacy' },
-  { label: 'Licenses', href: '/legal/licenses' },
+  // Phone review 2026-11 (ADR 0053): Licenses stays reachable from the legal line, not from search.
   { label: 'Sign in', href: '/sign-in' },
   { label: 'Create an account', href: '/sign-up' },
 ];
@@ -640,6 +647,27 @@ function Palette({ open, onOpenChange, onSelect, selectLabel = 'Choose a person'
                     </span>
                     , <span translate="no">sou cing laam</span> or <span translate="no">Su Qinglan</span> find the same person.
                   </p>
+                ) : null}
+                {/* Phone review 2026-11 (ADR 0053): before anything is typed, the places most people
+                    come for, so the empty palette is a way somewhere too. Links, out of the listbox. */}
+                {!trimmed && !select ? (
+                  <nav aria-label="Go to" className="grid px-2 pb-2" data-testid="palette-quick-links">
+                    {QUICK_LINKS.map((link) => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                          event.preventDefault();
+                          go(link.href);
+                        }}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-sm px-2 text-ui hover:bg-surface-3"
+                      >
+                        {link.label}
+                        <ArrowRightIcon size={16} className="text-fg-muted" />
+                      </a>
+                    ))}
+                  </nav>
                 ) : null}
                 {!trimmed && recent.length > 0 ? (
                   // Clear sits outside the listbox: a button is no option, and it is no part of the group's name.

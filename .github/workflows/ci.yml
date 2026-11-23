@@ -298,6 +298,8 @@ jobs:
       - name: The @smoke tests against the container
         env:
           E2E_BASE_URL: http://127.0.0.1:3000
+          # A deployable build: /styleguide answers 404 there (e2e/routes.ts, ADR 0053).
+          E2E_DEPLOYABLE_BUILD: '1'
         run: pnpm e2e --grep '@smoke\b' --project desktop-chromium --project mobile-chromium
       - name: Logs of the profile app
         if: failure()

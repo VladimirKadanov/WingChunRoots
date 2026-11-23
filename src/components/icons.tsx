@@ -88,6 +88,8 @@ export const ArrowLeftIcon = icon('ArrowLeft', <path d="M19 12H5M11 6l-6 6 6 6" 
 export const CloseIcon = icon('Close', <path d="M6 6l12 12M18 6L6 18" />, 1.8);
 export const CheckIcon = icon('Check', <path d="M5 12.5l4.5 4.5L19 7.5" />, 1.9);
 export const ChevronDownIcon = icon('ChevronDown', <path d="M6 9.5l6 6 6-6" />, 1.8);
+/** Filters and options (three lines, each shorter): the button that opens a collapsed set of filters on a phone. */
+export const FilterIcon = icon('Filter', <path d="M4 7h16M7 12h10M10 17h4" />, 1.8);
 export const LockIcon = icon(
   'Lock',
   <>

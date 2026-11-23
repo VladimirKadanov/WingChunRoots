@@ -33,7 +33,9 @@ export interface AppRoute {
 
 export const ROUTES: readonly AppRoute[] = [
   { path: '/', name: 'home', status: 200, milestone: 'M13', key: true },
-  { path: '/styleguide', name: 'styleguide', status: 200, milestone: 'M00b', key: true },
+  // A deployable build answers "page not found" (ADR 0053, src/lib/styleguide.ts); the E2E build
+  // serves it. E2E_DEPLOYABLE_BUILD=1: the @smoke run against the Compose container (ci.yml).
+  { path: '/styleguide', name: 'styleguide', status: process.env.E2E_DEPLOYABLE_BUILD === '1' ? 404 : 200, milestone: 'M00b', key: true },
   { path: '/legal/licenses', name: 'licenses', status: 200, milestone: 'M00b' },
   // Accounts (M02).
   { path: '/sign-up', name: 'sign-up', status: 200, milestone: 'M02', key: true },

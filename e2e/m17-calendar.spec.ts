@@ -12,6 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { closeHelpers, giveOwnAddress, loadTestEnv } from './helpers/auth';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
+import { openFilters } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -50,6 +51,8 @@ test('@M17 the calendar lists the upcoming events by month and filters them with
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Events' }).filter({ visible: true })).toHaveAttribute('aria-current', 'page');
 
   // The keyboard only: Tab to the country, choose, Tab to the kind, choose, submit with Enter.
+  // ADR 0053: on a phone the filters fold behind a Filters button first.
+  await openFilters(page);
   await page.locator('body').click({ position: { x: 1, y: 1 } });
   await tabTo(page, '#event-country');
   await page.locator('#event-country').selectOption('GB');
@@ -62,6 +65,15 @@ test('@M17 the calendar lists the upcoming events by month and filters them with
   await expect(page).toHaveURL(/\/events\?country=GB&kind=camp(&|$)/);
   expect(await slugs(page)).toEqual(['demo-spring-camp-london']);
   await expect(page.getByTestId('event-count')).toHaveText('1 event match these filters.');
+  // On a phone the filters stay folded; the button counts them and each one set is a chip that clears it.
+  if (await page.getByTestId('filters').locator(':scope > summary').isVisible()) {
+    await expect(page.getByTestId('filters').locator(':scope > summary')).toContainText('Filters · 2');
+    const chips = page.getByTestId('event-filter-chips').getByRole('link');
+    await expect(chips).toHaveText([/United Kingdom/, /Camp/]);
+    await chips.filter({ hasText: 'Camp' }).click();
+    await expect(page).toHaveURL(/\/events\?country=GB$/);
+    await page.goBack();
+  }
 
   // Online only.
   await page.goto('/events?format=online');
@@ -90,6 +102,8 @@ test.describe('without JavaScript', () => {
 
   test('@M17 without JavaScript the filter form works as a plain GET form', async ({ page }) => {
     await page.goto('/events');
+    // The Filters button is a <details>: it opens without JavaScript too.
+    await openFilters(page);
     await page.locator('#event-kind').selectOption('seminar');
     await page.getByRole('button', { name: 'Show events' }).click();
     await expect(page).toHaveURL(/\/events\?(country=&)?kind=seminar(&|$)/);

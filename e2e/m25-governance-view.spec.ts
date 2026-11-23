@@ -16,6 +16,7 @@ import { getDb } from '../src/server/db';
 import { closeHelpers, giveOwnAddress, loadTestEnv, signInAs } from './helpers/auth';
 import { expectNoAxeViolations, switchColorScheme } from './helpers/ui';
 import { THEMES } from './routes';
+import { openDashboardMenu } from './helpers/phone-layout';
 
 test.beforeAll(loadTestEnv);
 test.afterAll(closeHelpers);
@@ -56,6 +57,7 @@ async function count(query: ReturnType<typeof sql>): Promise<number> {
 test('@M25 a Professional Sifu sees whom they can name as digital successor, and nothing moves by itself', async ({ page }, testInfo) => {
   await signInAs(page, 'demo-pro-sifu-8');
   await page.goto('/dashboard');
+  await openDashboardMenu(page);
   await expect(shown(page.getByTestId('dashboard-succession'))).toHaveAttribute('href', '/dashboard/succession');
   await page.goto('/dashboard/succession');
   await expect(shown(page.getByRole('heading', { level: 1, name: 'Digital successor' }))).toBeVisible();

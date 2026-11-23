@@ -1,12 +1,15 @@
 // The dashboard's menu (owner request 2026-11-17, docs/adr/0039-member-navigation.md): the same
 // grouped list on every /dashboard page, showing only the groups the account uses. From 1024 px a
-// sidebar beside the page; narrower, a row of links that scrolls sideways above it, so every
-// section stays one tap away on a phone. The current page is marked with aria-current, weight, an
+// sidebar beside the page; narrower, one button that names the current page and opens the same
+// grouped list (phone review 2026-11, ADR 0053; it was a row of links that scrolled sideways, where
+// the current page was often out of sight). The current page is marked with aria-current, weight, an
 // ink bar and the surface, never colour alone. Rendered on the server with no script of its own,
 // so the dashboard routes keep their script budget (plan §5.8 (c)): the @nav slot
 // (src/app/dashboard/@nav) knows the address and passes it.
 
 import Link from 'next/link';
+
+import { ChevronDownIcon } from '@/components/icons';
 
 import type { DashboardNav as NavData } from '@/server/services/dashboard-nav';
 
@@ -88,16 +91,10 @@ export function dashboardNavGroups(nav: NavData): DashboardNavGroup[] {
   return groups;
 }
 
-function Count({ item, compact = false }: { item: DashboardNavLink; compact?: boolean }) {
+function Count({ item }: { item: DashboardNavLink }) {
   if (!item.count) return null;
   return (
-    <span
-      className={
-        compact
-          ? 'text-xs font-semibold'
-          : 'ml-auto inline-flex h-5 min-w-6 items-center justify-center rounded-full border border-border-strong px-1.5 text-xs font-semibold text-fg'
-      }
-    >
+    <span className="ml-auto inline-flex h-5 min-w-6 items-center justify-center rounded-full border border-border-strong px-1.5 text-xs font-semibold text-fg">
       <span aria-hidden="true">{item.count}</span>
       <span className="sr-only">
         , {item.count} {item.countLabel ?? ''}
@@ -106,48 +103,63 @@ function Count({ item, compact = false }: { item: DashboardNavLink; compact?: bo
   );
 }
 
-export function DashboardNav({ groups, pathname }: { groups: DashboardNavGroup[]; pathname: string }) {
-  const links = groups.flatMap((g) => g.links);
-  const current = currentHref(groups, pathname);
-  return (
-    <nav aria-label="Dashboard" data-testid="dashboard-nav" className="lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto lg:overscroll-contain">
-      <ul className="relative flex gap-1.5 overflow-x-auto px-page py-2 [scrollbar-width:thin] lg:hidden">
-        {links.map((item) => (
-          <li key={item.href} className="shrink-0">
+/** The grouped list of links: the sidebar from 1024 px, the menu the phone's button opens below that. */
+function Groups({ groups, current }: { groups: DashboardNavGroup[]; current: string | null }) {
+  return groups.map((group) => (
+    <div key={group.label} className="mt-5 first:mt-0 lg:first:mt-5">
+      <p className="px-3 pb-1.5 text-xs tracking-[0.08em] text-fg-subtle uppercase">{group.label}</p>
+      <ul className="grid gap-0.5">
+        {group.links.map((item) => (
+          <li key={item.href}>
             <Link
               href={item.href}
               aria-current={current === item.href ? 'page' : undefined}
               data-testid={item.testId}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border-subtle px-3.5 text-sm whitespace-nowrap text-fg-muted hover:text-fg aria-[current=page]:border-fg aria-[current=page]:bg-fg aria-[current=page]:font-semibold aria-[current=page]:text-fg-inverse"
+              className="flex min-h-11 items-center gap-2 rounded-sm px-3 text-ui text-fg-muted [overflow-wrap:anywhere] hover:bg-surface-3 hover:text-fg aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold aria-[current=page]:text-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--fg)]"
             >
               {item.label}
-              <Count item={item} compact />
+              <Count item={item} />
             </Link>
           </li>
         ))}
       </ul>
+    </div>
+  ));
+}
+
+export function DashboardNav({ groups, pathname }: { groups: DashboardNavGroup[]; pathname: string }) {
+  const links = groups.flatMap((g) => g.links);
+  const current = currentHref(groups, pathname);
+  const here = links.find((l) => l.href === current)?.label ?? 'Overview';
+  // What waits anywhere in the menu (requests, unread notices): on the phone's button too.
+  const waiting = links.reduce((sum, l) => sum + (l.count ?? 0), 0);
+  return (
+    <nav aria-label="Dashboard" data-testid="dashboard-nav" className="lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto lg:overscroll-contain">
+      {/* Phone review 2026-11 (ADR 0053): below 1024 px one button names the page you are on and
+          opens the grouped menu (a <details>: no script, the dashboard keeps its script budget). */}
+      <details className="group/menu px-page py-2 lg:hidden" data-testid="dashboard-menu">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-sm border border-border-strong bg-surface-1 px-4 select-none hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 truncate">
+            <span className="text-fg-muted">Dashboard · </span>
+            <span className="font-semibold">{here}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {waiting > 0 ? (
+              <span className="inline-flex h-5 min-w-6 items-center justify-center rounded-full bg-fg px-1.5 text-xs font-semibold text-fg-inverse">
+                <span aria-hidden="true">{waiting}</span>
+                <span className="sr-only">, {waiting} waiting or unread</span>
+              </span>
+            ) : null}
+            <ChevronDownIcon size={18} className="transition-transform group-open/menu:rotate-180 motion-reduce:transition-none" />
+          </span>
+        </summary>
+        <div className="mt-2 rounded-sm border border-border-subtle bg-surface-1 py-3">
+          <Groups groups={groups} current={current} />
+        </div>
+      </details>
       <div className="hidden px-3 pt-6 pb-10 lg:block">
         <p className="eyebrow px-3">Dashboard</p>
-        {groups.map((group) => (
-          <div key={group.label} className="mt-5">
-            <p className="px-3 pb-1.5 text-xs tracking-[0.08em] text-fg-subtle uppercase">{group.label}</p>
-            <ul className="grid gap-0.5">
-              {group.links.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={current === item.href ? 'page' : undefined}
-                    data-testid={item.testId}
-                    className="flex min-h-11 items-center gap-2 rounded-sm px-3 text-ui text-fg-muted [overflow-wrap:anywhere] hover:bg-surface-3 hover:text-fg aria-[current=page]:bg-surface-3 aria-[current=page]:font-semibold aria-[current=page]:text-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--fg)]"
-                  >
-                    {item.label}
-                    <Count item={item} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        <Groups groups={groups} current={current} />
       </div>
     </nav>
   );

@@ -16,9 +16,10 @@ import Link from 'next/link';
 import { EventCard, NextEvent } from '@/components/events/event-card';
 import { EventRow } from '@/components/events/event-list';
 import { dayLabel, eventsByDay, KindLegend, MonthGrid, MonthNav } from '@/components/events/month-calendar';
-import { CalendarIcon, ChevronDownIcon } from '@/components/icons';
+import { CalendarIcon, ChevronDownIcon, CloseIcon } from '@/components/icons';
 import { ErrorPanel } from '@/components/lineage/states';
 import { buttonVariants } from '@/components/ui/button-variants';
+import { FilterDisclosure } from '@/components/ui/filter-disclosure';
 import { cx } from '@/lib/cx';
 import { type EventFilters as Filters, eventFiltersOf as filtersOf, eventsFeedHref, eventsHref as hrefOf, isFiltered } from '@/lib/event-filters';
 import { monthKey, monthLabel, shiftMonth } from '@/lib/event-time';
@@ -79,17 +80,49 @@ function Select({ id, name, label, value, options }: { id: string; name: string;
   );
 }
 
+/** The filters of the form that are set, with the address that clears each (the phone's chips). */
+function activeFilters(filters: Filters): { key: 'country' | 'kind' | 'format'; text: string; clear: string }[] {
+  const out: { key: 'country' | 'kind' | 'format'; text: string; clear: string }[] = [];
+  if (filters.country) out.push({ key: 'country', text: countryName(filters.country) ?? filters.country, clear: hrefOf(filters, { country: null, page: 1 }) });
+  if (filters.kind) out.push({ key: 'kind', text: KINDS.find(([v]) => v === filters.kind)?.[1] ?? filters.kind, clear: hrefOf(filters, { kind: null, page: 1 }) });
+  if (filters.format) out.push({ key: 'format', text: filters.format === 'online' ? 'Online' : 'In person', clear: hrefOf(filters, { format: null, page: 1 }) });
+  return out;
+}
+
+/** Under md, the filters that are set as chips, each a link that clears it (the selects are folded away). */
+function ActiveFilterChips({ filters }: { filters: Filters }) {
+  const active = activeFilters(filters);
+  if (active.length === 0) return null;
+  return (
+    <ul aria-label="Filters set" className="mt-3 flex flex-wrap gap-2 md:hidden" data-testid="event-filter-chips">
+      {active.map((f) => (
+        <li key={f.key}>
+          <Link href={f.clear} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border-strong px-3.5 text-sm hover:bg-surface-3">
+            {f.text}
+            <CloseIcon size={14} />
+            <span className="sr-only">(remove this filter)</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function FilterForm({ filters, countries }: { filters: Filters; countries: string[] }) {
   const countryOptions: [string, string][] = [['', 'All countries'], ...countries.map((c): [string, string] => [c, countryName(c) ?? c])];
   if (filters.country && !countries.includes(filters.country)) countryOptions.push([filters.country, countryName(filters.country) ?? filters.country]);
   return (
-    <form method="get" action="/events" role="search" aria-label="Filter events" className="mt-6 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,12rem))_auto]">
+    // Phone review 2026-11 (ADR 0053): under md the three selects fold behind a Filters button.
+    <form method="get" action="/events" role="search" aria-label="Filter events"
+      className="max-md:has-[details[open]]:basis-full md:mt-4 md:grid md:basis-full md:grid-cols-2 md:items-end md:gap-3 lg:grid-cols-[repeat(3,minmax(0,12rem))_auto]"
+    >
       {filters.view === 'month' ? <input type="hidden" name="view" value="month" /> : null}
       {filters.view === 'month' && filters.month ? <input type="hidden" name="month" value={filters.month} /> : null}
       {filters.view === 'agenda' && filters.when === 'past' ? <input type="hidden" name="when" value="past" /> : null}
       {filters.person ? <input type="hidden" name="person" value={filters.person} /> : null}
       {filters.school ? <input type="hidden" name="school" value={filters.school} /> : null}
       {filters.organization ? <input type="hidden" name="organization" value={filters.organization} /> : null}
+      <FilterDisclosure active={activeFilters(filters).length} from="md" panelClassName="grid grid-cols-1 items-end gap-3 max-md:mt-3 sm:grid-cols-2">
       <Select id="event-country" name="country" label="Country" value={filters.country ?? ''} options={countryOptions} />
       <Select id="event-kind" name="kind" label="Kind" value={filters.kind ?? ''} options={[['', 'All kinds'], ...KINDS]} />
       <Select
@@ -106,6 +139,7 @@ function FilterForm({ filters, countries }: { filters: Filters; countries: strin
       <button type="submit" className={cx(buttonVariants({ variant: 'primary' }), 'min-h-12')}>
         Show events
       </button>
+      </FilterDisclosure>
     </form>
   );
 }
@@ -198,7 +232,8 @@ async function AgendaView({ filters }: { filters: Filters }) {
   const next = !filtered && filters.when === 'upcoming' && filters.page === 1 ? (list.items.find((e) => e.status !== 'cancelled') ?? null) : null;
   return (
     <>
-      <nav aria-label="Upcoming or past" className="mt-6 flex gap-2">
+      <div className="mt-6 flex flex-wrap items-start justify-between gap-2">
+      <nav aria-label="Upcoming or past" className="flex gap-2">
         {(['upcoming', 'past'] as const).map((when) => (
           <Link
             key={when}
@@ -211,6 +246,8 @@ async function AgendaView({ filters }: { filters: Filters }) {
         ))}
       </nav>
       <FilterForm filters={filters} countries={list.countries} />
+      </div>
+      <ActiveFilterChips filters={filters} />
       <Scope filters={filters} />
       <p className="mt-6 text-sm text-fg-muted" aria-live="polite" data-testid="event-count">
         {list.total === 1 ? '1 event' : `${list.total} events`}
@@ -308,7 +345,10 @@ async function MonthView({ filters }: { filters: Filters }) {
   const weekday = day ? LONG_WEEKDAYS[new Date(`${day}T12:00:00Z`).getUTCDay()] : null;
   return (
     <>
-      <FilterForm filters={shown} countries={list.countries} />
+      <div className="mt-6 md:mt-2">
+        <FilterForm filters={shown} countries={list.countries} />
+      </div>
+      <ActiveFilterChips filters={shown} />
       <Scope filters={shown} />
       <div className="mt-8 grid gap-8 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid min-w-0 content-start gap-4">
@@ -355,7 +395,7 @@ export default async function EventsPage({ searchParams }: Props) {
         <div className="max-w-[60ch]">
           <h1 className="font-display text-feature">Events</h1>
           <p className="mt-3 text-ui text-fg-muted">
-            Seminars, camps, exam sessions and other events of the community. Every date and time is shown in the event’s own time zone.
+            Seminars, camps and exam sessions. <span className="max-md:hidden">Every date and time is shown in the event’s own time zone.</span>
           </p>
         </div>
         <ViewSwitch filters={filters} />

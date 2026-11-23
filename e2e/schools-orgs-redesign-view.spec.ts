@@ -76,7 +76,16 @@ test('@redesign a school page: banner, seal, numbers, and on a phone the jumps t
   await expect(page.getByRole('heading', { level: 1, name: 'Demo Kwoon Athens' })).toBeVisible();
   await expect(page.getByTestId('school-banner')).toHaveAttribute('data-drawn', 'true');
   const stats = page.getByTestId('school-stats');
-  await expect(stats.locator('dt')).toHaveText([/instructors?/, /listed members?/, /class(es)? a week/, /forms? taught/]);
+  // ADR 0053: a number that is zero is left out; the others keep their order, each in words.
+  await expect(stats.locator('dt').first()).toBeVisible();
+  const order = [/instructors?/, /listed members?/, /class(es)? a week/, /forms? taught/];
+  let next = 0;
+  for (const label of await stats.locator('dt').allTextContents()) {
+    while (next < order.length && !order[next]!.test(label)) next += 1;
+    expect(next < order.length, `"${label}" is one of the numbers, in order`).toBe(true);
+    next += 1;
+  }
+  expect(await stats.locator('dd').allTextContents()).not.toContain('0');
   const jumps = page.getByTestId('school-quick-actions');
   if (isPhone(page)) {
     await expect(jumps).toBeVisible();
