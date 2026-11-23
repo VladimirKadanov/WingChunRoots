@@ -541,7 +541,7 @@ test.describe('selection (B)', () => {
     await expect(nodeOf(page, id)).toBeVisible();
   });
 
-  test('@M06 on a phone "Center on this person" with the sheet open, then Esc, keeps the new focus in the URL', async ({ page }) => {
+  test('@M06 on a phone "Show their tree" with the sheet open, then Esc, keeps the new focus in the URL', async ({ page }) => {
     const id = await personIdOf('demo-two-lineages');
     await openExplorer(page, { focus: id });
     await settledView(page);
@@ -550,7 +550,7 @@ test.describe('selection (B)', () => {
     await nodeOf(page, other!).tap();
     const panel = page.getByTestId('explorer-panel');
     await expect(panel).toBeVisible();
-    await panel.getByRole('button', { name: 'Center on this person' }).tap();
+    await panel.getByRole('button', { name: 'Show their tree' }).tap();
     await expect.poll(() => searchOf(page).focus, 'the new focus is in the URL').toBe(other);
     await expect(nodeOf(page, other!)).toHaveClass(/\bselected\b/);
     await expect(panel).toBeVisible();

@@ -176,6 +176,15 @@ describe('flowBase node data for the keyboard and screen readers (M06)', () => {
     expect(selectFlow(base, null).nodes.some((n) => n.ariaLabel?.endsWith('selected'))).toBe(false);
   });
 
+  it('marks the person in focus ("in focus", data.focus), and nobody in the Lineage view (ADR 0054)', () => {
+    const marked = flowBase(graph, scene, new Map(), false);
+    expect(marked.nodes.filter((n) => n.data.focus).map((n) => n.id)).toEqual([id(3)]);
+    expect(marked.nodes.find((n) => n.id === id(3))!.ariaLabel).toMatch(/^Demo Student, in focus, /);
+    expect(marked.nodes.filter((n) => n.ariaLabel?.includes('in focus')).map((n) => n.id)).toEqual([id(3)]);
+    const lineageView = flowBase(graph, scene, new Map(), false, false);
+    expect(lineageView.nodes.some((n) => n.data.focus || n.ariaLabel?.includes('in focus'))).toBe(false);
+  });
+
   it('counts teachers and students in the record and those drawn, and names the teachers drawn', () => {
     const base = flowBase({ ...graph, hiddenCounts: { [id(3)]: { teachers: 1, students: 0 } } }, scene, new Map(), false);
     const data = (n: number) => base.nodes.find((x) => x.id === id(n))!.data;

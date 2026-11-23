@@ -1074,7 +1074,7 @@ test.describe('M05 fixes B', () => {
     // Centre on a teacher (a change of focus in the browser, no server render).
     const teacher = (await edgesInto(page, id).first().getAttribute('data-teacher'))!;
     await nodeOf(page, teacher).click();
-    await page.getByTestId('explorer-panel').getByRole('button', { name: 'Center on this person' }).click();
+    await page.getByTestId('explorer-panel').getByRole('button', { name: 'Show their tree' }).click();
     await expect(page).toHaveURL(new RegExp(`focus=${teacher}`));
     await expect(page.getByTestId('explorer-relayout')).toHaveCount(0);
     // The server's list of the new person comes 1.5 s late; meanwhile the old one must never show.
@@ -1140,7 +1140,7 @@ test.describe('M05 fixes B', () => {
     const other = await personIdOf('demo-root-a');
     await closeExplorerOptions(page);
     await nodeOf(page, other).click();
-    await page.getByTestId('explorer-panel').getByRole('button', { name: 'Center on this person' }).click();
+    await page.getByTestId('explorer-panel').getByRole('button', { name: 'Show their tree' }).click();
     await expect(page).toHaveURL(new RegExp(`focus=${other}`));
     const search = new URL(page.url()).searchParams;
     expect(search.has('page') || search.has('routes'), search.toString()).toBe(false);
@@ -1580,5 +1580,75 @@ test.describe('M05 small views on a short phone', () => {
       for (const o of overlays) expect(overlap(card, o), `${n.id} under an overlay`).toBe(false);
       expect(card.tappable, `${n.id} can be tapped`).toBe(true);
     }
+  });
+});
+
+// Explorer focus review 2026-11 (ADR 0054): the view buttons follow the person selected (P1), the
+// heading and a "Focus" tag say whose tree it is (P2), "Show their tree" (P3), the person chosen
+// keeps their place on the screen (P4) and a chip leads one step back (P5).
+test.describe('focus and selection (ADR 0054)', () => {
+  test('@M05 a view button builds the next view around the person selected, who keeps their place, and the back chip returns', async ({ page }) => {
+    const start = await personIdOf('demo-two-lineages');
+    const lineage = await lineageIdOf('demo-lineage-a');
+    const root = await personIdOf('demo-root-a');
+    await openExplorer(page, { focus: start, lineage });
+    // The Lineage view is drawn from its root: the heading names the lineage, and nobody is the focus.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Lineage A');
+    await expect(page.locator('[data-focus-tag]')).toHaveCount(0);
+    await settledView(page);
+    // A person on screen who is neither the root nor the focus.
+    const chosen = await page.evaluate(
+      ({ skip }) => {
+        const pane = document.querySelector('.react-flow')!.getBoundingClientRect();
+        const nodes = [...document.querySelectorAll<HTMLElement>('.react-flow__node[data-id]')].filter((el) => {
+          const box = el.getBoundingClientRect();
+          return !skip.includes(el.dataset.id!) && !el.dataset.id!.startsWith('more:') && box.top > pane.top && box.bottom < pane.top + pane.height / 2 && box.left > pane.left && box.right < pane.right - 80;
+        });
+        return nodes[0]!.dataset.id!;
+      },
+      { skip: [start, root] },
+    );
+    await nodeOf(page, chosen).click();
+    const panel = page.getByTestId('explorer-panel');
+    await expect(panel).toBeVisible();
+    const name = (await nodeOf(page, chosen).locator('[lang="und-Latn"]').first().textContent())!.trim();
+    // Offered for anyone in the Lineage view; "Open profile" is the second action beside it.
+    await expect(panel.getByRole('button', { name: 'Show their tree' })).toBeVisible();
+    const before = (await nodeOf(page, chosen).boundingBox())!;
+
+    await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Person' }).click();
+    await expect(page).toHaveURL(new RegExp(`focus=${chosen}`));
+    expect(new URL(page.url()).searchParams.has('lineage')).toBe(false);
+    await expect(page.getByTestId('explorer-relayout')).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+    // Still selected, the panel open, and marked as the focus in words.
+    await expect(nodeOf(page, chosen)).toHaveClass(/selected/);
+    await expect(panel).toBeVisible();
+    await expect(nodeOf(page, chosen).locator('[data-focus-tag]')).toHaveText('Focus');
+    await expect(page.locator('[data-focus-tag]')).toHaveCount(1);
+    // Their own view now: no "Show their tree".
+    await expect(panel.getByRole('button', { name: 'Show their tree' })).toHaveCount(0);
+    // P4: where they were on the screen.
+    await settledView(page);
+    const after = (await nodeOf(page, chosen).boundingBox())!;
+    expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(2);
+
+    // P5: one step back, to the Lineage view; then the chip leads to the person just left.
+    await page.getByRole('button', { name: 'Back to Demo Lineage A' }).click();
+    await expect(page).toHaveURL(new RegExp(`focus=${start}.*lineage=${lineage}|lineage=${lineage}.*focus=${start}`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Lineage A');
+    await expect(page.getByRole('button', { name: `Back to ${name}` })).toBeVisible();
+  });
+
+  test('@M05 with nobody selected a view button keeps the focus', async ({ page }) => {
+    const start = await personIdOf('demo-two-lineages');
+    await openExplorer(page, { focus: start, lineage: await lineageIdOf('demo-lineage-a') });
+    await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Generations' }).click();
+    await expect(page).toHaveURL(new RegExp(`focus=${start}`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(await personNameOf('demo-two-lineages'));
+    await expect(nodeOf(page, start).locator('[data-focus-tag]')).toHaveText('Focus');
+    // The focus did not change: no step back to offer.
+    await expect(page.getByTestId('explorer-back')).toHaveCount(0);
   });
 });

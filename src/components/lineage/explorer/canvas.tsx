@@ -268,6 +268,18 @@ function PersonNodeView({ id, data, selected }: NodeProps<PersonNode>) {
             {linkStyles.arbitration.label}
           </span>
         ) : null}
+        {data.focus && lod !== 'dot' ? (
+          // ADR 0054 (P2): whose tree this is, in words as well as the heavier frame (never by
+          // weight alone). On the card's bottom edge at the left: the top edge has the mark, "+N
+          // teachers" and the arbitration banner; the lines to the students leave from the middle.
+          <span
+            data-focus-tag=""
+            aria-hidden="true"
+            className="absolute -bottom-2 left-2 z-10 rounded-xs bg-fg px-1 text-caption leading-3.5 font-semibold tracking-normal text-fg-inverse"
+          >
+            Focus
+          </span>
+        ) : null}
         {lod === 'full' ? (
           <div className={cx('flex size-full items-stretch overflow-hidden rounded-sm bg-surface-1 text-left', frame, ring)}>
             {/* M16 (owner decision 2026-11-03, docs/adr/0019-galleries.md): the photo is a square on
@@ -1248,6 +1260,8 @@ function FitOnScene({
   const left = useRef<Viewport | null>(null);
   // M06 seam: anchor. The last scene's places (top left corners), by node.
   const places = useRef<Map<string, Point>>(new Map());
+  // The focus of the last scene fitted (P4, ADR 0054).
+  const lastFocus = useRef<string | null>(null);
   useOnViewportChange({
     onEnd: (viewport) => {
       left.current = viewport;
@@ -1270,8 +1284,15 @@ function FitOnScene({
     // curve), so they keep their screen point; no fit, which would undo it (milestone M06 In scope 4).
     const before = places.current;
     places.current = new Map(scene.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
-    const from = anchorId ? before.get(anchorId) : undefined;
-    const to = anchorId ? places.current.get(anchorId) : undefined;
+    // Explorer focus review 2026-11 (ADR 0054, P4): a new focus the user chose on the canvas (the
+    // person selected became the focus: "Show their tree", a view button) is kept at its screen
+    // point as well, so the eye stays on them while the new tree forms around them.
+    const focusBefore = lastFocus.current;
+    lastFocus.current = scene.focusId;
+    const chosen = scene.focusId !== focusBefore && nodes.some((n) => n.id === scene.focusId && n.selected) ? scene.focusId : null;
+    const anchor = anchorId ?? chosen;
+    const from = anchor ? before.get(anchor) : undefined;
+    const to = anchor ? places.current.get(anchor) : undefined;
     if (!first && from && to) {
       const { panZoom, transform } = store.getState();
       const [x, y, zoom] = transform;

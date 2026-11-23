@@ -15,7 +15,7 @@
 //
 // The sheet (DEFAULT, no D number unless named):
 // - Its peek (0.15, floored at the measured header) holds the name, Expand, Close and one row of
-//   actions: "Open profile" and "Center on this person". Focus stays on the node when it opens.
+//   actions: "Show their tree" and "Open profile" (ADR 0054). Focus stays on the node when it opens.
 // - At the peek and at 0.5 the frame above it is shorter: the active node is moved into view once
 //   the sheet and the frame have settled. At 0.92 it covers the graph (no page room is kept), so a
 //   focus in the graph moves into the sheet; when it comes down again, the active node is moved
@@ -204,6 +204,9 @@ export default function ExplorerPanel(props: PanelProps) {
   const kind = viewKind(url);
   // The lineage view reads the lineage from its root, whoever is in focus: centring there opens the person view.
   const centerOn = (id: string) => setUrl(kind === 'lineage' ? { focus: id, lineage: null, page: null, routes: null } : { focus: id, page: null, routes: null });
+  // "Show their tree" (ADR 0054, P3; "Center on this person" before): offered unless this view is
+  // already theirs. In the Lineage view, drawn from its root, it is offered for the focus as well.
+  const treeShown = (id: string) => kind !== 'lineage' && id === url.focus;
 
   if (overlay) {
     if (!sheetOpen) return null;
@@ -245,7 +248,7 @@ export default function ExplorerPanel(props: PanelProps) {
         </section>
       );
     }
-    return <PersonOverlay {...props} person={person!} body={body} centerOn={centerOn} />;
+    return <PersonOverlay {...props} person={person!} body={body} centerOn={centerOn} treeShown={treeShown(person!.id)} />;
   }
 
   const shown = subject.person;
@@ -295,20 +298,20 @@ export default function ExplorerPanel(props: PanelProps) {
       headerActions={
         shown && !students ? (
           <div className="contents" onClickCapture={(event) => followInSheet(event, router, onClose)}>
-            {subject.openProfile}
-            {shown.id !== url.focus ? (
+            {treeShown(shown.id) ? null : (
               <button
                 type="button"
-                className={buttonVariants({ variant: 'secondary' })}
+                className={buttonVariants({ variant: 'primary' })}
                 onClick={() => {
                   centerOn(shown.id);
                   // The button goes with the change (the person is in focus now): the focus stays in the sheet.
                   sheetElement()?.focus({ preventScroll: true });
                 }}
               >
-                Center on this person
+                Show their tree
               </button>
-            ) : null}
+            )}
+            {subject.openProfile}
           </div>
         ) : null
       }
@@ -334,13 +337,14 @@ function PersonOverlay({
   person,
   body,
   centerOn,
+  treeShown,
   openProfile,
   url,
   setUrl,
   onClose,
   actions,
   canvas,
-}: PanelProps & { person: LineageNodeDto; body: Subject | null; centerOn: (id: string) => void }) {
+}: PanelProps & { person: LineageNodeDto; body: Subject | null; centerOn: (id: string) => void; treeShown: boolean }) {
   const section = useRef<HTMLElement>(null);
   const height = useClearHeight(section);
   const close = () => {
@@ -376,19 +380,19 @@ function PersonOverlay({
         </button>
       </div>
       <div className="flex flex-wrap gap-2">
-        {openProfile}
-        {person.id !== url.focus ? (
+        {treeShown ? null : (
           <button
             type="button"
-            className={buttonVariants({ variant: 'secondary' })}
+            className={buttonVariants({ variant: 'primary' })}
             onClick={() => {
               centerOn(person.id);
               section.current?.focus({ preventScroll: true });
             }}
           >
-            Center on this person
+            Show their tree
           </button>
-        ) : null}
+        )}
+        {openProfile}
       </div>
       {body?.person ? <PersonBody subject={body} person={body.person} url={url} setUrl={setUrl} actions={actions} kind={viewKind(url)} /> : null}
     </section>
@@ -424,7 +428,7 @@ function PersonBody({
   const lineageName = graph.lineages.find((l) => l.id === lineage)?.name ?? null;
   const showHistorical = url.show === 'historical';
   // The list view inside the explorer, with this person in focus (the lineage view centres on a
-  // person as the person view, as "Center on this person" does).
+  // person as the person view, as "Show their tree" does).
   const listHref = (extra: Record<string, string>, hash: string) =>
     `${explorerHref({ ...url, focus: person.id, view: 'list', ...(kind === 'lineage' ? { lineage: null } : {}) }, extra)}#${hash}`;
   const rest = routes.total - routes.shown.length;
