@@ -76,6 +76,8 @@ const ExplorerCanvas = dynamic(() => loadCanvas(), { ssr: false });
 // own, asked for with the canvas's, so the first selection does not wait for it.
 const loadPanel = () => import('./panel');
 const ExplorerPanel = dynamic(() => loadPanel(), { ssr: false });
+const loadFocusTrail = () => import('./focus-trail');
+const FocusTrail = dynamic(() => loadFocusTrail(), { ssr: false });
 
 const parseAsId = createParser({
   parse: (value: string) => (isUuid(value) ? value.toLowerCase() : null),
@@ -152,7 +154,12 @@ export interface FlowBase {
   nodeWith: (id: string, extra: readonly LineageEdgeDto[], selected: boolean) => PersonNode;
 }
 
-export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean): FlowBase {
+/**
+ * `markFocus`: whether the person in focus is marked (the heavier frame, the "Focus" tag, "in focus"
+ * in the name). The Lineage view is drawn from its root, whoever is in focus, so it marks no one
+ * (explorer focus review 2026-11, ADR 0054).
+ */
+export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string, number>, showHistorical: boolean, markFocus = true): FlowBase {
   const persons = new Map(graph.nodes.map((n) => [n.id, n]));
   const edges = new Map(graph.edges.map((e) => [e.id, e]));
   const lineages = new Map(graph.lineages.map((l) => [l.id, l]));
@@ -199,6 +206,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
     const statusEdge = chainEdge(incoming.get(sn.id) ?? []);
     const status = statusEdge ? relationStatus(statusEdge.status) : null;
     const lit = selected || extra.some((e) => e.teacherId === sn.id || e.studentId === sn.id);
+    const focus = markFocus && sn.id === graph.focusId;
     // M06 seam: node-data. Counts in the record (public, plan §4.9): the teachers and students in
     // the answer and those it left out; and those drawn before anyone is selected, as the label.
     const teacherIds = [...new Set((incomingByDefault.get(sn.id) ?? []).map((e) => e.teacherId))];
@@ -224,7 +232,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
       // M06 seam: node-data. Name, generation in the view, status (plan §4.9): a person with no
       // line drawn into them has no status (the announcement says "Root of this lineage"). The
       // selection is part of the name (WCAG 4.1.2): only the nodes a selection changes are built again.
-      ariaLabel: [person.displayName, label ? generationText(label) : null, status?.label, selected ? 'selected' : null].filter(Boolean).join(', '),
+      ariaLabel: [person.displayName, focus ? 'in focus' : null, label ? generationText(label) : null, status?.label, selected ? 'selected' : null].filter(Boolean).join(', '),
       // One tab stop for the graph (roving tabindex): the canvas gives the active node 0. The
       // relationships in words describe the node; "person", not React Flow's "node".
       domAttributes: { tabIndex: -1, 'aria-describedby': relationsId(sn.id), 'aria-roledescription': 'person' },
@@ -237,7 +245,7 @@ export function flowBase(graph: LineageGraphDto, scene: Scene, more: Map<string,
         teachers: incoming.get(sn.id)?.length ?? 0,
         more: more.get(sn.id) ?? 0,
         rank: sn.rank,
-        focus: sn.id === graph.focusId,
+        focus,
         root: roots.has(sn.id),
         // DEFAULT D22: a founder only as recorded (the lineage's root), as the routes of descent mark one.
         mark: roots.has(sn.id) ? 'founder' : person.lifeStatus === 'living' ? 'living' : 'other',
@@ -499,6 +507,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
     loadCanvas().catch(() => undefined);
     // M06 seam: panel (preloaded with the canvas)
     loadPanel().catch(() => undefined);
+    loadFocusTrail().catch(() => undefined);
   }, []);
   const [laidOut, setLaidOut] = useState<LaidOut | null>(null);
   // The answer whose layout failed: the error belongs to that answer only, not to the next one.
@@ -555,7 +564,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
     if (canvasHandle.current) canvasHandle.current.openStudents(teacherId);
     else openStudents(teacherId);
   };
-  const [flowOf, setFlowOf] = useState<{ laidOut: LaidOut; showHistorical: boolean; base: FlowBase } | null>(null);
+  const [flowOf, setFlowOf] = useState<{ laidOut: LaidOut; showHistorical: boolean; markFocus: boolean; base: FlowBase } | null>(null);
   // The list the server rendered, and for whom: a focus changed in the browser (a shallow update)
   // keeps the last one, which belongs to the person before, until the server renders the new one.
   const [listOf, setListOf] = useState({ list, focus });
@@ -571,9 +580,11 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   // selection then changes only the few it touches (plan §4.8). (React Compiler cannot keep them
   // apart from the selection: selectFlow takes them as an argument it might change.)
   const showHistorical = params.show === 'historical';
-  const kept = laidOut && flowOf?.laidOut === laidOut && flowOf.showHistorical === showHistorical ? flowOf.base : null;
-  const base = kept ?? (laidOut ? flowBase(laidOut.graph, laidOut.scene, laidOut.more, showHistorical) : null);
-  if (laidOut && base && !kept) setFlowOf({ laidOut, showHistorical, base });
+  // The Lineage view is drawn from its root, whoever is in focus: nobody is marked as the focus there.
+  const markFocus = viewKind(params) !== 'lineage';
+  const kept = laidOut && flowOf?.laidOut === laidOut && flowOf.showHistorical === showHistorical && flowOf.markFocus === markFocus ? flowOf.base : null;
+  const base = kept ?? (laidOut ? flowBase(laidOut.graph, laidOut.scene, laidOut.more, showHistorical, markFocus) : null);
+  if (laidOut && base && !kept) setFlowOf({ laidOut, showHistorical, markFocus, base });
   // M06 seam: select-lit. The selection's routes of descent are lit, the rest dimmed (package B).
   const shownFlow = base ? selectFlow(base, selectedId) : null;
   // The click paints only the selected node's ring (plan §5.8 (c), INP); the rest of a selection
@@ -603,10 +614,22 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
 
   // Only the list needs the server (it renders the M04 list view); the graph is all in the browser.
   const setView = (next: 'graph' | 'list') => void setUrl({ view: next === 'graph' ? null : next }, { shallow: next === 'graph', scroll: false });
+  // Explorer focus review 2026-11 (ADR 0054, P1): the view buttons build the next view around the
+  // person selected, when there is one, not around the focus the explorer opened with: the selected
+  // person becomes the focus (in the URL, so the view can still be shared and reloaded), stays
+  // selected, and the panel stays open. With nobody selected the focus stays.
+  const chosen = selectedId !== null && selectedId !== focus ? (laidOut?.graph.nodes.find((n) => n.id === selectedId) ?? null) : null;
   const setKind = (next: ViewKind) => {
-    if (next === 'person') void setUrl({ up: null, down: null, lineage: null });
-    else if (next === 'generations') void setUrl({ up: GENERATIONS_DEFAULT, down: GENERATIONS_DEFAULT, lineage: null });
-    else void setUrl({ lineage: focusLineages[0]?.id ?? starts[0]?.id ?? null, up: null, down: null });
+    const ids = (chosen ?? focusNode)?.lineageIds ?? [];
+    const steps = next === 'generations' ? GENERATIONS_DEFAULT : null;
+    void setUrl({
+      // A new focus drops the list's page and routes, which were the person before's (centerOn in panel.tsx).
+      ...(chosen ? { focus: chosen.id, page: null, routes: null } : {}),
+      up: steps,
+      down: steps,
+      // The Lineage view: the lineage shown now, when the person belongs to it; else their first.
+      lineage: next !== 'lineage' ? null : params.lineage && ids.includes(params.lineage) ? params.lineage : (ids[0] ?? starts[0]?.id ?? null),
+    });
   };
   const currentUp = read?.procedure === 'ego' ? read.input.up : 0;
   const currentDown = read?.procedure === 'ego' ? read.input.down : read?.input.depth ?? 0;
@@ -618,6 +641,10 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   const [canvasMounted, setCanvasMounted] = useState(false);
   const skeletonShown = focus !== null && !notFound && !(query.isError && !graph) && !layoutError && !(canvasShown && canvasMounted);
   const lineageName = starts.find((l) => l.id === params.lineage)?.name ?? null;
+  // P2 (ADR 0054): the heading names what the view is built around: the lineage in the Lineage view
+  // (drawn from its root, whoever is in focus), the person in focus in the other two.
+  const heading: { text: string; lineage: boolean } | null =
+    kind === 'lineage' && lineageName ? { text: lineageName, lineage: true } : focusNode ? { text: focusNode.displayName, lineage: false } : null;
 
   // M06 seam: panel. Open only while the graph is shown: a phone's sheet is a portal, which
   // <Activity> does not hide (package B); back in Graph the kept selection opens it again.
@@ -635,18 +662,20 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
         <div className="min-w-0">
           <p className="eyebrow max-md:sr-only">Explorer · {VIEW_LABELS[kind]}</p>
           {params.view === 'graph' ? (
-            <h1 className="truncate font-display text-xl leading-tight md:text-2xl">
-              {focusNode ? (
-                <span lang="und-Latn" translate="no">
-                  {focusNode.displayName}
-                </span>
-              ) : kind === 'lineage' && lineageName ? (
-                // A lineage's name is a proper name, never rewritten by page translation (as LineageName).
-                <span translate="no">{lineageName}</span>
-              ) : (
-                'Lineage graph'
-              )}
-            </h1>
+            <div className="flex min-w-0 items-center gap-1">
+              {/* P5 (ADR 0054): a chunk of its own, loaded with the canvas (the explorer's first JavaScript is at its budget). */}
+              <FocusTrail params={params} label={heading?.text ?? null} setUrl={setUrl} />
+              <h1 className="truncate font-display text-xl leading-tight md:text-2xl">
+                {heading ? (
+                  // A name, a lineage's too, is never rewritten by page translation (as LineageName).
+                  <span lang={heading.lineage ? undefined : 'und-Latn'} translate="no">
+                    {heading.text}
+                  </span>
+                ) : (
+                  'Lineage graph'
+                )}
+              </h1>
+            </div>
           ) : null}
         </div>
         <Segmented
@@ -796,7 +825,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
                 more={selectedMore}
                 openProfile={
                   selected ? (
-                    <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: 'primary' })}>
+                    // ADR 0054 (P3): beside "Show their tree", the panel's main action, it is the second one.
+                    <Link href={`/people/${selected.slug}`} className={buttonVariants({ variant: kind !== 'lineage' && selected.id === focus ? 'primary' : 'secondary' })}>
                       Open profile
                     </Link>
                   ) : null
