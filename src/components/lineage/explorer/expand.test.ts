@@ -64,7 +64,8 @@ const students: LineageGraphDto = {
 
 describe('expandInput', () => {
   it('reads one generation in the pressed direction only', () => {
-    expect(expandInput(id(2), 'students')).toEqual({ focusId: id(2), up: 0, down: 1, fanoutLimit: 100 });
+    expect(expandInput(id(2), 'students')).toEqual({ focusId: id(2), up: 0, down: 1 });
+    expect(expandInput(id(2), 'students', true)).toEqual({ focusId: id(2), up: 0, down: 1, fanoutLimit: 100 });
     expect(expandInput(id(2), 'teachers')).toEqual({ focusId: id(2), up: 1, down: 0 });
   });
 });

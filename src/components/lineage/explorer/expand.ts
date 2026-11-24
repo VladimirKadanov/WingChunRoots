@@ -23,6 +23,7 @@ import type { LineageGraphDto } from '@/server/dto/public';
 import type { Arrived } from './expand-engine';
 import { counting, EXPLORER_LAYOUT, fresh, NOBODY, notice, provideStudents, type State, withoutFailedView } from './expand-state';
 import type { ExpandDirection, Notice } from './graph-api';
+import { summaryIdOf } from './state';
 
 export interface Expansions {
   /** The view: the answer with its expansions merged in (null while there is no answer). */
@@ -45,9 +46,14 @@ export interface Expansions {
 /** The most students one read returns (MAX_FANOUT in src/server/services/lineage-graph.ts). */
 export const EXPAND_FANOUT = 100;
 
-/** The read of an expansion: the person and their direct students (as many as a read returns, ADR 0055), or their direct teachers. */
-export function expandInput(id: string, direction: ExpandDirection): { focusId: string; up: number; down: number; fanoutLimit?: number } {
-  return direction === 'students' ? { focusId: id, up: 0, down: 1, fanoutLimit: EXPAND_FANOUT } : { focusId: id, up: 1, down: 0 };
+/**
+ * The read of an expansion: the person and their direct students, or their direct teachers. At the
+ * cap (`all`: the teacher's summary node "and N more" is drawn) as many students as a read returns
+ * (ADR 0055); below it the API's default, as before.
+ */
+export function expandInput(id: string, direction: ExpandDirection, all = false): { focusId: string; up: number; down: number; fanoutLimit?: number } {
+  if (direction === 'teachers') return { focusId: id, up: 1, down: 0 };
+  return all ? { focusId: id, up: 0, down: 1, fanoutLimit: EXPAND_FANOUT } : { focusId: id, up: 0, down: 1 };
 }
 
 /** The top left corners of a scene's nodes: the expand preset keeps each row's order from them. */
@@ -151,7 +157,8 @@ export function useExpansions(answer: LineageGraphDto | null, key: string, scene
     const name = at.graph.nodes.find((n) => n.id === id)?.displayName ?? '';
     setState((before) => (before.key === at.key ? counting({ ...before, loading: new Set([...before.loading, id]) }) : before));
     // The difference and the engine are read together.
-    Promise.all([client.fetchQuery(orpc.lineage.ego.queryOptions({ input: expandInput(id, direction) })), loadEngine()]).then(
+    const all = at.scene?.nodes.some((n) => n.id === summaryIdOf(id)) ?? false;
+    Promise.all([client.fetchQuery(orpc.lineage.ego.queryOptions({ input: expandInput(id, direction, all) })), loadEngine()]).then(
       ([part, e]) => e.arrived(work.current, at, id, direction, name, part),
       () => {
         setState((before) => {
