@@ -103,9 +103,9 @@ export const READER_WAIT_MS = 5000;
  * A page of a teacher's students (students-list.tsx). A read asked for before the explorer gives
  * its reader waits for it: effects run children first, so when the explorer is shown again (Back
  * from a profile: Next.js keeps the page in <Activity>), the list asks before useExpansions gives
- * the reader again. It fails only when no reader comes within READER_WAIT_MS.
+ * the reader again. It fails only when no reader comes within `waitMs` (READER_WAIT_MS).
  */
-export function readStudents(input: StudentsInput): Promise<StudentsPageDto> {
+export function readStudents(input: StudentsInput, waitMs = READER_WAIT_MS): Promise<StudentsPageDto> {
   if (studentsReader) return studentsReader(input);
   return new Promise<void>((resolve, reject) => {
     const go = () => {
@@ -115,7 +115,7 @@ export function readStudents(input: StudentsInput): Promise<StudentsPageDto> {
     const timer = setTimeout(() => {
       waiting = waiting.filter((w) => w !== go);
       reject(new Error('No students reader'));
-    }, READER_WAIT_MS);
+    }, waitMs);
     waiting.push(go);
   }).then(() => studentsReader!(input));
 }

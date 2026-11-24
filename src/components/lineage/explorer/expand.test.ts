@@ -374,15 +374,9 @@ describe('the expansions\' state (expand-state.ts)', () => {
   });
 
   it('reads a page of students through the explorer\'s reader, and fails when none comes in time', async () => {
-    vi.useFakeTimers();
-    try {
-      const lost = readStudents({ slug: 'demo-1', page: 1, pageSize: 20 });
-      const failed = expect(lost).rejects.toThrow('No students reader');
-      await vi.advanceTimersByTimeAsync(READER_WAIT_MS);
-      await failed;
-    } finally {
-      vi.useRealTimers();
-    }
+    // A short wait instead of READER_WAIT_MS (real timers: fake ones would change shared state).
+    expect(READER_WAIT_MS).toBeGreaterThan(0);
+    await expect(readStudents({ slug: 'demo-1', page: 1, pageSize: 20 }, 10)).rejects.toThrow('No students reader');
     const page = { page: 2 } as never;
     const reader = vi.fn(() => Promise.resolve(page));
     const undo = provideStudents(reader);
