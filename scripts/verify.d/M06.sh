@@ -245,7 +245,10 @@ titles=(
   '@M06 ArrowDown reaches a student node that started off-screen'
   '@M06 Space on demo-two-lineages highlights both routes of descent and the panel lists them'
   '@M06 "+N students" on demo-hub-a adds nodes and keeps the focused node in view'
-  '@M06 a teacher with more than 12 students shows an "and N more" node that opens a paginated list'
+  # ADR 0055 (owner decision 2026-11-24): the summary node draws the rest in place; the paginated
+  # list opens from the teacher's panel. Both behaviours keep a required test.
+  '@M06 a teacher with more than 12 students shows an "and N more" node that draws the rest in place (ADR 0055)'
+  '@M06 "List all students" in the panel lists every student of the teacher, 20 to a page'
   '@M06 at 390x844 a tap opens the bottom sheet with Open profile; zoom and fit buttons work'
   '@M06 on mobile every explorer control is at least 44x44 CSS px'
   '@M06 single-key shortcuts do nothing when focus is outside the graph'

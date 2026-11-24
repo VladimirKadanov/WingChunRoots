@@ -1,7 +1,7 @@
 // The server contract of the explorer's expansion (milestone M06, package C; plan §4.8): "+N
 // students" reads lineage.ego with { up: 0, down: 1 }, "+N teachers" with { up: 1, down: 0 }, both
-// at the default fan-out limit (50), and the summary node "and N more" opens people.students in
-// pages of 20. No new procedure: these are M04's, against the seeded demo data. The five cases of
+// at the default fan-out limit (50); the summary node "and N more" reads { up: 0, down: 1 } at the
+// largest limit (100; ADR 0055, case 6), and "List all students" opens people.students in pages of 20. No new procedure: these are M04's, against the seeded demo data. The five cases of
 // the M06 plan, section (c):
 //   1. the students of demo-hub-a: the first 50, their edges, the count of the rest, the schema;
 //   2. the teachers of demo-two-lineages: both, one of them cross-lineage, none left out;
@@ -113,6 +113,16 @@ describe('the expansion reads (lineage.ego, M06 plan section c)', () => {
     expect(node.childCount).toBe(all.length);
     expect(g.hiddenCounts[hub]!.students).toBe(node.childCount - shown.size);
     expect(node.hasMoreChildren).toBe(true);
+  });
+
+  it('6. ADR 0055: "and N more" of demo-hub-a reads its first 100 students, the rest counted', async () => {
+    const hub = ids['demo-hub-a']!;
+    const g = await lineageEgo(null, egoInput.parse({ focusId: hub, up: 0, down: 1, fanoutLimit: 100 }));
+    const all = await publicStudents(hub);
+    expect(all.length).toBeGreaterThan(100);
+    const shown = publicStudentsShown(g, hub);
+    expect(shown).toEqual(new Set(all.slice(0, 100)));
+    expect(g.hiddenCounts[hub]!.students).toBe(all.length - 100);
   });
 
   it('2. "+N teachers" of demo-two-lineages: both teachers, the second cross-lineage, none left out', async () => {

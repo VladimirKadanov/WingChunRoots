@@ -522,7 +522,8 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
   useEffect(() => {
     if (!view) return;
     let current = true;
-    const capped = capFanout(view, FANOUT_SHOWN, pinned);
+    // ADR 0055: the person in focus is always drawn, in the Lineage view too (its read's focus is the root).
+    const capped = capFanout(view, FANOUT_SHOWN, focus && !pinned.has(focus) ? new Set([...pinned, focus]) : pinned);
     layout(withSummaryNodes(toLayoutGraph(capped.graph), capped.more), { focusId: view.focusId, ...layoutOptions, stackLeaves })
       .then((result) => {
         if (current && result) setLaidOut((prev) => ({ source: view, graph: capped.graph, more: capped.more, scene: anchoredScene(result.scene, prev?.scene ?? null, anchorId), anchorId }));
@@ -537,7 +538,7 @@ function ExplorerBody({ initial, starts, list }: ExplorerProps) {
     return () => {
       current = false;
     };
-  }, [view, layout, pinned, layoutOptions, anchorId, layoutFailed, stackLeaves]);
+  }, [view, layout, pinned, focus, layoutOptions, anchorId, layoutFailed, stackLeaves]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // M06 seam: panel. The teacher whose students the panel lists (the summary node), or null.

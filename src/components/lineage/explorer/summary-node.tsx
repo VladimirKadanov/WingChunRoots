@@ -2,8 +2,8 @@
 
 // The summary node "and N more →" (plan §4.8; milestone M06, package C): in the students' row of a
 // teacher whose drawn students reached the cap, a button (aria-label "and N more students of
-// {name}", canvas.tsx summaryNodes) that opens the paginated list of the teacher's students in the
-// panel: Enter, Space or a click. Never selected or lit.
+// {name}", canvas.tsx summaryNodes) that draws the teacher's other students in place (ADR 0055):
+// Enter, Space or a click. Never selected or lit.
 //
 // A card of the same size as a person's, with a dashed frame: it stands for people, it is not one.
 // It follows the zoom's levels of detail as the people's cards do; its words are for the eye (the

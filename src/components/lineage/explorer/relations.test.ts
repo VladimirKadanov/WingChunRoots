@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { relationsText, summaryText } from './relations';
-import { STUDENTS_PER_PAGE } from './students-list';
 
 describe('relationsText', () => {
   it('names the teachers drawn and counts those not drawn', () => {
@@ -23,7 +22,7 @@ describe('relationsText', () => {
 });
 
 describe('summaryText', () => {
-  it('says what the summary node opens, with the students list\'s page size', () => {
-    expect(summaryText('Demo Teacher')).toBe(`Opens the list of all students of Demo Teacher, ${STUDENTS_PER_PAGE} to a page.`);
+  it('says that the summary node draws the other students in place (ADR 0055)', () => {
+    expect(summaryText('Demo Teacher')).toBe('Draws the other students of Demo Teacher here.');
   });
 });

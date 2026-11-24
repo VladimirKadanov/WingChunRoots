@@ -8,7 +8,7 @@ import type { Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
 import type { LineageGraphDto } from '@/server/dto/public';
 
 import { anchoredScene as anchoredOnScreen, expandInput, expandLayout, keepsExpansions, type Latest, positionsOf, type Work } from './expand';
-import { anchoredScene, arrived, drawn, expansionWords, mergeExpansion, RELAYOUT_DEBOUNCE_MS, sameRecord } from './expand-engine';
+import { anchoredScene, arrived, drawn, expansionWords, mergeExpansion, RELAYOUT_DEBOUNCE_MS, sameRecord, studentsOf } from './expand-engine';
 import { counting, fresh, provideStudents, readStudents, type State, withoutFailedView } from './expand-state';
 import { capFanout, FANOUT_SHOWN, summaryIdOf } from './state';
 
@@ -65,6 +65,7 @@ const students: LineageGraphDto = {
 describe('expandInput', () => {
   it('reads one generation in the pressed direction only', () => {
     expect(expandInput(id(2), 'students')).toEqual({ focusId: id(2), up: 0, down: 1 });
+    expect(expandInput(id(2), 'students', true)).toEqual({ focusId: id(2), up: 0, down: 1, fanoutLimit: 100 });
     expect(expandInput(id(2), 'teachers')).toEqual({ focusId: id(2), up: 1, down: 0 });
   });
 });
@@ -423,6 +424,7 @@ describe('an expansion\'s answer (expand-engine.ts arrived)', () => {
     expect(state.s.version).toBe('view');
     expect(state.s.layoutOptions).toEqual(expandLayout(scene));
     expect(state.s.anchorId).toBe(id(2));
+    // Below the cap (no summary node on screen) the new students are not pinned: the cap applies.
     expect([...state.s.pinned].sort()).toEqual([id(1), id(2)]);
     expect(state.s.loading.size).toBe(0);
     // Busy until it is drawn; then the notice says what it added.
@@ -432,6 +434,22 @@ describe('an expansion\'s answer (expand-engine.ts arrived)', () => {
     expect(shown.laying).toBeNull();
     expect(shown.pending.size).toBe(0);
     expect(shown.notice?.text).toBe('Added 1 student of Demo Person 002.');
+  });
+
+  it('ADR 0055: at the cap pins the students a view already holds but the cap folded, and lays the view out again', async () => {
+    const full = mergeExpansion(view, students, id(2));
+    const state = { s: counting({ ...fresh('read'), loading: new Set([id(2)]) }) };
+    // The teacher's summary node "and N more" is on screen: the cap cut its students.
+    const capped = { nodes: [...scene.nodes, { id: summaryIdOf(id(2)), x: 200, y: 200 }] } as unknown as Scene;
+    const at: Latest = { key: 'read', answer: full, graph: full, scene: capped, pending: state.s.pending };
+    const { work } = workOn(state, at);
+    arrived(work, at, id(2), 'students', 'Demo Person 002', students);
+    await debounced();
+    // Nothing new in the record, but the folded students are drawn now: a layout, not a notice.
+    expect(state.s.graph).toBe(full);
+    expect(state.s.anchorId).toBe(id(2));
+    for (const student of studentsOf(full, [{ id: id(2), direction: 'students' }])) expect(state.s.pinned.has(student)).toBe(true);
+    expect(state.s.notice).toBeNull();
   });
 
   it('drops the expansions and reads the view again when the record changed since it was read', async () => {

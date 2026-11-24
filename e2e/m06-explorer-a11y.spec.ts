@@ -632,23 +632,26 @@ test.describe('selection (B)', () => {
     await expect.poll(() => announcement(page), 'the clearing is announced, as from the graph').toBe('Selection cleared.');
   });
 
-  test('@M06 on a phone Esc in the raised students sheet gives the focus back to the summary node', async ({ page }) => {
+  test('@M06 on a phone Esc in the raised students sheet gives the focus back to the teacher it was opened for', async ({ page }) => {
     test.setTimeout(120_000);
     const hub = await personIdOf('demo-hub-a');
     await openExplorer(page, { focus: hub });
     await settledView(page);
     expect(await focusGraph(page)).toBe(hub);
-    await walkToSummary(page, hub);
-    await page.keyboard.press('Enter');
+    // ADR 0055: the list opens from the teacher's sheet ("List all students"); the summary node draws the rest.
+    await page.keyboard.press('Space');
     const panel = page.getByTestId('explorer-panel');
     await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).dispatchEvent('click');
+    const heading = panel.getByRole('heading', { name: /^Students of / });
+    await expect(heading).toBeVisible();
     await panel.getByRole('button', { name: 'Expand' }).dispatchEvent('click');
     const row = panel.getByRole('link', { name: /^Explore from here: / }).first();
     await expect(row).toBeVisible();
     await row.focus();
     await page.keyboard.press('Escape');
-    await expect(panel, 'Esc in the sheet closes it').toBeHidden();
-    await expect.poll(() => focusedNodeId(page), 'the focus is back on the summary node').toBe(summaryIdOf(hub));
+    await expect(heading, 'Esc in the sheet closes the list').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'the focus is back on the teacher').toBe(hub);
   });
 
   test('@M06 on a phone a link in the sheet takes its history entry: one Back returns to the explorer, the next leaves it', async ({ page }) => {
@@ -796,11 +799,11 @@ test.describe('expansion (C)', () => {
       expect(after.nodes.some((s) => s.id === node.id), `${node.id} is still drawn`).toBe(true);
       expect(yOf(after, node.id) - yOf(after, hub), `${node.id} keeps its row`).toBeCloseTo(yOf(before, node.id) - yOf(before, hub), 0);
     }
-    // The button now counts the students not drawn; beyond the cap it opens their list.
+    // The button now counts the students not drawn; beyond the cap it draws the rest in place (ADR 0055).
     await expect(nodeOf(page, hub).locator('[data-more-chip]')).toHaveText(`+${n - shown.size} students`);
   });
 
-  test('@M06 a teacher with more than 12 students shows an "and N more" node that opens a paginated list', async ({ page }) => {
+  test('@M06 a teacher with more than 12 students shows an "and N more" node that draws the rest in place (ADR 0055)', async ({ page }) => {
     test.setTimeout(120_000);
     const hub = await personIdOf('demo-hub-a');
     const hubName = await personNameOf('demo-hub-a');
@@ -825,17 +828,40 @@ test.describe('expansion (C)', () => {
     }
     await expect(node).toHaveAttribute('aria-label', `and ${n} more students of ${hubName}`);
     await expect(node).toHaveAttribute('role', 'button');
-    await expect(node, 'described by what it opens').toHaveAccessibleDescription(`Opens the list of all students of ${hubName}, 20 to a page.`);
+    await expect(node, 'described by what it does').toHaveAccessibleDescription(`Draws the other students of ${hubName} here.`);
     // Its words at every level of detail but the dot.
     if ((await node.locator('[data-summary-node]').getAttribute('data-lod')) !== 'dot') await expect(node).toContainText(`and ${n} more`);
 
-    // Enter on it (the graph's keys, package A) opens the teacher's students in the panel, 20 to a
-    // page, by name, as people.students lists them.
+    // Enter on it (the graph's keys, package A) draws the teacher's other students in place: as
+    // many as one read returns (lineage.ego at the largest fan-out limit), every one past the cap.
     // Focused as a key move would (no scroll of the graph's box), not with the pointer.
     await node.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
     expect(await focusedNodeId(page)).toBe(summaryIdOf(hub));
+    const scenes = (await scenesFor(page, hub)).length;
     await page.keyboard.press('Enter');
+    await expect.poll(async () => (await scenesFor(page, hub)).length, { timeout: 15_000 }).toBeGreaterThan(scenes);
+    await settledView(page);
+    const after = (await scenesFor(page, hub)).at(-1)!;
+    const shown = drawnStudents(after, hub).size;
+    expect(shown, 'every student one read returns is drawn').toBeGreaterThanOrEqual(Math.min(total, 100));
+    // The cap no longer cuts the hub's students: no summary node. Students no read returned are
+    // counted on the hub's "+N students" and listed in its panel ("List all students").
+    expect(after.nodes.some((s) => s.id === summaryIdOf(hub)), 'the summary node is gone').toBe(false);
+    await expect(page.getByTestId('explorer-announcement')).toContainText(`Added ${shown - drawn} students of ${hubName}.`);
+    if (shown < total) await expect(page.getByTestId('explorer-announcement')).toContainText(`The rest are in the list of students of ${hubName}.`);
+  });
+
+  test('@M06 "List all students" in the panel lists every student of the teacher, 20 to a page', async ({ page }) => {
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    const total = await publicStudentCount(page, 'demo-hub-a');
+    expect(await focusGraph(page)).toBe(hub);
+    await page.keyboard.press('Space');
     const panel = page.getByTestId('explorer-panel');
+    await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).click();
     await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
     const size = 20;
     const first = await listedStudents(page, hubName, 1);
@@ -854,33 +880,27 @@ test.describe('expansion (C)', () => {
     await pages.getByRole('button', { name: 'Previous' }).click();
     expect(await listedStudents(page, hubName, 1)).toEqual(first);
     await expect(pages.getByRole('button', { name: 'Previous' })).toHaveAttribute('aria-disabled', 'true');
-
-    // A click on the summary node opens the same list.
-    await panel.getByRole('button', { name: 'Close' }).click();
-    await expect(panel).toHaveCount(0);
-    // Closing the panel gives the canvas its room back and the view may still move: a click while
-    // the node moves lands beside it (CI run 41531540584). Wait until it settles, as after Zoom or Fit.
-    await settledView(page);
-    await node.click();
-    await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
-    expect(await listedStudents(page, hubName, 1)).toEqual(first);
   });
 
   test('@M06 the panel never covers the node the keyboard opened it from', async ({ page }) => {
     test.setTimeout(120_000);
-    // The summary node ends demo-hub-a's row of students, at the canvas's right edge once the keys
-    // reach it: where the desktop panel opens over the canvas (WCAG 2.4.11, focus not obscured).
+    // The last student drawn in demo-hub-a's row, beside the summary node at the canvas's right edge
+    // once the keys reach it: where the desktop panel opens over the canvas (WCAG 2.4.11, focus not obscured).
     const hub = await personIdOf('demo-hub-a');
     await openExplorer(page, { focus: hub });
     await settledView(page);
     expect(await focusGraph(page)).toBe(hub);
     await walkToSummary(page, hub);
-    await page.keyboard.press('Enter');
-    await expect(page.getByTestId('explorer-panel').getByRole('heading', { name: /^Students of / })).toBeVisible();
-    expect(await focusedNodeId(page), 'the focus stays on the summary node').toBe(summaryIdOf(hub));
-    await expect.poll(() => wholeAndUncovered(summaryNodeOf(page, hub)), 'the summary node is whole and uncovered').toBe(true);
+    await page.keyboard.press('ArrowLeft');
     await settledView(page);
-    expect(await wholeAndUncovered(summaryNodeOf(page, hub)), 'and stays so').toBe(true);
+    const student = (await focusedNodeId(page))!;
+    expect(student).not.toBe(summaryIdOf(hub));
+    await page.keyboard.press('Space');
+    await expect(page.getByTestId('explorer-panel')).toBeVisible();
+    expect(await focusedNodeId(page), 'the focus stays on the student').toBe(student);
+    await expect.poll(() => wholeAndUncovered(nodeOf(page, student)), 'the student is whole and uncovered').toBe(true);
+    await settledView(page);
+    expect(await wholeAndUncovered(nodeOf(page, student)), 'and stays so').toBe(true);
   });
 
   test('@M06 the panel\'s Close and "List all students" are announced as a key\'s are', async ({ page }) => {
@@ -899,50 +919,53 @@ test.describe('expansion (C)', () => {
     await expect.poll(() => announcement(page), 'the clearing is announced').toBe('Selection cleared.');
     await expect.poll(() => focusedNodeId(page), 'the focus is back on the person').toBe(hub);
 
-    // "List all students" opens the list, and says so as the summary node does.
+    // "List all students" opens the list, and says so.
     await page.keyboard.press('Space');
     await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).click();
     await expect(panel.getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
     await expect.poll(() => announcement(page), 'the list is announced').toBe(`Students of ${hubName}: list open.`);
   });
 
-  test('@M06 Esc closes a list of students with nobody selected, from the graph and from the list', async ({ page }) => {
+  test('@M06 Esc closes a list of students, from the graph and from the list, and the selection stays', async ({ page }) => {
     test.setTimeout(120_000);
     const hub = await personIdOf('demo-hub-a');
     const hubName = await personNameOf('demo-hub-a');
-    const summary = summaryIdOf(hub);
     await openExplorer(page, { focus: hub });
     await settledView(page);
     expect(await focusGraph(page)).toBe(hub);
-    await walkToSummary(page, hub);
     const panel = page.getByTestId('explorer-panel');
     const heading = panel.getByRole('heading', { name: /^Students of / });
+    const listAll = panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / });
+    await page.keyboard.press('Space');
+    await expect(listAll).toBeVisible();
 
-    // In the graph: Enter opens the list and Esc closes it; the focus stays on the summary node.
-    await page.keyboard.press('Enter');
+    // In the graph: Esc closes the list; the teacher stays selected and keeps the focus.
+    await listAll.click();
     await expect(heading).toBeVisible();
     await expect.poll(() => announcement(page), 'the list is announced').toBe(`Students of ${hubName}: list open.`);
+    await nodeOf(page, hub).evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
     await page.keyboard.press('Escape');
-    await expect(panel, 'Esc in the graph closes the list').toBeHidden();
-    expect(await focusedNodeId(page), 'the focus stays on the summary node').toBe(summary);
+    await expect(heading, 'Esc in the graph closes the list').toBeHidden();
+    await expect(listAll, 'the teacher is still selected').toBeVisible();
+    expect(await focusedNodeId(page), 'the focus stays on the teacher').toBe(hub);
 
-    // In the list: Esc closes it and the focus goes back to the summary node.
-    await page.keyboard.press('Enter');
+    // In the list: Esc closes it and the focus goes back to the teacher.
+    await listAll.click();
     await expect(heading).toBeVisible();
     const row = panel.getByRole('link', { name: /^Explore from here: / }).first();
     await expect(row).toBeVisible();
     await row.focus();
     await page.keyboard.press('Escape');
-    await expect(panel, 'Esc in the list closes it').toBeHidden();
-    await expect.poll(() => focusedNodeId(page), 'the focus is back on the summary node').toBe(summary);
+    await expect(heading, 'Esc in the list closes it').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'the focus is back on the teacher').toBe(hub);
 
-    // The list's Close, from the keyboard: the focus goes back to the summary node too, not to <body>.
-    await page.keyboard.press('Enter');
+    // The list's Close, from the keyboard: the focus goes back to the teacher too, not to <body>.
+    await listAll.click();
     await expect(heading).toBeVisible();
     await panel.getByRole('button', { name: 'Close' }).focus();
     await page.keyboard.press('Enter');
-    await expect(panel, 'Close closes the list').toBeHidden();
-    await expect.poll(() => focusedNodeId(page), 'after Close the focus is on the summary node').toBe(summary);
+    await expect(heading, 'Close closes the list').toBeHidden();
+    await expect.poll(() => focusedNodeId(page), 'after Close the focus is on the teacher').toBe(hub);
   });
 
   test('@M06 a panel action that takes away its own button leaves the focus in the panel, never on <body>', async ({ page }) => {
@@ -1046,16 +1069,17 @@ test.describe('touch and motion (D)', () => {
       await expect.poll(() => isInVisibleArea(page, id), `${at}: the selected person is in view above the sheet`).toBe(true);
     }
 
-    // The list of a teacher's students (the summary node "and N more") in the sheet, raised to its
-    // top and scrolled to its pages: Previous and Next as well (the sheet covers the rest there).
+    // The list of a teacher's students ("List all students" in its sheet) in the sheet, raised to
+    // its top and scrolled to its pages: Previous and Next as well (the sheet covers the rest there).
     await page.setViewportSize(PHONES[0]);
     const hub = await personIdOf('demo-hub-a');
     await openExplorer(page, { focus: hub });
     await settledView(page);
     expect(await focusGraph(page)).toBe(hub);
-    await walkToSummary(page, hub);
-    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
     await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).dispatchEvent('click');
+    await expect(panel.getByRole('heading', { name: /^Students of / })).toBeVisible();
     await panel.getByRole('button', { name: 'Expand' }).tap();
     await expect(panel.getByRole('button', { name: 'Collapse' })).toBeVisible();
     await settledTop(panel.locator('xpath=ancestor-or-self::*[@role="dialog"][1]'));
@@ -1177,9 +1201,9 @@ test.describe('touch and motion (D)', () => {
         await check('the hub expanded');
 
         if (!size.use.isMobile) {
-          // The summary node's list of students (a desktop's panel).
-          await summary.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
-          await page.keyboard.press('Enter');
+          // The list of the hub's students (a desktop's panel): "List all students" in its panel.
+          await press(nodeOf(page, hub));
+          await page.getByTestId('explorer-panel').getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).click();
           await expect(page.getByTestId('explorer-panel').getByRole('heading', { name: `Students of ${hubName}` })).toBeVisible();
           expect((await listedStudents(page, hubName, 1)).length).toBeGreaterThan(0);
           await check('the list of students open');

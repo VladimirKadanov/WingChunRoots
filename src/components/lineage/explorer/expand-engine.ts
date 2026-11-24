@@ -15,7 +15,7 @@ import type { LineageGraphDto } from '@/server/dto/public';
 import type { Latest, Work } from './expand';
 import { counting, type Done, fresh, notice, type State } from './expand-state';
 import type { ExpandDirection } from './graph-api';
-import { isSummaryId } from './state';
+import { isSummaryId, summaryIdOf } from './state';
 
 /**
  * Presses that come quickly one after another are laid out once (plan §4.8: a short debounce;
@@ -151,8 +151,8 @@ const counted = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 /**
  * The notice once expansions are drawn: how many people each added to the drawing ("Added 12
  * students of {name}."), or, for one that added nobody, that the rest are in the view already:
- * only their ended training is not drawn (up=1 reads every public teacher, and beyond the cap
- * "+N students" opens the list instead of expanding).
+ * only their ended training is not drawn (up=1 reads every public teacher; down=1 reads up to
+ * MAX_FANOUT students, and the list has the rest).
  */
 export function expansionWords(done: readonly Done[], graph: LineageGraphDto, added: ReadonlySet<string>): string {
   return done
@@ -163,9 +163,13 @@ export function expansionWords(done: readonly Done[], graph: LineageGraphDto, ad
         if (other !== null && added.has(other)) people.add(other);
       }
       const one = direction === 'students' ? 'student' : 'teacher';
+      // More than one read returns (MAX_FANOUT): the rest are in the list of the teacher's students.
+      const rest = direction === 'students' && (graph.hiddenCounts[id]?.students ?? 0) > 0 ? ` The rest are in the list of students of ${name}.` : '';
       return people.size > 0
-        ? `Added ${counted(people.size, one)} of ${name}.`
-        : `Every ${one} of ${name} on the record is in this view; ended training is drawn with Show ended training.`;
+        ? `Added ${counted(people.size, one)} of ${name}.${rest}`
+        : rest
+          ? rest.trim()
+          : `Every ${one} of ${name} on the record is in this view; ended training is drawn with Show ended training.`;
     })
     .join(' ');
 }
@@ -185,6 +189,12 @@ export interface Arrived extends Done {
   part: LineageGraphDto;
 }
 
+/** The students, in `graph`, of the people whose students were expanded. */
+export function studentsOf(graph: LineageGraphDto, items: readonly Pick<Done, 'id' | 'direction'>[]): string[] {
+  const teachers = new Set(items.filter((a) => a.direction === 'students').map((a) => a.id));
+  return [...new Set(graph.edges.filter((e) => teachers.has(e.teacherId)).map((e) => e.studentId))];
+}
+
 /** Merges the answers that arrived into the view, for one new layout. */
 function publish(work: Work): void {
   work.timer = undefined;
@@ -201,14 +211,20 @@ function publish(work: Work): void {
     let merged = base;
     for (const a of items) merged = mergeExpansion(merged, a.part, a.id);
     const done = items.map(({ id, direction, name }) => ({ id, direction, name }));
+    // ADR 0055: a teacher whose students the cap cut (its summary node "and N more" is drawn) has
+    // every student drawn, those the view's own read already held too; below the cap an expansion
+    // adds up to FANOUT_SHOWN, as before.
+    const sceneIds = new Set((now.scene?.nodes ?? []).map((n) => n.id));
+    const shown = new Set([...before.pinned, ...sceneIds]);
+    const unfolded = studentsOf(merged, items.filter((a) => sceneIds.has(summaryIdOf(a.id)))).filter((id) => !shown.has(id));
     // Nothing new to draw: said at once, with no layout to wait for.
-    if (merged === base) return counting({ ...before, loading, notice: notice(before, expansionWords(done, base, new Set())) });
+    if (merged === base && unfolded.length === 0) return counting({ ...before, loading, notice: notice(before, expansionWords(done, base, new Set())) });
     const drawnIds = (now.scene?.nodes ?? []).filter((n) => !isSummaryId(n.id)).map((n) => n.id);
     return counting({
       ...before,
       version: answerNow.dataVersion,
       graph: merged,
-      pinned: new Set([...before.pinned, ...drawnIds]),
+      pinned: new Set([...before.pinned, ...drawnIds, ...unfolded]),
       layoutOptions: work.layout(now.scene),
       anchorId: items.at(-1)!.id,
       loading,

@@ -66,17 +66,17 @@ export const EXPLORER_STATES: readonly ExplorerState[] = [
     },
   },
   {
-    // The summary node's list of the teacher's students, 20 to a page (on a phone the sheet, raised
-    // to its middle snap point above the summary node).
+    // The list of a teacher's students, 20 to a page, from "List all students" in the teacher's
+    // panel (ADR 0055; on a phone the sheet, raised to its middle snap point).
     name: 'explore-more-list',
     async reach(page) {
       const hub = await personIdOf('demo-hub-a');
       await openExplorer(page, { focus: hub });
       await settledView(page);
       expect(await focusGraph(page)).toBe(hub);
-      await walkToSummary(page, hub);
-      await page.keyboard.press('Enter');
+      await page.keyboard.press('Space');
       const panel = page.getByTestId('explorer-panel');
+      await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).dispatchEvent('click');
       await expect(panel.getByRole('navigation', { name: 'Pages of students' })).toBeAttached();
       if (await onPhone(page)) await dragSheetToHalf(page, panel.locator('xpath=ancestor-or-self::*[@role="dialog"][1]'));
       await expect(panel.getByRole('list', { name: /^Students of .+, page 1$/ })).toBeVisible();

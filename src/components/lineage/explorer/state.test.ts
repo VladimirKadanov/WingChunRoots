@@ -240,6 +240,18 @@ describe('capFanout with pinned students (milestone M06: an expansion never drop
   it('gives M05\'s result with no pins', () => {
     expect(capFanout(graph, FANOUT_SHOWN, new Set())).toEqual(capFanout(graph));
   });
+  it('ADR 0055: draws a pinned person whose teacher the cap folded, and that teacher (the Lineage view\'s focus)', () => {
+    // 31 is past the cap; 100 is 31's student, pinned as the Lineage view pins its focus.
+    const deep: LineageGraphDto = { ...graph, nodes: [...graph.nodes, node(100)], edges: [...graph.edges, edge(31, 100)] };
+    expect(capFanout(deep).graph.nodes.some((n) => n.id === id(100))).toBe(false);
+    const { graph: capped, more } = capFanout(deep, FANOUT_SHOWN, new Set([id(100)]));
+    const drawn = new Set(capped.nodes.map((n) => n.id));
+    expect(drawn.has(id(100))).toBe(true);
+    expect(drawn.has(id(31))).toBe(true);
+    expect(capped.edges.some((e) => e.teacherId === id(31) && e.studentId === id(100))).toBe(true);
+    expect(capped.edges.some((e) => e.teacherId === id(1) && e.studentId === id(31))).toBe(true);
+    expect(more.get(id(1))).toBe(30 - FANOUT_SHOWN - 1);
+  });
 });
 
 describe('withSummaryNodes (milestone M06: the summary node "and N more")', () => {
