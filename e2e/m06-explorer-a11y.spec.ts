@@ -851,7 +851,7 @@ test.describe('expansion (C)', () => {
     if (shown < total) await expect(page.getByTestId('explorer-announcement')).toContainText(`The rest are in the list of students of ${hubName}.`);
   });
 
-  test('@M06 "List all students" in the teacher\'s panel lists every student, 20 to a page', async ({ page }) => {
+  test('@M06 "List all students" in the panel lists every student of the teacher, 20 to a page', async ({ page }) => {
     test.setTimeout(120_000);
     const hub = await personIdOf('demo-hub-a');
     const hubName = await personNameOf('demo-hub-a');
