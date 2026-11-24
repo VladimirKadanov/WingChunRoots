@@ -903,6 +903,28 @@ test.describe('expansion (C)', () => {
     expect(await wholeAndUncovered(nodeOf(page, student)), 'and stays so').toBe(true);
   });
 
+  test('@M06 the list of students still loads after Back from a profile opened from it', async ({ page }) => {
+    // Next.js keeps the explorer in <Activity> while the profile is shown; on Back the list's
+    // effect runs before the explorer gives its reader again (expand-state.ts readStudents waits).
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await page.keyboard.press('Space');
+    const panel = page.getByTestId('explorer-panel');
+    await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).dispatchEvent('click');
+    const first = await listedStudents(page, hubName, 1);
+    expect(first.length).toBeGreaterThan(0);
+    await panel.getByRole('link', { name: first[0]!.name, exact: true }).click();
+    await page.waitForURL(/\/people\//);
+    await page.goBack();
+    await page.waitForURL(/\/explore\?/);
+    await expect(panel.getByText('The students could not be loaded.')).toHaveCount(0);
+    expect(await listedStudents(page, hubName, 1)).toEqual(first);
+  });
+
   test('@M06 the panel\'s Close and "List all students" are announced as a key\'s are', async ({ page }) => {
     const hub = await personIdOf('demo-hub-a');
     const hubName = await personNameOf('demo-hub-a');
