@@ -107,6 +107,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Depth 2: the merge commit and its first parent, the base, so the step below needs no
+          # second fetch (the repository is private and the credentials are not persisted).
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -121,7 +124,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
           git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed.txt"
           echo "$(wc -l < "$RUNNER_TEMP/changed.txt") changed files"
           if scripts/ci-docs-only.sh < "$RUNNER_TEMP/changed.txt"; then
