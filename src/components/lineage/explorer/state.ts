@@ -167,9 +167,11 @@ export function capFanout(
     if (sorted.length > keep.length) more.set(teacherId, sorted.length - keep.length);
   }
   if (more.size === 0) return { graph, more };
-  // Reachable from the view's top people (no teacher in the view) and the focus, along kept edges.
+  // Reachable from the view's top people (no teacher in the view), the focus and the pinned
+  // people, along kept edges; the teachers of the last two are drawn below (ADR 0055: the Lineage
+  // view's focus, which is not its read's, is pinned, so it is never folded away).
   const students = new Set(graph.edges.map((e) => e.studentId));
-  const reachable = new Set(graph.nodes.filter((n) => !students.has(n.id) || n.id === graph.focusId).map((n) => n.id));
+  const reachable = new Set(graph.nodes.filter((n) => !students.has(n.id) || n.id === graph.focusId || pinned.has(n.id)).map((n) => n.id));
   const queue = [...reachable];
   const keptBy = new Map<string, LineageGraphDto['edges']>();
   for (const e of graph.edges) if (kept.has(e.id)) keptBy.set(e.teacherId, [...(keptBy.get(e.teacherId) ?? []), e]);
@@ -182,7 +184,7 @@ export function capFanout(
       }
     }
   }
-  // The focus's own teachers are reachable upwards too (the person view draws every ancestor).
+  // The teachers of everyone reached are reachable upwards too (the person view draws every ancestor of the focus).
   const teachersOf = new Map<string, string[]>();
   for (const e of graph.edges) teachersOf.set(e.studentId, [...(teachersOf.get(e.studentId) ?? []), e.teacherId]);
   const up = [...reachable];

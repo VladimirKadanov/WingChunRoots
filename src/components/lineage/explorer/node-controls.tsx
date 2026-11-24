@@ -4,7 +4,8 @@
 // and "+N teachers" as real buttons, in the Tab order only on the active node (one tab stop for
 // the graph: the node, then its buttons), interactive only with a fine pointer (on touch the same
 // actions are 44 px buttons in the sheet: ExpandActions; DEFAULT, no D number). Beyond the cap
-// (FANOUT_SHOWN students drawn) "+N students" opens the paginated list instead of expanding.
+// (FANOUT_SHOWN students drawn) "+N students" draws the rest in place too (ADR 0055); the sheet
+// also offers the paginated list then.
 //
 // The students' button is M05's chip [data-more-chip] "+N students", which it replaces; it stays
 // one element while its count and its action change, so the focus stays on it.
@@ -25,7 +26,7 @@ export interface ExpandCounts {
   students: number;
   /** Teachers not drawn. */
   teachers: number;
-  /** The cap cut the students: "+N students" opens their paginated list. */
+  /** The cap cut the students: the sheet offers their paginated list as well. */
   list: boolean;
 }
 
@@ -172,7 +173,7 @@ export function NodeControls({ id, data, active }: NodeControlsProps) {
           label={counted(counts.students, 'student')}
           name={data.name}
           className={cx(data.teachers < 2 && 'ml-auto')}
-          onPress={() => (counts.list ? actions.openStudents(id) : actions.expand(id, 'students'))}
+          onPress={() => actions.expand(id, 'students')}
         />
       ) : null}
     </>
@@ -198,23 +199,23 @@ const ACTION_WORDS: Record<ExpandDirection, string> = { students: 'student', tea
  */
 export function ExpandActions({ id, name, counts, actions }: ExpandActionsProps): ReactNode {
   const busy = actions.pending.has(id);
-  const button = (direction: ExpandDirection, n: number) => {
-    const list = direction === 'students' && counts.list;
+  const button = (direction: ExpandDirection, n: number, list = false) => {
     const label = list ? `List all students (${n} not drawn)` : `Show ${n} more ${n === 1 ? ACTION_WORDS[direction] : `${ACTION_WORDS[direction]}s`}`;
+    // The list opens whatever is loading; only an expansion waits for its own.
+    const loading = busy && !list;
     return (
       <button
-        key={direction}
+        key={list ? 'list' : direction}
         type="button"
-        aria-busy={busy || undefined}
-        aria-label={busy ? `Loading, ${label} of ${name}` : `${label} of ${name}`}
+        aria-busy={loading || undefined}
+        aria-label={loading ? `Loading, ${label} of ${name}` : `${label} of ${name}`}
         className={buttonVariants({ variant: 'secondary', size: 'sm' })}
         onClick={() => {
-          if (busy) return;
           if (list) actions.openStudents(id);
-          else actions.expand(id, direction);
+          else if (!loading) actions.expand(id, direction);
         }}
       >
-        {busy ? 'Loading…' : label}
+        {loading ? 'Loading…' : label}
       </button>
     );
   };
@@ -223,6 +224,7 @@ export function ExpandActions({ id, name, counts, actions }: ExpandActionsProps)
     <div role="group" aria-label="Expand" className="flex flex-wrap gap-2">
       {counts.teachers > 0 ? button('teachers', counts.teachers) : null}
       {counts.students > 0 ? button('students', counts.students) : null}
+      {counts.students > 0 && counts.list ? button('students', counts.students, true) : null}
     </div>
   );
 }

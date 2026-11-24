@@ -4,11 +4,15 @@
  */
 
 import { expect, type Page, test, type Worker } from '@playwright/test';
+import { sql } from 'drizzle-orm';
 
+import { getDb } from '../src/server/db';
+import { summaryIdOf } from '../src/components/lineage/explorer/state';
 import { closeHelpers, loadTestEnv } from './helpers/auth';
 import { EXPLORER_LIST, EXPLORER_VIEWS, edgesInto, lineageIdOf, nodeOf, openExplorer, openExplorerList, personIdOf, personNodes } from './helpers/explorer';
 import { closeExplorerOptions, openExplorerOptions } from './helpers/phone-layout';
 import { visibleBox } from './helpers/explorer-a11y';
+import { drawnStudents, scenesFor, summaryNodeOf } from './helpers/m06-expand';
 import {
   captureScenes,
   elkScripts,
@@ -1650,5 +1654,69 @@ test.describe('focus and selection (ADR 0054)', () => {
     await expect(nodeOf(page, start).locator('[data-focus-tag]')).toHaveText('Focus');
     // The focus did not change: no step back to offer.
     await expect(page.getByTestId('explorer-back')).toHaveCount(0);
+  });
+});
+
+test.describe('every student in the big picture (ADR 0055)', () => {
+  /** The public students of `teacherId` in `lineageId`, from the record (never a number of the demo data). */
+  async function studentsIn(teacherId: string, lineageId: string): Promise<string[]> {
+    const rows = await getDb().execute<{ id: string }>(
+      sql`SELECT DISTINCT student_person_id::text AS id FROM v_public_edge WHERE teacher_person_id = ${teacherId}::uuid AND lineage_id = ${lineageId}::uuid`,
+    );
+    return rows.rows.map((r) => r.id);
+  }
+
+  test('@M05 the Lineage view always draws the person in focus, also one the cap would fold away', async ({ page }) => {
+    test.setTimeout(120_000);
+    const lineage = await lineageIdOf('demo-lineage-a');
+    const root = await personIdOf('demo-root-a');
+    const hub = await personIdOf('demo-hub-a');
+    await captureScenes(page);
+    await openExplorer(page, { focus: root, lineage });
+    await settledView(page);
+    // A student of the hub that the cap folds into "and N more" when someone else is the focus.
+    const drawn = new Set((await sceneOf(page, root)).nodes.map((n) => n.id));
+    const folded = (await studentsIn(hub, lineage)).find((id) => !drawn.has(id));
+    expect(folded, 'the cap folds some of the hub\'s students').toBeTruthy();
+
+    await openExplorer(page, { focus: folded!, lineage });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Lineage A');
+    await settledView(page);
+    const scene = await sceneOf(page, root);
+    expect(scene.nodes.some((n) => n.id === folded), 'the person in focus is drawn').toBe(true);
+    expect(scene.edges.some((e) => e.teacherId === hub && e.studentId === folded), 'with the line from their teacher').toBe(true);
+  });
+
+  test('@M05 "and N more" draws the rest of a teacher\'s students in place in the Lineage view', async ({ page }) => {
+    test.setTimeout(120_000);
+    const lineage = await lineageIdOf('demo-lineage-a');
+    const root = await personIdOf('demo-root-a');
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    const all = await studentsIn(hub, lineage);
+    await captureScenes(page);
+    await openExplorer(page, { focus: root, lineage });
+    await settledView(page);
+    const before = (await scenesFor(page, root)).at(-1)!;
+    expect(drawnStudents(before, hub).size).toBeLessThan(all.length);
+    expect(before.nodes.some((n) => n.id === summaryIdOf(hub))).toBe(true);
+
+    const summary = summaryNodeOf(page, hub);
+    if ((await summary.count()) === 0) {
+      await page.getByRole('button', { name: 'Fit the whole view' }).click();
+      await settledView(page);
+    }
+    await expect(summary).toHaveAccessibleDescription(`Draws the other students of ${hubName} here.`);
+    const scenes = (await scenesFor(page, root)).length;
+    // Focused as a key move would (no scroll of the graph's box), then Enter: the graph's keys.
+    await summary.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await scenesFor(page, root)).length, { timeout: 15_000 }).toBeGreaterThan(scenes);
+    await settledView(page);
+    const after = (await scenesFor(page, root)).at(-1)!;
+    // Every student of the hub in this lineage is drawn, and no "and N more" is left for the hub.
+    expect(drawnStudents(after, hub)).toEqual(new Set(all));
+    expect(after.nodes.some((n) => n.id === summaryIdOf(hub))).toBe(false);
+    await expect(page.getByTestId('explorer-announcement')).toContainText(`students of ${hubName}.`);
   });
 });

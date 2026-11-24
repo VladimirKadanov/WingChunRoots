@@ -1,9 +1,9 @@
 // The server contract of the explorer's expansion (milestone M06, package C; plan §4.8): "+N
-// students" reads lineage.ego with { up: 0, down: 1 }, "+N teachers" with { up: 1, down: 0 }, both
-// at the default fan-out limit (50), and the summary node "and N more" opens people.students in
-// pages of 20. No new procedure: these are M04's, against the seeded demo data. The five cases of
+// students" and the summary node "and N more" read lineage.ego with { up: 0, down: 1 } at the
+// largest fan-out limit (100; ADR 0055), "+N teachers" with { up: 1, down: 0 } at the default, and
+// the panel's "List all students" opens people.students in pages of 20. No new procedure: these are M04's, against the seeded demo data. The five cases of
 // the M06 plan, section (c):
-//   1. the students of demo-hub-a: the first 50, their edges, the count of the rest, the schema;
+//   1. the students of demo-hub-a: the first 100, their edges, the count of the rest, the schema;
 //   2. the teachers of demo-two-lineages: both, one of them cross-lineage, none left out;
 //   3. the cached read and an uncached one agree on the expansion inputs (anonymous);
 //   4. DEFAULT D03: the involved participant sees their own pending edge in the expansion, nobody else;
@@ -37,8 +37,8 @@ let pendingUserId: string;
 const SLUGS = ['demo-hub-a', 'demo-two-lineages', 'demo-a-001', 'demo-b-001', 'demo-pending', 'demo-root-a', 'demo-converging'];
 
 /** The read of an expansion, as the explorer sends it (expand.ts expandInput), with the API's defaults. */
-const expansion = (focusId: string, direction: 'students' | 'teachers') =>
-  egoInput.parse({ focusId, up: direction === 'teachers' ? 1 : 0, down: direction === 'students' ? 1 : 0 });
+const expansion = (focusId: string, direction: 'students' | 'teachers'): ReturnType<typeof egoInput.parse> =>
+  egoInput.parse(direction === 'students' ? { focusId, up: 0, down: 1, fanoutLimit: 100 } : { focusId, up: 1, down: 0 });
 
 /** The summary node's list: pages of 20 by name (students-list.tsx STUDENTS_PER_PAGE). */
 const PAGE_SIZE = 20;
@@ -84,29 +84,29 @@ const publicStudentsShown = (g: LineageGraphDto, teacherId: string) =>
   new Set(g.edges.filter((e) => e.teacherId === teacherId && e.visibility === 'public').map((e) => e.studentId));
 
 describe('the expansion reads (lineage.ego, M06 plan section c)', () => {
-  it('1. "+N students" of demo-hub-a: the hub and its first 50 students, their edges only, the rest counted', async () => {
+  it('1. "+N students" of demo-hub-a: the hub and its first 100 students, their edges only, the rest counted', async () => {
     const hub = ids['demo-hub-a']!;
     const input = expansion(hub, 'students');
-    expect(input).toEqual({ focusId: hub, up: 0, down: 1, fanoutLimit: 50 });
+    expect(input).toEqual({ focusId: hub, up: 0, down: 1, fanoutLimit: 100 });
     const g = await lineageEgo(null, input);
     // The answer is a public graph and nothing more.
     expect(() => lineageGraphSchema.strict().parse(g)).not.toThrow();
     expect(g.edges.some((e) => e.visibility !== 'public')).toBe(false);
     expect(g.nodes.some((n) => n.visibility !== 'public')).toBe(false);
 
-    // The hub, then its first 50 students in egoNodeIds order (by name, then id; the rest left out).
+    // The hub, then its first 100 students in egoNodeIds order (by name, then id; the rest left out).
     const order = await readTransaction(getPublicDb(), (tx) => egoNodeIds(tx, input, NO_EXTRAS));
     expect(g.nodes.map((n) => n.id).sort()).toEqual([...order].sort());
     expect(order[0]).toBe(hub);
     const all = await publicStudents(hub);
-    expect(all.length).toBeGreaterThan(50);
-    expect(new Set(order.slice(1))).toEqual(new Set(all.slice(0, 50)));
+    expect(all.length).toBeGreaterThan(100);
+    expect(new Set(order.slice(1))).toEqual(new Set(all.slice(0, 100)));
 
-    // Edges only between the people of the answer, and the hub's edge to each of its 50.
+    // Edges only between the people of the answer, and the hub's edge to each of its 100.
     const people = new Set(order);
     for (const e of g.edges) expect(people.has(e.teacherId) && people.has(e.studentId)).toBe(true);
     const shown = publicStudentsShown(g, hub);
-    expect(shown).toEqual(new Set(all.slice(0, 50)));
+    expect(shown).toEqual(new Set(all.slice(0, 100)));
 
     // What the explorer's "+N students" and "and N more" count: childCount minus those shown.
     const node = g.nodes.find((n) => n.id === hub)!;

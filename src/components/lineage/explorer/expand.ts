@@ -42,9 +42,12 @@ export interface Expansions {
   layoutFailed: (view: LineageGraphDto) => void;
 }
 
-/** The read of an expansion: the person and their direct students, or their direct teachers. */
-export function expandInput(id: string, direction: ExpandDirection): { focusId: string; up: number; down: number } {
-  return { focusId: id, up: direction === 'teachers' ? 1 : 0, down: direction === 'students' ? 1 : 0 };
+/** The most students one read returns (MAX_FANOUT in src/server/services/lineage-graph.ts). */
+export const EXPAND_FANOUT = 100;
+
+/** The read of an expansion: the person and their direct students (as many as a read returns, ADR 0055), or their direct teachers. */
+export function expandInput(id: string, direction: ExpandDirection): { focusId: string; up: number; down: number; fanoutLimit?: number } {
+  return direction === 'students' ? { focusId: id, up: 0, down: 1, fanoutLimit: EXPAND_FANOUT } : { focusId: id, up: 1, down: 0 };
 }
 
 /** The top left corners of a scene's nodes: the expand preset keeps each row's order from them. */

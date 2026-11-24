@@ -15,7 +15,7 @@
 //   says where (announce.ts); a move with no target says why. ↑ with two or more teachers drawn
 //   opens the teacher chooser.
 // - Enter opens the profile (router.push); Space selects (the panel opens, the routes light up).
-//   On the summary node "and N more", both open the list of the teacher's students.
+//   On the summary node "and N more", both draw the teacher's other students in place (ADR 0055).
 // - + (or =), − and 0 zoom in, zoom out and fit, as the buttons over the canvas do (motion tokens).
 // - "/" opens the search palette (M07, src/components/shell/search-trigger.tsx); "?" opens the
 //   shortcut help. Both return the focus to the node when they close (Base UI's dialogs return it
@@ -94,7 +94,7 @@ export function keyHandlers(deps: KeyDeps): Record<GraphAction, KeyHandler> {
     right: move('right'),
     open: (id) => {
       if (isSummaryId(id)) {
-        context.openStudents(summaryTeacherOf(id));
+        context.showAll(summaryTeacherOf(id));
         return true;
       }
       const slug = person(id)?.data.slug;
@@ -102,7 +102,7 @@ export function keyHandlers(deps: KeyDeps): Record<GraphAction, KeyHandler> {
       return true;
     },
     select: (id) => {
-      if (isSummaryId(id)) context.openStudents(summaryTeacherOf(id));
+      if (isSummaryId(id)) context.showAll(summaryTeacherOf(id));
       else {
         context.setActive(id);
         context.select(id);

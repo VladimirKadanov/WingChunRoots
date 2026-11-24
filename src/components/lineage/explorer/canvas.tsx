@@ -1900,6 +1900,8 @@ function CanvasFrame({
     actions.openStudents(teacherId);
     announcer.move(studentsOpenWords(nameOf(teacherId)));
   };
+  // ADR 0055: the summary node "and N more" draws the teacher's other students in place.
+  const showAll = (teacherId: string) => actions.expand(teacherId, 'students');
   // M06 seam: roving. The canvas's handle, for the panel: its Close and "List all students" select
   // and open through the canvas too, so they are spoken as a key's or a click's are, once.
   useImperativeHandle(
@@ -1942,6 +1944,7 @@ function CanvasFrame({
     selectedId,
     select,
     openStudents,
+    showAll,
     closeList: actions.closeStudents,
     say: (text) => announcer.notice(text),
     collapseSheet: () => panel?.current?.collapse() ?? false,
@@ -1989,7 +1992,7 @@ function CanvasFrame({
               onNodeClick={(_, node) => {
                 // The active node follows a click or a tap too (the click focuses it).
                 setActive(node.id);
-                if (isSummaryId(node.id)) openStudents(summaryTeacherOf(node.id));
+                if (isSummaryId(node.id)) showAll(summaryTeacherOf(node.id));
                 else select(node.id);
               }}
               onPaneClick={() => select(null)}

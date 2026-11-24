@@ -61,8 +61,10 @@ export interface GraphContext {
   selectedId: string | null;
   /** Selects a person (the panel or sheet opens) or clears the selection. */
   select(id: string | null): void;
-  /** Opens the panel's list of a teacher's students (the summary node). */
+  /** Opens the panel's list of a teacher's students. */
   openStudents(teacherId: string): void;
+  /** Draws every student of a teacher in place (the summary node "and N more"; ADR 0055). */
+  showAll(teacherId: string): void;
   /** Closes the panel's list of students, keeping the selection; true when a list was open (Esc). */
   closeList(): boolean;
   /** Speaks these words in the live region now (no wait): a move that has no target says why. */
@@ -92,7 +94,7 @@ export interface CanvasHandle {
    * says so in the live region (plan §4.9): the panel's Close, Esc and swipe go through it.
    */
   select(id: string | null): void;
-  /** Opens the panel's list of a teacher's students, as the summary node does, and says so: the panel's "List all students". */
+  /** Opens the panel's list of a teacher's students and says so: the panel's "List all students". */
   openStudents(teacherId: string): void;
   /** Moves the keyboard focus to the active node (after ensureVisible). */
   focusActive(): void;
@@ -128,7 +130,7 @@ export interface NodeActions {
   expand(id: string, direction: ExpandDirection): void;
   /** The people whose expansion is loading or being laid out ("Loading…", aria-busy). */
   pending: ReadonlySet<string>;
-  /** Opens the panel's list of a teacher's students (a summary node, or "+N students" at the cap). */
+  /** Opens the panel's list of a teacher's students (the panel's "List all students"). */
   openStudents(teacherId: string): void;
   /** Closes the panel's list of students and keeps the selection; false when no list was open (Esc). */
   closeStudents(): boolean;

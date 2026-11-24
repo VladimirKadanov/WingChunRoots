@@ -130,6 +130,7 @@ function setup(options: { selectedId?: string | null; collapses?: boolean; list?
     selectedId: options.selectedId ?? null,
     select: vi.fn(),
     openStudents: vi.fn(),
+    showAll: vi.fn(),
     closeList: vi.fn(() => options.list ?? false),
     say: vi.fn(),
     collapseSheet: vi.fn(() => options.collapses ?? false),
@@ -169,21 +170,23 @@ describe('keyHandlers', () => {
     expect(context.say).toHaveBeenLastCalledWith('First in this row.');
   });
 
-  it('opens the profile with Enter, and the list of the students on the summary node', () => {
+  it('opens the profile with Enter, and draws the other students on the summary node (ADR 0055)', () => {
     const { handlers, deps, context } = setup();
     expect(handlers.open('s')).toBe(true);
     expect(deps.go).toHaveBeenCalledWith('/people/demo-s');
     handlers.open('more:t');
-    expect(context.openStudents).toHaveBeenCalledWith('t');
+    expect(context.showAll).toHaveBeenCalledWith('t');
+    expect(context.openStudents).not.toHaveBeenCalled();
   });
 
-  it('selects with Space, and opens the list of the students on the summary node', () => {
+  it('selects with Space, and draws the other students on the summary node (ADR 0055)', () => {
     const { handlers, context } = setup();
     expect(handlers.select('s')).toBe(true);
     expect(context.select).toHaveBeenCalledWith('s');
     expect(context.setActive).toHaveBeenCalledWith('s');
     handlers.select('more:t');
-    expect(context.openStudents).toHaveBeenCalledWith('t');
+    expect(context.showAll).toHaveBeenCalledWith('t');
+    expect(context.openStudents).not.toHaveBeenCalled();
     expect(context.select).toHaveBeenCalledTimes(1);
   });
 
