@@ -119,6 +119,11 @@ export default async function StudentRequestsPage({ searchParams }: { searchPara
           Students who name you as their teacher ask you to confirm it. Approve a request and the link is confirmed; it is shown publicly once both of you have chosen “Show my profile publicly”, and until then
           you both see it here and under Your teachers. Decline it with a reason and the student can correct it and send it again. You never edit a request yourself.
         </p>
+        <p className="mt-3 text-ui">
+          <Link href="/dashboard/students/invite" className="link inline-flex min-h-11 items-center font-semibold" data-testid="invite-students-link">
+            Invite your students with a link or a QR code
+          </Link>
+        </p>
         <p data-testid="student-allowance" className="mt-3 text-sm text-fg-muted">
           Students: {allowanceText}
         </p>

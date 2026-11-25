@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { afterOnboarding, chosenAccountType, ONBOARDING_DEFAULT_NEXT, onboardingNext, onboardingPage } from './destination';
+import { afterOnboarding, afterOnboardingFor, BEGINNER_NEXT, chosenAccountType, ONBOARDING_DEFAULT_NEXT, onboardingNext, onboardingPage } from './destination';
 
 const form = (entries: Record<string, string>) => {
   const data = new FormData();
@@ -51,5 +51,12 @@ describe('the role chosen on the onboarding form', () => {
   it('passes anything else on for account.setType to refuse, cut to a bounded length', () => {
     expect(chosenAccountType(form({ accountType: 'admin' }))).toBe('admin');
     expect(chosenAccountType(form({ accountType: 'x'.repeat(100) }))).toHaveLength(16);
+  });
+
+  it("makes \"I'm new to Wing Chun\" a Student account that goes on to the schools, unless a page sent it here", () => {
+    expect(chosenAccountType(form({ accountType: 'new' }))).toBe('student');
+    expect(afterOnboardingFor(form({ accountType: 'new' }), ONBOARDING_DEFAULT_NEXT)).toBe(BEGINNER_NEXT);
+    expect(afterOnboardingFor(form({ accountType: 'new' }), '/schools/demo-a/trial')).toBe('/schools/demo-a/trial');
+    expect(afterOnboardingFor(form({ accountType: 'student' }), ONBOARDING_DEFAULT_NEXT)).toBe(ONBOARDING_DEFAULT_NEXT);
   });
 });
