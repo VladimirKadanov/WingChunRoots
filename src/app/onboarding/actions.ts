@@ -15,7 +15,7 @@ import { getRequestPrincipal } from '@/server/auth/web';
 import { formResult, keepFormResult } from '@/server/forms/flash';
 import { formStateFromFailure, formStateFromRpcError, rpcErrorCode } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
-import { afterOnboarding, chosenAccountType, onboardingNext, onboardingPage } from './destination';
+import { afterOnboarding, afterOnboardingFor, chosenAccountType, onboardingNext, onboardingPage } from './destination';
 
 const TEXT_FIELDS = ['primaryName', 'originalName', 'originalLang', 'jyutping', 'pinyin', 'countryCode', 'placeId', 'trainingStartYear', 'accountType', 'next'];
 
@@ -85,7 +85,7 @@ async function onboard(form: FormData, next: string): Promise<FormState> {
   // Created now, or already there (a second submit): either way the profile exists, and the
   // account type is the one chosen on the form.
   await applyAccountType(client, form);
-  redirect(conflict ? '/account' : afterOnboarding(next));
+  redirect(conflict ? '/account' : afterOnboardingFor(form, next));
 }
 
 /**
