@@ -847,6 +847,18 @@ test.describe('expansion (C)', () => {
     // The cap no longer cuts the hub's students: no summary node. Students no read returned are
     // counted on the hub's "+N students" and listed in its panel ("List all students").
     expect(after.nodes.some((s) => s.id === summaryIdOf(hub)), 'the summary node is gone').toBe(false);
+    // Where the node was, the students it drew are on screen: the view does not stay on the old
+    // ones while the new row runs on past the pane's edge (owner, staging 2026-11-24).
+    const old = drawnStudents(scene, hub);
+    const added = [...drawnStudents(after, hub)].filter((id) => !old.has(id));
+    const inView = await page.evaluate((ids) => {
+      const pane = document.querySelector('.react-flow')!.getBoundingClientRect();
+      return ids.filter((id) => {
+        const r = document.querySelector(`.react-flow__node[data-id="${id}"]`)?.getBoundingClientRect();
+        return r && r.left >= pane.left && r.right <= pane.right && r.top >= pane.top && r.bottom <= pane.bottom;
+      }).length;
+    }, added);
+    expect(inView, 'students drawn in place are in view').toBeGreaterThanOrEqual(Math.min(added.length, 2));
     await expect(page.getByTestId('explorer-announcement')).toContainText(`Added ${shown - drawn} students of ${hubName}.`);
     if (shown < total) await expect(page.getByTestId('explorer-announcement')).toContainText(`The rest are in the list of students of ${hubName}.`);
   });
@@ -901,6 +913,28 @@ test.describe('expansion (C)', () => {
     await expect.poll(() => wholeAndUncovered(nodeOf(page, student)), 'the student is whole and uncovered').toBe(true);
     await settledView(page);
     expect(await wholeAndUncovered(nodeOf(page, student)), 'and stays so').toBe(true);
+  });
+
+  test('@M06 the list of students still loads after Back from a profile opened from it', async ({ page }) => {
+    // Next.js keeps the explorer in <Activity> while the profile is shown; on Back the list's
+    // effect runs before the explorer gives its reader again (expand-state.ts readStudents waits).
+    test.setTimeout(120_000);
+    const hub = await personIdOf('demo-hub-a');
+    const hubName = await personNameOf('demo-hub-a');
+    await openExplorer(page, { focus: hub });
+    await settledView(page);
+    expect(await focusGraph(page)).toBe(hub);
+    await page.keyboard.press('Space');
+    const panel = page.getByTestId('explorer-panel');
+    await panel.getByRole('button', { name: /^List all students \(\d+ not drawn\) of / }).dispatchEvent('click');
+    const first = await listedStudents(page, hubName, 1);
+    expect(first.length).toBeGreaterThan(0);
+    await panel.getByRole('link', { name: first[0]!.name, exact: true }).click();
+    await page.waitForURL(/\/people\//);
+    await page.goBack();
+    await page.waitForURL(/\/explore\?/);
+    await expect(panel.getByText('The students could not be loaded.')).toHaveCount(0);
+    expect(await listedStudents(page, hubName, 1)).toEqual(first);
   });
 
   test('@M06 the panel\'s Close and "List all students" are announced as a key\'s are', async ({ page }) => {

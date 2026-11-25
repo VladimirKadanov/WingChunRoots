@@ -107,6 +107,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Depth 2: the merge commit and its first parent, the base, so the step below needs no
+          # second fetch (the repository is private and the credentials are not persisted).
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -121,7 +124,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
           git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed.txt"
           echo "$(wc -l < "$RUNNER_TEMP/changed.txt") changed files"
           if scripts/ci-docs-only.sh < "$RUNNER_TEMP/changed.txt"; then
@@ -202,6 +205,9 @@ jobs:
         run: scripts/visual-baselines.sh print
       - name: Upload the verify log and Playwright results
         if: always()
+        # The logs are a convenience: a full artifact storage quota (the private repository's,
+        # 2026-11-25) must not fail a run whose checks passed. The job log keeps the summary.
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: verify-log-${{ matrix.part }}${{ matrix.shard && '-' || '' }}${{ matrix.shard && strategy.job-index || '' }}
@@ -268,6 +274,10 @@ jobs:
         run: scripts/check-env.sh compose
       - name: Build the image and start the profile app
         run: docker compose --profile app up -d --build
+      - name: Free the build cache (the smoke run's traces filled the runner's disk, 2026-11-24)
+        run: |
+          docker builder prune -af
+          df -h /
       - name: Wait for /healthz
         run: |
           for attempt in $(seq 1 90); do
@@ -306,6 +316,7 @@ jobs:
         run: docker compose --profile app logs --no-color --tail 300 db-bootstrap migrate web worker
       - name: Upload the Playwright results
         if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: image-test-results

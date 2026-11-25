@@ -101,7 +101,7 @@ import { NodeControls } from './node-controls';
 import { CONTROLS_START, type ControlsPlace, placeControls, type Strip } from './controls-layout';
 import { KEY_HELP } from './shortcuts';
 import { relationsText, summaryText } from './relations';
-import { isSummaryId, joinToBox, relationsId, summaryTeacherOf } from './state';
+import { isSummaryId, joinToBox, relationsId, summaryIdOf, summaryTeacherOf } from './state';
 import { SummaryCard } from './summary-node';
 import { CenterIcon, KeyboardIcon } from './tool-icons';
 import { anchorDelta, ensureVisible, isDrawn, nearest, type PaneArea, type View, VIEW_GAP, visibleArea } from './viewport';
@@ -1237,6 +1237,23 @@ const sceneKey = (scene: Scene) => `${scene.dataVersion}:${scene.focusId}:${scen
  * Fits or centres the view whenever a new scene arrives (a new focus, depth or view), and keeps
  * the view the user left while the list is shown (plan §4.10).
  */
+/**
+ * The teacher's students in `scene` that were not in the last one: the first in reading order (top
+ * row, then left) and the right edge of them all; null when there is none.
+ */
+export function newStudents(scene: Scene, before: ReadonlyMap<string, Point>, teacherId: string): { first: SceneNode; right: number } | null {
+  const at = new Map(scene.nodes.map((n) => [n.id, n]));
+  let first: SceneNode | null = null;
+  let right = -Infinity;
+  for (const e of scene.edges) {
+    const n = e.teacherId === teacherId && !before.has(e.studentId) ? at.get(e.studentId) : undefined;
+    if (!n) continue;
+    right = Math.max(right, n.x + n.width);
+    if (!first || n.y < first.y || (n.y === first.y && n.x < first.x)) first = n;
+  }
+  return first && { first, right };
+}
+
 function FitOnScene({
   scene,
   nodes,
@@ -1291,12 +1308,21 @@ function FitOnScene({
     lastFocus.current = scene.focusId;
     const chosen = scene.focusId !== focusBefore && nodes.some((n) => n.id === scene.focusId && n.selected) ? scene.focusId : null;
     const anchor = anchorId ?? chosen;
-    const from = anchor ? before.get(anchor) : undefined;
-    const to = anchor ? places.current.get(anchor) : undefined;
+    // ADR 0055: "and N more" pressed (its card is gone from the new scene): the teacher's first new
+    // student takes the card's screen point, so the students drawn in place are where it was.
+    // Where they reach past the pane's right edge, they move left just enough (never past its left).
+    const card = anchorId ? summaryIdOf(anchorId) : '';
+    const unfolded = before.has(card) && !places.current.has(card) ? newStudents(scene, before, anchorId!) : null;
+    const from = unfolded ? before.get(card) : anchor ? before.get(anchor) : undefined;
+    const to = unfolded?.first ?? (anchor ? places.current.get(anchor) : undefined);
     if (!first && from && to) {
-      const { panZoom, transform } = store.getState();
+      const { panZoom, transform, width } = store.getState();
       const [x, y, zoom] = transform;
       const delta = anchorDelta(from, to, zoom);
+      if (unfolded) {
+        const left = from.x * zoom + x;
+        delta.x += Math.max(VIEW_GAP, Math.min(left, width - VIEW_GAP - (unfolded.right - to.x) * zoom)) - left;
+      }
       if (panZoom && (delta.x !== 0 || delta.y !== 0)) trackMove(moves, move.duration, panZoom.setViewport({ x: x + delta.x, y: y + delta.y, zoom }, move));
       return;
     }

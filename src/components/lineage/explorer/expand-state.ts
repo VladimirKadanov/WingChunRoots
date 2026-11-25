@@ -79,6 +79,8 @@ export type StudentsInput = { slug: string; page: number; pageSize: number };
 type StudentsReader = (input: StudentsInput) => Promise<StudentsPageDto>;
 
 let studentsReader: StudentsReader | null = null;
+/** Reads asked for while no explorer gives a reader: they go on once one does. */
+let waiting: (() => void)[] = [];
 
 /**
  * Gives the panel's list its reader (expand.ts useExpansions: people.students through the
@@ -86,12 +88,34 @@ let studentsReader: StudentsReader | null = null;
  */
 export function provideStudents(reader: StudentsReader): () => void {
   studentsReader = reader;
+  const ready = waiting;
+  waiting = [];
+  for (const go of ready) go();
   return () => {
     if (studentsReader === reader) studentsReader = null;
   };
 }
 
-/** A page of a teacher's students (students-list.tsx). Fails while no explorer gives a reader. */
-export function readStudents(input: StudentsInput): Promise<StudentsPageDto> {
-  return studentsReader ? studentsReader(input) : Promise.reject(new Error('No students reader'));
+/** How long a read waits for an explorer to give the reader before it fails (DEFAULT, no D number). */
+export const READER_WAIT_MS = 5000;
+
+/**
+ * A page of a teacher's students (students-list.tsx). A read asked for before the explorer gives
+ * its reader waits for it: effects run children first, so when the explorer is shown again (Back
+ * from a profile: Next.js keeps the page in <Activity>), the list asks before useExpansions gives
+ * the reader again. It fails only when no reader comes within `waitMs` (READER_WAIT_MS).
+ */
+export function readStudents(input: StudentsInput, waitMs = READER_WAIT_MS): Promise<StudentsPageDto> {
+  if (studentsReader) return studentsReader(input);
+  return new Promise<void>((resolve, reject) => {
+    const go = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      waiting = waiting.filter((w) => w !== go);
+      reject(new Error('No students reader'));
+    }, waitMs);
+    waiting.push(go);
+  }).then(() => studentsReader!(input));
 }

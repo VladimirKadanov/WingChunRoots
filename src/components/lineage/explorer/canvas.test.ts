@@ -8,7 +8,7 @@ import { motion } from '@/design/tokens';
 import { NODE_SIZES } from '@/lib/lineage-layout/presets';
 import { COLUMN_HEADER_SPACE } from '@/lib/lineage-layout/scene';
 import type { Box, DetailLevel, Scene, SceneEdge, SceneNode } from '@/lib/lineage-layout/types';
-import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, fullZoomOf, largeViewStart, ms, PHONE_FULL_ZOOM, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
+import { cubicBezier, DETAIL_ZOOM, FIT_OPTIONS, fitViewStart, fullZoomOf, largeViewStart, ms, newStudents, PHONE_FULL_ZOOM, READABLE_ZOOM, shiftIntoView, VIEW_MOTION, whenMovesEnd, wholeFitZoom, wholeViewStart } from './canvas';
 
 /** The slot of most scenes here: the 200×64 card before M16. The tests of a phone's first view that depend on the card's width use M16's (FULL). */
 const SLOT = { width: 200, height: 64 };
@@ -665,5 +665,27 @@ describe('a selected person when the pane gets shorter (a phone\'s panel opens b
     expect(shiftIntoView(card(126, 30), { width: 393, height: 50 })).toBe(12 - 30);
     // Never down.
     expect(shiftIntoView(card(126, 5), { width: 393, height: 50 })).toBe(0);
+  });
+});
+
+describe('newStudents (ADR 0055: "and N more" draws the rest in place)', () => {
+  it('finds the teacher\'s students that were not drawn before: the first in reading order and the right edge of them all', () => {
+    const people = [
+      { id: 't', rank: 0, x: 0 },
+      { id: 'a', rank: 1, x: 0 },
+      { id: 'b', rank: 1, x: 220 },
+      { id: 'c', rank: 1, x: 440 },
+      { id: 'd', rank: 1, x: 660 },
+      { id: 'e', rank: 2, x: 0 },
+    ];
+    const scene = sceneOf(people, [['t', 'a'], ['t', 'b'], ['t', 'c'], ['t', 'd'], ['a', 'e']], 't');
+    const before = new Map([['t', { x: 0, y: 0 }], ['a', { x: 0, y: 200 }], ['b', { x: 220, y: 200 }], ['more:t', { x: 440, y: 200 }]]);
+    const found = newStudents(scene, before, 't');
+    expect(found?.first.id).toBe('c');
+    expect(found?.right).toBe(660 + SLOT.width);
+    // Someone else's new student (e) is not the teacher's.
+    expect(newStudents(scene, before, 'a')?.first.id).toBe('e');
+    // Nobody new: null.
+    expect(newStudents(scene, new Map(people.map((p) => [p.id, { x: p.x, y: 0 }])), 't')).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import type { LineageGraphDto } from '@/server/dto/public';
 
 import { anchoredScene as anchoredOnScreen, expandInput, expandLayout, keepsExpansions, type Latest, positionsOf, type Work } from './expand';
 import { anchoredScene, arrived, drawn, expansionWords, mergeExpansion, RELAYOUT_DEBOUNCE_MS, sameRecord, studentsOf } from './expand-engine';
-import { counting, fresh, provideStudents, readStudents, type State, withoutFailedView } from './expand-state';
+import { counting, fresh, provideStudents, READER_WAIT_MS, readStudents, type State, withoutFailedView } from './expand-state';
 import { capFanout, FANOUT_SHOWN, summaryIdOf } from './state';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -373,8 +373,10 @@ describe('the expansions\' state (expand-state.ts)', () => {
     expect(withoutFailedView(expanded, { nodes: [], edges: [] } as never)).toBe(expanded);
   });
 
-  it('reads a page of students through the explorer\'s reader, and fails without one', async () => {
-    await expect(readStudents({ slug: 'demo-1', page: 1, pageSize: 20 })).rejects.toThrow();
+  it('reads a page of students through the explorer\'s reader, and fails when none comes in time', async () => {
+    // A short wait instead of READER_WAIT_MS (real timers: fake ones would change shared state).
+    expect(READER_WAIT_MS).toBeGreaterThan(0);
+    await expect(readStudents({ slug: 'demo-1', page: 1, pageSize: 20 }, 10)).rejects.toThrow('No students reader');
     const page = { page: 2 } as never;
     const reader = vi.fn(() => Promise.resolve(page));
     const undo = provideStudents(reader);
@@ -387,7 +389,16 @@ describe('the expansions\' state (expand-state.ts)', () => {
     await readStudents({ slug: 'demo-1', page: 1, pageSize: 20 });
     expect(newer).toHaveBeenCalledTimes(1);
     undoNewer();
-    await expect(readStudents({ slug: 'demo-1', page: 1, pageSize: 20 })).rejects.toThrow();
+  });
+
+  it('a read asked for before the explorer gives its reader waits for it (Back to the explorer: effects run children first)', async () => {
+    const page = { page: 1 } as never;
+    const pending = readStudents({ slug: 'demo-1', page: 1, pageSize: 20 });
+    const reader = vi.fn(() => Promise.resolve(page));
+    const undo = provideStudents(reader);
+    await expect(pending).resolves.toBe(page);
+    expect(reader).toHaveBeenCalledWith({ slug: 'demo-1', page: 1, pageSize: 20 });
+    undo();
   });
 });
 
