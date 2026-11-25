@@ -37,7 +37,10 @@ import { pageRead } from '@/server/rpc/form';
 import { serverClient } from '@/server/rpc/server';
 import type { DashboardOverview, PersonRef } from '@/server/services/dashboard';
 import type { NextStep } from '@/server/services/next-steps';
+import type { FormState } from '@/lib/form-state';
 import { requestPilotAccessAction } from './actions';
+import { listingForm } from './schools/form-ids';
+import { ListingAction } from './schools/listing-actions';
 import { Notifications, NotificationsProvider, UnreadLink } from './notifications';
 
 export const instant = false;
@@ -156,7 +159,19 @@ function StudentLists({ overview }: { overview: DashboardOverview }) {
   );
 }
 
-function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade: ReactNode }) {
+function SifuLists({
+  overview,
+  upgrade,
+  confirmedSchool,
+  confirmForms,
+}: {
+  overview: DashboardOverview;
+  upgrade: ReactNode;
+  /** The name of a school just confirmed with "This listing is current" from this page. */
+  confirmedSchool: string | null;
+  /** The outcome of each row's "This listing is current" posted without JavaScript. */
+  confirmForms: Map<string, FormState | null>;
+}) {
   const { requests, students, schools } = overview.sifu!;
   const allowance = allowanceShort('approved', students.approved, students.limit, overview.plan.name);
   return (
@@ -203,9 +218,14 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
         )}
       </Section>
       <Section id="schools" title="My schools">
+        {confirmedSchool ? (
+          <p id="outcome" role="status" tabIndex={-1} className="rounded-sm border-l-4 border-fg bg-surface-2 px-4 py-3 text-sm" data-testid="home-school-confirmed">
+            Confirmed: {confirmedSchool} is current as of today.
+          </p>
+        ) : null}
         {schools.length === 0 ? (
           <Empty testId="empty-schools">
-            No school lists you as an instructor yet. List your school, or ask its head instructor to add you; it appears here.
+            You have not listed a school, and no school lists you as an instructor yet. List your school, or ask its head instructor to add you; it appears here.
           </Empty>
         ) : (
           <ul data-testid="schools" className="grid">
@@ -218,7 +238,21 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
                     {item.city}, {item.countryCode} · {item.roleLabel}
                   </span>
                 </span>
-                <span className="text-sm">{item.statusLabel}</span>
+                <span className="text-sm" data-testid="home-school-status">
+                  {item.statusLabel}
+                </span>
+                {item.openTrialRequests > 0 || item.needsConfirmation ? (
+                  <span className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2">
+                    {item.openTrialRequests > 0 ? (
+                      <Link href={`/dashboard/schools/${item.id}/inquiries`} className="link inline-flex min-h-11 items-center text-sm font-semibold" data-testid="home-school-trials">
+                        {item.openTrialRequests === 1 ? '1 trial lesson request waits for an answer' : `${item.openTrialRequests} trial lesson requests wait for an answer`}
+                      </Link>
+                    ) : null}
+                    {item.needsConfirmation ? (
+                      <ListingAction schoolId={item.id} step="confirm" label="This listing is current" initial={confirmForms.get(item.id) ?? null} back="home" />
+                    ) : null}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -375,6 +409,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   // page has no prompt any more (the account switched to Student in another tab or app, review
   // round 2, recheck-4), the message stands on its own at the same anchor.
   const pilotOutcome = await readFormResult('pilot-access', query.outcome);
+  // "This listing is current" from a row of My schools comes back here (role replay 2026-11-25, P1-4).
+  const ownSchools = overview.sifu?.schools ?? [];
+  const confirmedSchool = typeof query.confirmed === 'string' ? (ownSchools.find((s) => s.id === query.confirmed)?.name ?? null) : null;
+  const confirmForms = new Map(await Promise.all(ownSchools.filter((s) => s.needsConfirmation).map(async (s) => [s.id, await readFormResult(listingForm(s.id), query.outcome)] as const)));
   const sifu = overview.accountType === 'sifu';
   const instructorBadge =
     overview.instructor.status === 'verified' ? 'verified' : overview.instructor.status === 'unverified' ? 'unconfirmed' : null;
@@ -448,6 +486,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             {staffOnly ? null : sifu ? (
               <SifuLists
                 overview={overview}
+                confirmedSchool={confirmedSchool}
+                confirmForms={confirmForms}
                 upgrade={
                   offer ? (
                     <UpgradePrompt

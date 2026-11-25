@@ -6,6 +6,11 @@
 export const SCHOOL_FORM = 'school';
 /** The listing's one-button forms: "Send for review" and "This listing is current". */
 export const SCHOOL_ACTION_FORM = 'school-listing';
+/** The same forms in a list of schools, one per school (Your schools, the dashboard home). */
+export const listingForm = (schoolId: string) => `school-listing-${schoolId}`;
+/** The lists a listing form can come back to, by name (never an address from the form). */
+export const LISTING_BACK = { schools: '/dashboard/schools', home: '/dashboard' } as const;
+export type ListingBack = keyof typeof LISTING_BACK;
 
 /** M21: the schedule and fees form of /dashboard/schools/<id>/schedule. */
 export const SCHEDULE_FORM = 'school-schedule';
