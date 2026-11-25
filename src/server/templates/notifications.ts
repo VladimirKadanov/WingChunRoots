@@ -397,7 +397,8 @@ const relationshipApproved: NotificationTemplate<RelationshipNotice & { role: 's
             who(other, 'Your teacher'),
             { text: ` confirmed that they taught you${inLineage(lineageName)}.${shown ? ' The link is now public.' : `${NOT_PUBLIC_YET} You see it under Your teachers.`}` },
           ],
-          action: { label: 'See your teachers', href: OWN_TEACHERS },
+          // Role replay 2026-11-25 (P2-2): a link that is not public yet points to the one-tap choice.
+          action: { label: shown ? 'See your teachers' : 'Make the link public', href: shown ? OWN_TEACHERS : `${OWN_TEACHERS}#teachers` },
         }
       : {
           title: 'Student confirmed',
@@ -406,7 +407,7 @@ const relationshipApproved: NotificationTemplate<RelationshipNotice & { role: 's
             who(other, 'a student'),
             { text: ` as your student${inLineage(lineageName)}.${shown ? ' The link is now public.' : `${NOT_PUBLIC_YET} You see it under Student requests.`}` },
           ],
-          action: { label: 'See your students', href: STUDENT_QUEUE },
+          action: { label: shown ? 'See your students' : 'Make the link public', href: STUDENT_QUEUE },
         },
   sample: {
     relationshipId: '0190a5c0-0000-7000-8000-000000000004',
@@ -467,6 +468,40 @@ const relationshipEnded: NotificationTemplate<RelationshipNotice & { by: 'studen
     lineageName: 'Demo Lineage A',
     status: 'verified',
     by: 'teacher',
+  },
+};
+
+/**
+ * "relationship.reminder" (role replay 2026-11-25, P2-1, ADR 0060): to the teacher, when the student
+ * of a request that has waited 14 days or more sends a reminder. Plain and calm: no countdown.
+ */
+const relationshipReminder: NotificationTemplate<RelationshipNotice & { days: number | null }> = {
+  name: 'relationship.reminder',
+  parse(payload) {
+    const { data, ...notice } = relationshipNotice('relationship.reminder', payload);
+    const days = typeof data.days === 'number' && Number.isInteger(data.days) && data.days >= 0 && data.days < 100_000 ? data.days : null;
+    return { ...notice, days };
+  },
+  render: ({ other, lineageName, status, days }) =>
+    status === 'pending_teacher' || status === null
+      ? {
+          title: 'A student is still waiting for your answer',
+          body: [
+            who(other, 'A student'),
+            { text: ` asked you${days !== null ? ` ${days} days ago` : ''} to confirm that you taught them${inLineage(lineageName)}. You can approve or decline the request.` },
+          ],
+          action: { label: 'Answer the request', href: STUDENT_QUEUE },
+        }
+      : {
+          title: 'A student sent a reminder',
+          body: [who(other, 'A student'), { text: ` sent a reminder about their request${inLineage(lineageName)}. The request has already been answered or withdrawn.` }],
+        },
+  sample: {
+    relationshipId: '0190a5c0-0000-7000-8000-000000000007',
+    other: { value: 'Demo Student', lang: 'en' },
+    lineageName: 'Demo Lineage A',
+    status: 'pending_teacher',
+    days: 21,
   },
 };
 
@@ -812,6 +847,7 @@ export const RELATIONSHIP_NOTIFICATIONS = [
   'relationship.approved',
   'relationship.rejected',
   'relationship.ended',
+  'relationship.reminder',
   'review.decided',
   'invitation.claimed',
   'relationship.arbitration',
@@ -2051,6 +2087,7 @@ export const NOTIFICATION_TEMPLATES = {
   'relationship.approved': relationshipApproved,
   'relationship.rejected': relationshipRejected,
   'relationship.ended': relationshipEnded,
+  'relationship.reminder': relationshipReminder,
   'review.decided': reviewDecided,
   'review.opened': reviewOpened,
   'review.updated': reviewUpdated,

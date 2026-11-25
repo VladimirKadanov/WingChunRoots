@@ -187,6 +187,7 @@ function SifuLists({ overview, upgrade }: { overview: DashboardOverview; upgrade
                   meta={
                     <>
                       {item.lineage} · sent {formatDay(item.createdAt)}
+                      {item.waitingDays > 0 ? ` · waiting ${item.waitingDays === 1 ? '1 day' : `${item.waitingDays} days`}` : ''}
                     </>
                   }
                   status={<StatusBadge state="unconfirmed" label="Sent to you" />}

@@ -50,7 +50,7 @@
 // drops the public cache with `tags` when it runs in the web process; the command line cannot (it
 // says to restart the web server).
 
-import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm';
 import * as z from 'zod';
 
 import { writeAudit } from '../audit';
@@ -392,6 +392,12 @@ async function dismissCases(
  * disputed and revoked relationships are the historical record and stay.
  */
 async function withdrawOpenRequests(tx: Transaction, personId: string, actor: Principal | null, userId: string): Promise<{ withdrawn: number; cases: number; invitations: string[] }> {
+  // P2-3 (ADR 0060): the notes the student wrote to their teachers go with the account, whatever
+  // the link's state; the link itself stays when it is part of the record.
+  await tx
+    .update(teachingRelationship)
+    .set({ requestNote: null })
+    .where(and(eq(teachingRelationship.studentPersonId, personId), isNotNull(teachingRelationship.requestNote)));
   const rows = await tx
     .select({ id: teachingRelationship.id, status: teachingRelationship.status })
     .from(teachingRelationship)

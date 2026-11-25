@@ -1,0 +1,2 @@
+ALTER TABLE "teaching_relationship" ADD COLUMN "request_note" text;--> statement-breakpoint
+ALTER TABLE "teaching_relationship" ADD CONSTRAINT "teaching_relationship_request_note_length" CHECK ("request_note" IS NULL OR char_length("request_note") BETWEEN 1 AND 280);

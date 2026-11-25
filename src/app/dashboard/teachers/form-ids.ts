@@ -9,4 +9,7 @@ export const REQUEST_FORM = 'teacher-request';
 export const WITHDRAW_FORM = 'withdraw-request';
 export const END_FORM = 'end-training';
 export const withdrawForm = (relationshipId: string) => `withdraw-${relationshipId}`;
+/** Role replay 2026-11-25 (P2-1): "Send a reminder" of a request that has waited 14 days. */
+export const REMIND_FORM = 'remind-teacher';
+export const remindForm = (relationshipId: string) => `remind-${relationshipId}`;
 export const endForm = (relationshipId: string) => `end-${relationshipId}`;

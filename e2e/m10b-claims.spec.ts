@@ -295,7 +295,10 @@ test('@M10b a missing teacher gets an invitation, claims the profile after revie
   expect(await relationshipRow(relationshipId)).toMatchObject({ status: 'verified', visibility: 'public', person_visibility: 'involved_only' });
   expect(await isPublicEdge(relationshipId)).toBe(false);
   await invitee.page.goto('/dashboard/students/requests');
-  await expect(visible(invitee.page.getByTestId('link-not-public'))).toContainText('Confirmed, not public yet');
+  // Role replay 2026-11-25 (P2-2, ADR 0060): the note says whose profile is private, with the one-tap button.
+  await expect(visible(invitee.page.getByTestId('link-not-public'))).toHaveAttribute('data-private', 'you');
+  await expect(visible(invitee.page.getByTestId('link-not-public'))).toContainText('Make your profile public to appear in the lineage');
+  await expect(visible(invitee.page.getByTestId('publish-profile'))).toBeVisible();
   // The teacher chooses it in the profile editor: the record and the link are public now.
   await invitee.page.goto('/dashboard/profile');
   await visible(invitee.page.getByLabel('Show my profile publicly')).check();

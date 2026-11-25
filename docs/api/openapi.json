@@ -1084,6 +1084,29 @@
         }
       }
     },
+    "/profile/publish": {
+      "post": {
+        "operationId": "profile.publish",
+        "summary": "\"Show my profile publicly\": the publication consent and a public own profile, as in the profile editor; audited",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/family": {
       "get": {
         "operationId": "family.get",
@@ -6736,6 +6759,17 @@
                     "default": false,
                     "type": "boolean"
                   },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 280
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "idempotencyKey": {
                     "type": "string",
                     "pattern": "^[A-Za-z0-9_-]{8,64}$"
@@ -6858,6 +6892,17 @@
                   "displayPrimary": {
                     "default": false,
                     "type": "boolean"
+                  },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 280
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "idempotencyKey": {
                     "type": "string",
@@ -7032,6 +7077,64 @@
       "post": {
         "operationId": "relationships.withdraw",
         "summary": "Withdraw a request that waits or was declined (the student)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "relationshipId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "idempotencyKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{8,64}$"
+                  }
+                },
+                "required": [
+                  "relationshipId",
+                  "idempotencyKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {},
+                    {
+                      "not": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed its schema: `data.fields` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/relationships/remind": {
+      "post": {
+        "operationId": "relationships.remind",
+        "summary": "Send the teacher a reminder of a request that has waited 14 days or more (the student; at most once every 14 days)",
         "requestBody": {
           "required": true,
           "content": {
