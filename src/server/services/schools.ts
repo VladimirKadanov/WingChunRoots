@@ -88,7 +88,7 @@ import { openPilotRequest, planSummary } from './plans';
 import { idempotencyKey } from './relationships';
 import { recordCaseEvent } from './review-core';
 import { notify, notifyEach } from './notify';
-import { ACTIVITY_RESET, activityOf, type SchoolActivity } from './school-activity';
+import { ACTIVITY_RESET, activityOf, listingLabel, type SchoolActivity } from './school-activity';
 import { publicScheduleOf } from './school-schedule';
 import { openTrialCounts } from './trial-lessons';
 
@@ -779,14 +779,6 @@ export interface MySchools {
   schools: OwnSchoolItem[];
 }
 
-const STATUS_LABELS: Record<(typeof SCHOOL_STATUSES)[number], string> = {
-  draft: 'Draft',
-  pending_review: 'Waiting for review',
-  active: 'Listed',
-  hidden: 'Hidden by a moderator',
-  archived: 'Archived',
-};
-
 async function ownPersonId(db: Executor, userId: string): Promise<string | null> {
   const [row] = await db
     .select({ id: person.id })
@@ -853,7 +845,7 @@ export async function mySchools(principal: Principal | null): Promise<MySchools>
       city: r.city,
       countryCode: r.countryCode,
       status: r.status,
-      statusLabel: STATUS_LABELS[r.status],
+      statusLabel: listingLabel(r.status, r.activityStage),
       locationPrivacy: r.locationPrivacy,
       pin: pinState(r.status, shown.has(r.id), r.activityStage),
       lastActivityAt: r.lastActivityAt.toISOString(),
@@ -1036,7 +1028,7 @@ export async function schoolEditor(principal: Principal | null, raw: z.input<typ
       formsTaught: row.formsTaught,
       instructorIds: instructors.map((i) => i.id).filter((id) => id !== ownId),
       status: row.status,
-      statusLabel: STATUS_LABELS[row.status],
+      statusLabel: listingLabel(row.status, row.activityStage),
       pin: pinState(row.status, shown.has(row.id), row.activityStage),
       lastActivityAt: row.lastActivityAt.toISOString(),
       activity: activityOf(row),
