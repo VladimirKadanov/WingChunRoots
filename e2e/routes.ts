@@ -91,6 +91,9 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/dashboard/teachers', name: 'teachers', status: 200, milestone: 'M09', key: true, signInAs: 'demo-pending' },
   { path: '/dashboard/teachers/new', name: 'teachers-new', status: 200, milestone: 'M09', key: true, signInAs: 'demo-pending' },
   { path: '/dashboard/students/requests', name: 'student-requests', status: 200, milestone: 'M09', key: true, signInAs: 'demo-free-sifu-5' },
+  // A Sifu's invite link and the page it opens (role replay 2026-11-25, ADR 0058): read only.
+  { path: '/dashboard/students/invite', name: 'students-invite', status: 200, milestone: 'M09', signInAs: 'demo-pro-sifu-8' },
+  { path: '/join/demo-pro-sifu-8', name: 'join', status: 200, milestone: 'M09' },
   // Evidence and the review queue (M10a). The claim form of a demo account that no test changes;
   // the queue as the seeded administrator sees it (the seeded cases: the M10a spec, which adds and
   // decides cases, runs in the exclusive run after the visual regression); the archival edit of

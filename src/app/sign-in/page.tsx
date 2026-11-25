@@ -8,6 +8,7 @@ import Link from 'next/link';
 
 import { AuthFrame, FormFooter, Notice } from '@/components/account/auth-frame';
 import { ForgetRecentSearches } from '@/components/account/forget-recent-searches';
+import { isClaimPath, isInvitationPath, isTeacherRequestPath, isTrialPath } from '@/lib/invitation-path';
 import { safeNextPath } from '@/server/auth/guards';
 import { readFormResult, readSignInEmail } from '@/server/forms/flash';
 import { SignInForm } from './sign-in-form';
@@ -25,6 +26,19 @@ const NOTICES = {
   'signed-out': 'You are signed out.',
 } as const;
 
+/**
+ * Why the visitor is asked to sign in, in words, when they came from a step that needs an account
+ * (role replay 2026-11-25, P1-6: a beginner asking a school for a trial lesson met a bare form).
+ */
+function ledeFor(next: string): string | undefined {
+  if (!next) return undefined;
+  if (isTrialPath(next)) return 'Sign in, or create an account, to ask this school for a trial lesson. It takes a few minutes, and your profile stays private.';
+  if (isTeacherRequestPath(next)) return 'Sign in, or create an account, to ask your teacher to confirm that they teach you.';
+  if (isClaimPath(next)) return 'Sign in, or create an account, to ask to claim this profile.';
+  if (isInvitationPath(next)) return 'Sign in, or create an account, to answer the invitation.';
+  return 'Sign in to open the page you asked for.';
+}
+
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function SignInPage({ searchParams }: { searchParams: Search }) {
@@ -36,7 +50,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
     <AuthFrame
       eyebrow="Welcome back"
       title="Sign in"
-      lede={next ? 'Sign in to open the page you asked for.' : undefined}
+      lede={ledeFor(next)}
     >
       {notice ? <Notice>{NOTICES[notice]}</Notice> : null}
       {notice === 'signed-out' ? <ForgetRecentSearches /> : null}
