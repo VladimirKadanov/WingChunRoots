@@ -260,9 +260,14 @@ const VERIFY_FOR_DASHBOARD = '/account/security?next=%2Fdashboard';
  * in order, with the first open one as the button. Done steps show a tick and the word "Done", so
  * the state is never colour alone. The card disappears once every step is done.
  */
+const OPTIONAL_STEPS: ReadonlySet<NextStep['key']> = new Set(['public', 'photo']);
+
 function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
   const done = steps.filter((step) => step.done).length;
   const first = steps.find((step) => !step.done)!;
+  // Two or more steps done fold into one line ("Done: …"), so the open ones lead.
+  const folded = done >= 2;
+  const shown = folded ? steps.filter((step) => !step.done) : steps;
   return (
     <section aria-labelledby="next-steps-heading" data-testid="next-steps" className="grid gap-4 rounded-sm border border-border-subtle bg-surface-2 px-4 py-4 sm:px-5">
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -273,8 +278,13 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
           {done} of {steps.length} done
         </p>
       </header>
+      {folded ? (
+        <p className="text-sm text-fg-muted" data-testid="next-steps-done">
+          <span aria-hidden="true">✓ </span>Done: {steps.filter((step) => step.done).map((step) => step.label).join(', ')}
+        </p>
+      ) : null}
       <ol className="grid gap-3">
-        {steps.map((step, index) => (
+        {shown.map((step) => (
           <li key={step.key} data-testid={`next-step-${step.key}`} data-done={step.done ? 'true' : 'false'} className="flex items-start gap-3">
             <span
               aria-hidden="true"
@@ -283,7 +293,7 @@ function NextSteps({ steps, sifu }: { steps: NextStep[]; sifu: boolean }) {
                 step.done ? 'border-verified bg-verified text-on-verified' : 'border-border-strong text-fg',
               )}
             >
-              {step.done ? '✓' : index + 1}
+              {step.done ? '✓' : steps.indexOf(step) + 1}
             </span>
             <span className="grid gap-0.5">
               <span className={cx('text-ui', step === first && 'font-semibold')}>
@@ -383,6 +393,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
     overview.instructor.status === 'verified' ? 'verified' : overview.instructor.status === 'unverified' ? 'unconfirmed' : null;
   // A staff account without a profile has no teachers or students: one quiet line, no lists.
   const staffOnly = overview.staff !== null && !overview.hasProfile;
+  // Role replay 2026-11-25 (P2-2, ADR 0060): when only the optional steps are left (a public
+  // profile, a photo), the card comes after the lists, so waiting requests stay on the first screen.
+  const stepsLater = overview.nextSteps.every((step) => step.done || OPTIONAL_STEPS.has(step.key));
 
   return (
     <NotificationsProvider list={overview.notifications}>
@@ -427,7 +440,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
           <div className="grid content-start gap-10">
             {pilotOutcome && !offer ? <FormMessage form={PILOT_ACCESS_FORM} state={pilotOutcome} single /> : null}
             {overview.staff ? <StaffWork staff={overview.staff} /> : null}
-            {overview.nextSteps.length > 0 ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
+            {overview.nextSteps.length > 0 && !stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
             {!sifu && !staffOnly && overview.hasProfile ? <TeachPrompt /> : null}
 
             {staffOnly ? (
@@ -466,6 +479,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
             ) : (
               <StudentLists overview={overview} />
             )}
+            {overview.nextSteps.length > 0 && stepsLater ? <NextSteps steps={overview.nextSteps} sifu={sifu} /> : null}
           </div>
           <Notifications allHref="/dashboard/notifications" />
         </div>
