@@ -318,7 +318,7 @@ describe('search.query', () => {
   it('refuses a query that is too long or a country that is not one, and answers an empty query with nothing', async () => {
     await expect(searchQuery(null, { q: 'x'.repeat(101) })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     await expect(searchQuery(null, { q: 'so', country: 'XX' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], morePeople: false, schools: [], organizations: [], lineages: [] });
+    expect(await searchQuery(null, { q: '   ' })).toEqual({ query: '', people: [], morePeople: false, schools: [], organizations: [], lineages: [], events: [], place: null, first: null });
   });
 
   it('finds approved organizations by name, in their own country only, and none inside a lineage (ADR 0051)', async () => {
@@ -336,6 +336,40 @@ describe('search.query', () => {
     } finally {
       await getDb().execute(sql`UPDATE organization SET status = 'active' WHERE slug = 'demo-association-south'`);
     }
+  });
+
+  it('puts a school named by every word of the query before the people who share one word (role replay 2026-11-25, P2-5)', async () => {
+    const found = await searchQuery(null, { q: 'hall sofia' });
+    expect(found.schools[0]?.slug).toBe('demo-school-sofia');
+    expect(found.first).toBe('schools');
+    // One word: People stay first.
+    expect((await searchQuery(null, { q: 'sofia' })).first).toBeNull();
+  });
+
+  it('answers a city with its public schools and upcoming events, and finds events by title or city (P2-5)', async () => {
+    const sofia = await searchQuery(null, { q: 'sofia' });
+    expect(sofia.place).toMatchObject({ name: 'Sofia', countryCode: 'BG' });
+    expect(sofia.place!.schools).toBeGreaterThan(0);
+    expect(sofia.schools.map((s) => s.city)).toContain('Sofia');
+    // Cyrillic names the same city.
+    expect((await searchQuery(null, { q: 'София' })).place?.id).toBe(sofia.place!.id);
+    expect((await searchQuery(null, { q: 'sofia', country: 'GB' })).place).toBeNull();
+    const upcoming = await getDb().execute<{ slug: string; title: string; city: string | null }>(sql`
+      SELECT slug, title, city_name AS city FROM v_public_event WHERE status = 'published' AND NOT online AND ends_at > now() ORDER BY starts_at LIMIT 1`);
+    const event = upcoming.rows[0]!;
+    expect((await searchQuery(null, { q: event.title })).events.map((e) => e.slug)).toContain(event.slug);
+    if (event.city) {
+      const inCity = await searchQuery(null, { q: event.city });
+      expect(inCity.events.map((e) => e.slug)).toContain(event.slug);
+      expect(inCity.place?.events).toBeGreaterThan(0);
+    }
+    // Past and cancelled events are never found; an event belongs to no lineage.
+    const past = await getDb().execute<{ title: string; slug: string }>(sql`SELECT title, slug FROM v_public_event WHERE ends_at <= now() OR status = 'cancelled' LIMIT 1`);
+    if (past.rows[0]) expect((await searchQuery(null, { q: past.rows[0].title })).events.map((e) => e.slug)).not.toContain(past.rows[0].slug);
+    const [someLineage] = await getDb().select({ id: lineage.id }).from(lineage).limit(1);
+    const inLineage = await searchQuery(null, { q: 'sofia', lineageId: someLineage!.id });
+    expect(inLineage.events).toEqual([]);
+    expect(inLineage.place).toBeNull();
   });
 
   it('is served at POST /api/v1/search to anonymous callers (the query never in a URL)', async () => {

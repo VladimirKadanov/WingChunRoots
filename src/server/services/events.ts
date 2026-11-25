@@ -161,6 +161,8 @@ export const eventsListInput = z.object({
   school: slug.optional(),
   /** The events an approved organization organizes (its page's "Upcoming events"; ADR 0052). */
   organization: slug.optional(),
+  /** Role replay 2026-11-25 (P2-5): the in-person events in one place (the search's "Events in <city>"). */
+  place: z.uuid().optional(),
   /**
    * ADR 0052, the month view: the events that start in this calendar month ("2027-03"), past and
    * upcoming alike (`when` is not applied). The window is the month in UTC widened by 14 hours on
@@ -390,6 +392,7 @@ async function cachedEventList(input: EventsListInput): Promise<EventListDto> {
       : undefined,
     input.school ? sql`v.school_slug = ${input.school}` : undefined,
     input.organization ? sql`v.organization_slug = ${input.organization}` : undefined,
+    input.place ? sql`NOT v.online AND v.place_id = ${input.place}::uuid` : undefined,
   ].filter((f) => f !== undefined);
   const where = sql.join(filters, sql` AND `);
   const order = upcoming ? sql`v.starts_at ASC, v.slug ASC` : sql`v.starts_at DESC, v.slug ASC`;

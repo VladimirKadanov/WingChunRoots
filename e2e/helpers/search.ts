@@ -41,7 +41,7 @@ export async function personIdOf(slug: string): Promise<string> {
 }
 
 export const palette = (page: Page) => page.getByTestId('search-palette');
-export const searchInput = (page: Page) => palette(page).getByRole('combobox', { name: 'Search people, schools and lineages' });
+export const searchInput = (page: Page) => palette(page).getByRole('combobox', { name: 'Search people, schools, events and lineages' });
 /** A result of the palette whose text contains `text`. */
 export const option = (page: Page, text: string | RegExp) => palette(page).getByRole('option').filter({ hasText: text });
 

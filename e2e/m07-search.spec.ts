@@ -240,7 +240,9 @@ test('@M07 search results contain only public persons and no private fields', as
     // ADR 0056: `invitable` is public (an unclaimed living record, which its profile page offers to claim).
     expect(Object.keys(person).sort()).toEqual(['city', 'countryCode', 'displayName', 'id', 'invitable', 'lineageName', 'matched', 'photo', 'rank', 'school', 'slug', 'verified']);
   }
-  const text = JSON.stringify({ people: answer.people, schools: answer.schools, lineages: answer.lineages });
+  // Role replay 2026-11-25 (P2-5): the answer has events, the city named and the group to show first.
+  expect(Object.keys(answer).sort()).toEqual(['events', 'first', 'lineages', 'morePeople', 'organizations', 'people', 'place', 'query', 'schools']);
+  const text = JSON.stringify({ people: answer.people, schools: answer.schools, lineages: answer.lineages, events: answer.events, place: answer.place });
   expect(text).not.toMatch(/claimedBy|claimed_by|birth|email|public_point|exact_point|"key"|source|keyKind/i);
   // The generated keys never leave the server: the toneless forms are not in any answer.
   expect(text).not.toContain('"sou cing laam"');
@@ -345,6 +347,18 @@ test('@M07 the recent searches have a Clear button outside the list, 44 px or mo
   await expect(palette(page).getByRole('option')).toHaveCount(0);
   await expect(searchInput(page)).toBeFocused();
   expect(await page.evaluate(() => window.localStorage.getItem('wcr.recent-searches'))).toBeNull();
+});
+
+test('@M07 a city opens with its schools and events, and a school named by every word comes before people (role replay P2-5)', async ({ page }) => {
+  await page.goto('/');
+  await openPalette(page);
+  await search(page, 'sofia');
+  const first = palette(page).getByRole('option').first();
+  await expect(first).toContainText('Schools in Sofia');
+  await search(page, 'hall sofia');
+  await expect(palette(page).getByRole('option').first()).toContainText('Demo Wing Chun Hall Sofia');
+  await palette(page).getByRole('option').first().click();
+  await page.waitForURL(/\/schools\/demo-school-sofia$/);
 });
 
 test('@M07 when more people match than the list holds, the palette says so', async ({ page }) => {

@@ -1,5 +1,5 @@
 // The public DTO of search.query (milestone M07, In scope 3; plan §5.6, §6.4). Results are grouped
-// People, Schools, Organizations (ADR 0051) and Lineages, and carry only what a public profile already shows: no account,
+// People, Schools, Events (role replay 2026-11-25, P2-5), Organizations (ADR 0051) and Lineages, and carry only what a public profile already shows: no account,
 // no birth date, no school point, never a generated search key. `matched` is the stored name
 // (person_name) that the query matched, shown only when it is not the display name; a match on a
 // generated pinyin or Jyutping key shows the stored name the key was made from.
@@ -82,6 +82,34 @@ export const lineageHitSchema = z.object({
 });
 export type LineageHitDto = z.infer<typeof lineageHitSchema>;
 
+/** Role replay 2026-11-25 (P2-5): an upcoming published event, by its title or its city. */
+export const eventHitSchema = z.object({
+  id: z.uuid(),
+  slug: z.string(),
+  title: z.string(),
+  /** ISO time of the start; shown as a day in the event's own zone. */
+  startsAt: z.string(),
+  timezone: z.string(),
+  /** The city of an in-person event (null online). */
+  city: z.string().nullable(),
+  countryCode: z.string().nullable(),
+  online: z.boolean(),
+});
+export type EventHitDto = z.infer<typeof eventHitSchema>;
+
+/** Role replay 2026-11-25 (P2-5): the city the whole query names, with its public schools and upcoming events. */
+export const placeHitSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  countryCode: z.string(),
+  schools: z.number().int(),
+  events: z.number().int(),
+});
+export type PlaceHitDto = z.infer<typeof placeHitSchema>;
+
+/** The groups a multi-word query can put before People (`first`). */
+export const SEARCH_FIRST_GROUPS = ['schools', 'events', 'organizations', 'lineages'] as const;
+
 export const searchResultSchema = z.object({
   /** The query as the search read it (trimmed, NFC). */
   query: z.string(),
@@ -92,6 +120,15 @@ export const searchResultSchema = z.object({
   /** ADR 0051: approved organizations (none for a search inside a lineage). */
   organizations: z.array(organizationHitSchema),
   lineages: z.array(lineageHitSchema),
+  /** Role replay 2026-11-25 (P2-5): upcoming events (none for a search inside a lineage). */
+  events: z.array(eventHitSchema),
+  /** The city the whole query names, when it has public schools or upcoming events. */
+  place: placeHitSchema.nullable(),
+  /**
+   * The group whose first result matches every word of a query of two or more words when no person
+   * does ("hall sofia" is a school): shown before People. Null: People first, as always.
+   */
+  first: z.enum(SEARCH_FIRST_GROUPS).nullable(),
 });
 export type SearchResultDto = z.infer<typeof searchResultSchema>;
 

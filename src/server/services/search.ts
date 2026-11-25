@@ -1,4 +1,4 @@
-// search.query (milestone M07, In scope 3; plan §5.6): people, schools, organizations (ADR 0051) and lineages by any
+// search.query (milestone M07, In scope 3; plan §5.6): people, schools, events and the city named (role replay 2026-11-25, P2-5), organizations (ADR 0051) and lineages by any
 // spelling of a name. Open to everyone, signed in or not, and the answer is the same for both:
 // only public records (src/server/search/query.ts reads them through the public views) and only
 // the public DTO (src/server/dto/search.ts). The query itself is never logged (plan §6.4).
@@ -8,8 +8,8 @@ import * as z from 'zod';
 import type { Principal } from '../auth/principal';
 import { getDb } from '../db';
 import { type SearchResultDto, toPublicSearchResult } from '../dto/search';
-import { MAX_QUERY_LENGTH, queryForms } from '../search/keys';
-import { searchLineages, searchOrganizations, searchPeople, searchSchools, setThresholds } from '../search/query';
+import { foldLatin, MAX_QUERY_LENGTH, queryForms } from '../search/keys';
+import { searchEvents, searchLineages, searchOrganizations, searchPeople, searchPlace, searchSchools, setThresholds } from '../search/query';
 import { isCountryCode } from './account';
 import type { RequestMeta } from './context';
 import { ServiceError } from './errors';
@@ -54,6 +54,28 @@ export function checkSearchRate(meta: RequestMeta | undefined, now = Date.now())
   recentSearches.set(client, times);
 }
 
+/**
+ * Role replay 2026-11-25 (P2-5): the group to show before People. A query of two or more words
+ * ("hall sofia") whose words all start words of the first school, event, organization or lineage
+ * (its name, and the city of a school or an event) while the first person's names do not: that
+ * result is what was looked for, whatever its group.
+ */
+export function firstGroup(query: string, answer: Pick<SearchResultDto, 'people' | 'schools' | 'events' | 'organizations' | 'lineages'>): SearchResultDto['first'] {
+  const words = foldLatin(query).split(' ').filter(Boolean);
+  if (words.length < 2) return null;
+  const covers = (...texts: (string | null | undefined)[]) => {
+    const own = texts.flatMap((t) => (t ? foldLatin(t).split(' ') : []));
+    return words.every((w) => own.some((o) => o.startsWith(w)));
+  };
+  const person = answer.people[0];
+  if (person && (covers(person.displayName.value) || (person.matched && covers(person.matched.value)))) return null;
+  if (answer.schools[0] && covers(answer.schools[0].name, answer.schools[0].city)) return 'schools';
+  if (answer.events[0] && covers(answer.events[0].title, answer.events[0].city)) return 'events';
+  if (answer.organizations[0] && covers(answer.organizations[0].name)) return 'organizations';
+  if (answer.lineages[0] && covers(answer.lineages[0].name)) return 'lineages';
+  return null;
+}
+
 /** search.query: grouped public results; an empty query answers with empty groups. */
 export async function searchQuery(_principal: Principal | null, raw: unknown, meta?: RequestMeta): Promise<SearchResultDto> {
   const parsed = searchInput.safeParse(raw);
@@ -65,7 +87,7 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
   const query = parsed.data.q.normalize('NFC').trim();
   const forms = queryForms(query);
   if (forms.length > 0) checkSearchRate(meta);
-  if (forms.length === 0) return toPublicSearchResult({ query, people: [], morePeople: false, schools: [], organizations: [], lineages: [] });
+  if (forms.length === 0) return toPublicSearchResult({ query, people: [], morePeople: false, schools: [], organizations: [], lineages: [], events: [], place: null, first: null });
   const filters = { countryCode: parsed.data.country ?? null, lineageId: parsed.data.lineageId ?? null };
   const result = await getDb().transaction(async (tx) => {
     await setThresholds(tx);
@@ -73,6 +95,8 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
     const schools = await searchSchools(tx, forms, filters);
     const organizations = await searchOrganizations(tx, forms, filters);
     const lineages = await searchLineages(tx, forms, filters);
+    const events = await searchEvents(tx, forms, filters);
+    const place = await searchPlace(tx, forms, filters);
     // M14: each person's public photo (v_public_person: public people only, active photos only).
     const photos = await publicPhotoRefs(tx, people.people.map((p) => p.id));
     // ADR 0047: the rank and school of a featured profile, added after the order is set.
@@ -84,7 +108,11 @@ export async function searchQuery(_principal: Principal | null, raw: unknown, me
       schools,
       organizations: organizations.map((o) => ({ ...o, kindLabel: ORGANIZATION_KIND_LABELS[o.kind] })),
       lineages,
+      events,
+      place,
+      first: null as SearchResultDto['first'],
     };
   });
+  result.first = firstGroup(query, result);
   return toPublicSearchResult(result);
 }

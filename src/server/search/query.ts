@@ -13,7 +13,7 @@
 import { sql } from 'drizzle-orm';
 
 import type { Executor } from '../entitlements/access';
-import type { LineageHitDto, OrganizationHitDto, PersonHitDto, SchoolHitDto, SearchNameDto } from '../dto/search';
+import type { EventHitDto, LineageHitDto, OrganizationHitDto, PersonHitDto, PlaceHitDto, SchoolHitDto, SearchNameDto } from '../dto/search';
 import type { QueryForm } from './keys';
 
 /** pg_trgm `%`: trigram similarity of a whole key (docs/search.md). */
@@ -31,7 +31,10 @@ export const MIN_TRIGRAM_LENGTH = 3;
 export const RANK = { exact: 3, prefix: 2, wordPrefix: 1.5, hanContains: 1.5, primary: 0.15, verified: 0.1, asWritten: 0.01 } as const;
 
 /** At most this many results per group: a common surname (13 demo "Testov"s) still fits in one answer. */
-export const LIMITS = { people: 20, schools: 5, organizations: 5, lineages: 5 } as const;
+export const LIMITS = { people: 20, schools: 5, events: 5, organizations: 5, lineages: 5 } as const;
+
+/** Role replay 2026-11-25 (P2-5): a school or an event in the city the query names, under an exact or prefix name. */
+export const CITY_RANK = 2.5;
 
 export interface SearchFilters {
   countryCode: string | null;
@@ -206,8 +209,8 @@ export async function searchSchools(tx: Executor, forms: readonly QueryForm[], f
   const result = await tx.execute<SchoolRow>(sql`
     WITH f AS (${formsTable(latin)}),
     hits AS (
-      SELECT s.id, ${nameScore(name)} AS score
-        FROM f JOIN v_public_school s ON ${nameMatches(name)}
+      SELECT s.id, greatest(${nameScore(name)}, MAX(CASE WHEN ${folded(sql.raw('s.city_name'))} = f.text THEN ${num(CITY_RANK)} ELSE 0 END)) AS score
+        FROM f JOIN v_public_school s ON ${nameMatches(name)} OR ${folded(sql.raw('s.city_name'))} = f.text
        WHERE (${filters.countryCode}::text IS NULL OR s.country_code = ${filters.countryCode})
          AND (${filters.lineageId}::uuid IS NULL OR EXISTS (
                SELECT 1 FROM v_public_edge e
@@ -313,4 +316,95 @@ export async function searchOrganizations(tx: Executor, forms: readonly QueryFor
      ORDER BY h.score DESC, o.name, o.id
      LIMIT ${LIMITS.organizations}`);
   return result.rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name, kind: row.kind, countryCode: row.country_code }));
+}
+
+interface EventRow extends Record<string, unknown> {
+  id: string;
+  slug: string;
+  title: string;
+  starts_at: Date | string;
+  timezone: string;
+  city_name: string | null;
+  country_code: string | null;
+  online: boolean;
+}
+
+/**
+ * Role replay 2026-11-25 (P2-5): upcoming published events by their title, or by the city they
+ * are in, soonest first among equal matches. Read through v_public_event (published and cancelled
+ * events of public organizers only); a cancelled one is left out. An event belongs to no lineage,
+ * so a search inside a lineage lists none; the country filter keeps in-person events there.
+ */
+export async function searchEvents(tx: Executor, forms: readonly QueryForm[], filters: SearchFilters): Promise<EventHitDto[]> {
+  const latin = forms.filter((f) => !f.han);
+  if (latin.length === 0 || filters.lineageId !== null) return [];
+  const title = sql.raw('v.title');
+  const city = folded(sql.raw('v.city_name'));
+  const result = await tx.execute<EventRow>(sql`
+    WITH f AS (${formsTable(latin)}),
+    hits AS (
+      SELECT v.id, greatest(${nameScore(title)}, MAX(CASE WHEN ${city} = f.text THEN ${num(CITY_RANK)} ELSE 0 END)) AS score
+        FROM f JOIN v_public_event v ON ${nameMatches(title)} OR (NOT v.online AND ${city} = f.text)
+       WHERE v.status = 'published' AND v.ends_at > now()
+         AND (${filters.countryCode}::text IS NULL OR (NOT v.online AND v.country_code = ${filters.countryCode}))
+       GROUP BY v.id
+    )
+    SELECT v.id, v.slug, v.title, v.starts_at, v.timezone, v.city_name, v.country_code, v.online
+      FROM hits h
+      JOIN v_public_event v ON v.id = h.id
+     ORDER BY h.score DESC, v.starts_at, v.slug
+     LIMIT ${LIMITS.events}`);
+  return result.rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    startsAt: new Date(row.starts_at).toISOString(),
+    timezone: row.timezone,
+    city: row.online ? null : row.city_name,
+    countryCode: row.online ? null : row.country_code,
+    online: row.online,
+  }));
+}
+
+interface PlaceRow extends Record<string, unknown> {
+  id: string;
+  name: string;
+  country_code: string;
+  schools: number;
+  events: number;
+}
+
+/**
+ * Role replay 2026-11-25 (P2-5): the city the whole query names ("sofia", "София"), among the
+ * places that have a public school or an upcoming in-person event, with how many of each: the
+ * answer opens with "Schools in Sofia (2)" and "Events in Sofia (1)". The place with the most
+ * wins a name several countries share; the country filter narrows it.
+ */
+export async function searchPlace(tx: Executor, forms: readonly QueryForm[], filters: SearchFilters): Promise<PlaceHitDto | null> {
+  const latin = forms.filter((f) => !f.han);
+  if (latin.length === 0 || filters.lineageId !== null) return null;
+  const result = await tx.execute<PlaceRow>(sql`
+    WITH f AS (${formsTable(latin)}),
+    used AS (
+      SELECT s.place_id FROM v_public_school s
+      UNION
+      SELECT v.place_id FROM v_public_event v WHERE v.status = 'published' AND NOT v.online AND v.ends_at > now() AND v.place_id IS NOT NULL
+    ),
+    c AS (
+      SELECT DISTINCT pl.id, pl.name, pl.country_code
+        FROM place pl
+        JOIN used u ON u.place_id = pl.id
+        JOIN f ON ${folded(sql.raw('pl.name'))} = f.text OR ${folded(sql.raw('pl.ascii_name'))} = f.text
+       WHERE (${filters.countryCode}::text IS NULL OR pl.country_code = ${filters.countryCode})
+    )
+    SELECT c.id, c.name, c.country_code,
+           (SELECT count(*)::int FROM v_public_school s WHERE s.place_id = c.id) AS schools,
+           (SELECT count(*)::int FROM v_public_event v
+             WHERE v.place_id = c.id AND v.status = 'published' AND NOT v.online AND v.ends_at > now()) AS events
+      FROM c
+     ORDER BY (SELECT count(*) FROM v_public_school s WHERE s.place_id = c.id) DESC, c.name, c.id
+     LIMIT 1`);
+  const row = result.rows[0];
+  if (!row || row.schools + row.events === 0) return null;
+  return { id: row.id, name: row.name, countryCode: row.country_code, schools: row.schools, events: row.events };
 }
